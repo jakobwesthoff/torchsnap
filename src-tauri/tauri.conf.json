@@ -10,13 +10,9 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "torchsnap",
-        "width": 800,
-        "height": 600
-      }
-    ],
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
+    "windows": [],
     "security": {
       "csp": null
     }
