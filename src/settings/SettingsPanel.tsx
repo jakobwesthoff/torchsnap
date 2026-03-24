@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { cn } from "../lib/cn";
 import { useSetting } from "../hooks/useSetting";
 import { SETTINGS_DEFAULTS } from "../settingsDefaults";
 
@@ -33,9 +34,11 @@ export function SettingsPanel() {
 
   return (
     <div
-      className={`min-h-screen font-sans antialiased bg-surface text-text-primary ${
-        loading ? "opacity-0" : "opacity-100 transition-opacity duration-300"
-      }`}
+      className={cn(
+        "min-h-screen font-sans antialiased",
+        "bg-surface text-text-primary",
+        loading ? "opacity-0" : "opacity-100 transition-opacity duration-300",
+      )}
     >
       {/* Drag region — macOS overlay titlebar */}
       <div data-tauri-drag-region className="h-12 w-full select-none" />
