@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 
 export function Launcher() {
@@ -33,28 +34,22 @@ export function Launcher() {
           }}
         >
           {/* Search input */}
-          <div className="px-5 py-4">
+          <div className="flex items-center gap-3 px-5 py-4">
+            <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-accent" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search or type a command..."
-              className="w-full bg-transparent text-lg text-text-primary placeholder-text-tertiary outline-none"
+              placeholder="Type to search"
+              className="flex-1 text-lg bg-transparent focus:outline-none placeholder:text-text-muted text-text-primary"
               // Focus trap: re-focus when blurred so keystrokes always
               // reach the input while the launcher is visible.
               onBlur={() => inputRef.current?.focus()}
             />
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-border-divider" />
-
-          {/* Placeholder results area */}
-          <div className="px-5 py-8 text-center text-sm text-text-tertiary">
-            {query
-              ? `Searching for "${query}"…`
-              : "Type to search"}
+            <kbd className="shrink-0 rounded border border-border bg-surface-inset px-1.5 py-0.5 font-mono text-[11px] text-text-muted shadow-[0_1px_0_var(--color-border)]">
+              ESC
+            </kbd>
           </div>
         </div>
       </div>
