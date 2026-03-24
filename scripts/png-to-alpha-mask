@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# Convert a PNG image into a black-only alpha mask.
+#
+# Every pixel in the output is pure black (#000000) with an alpha value derived
+# from the perceived lightness of the corresponding input pixel. The BT.601
+# luminance formula (0.299*R + 0.587*G + 0.114*B) determines perceived
+# lightness, which is then inverted to produce alpha:
+#
+#   - White input pixels become fully transparent (alpha = 0).
+#   - Black input pixels become fully opaque (alpha = 255).
+#   - Everything in between maps proportionally.
+#
+# The output is always an RGBA PNG (color type 6), never grayscale+alpha.
+#
+# Requires ImageMagick 7 (`magick` command).
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: $(basename "$0") <input.png> <output.png>"
+    echo ""
+    echo "Converts an image into a black-pixel alpha mask based on perceived lightness."
+    exit 1
+fi
+
+input="$1"
+output="$2"
+
+if [[ ! -f "$input" ]]; then
+    echo "Error: Input file '$input' does not exist." >&2
+    exit 1
+fi
+
+if ! command -v magick &>/dev/null; then
+    echo "Error: ImageMagick 7 (magick) is required but not found in PATH." >&2
+    exit 1
+fi
+
+magick "$input" -alpha on \
+    -channel A -fx "1-(0.299*r+0.587*g+0.114*b)" \
+    -channel RGB -fx "0" \
+    -define png:color-type=6 \
+    "$output"
+
+echo "Wrote alpha mask to: $output"
