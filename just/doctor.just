@@ -39,6 +39,12 @@ doctor:
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
 
     echo ""
+    echo "Asset pipeline:"
+    check magick      "image resizing (ImageMagick 7)" "brew install imagemagick"
+    check oxipng      "PNG optimisation"               "cargo install oxipng"
+    check cwebp       "WebP conversion"                "brew install webp"
+
+    echo ""
     echo "Optional:"
     check shellcheck  "shell script linting"        "brew install shellcheck"
 
