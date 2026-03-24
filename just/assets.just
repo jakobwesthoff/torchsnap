@@ -45,7 +45,7 @@ asset-mascots:
 asset-app-icons:
     #!/usr/bin/env bash
     set -euo pipefail
-    src="assets/mascot/snappy-torchlight-1024.png"
+    src="assets/mascot/snappy-original-1024.png"
     icons="src-tauri/icons"
     source_icon="$icons/app-icon-source.png"
     if [ -f "$source_icon" ] && [ "$source_icon" -nt "$src" ]; then

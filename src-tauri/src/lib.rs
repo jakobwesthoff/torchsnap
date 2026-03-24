@@ -239,11 +239,9 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
                 .context("build tray menu")?;
 
-            // Use the 32x32 app icon as the tray icon. A dedicated
-            // tray icon template should be created later for proper
-            // macOS menubar styling.
-            let tray_icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
-                .context("load tray icon")?;
+            let tray_icon =
+                Image::from_bytes(include_bytes!("../icons/tray-icon-template.png"))
+                    .context("load tray icon")?;
 
             TrayIconBuilder::new()
                 .icon(tray_icon)
