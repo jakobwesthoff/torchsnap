@@ -12,6 +12,17 @@
  * enabling theme-wide changes from a single location.
  * ========================================================= */
 
+/* Inter Variable Font — © The Inter Project Authors
+ * Licensed under the SIL Open Font License 1.1
+ * https://github.com/rsms/inter */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
