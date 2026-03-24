@@ -71,16 +71,16 @@
   --color-text-muted: rgb(255 255 255 / 0.4);
 
   /* --- Surfaces ------------------------------------------ */
-  --color-surface: #1a1d2b;
-  --color-surface-inset: #2c2f3c;
-  --color-surface-hover: #2a2d3a;
-  --color-surface-active: #353844;
+  --color-surface: #1c1c1e;
+  --color-surface-inset: #2c2c2e;
+  --color-surface-hover: #2a2a2c;
+  --color-surface-active: #3a3a3c;
 
   /* --- Borders ------------------------------------------- */
-  --color-border: #3a3d49;
-  --color-border-input: #484a55;
-  --color-border-divider: #313440;
-  --color-border-hover: #4c4f5a;
+  --color-border: #3a3a3c;
+  --color-border-input: #48484a;
+  --color-border-divider: #2c2c2e;
+  --color-border-hover: #545456;
 
   /* --- Accent tints -------------------------------------- */
   --color-accent-muted: var(--color-orange-400);
