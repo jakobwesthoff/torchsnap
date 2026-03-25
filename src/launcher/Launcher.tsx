@@ -1,13 +1,18 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useSetting } from "../hooks/useSetting";
 import { SETTINGS_DEFAULTS } from "../settingsDefaults";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
+import { useSearch } from "./hooks/useSearch";
+import { ResultList } from "./ResultList";
+import type { ScoredEntry } from "./types";
 
 export function Launcher() {
   const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const mouseActiveRef = useRef(false);
 
@@ -16,12 +21,54 @@ export function Launcher() {
     mouseActiveRef,
     resetState: useCallback(() => {
       setQuery("");
+      setSelectedIndex(0);
     }, []),
   });
 
-  // Wire launcher-level keybindings (Escape to dismiss, arrow
-  // navigation once the result list exists).
-  useKeyboardNavigation({ dismiss });
+  // =========================================================
+  // Search
+  // =========================================================
+
+  const { results } = useSearch(query);
+
+  // Reset selection when results change (new query, different
+  // result set).
+  useEffect(() => {
+    setSelectedIndex(0);
+    mouseActiveRef.current = false;
+  }, [results]);
+
+  // =========================================================
+  // Action Execution
+  // =========================================================
+
+  const handleExecute = useCallback(
+    (entry?: ScoredEntry) => {
+      const target = entry ?? results[selectedIndex];
+      if (!target || target.actions.length === 0) return;
+
+      const primaryAction = target.actions[0];
+      invoke("execute_action", {
+        source: target.source,
+        entryId: target.id,
+        actionId: primaryAction.id,
+      });
+    },
+    [results, selectedIndex],
+  );
+
+  // =========================================================
+  // Keyboard Navigation
+  // =========================================================
+
+  useKeyboardNavigation({
+    dismiss,
+    resultCount: results.length,
+    selectedIndex,
+    setSelectedIndex,
+    onExecute: handleExecute,
+    mouseActiveRef,
+  });
 
   // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
   // for the search input. These are handled outside the keybinding
@@ -81,6 +128,20 @@ export function Launcher() {
               ESC
             </kbd>
           </div>
+
+          {/* Result list */}
+          {results.length > 0 && (
+            <>
+              <div className="border-t border-border" />
+              <ResultList
+                results={results}
+                selectedIndex={selectedIndex}
+                onSelectIndex={setSelectedIndex}
+                onExecute={handleExecute}
+                mouseActiveRef={mouseActiveRef}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

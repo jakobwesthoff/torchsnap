@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   ThemeContext,
   THEME_STORAGE_KEY,
@@ -93,6 +94,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(THEME_STORAGE_KEY, next);
     setPreferenceState(next);
     setEffective(resolveEffective(next));
+  }, []);
+
+  // Listen for the toggle-theme event emitted by the built-in
+  // commands plugin. Cycles through system → dark → light → system.
+  useEffect(() => {
+    const unlisten = listen("toggle-theme", () => {
+      setPreferenceState((current) => {
+        const cycle: ThemePreference[] = ["system", "dark", "light"];
+        const nextIdx = (cycle.indexOf(current) + 1) % cycle.length;
+        const next = cycle[nextIdx];
+        localStorage.setItem(THEME_STORAGE_KEY, next);
+        setEffective(resolveEffective(next));
+        return next;
+      });
+    });
+
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   const value = useMemo(
