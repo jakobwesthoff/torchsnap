@@ -1,40 +1,77 @@
 # Decide: General launcher UX concepts
 
-Open architectural decision about the overall user experience
-model for the launcher.
+## Decisions made
 
-## Questions to resolve
+### Query lifecycle
 
-- **Query lifecycle**: Does the query persist after executing an
-  action (like a terminal) or reset on every show (like Spotlight)?
-  What about when the user dismisses without acting?
-- **Navigation model**: Strictly keyboard-driven? Mouse as
-  secondary? Touch support for tablets?
-- **Result ordering**: How are results from different plugins
-  ranked? Recency? Frequency of use? Plugin priority? ML-based
-  relevance scoring?
-- **Prefix vs universal search**: Do plugins require prefixes
-  (`= ` for calc, `: ` for emoji) or does everything fuzzy-match
-  against one universal query? Or both — universal by default,
-  prefix to narrow?
-- **History**: Should the launcher remember past queries and
-  results? Show recent actions? Frecency-based suggestion?
-- **Pinning / favorites**: Can users pin items to always appear at
-  the top? Favorites list when the query is empty?
-- **Animated transitions**: Should results animate in/out? Card
-  entrance animation? Or instant for speed perception?
-- **Window size**: Fixed height? Dynamic height based on result
-  count? Maximum height with scroll? Does the card grow/shrink
-  as results change?
-- **Multiple monitors**: Always appear on the monitor with the
-  cursor (current behavior)? Or remember last position? Follow
-  focus?
-- **Accessibility**: Screen reader support (ARIA roles on result
-  list)? High contrast theme? Reduced motion support?
-- **Onboarding**: First-run experience? Tutorial? Shortcut hint
-  overlay?
+Reset on every show. The user expects a fresh start each time they
+summon the launcher. Dismissing without acting also clears the query.
 
-## UX principles to establish
+### Navigation model
+
+Keyboard-first, mouse as secondary. Mouse works for clicking results
+and scrolling but is never required.
+
+**Mouse hover suppression**: Results appearing under a stationary
+cursor must not auto-select. Uses a `mouseActiveRef` gate pattern
+(already present in our codebase from nutty):
+- Set to `false` on: window focus, query change, keyboard navigation
+- Set to `true` on: `onMouseMove` over the list container
+- `onMouseEnter` per row only updates selection when the gate is open
+
+### Prefix vs universal search
+
+Both. Universal by default — all plugins see the query and contribute
+ranked results. Prefix narrows/claims the view (e.g. `=` for
+calculator). Details in
+[decide-result-display-model](01kmh0ttdtq583cqcjqcsgmyyt-decide-result-display-model.md).
+
+### Result ordering
+
+Frecency (frequency + recency) as the base signal. User selections
+for specific queries are stored, building a learned ranking over
+time. Plugin priority is a tiebreaker. Plugins can boost their
+results when the query strongly matches their domain.
+
+Details in
+[result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md).
+
+### History
+
+Store execution history for frecency ranking. Whether to show
+history as a landing state (recent actions on empty query) is
+deferred.
+
+### Pinning / favorites
+
+Deferred. See
+[pinning-and-favorites](01kmj8z6yx1wakt5qq4pwcbq79-pinning-and-favorites.md).
+
+### Animated transitions
+
+Minimal. Result card height animates smoothly when growing/shrinking.
+No per-item entrance animations — they slow perception. Respect
+`prefers-reduced-motion`.
+
+### Window and card sizing
+
+The launcher window always covers the full screen (transparent
+overlay for click-to-dismiss). The result card has dynamic height
+based on result count, with a max height and scroll. The card
+grows/shrinks as results change. Empty state can be shorter.
+
+### Multiple monitors
+
+Launcher appears on the monitor where the cursor currently is
+(already implemented). No change needed.
+
+### Accessibility / Onboarding
+
+Covered by separate todos:
+- [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md)
+- [onboarding-first-run](01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md)
+
+## UX principles
 
 - **Speed over features**: Every interaction should feel instant.
   If it can't be instant, show progress. Never block the input.

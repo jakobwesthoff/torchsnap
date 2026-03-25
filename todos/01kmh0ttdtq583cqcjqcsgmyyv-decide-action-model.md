@@ -1,27 +1,66 @@
 # Decide: Action model for result entries
 
-Open architectural decision about whether result entries support
-a single action or multiple actions, and how users invoke them.
+## Decisions made
 
-## Questions to resolve
+### Multiple actions per entry with clear hierarchy
 
-- **Single vs multiple actions**: Does Enter always do the same
-  thing, or can an entry offer multiple actions (open, copy path,
-  reveal in Finder, delete, etc.)?
-- **Action invocation**: If multiple actions, how does the user
-  pick one?
-  - Tab or arrow-right to expand an action bar/submenu?
-  - Modifier keys (Cmd+Enter, Shift+Enter, Alt+Enter)?
-  - Right-click context menu?
-  - Action palette (like Raycast's Cmd+K)?
-- **Default action**: Which action runs on plain Enter? Is it
-  always the first? Can the user configure it per result type?
-- **Plugin-defined actions**: Can plugins declare custom actions
-  beyond the standard set? How are custom action shortcuts
-  assigned without conflicts?
-- **Action discoverability**: How does the user learn what actions
-  are available? Visible hints in the row? Only on hover/focus?
-  A persistent footer showing available shortcuts?
+Each result entry supports multiple actions provided by its plugin.
+Three invocation tiers:
+
+1. **Enter** — primary action. Plugin decides what this is (launch
+   app, open URL, copy result). Always the first action in the
+   plugin's declared list.
+2. **Modifier keys** — standardized secondary actions for common
+   operations:
+   - `Cmd+Enter` / `Ctrl+Enter` — secondary action (e.g. "reveal
+     in Finder" for apps, "copy URL" for web results)
+   - `Cmd+C` — copy (universally understood, should work on any
+     entry that has copyable content)
+   - Additional modifiers (`Alt+Enter`, `Shift+Enter`) available
+     for the 3rd/4th actions
+3. **Action palette** (`Cmd+K` and `Tab`) — opens a searchable list
+   of all available actions for the selected entry. Covers
+   plugin-specific custom actions that don't have a modifier key.
+
+### Discoverability via footer bar
+
+A footer bar at the bottom of the result list shows contextual
+action hints for the currently selected entry. Displays the primary
+action label and 1-2 modifier key shortcuts. Updates as selection
+changes. The action palette provides full discoverability for all
+actions.
+
+### Plugin action API
+
+Plugins declare an ordered list of actions per entry:
+
+- First action = default (Enter)
+- Each action has: id, label, optional icon, optional default
+  keybinding
+- The host assigns modifier keys for the top 2-3 actions
+  automatically
+- Remaining actions are accessible through the action palette
+
+### Standardized action IDs
+
+Common action types should use standardized IDs so the host can
+apply consistent keybindings across plugins:
+
+- `open` — primary open/launch/execute
+- `copy` — copy value to clipboard
+- `reveal` — show in file manager
+- `open-with` — open with alternative app
+- `delete` — remove/trash
+
+Plugins can define additional custom action IDs beyond these.
+
+## Still open
+
+- Exact modifier key assignments — finalize once we have real
+  plugins exercising the system
+- Whether users can rebind action shortcuts per result type
+- How plugin-defined action keybindings interact with the
+  keybinding engine's conflict resolution
 
 ## Prior art
 
@@ -33,14 +72,3 @@ a single action or multiple actions, and how users invoke them.
 - **Spotlight**: Single action only — Enter opens/launches.
 - **LaunchBar**: Tab to "send to" another action. Composable
   action chains.
-
-## Tradeoffs
-
-- Single action is simpler to implement and harder to confuse
-  users, but limits power users.
-- Multiple actions add complexity but make the launcher a true
-  productivity tool (copy vs open vs reveal etc.).
-- Modifier keys are discoverable only if hinted, but feel native
-  to keyboard-centric users.
-- A Raycast-style action palette is the most discoverable but adds
-  UI complexity and an extra keypress.
