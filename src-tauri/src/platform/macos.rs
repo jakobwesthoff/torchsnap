@@ -8,9 +8,9 @@
 // =========================================================
 
 use tauri::Manager as _;
-use tauri_nspanel::objc2_app_kit::NSWindowStyleMask;
 use tauri_nspanel::ManagerExt as _;
 use tauri_nspanel::WebviewWindowExt as _;
+use tauri_nspanel::objc2_app_kit::NSWindowStyleMask;
 
 use super::LauncherPanel;
 
