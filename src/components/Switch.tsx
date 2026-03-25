@@ -1,0 +1,45 @@
+/**
+ * Toggle switch with accessible role="switch" semantics.
+ *
+ * Styled as a macOS-style pill toggle. The track color uses the
+ * `accent` token when on and `surface-inset` when off.
+ */
+
+import { cn } from "../lib/cn";
+
+interface SwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  /** Accessible label — applied as aria-label when the switch is
+   *  not wrapped in a visible `<label>`. */
+  "aria-label"?: string;
+}
+
+export function Switch({
+  checked,
+  onChange,
+  "aria-label": ariaLabel,
+}: SwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200",
+        checked ? "bg-accent" : "bg-surface-inset",
+      )}
+    >
+      <span
+        className={cn(
+          "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm",
+          "transform transition-transform duration-200",
+          checked ? "translate-x-[22px]" : "translate-x-0.5",
+          "mt-0.5",
+        )}
+      />
+    </button>
+  );
+}
