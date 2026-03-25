@@ -23,6 +23,13 @@ discovered, loaded, and executed.
   Capability-based permissions?
 - **State**: Can plugins persist state between queries? Between
   app restarts? Where does plugin state live?
+- **Dynamic keybindings**: Plugins need to register keybindings
+  for their actions at runtime. A clipboard manager might bind
+  Cmd+1..9 to paste recent entries when its results are shown.
+  Keybindings should activate/deactivate based on plugin state
+  (selected result, active view). The keybinding engine already
+  supports layered priority and `active` flags — plugins need a
+  way to hook into that system, likely via the plugin ↔ host API.
 - **Dependencies**: Can plugins depend on shared libraries or
   other plugins?
 - **Versioning**: How do plugins declare compatibility with

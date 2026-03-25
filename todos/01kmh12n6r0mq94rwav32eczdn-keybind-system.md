@@ -37,7 +37,9 @@ handled by `tauri-plugin-global-shortcut`).
 
 ## Implementation sketch
 
-1. Transfer `KeyBindingProvider` from acornkit
+1. ~~Transfer `KeyBindingProvider` from acornkit~~ ✓ (done — full
+   keybinding engine, `useKeyBindings` hook, emacs bindings, and
+   launcher ESC/navigation wiring are in place)
 2. Define a `KeybindRegistry` that maps action IDs to key combos
 3. Store user overrides in settings store
 4. Provide a `useKeybind(actionId, handler)` hook for components
