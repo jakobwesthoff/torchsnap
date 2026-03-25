@@ -12,6 +12,7 @@ import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
+import { LauncherFooter } from "./LauncherFooter";
 import type { ScoredEntry } from "./types";
 
 export function Launcher() {
@@ -133,7 +134,7 @@ export function Launcher() {
             </kbd>
           </div>
 
-          {/* Result list */}
+          {/* Result list + action footer */}
           {results.length > 0 && (
             <>
               <div className="border-t border-border" />
@@ -143,6 +144,9 @@ export function Launcher() {
                 onSelectIndex={setSelectedIndex}
                 onExecute={handleExecute}
                 mouseActiveRef={mouseActiveRef}
+              />
+              <LauncherFooter
+                actions={results[selectedIndex]?.actions ?? []}
               />
             </>
           )}
