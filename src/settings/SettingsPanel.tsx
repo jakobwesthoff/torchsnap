@@ -6,6 +6,7 @@ import { SETTINGS_DEFAULTS } from "../settingsDefaults";
 import { SettingsSection } from "../components/SettingsSection";
 import { SettingsEntry } from "../components/SettingsEntry";
 import { Switch } from "../components/Switch";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function SettingsPanel() {
   const [globalShortcut, , shortcutReady] = useSetting(
@@ -65,6 +66,9 @@ export function SettingsPanel() {
 
         {/* Appearance */}
         <SettingsSection title="Appearance" className="mt-4">
+          <SettingsEntry label="Theme">
+            <ThemeToggle />
+          </SettingsEntry>
           <SettingsEntry label="Show Snappy mascot">
             <Switch checked={showMascot} onChange={setShowMascot} />
           </SettingsEntry>
