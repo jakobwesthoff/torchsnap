@@ -1,4 +1,6 @@
 mod platform;
+mod plugins;
+mod search;
 
 use anyhow::Context;
 use tauri::{Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
@@ -13,7 +15,7 @@ use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as 
 // =========================================================
 
 /// Show and focus the pre-created settings window.
-fn show_settings_window(app: &tauri::AppHandle) {
+pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
     // Activate the app so the window actually comes to the foreground.
     // Without this, Accessory-policy apps require a second click because
     // the first click only activates the process.
@@ -191,7 +193,11 @@ fn update_global_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<(),
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![update_global_shortcut])
+        .invoke_handler(tauri::generate_handler![
+            update_global_shortcut,
+            search::search,
+            search::execute_action,
+        ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -202,6 +208,17 @@ pub fn run() {
 
     let app = builder
         .setup(|app| {
+            // =========================================================
+            // Search catalog
+            //
+            // Initialize the catalog registry and register built-in
+            // plugins. The registry is stored in Tauri managed state
+            // so the search command can access it.
+            // =========================================================
+            let mut catalog = search::catalog::CatalogRegistry::new();
+            catalog.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
+            app.manage(std::sync::Mutex::new(catalog));
+
             // =========================================================
             // Hide dock icon (macOS only)
             //
