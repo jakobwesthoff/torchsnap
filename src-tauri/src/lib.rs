@@ -2,11 +2,11 @@ mod platform;
 
 use anyhow::Context;
 use tauri::{
+    Manager, RunEvent, WebviewUrl, WindowEvent,
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::WebviewWindowBuilder,
-    Manager, RunEvent, WebviewUrl, WindowEvent,
 };
 
 #[cfg(target_os = "macos")]
@@ -50,19 +50,19 @@ fn show_settings_window(app: &tauri::AppHandle) {
         // Center the settings window on the monitor the cursor is on,
         // so it appears on the screen the user is currently working on
         // rather than wherever it was initially created.
-        if let Some(monitor) = monitor_under_cursor(app) {
-            if let Ok(win_size) = win.outer_size() {
-                let mon_size = monitor.size();
-                let mon_pos = monitor.position();
-                let scale = monitor.scale_factor();
+        if let Some(monitor) = monitor_under_cursor(app)
+            && let Ok(win_size) = win.outer_size()
+        {
+            let mon_size = monitor.size();
+            let mon_pos = monitor.position();
+            let scale = monitor.scale_factor();
 
-                let x = mon_pos.x as f64 / scale
-                    + (mon_size.width as f64 / scale - win_size.width as f64 / scale) / 2.0;
-                let y = mon_pos.y as f64 / scale
-                    + (mon_size.height as f64 / scale - win_size.height as f64 / scale) / 2.0;
+            let x = mon_pos.x as f64 / scale
+                + (mon_size.width as f64 / scale - win_size.width as f64 / scale) / 2.0;
+            let y = mon_pos.y as f64 / scale
+                + (mon_size.height as f64 / scale - win_size.height as f64 / scale) / 2.0;
 
-                let _ = win.set_position(tauri::LogicalPosition::new(x, y));
-            }
+            let _ = win.set_position(tauri::LogicalPosition::new(x, y));
         }
 
         let _ = win.show();
@@ -226,22 +226,15 @@ pub fn run() {
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
                     .context("create Settings menu item")?;
-            let separator =
-                PredefinedMenuItem::separator(app).context("create menu separator")?;
-            let quit_item = MenuItem::with_id(
-                app,
-                "quit",
-                "Quit Torchsnap",
-                true,
-                Some("CmdOrCtrl+Q"),
-            )
-            .context("create Quit menu item")?;
+            let separator = PredefinedMenuItem::separator(app).context("create menu separator")?;
+            let quit_item =
+                MenuItem::with_id(app, "quit", "Quit Torchsnap", true, Some("CmdOrCtrl+Q"))
+                    .context("create Quit menu item")?;
             let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
                 .context("build tray menu")?;
 
-            let tray_icon =
-                Image::from_bytes(include_bytes!("../icons/tray-icon-template.png"))
-                    .context("load tray icon")?;
+            let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-icon-template.png"))
+                .context("load tray icon")?;
 
             TrayIconBuilder::new()
                 .icon(tray_icon)
@@ -280,36 +273,30 @@ pub fn run() {
             // settings.
             // =========================================================
 
-            let launcher_win = WebviewWindowBuilder::new(
-                app,
-                "main",
-                WebviewUrl::App("launcher.html".into()),
-            )
-            .transparent(true)
-            .decorations(false)
-            .shadow(false)
-            .visible(false)
-            .focused(false)
-            .title("")
-            .build()
-            .context("create launcher window")?;
+            let launcher_win =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("launcher.html".into()))
+                    .transparent(true)
+                    .decorations(false)
+                    .shadow(false)
+                    .visible(false)
+                    .focused(false)
+                    .title("")
+                    .build()
+                    .context("create launcher window")?;
 
             // Platform-specific panel initialization (NSPanel on macOS,
             // no-op on other platforms).
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;
 
-            let mut settings_builder = WebviewWindowBuilder::new(
-                app,
-                "settings",
-                WebviewUrl::App("settings.html".into()),
-            )
-            .title("Torchsnap Settings")
-            .inner_size(480.0, 600.0)
-            .resizable(false)
-            .visible(false)
-            .focused(false)
-            .center();
+            let mut settings_builder =
+                WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+                    .title("Torchsnap Settings")
+                    .inner_size(480.0, 600.0)
+                    .resizable(false)
+                    .visible(false)
+                    .focused(false)
+                    .center();
 
             #[cfg(target_os = "macos")]
             {
@@ -318,9 +305,7 @@ pub fn run() {
                     .hidden_title(true);
             }
 
-            settings_builder
-                .build()
-                .context("create settings window")?;
+            settings_builder.build().context("create settings window")?;
 
             // =========================================================
             // Global shortcut
@@ -338,9 +323,7 @@ pub fn run() {
                         .parse::<tauri_plugin_global_shortcut::Shortcut>()
                         .expect("valid shortcut string"),
                     move |_app, _shortcut, event| {
-                        if event.state
-                            == tauri_plugin_global_shortcut::ShortcutState::Pressed
-                        {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                             toggle_launcher_window(&handle);
                         }
                     },
@@ -360,12 +343,11 @@ pub fn run() {
             event: WindowEvent::CloseRequested { api, .. },
             ..
         } = &event
+            && (label == "main" || label == "settings")
         {
-            if label == "main" || label == "settings" {
-                api.prevent_close();
-                if let Some(win) = app.get_webview_window(label) {
-                    let _ = win.hide();
-                }
+            api.prevent_close();
+            if let Some(win) = app.get_webview_window(label) {
+                let _ = win.hide();
             }
         }
     });
