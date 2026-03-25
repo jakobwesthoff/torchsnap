@@ -1,0 +1,51 @@
+// =========================================================
+// Search Module
+//
+// Tauri commands for searching catalog entries and executing
+// actions. The `search` command streams results over a Tauri
+// channel for progressive rendering on the frontend.
+// =========================================================
+
+pub mod catalog;
+pub mod types;
+
+use std::sync::Mutex;
+
+use tauri::ipc::Channel;
+use tauri::State;
+
+use catalog::CatalogRegistry;
+use types::{ActionId, SearchMessage};
+
+/// Search all registered catalogs and stream results to the frontend.
+///
+/// Synchronous because catalog search is sub-millisecond for small
+/// entry sets. Will become async when query plugins are added.
+#[tauri::command]
+pub fn search(
+    query: String,
+    on_results: Channel<SearchMessage>,
+    state: State<'_, Mutex<CatalogRegistry>>,
+) {
+    let registry = state.lock().expect("catalog registry lock");
+    let results = registry.search(&query);
+
+    let _ = on_results.send(SearchMessage::CatalogResults { entries: results });
+    let _ = on_results.send(SearchMessage::Done);
+}
+
+/// Execute an action on a specific entry, routing to the plugin
+/// that owns it.
+#[tauri::command]
+pub fn execute_action(
+    source: String,
+    entry_id: String,
+    action_id: ActionId,
+    state: State<'_, Mutex<CatalogRegistry>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let registry = state.lock().expect("catalog registry lock");
+    registry
+        .execute(&source, &entry_id, &action_id, &app)
+        .map_err(|e| format!("{e:#}"))
+}
