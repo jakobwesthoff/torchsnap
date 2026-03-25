@@ -75,8 +75,7 @@ impl CatalogRegistry {
                 let score = match title_score {
                     Some(s) => Some(s),
                     None if !entry.keywords.is_empty() => {
-                        let combined =
-                            format!("{} {}", entry.title, entry.keywords.join(" "));
+                        let combined = format!("{} {}", entry.title, entry.keywords.join(" "));
                         let combined_haystack = Utf32Str::new(&combined, &mut char_buf);
                         pattern.score(combined_haystack, &mut matcher)
                     }

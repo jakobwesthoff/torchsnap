@@ -15,8 +15,8 @@ pub mod types;
 
 use std::sync::Mutex;
 
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use catalog::CatalogRegistry;
 use types::{ActionId, SearchMessage};
