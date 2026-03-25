@@ -18,6 +18,12 @@ discovered, loaded, and executed.
 - **Query routing**: How does the host decide which plugins receive
   a query? All plugins see every query? Prefix-based routing
   (`= ` → calculator)? Priority/ordering?
+- **Plugin data mode**: Decided — plugins declare as `catalog` or
+  `query`. See [ADR 0011](../docs/adr/0011-use-tauri-channels-for-streaming-search-results-from-catalog-and-query-plugins.md).
+  Catalog plugins provide a full entry list; the host filters via
+  nucleo. Query plugins receive the raw query and return their own
+  filtered results. A plugin could register both a catalog and a
+  query provider if needed.
 - **Plugin ↔ host API surface**: What can a plugin call?
   Clipboard, filesystem, HTTP, notifications, system commands?
   Capability-based permissions?
