@@ -97,13 +97,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Listen for the toggle-theme event emitted by the built-in
-  // commands plugin. Cycles through system → dark → light → system.
+  // commands plugin. Switches between dark and light only —
+  // "system" is excluded because the command is an explicit
+  // user action ("make it dark" / "make it light").
   useEffect(() => {
     const unlisten = listen("toggle-theme", () => {
       setPreferenceState((current) => {
-        const cycle: ThemePreference[] = ["system", "dark", "light"];
-        const nextIdx = (cycle.indexOf(current) + 1) % cycle.length;
-        const next = cycle[nextIdx];
+        const currentEffective =
+          current === "system" ? resolveEffective("system") : current;
+        const next: ThemePreference =
+          currentEffective === "dark" ? "light" : "dark";
         localStorage.setItem(THEME_STORAGE_KEY, next);
         setEffective(resolveEffective(next));
         return next;

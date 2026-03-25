@@ -33,8 +33,10 @@ impl CatalogRegistry {
     /// Non-empty query uses nucleo fuzzy matching on the title and
     /// keywords, returning only entries that match.
     pub fn search(&self, query: &str) -> Vec<ScoredEntry> {
+        // TODO: Empty query could show recent/pinned items in the future.
+        // For now, return nothing — the launcher should feel clean on open.
         if query.is_empty() {
-            return self.all_entries_unscored();
+            return Vec::new();
         }
 
         // Matcher allocates ~135KB of scratch space. Creating it per
@@ -118,7 +120,9 @@ impl CatalogRegistry {
     }
 
     /// Return all entries from all plugins with score 0 and no
-    /// highlight positions. Used for the empty-query home screen.
+    /// highlight positions. Will be used for the empty-query home
+    /// screen (recent/pinned items) once that feature is built.
+    #[allow(dead_code)]
     fn all_entries_unscored(&self) -> Vec<ScoredEntry> {
         let mut results = Vec::new();
 
