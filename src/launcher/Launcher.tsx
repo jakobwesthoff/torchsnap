@@ -1,13 +1,15 @@
 import { useCallback, useRef, useState } from "react";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
+import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 
 export function Launcher() {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const mouseActiveRef = useRef(false);
 
-  const { hide } = useWindowLifecycle({
+  const { dismiss } = useWindowLifecycle({
     inputRef,
     mouseActiveRef,
     resetState: useCallback(() => {
@@ -15,10 +17,20 @@ export function Launcher() {
     }, []),
   });
 
+  // Wire launcher-level keybindings (Escape to dismiss, arrow
+  // navigation once the result list exists).
+  useKeyboardNavigation({ dismiss });
+
+  // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
+  // for the search input. These are handled outside the keybinding
+  // engine because they operate on raw Ctrl which the engine
+  // intentionally excludes to avoid macOS Cmd/Ctrl collisions.
+  const emacsBindings = useEmacsBindings(inputRef, setQuery);
+
   return (
     <div
       className="fixed inset-0 flex flex-col items-center pt-[25vh]"
-      onClick={hide}
+      onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
         {/* Launcher card */}
@@ -41,6 +53,7 @@ export function Launcher() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={emacsBindings.onKeyDown}
               placeholder="Type to search"
               className="flex-1 text-lg bg-transparent focus:outline-none placeholder:text-text-muted text-text-primary"
               // Focus trap: re-focus when blurred so keystrokes always
