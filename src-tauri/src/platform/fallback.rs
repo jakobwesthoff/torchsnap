@@ -86,22 +86,19 @@ impl Tray for FallbackTray {
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()> {
-        let settings_item =
-            MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
-                .context("create Settings menu item")?;
-        let separator =
-            PredefinedMenuItem::separator(app).context("create menu separator")?;
-        let quit_item =
-            MenuItem::with_id(app, "quit", "Quit Torchsnap", true, None::<&str>)
-                .context("create Quit menu item")?;
+        let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
+            .context("create Settings menu item")?;
+        let separator = PredefinedMenuItem::separator(app).context("create menu separator")?;
+        let quit_item = MenuItem::with_id(app, "quit", "Quit Torchsnap", true, None::<&str>)
+            .context("create Quit menu item")?;
         let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
             .context("build tray menu")?;
 
         // Full-color icon — no template tinting on non-macOS.
         // TODO: Use a dedicated tray icon optimized for small sizes
         // and dark/light system themes on Windows and Linux.
-        let tray_icon = Image::from_bytes(include_bytes!("../../icons/32x32.png"))
-            .context("load tray icon")?;
+        let tray_icon =
+            Image::from_bytes(include_bytes!("../../icons/32x32.png")).context("load tray icon")?;
 
         TrayIconBuilder::new()
             .icon(tray_icon)

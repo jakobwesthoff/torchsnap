@@ -124,14 +124,11 @@ impl Tray for MacosTray {
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()> {
-        let settings_item =
-            MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
-                .context("create Settings menu item")?;
-        let separator =
-            PredefinedMenuItem::separator(app).context("create menu separator")?;
-        let quit_item =
-            MenuItem::with_id(app, "quit", "Quit Torchsnap", true, Some("CmdOrCtrl+Q"))
-                .context("create Quit menu item")?;
+        let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
+            .context("create Settings menu item")?;
+        let separator = PredefinedMenuItem::separator(app).context("create menu separator")?;
+        let quit_item = MenuItem::with_id(app, "quit", "Quit Torchsnap", true, Some("CmdOrCtrl+Q"))
+            .context("create Quit menu item")?;
         let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
             .context("build tray menu")?;
 
