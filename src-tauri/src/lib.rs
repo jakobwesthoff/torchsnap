@@ -1,18 +1,12 @@
 mod platform;
 
 use anyhow::Context;
-use tauri::{
-    Manager, RunEvent, WebviewUrl, WindowEvent,
-    image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    webview::WebviewWindowBuilder,
-};
+use tauri::{Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
-use platform::{LauncherPanel as _, PlatformLauncherPanel};
+use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as _};
 
 // =========================================================
 // Settings Window
@@ -222,47 +216,12 @@ pub fn run() {
 
             // =========================================================
             // Tray icon with context menu
+            //
+            // Delegated to the platform module so each OS can use its
+            // native icon format and click conventions.
             // =========================================================
-            let settings_item =
-                MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
-                    .context("create Settings menu item")?;
-            let separator = PredefinedMenuItem::separator(app).context("create menu separator")?;
-            let quit_item =
-                MenuItem::with_id(app, "quit", "Quit Torchsnap", true, Some("CmdOrCtrl+Q"))
-                    .context("create Quit menu item")?;
-            let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
-                .context("build tray menu")?;
-
-            let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-icon-template.png"))
-                .context("load tray icon")?;
-
-            TrayIconBuilder::new()
-                .icon(tray_icon)
-                .icon_as_template(true)
-                .tooltip("Torchsnap")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "settings" => {
-                        show_settings_window(app);
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        toggle_launcher_window(tray.app_handle());
-                    }
-                })
-                .build(app)
-                .context("build tray icon")?;
+            PlatformTray::build(app, toggle_launcher_window, show_settings_window)
+                .context("build platform tray")?;
 
             // =========================================================
             // Preload windows

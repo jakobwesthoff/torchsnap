@@ -1,26 +1,29 @@
 // =========================================================
-// Platform Abstraction for Launcher Window Behavior
+// Platform Abstraction
 //
-// The launcher needs platform-specific window management to
-// feel native. On macOS this means an NSPanel that receives
-// keyboard input without activating the owning process. On
-// Linux and Windows the best we can do (for now) is a regular
-// Tauri window — functional but steals focus from the active
-// app.
+// Platform-specific behavior is expressed through traits that
+// each platform module implements. The traits are re-exported
+// as `Platform*` type aliases via cfg dispatch so the rest of
+// the codebase stays platform-agnostic.
 //
-// Each platform module implements `LauncherPanel` and is
-// re-exported as `PlatformLauncherPanel` via cfg dispatch.
+// Currently abstracted:
+//   - LauncherPanel: window management (NSPanel vs. regular)
+//   - Tray: system tray icon, menu, and click behavior
 // =========================================================
 
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
+#[cfg(target_os = "macos")]
+pub use macos::MacosTray as PlatformTray;
 
 #[cfg(not(target_os = "macos"))]
 mod fallback;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackTray as PlatformTray;
 
 /// Abstraction over platform-specific launcher window behavior.
 ///
@@ -42,4 +45,22 @@ pub trait LauncherPanel {
 
     /// Whether the launcher panel is currently visible.
     fn is_visible(app: &tauri::AppHandle) -> anyhow::Result<bool>;
+}
+
+/// Abstraction over platform-specific system tray setup.
+///
+/// macOS uses a template (alpha-mask) icon and distinguishes left-click
+/// (toggle launcher) from right-click (context menu). Other platforms
+/// may use full-color icons or different click conventions.
+pub trait Tray {
+    /// Build and attach the system tray icon during `setup()`.
+    ///
+    /// The two callbacks let the caller wire up app-level actions
+    /// (toggle launcher, show settings, quit) without the platform
+    /// module knowing about those concepts.
+    fn build(
+        app: &tauri::App,
+        on_toggle: fn(&tauri::AppHandle),
+        on_settings: fn(&tauri::AppHandle),
+    ) -> anyhow::Result<()>;
 }
