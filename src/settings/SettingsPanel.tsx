@@ -3,6 +3,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "../lib/cn";
 import { useSetting } from "../hooks/useSetting";
 import { SETTINGS_DEFAULTS } from "../settingsDefaults";
+import { SettingsSection } from "../components/SettingsSection";
+import { SettingsEntry } from "../components/SettingsEntry";
+import { Switch } from "../components/Switch";
 
 export function SettingsPanel() {
   const [globalShortcut, , shortcutReady] = useSetting(
@@ -10,7 +13,12 @@ export function SettingsPanel() {
     SETTINGS_DEFAULTS.globalShortcut,
   );
 
-  const loading = !shortcutReady;
+  const [showMascot, setShowMascot, mascotReady] = useSetting(
+    "showMascot",
+    SETTINGS_DEFAULTS.showMascot,
+  );
+
+  const loading = !shortcutReady || !mascotReady;
 
   // Close the settings window on Escape, unless an input is focused
   // (Escape in an input should blur it, not close the window).
@@ -48,12 +56,19 @@ export function SettingsPanel() {
         <h2 className="text-lg font-semibold mb-4">Settings</h2>
 
         {/* Shortcut section placeholder */}
-        <div className="rounded-xl border border-border p-4">
+        <SettingsSection>
           <label className="text-sm text-text-secondary">Global Shortcut</label>
           <div className="mt-1 text-sm text-text-primary font-mono">
             {globalShortcut}
           </div>
-        </div>
+        </SettingsSection>
+
+        {/* Appearance */}
+        <SettingsSection title="Appearance" className="mt-4">
+          <SettingsEntry label="Show Snappy mascot">
+            <Switch checked={showMascot} onChange={setShowMascot} />
+          </SettingsEntry>
+        </SettingsSection>
       </div>
     </div>
   );

@@ -8,4 +8,5 @@
 
 export const SETTINGS_DEFAULTS = {
   globalShortcut: "CmdOrCtrl+Shift+Space",
-} satisfies Record<string, string>;
+  showMascot: true,
+} satisfies Record<string, unknown>;
