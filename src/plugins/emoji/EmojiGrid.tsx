@@ -42,7 +42,7 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
   return (
     <div
       className={cn(
-        "flex h-[68px] w-[68px] items-center justify-center rounded-lg",
+        "flex aspect-square items-center justify-center rounded-lg",
         "cursor-default select-none",
         selected
           ? "bg-accent/10 border border-accent/30"
@@ -238,7 +238,7 @@ export default function EmojiGrid({
   return (
     <div
       ref={gridRef}
-      className="grid grid-cols-10 overflow-hidden"
+      className="grid grid-cols-10 overflow-hidden p-1.5"
       onMouseMove={() => {
         mouseActiveRef.current = true;
       }}
