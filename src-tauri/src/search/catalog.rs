@@ -16,8 +16,13 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use super::types::{ActionId, ScoredEntry};
 use crate::plugins::CatalogPlugin;
 
+use std::sync::Arc;
+use std::thread;
+
+use rayon::prelude::*;
+
 pub struct CatalogRegistry {
-    plugins: Vec<Box<dyn CatalogPlugin>>,
+    plugins: Vec<Arc<dyn CatalogPlugin>>,
 }
 
 impl CatalogRegistry {
@@ -28,7 +33,41 @@ impl CatalogRegistry {
     }
 
     pub fn register(&mut self, plugin: Box<dyn CatalogPlugin>) {
-        self.plugins.push(plugin);
+        self.plugins.push(Arc::from(plugin));
+    }
+
+    /// Call `setup()` on every registered plugin in parallel.
+    ///
+    /// Uses a rayon thread pool with a rolling window — as soon as
+    /// one plugin finishes, the next one starts. Returns immediately;
+    /// a coordinator thread manages the pool in the background.
+    ///
+    /// Plugins must handle `entries()` being called before `setup()`
+    /// completes (e.g., return an empty list).
+    pub fn setup_all(&self) {
+        let plugins: Vec<_> = self.plugins.iter().map(Arc::clone).collect();
+
+        thread::spawn(move || {
+            // Use 70% of available cores for plugin setup, leaving
+            // headroom for the UI thread and system tasks. Plugin
+            // setup is mostly I/O-bound so full core saturation
+            // would waste resources.
+            let cores = thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4);
+            let num_threads = (cores * 7 / 10).max(1);
+
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(num_threads)
+                .build()
+                .expect("rayon setup thread pool");
+
+            pool.install(|| {
+                plugins.par_iter().for_each(|plugin| {
+                    plugin.setup();
+                });
+            });
+        });
     }
 
     /// Search all catalog entries against the given query.

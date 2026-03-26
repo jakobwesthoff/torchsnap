@@ -221,6 +221,10 @@ pub fn run() {
             // =========================================================
             let mut catalog = search::catalog::CatalogRegistry::new();
             catalog.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
+            catalog.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
+                platform::PlatformAppDiscovery,
+            )));
+            catalog.setup_all();
             app.manage(std::sync::Mutex::new(catalog));
 
             // =========================================================

@@ -14,6 +14,7 @@
 // for a WASM plugin interface.
 // =========================================================
 
+pub mod app_launcher;
 pub mod commands;
 
 use crate::search::types::{ActionId, CatalogEntry};
@@ -23,10 +24,30 @@ use crate::search::types::{ActionId, CatalogEntry};
 /// The host calls `entries()` to get the full list and filters
 /// it using nucleo. When the user executes an action, the host
 /// calls `execute()` to route back to the originating plugin.
+///
+/// ## Lifecycle
+///
+/// 1. Plugin is constructed and registered via `CatalogRegistry::register`
+/// 2. `setup()` is called once after all plugins are registered
+/// 3. `entries()` is called on every search keystroke
+/// 4. `execute()` is called when the user triggers an action
 pub trait CatalogPlugin: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
     /// field in `ScoredEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
+
+    /// One-time initialization after registration.
+    ///
+    /// Called once during app startup on a dedicated background
+    /// thread — implementations are free to block (e.g., scan the
+    /// filesystem, run subprocesses). The host spawns one thread
+    /// per plugin so all setups run in parallel.
+    ///
+    /// `entries()` must handle the case where `setup()` has not
+    /// yet completed (e.g., return an empty list).
+    ///
+    /// The default implementation is a no-op.
+    fn setup(&self) {}
 
     /// Return all catalog entries this plugin provides.
     ///
