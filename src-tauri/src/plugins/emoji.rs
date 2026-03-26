@@ -251,9 +251,18 @@ impl QueryPlugin for EmojiPickerPlugin {
         let mut char_buf = Vec::new();
         let mut indices_buf = Vec::new();
 
+        struct EmojiMatch {
+            score: u32,
+            title_positions: Vec<u32>,
+            subtitle_positions: Vec<u32>,
+            /// Index into `EmojiData::shortcodes` for the best-matching
+            /// shortcode (pass 1) or 0 for keyword matches (pass 2).
+            shortcode_idx: usize,
+        }
+
         // Track which entries matched in pass 1 so we skip them
         // in pass 2. Key: index into `entries`.
-        let mut matched: HashMap<usize, (u32, Vec<u32>, usize)> = HashMap::new();
+        let mut matched: HashMap<usize, EmojiMatch> = HashMap::new();
 
         // Pass 1: shortcode matching.
         for (idx, entry) in entries.iter().enumerate() {
@@ -275,28 +284,54 @@ impl QueryPlugin for EmojiPickerPlugin {
             }
 
             if let Some(score) = best_score {
-                matched.insert(idx, (score, best_positions, best_shortcode_idx));
+                matched.insert(
+                    idx,
+                    EmojiMatch {
+                        score,
+                        title_positions: best_positions,
+                        subtitle_positions: vec![],
+                        shortcode_idx: best_shortcode_idx,
+                    },
+                );
             }
         }
 
         // Pass 2: keyword/tag matching for entries not matched in pass 1.
+        // Matches against `label + " " + tags`. Positions that fall
+        // within the label length become subtitle_positions; positions
+        // in the tag portion are discarded (tags aren't displayed).
         for (idx, entry) in entries.iter().enumerate() {
             if matched.contains_key(&idx) {
                 continue;
             }
 
-            // Build a combined haystack from label + tags.
             let combined = if entry.tags.is_empty() {
                 entry.label.clone()
             } else {
                 format!("{} {}", entry.label, entry.tags.join(" "))
             };
 
+            indices_buf.clear();
             let haystack = Utf32Str::new(&combined, &mut char_buf);
-            if let Some(score) = pattern.score(haystack, &mut matcher) {
-                // No title positions for keyword matches — we show
-                // the shortcode as title but matched against keywords.
-                matched.insert(idx, (score, vec![], 0));
+            if let Some(score) = pattern.indices(haystack, &mut matcher, &mut indices_buf) {
+                let label_char_len = entry.label.chars().count() as u32;
+                let subtitle_positions: Vec<u32> = indices_buf
+                    .iter()
+                    .copied()
+                    .filter(|&p| p < label_char_len)
+                    .collect();
+
+                // No title positions — pass 2 matched keywords, not
+                // the shortcode displayed as title.
+                matched.insert(
+                    idx,
+                    EmojiMatch {
+                        score,
+                        title_positions: vec![],
+                        subtitle_positions,
+                        shortcode_idx: 0,
+                    },
+                );
             }
         }
 
@@ -305,7 +340,7 @@ impl QueryPlugin for EmojiPickerPlugin {
         // -------------------------------------------------------
         let mut results: Vec<QueryResult> = matched
             .into_iter()
-            .filter_map(|(idx, (score, positions, sc_idx))| {
+            .filter_map(|(idx, m)| {
                 let entry = &entries[idx];
 
                 // Skip entries without shortcodes — they can't be
@@ -316,20 +351,21 @@ impl QueryPlugin for EmojiPickerPlugin {
 
                 // Use the best-matching shortcode for the title, or
                 // fall back to the first one for keyword matches.
-                let display_shortcode = &entry.shortcodes[sc_idx];
+                let display_shortcode = &entry.shortcodes[m.shortcode_idx];
 
-                // Adjust positions to account for the ":" prefix we
-                // add to the displayed shortcode.
-                let adjusted_positions: Vec<u32> = positions.iter().map(|p| p + 1).collect();
+                // Adjust title positions to account for the ":" prefix
+                // we add to the displayed shortcode.
+                let adjusted_title_pos: Vec<u32> =
+                    m.title_positions.iter().map(|p| p + 1).collect();
 
                 Some(QueryResult {
                     id: entry.emoji.clone(),
                     title: format!(":{display_shortcode}:"),
                     subtitle: Some(entry.label.clone()),
                     icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
-                    score,
-                    title_positions: adjusted_positions,
-                    subtitle_positions: vec![],
+                    score: m.score,
+                    title_positions: adjusted_title_pos,
+                    subtitle_positions: m.subtitle_positions,
                     actions: vec![Action {
                         id: ActionId::Copy,
                         label: "Copy to Clipboard".into(),
