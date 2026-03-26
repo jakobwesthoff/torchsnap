@@ -55,9 +55,28 @@ export interface ScoredEntry {
 }
 
 // =========================================================
+// Footer Types
+// =========================================================
+
+export interface FooterHint {
+  combo?: { modifiers: string[]; key: string };
+  label: string;
+}
+
+export interface FooterState {
+  primary?: FooterHint;
+  hints: FooterHint[];
+}
+
+// =========================================================
 // Channel Messages
 // =========================================================
 
 export type SearchMessage =
-  | { type: "catalogResults"; entries: ScoredEntry[] }
+  | {
+      type: "catalogResults";
+      entries: ScoredEntry[];
+      /** Plugin ID when the plugin requested custom UI (ADR 0013). */
+      activePlugin: string | null;
+    }
   | { type: "done" };
