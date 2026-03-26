@@ -22,7 +22,7 @@ pub mod icon_extraction;
 pub mod settings_discovery;
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub(crate) mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::MacosIconExtractor as PlatformIconExtractor;
 #[cfg(target_os = "macos")]
