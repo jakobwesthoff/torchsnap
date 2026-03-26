@@ -36,6 +36,9 @@ interface UseKeyboardNavigationParams {
   onExecute: (entry?: undefined, actionIndex?: number) => void;
   selectedActions: Action[];
   mouseActiveRef: RefObject<boolean>;
+  /** When false, all bindings are deregistered. Used when a plugin
+   *  custom UI takes over and handles its own keybindings. */
+  enabled: boolean;
 }
 
 // All launcher navigation bindings live above LAYER.COMPONENT so they
@@ -50,6 +53,7 @@ export function useKeyboardNavigation({
   onExecute,
   selectedActions,
   mouseActiveRef,
+  enabled,
 }: UseKeyboardNavigationParams) {
   const moveSelection = useCallback(
     (delta: number) => {
@@ -68,7 +72,10 @@ export function useKeyboardNavigation({
   // =========================================================
 
   const staticBindings: KeyBindingDefinition[] = useMemo(
-    () => [
+    () =>
+      !enabled
+        ? []
+        : [
       {
         id: "launcher-arrow-down",
         layer: LAUNCHER_LAYER,
@@ -124,7 +131,7 @@ export function useKeyboardNavigation({
         ],
       },
     ],
-    [moveSelection, onExecute, dismiss],
+    [enabled, moveSelection, onExecute, dismiss],
   );
 
   useKeyBindings(staticBindings);
@@ -140,6 +147,8 @@ export function useKeyboardNavigation({
   // =========================================================
 
   const actionBindings: KeyBindingDefinition[] = useMemo(() => {
+    if (!enabled) return [];
+
     const bindings: KeyBindingDefinition[] = [];
 
     for (let i = 1; i < selectedActions.length; i++) {
@@ -164,7 +173,7 @@ export function useKeyboardNavigation({
     }
 
     return bindings;
-  }, [selectedActions, onExecute]);
+  }, [enabled, selectedActions, onExecute]);
 
   useKeyBindings(actionBindings);
 }
