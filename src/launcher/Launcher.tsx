@@ -14,7 +14,26 @@ import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
-import type { ScoredEntry } from "./types";
+import type { Action, FooterState, ScoredEntry } from "./types";
+
+/** Derive a generic FooterState from an entry's action list. */
+function actionsToFooterState(actions: Action[]): FooterState {
+  const primary = actions[0];
+  const hints = actions
+    .slice(1)
+    .filter((a) => a.keybinding)
+    .map((a) => ({
+      combo: { modifiers: a.keybinding!.modifiers ?? [], key: a.keybinding!.key },
+      label: a.label,
+    }));
+
+  return {
+    primary: primary
+      ? { combo: { modifiers: [], key: "Enter" }, label: primary.label }
+      : undefined,
+    hints,
+  };
+}
 
 export function Launcher() {
   const [query, setQuery] = useState("");
@@ -154,7 +173,9 @@ export function Launcher() {
                 mouseActiveRef={mouseActiveRef}
               />
               <LauncherFooter
-                actions={results[selectedIndex]?.actions ?? []}
+                footer={actionsToFooterState(
+                  results[selectedIndex]?.actions ?? [],
+                )}
               />
             </>
           )}

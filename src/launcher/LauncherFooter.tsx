@@ -3,48 +3,54 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Contextual action footer for the launcher result list.
+ * Contextual action footer for the launcher.
  *
- * Shows the available actions for the currently selected entry as
- * keybinding pill + label pairs. The primary action is displayed on
- * the left, secondary actions on the right. Updates as the selection
- * changes.
+ * Renders a generic `FooterState`: primary hint on the left,
+ * secondary hints on the right. Both the host (deriving from
+ * entry actions) and plugin custom UIs (setting state directly)
+ * produce the same `FooterState` shape.
  */
 
 import { KeyBindingPill } from "../components/KeyBindingPill";
-import type { Action } from "./types";
+import type { FooterState } from "./types";
 
 interface LauncherFooterProps {
-  actions: Action[];
+  footer: FooterState;
 }
 
-export function LauncherFooter({ actions }: LauncherFooterProps) {
-  if (actions.length === 0) return null;
-
-  const primary = actions[0];
-  const secondaries = actions.slice(1).filter((a) => a.keybinding);
+export function LauncherFooter({ footer }: LauncherFooterProps) {
+  if (!footer.primary && footer.hints.length === 0) return null;
 
   return (
     <div className="flex items-center justify-between border-t border-border px-5 py-2.5">
-      {/* Primary action — always on the left with Enter keybinding */}
-      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-        <KeyBindingPill modifiers={[]} keyName="Enter" />
-        <span>{primary.label}</span>
-      </span>
+      {/* Primary hint — always on the left */}
+      {footer.primary && (
+        <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+          {footer.primary.combo && (
+            <KeyBindingPill
+              modifiers={footer.primary.combo.modifiers}
+              keyName={footer.primary.combo.key}
+            />
+          )}
+          <span>{footer.primary.label}</span>
+        </span>
+      )}
 
-      {/* Secondary actions — grouped on the right */}
-      {secondaries.length > 0 && (
+      {/* Secondary hints — grouped on the right */}
+      {footer.hints.length > 0 && (
         <div className="flex items-center gap-4">
-          {secondaries.map((action) => (
+          {footer.hints.map((hint, i) => (
             <span
-              key={action.id.type === "custom" ? action.id.value : action.id.type}
+              key={i}
               className="inline-flex items-center gap-1.5 text-xs text-text-muted"
             >
-              <KeyBindingPill
-                modifiers={action.keybinding!.modifiers}
-                keyName={action.keybinding!.key}
-              />
-              <span>{action.label}</span>
+              {hint.combo && (
+                <KeyBindingPill
+                  modifiers={hint.combo.modifiers}
+                  keyName={hint.combo.key}
+                />
+              )}
+              <span>{hint.label}</span>
             </span>
           ))}
         </div>
