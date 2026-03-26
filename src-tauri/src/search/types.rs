@@ -229,6 +229,9 @@ impl SearchResult {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SearchMessage {
+    /// The `rename_all` on the enum only renames variant tags, not
+    /// fields within variants. Fields need explicit renaming.
+    #[serde(rename_all = "camelCase")]
     CatalogResults {
         entries: Vec<ScoredEntry>,
         /// When a query plugin returned `SearchResponse::CustomUI`,
