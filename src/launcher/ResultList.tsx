@@ -3,15 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Scrollable result list for the launcher.
+ * Windowed result list for the launcher.
  *
- * Renders scored entries as `ResultRow` components with keyboard
- * selection, mouse hover gating, and automatic scroll-into-view.
+ * Only `PAGE_SIZE` rows are rendered at a time. The visible window
+ * shifts via keyboard navigation (selection drives window position)
+ * or mouse wheel (window shifts independently, hover updates
+ * selection). There is no native scroll container or scrollbar.
  */
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useRef, type RefObject } from "react";
 import type { ScoredEntry } from "./types";
 import { ResultRow } from "./ResultRow";
+import { PAGE_SIZE } from "./constants";
+import { useWindowedList } from "./hooks/useWindowedList";
 
 interface ResultListProps {
   results: ScoredEntry[];
@@ -30,17 +34,13 @@ export function ResultList({
 }: ResultListProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Scroll the selected row into view when selection changes
-  // via keyboard navigation.
-  useEffect(() => {
-    const container = listRef.current;
-    if (!container) return;
-
-    const row = container.querySelector(`[data-index="${selectedIndex}"]`);
-    if (row) {
-      row.scrollIntoView({ block: "nearest" });
-    }
-  }, [selectedIndex]);
+  const { windowStart } = useWindowedList({
+    selectedIndex,
+    setSelectedIndex: onSelectIndex,
+    resultCount: results.length,
+    pageSize: PAGE_SIZE,
+    listRef,
+  });
 
   if (results.length === 0) {
     return (
@@ -50,25 +50,30 @@ export function ResultList({
     );
   }
 
+  const windowEnd = Math.min(windowStart + PAGE_SIZE, results.length);
+  const visibleResults = results.slice(windowStart, windowEnd);
+
   return (
     <div
       ref={listRef}
-      className="max-h-[384px] overflow-y-auto"
+      className="overflow-hidden"
       onMouseMove={() => {
         mouseActiveRef.current = true;
       }}
     >
-      {results.map((entry, index) => (
-        <div key={`${entry.source}:${entry.id}`} data-index={index}>
+      {visibleResults.map((entry, i) => {
+        const absoluteIndex = windowStart + i;
+        return (
           <ResultRow
+            key={`${entry.source}:${entry.id}`}
             entry={entry}
-            selected={index === selectedIndex}
-            onSelect={() => onSelectIndex(index)}
+            selected={absoluteIndex === selectedIndex}
+            onSelect={() => onSelectIndex(absoluteIndex)}
             onExecute={() => onExecute(entry)}
             mouseActiveRef={mouseActiveRef}
           />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
