@@ -43,7 +43,7 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
     <div
       className={cn(
         "flex h-[68px] w-[68px] items-center justify-center rounded-lg",
-        "cursor-default select-none transition-colors",
+        "cursor-default select-none",
         selected
           ? "bg-accent/10 border border-accent/30"
           : "border border-transparent",
@@ -100,16 +100,14 @@ export default function EmojiGrid({
 
   useEffect(() => {
     const entry = results[selectedIndex];
-    const label = entry
-      ? `${entry.title} — ${entry.subtitle ?? ""}`
-      : "Copy to Clipboard";
-
     onFooterChange({
       primary: {
         combo: { modifiers: [], key: "Enter" },
-        label,
+        label: "Copy to Clipboard",
       },
-      hints: [],
+      hints: entry
+        ? [{ label: `${entry.title} · ${entry.subtitle ?? ""}` }]
+        : [],
     });
   }, [selectedIndex, results, onFooterChange]);
 
@@ -120,9 +118,21 @@ export default function EmojiGrid({
   const moveSelection = useCallback(
     (delta: number) => {
       mouseActiveRef.current = false;
-      setSelectedIndex((prev) =>
-        Math.max(0, Math.min(prev + delta, results.length - 1)),
-      );
+      setSelectedIndex((prev) => {
+        const target = prev + delta;
+
+        // For vertical movement (delta is a multiple of GRID_COLUMNS),
+        // don't jump to the last item if the target column doesn't
+        // exist in the target row. Instead, stay put.
+        if (
+          Math.abs(delta) >= GRID_COLUMNS &&
+          (target < 0 || target >= results.length)
+        ) {
+          return prev;
+        }
+
+        return Math.max(0, Math.min(target, results.length - 1));
+      });
     },
     [results.length, mouseActiveRef],
   );
