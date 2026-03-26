@@ -79,6 +79,14 @@ function EntryIconView({ icon }: { icon: EntryIcon | null }) {
     );
   }
 
+  if (icon.type === "emoji") {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center">
+        <span className="text-2xl leading-none">{icon.value}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-9 w-9 items-center justify-center">
       <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />

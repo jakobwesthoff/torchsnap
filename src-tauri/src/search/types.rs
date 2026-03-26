@@ -67,11 +67,48 @@ pub enum EntryIcon {
     /// Name of a Heroicon (e.g. "x-circle", "cog-6-tooth").
     HeroIcon(String),
     /// Base64-encoded data URL for inline images.
+    /// Not currently constructed but available for future plugins.
+    #[allow(dead_code)]
     DataUrl(String),
     /// Absolute filesystem path to a cached image file. The frontend
     /// converts this to an asset protocol URL via Tauri's
     /// `convertFileSrc` API.
     AssetIcon(String),
+    /// A Unicode emoji character rendered as text in the icon slot.
+    Emoji(String),
+}
+
+/// A pre-scored result returned by a `QueryPlugin`.
+///
+/// Same shape as `ScoredEntry` but without `source` — the registry
+/// fills that from `plugin.id()` when converting to `ScoredEntry`.
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub icon: Option<EntryIcon>,
+    pub score: u32,
+    pub title_positions: Vec<u32>,
+    pub subtitle_positions: Vec<u32>,
+    pub actions: Vec<Action>,
+}
+
+impl QueryResult {
+    /// Convert to a `ScoredEntry` by attaching the plugin's source ID.
+    pub fn into_scored_entry(self, source: String) -> ScoredEntry {
+        ScoredEntry {
+            id: self.id,
+            title: self.title,
+            subtitle: self.subtitle,
+            icon: self.icon,
+            score: self.score,
+            title_positions: self.title_positions,
+            subtitle_positions: self.subtitle_positions,
+            source,
+            actions: self.actions,
+        }
+    }
 }
 
 /// A raw catalog entry before scoring. Internal to the Rust side —

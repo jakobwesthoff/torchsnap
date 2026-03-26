@@ -207,7 +207,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
@@ -237,6 +238,7 @@ pub fn run() {
                 platform::PlatformAppDiscovery,
                 icon_cache,
             )));
+            catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             catalog.setup_all();
             app.manage(Mutex::new(catalog));
 

@@ -39,7 +39,8 @@ export interface Action {
 export type EntryIcon =
   | { type: "heroIcon"; value: string }
   | { type: "dataUrl"; value: string }
-  | { type: "assetIcon"; value: string };
+  | { type: "assetIcon"; value: string }
+  | { type: "emoji"; value: string };
 
 export interface ScoredEntry {
   id: string;
