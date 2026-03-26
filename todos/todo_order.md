@@ -11,8 +11,6 @@ but phases should be tackled roughly in order. Items marked with
 Build 2–3 plugins as internal features to discover the real API
 surface. These inform all later plugin architecture decisions.
 
-- [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
-- [plugin-system-preferences](01kmjp2t9xah78r2vxyeww442j-plugin-system-preferences.md)
 - [plugin-calculator](01kmh0dspar1gga0ahh1pyp350-plugin-calculator.md)
 - [plugin-system-commands](01kmh0n9gmxjbt0xxy56h0ajh4-plugin-system-commands.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
@@ -36,6 +34,7 @@ Core systems that support everything else.
 - [random-mascot-variants](01kmj9zbb6ysgtgpvfjmace188-random-mascot-variants.md)
 - [visual-identity-brainstorm](01kmh1h2b95jvtfk76hwyd80kd-visual-identity-brainstorm.md) `[discuss]`
 - [design-logo-and-icons](01kmh1h2b95jvtfk76hwyd80ke-design-logo-and-icons.md)
+- [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
 - [onboarding-first-run](01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md)
 
 ## Phase 3: Plugin system extraction
