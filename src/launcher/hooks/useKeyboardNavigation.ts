@@ -5,9 +5,17 @@
 /**
  * Keyboard navigation for the launcher.
  *
- * Uses `useKeyBindings` from the keybinding engine for document-level
- * key handling. All bindings are registered with `allowInInput: true`
- * so they fire even when the search input is focused.
+ * Registers two groups of keybindings via `useKeyBindings`:
+ *
+ * 1. **Static bindings** — arrow keys, page up/down, enter (primary
+ *    action), and escape. These never change.
+ *
+ * 2. **Dynamic action bindings** — derived from the currently selected
+ *    entry's secondary actions. When the selection changes, the action
+ *    keybindings are structurally different, so `useKeyBindings`
+ *    automatically re-registers them. This is cheap because the
+ *    keybinding engine uses refs internally — no React re-renders
+ *    are triggered.
  */
 
 import { useCallback, useMemo, type RefObject } from "react";
@@ -15,14 +23,17 @@ import {
   useKeyBindings,
   LAYER,
   type KeyBindingDefinition,
+  type ModifierKey,
 } from "../../keybindings";
+import type { Action } from "../types";
 
 interface UseKeyboardNavigationParams {
   dismiss: () => void;
   resultCount: number;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
-  onExecute: () => void;
+  onExecute: (entry?: undefined, actionIndex?: number) => void;
+  selectedActions: Action[];
   mouseActiveRef: RefObject<boolean>;
 }
 
@@ -40,6 +51,7 @@ export function useKeyboardNavigation({
   selectedIndex,
   setSelectedIndex,
   onExecute,
+  selectedActions,
   mouseActiveRef,
 }: UseKeyboardNavigationParams) {
   const moveSelection = useCallback(
@@ -52,7 +64,13 @@ export function useKeyboardNavigation({
     [selectedIndex, resultCount, setSelectedIndex, mouseActiveRef],
   );
 
-  const bindings: KeyBindingDefinition[] = useMemo(
+  // =========================================================
+  // Static Bindings
+  //
+  // Navigation and primary action — these never change.
+  // =========================================================
+
+  const staticBindings: KeyBindingDefinition[] = useMemo(
     () => [
       {
         id: "launcher-arrow-down",
@@ -102,7 +120,7 @@ export function useKeyboardNavigation({
       {
         id: "launcher-escape",
         layer: LAUNCHER_LAYER,
-        order: 5,
+        order: 10,
         handler: () => dismiss(),
         keybindings: [
           { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
@@ -112,5 +130,44 @@ export function useKeyboardNavigation({
     [moveSelection, onExecute, dismiss],
   );
 
-  useKeyBindings(bindings);
+  useKeyBindings(staticBindings);
+
+  // =========================================================
+  // Dynamic Action Bindings
+  //
+  // Derived from the currently selected entry's actions.
+  // Secondary actions (index > 0) that declare a keybinding
+  // are registered here. When the selection changes, the
+  // keybinding definitions change structurally and
+  // `useKeyBindings` re-registers them automatically.
+  // =========================================================
+
+  const actionBindings: KeyBindingDefinition[] = useMemo(() => {
+    const bindings: KeyBindingDefinition[] = [];
+
+    for (let i = 1; i < selectedActions.length; i++) {
+      const action = selectedActions[i];
+      if (!action.keybinding) continue;
+
+      bindings.push({
+        id: `launcher-action-${i}`,
+        layer: LAUNCHER_LAYER,
+        order: 5 + i,
+        handler: () => onExecute(undefined, i),
+        keybindings: [
+          {
+            combo: {
+              modifiers: (action.keybinding.modifiers ?? []) as ModifierKey[],
+              key: action.keybinding.key,
+            },
+            allowInInput: true,
+          },
+        ],
+      });
+    }
+
+    return bindings;
+  }, [selectedActions, onExecute]);
+
+  useKeyBindings(actionBindings);
 }

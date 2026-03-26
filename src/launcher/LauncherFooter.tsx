@@ -6,13 +6,12 @@
  * Contextual action footer for the launcher result list.
  *
  * Shows the available actions for the currently selected entry as
- * key pill + label pairs. Updates as the selection changes.
- *
- * The primary action always shows with "↵". Additional actions
- * display their declared keybinding label when available.
+ * keybinding pill + label pairs. The primary action is displayed on
+ * the left, secondary actions on the right. Updates as the selection
+ * changes.
  */
 
-import { KeyPill } from "../components/KeyPill";
+import { KeyBindingPill } from "../components/KeyBindingPill";
 import type { Action } from "./types";
 
 interface LauncherFooterProps {
@@ -22,30 +21,34 @@ interface LauncherFooterProps {
 export function LauncherFooter({ actions }: LauncherFooterProps) {
   if (actions.length === 0) return null;
 
+  const primary = actions[0];
+  const secondaries = actions.slice(1).filter((a) => a.keybinding);
+
   return (
-    <div className="flex items-center gap-4 border-t border-border px-5 py-2">
-      {actions.map((action, index) => {
-        // The primary action (index 0) always gets the Enter key.
-        // Secondary actions use their declared keybinding label
-        // if available.
-        const keyLabel =
-          index === 0
-            ? "↵"
-            : (action.keybinding?.label ?? null);
+    <div className="flex items-center justify-between border-t border-border px-5 py-2.5">
+      {/* Primary action — always on the left with Enter keybinding */}
+      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+        <KeyBindingPill modifiers={[]} keyName="Enter" />
+        <span>{primary.label}</span>
+      </span>
 
-        // Don't render actions without a keybinding (except primary).
-        if (keyLabel === null) return null;
-
-        return (
-          <span
-            key={action.id.type === "custom" ? action.id.value : action.id.type}
-            className="inline-flex items-center gap-1.5 text-xs text-text-muted"
-          >
-            <KeyPill>{keyLabel}</KeyPill>
-            <span>{action.label}</span>
-          </span>
-        );
-      })}
+      {/* Secondary actions — grouped on the right */}
+      {secondaries.length > 0 && (
+        <div className="flex items-center gap-4">
+          {secondaries.map((action) => (
+            <span
+              key={action.id.type === "custom" ? action.id.value : action.id.type}
+              className="inline-flex items-center gap-1.5 text-xs text-text-muted"
+            >
+              <KeyBindingPill
+                modifiers={action.keybinding!.modifiers}
+                keyName={action.keybinding!.key}
+              />
+              <span>{action.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

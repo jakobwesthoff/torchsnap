@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useSetting } from "../hooks/useSetting";
 import { SETTINGS_DEFAULTS } from "../settingsDefaults";
@@ -48,15 +49,17 @@ export function Launcher() {
   // =========================================================
 
   const handleExecute = useCallback(
-    (entry?: ScoredEntry) => {
+    (entry?: ScoredEntry, actionIndex = 0) => {
       const target = entry ?? results[selectedIndex];
       if (!target || target.actions.length === 0) return;
 
-      const primaryAction = target.actions[0];
+      const action = target.actions[actionIndex];
+      if (!action) return;
+
       invoke("execute_action", {
         source: target.source,
         entryId: target.id,
-        actionId: primaryAction.id,
+        actionId: action.id,
       });
     },
     [results, selectedIndex],
@@ -66,12 +69,15 @@ export function Launcher() {
   // Keyboard Navigation
   // =========================================================
 
+  const selectedActions = results[selectedIndex]?.actions ?? [];
+
   useKeyboardNavigation({
     dismiss,
     resultCount: results.length,
     selectedIndex,
     setSelectedIndex,
     onExecute: handleExecute,
+    selectedActions,
     mouseActiveRef,
   });
 
@@ -129,9 +135,7 @@ export function Launcher() {
               // reach the input while the launcher is visible.
               onBlur={() => inputRef.current?.focus()}
             />
-            <kbd className="shrink-0 rounded border border-border bg-surface-inset px-1.5 py-0.5 font-mono text-[11px] text-text-muted shadow-[0_1px_0_var(--color-border)]">
-              ESC
-            </kbd>
+            <KeyBindingPill modifiers={[]} keyName="Escape" />
           </div>
 
           {/* Result list + action footer */}

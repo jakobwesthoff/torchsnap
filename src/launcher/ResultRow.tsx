@@ -14,6 +14,7 @@ import {
   XCircleIcon,
   Cog6ToothIcon,
   SunIcon,
+  RocketLaunchIcon,
   CommandLineIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "../lib/cn";
@@ -32,6 +33,7 @@ const HERO_ICON_MAP: Record<
   "x-circle": XCircleIcon,
   "cog-6-tooth": Cog6ToothIcon,
   sun: SunIcon,
+  "rocket-launch": RocketLaunchIcon,
 };
 
 function EntryIconView({ icon }: { icon: EntryIcon | null }) {
