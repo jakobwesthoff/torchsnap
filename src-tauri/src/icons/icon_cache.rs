@@ -21,8 +21,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::app_discovery::DiscoveredApp;
-use super::icon_extraction::IconExtractor;
+use crate::platform::app_discovery::DiscoveredApp;
+use crate::platform::icon_extraction::IconExtractor;
 use super::icon_processing;
 
 pub struct IconCache {
