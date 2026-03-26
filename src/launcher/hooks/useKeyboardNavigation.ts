@@ -126,6 +126,22 @@ export function useKeyboardNavigation({
         ],
       },
       {
+        // Prevent Tab from triggering browser focus navigation.
+        // The keybinding engine calls preventDefault on match,
+        // keeping focus in the search input. Future bindings can
+        // claim Tab at the same or higher layer for actual actions
+        // (e.g., command palette) — the engine's priority dispatch
+        // will route to those instead.
+        id: "launcher-tab-trap",
+        layer: LAUNCHER_LAYER,
+        order: 9,
+        handler: () => {},
+        keybindings: [
+          { combo: { modifiers: [], key: "Tab" }, allowInInput: true },
+          { combo: { modifiers: ["Shift"], key: "Tab" }, allowInInput: true },
+        ],
+      },
+      {
         id: "launcher-escape",
         layer: LAUNCHER_LAYER,
         order: 10,
