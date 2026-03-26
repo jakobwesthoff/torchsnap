@@ -12,13 +12,13 @@
 // pick up newly installed or removed applications without
 // blocking the search path.
 //
-// Icons are extracted via the platform's `IconExtractor` and
-// cached on disk as PNGs. The `IconCache` handles mtime-based
+// Icons are extracted via `AppDiscovery::extract_icon` and
+// cached on disk as WebP. The `IconCache` handles mtime-based
 // invalidation and orphan cleanup.
 //
 // Actions:
 //   - Open (primary): launch the application
-//   - Reveal in Finder (secondary): show in file manager
+//   - Reveal (secondary): show in file manager
 // =========================================================
 
 use std::collections::HashSet;
@@ -28,10 +28,8 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
-use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::platform::icon_extraction::IconExtractor;
 use crate::icons::{IconCache, IconCacheKey};
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
 
@@ -47,14 +45,12 @@ pub struct AppLauncherPlugin {
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
     icon_cache: Arc<IconCache>,
-    extractor: Arc<dyn IconExtractor>,
 }
 
 impl AppLauncherPlugin {
     pub fn new(
         discovery: impl AppDiscovery + 'static,
         icon_cache: Arc<IconCache>,
-        extractor: impl IconExtractor + 'static,
     ) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
@@ -62,7 +58,6 @@ impl AppLauncherPlugin {
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
             icon_cache,
-            extractor: Arc::new(extractor),
         }
     }
 
@@ -93,12 +88,11 @@ impl AppLauncherPlugin {
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
         let icon_cache = Arc::clone(&self.icon_cache);
-        let extractor = Arc::clone(&self.extractor);
 
         thread::spawn(move || {
             match discovery.discover() {
                 Ok(mut apps) => {
-                    let valid_keys = extract_icons(&icon_cache, &*extractor, &mut apps);
+                    let valid_keys = extract_icons(&icon_cache, &*discovery, &mut apps);
                     icon_cache.cleanup("app-launcher", &valid_keys);
 
                     let mut guard = cache.write().expect("app cache not poisoned");
@@ -120,7 +114,7 @@ impl AppLauncherPlugin {
 /// for orphan cleanup.
 fn extract_icons(
     icon_cache: &IconCache,
-    extractor: &dyn IconExtractor,
+    discovery: &dyn AppDiscovery,
     apps: &mut [DiscoveredApp],
 ) -> HashSet<IconCacheKey> {
     let mut valid_keys = HashSet::with_capacity(apps.len());
@@ -136,12 +130,11 @@ fn extract_icons(
             .and_then(|m| m.modified())
             .ok();
 
-        let app_path = app.path.clone();
         if let Some(path) = icon_cache.ensure_icon(
             "app-launcher",
             &key,
             source_mtime,
-            || extractor.extract(&app_path),
+            || discovery.extract_icon(app),
         ) {
             app.icon_path = Some(path);
         }
@@ -174,7 +167,7 @@ impl CatalogPlugin for AppLauncherPlugin {
 
                 // Now extract icons (the slow part). Once done,
                 // swap the cache with icon-enriched entries.
-                let valid_keys = extract_icons(&self.icon_cache, &*self.extractor, &mut apps);
+                let valid_keys = extract_icons(&self.icon_cache, &*self.discovery, &mut apps);
                 self.icon_cache.cleanup("app-launcher", &valid_keys);
 
                 let mut guard = self.cache.write().expect("app cache not poisoned");
@@ -231,14 +224,14 @@ impl CatalogPlugin for AppLauncherPlugin {
     ) -> anyhow::Result<PostAction> {
         match action_id {
             ActionId::Open => {
-                app.opener()
-                    .open_path(entry_id, None::<&str>)
+                self.discovery
+                    .open(entry_id, app)
                     .context("open application")?;
             }
             ActionId::Reveal => {
-                app.opener()
-                    .reveal_item_in_dir(entry_id)
-                    .context("reveal application in Finder")?;
+                self.discovery
+                    .reveal(entry_id, app)
+                    .context("reveal application in file manager")?;
             }
             other => {
                 anyhow::bail!("unsupported action {other:?} for app-launcher entry {entry_id}");

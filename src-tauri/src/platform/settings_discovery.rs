@@ -38,7 +38,8 @@ pub struct SettingsPane {
     pub icon_path: Option<String>,
 }
 
-/// Discovers system settings panes on the current platform.
+/// Discovers and manages system settings panes on the current
+/// platform.
 ///
 /// Implementations must be `Send + Sync` because discovery runs
 /// on a background thread during plugin setup.
@@ -49,4 +50,18 @@ pub trait SettingsDiscovery: Send + Sync {
     /// Platform-specific filtering (e.g., requiring URL scheme
     /// support on macOS) is handled by the implementation.
     fn discover(&self) -> anyhow::Result<Vec<SettingsPane>>;
+
+    /// Render the icon for a settings pane from its platform-
+    /// specific `icon_source`.
+    ///
+    /// On macOS this rasterizes an SF Symbol. On other platforms
+    /// it may load from an icon theme or return `Ok(None)` to
+    /// use the fallback icon.
+    fn render_icon(
+        &self,
+        icon_source: &str,
+    ) -> anyhow::Result<Option<image::DynamicImage>>;
+
+    /// Open a settings pane by its platform-specific ID.
+    fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
 }

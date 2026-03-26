@@ -4,15 +4,12 @@
 
 mod app_discovery;
 pub(crate) mod cgimage_conversion;
-mod icon_extraction;
 mod launcher_panel;
+mod settings_discovery;
 pub(crate) mod sf_symbols;
 mod tray;
 
-mod settings_discovery;
-
 pub use app_discovery::MdfindDiscovery;
-pub use icon_extraction::MacosIconExtractor;
 pub use launcher_panel::MacosLauncherPanel;
 pub use settings_discovery::MacosSettingsDiscovery;
 pub use tray::MacosTray;

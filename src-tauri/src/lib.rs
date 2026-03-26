@@ -46,6 +46,10 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
             use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
 
             let ns_window = win.ns_window().expect("settings NSWindow handle");
+            // SAFETY: Tauri's `ns_window()` returns a valid `*mut c_void`
+            // pointing to the underlying NSWindow. The pointer is valid for
+            // the lifetime of the WebviewWindow and we only borrow it
+            // briefly to set a collection behavior flag.
             let ns_window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
             ns_window.setCollectionBehavior(NSWindowCollectionBehavior::MoveToActiveSpace);
         }
@@ -236,7 +240,6 @@ pub fn run() {
             catalog.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
                 platform::PlatformAppDiscovery,
                 Arc::clone(&icon_cache),
-                platform::PlatformIconExtractor,
             )));
             catalog.register(Box::new(
                 plugins::system_preferences::SystemPreferencesPlugin::new(

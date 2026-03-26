@@ -9,9 +9,11 @@
 // searchable entries. Settings panes are discovered at startup
 // via the platform's `SettingsDiscovery` implementation.
 //
-// On macOS, icons are rendered from SF Symbols via the shared
-// icon cache. Opening a pane uses the platform-specific URL
-// scheme (x-apple.systempreferences: on macOS).
+// Icons are rendered via `SettingsDiscovery::render_icon` and
+// cached on disk as WebP. Opening a pane delegates to
+// `SettingsDiscovery::open`. All platform-specific behavior is
+// encapsulated in the discovery trait so this plugin stays
+// fully platform-agnostic.
 //
 // No background refresh is needed — the set of settings panes
 // only changes on OS updates.
@@ -24,7 +26,6 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use tauri_plugin_opener::OpenerExt;
 
 use crate::icons::{IconCache, IconCacheKey};
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
@@ -51,6 +52,37 @@ impl SystemPreferencesPlugin {
     }
 }
 
+/// Render and cache icons for each settings pane, populating
+/// their `icon_path` field. Returns the set of valid cache keys
+/// for orphan cleanup.
+fn cache_pane_icons(
+    icon_cache: &IconCache,
+    discovery: &dyn SettingsDiscovery,
+    panes: &mut [SettingsPane],
+) -> HashSet<IconCacheKey> {
+    let mut valid_keys = HashSet::with_capacity(panes.len());
+
+    for pane in panes.iter_mut() {
+        let key = IconCacheKey::new(&pane.id);
+
+        let icon_source = pane.icon_source.clone();
+        if let Some(path) = icon_cache.ensure_icon(
+            "system-preferences",
+            &key,
+            None, // System icons don't change between OS updates.
+            || match icon_source.as_deref() {
+                Some(source) => discovery.render_icon(source),
+                None => Ok(None),
+            },
+        ) {
+            pane.icon_path = Some(path);
+        }
+        valid_keys.insert(key);
+    }
+
+    valid_keys
+}
+
 impl CatalogPlugin for SystemPreferencesPlugin {
     fn id(&self) -> &str {
         "system-preferences"
@@ -66,7 +98,8 @@ impl CatalogPlugin for SystemPreferencesPlugin {
                 }
 
                 // Render and cache SF Symbol icons for each pane.
-                let valid_keys = cache_pane_icons(&self.icon_cache, &mut panes);
+                let valid_keys =
+                    cache_pane_icons(&self.icon_cache, &*self.discovery, &mut panes);
                 self.icon_cache.cleanup("system-preferences", &valid_keys);
 
                 // Swap in icon-enriched entries.
@@ -116,7 +149,9 @@ impl CatalogPlugin for SystemPreferencesPlugin {
     ) -> anyhow::Result<PostAction> {
         match action_id {
             ActionId::Open => {
-                open_settings_pane(entry_id, app)?;
+                self.discovery
+                    .open(entry_id, app)
+                    .context("open settings pane")?;
             }
             other => {
                 anyhow::bail!(
@@ -127,76 +162,4 @@ impl CatalogPlugin for SystemPreferencesPlugin {
 
         Ok(PostAction::Dismiss)
     }
-}
-
-// =========================================================
-// Icon Caching
-// =========================================================
-
-/// Render and cache icons for each settings pane, populating
-/// their `icon_path` field. Returns the set of valid cache keys
-/// for orphan cleanup.
-fn cache_pane_icons(
-    icon_cache: &IconCache,
-    panes: &mut [SettingsPane],
-) -> HashSet<IconCacheKey> {
-    let mut valid_keys = HashSet::with_capacity(panes.len());
-
-    for pane in panes.iter_mut() {
-        let key = IconCacheKey::new(&pane.id);
-
-        let icon_source = pane.icon_source.clone();
-        if let Some(path) = icon_cache.ensure_icon(
-            "system-preferences",
-            &key,
-            None, // System icons don't change between OS updates.
-            || render_pane_icon(icon_source.as_deref()),
-        ) {
-            pane.icon_path = Some(path);
-        }
-        valid_keys.insert(key);
-    }
-
-    valid_keys
-}
-
-/// Render the icon for a settings pane from its platform-specific
-/// icon source. On macOS this is an SF Symbol name.
-fn render_pane_icon(
-    icon_source: Option<&str>,
-) -> anyhow::Result<Option<image::DynamicImage>> {
-    let Some(symbol_name) = icon_source else {
-        return Ok(None);
-    };
-
-    #[cfg(target_os = "macos")]
-    {
-        crate::platform::macos::sf_symbols::render_sf_symbol(symbol_name)
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = symbol_name;
-        Ok(None)
-    }
-}
-
-// =========================================================
-// Platform-specific Open Logic
-// =========================================================
-
-/// Open a system settings pane by its platform-specific ID.
-#[cfg(target_os = "macos")]
-fn open_settings_pane(pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
-    let url = format!("x-apple.systempreferences:{pane_id}");
-    app.opener()
-        .open_url(&url, None::<&str>)
-        .context("open system preferences pane")
-}
-
-#[cfg(not(target_os = "macos"))]
-fn open_settings_pane(pane_id: &str, _app: &tauri::AppHandle) -> anyhow::Result<()> {
-    // TODO: Windows — ShellExecute with ms-settings: URI
-    // TODO: Linux — xdg-open or dbus
-    anyhow::bail!("opening settings pane {pane_id} is not supported on this platform")
 }

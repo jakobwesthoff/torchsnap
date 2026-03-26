@@ -13,18 +13,17 @@
 // Currently abstracted:
 //   - LauncherPanel: window management (NSPanel vs. regular)
 //   - Tray: system tray icon, menu, and click behavior
-//   - AppDiscovery: installed application scanning
-//   - IconExtractor: application icon extraction
+//   - AppDiscovery: installed application scanning, icon
+//     extraction, and launching
+//   - SettingsDiscovery: system settings pane scanning, icon
+//     rendering, and opening
 // =========================================================
 
 pub mod app_discovery;
-pub mod icon_extraction;
 pub mod settings_discovery;
 
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
-#[cfg(target_os = "macos")]
-pub use macos::MacosIconExtractor as PlatformIconExtractor;
 #[cfg(target_os = "macos")]
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
 #[cfg(target_os = "macos")]
@@ -38,8 +37,6 @@ pub use macos::MdfindDiscovery as PlatformAppDiscovery;
 mod fallback;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackDiscovery as PlatformAppDiscovery;
-#[cfg(not(target_os = "macos"))]
-pub use fallback::FallbackIconExtractor as PlatformIconExtractor;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
 #[cfg(not(target_os = "macos"))]

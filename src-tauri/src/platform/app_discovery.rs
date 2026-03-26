@@ -5,17 +5,22 @@
 // =========================================================
 // Application Discovery
 //
-// Platform-abstracted trait for discovering installed
-// applications. Each platform provides its own implementation:
-//   - macOS: Spotlight (mdfind) + Info.plist parsing
+// Platform-abstracted trait for discovering, launching, and
+// extracting icons from installed applications.
+//
+// Each platform provides its own implementation:
+//   - macOS: Spotlight (mdfind) + Info.plist + NSWorkspace icons
 //   - Linux/Windows: stub (TODO)
 //
 // The trait is cfg-dispatched as `PlatformAppDiscovery` in
-// the parent module, following the same pattern as
-// `PlatformLauncherPanel` and `PlatformTray`.
+// the parent module. All platform-specific behavior is
+// encapsulated here so the app launcher plugin itself stays
+// fully platform-agnostic.
 // =========================================================
 
 use std::path::PathBuf;
+
+use image::DynamicImage;
 
 /// A single discovered application on the system.
 #[derive(Clone)]
@@ -44,10 +49,12 @@ pub struct DiscoveredApp {
     pub icon_path: Option<String>,
 }
 
-/// Discovers installed applications on the current platform.
+/// Discovers and manages installed applications on the current
+/// platform.
 ///
-/// Implementations must be `Send + Sync` because the discovery may
-/// be invoked from a background thread during cache refresh.
+/// Implementations must be `Send + Sync` because discovery and
+/// icon extraction run on background threads during plugin setup
+/// and cache refresh.
 pub trait AppDiscovery: Send + Sync {
     /// Scan the system for installed applications.
     ///
@@ -55,4 +62,19 @@ pub trait AppDiscovery: Send + Sync {
     /// agents, UI-less helpers, and other non-launchable bundles
     /// should be filtered out by the implementation.
     fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>>;
+
+    /// Extract the icon for an application as a decoded image.
+    ///
+    /// Returns `Ok(Some(image))` on success, `Ok(None)` if the
+    /// platform doesn't support icon extraction, or `Err` on failure.
+    ///
+    /// The returned image may be any resolution — the icon cache
+    /// handles resizing and format conversion.
+    fn extract_icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>>;
+
+    /// Launch the application identified by `entry_id`.
+    fn open(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
+
+    /// Reveal the application in the platform's file manager.
+    fn reveal(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
 }

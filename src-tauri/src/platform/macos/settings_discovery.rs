@@ -19,8 +19,10 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
+use super::sf_symbols::render_sf_symbol;
 
 /// Directory where macOS installs Settings extension bundles.
 const EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
@@ -63,6 +65,20 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
         }
 
         Ok(panes)
+    }
+
+    fn render_icon(
+        &self,
+        icon_source: &str,
+    ) -> anyhow::Result<Option<image::DynamicImage>> {
+        render_sf_symbol(icon_source)
+    }
+
+    fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
+        let url = format!("x-apple.systempreferences:{pane_id}");
+        app.opener()
+            .open_url(&url, None::<&str>)
+            .context("open system preferences pane")
     }
 }
 
