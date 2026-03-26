@@ -156,7 +156,7 @@ impl AppDiscovery for FallbackDiscovery {
 pub struct FallbackIconExtractor;
 
 impl IconExtractor for FallbackIconExtractor {
-    fn extract(&self, _app_path: &std::path::Path) -> anyhow::Result<Option<Vec<u8>>> {
+    fn extract(&self, _app_path: &std::path::Path) -> anyhow::Result<Option<image::DynamicImage>> {
         // TODO: Linux — extract from icon theme based on .desktop Icon= field
         // TODO: Windows — extract from PE resources or shortcut targets
         Ok(None)
