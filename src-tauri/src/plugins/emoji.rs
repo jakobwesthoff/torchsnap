@@ -104,7 +104,7 @@ const SHORTCODES_EMOJIBASE_JSON: &str =
 /// typed). Acts as a browse preview.
 // TODO: Replace with frecency-based ordering once the ranking
 // system is built (see emoji-frecency todo).
-const EMPTY_QUERY_LIMIT: usize = 50;
+const EMPTY_QUERY_LIMIT: usize = 10_000;
 
 /// Score bonus added to shortcode matches so they always rank
 /// above keyword-only matches for the same query.
