@@ -16,6 +16,9 @@
 // context menu.
 // =========================================================
 
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use anyhow::Context;
 use tauri::Manager as _;
 use tauri::image::Image;
@@ -25,6 +28,7 @@ use tauri_nspanel::ManagerExt as _;
 use tauri_nspanel::WebviewWindowExt as _;
 use tauri_nspanel::objc2_app_kit::NSWindowStyleMask;
 
+use super::app_discovery::{AppDiscovery, DiscoveredApp};
 use super::{LauncherPanel, Tray};
 
 // =========================================================
@@ -162,5 +166,139 @@ impl Tray for MacosTray {
             .context("build tray icon")?;
 
         Ok(())
+    }
+}
+
+// =========================================================
+// Application Discovery
+//
+// Discovers installed applications by querying the Spotlight
+// index via the `mdfind` CLI and parsing each app bundle's
+// `Info.plist` for display name and visibility metadata.
+//
+// The Mdfind struct encapsulates the raw subprocess call so
+// the discovery logic stays focused on metadata extraction.
+// =========================================================
+
+/// Thin wrapper around the macOS `mdfind` Spotlight CLI.
+struct Mdfind;
+
+impl Mdfind {
+    /// Run a Spotlight query and return one path per result line.
+    fn query(predicate: &str) -> anyhow::Result<Vec<PathBuf>> {
+        let output = Command::new("mdfind")
+            .arg(predicate)
+            .output()
+            .context("spawn mdfind process")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("mdfind exited with {}: {stderr}", output.status);
+        }
+
+        let stdout = String::from_utf8(output.stdout).context("decode mdfind output as UTF-8")?;
+
+        Ok(stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from)
+            .collect())
+    }
+}
+
+/// Check if a plist key is truthy: boolean `true` or string `"1"`.
+///
+/// macOS plists use both representations for flag keys like
+/// `LSUIElement` and `LSBackgroundOnly` depending on the tool
+/// that generated the plist.
+fn is_plist_truthy(dict: &plist::Dictionary, key: &str) -> bool {
+    dict.get(key)
+        .is_some_and(|v| v.as_boolean() == Some(true) || v.as_string() == Some("1"))
+}
+
+/// Directories where the user (or App Store) explicitly installs apps.
+/// Apps here are always included regardless of `LSUIElement` — many
+/// legitimate menubar/agent apps (Bartender, Alfred, Yoink, etc.) set
+/// `LSUIElement = true` to hide from the dock but are still meant to
+/// be launched by the user.
+const USER_APP_DIRS: &[&str] = &["/Applications", "/Users"];
+
+/// Whether an app path is inside a user-managed application directory.
+fn is_user_installed(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    USER_APP_DIRS.iter().any(|prefix| s.starts_with(prefix))
+}
+
+/// Read an app bundle's `Info.plist` and extract display name
+/// and visibility metadata.
+///
+/// Returns `None` for system background agents — apps outside
+/// user directories that have `LSUIElement` or `LSBackgroundOnly`
+/// set. User-installed apps (under `/Applications` or `~/Applications`)
+/// are always included since many legitimate menubar apps use these
+/// flags to hide from the dock.
+fn try_discover_app(path: &Path) -> anyhow::Result<Option<DiscoveredApp>> {
+    let plist_path = path.join("Contents/Info.plist");
+    let info: plist::Dictionary = plist::from_file(&plist_path).context("read Info.plist")?;
+
+    // Only filter background agents from system directories. Apps
+    // in /Applications and ~/Applications are user-chosen and should
+    // always appear — even if they set LSUIElement to hide the dock
+    // icon (common for menubar-only apps like Bartender, Alfred, etc.).
+    if !is_user_installed(path)
+        && (is_plist_truthy(&info, "LSUIElement") || is_plist_truthy(&info, "LSBackgroundOnly"))
+    {
+        return Ok(None);
+    }
+
+    // Display name resolution order:
+    //   1. CFBundleDisplayName — the localized user-facing name
+    //   2. CFBundleName — shorter internal name
+    //   3. Filename minus .app — last resort fallback
+    let name = info
+        .get("CFBundleDisplayName")
+        .and_then(|v| v.as_string())
+        .or_else(|| info.get("CFBundleName").and_then(|v| v.as_string()))
+        .map(String::from)
+        .unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string())
+        });
+
+    let id = path.to_string_lossy().into_owned();
+
+    Ok(Some(DiscoveredApp {
+        id,
+        name,
+        path: path.to_owned(),
+    }))
+}
+
+/// Discovers macOS applications via Spotlight (`mdfind`) and
+/// `Info.plist` metadata parsing.
+pub struct MdfindDiscovery;
+
+impl AppDiscovery for MdfindDiscovery {
+    fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>> {
+        let paths = Mdfind::query("kMDItemContentType == 'com.apple.application-bundle'")
+            .context("query Spotlight for application bundles")?;
+
+        let mut apps = Vec::with_capacity(paths.len());
+
+        for path in &paths {
+            match try_discover_app(path) {
+                Ok(Some(app)) => apps.push(app),
+                // Filtered out (background app) — silently skip.
+                Ok(None) => {}
+                // Individual parse failures should not abort the
+                // entire discovery. Log and continue.
+                Err(e) => {
+                    eprintln!("skipping {}: {e:#}", path.display());
+                }
+            }
+        }
+
+        Ok(apps)
     }
 }

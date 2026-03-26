@@ -29,6 +29,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
+use super::app_discovery::{AppDiscovery, DiscoveredApp};
 use super::{LauncherPanel, Tray};
 
 // =========================================================
@@ -124,5 +125,22 @@ impl Tray for FallbackTray {
             .context("build tray icon")?;
 
         Ok(())
+    }
+}
+
+// =========================================================
+// Application Discovery
+//
+// Stub implementation. Returns an empty list until platform-
+// specific discovery is implemented for Linux and Windows.
+// =========================================================
+
+pub struct FallbackDiscovery;
+
+impl AppDiscovery for FallbackDiscovery {
+    fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>> {
+        // TODO: Linux — scan .desktop files from XDG data dirs
+        // TODO: Windows — enumerate Start Menu shortcuts / shell:AppsFolder
+        Ok(Vec::new())
     }
 }
