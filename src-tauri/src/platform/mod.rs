@@ -20,6 +20,7 @@
 pub mod app_discovery;
 pub mod icon_cache;
 pub mod icon_extraction;
+pub mod icon_processing;
 
 #[cfg(target_os = "macos")]
 mod macos;
