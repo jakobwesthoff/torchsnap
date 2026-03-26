@@ -32,11 +32,12 @@ pub fn search(
     state: State<'_, Mutex<CatalogRegistry>>,
 ) {
     let registry = state.lock().expect("catalog registry lock");
-    let (results, active_plugin) = registry.search(&query);
+    let result = registry.search(&query);
 
     let _ = on_results.send(SearchMessage::CatalogResults {
-        entries: results,
-        active_plugin,
+        entries: result.entries,
+        custom_plugin_view: result.custom_plugin_view,
+        matched_prefix: result.matched_prefix,
     });
     let _ = on_results.send(SearchMessage::Done);
 }

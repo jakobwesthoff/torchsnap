@@ -55,7 +55,7 @@ export function Launcher() {
   // Search
   // =========================================================
 
-  const { results, activePlugin } = useSearch(query);
+  const { results, customPluginView, matchedPrefix } = useSearch(query);
 
   // Reset selection when results change (new query, different
   // result set).
@@ -68,8 +68,8 @@ export function Launcher() {
   // Plugin Custom UI
   // =========================================================
 
-  const PluginView = activePlugin
-    ? getPluginComponent(activePlugin)
+  const PluginView = customPluginView
+    ? getPluginComponent(customPluginView)
     : undefined;
 
   // Footer state: either set by the plugin or derived from the
@@ -78,10 +78,10 @@ export function Launcher() {
 
   // Reset plugin footer when leaving plugin mode.
   useEffect(() => {
-    if (!activePlugin) {
+    if (!customPluginView) {
       setPluginFooter(null);
     }
-  }, [activePlugin]);
+  }, [customPluginView]);
 
   const footer =
     pluginFooter ?? actionsToFooterState(results[selectedIndex]?.actions ?? []);
@@ -90,10 +90,10 @@ export function Launcher() {
   // plugin's source ID and handles PostAction.
   const handlePluginExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
-      if (!activePlugin) return;
+      if (!customPluginView) return;
 
       const postAction = await invoke<string>("execute_action", {
-        source: activePlugin,
+        source: customPluginView,
         entryId,
         actionId,
       });
@@ -102,7 +102,7 @@ export function Launcher() {
         dismiss();
       }
     },
-    [activePlugin, dismiss],
+    [customPluginView, dismiss],
   );
 
   // For prefix-triggered plugins, goBack clears the query which
@@ -150,7 +150,7 @@ export function Launcher() {
     onExecute: handleExecute,
     selectedActions,
     mouseActiveRef,
-    enabled: activePlugin === null,
+    enabled: customPluginView === null,
   });
 
   // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
@@ -161,11 +161,10 @@ export function Launcher() {
 
   const [showMascot] = useSetting("showMascot", SETTINGS_DEFAULTS.showMascot);
 
-  // Derive the stripped query and matched prefix for the plugin.
-  // The prefix is the part of the query that activated the plugin;
-  // the query passed to the plugin has it removed.
-  const matchedPrefix = activePlugin ? query.match(/^[^\s]*/)?.[0] ?? "" : "";
-  const strippedQuery = activePlugin ? query.slice(matchedPrefix.length) : query;
+  // The prefix and stripped query for the plugin component. The
+  // backend sends the matched prefix so we don't have to guess.
+  const pluginPrefix = matchedPrefix ?? "";
+  const strippedQuery = pluginPrefix ? query.slice(pluginPrefix.length) : query;
 
   return (
     <div
@@ -231,7 +230,7 @@ export function Launcher() {
                   <PluginView
                     results={results}
                     query={strippedQuery}
-                    matchedPrefix={matchedPrefix}
+                    matchedPrefix={pluginPrefix}
                     goBack={handleGoBack}
                     dismiss={dismiss}
                     mouseActiveRef={mouseActiveRef}

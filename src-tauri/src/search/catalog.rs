@@ -18,7 +18,7 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
-use super::types::{ActionId, PostAction, ScoredEntry};
+use super::types::{ActionId, PostAction, ScoredEntry, SearchResult};
 use crate::plugins::{CatalogPlugin, QueryPlugin};
 
 use std::sync::Arc;
@@ -102,11 +102,11 @@ impl CatalogRegistry {
     ///   routing to that query plugin only
     /// - Otherwise → nucleo over catalog entries + always-on query
     ///   plugins, merged by score
-    pub fn search(&self, query: &str) -> (Vec<ScoredEntry>, Option<String>) {
+    pub fn search(&self, query: &str) -> SearchResult {
         // TODO: Empty query could show recent/pinned items in the future.
         // For now, return nothing — the launcher should feel clean on open.
         if query.is_empty() {
-            return (Vec::new(), None);
+            return SearchResult::empty();
         }
 
         // -------------------------------------------------------
@@ -121,7 +121,7 @@ impl CatalogRegistry {
 
             // When the plugin requests custom UI, signal its ID to
             // the frontend. For standard results, no active plugin.
-            let active_plugin = if response.is_custom_ui() {
+            let custom_plugin_view = if response.is_custom_ui() {
                 Some(source.clone())
             } else {
                 None
@@ -133,7 +133,11 @@ impl CatalogRegistry {
                 .map(|r| r.into_scored_entry(source.clone()))
                 .collect();
 
-            return (entries, active_plugin);
+            return SearchResult {
+                entries,
+                custom_plugin_view,
+                matched_prefix: Some(prefix.to_string()),
+            };
         }
 
         // -------------------------------------------------------
@@ -155,7 +159,11 @@ impl CatalogRegistry {
         }
 
         results.sort_by(|a, b| b.score.cmp(&a.score));
-        (results, None)
+        SearchResult {
+            entries: results,
+            custom_plugin_view: None,
+            matched_prefix: None,
+        }
     }
 
     /// Find the query plugin whose prefix matches the start of the
