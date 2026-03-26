@@ -17,7 +17,6 @@ surface. These inform all later plugin architecture decisions.
 - [plugin-system-commands](01kmh0n9gmxjbt0xxy56h0ajh4-plugin-system-commands.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
-- [plugin-emoji-picker](01kmh0n9gmxjbt0xxy56h0ajh5-plugin-emoji-picker.md)
 - [result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md)
 - [emoji-frecency](01kmk0ren28xy1g66r2h4k0tzc-emoji-frecency.md) *(after result-ranking-system)*
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
@@ -76,7 +75,6 @@ their "still open" sections as future reference.
 - [decide-result-display-model](01kmh0ttdtq583cqcjqcsgmyyt-decide-result-display-model.md) → ADR 0008
 - [decide-action-model](01kmh0ttdtq583cqcjqcsgmyyv-decide-action-model.md) → ADR 0009
 - [decide-general-ux-concepts](01kmh0ttdtq583cqcjqcsgmyyw-decide-general-ux-concepts.md) → ADR 0010
-- [fuzzy-matching-library](01kmh1ah0j1c2cx7pa39rmp7jy-fuzzy-matching-library.md) → ADR 0011
 - [query-prefix-conflict-resolution](01kmj7jdvts1mqa4wcd4mr4qq8-query-prefix-conflict-resolution.md)
 - [pinning-and-favorites](01kmj8z6yx1wakt5qq4pwcbq79-pinning-and-favorites.md)
 - [remove-squirly-nutty-references](01kmjm824r7rxndjty9gcs50hc-remove-squirly-nutty-references.md)
