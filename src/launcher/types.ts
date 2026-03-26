@@ -22,7 +22,8 @@ export type ActionId =
   | { type: "custom"; value: string };
 
 export interface ActionKeybinding {
-  label: string;
+  modifiers?: string[];
+  key: string;
 }
 
 export interface Action {

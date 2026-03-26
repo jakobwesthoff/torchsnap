@@ -31,13 +31,19 @@ pub enum ActionId {
     Custom(String),
 }
 
-/// Display-only keybinding info sent to the frontend for rendering
-/// shortcut hints in the result footer and action palette.
+/// Keybinding info for an action, sent to the frontend for both
+/// rendering shortcut hints and registering dynamic key handlers.
+///
+/// Uses the same modifier vocabulary as the frontend keybinding
+/// engine: `"Meta"` (Cmd on macOS, Ctrl on others), `"Shift"`,
+/// `"Alt"`. The display label is derived from these in the frontend.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionKeybinding {
-    /// Human-readable label, e.g. "⏎" or "⌘⏎".
-    pub label: String,
+    /// Modifier keys, e.g. `["Meta"]` or `["Meta", "Shift"]`.
+    pub modifiers: Vec<String>,
+    /// The key name, e.g. `"Enter"`, `"c"`, `"Backspace"`.
+    pub key: String,
 }
 
 /// A single action that can be performed on a result entry.
