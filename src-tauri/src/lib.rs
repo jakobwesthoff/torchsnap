@@ -7,7 +7,7 @@ mod platform;
 mod plugins;
 mod search;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use tauri::{Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
@@ -231,13 +231,11 @@ pub fn run() {
                 .app_cache_dir()
                 .context("resolve app cache dir")?
                 .join("icons");
-            let icon_cache = icons::IconCache::new(
-                icon_cache_dir,
-                Box::new(platform::PlatformIconExtractor),
-            );
+            let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
             catalog.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
                 platform::PlatformAppDiscovery,
-                icon_cache,
+                Arc::clone(&icon_cache),
+                platform::PlatformIconExtractor,
             )));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             catalog.setup_all();
