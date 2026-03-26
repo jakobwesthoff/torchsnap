@@ -144,6 +144,8 @@ export function Launcher() {
 
   useKeyboardNavigation({
     dismiss,
+    query,
+    setQuery,
     resultCount: results.length,
     selectedIndex,
     setSelectedIndex,

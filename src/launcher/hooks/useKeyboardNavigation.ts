@@ -30,6 +30,8 @@ import { PAGE_SIZE } from "../constants";
 
 interface UseKeyboardNavigationParams {
   dismiss: () => void;
+  query: string;
+  setQuery: (query: string) => void;
   resultCount: number;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
@@ -47,6 +49,8 @@ const LAUNCHER_LAYER = LAYER.COMPONENT + 1;
 
 export function useKeyboardNavigation({
   dismiss,
+  query,
+  setQuery,
   resultCount,
   selectedIndex,
   setSelectedIndex,
@@ -125,13 +129,20 @@ export function useKeyboardNavigation({
         id: "launcher-escape",
         layer: LAUNCHER_LAYER,
         order: 10,
-        handler: () => dismiss(),
+        handler: () => {
+          // Clear the query first; only dismiss when already empty.
+          if (query) {
+            setQuery("");
+          } else {
+            dismiss();
+          }
+        },
         keybindings: [
           { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
         ],
       },
     ],
-    [enabled, moveSelection, onExecute, dismiss],
+    [enabled, moveSelection, onExecute, query, setQuery, dismiss],
   );
 
   useKeyBindings(staticBindings);
