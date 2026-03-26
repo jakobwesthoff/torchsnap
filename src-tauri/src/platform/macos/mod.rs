@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod app_discovery;
+pub(crate) mod cgimage_conversion;
 mod icon_extraction;
 mod launcher_panel;
 mod tray;
