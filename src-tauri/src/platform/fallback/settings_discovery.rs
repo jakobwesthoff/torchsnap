@@ -19,4 +19,15 @@ impl SettingsDiscovery for FallbackSettingsDiscovery {
         // TODO: Windows — enumerate ms-settings: URIs
         Ok(Vec::new())
     }
+
+    fn render_icon(
+        &self,
+        _icon_source: &str,
+    ) -> anyhow::Result<Option<image::DynamicImage>> {
+        Ok(None)
+    }
+
+    fn open(&self, pane_id: &str, _app: &tauri::AppHandle) -> anyhow::Result<()> {
+        anyhow::bail!("opening settings pane {pane_id} is not supported on this platform")
+    }
 }

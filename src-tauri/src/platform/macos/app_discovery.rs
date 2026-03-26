@@ -17,8 +17,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::Context;
+use image::DynamicImage;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
+use super::cgimage_conversion::cgimage_to_dynamic_image;
 
 /// Thin wrapper around the macOS `mdfind` Spotlight CLI.
 struct Mdfind;
@@ -128,5 +131,43 @@ impl AppDiscovery for MdfindDiscovery {
         }
 
         Ok(apps)
+    }
+
+    fn extract_icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>> {
+        use objc2_app_kit::NSWorkspace;
+        use objc2_foundation::NSString;
+
+        let ns_path = NSString::from_str(&app.path.to_string_lossy());
+        let workspace = NSWorkspace::sharedWorkspace();
+        let ns_image = workspace.iconForFile(&ns_path);
+
+        // SAFETY: CGImageForProposedRect requires a mutable pointer
+        // for the proposed rect (null = use natural size) and optional
+        // context/hints. The NSImage is valid and retained for the
+        // duration of this call. The returned CGImage borrows from
+        // the NSImage and is used immediately.
+        let Some(cg_image) = (unsafe {
+            ns_image.CGImageForProposedRect_context_hints(
+                std::ptr::null_mut(),
+                None,
+                None,
+            )
+        }) else {
+            return Ok(None);
+        };
+
+        cgimage_to_dynamic_image(&cg_image)
+    }
+
+    fn open(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
+        app.opener()
+            .open_path(entry_id, None::<&str>)
+            .context("open application")
+    }
+
+    fn reveal(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
+        app.opener()
+            .reveal_item_in_dir(entry_id)
+            .context("reveal application in file manager")
     }
 }

@@ -48,6 +48,11 @@ pub fn render_sf_symbol(symbol_name: &str) -> anyhow::Result<Option<DynamicImage
         height: RENDER_SIZE,
     });
 
+    // SAFETY: CGImageForProposedRect requires a mutable pointer
+    // for the proposed rect (null = use natural size) and optional
+    // context/hints. The NSImage is valid and retained for the
+    // duration of this call. The returned CGImage borrows from
+    // the NSImage and is used immediately.
     let Some(cg_image) = (unsafe {
         ns_image.CGImageForProposedRect_context_hints(
             std::ptr::null_mut(),
