@@ -209,7 +209,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_clipboard_manager::init());
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_os::init());
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
@@ -237,6 +238,12 @@ pub fn run() {
                 Arc::clone(&icon_cache),
                 platform::PlatformIconExtractor,
             )));
+            catalog.register(Box::new(
+                plugins::system_preferences::SystemPreferencesPlugin::new(
+                    platform::PlatformSettingsDiscovery,
+                    Arc::clone(&icon_cache),
+                ),
+            ));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             catalog.setup_all();
             app.manage(Mutex::new(catalog));
