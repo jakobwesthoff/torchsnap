@@ -48,8 +48,8 @@ export function useSearch(query: string): UseSearchResult {
       switch (message.type) {
         case "catalogResults":
           setResults(message.entries);
-          setCustomPluginView(message.customPluginView ?? null);
-          setMatchedPrefix(message.matchedPrefix ?? null);
+          setCustomPluginView(message.customPluginView);
+          setMatchedPrefix(message.matchedPrefix);
           break;
         case "done":
           setLoading(false);
