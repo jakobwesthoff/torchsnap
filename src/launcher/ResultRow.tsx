@@ -10,13 +10,7 @@
  */
 
 import type { ReactNode, RefObject } from "react";
-import {
-  XCircleIcon,
-  Cog6ToothIcon,
-  SunIcon,
-  RocketLaunchIcon,
-  CommandLineIcon,
-} from "@heroicons/react/24/outline";
+import * as HeroIcons from "@heroicons/react/24/outline";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "../lib/cn";
 import type { ScoredEntry, EntryIcon } from "./types";
@@ -25,29 +19,35 @@ import type { ScoredEntry, EntryIcon } from "./types";
 // Icon Rendering
 // =========================================================
 
-// Static lookup for the HeroIcon names used by built-in plugins.
-// Add entries here as new plugins are registered with HeroIcon icons.
-const HERO_ICON_MAP: Record<
-  string,
-  React.ComponentType<React.SVGProps<SVGSVGElement>>
-> = {
-  "x-circle": XCircleIcon,
-  "cog-6-tooth": Cog6ToothIcon,
-  sun: SunIcon,
-  "rocket-launch": RocketLaunchIcon,
-};
+/**
+ * Resolve a kebab-case HeroIcon name (e.g. "x-circle") to the
+ * corresponding React component from `@heroicons/react/24/outline`.
+ *
+ * Converts "kebab-case" → "PascalCaseIcon" to match the export
+ * names (e.g. "cog-6-tooth" → "Cog6ToothIcon").
+ */
+function resolveHeroIcon(
+  name: string,
+): React.ComponentType<React.SVGProps<SVGSVGElement>> | undefined {
+  const pascal =
+    name
+      .split("-")
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join("") + "Icon";
+  return (HeroIcons as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>)[pascal];
+}
 
 function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   if (!icon) {
     return (
       <div className="flex h-9 w-9 items-center justify-center">
-        <CommandLineIcon className="h-7 w-7 text-text-muted" />
+        <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />
       </div>
     );
   }
 
   if (icon.type === "heroIcon") {
-    const Icon = HERO_ICON_MAP[icon.value] ?? CommandLineIcon;
+    const Icon = resolveHeroIcon(icon.value) ?? HeroIcons.CommandLineIcon;
     return (
       <div className="flex h-9 w-9 items-center justify-center">
         <Icon className="h-7 w-7 text-text-secondary" />
@@ -81,7 +81,7 @@ function EntryIconView({ icon }: { icon: EntryIcon | null }) {
 
   return (
     <div className="flex h-9 w-9 items-center justify-center">
-      <CommandLineIcon className="h-7 w-7 text-text-muted" />
+      <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />
     </div>
   );
 }
