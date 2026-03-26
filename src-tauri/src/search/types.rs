@@ -68,6 +68,10 @@ pub enum EntryIcon {
     HeroIcon(String),
     /// Base64-encoded data URL for inline images.
     DataUrl(String),
+    /// Absolute filesystem path to a cached image file. The frontend
+    /// converts this to an asset protocol URL via Tauri's
+    /// `convertFileSrc` API.
+    AssetIcon(String),
 }
 
 /// A raw catalog entry before scoring. Internal to the Rust side —

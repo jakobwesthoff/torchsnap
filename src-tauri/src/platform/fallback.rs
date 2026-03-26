@@ -30,6 +30,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 use super::app_discovery::{AppDiscovery, DiscoveredApp};
+use super::icon_extraction::IconExtractor;
 use super::{LauncherPanel, Tray};
 
 // =========================================================
@@ -142,5 +143,22 @@ impl AppDiscovery for FallbackDiscovery {
         // TODO: Linux — scan .desktop files from XDG data dirs
         // TODO: Windows — enumerate Start Menu shortcuts / shell:AppsFolder
         Ok(Vec::new())
+    }
+}
+
+// =========================================================
+// Icon Extraction
+//
+// Stub implementation. Returns None until platform-specific
+// icon extraction is implemented for Linux and Windows.
+// =========================================================
+
+pub struct FallbackIconExtractor;
+
+impl IconExtractor for FallbackIconExtractor {
+    fn extract(&self, _app_path: &std::path::Path) -> anyhow::Result<Option<Vec<u8>>> {
+        // TODO: Linux — extract from icon theme based on .desktop Icon= field
+        // TODO: Windows — extract from PE resources or shortcut targets
+        Ok(None)
     }
 }

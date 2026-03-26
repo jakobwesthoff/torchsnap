@@ -12,11 +12,16 @@
 // pick up newly installed or removed applications without
 // blocking the search path.
 //
+// Icons are extracted via the platform's `IconExtractor` and
+// cached on disk as PNGs. The `IconCache` handles mtime-based
+// invalidation and orphan cleanup.
+//
 // Actions:
 //   - Open (primary): launch the application
 //   - Reveal in Finder (secondary): show in file manager
 // =========================================================
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -26,6 +31,7 @@ use anyhow::Context;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
+use crate::platform::icon_cache::IconCache;
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon};
 
 use super::CatalogPlugin;
@@ -39,15 +45,17 @@ pub struct AppLauncherPlugin {
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
+    icon_cache: Arc<IconCache>,
 }
 
 impl AppLauncherPlugin {
-    pub fn new(discovery: impl AppDiscovery + 'static) -> Self {
+    pub fn new(discovery: impl AppDiscovery + 'static, icon_cache: IconCache) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
+            icon_cache: Arc::new(icon_cache),
         }
     }
 
@@ -77,10 +85,14 @@ impl AppLauncherPlugin {
         let timestamp = Arc::clone(&self.last_refresh);
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
+        let icon_cache = Arc::clone(&self.icon_cache);
 
         thread::spawn(move || {
             match discovery.discover() {
-                Ok(apps) => {
+                Ok(mut apps) => {
+                    let valid_keys = extract_icons(&icon_cache, &mut apps);
+                    icon_cache.cleanup(&valid_keys);
+
                     let mut guard = cache.write().expect("app cache not poisoned");
                     *guard = apps;
                     timestamp.store(unix_now(), Ordering::Relaxed);
@@ -95,6 +107,23 @@ impl AppLauncherPlugin {
     }
 }
 
+/// Run icon extraction for each discovered app, populating their
+/// `icon_path` field and returning the set of valid cache keys
+/// for orphan cleanup.
+fn extract_icons(icon_cache: &IconCache, apps: &mut [DiscoveredApp]) -> HashSet<String> {
+    let mut valid_keys = HashSet::with_capacity(apps.len());
+
+    for app in apps.iter_mut() {
+        let key = IconCache::cache_key(app);
+        if let Some(path) = icon_cache.ensure_icon(app) {
+            app.icon_path = Some(path);
+        }
+        valid_keys.insert(key);
+    }
+
+    valid_keys
+}
+
 impl CatalogPlugin for AppLauncherPlugin {
     fn id(&self) -> &str {
         "app-launcher"
@@ -102,13 +131,27 @@ impl CatalogPlugin for AppLauncherPlugin {
 
     fn setup(&self) {
         // Called on a dedicated background thread by the registry.
-        // We can block here — the launcher opens immediately with
-        // an empty result set and populates once discovery finishes.
+        //
+        // Phase 1: Discover apps and publish immediately so search
+        // results appear without waiting for icon extraction.
+        // Phase 2: Extract icons in the background and update the
+        // cache — icons fill in on subsequent searches.
         match self.discovery.discover() {
-            Ok(apps) => {
+            Ok(mut apps) => {
+                // Publish the app list right away with fallback icons.
+                {
+                    let mut guard = self.cache.write().expect("app cache not poisoned");
+                    *guard = apps.clone();
+                }
+                self.last_refresh.store(unix_now(), Ordering::Relaxed);
+
+                // Now extract icons (the slow part). Once done,
+                // swap the cache with icon-enriched entries.
+                let valid_keys = extract_icons(&self.icon_cache, &mut apps);
+                self.icon_cache.cleanup(&valid_keys);
+
                 let mut guard = self.cache.write().expect("app cache not poisoned");
                 *guard = apps;
-                self.last_refresh.store(unix_now(), Ordering::Relaxed);
             }
             Err(e) => {
                 eprintln!("initial app discovery failed: {e:#}");
@@ -127,7 +170,12 @@ impl CatalogPlugin for AppLauncherPlugin {
                 id: app.id.clone(),
                 title: app.name.clone(),
                 subtitle: Some(app.path.to_string_lossy().into_owned()),
-                icon: Some(EntryIcon::HeroIcon("rocket-launch".into())),
+                icon: Some(
+                    app.icon_path
+                        .as_ref()
+                        .map(|p| EntryIcon::AssetIcon(p.clone()))
+                        .unwrap_or_else(|| EntryIcon::HeroIcon("rocket-launch".into())),
+                ),
                 keywords: vec![],
                 actions: vec![
                     Action {
