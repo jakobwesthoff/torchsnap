@@ -15,7 +15,13 @@
 
 import type { ReactNode } from "react";
 
-export function highlightText(text: string, positions: number[]): ReactNode[] {
+const DEFAULT_HIGHLIGHT = "text-accent font-semibold";
+
+export function highlightText(
+  text: string,
+  positions: number[],
+  highlightClassName = DEFAULT_HIGHLIGHT,
+): ReactNode[] {
   if (positions.length === 0) return [text];
 
   const posSet = new Set(positions);
@@ -29,7 +35,7 @@ export function highlightText(text: string, positions: number[]): ReactNode[] {
       if (current) {
         segments.push(
           inMatch ? (
-            <span key={`m${i}`} className="text-accent font-semibold">
+            <span key={`m${i}`} className={highlightClassName}>
               {current}
             </span>
           ) : (
@@ -46,7 +52,7 @@ export function highlightText(text: string, positions: number[]): ReactNode[] {
   if (current) {
     segments.push(
       inMatch ? (
-        <span key="me" className="text-accent font-semibold">
+        <span key="me" className={highlightClassName}>
           {current}
         </span>
       ) : (

@@ -27,6 +27,8 @@ import type { RefObject } from "react";
 // defense-in-depth.
 const PLUGIN_LAYER = LAYER.COMPONENT + 2;
 
+const FOOTER_HIGHLIGHT = "underline font-bold";
+
 // =========================================================
 // Grid Cell
 // =========================================================
@@ -110,9 +112,9 @@ export default function EmojiGrid({
         ? [{
             label: (
               <>
-                {highlightText(entry.title, entry.titlePositions)}
+                {highlightText(entry.title, entry.titlePositions, FOOTER_HIGHLIGHT)}
                 {" · "}
-                {highlightText(entry.subtitle ?? "", entry.subtitlePositions)}
+                {highlightText(entry.subtitle ?? "", entry.subtitlePositions, FOOTER_HIGHLIGHT)}
               </>
             ),
           }]
