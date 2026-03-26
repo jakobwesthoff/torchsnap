@@ -11,8 +11,6 @@ but phases should be tackled roughly in order. Items marked with
 Build 2–3 plugins as internal features to discover the real API
 surface. These inform all later plugin architecture decisions.
 
-- [plugin-app-launcher](01kmh0dspar1gga0ahh1pyp34z-plugin-app-launcher.md)
-- [app-launcher-icons](01kmjp2t9xah78r2vxyeww442h-app-launcher-icons.md)
 - [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
 - [plugin-system-preferences](01kmjp2t9xah78r2vxyeww442j-plugin-system-preferences.md)
 - [plugin-calculator](01kmh0dspar1gga0ahh1pyp350-plugin-calculator.md)
