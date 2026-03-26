@@ -54,7 +54,7 @@ export function Launcher() {
   // Search
   // =========================================================
 
-  const { results } = useSearch(query);
+  const { results, activePlugin } = useSearch(query);
 
   // Reset selection when results change (new query, different
   // result set).
@@ -102,6 +102,7 @@ export function Launcher() {
     onExecute: handleExecute,
     selectedActions,
     mouseActiveRef,
+    enabled: activePlugin === null,
   });
 
   // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
