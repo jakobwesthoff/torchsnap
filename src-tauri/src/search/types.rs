@@ -97,6 +97,35 @@ pub enum EntryIcon {
     Emoji(String),
 }
 
+/// What a `QueryPlugin::search()` returns: either standard results
+/// for the host to render in `ResultList`, or a custom UI request
+/// where the plugin's frontend component takes over the result area.
+///
+/// The decision is per-query — a plugin may return `Results` for
+/// some queries and `CustomUI` for others.
+#[derive(Debug, Clone)]
+pub enum SearchResponse {
+    /// Standard result list — host renders via `ResultList`.
+    Results(Vec<QueryResult>),
+    /// Plugin requests custom UI. Results are still provided for the
+    /// plugin component to use as props.
+    CustomUI(Vec<QueryResult>),
+}
+
+impl SearchResponse {
+    /// Extract the results regardless of variant.
+    pub fn into_results(self) -> Vec<QueryResult> {
+        match self {
+            SearchResponse::Results(r) | SearchResponse::CustomUI(r) => r,
+        }
+    }
+
+    /// Whether the plugin requested custom UI.
+    pub fn is_custom_ui(&self) -> bool {
+        matches!(self, SearchResponse::CustomUI(_))
+    }
+}
+
 /// A pre-scored result returned by a `QueryPlugin`.
 ///
 /// Same shape as `ScoredEntry` but without `source` — the registry
@@ -177,12 +206,17 @@ pub struct ScoredEntry {
 ///
 /// The frontend receives these progressively: `CatalogResults`
 /// arrives first (sub-millisecond for static catalogs), then
-/// `Done` signals completion. `PluginResults` will be added
-/// later for query-mode plugins that stream results.
+/// `Done` signals completion.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SearchMessage {
-    CatalogResults { entries: Vec<ScoredEntry> },
-    // TODO: PluginResults { plugin_id: String, entries: Vec<ScoredEntry> }
+    CatalogResults {
+        entries: Vec<ScoredEntry>,
+        /// When a query plugin returned `SearchResponse::CustomUI`,
+        /// this contains the plugin's ID so the frontend can mount
+        /// the plugin's React component. `None` for standard list
+        /// rendering.
+        active_plugin: Option<String>,
+    },
     Done,
 }

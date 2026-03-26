@@ -21,7 +21,7 @@ pub mod app_launcher;
 pub mod commands;
 pub mod emoji;
 
-use crate::search::types::{ActionId, CatalogEntry, PostAction, QueryResult};
+use crate::search::types::{ActionId, CatalogEntry, PostAction, SearchResponse};
 
 // =========================================================
 // CatalogPlugin
@@ -122,7 +122,11 @@ pub trait QueryPlugin: Send + Sync {
     /// `matched_prefix` is `Some(prefix)` when a registered prefix
     /// triggered this call (query is already stripped), or `None`
     /// when running as an always-on plugin.
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Vec<QueryResult>;
+    ///
+    /// Returns `SearchResponse::Results` for standard list rendering,
+    /// or `SearchResponse::CustomUI` to request the plugin's frontend
+    /// component take over the result area (ADR 0013).
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse;
 
     /// Execute an action on an entry owned by this plugin.
     fn execute(
@@ -131,4 +135,20 @@ pub trait QueryPlugin: Send + Sync {
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
+
+    /// Handle a custom message from the plugin's frontend component.
+    ///
+    /// This is the plugin-side handler for the `sendMessage` prop
+    /// in the plugin UI (ADR 0013, topic 4). The default returns
+    /// an error — override only when the plugin needs custom
+    /// frontend ↔ backend communication beyond search/execute.
+    // TODO: Wire up the Tauri command and frontend wrapper when the
+    // first plugin needs this (see plugin-message-bus todo).
+    fn handle_message(
+        &self,
+        _method: &str,
+        _payload: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        anyhow::bail!("plugin does not handle custom messages")
+    }
 }

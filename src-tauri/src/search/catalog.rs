@@ -92,16 +92,21 @@ impl CatalogRegistry {
 
     /// Search all plugins against the given query.
     ///
+    /// Returns the scored entries and an optional active plugin ID.
+    /// When the active plugin is `Some`, the frontend should mount
+    /// that plugin's custom UI component instead of the standard
+    /// `ResultList` (ADR 0013).
+    ///
     /// Routing follows ADR 0012:
     /// - If the query starts with a registered prefix → exclusive
     ///   routing to that query plugin only
     /// - Otherwise → nucleo over catalog entries + always-on query
     ///   plugins, merged by score
-    pub fn search(&self, query: &str) -> Vec<ScoredEntry> {
+    pub fn search(&self, query: &str) -> (Vec<ScoredEntry>, Option<String>) {
         // TODO: Empty query could show recent/pinned items in the future.
         // For now, return nothing — the launcher should feel clean on open.
         if query.is_empty() {
-            return Vec::new();
+            return (Vec::new(), None);
         }
 
         // -------------------------------------------------------
@@ -112,16 +117,29 @@ impl CatalogRegistry {
         if let Some((plugin, prefix)) = self.find_prefix_match(query) {
             let stripped = &query[prefix.len()..];
             let source = plugin.id().to_string();
-            return plugin
-                .search(stripped, Some(prefix))
+            let response = plugin.search(stripped, Some(prefix));
+
+            // When the plugin requests custom UI, signal its ID to
+            // the frontend. For standard results, no active plugin.
+            let active_plugin = if response.is_custom_ui() {
+                Some(source.clone())
+            } else {
+                None
+            };
+
+            let entries = response
+                .into_results()
                 .into_iter()
                 .map(|r| r.into_scored_entry(source.clone()))
                 .collect();
+
+            return (entries, active_plugin);
         }
 
         // -------------------------------------------------------
         // No prefix match: run catalog plugins (nucleo) + always-on
-        // query plugins, merge results.
+        // query plugins, merge results. CustomUI from non-exclusive
+        // plugins is treated as standard Results.
         // -------------------------------------------------------
         let mut results = self.search_catalogs(query);
 
@@ -131,13 +149,13 @@ impl CatalogRegistry {
                 continue;
             }
             let source = plugin.id().to_string();
-            for result in plugin.search(query, None) {
+            for result in plugin.search(query, None).into_results() {
                 results.push(result.into_scored_entry(source.clone()));
             }
         }
 
         results.sort_by(|a, b| b.score.cmp(&a.score));
-        results
+        (results, None)
     }
 
     /// Find the query plugin whose prefix matches the start of the
