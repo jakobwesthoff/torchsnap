@@ -22,7 +22,7 @@ use anyhow::Context;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
-use super::sf_symbols::render_sf_symbol;
+use super::cgimage_conversion::nsworkspace_icon_for_file;
 
 /// Directory where macOS installs Settings extension bundles.
 const EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
@@ -67,11 +67,11 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
         Ok(panes)
     }
 
-    fn render_icon(
-        &self,
-        icon_source: &str,
-    ) -> anyhow::Result<Option<image::DynamicImage>> {
-        render_sf_symbol(icon_source)
+    fn icon(&self, pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>> {
+        match &pane.bundle_path {
+            Some(path) => nsworkspace_icon_for_file(path),
+            None => Ok(None),
+        }
     }
 
     fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
@@ -127,19 +127,6 @@ fn try_discover_pane(
         .context("missing CFBundleIdentifier")?;
 
     // -------------------------------------------------------
-    // SF Symbol name for icon rendering
-    // -------------------------------------------------------
-
-    let symbol_name = info
-        .get("CFBundleIcons")
-        .and_then(|v| v.as_dictionary())
-        .and_then(|d| d.get("ISGraphicIconConfiguration"))
-        .and_then(|v| v.as_dictionary())
-        .and_then(|d| d.get("ISSymbolName"))
-        .and_then(|v| v.as_string())
-        .map(String::from);
-
-    // -------------------------------------------------------
     // Localized display name
     //
     // Fallback chain:
@@ -155,7 +142,7 @@ fn try_discover_pane(
     Ok(Some(SettingsPane {
         id: bundle_id,
         name,
-        icon_source: symbol_name,
+        bundle_path: Some(appex_path.to_string_lossy().into_owned()),
         icon_path: None,
     }))
 }

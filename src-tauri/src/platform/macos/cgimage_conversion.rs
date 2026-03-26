@@ -21,6 +21,7 @@
 // =========================================================
 
 use anyhow::Context;
+use image::DynamicImage;
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextGetData, CGColorSpace, CGContext, CGImage,
@@ -121,4 +122,37 @@ pub fn cgimage_to_dynamic_image(
         .context("construct RgbaImage from bitmap context pixel data")?;
 
     Ok(Some(image::DynamicImage::ImageRgba8(img)))
+}
+
+/// Get the system-composited icon for a file or bundle at the
+/// given path via `NSWorkspace`.
+///
+/// Works for `.app` bundles, `.appex` extensions, and any other
+/// file type macOS knows how to display an icon for. Returns
+/// the full-resolution image; downstream processing handles
+/// resizing and format conversion.
+pub fn nsworkspace_icon_for_file(path: &str) -> anyhow::Result<Option<DynamicImage>> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    let ns_path = NSString::from_str(path);
+    let workspace = NSWorkspace::sharedWorkspace();
+    let ns_image = workspace.iconForFile(&ns_path);
+
+    // SAFETY: CGImageForProposedRect requires a mutable pointer
+    // for the proposed rect (null = use natural size) and optional
+    // context/hints. The NSImage is valid and retained for the
+    // duration of this call. The returned CGImage borrows from
+    // the NSImage and is used immediately.
+    let Some(cg_image) = (unsafe {
+        ns_image.CGImageForProposedRect_context_hints(
+            std::ptr::null_mut(),
+            None,
+            None,
+        )
+    }) else {
+        return Ok(None);
+    };
+
+    cgimage_to_dynamic_image(&cg_image)
 }

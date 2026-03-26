@@ -20,10 +20,7 @@ impl SettingsDiscovery for FallbackSettingsDiscovery {
         Ok(Vec::new())
     }
 
-    fn render_icon(
-        &self,
-        _icon_source: &str,
-    ) -> anyhow::Result<Option<image::DynamicImage>> {
+    fn icon(&self, _pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>> {
         Ok(None)
     }
 

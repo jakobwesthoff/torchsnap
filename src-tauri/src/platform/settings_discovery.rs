@@ -7,12 +7,12 @@
 //
 // Platform-abstracted trait for discovering system settings
 // panes. Each platform provides its own implementation:
-//   - macOS: ExtensionKit .appex bundles + SF Symbols
+//   - macOS: ExtensionKit .appex bundles + NSWorkspace icons
 //   - Linux/Windows: stub (TODO)
 //
 // The trait is cfg-dispatched as `PlatformSettingsDiscovery` in
 // the parent module, following the same pattern as
-// `PlatformAppDiscovery` and `PlatformIconExtractor`.
+// `PlatformAppDiscovery`.
 // =========================================================
 
 /// A single discovered system settings pane.
@@ -26,15 +26,15 @@ pub struct SettingsPane {
     /// User-facing display name, localized to the system language.
     pub name: String,
 
-    /// Platform-specific icon reference that the plugin resolves
-    /// to an image via platform helpers. On macOS this is an
-    /// SF Symbol name (e.g., `"network"`); on other platforms it
-    /// may be an icon theme name or path.
-    pub icon_source: Option<String>,
+    /// Filesystem path to the settings extension bundle (e.g.,
+    /// the `.appex` path on macOS). Used for icon extraction
+    /// via `NSWorkspace.iconForFile`. `None` on platforms where
+    /// icons are resolved differently.
+    pub bundle_path: Option<String>,
 
     /// Absolute filesystem path to the cached icon file. Populated
     /// by `IconCache::ensure_icon()` during plugin setup; `None`
-    /// until then or if icon rendering failed.
+    /// until then or if icon extraction failed.
     pub icon_path: Option<String>,
 }
 
@@ -51,16 +51,11 @@ pub trait SettingsDiscovery: Send + Sync {
     /// support on macOS) is handled by the implementation.
     fn discover(&self) -> anyhow::Result<Vec<SettingsPane>>;
 
-    /// Render the icon for a settings pane from its platform-
-    /// specific `icon_source`.
+    /// Get the icon for a settings pane as a decoded image.
     ///
-    /// On macOS this rasterizes an SF Symbol. On other platforms
-    /// it may load from an icon theme or return `Ok(None)` to
-    /// use the fallback icon.
-    fn render_icon(
-        &self,
-        icon_source: &str,
-    ) -> anyhow::Result<Option<image::DynamicImage>>;
+    /// On macOS this uses `NSWorkspace.iconForFile` on the `.appex`
+    /// bundle. Returns `Ok(None)` if no icon is available.
+    fn icon(&self, pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>>;
 
     /// Open a settings pane by its platform-specific ID.
     fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;

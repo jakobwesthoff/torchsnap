@@ -70,7 +70,7 @@ pub trait AppDiscovery: Send + Sync {
     ///
     /// The returned image may be any resolution — the icon cache
     /// handles resizing and format conversion.
-    fn extract_icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>>;
+    fn icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>>;
 
     /// Launch the application identified by `entry_id`.
     fn open(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;

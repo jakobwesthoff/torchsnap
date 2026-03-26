@@ -6,7 +6,6 @@ mod app_discovery;
 pub(crate) mod cgimage_conversion;
 mod launcher_panel;
 mod settings_discovery;
-pub(crate) mod sf_symbols;
 mod tray;
 
 pub use app_discovery::MdfindDiscovery;
