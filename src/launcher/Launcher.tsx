@@ -2,19 +2,20 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useSetting } from "../hooks/useSetting";
 import { SETTINGS_DEFAULTS } from "../settingsDefaults";
+import { getPluginComponent } from "../plugins/registry";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
-import type { Action, FooterState, ScoredEntry } from "./types";
+import type { Action, ActionId, FooterState, ScoredEntry } from "./types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -64,7 +65,54 @@ export function Launcher() {
   }, [results]);
 
   // =========================================================
-  // Action Execution
+  // Plugin Custom UI
+  // =========================================================
+
+  const PluginView = activePlugin
+    ? getPluginComponent(activePlugin)
+    : undefined;
+
+  // Footer state: either set by the plugin or derived from the
+  // selected entry's actions in list mode.
+  const [pluginFooter, setPluginFooter] = useState<FooterState | null>(null);
+
+  // Reset plugin footer when leaving plugin mode.
+  useEffect(() => {
+    if (!activePlugin) {
+      setPluginFooter(null);
+    }
+  }, [activePlugin]);
+
+  const footer =
+    pluginFooter ?? actionsToFooterState(results[selectedIndex]?.actions ?? []);
+
+  // Plugin execute handler — wraps the Tauri invoke with the
+  // plugin's source ID and handles PostAction.
+  const handlePluginExecute = useCallback(
+    async (entryId: string, actionId: ActionId) => {
+      if (!activePlugin) return;
+
+      const postAction = await invoke<string>("execute_action", {
+        source: activePlugin,
+        entryId,
+        actionId,
+      });
+
+      if (postAction === "Dismiss") {
+        dismiss();
+      }
+    },
+    [activePlugin, dismiss],
+  );
+
+  // For prefix-triggered plugins, goBack clears the query which
+  // deactivates the plugin through the normal search flow.
+  const handleGoBack = useCallback(() => {
+    setQuery("");
+  }, []);
+
+  // =========================================================
+  // Action Execution (list mode)
   // =========================================================
 
   const handleExecute = useCallback(
@@ -89,7 +137,7 @@ export function Launcher() {
   );
 
   // =========================================================
-  // Keyboard Navigation
+  // Keyboard Navigation (disabled when plugin UI is active)
   // =========================================================
 
   const selectedActions = results[selectedIndex]?.actions ?? [];
@@ -112,6 +160,12 @@ export function Launcher() {
   const emacsBindings = useEmacsBindings(inputRef, setQuery);
 
   const [showMascot] = useSetting("showMascot", SETTINGS_DEFAULTS.showMascot);
+
+  // Derive the stripped query and matched prefix for the plugin.
+  // The prefix is the part of the query that activated the plugin;
+  // the query passed to the plugin has it removed.
+  const matchedPrefix = activePlugin ? query.match(/^[^\s]*/)?.[0] ?? "" : "";
+  const strippedQuery = activePlugin ? query.slice(matchedPrefix.length) : query;
 
   return (
     <div
@@ -162,22 +216,39 @@ export function Launcher() {
             <KeyBindingPill modifiers={[]} keyName="Escape" />
           </div>
 
-          {/* Result list + action footer */}
-          {results.length > 0 && (
+          {/* Result area + footer */}
+          {(results.length > 0 || PluginView) && (
             <>
               <div className="border-t border-border" />
-              <ResultList
-                results={results}
-                selectedIndex={selectedIndex}
-                onSelectIndex={setSelectedIndex}
-                onExecute={handleExecute}
-                mouseActiveRef={mouseActiveRef}
-              />
-              <LauncherFooter
-                footer={actionsToFooterState(
-                  results[selectedIndex]?.actions ?? [],
-                )}
-              />
+              {PluginView ? (
+                <Suspense
+                  fallback={
+                    <div className="p-4 text-center text-text-muted text-sm">
+                      Loading…
+                    </div>
+                  }
+                >
+                  <PluginView
+                    results={results}
+                    query={strippedQuery}
+                    matchedPrefix={matchedPrefix}
+                    goBack={handleGoBack}
+                    dismiss={dismiss}
+                    mouseActiveRef={mouseActiveRef}
+                    onExecute={handlePluginExecute}
+                    onFooterChange={setPluginFooter}
+                  />
+                </Suspense>
+              ) : (
+                <ResultList
+                  results={results}
+                  selectedIndex={selectedIndex}
+                  onSelectIndex={setSelectedIndex}
+                  onExecute={handleExecute}
+                  mouseActiveRef={mouseActiveRef}
+                />
+              )}
+              <LauncherFooter footer={footer} />
             </>
           )}
         </div>
