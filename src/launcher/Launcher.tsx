@@ -150,7 +150,7 @@ export function Launcher() {
     onExecute: handleExecute,
     selectedActions,
     mouseActiveRef,
-    enabled: customPluginView === null,
+    enabled: customPluginView == null,
   });
 
   // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
