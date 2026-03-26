@@ -32,7 +32,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::platform::icon_cache::IconCache;
-use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon};
+use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
 
 use super::CatalogPlugin;
 
@@ -201,7 +201,7 @@ impl CatalogPlugin for AppLauncherPlugin {
         entry_id: &str,
         action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PostAction> {
         match action_id {
             ActionId::Open => {
                 app.opener()
@@ -218,7 +218,7 @@ impl CatalogPlugin for AppLauncherPlugin {
             }
         }
 
-        Ok(())
+        Ok(PostAction::Dismiss)
     }
 }
 

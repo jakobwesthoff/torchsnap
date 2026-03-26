@@ -25,7 +25,7 @@ use serde::Deserialize;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use super::QueryPlugin;
-use crate::search::types::{Action, ActionId, ActionKeybinding, EntryIcon, QueryResult};
+use crate::search::types::{Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult};
 
 // =========================================================
 // Emojibase Data Deserialization
@@ -43,6 +43,7 @@ struct EmojibaseEntry {
     tags: Vec<String>,
     // Intentionally unused — deserialized for potential future
     // grouping/filtering but not read currently.
+    #[serde(default)]
     #[allow(dead_code)]
     group: u32,
     #[serde(default)]
@@ -340,12 +341,12 @@ impl QueryPlugin for EmojiPickerPlugin {
         entry_id: &str,
         _action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PostAction> {
         // entry_id is the emoji character itself.
         app.clipboard()
             .write_text(entry_id)
             .context("write emoji to clipboard")?;
-        Ok(())
+        Ok(PostAction::Dismiss)
     }
 }
 

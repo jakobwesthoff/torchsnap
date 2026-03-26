@@ -21,7 +21,7 @@ pub mod app_launcher;
 pub mod commands;
 pub mod emoji;
 
-use crate::search::types::{ActionId, CatalogEntry, QueryResult};
+use crate::search::types::{ActionId, CatalogEntry, PostAction, QueryResult};
 
 // =========================================================
 // CatalogPlugin
@@ -70,7 +70,7 @@ pub trait CatalogPlugin: Send + Sync {
         entry_id: &str,
         action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<PostAction>;
 }
 
 // =========================================================
@@ -130,5 +130,5 @@ pub trait QueryPlugin: Send + Sync {
         entry_id: &str,
         action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<PostAction>;
 }

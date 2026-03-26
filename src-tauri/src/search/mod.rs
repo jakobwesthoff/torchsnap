@@ -19,7 +19,7 @@ use tauri::State;
 use tauri::ipc::Channel;
 
 use catalog::CatalogRegistry;
-use types::{ActionId, SearchMessage};
+use types::{ActionId, PostAction, SearchMessage};
 
 /// Search all registered catalogs and stream results to the frontend.
 ///
@@ -39,7 +39,8 @@ pub fn search(
 }
 
 /// Execute an action on a specific entry, routing to the plugin
-/// that owns it.
+/// that owns it. Returns the plugin's `PostAction` so the frontend
+/// can decide whether to dismiss the launcher.
 #[tauri::command]
 pub fn execute_action(
     source: String,
@@ -47,7 +48,7 @@ pub fn execute_action(
     action_id: ActionId,
     state: State<'_, Mutex<CatalogRegistry>>,
     app: tauri::AppHandle,
-) -> Result<(), String> {
+) -> Result<PostAction, String> {
     let registry = state.lock().expect("catalog registry lock");
     registry
         .execute(&source, &entry_id, &action_id, &app)
