@@ -3,17 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Keyboard shortcut badge that renders a structured keybinding as a
- * platform-appropriate display string.
- *
- * Takes modifier keys and a key name (the same vocabulary as the
- * keybinding engine) and formats them using the platform-aware
- * formatters — e.g., Meta+Enter renders as "⌘↵" on macOS and
- * "Ctrl+↵" on Windows/Linux.
+ * Keyboard shortcut badge that renders a structured keybinding
+ * as individual keycaps using the platform-aware formatters —
+ * e.g., Meta + Enter renders as ⌘ ↵ on macOS and Ctrl ↵ on
+ * Windows/Linux.
  */
 
 import type { ModifierKey } from "../keybindings";
 import { formatModifier, formatKey } from "../keybindings";
+import { KeyCap } from "./KeyCap";
 
 interface KeyBindingPillProps {
   modifiers?: string[];
@@ -27,8 +25,10 @@ export function KeyBindingPill({ modifiers, keyName }: KeyBindingPillProps) {
   ];
 
   return (
-    <kbd className="rounded border border-border bg-surface-inset px-1.5 py-0.5 font-mono text-[11px] text-text-muted shadow-[0_1px_0_var(--color-border)]">
-      {parts.join("")}
-    </kbd>
+    <span className="inline-flex items-center gap-0.5">
+      {parts.map((part, i) => (
+        <KeyCap key={i}>{part}</KeyCap>
+      ))}
+    </span>
   );
 }
