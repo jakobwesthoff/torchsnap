@@ -25,7 +25,9 @@ use serde::Deserialize;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use super::QueryPlugin;
-use crate::search::types::{Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult};
+use crate::search::types::{
+    Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult, SearchResponse,
+};
 
 // =========================================================
 // Emojibase Data Deserialization
@@ -208,12 +210,12 @@ impl QueryPlugin for EmojiPickerPlugin {
         *entries = data;
     }
 
-    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> Vec<QueryResult> {
+    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> SearchResponse {
         let entries = self.entries.read().expect("emoji entries read lock");
 
         if entries.is_empty() {
             // setup() hasn't completed yet.
-            return Vec::new();
+            return SearchResponse::CustomUI(Vec::new());
         }
 
         // -------------------------------------------------------
@@ -223,12 +225,14 @@ impl QueryPlugin for EmojiPickerPlugin {
         if query.is_empty() {
             // TODO: Replace with frecency-based ordering once the
             // ranking system is built (see emoji-frecency todo).
-            return entries
-                .iter()
-                .filter(|e| !e.shortcodes.is_empty())
-                .take(EMPTY_QUERY_LIMIT)
-                .map(|e| emoji_to_query_result(e, 0, vec![]))
-                .collect();
+            return SearchResponse::CustomUI(
+                entries
+                    .iter()
+                    .filter(|e| !e.shortcodes.is_empty())
+                    .take(EMPTY_QUERY_LIMIT)
+                    .map(|e| emoji_to_query_result(e, 0, vec![]))
+                    .collect(),
+            );
         }
 
         // -------------------------------------------------------
@@ -333,7 +337,7 @@ impl QueryPlugin for EmojiPickerPlugin {
             .collect();
 
         results.sort_by(|a, b| b.score.cmp(&a.score));
-        results
+        SearchResponse::CustomUI(results)
     }
 
     fn execute(
