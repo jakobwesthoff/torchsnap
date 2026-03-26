@@ -19,6 +19,7 @@ surface. These inform all later plugin architecture decisions.
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
 - [result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md)
 - [emoji-frecency](01kmk0ren28xy1g66r2h4k0tzc-emoji-frecency.md) *(after result-ranking-system)*
+- [emoji-frecency-empty-query](01kmnh1g0eq2955mtnp6fk7tvp-emoji-frecency-empty-query.md) *(after emoji-frecency)*
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
 
 ## Phase 2: Infrastructure and polish
@@ -30,6 +31,8 @@ Core systems that support everything else.
 - [github-actions-ci](01kmh1wkmsrenpk98dbkhcq3cc-github-actions-ci.md)
 - [i18n-system](01kmh1ah0j1c2cx7pa39rmp7k1-i18n-system.md)
 - [create-dedicated-tray-icon](01kmgymgjvkr1e6egscdwctf2m-create-dedicated-tray-icon.md)
+- [react-perf-audit](01kmnmb0v2rm892d51qj1j5zp0-react-perf-audit.md)
+- [plugin-suspense-fallback](01kmnjk9wv8w4m2dhd8x2q8ra6-plugin-suspense-fallback.md)
 - [random-mascot-variants](01kmj9zbb6ysgtgpvfjmace188-random-mascot-variants.md)
 - [visual-identity-brainstorm](01kmh1h2b95jvtfk76hwyd80kd-visual-identity-brainstorm.md) `[discuss]`
 - [design-logo-and-icons](01kmh1h2b95jvtfk76hwyd80ke-design-logo-and-icons.md)
@@ -40,7 +43,9 @@ Core systems that support everything else.
 Extract the plugin API from the patterns established in Phase 1.
 
 - [decide-plugin-architecture](01kmh0ttdtq583cqcjqcsgmyys-decide-plugin-architecture.md) `[discuss]`
-- [plugin-custom-ui](01kmk0ren28xy1g66r2h4k0tzd-plugin-custom-ui.md) `[discuss]`
+- [dynamic-plugin-component-registration](01kmnh1g0dy48yp93s3x7qxr8v-dynamic-plugin-component-registration.md)
+- [plugin-message-bus](01kmnh1g0eq2955mtnp6fk7tvn-plugin-message-bus.md)
+- [execute-triggered-custom-ui](01kmnh3rx87jzknw7cfrdh0pfs-execute-triggered-custom-ui.md)
 - [extract-shared-component-library](01kmh0dspar1gga0ahh1pyp34x-extract-shared-component-library.md)
 - [plugin-system-wasm](01kmh0dspar1gga0ahh1pyp34y-plugin-system-wasm.md)
 - [user-provided-themes](01kmh0jb5qrkkq7zzymwh50419-user-provided-themes.md) `[discuss]`
