@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod icons;
 mod platform;
 mod plugins;
 mod search;
@@ -230,7 +231,7 @@ pub fn run() {
                 .app_cache_dir()
                 .context("resolve app cache dir")?
                 .join("icons");
-            let icon_cache = platform::icon_cache::IconCache::new(
+            let icon_cache = icons::IconCache::new(
                 icon_cache_dir,
                 Box::new(platform::PlatformIconExtractor),
             );

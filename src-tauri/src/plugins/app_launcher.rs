@@ -31,7 +31,7 @@ use anyhow::Context;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::platform::icon_cache::IconCache;
+use crate::icons::IconCache;
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
 
 use super::CatalogPlugin;

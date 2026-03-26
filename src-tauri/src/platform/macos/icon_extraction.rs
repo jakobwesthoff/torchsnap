@@ -22,7 +22,7 @@
 // and un-premultiply alpha on the Rust side.
 //
 // The bitmap context is created at the full CGImage resolution.
-// The downstream `icon_processing::process_icon` handles
+// The downstream `icons::icon_processing::process_icon` handles
 // resizing to the final target dimensions (e.g. 256×256).
 // =========================================================
 

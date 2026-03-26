@@ -13,7 +13,7 @@
 //
 // The trait is cfg-dispatched as `PlatformIconExtractor` in
 // the parent module. Returned images are post-processed by
-// `icon_processing::process_icon` (resize + WebP encode)
+// `icons::icon_processing::process_icon` (resize + WebP encode)
 // before being written to disk by `IconCache`.
 // =========================================================
 
@@ -24,7 +24,7 @@ use std::path::Path;
 ///
 /// Implementations return an `image::DynamicImage` with the full
 /// resolution pixel data. Post-processing (resize, format
-/// conversion) is handled by [`super::icon_processing::process_icon`].
+/// conversion) is handled by [`crate::icons::icon_processing::process_icon`].
 ///
 /// Implementations must be `Send + Sync` because extraction runs
 /// on background threads during plugin setup and cache refresh.
