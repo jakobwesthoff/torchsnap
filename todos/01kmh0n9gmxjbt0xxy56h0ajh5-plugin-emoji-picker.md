@@ -1,39 +1,54 @@
 # Plugin: Emoji picker
 
 Search and insert emoji by keyword — surprisingly high daily usage
-for a launcher feature.
+for a launcher feature. Prefix-activated with `:` (colon), matching
+the universal shortcode convention (Slack, Discord, GitHub).
 
-## Scope
+## Decisions
 
-- Search emoji by name, keyword, and aliases
-- Show emoji with name in result rows
-- Enter copies selected emoji to clipboard
-- Recent/frequently used emoji section when query is empty
-- Skin tone variant support (modifier selection)
-- Trigger: could be always-on fuzzy match, or prefix-activated
-  (e.g. `:` prefix like Slack)
+- **Prefix**: `:` (colon) — strict activation, no emoji results
+  without prefix
+- **Data source**: emojibase (`emojibase-data` npm package), English
+  locale. Install as bun dev dependency, vendor the JSON into the
+  Tauri binary via `include_str!()`
+- **Rendering**: native emoji font — no image assets, platform
+  handles rendering. Matches what users paste into other apps.
+- **Matching**: two-pass search with nucleo. First pass matches
+  shortcodes, second pass matches keywords/tags. Shortcode matches
+  always rank above keyword matches.
+- **Skin tone**: show default (yellow) only for now. Variants
+  deferred.
+- **Action**: copy emoji to clipboard (primary action)
+- **Display**: standard result list for now. Grid rendering deferred
+  to plugin custom UI system (see plugin-custom-ui todo).
+- **Recently used / frecency**: deferred to frecency tracking system
+  (see result-ranking-system and emoji-frecency todos).
 
 ## Implementation
 
-- Embed the Unicode CLDR emoji data (names, keywords, categories)
-  as a static dataset — ~3500 emoji, small memory footprint
-- Fuzzy search across name + keywords
-- Group by category when browsing (People, Nature, Food, etc.)
-- Store usage frequency for "recently used" sorting
+- Rust-side `CatalogPlugin` with `:` prefix
+- `setup()`: parse emojibase JSON (embedded via `include_str!()`)
+  into internal entry list. ~4,500 entries, sub-10ms parse time.
+- `entries()`: return all emoji as `CatalogEntry` items with emoji
+  glyph as title, shortcode as subtitle
+- Two-pass nucleo matching: shortcode pass gets score boost over
+  keyword pass
+- Clipboard write via Tauri clipboard plugin
 
-## Data source
+## Data shape from emojibase
 
-- Unicode CLDR annotations: provides emoji names and keywords in
-  multiple languages
-- `unicode-emoji-data` npm package or equivalent Rust crate
-- Or vendor a static JSON/binary blob at build time
+Each entry provides:
+- `emoji` — the Unicode character(s)
+- `label` — descriptive name ("grinning face")
+- `shortcodes` — array of shortcode strings
+- `tags` — keyword array for search
+- `group` / `subgroup` — category grouping
+- `skins` — skin tone variants (deferred)
 
 ## UX details
 
 - Show the actual emoji glyph large enough to distinguish similar
-  ones
-- Show the official Unicode name as secondary text
-- Skin tone: show default (yellow) by default, allow a modifier
-  picker on long-press or secondary action
+  ones (as icon in result row)
+- Show shortcode as title, label as subtitle
 - Consider showing the emoji in the search input as a live preview
-  while navigating results
+  while navigating results (future enhancement)

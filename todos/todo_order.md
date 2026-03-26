@@ -17,7 +17,9 @@ surface. These inform all later plugin architecture decisions.
 - [plugin-system-commands](01kmh0n9gmxjbt0xxy56h0ajh4-plugin-system-commands.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
+- [plugin-emoji-picker](01kmh0n9gmxjbt0xxy56h0ajh5-plugin-emoji-picker.md)
 - [result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md)
+- [emoji-frecency](01kmk0ren28xy1g66r2h4k0tzc-emoji-frecency.md) *(after result-ranking-system)*
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
 
 ## Phase 2: Infrastructure and polish
@@ -39,6 +41,7 @@ Core systems that support everything else.
 Extract the plugin API from the patterns established in Phase 1.
 
 - [decide-plugin-architecture](01kmh0ttdtq583cqcjqcsgmyys-decide-plugin-architecture.md) `[discuss]`
+- [plugin-custom-ui](01kmk0ren28xy1g66r2h4k0tzd-plugin-custom-ui.md) `[discuss]`
 - [extract-shared-component-library](01kmh0dspar1gga0ahh1pyp34x-extract-shared-component-library.md)
 - [plugin-system-wasm](01kmh0dspar1gga0ahh1pyp34y-plugin-system-wasm.md)
 - [user-provided-themes](01kmh0jb5qrkkq7zzymwh50419-user-provided-themes.md) `[discuss]`
@@ -56,7 +59,6 @@ Build out the plugin ecosystem once the API is stable.
 
 - [plugin-clipboard-manager](01kmh0dspar1gga0ahh1pyp351-plugin-clipboard-manager.md)
 - [plugin-file-search](01kmh0n9gmxjbt0xxy56h0ajh3-plugin-file-search.md)
-- [plugin-emoji-picker](01kmh0n9gmxjbt0xxy56h0ajh5-plugin-emoji-picker.md)
 - [plugin-task-switcher](01kmh0dspar1gga0ahh1pyp355-plugin-task-switcher.md)
 - [plugin-contact-search](01kmh0dspar1gga0ahh1pyp352-plugin-contact-search.md)
 - [plan-further-plugins](01kmh0dspar1gga0ahh1pyp356-plan-further-plugins.md) `[discuss]`
