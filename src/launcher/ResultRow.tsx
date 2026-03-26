@@ -9,10 +9,11 @@
  * optional subtitle, and responds to mouse/keyboard selection.
  */
 
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import * as HeroIcons from "@heroicons/react/24/outline";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "../lib/cn";
+import { highlightText } from "../lib/highlightText";
 import type { ScoredEntry, EntryIcon } from "./types";
 
 // =========================================================
@@ -92,63 +93,6 @@ function EntryIconView({ icon }: { icon: EntryIcon | null }) {
       <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />
     </div>
   );
-}
-
-// =========================================================
-// Match Highlighting
-// =========================================================
-
-/**
- * Split text at matched character boundaries and wrap matched
- * runs in a highlighted span.
- *
- * Positions are character indices from nucleo. For ASCII text
- * these map 1:1 to JS string indices.
- */
-// TODO: For non-ASCII (emoji, CJK), nucleo returns grapheme
-// indices that may differ from JS string indices. Add a
-// conversion layer when needed.
-function highlightText(text: string, positions: number[]): ReactNode[] {
-  if (positions.length === 0) return [text];
-
-  const posSet = new Set(positions);
-  const segments: ReactNode[] = [];
-  let current = "";
-  let inMatch = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const isMatch = posSet.has(i);
-    if (isMatch !== inMatch) {
-      if (current) {
-        segments.push(
-          inMatch ? (
-            <span key={`m${i}`} className="text-accent font-semibold">
-              {current}
-            </span>
-          ) : (
-            <span key={`t${i}`}>{current}</span>
-          ),
-        );
-      }
-      current = "";
-      inMatch = isMatch;
-    }
-    current += text[i];
-  }
-
-  if (current) {
-    segments.push(
-      inMatch ? (
-        <span key="me" className="text-accent font-semibold">
-          {current}
-        </span>
-      ) : (
-        <span key="te">{current}</span>
-      ),
-    );
-  }
-
-  return segments;
 }
 
 // =========================================================

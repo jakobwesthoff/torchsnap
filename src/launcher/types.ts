@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import type { ReactNode } from "react";
+
 /**
  * TypeScript mirrors of the Rust search types.
  *
@@ -60,7 +62,7 @@ export interface ScoredEntry {
 
 export interface FooterHint {
   combo?: { modifiers: string[]; key: string };
-  label: string;
+  label: ReactNode;
 }
 
 export interface FooterState {

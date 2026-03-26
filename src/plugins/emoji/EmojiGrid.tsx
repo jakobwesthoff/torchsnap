@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/keybindings";
 import { cn } from "../../lib/cn";
+import { highlightText } from "../../lib/highlightText";
 import type { PluginViewProps } from "../types";
 import type { ScoredEntry } from "@torchsnap/types";
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./constants";
@@ -106,7 +107,15 @@ export default function EmojiGrid({
         label: "Copy to Clipboard",
       },
       hints: entry
-        ? [{ label: `${entry.title} · ${entry.subtitle ?? ""}` }]
+        ? [{
+            label: (
+              <>
+                {highlightText(entry.title, entry.titlePositions)}
+                {" · "}
+                {highlightText(entry.subtitle ?? "", entry.subtitlePositions)}
+              </>
+            ),
+          }]
         : [],
     });
   }, [selectedIndex, results, onFooterChange]);
