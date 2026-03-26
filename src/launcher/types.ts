@@ -77,6 +77,8 @@ export type SearchMessage =
       type: "catalogResults";
       entries: ScoredEntry[];
       /** Plugin ID when the plugin requested custom UI (ADR 0013). */
-      activePlugin: string | null;
+      customPluginView: string | null;
+      /** The prefix that triggered exclusive routing (e.g., ":"). */
+      matchedPrefix: string | null;
     }
   | { type: "done" };

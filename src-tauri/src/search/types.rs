@@ -202,6 +202,25 @@ pub struct ScoredEntry {
 // Channel Messages
 // =========================================================
 
+/// Result of a registry search — entries plus routing metadata.
+pub struct SearchResult {
+    pub entries: Vec<ScoredEntry>,
+    /// Plugin ID when a query plugin returned `SearchResponse::CustomUI`.
+    pub custom_plugin_view: Option<String>,
+    /// The prefix that triggered exclusive routing (e.g., `":"`).
+    pub matched_prefix: Option<String>,
+}
+
+impl SearchResult {
+    pub fn empty() -> Self {
+        Self {
+            entries: Vec::new(),
+            custom_plugin_view: None,
+            matched_prefix: None,
+        }
+    }
+}
+
 /// Messages streamed over a Tauri channel during a search.
 ///
 /// The frontend receives these progressively: `CatalogResults`
@@ -216,7 +235,11 @@ pub enum SearchMessage {
         /// this contains the plugin's ID so the frontend can mount
         /// the plugin's React component. `None` for standard list
         /// rendering.
-        active_plugin: Option<String>,
+        custom_plugin_view: Option<String>,
+        /// The prefix that triggered exclusive routing. Sent to the
+        /// frontend so the plugin component knows which prefix was
+        /// matched. `None` when no prefix routing occurred.
+        matched_prefix: Option<String>,
     },
     Done,
 }

@@ -6,7 +6,7 @@
  * Static map from plugin ID to React component.
  *
  * When the backend signals a plugin with custom UI (via
- * activePlugin in SearchMessage), the host looks up the component
+ * customPluginView in SearchMessage), the host looks up the component
  * here. Internal plugins register directly; this will be replaced
  * with dynamic resolution once plugin files and dynamic loading
  * are designed (see dynamic-plugin-component-registration todo).
