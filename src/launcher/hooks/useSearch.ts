@@ -21,11 +21,14 @@ import type { ScoredEntry, SearchMessage } from "../types";
 
 interface UseSearchResult {
   results: ScoredEntry[];
+  /** Plugin ID when the active plugin requested custom UI. */
+  activePlugin: string | null;
   loading: boolean;
 }
 
 export function useSearch(query: string): UseSearchResult {
   const [results, setResults] = useState<ScoredEntry[]>([]);
+  const [activePlugin, setActivePlugin] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
@@ -42,6 +45,7 @@ export function useSearch(query: string): UseSearchResult {
       switch (message.type) {
         case "catalogResults":
           setResults(message.entries);
+          setActivePlugin(message.activePlugin);
           break;
         case "done":
           setLoading(false);
@@ -52,5 +56,5 @@ export function useSearch(query: string): UseSearchResult {
     invoke("search", { query, onResults: channel });
   }, [query]);
 
-  return { results, loading };
+  return { results, activePlugin, loading };
 }
