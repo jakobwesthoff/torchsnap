@@ -5,17 +5,20 @@
 /**
  * Keyboard navigation for the launcher.
  *
- * Registers two groups of keybindings via `useKeyBindings`:
+ * Registers three groups of keybindings via `useKeyBindings`:
  *
- * 1. **Static bindings** — arrow keys, page up/down, enter (primary
- *    action), and escape. These never change.
+ * 1. **Global bindings** — always active regardless of whether a
+ *    plugin custom UI is mounted. Tab trap (prevent focus escape)
+ *    and Escape (clear query → dismiss). Plugin UIs can override
+ *    these at a higher layer.
  *
- * 2. **Dynamic action bindings** — derived from the currently selected
- *    entry's secondary actions. When the selection changes, the action
- *    keybindings are structurally different, so `useKeyBindings`
- *    automatically re-registers them. This is cheap because the
- *    keybinding engine uses refs internally — no React re-renders
- *    are triggered.
+ * 2. **Navigation bindings** — arrow keys, page up/down, enter.
+ *    Disabled when a plugin custom UI is active (`enabled=false`),
+ *    since the plugin handles its own navigation.
+ *
+ * 3. **Dynamic action bindings** — derived from the currently
+ *    selected entry's secondary actions. Also disabled when a
+ *    plugin is active.
  */
 
 import { useCallback, useMemo, type RefObject } from "react";
@@ -38,13 +41,13 @@ interface UseKeyboardNavigationParams {
   onExecute: (entry?: undefined, actionIndex?: number) => void;
   selectedActions: Action[];
   mouseActiveRef: RefObject<boolean>;
-  /** When false, all bindings are deregistered. Used when a plugin
-   *  custom UI takes over and handles its own keybindings. */
+  /** When false, navigation and action bindings are deregistered.
+   *  Global bindings (Tab trap, Escape) remain active. */
   enabled: boolean;
 }
 
-// All launcher navigation bindings live above LAYER.COMPONENT so they
-// take priority over any app-level bindings for the same keys.
+// All launcher bindings live above LAYER.COMPONENT so they take
+// priority over any app-level bindings for the same keys.
 const LAUNCHER_LAYER = LAYER.COMPONENT + 1;
 
 export function useKeyboardNavigation({
@@ -70,16 +73,57 @@ export function useKeyboardNavigation({
   );
 
   // =========================================================
-  // Static Bindings
+  // Global Bindings (always active)
   //
-  // Navigation and primary action — these never change.
+  // Tab trap prevents browser focus navigation from moving
+  // focus out of the search input. Escape clears the query
+  // first, dismisses the launcher when already empty. Plugin
+  // UIs can override these at a higher keybinding layer.
   // =========================================================
 
-  const staticBindings: KeyBindingDefinition[] = useMemo(
-    () =>
-      !enabled
-        ? []
-        : [
+  const globalBindings: KeyBindingDefinition[] = useMemo(
+    () => [
+      {
+        id: "launcher-tab-trap",
+        layer: LAUNCHER_LAYER,
+        order: 9,
+        handler: () => {},
+        keybindings: [
+          { combo: { modifiers: [], key: "Tab" }, allowInInput: true },
+          { combo: { modifiers: ["Shift"], key: "Tab" }, allowInInput: true },
+        ],
+      },
+      {
+        id: "launcher-escape",
+        layer: LAUNCHER_LAYER,
+        order: 10,
+        handler: () => {
+          if (query) {
+            setQuery("");
+          } else {
+            dismiss();
+          }
+        },
+        keybindings: [
+          { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
+        ],
+      },
+    ],
+    [query, setQuery, dismiss],
+  );
+
+  useKeyBindings(globalBindings);
+
+  // =========================================================
+  // Navigation Bindings (disabled when plugin UI is active)
+  //
+  // Arrow keys, page up/down, and Enter for primary action.
+  // =========================================================
+
+  const navigationBindings: KeyBindingDefinition[] = useMemo(() => {
+    if (!enabled) return [];
+
+    return [
       {
         id: "launcher-arrow-down",
         layer: LAUNCHER_LAYER,
@@ -125,52 +169,17 @@ export function useKeyboardNavigation({
           { combo: { modifiers: [], key: "Enter" }, allowInInput: true },
         ],
       },
-      {
-        // Prevent Tab from triggering browser focus navigation.
-        // The keybinding engine calls preventDefault on match,
-        // keeping focus in the search input. Future bindings can
-        // claim Tab at the same or higher layer for actual actions
-        // (e.g., command palette) — the engine's priority dispatch
-        // will route to those instead.
-        id: "launcher-tab-trap",
-        layer: LAUNCHER_LAYER,
-        order: 9,
-        handler: () => {},
-        keybindings: [
-          { combo: { modifiers: [], key: "Tab" }, allowInInput: true },
-          { combo: { modifiers: ["Shift"], key: "Tab" }, allowInInput: true },
-        ],
-      },
-      {
-        id: "launcher-escape",
-        layer: LAUNCHER_LAYER,
-        order: 10,
-        handler: () => {
-          // Clear the query first; only dismiss when already empty.
-          if (query) {
-            setQuery("");
-          } else {
-            dismiss();
-          }
-        },
-        keybindings: [
-          { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
-        ],
-      },
-    ],
-    [enabled, moveSelection, onExecute, query, setQuery, dismiss],
-  );
+    ];
+  }, [enabled, moveSelection, onExecute]);
 
-  useKeyBindings(staticBindings);
+  useKeyBindings(navigationBindings);
 
   // =========================================================
-  // Dynamic Action Bindings
+  // Dynamic Action Bindings (disabled when plugin UI is active)
   //
-  // Derived from the currently selected entry's actions.
-  // Secondary actions (index > 0) that declare a keybinding
-  // are registered here. When the selection changes, the
-  // keybinding definitions change structurally and
-  // `useKeyBindings` re-registers them automatically.
+  // Derived from the currently selected entry's secondary
+  // actions. When the selection changes, the definitions change
+  // structurally and `useKeyBindings` re-registers them.
   // =========================================================
 
   const actionBindings: KeyBindingDefinition[] = useMemo(() => {
