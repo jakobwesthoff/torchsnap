@@ -13,7 +13,10 @@
 // Currently abstracted:
 //   - LauncherPanel: window management (NSPanel vs. regular)
 //   - Tray: system tray icon, menu, and click behavior
+//   - AppDiscovery: installed application scanning
 // =========================================================
+
+pub mod app_discovery;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -21,9 +24,13 @@ mod macos;
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
 #[cfg(target_os = "macos")]
 pub use macos::MacosTray as PlatformTray;
+#[cfg(target_os = "macos")]
+pub use macos::MdfindDiscovery as PlatformAppDiscovery;
 
 #[cfg(not(target_os = "macos"))]
 mod fallback;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackDiscovery as PlatformAppDiscovery;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
 #[cfg(not(target_os = "macos"))]
