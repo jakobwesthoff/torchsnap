@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// to let the plugin control whether the launcher stays open.
 /// Serialized to the frontend so it can act on the decision.
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "PascalCase")]
 pub enum PostAction {
     /// Hide the launcher (default for most actions).
     Dismiss,
