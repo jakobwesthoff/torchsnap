@@ -13,6 +13,16 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  // Stable import paths for plugin SDK surface. Must be kept in
+  // sync with tsconfig.json paths.
+  resolve: {
+    alias: {
+      "@torchsnap/keybindings": resolve(__dirname, "src/keybindings"),
+      "@torchsnap/components": resolve(__dirname, "src/components"),
+      "@torchsnap/types": resolve(__dirname, "src/launcher/types"),
+    },
+  },
+
   build: {
     rollupOptions: {
       input: {

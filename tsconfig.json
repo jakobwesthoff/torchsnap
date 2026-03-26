@@ -18,7 +18,17 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Path aliases — stable import paths for plugin SDK surface.
+     * Internal aliases now, real packages later. Must be kept in
+     * sync with vite.config.ts resolve.alias. */
+    "baseUrl": ".",
+    "paths": {
+      "@torchsnap/keybindings": ["./src/keybindings"],
+      "@torchsnap/components": ["./src/components"],
+      "@torchsnap/types": ["./src/launcher/types"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
