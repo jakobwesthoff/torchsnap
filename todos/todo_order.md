@@ -26,7 +26,6 @@ surface. These inform all later plugin architecture decisions.
 
 Core systems that support everything else.
 
-- [result-list-virtualization](01kmk3qjzasa65mfbx238s2wxq-result-list-virtualization.md)
 - [keybind-system](01kmh12n6r0mq94rwav32eczdn-keybind-system.md)
 - [switch-to-nucleo-async-worker](01kmje4d33dgmnrz4xsg3b2j95-switch-to-nucleo-async-worker.md)
 - [github-actions-ci](01kmh1wkmsrenpk98dbkhcq3cc-github-actions-ci.md)
