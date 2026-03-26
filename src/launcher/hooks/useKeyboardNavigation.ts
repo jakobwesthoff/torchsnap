@@ -26,6 +26,7 @@ import {
   type ModifierKey,
 } from "../../keybindings";
 import type { Action } from "../types";
+import { PAGE_SIZE } from "../constants";
 
 interface UseKeyboardNavigationParams {
   dismiss: () => void;
@@ -36,10 +37,6 @@ interface UseKeyboardNavigationParams {
   selectedActions: Action[];
   mouseActiveRef: RefObject<boolean>;
 }
-
-// Approximate number of items visible at once. Used as the jump
-// distance for PageUp/PageDown.
-const PAGE_SIZE = 8;
 
 // All launcher navigation bindings live above LAYER.COMPONENT so they
 // take priority over any app-level bindings for the same keys.
