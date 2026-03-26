@@ -17,6 +17,7 @@ import {
   RocketLaunchIcon,
   CommandLineIcon,
 } from "@heroicons/react/24/outline";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "../lib/cn";
 import type { ScoredEntry, EntryIcon } from "./types";
 
@@ -38,27 +39,51 @@ const HERO_ICON_MAP: Record<
 
 function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   if (!icon) {
-    // Fallback icon when no icon is specified.
-    return <CommandLineIcon className="h-5 w-5 text-text-muted" />;
+    return (
+      <div className="flex h-9 w-9 items-center justify-center">
+        <CommandLineIcon className="h-7 w-7 text-text-muted" />
+      </div>
+    );
   }
 
   if (icon.type === "heroIcon") {
     const Icon = HERO_ICON_MAP[icon.value] ?? CommandLineIcon;
-    return <Icon className="h-5 w-5 text-text-secondary" />;
+    return (
+      <div className="flex h-9 w-9 items-center justify-center">
+        <Icon className="h-7 w-7 text-text-secondary" />
+      </div>
+    );
   }
 
   if (icon.type === "dataUrl") {
     return (
+      <div className="flex h-9 w-9 items-center justify-center">
+        <img
+          src={icon.value}
+          alt=""
+          className="h-7 w-7"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  if (icon.type === "assetIcon") {
+    return (
       <img
-        src={icon.value}
+        src={convertFileSrc(icon.value)}
         alt=""
-        className="h-5 w-5"
+        className="h-9 w-9"
         draggable={false}
       />
     );
   }
 
-  return <CommandLineIcon className="h-5 w-5 text-text-muted" />;
+  return (
+    <div className="flex h-9 w-9 items-center justify-center">
+      <CommandLineIcon className="h-7 w-7 text-text-muted" />
+    </div>
+  );
 }
 
 // =========================================================
@@ -140,7 +165,7 @@ export function ResultRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-5 py-2.5 cursor-default",
+        "flex items-center gap-3 pl-3 pr-5 py-2.5 cursor-default",
         selected && "bg-accent/10",
       )}
       onMouseEnter={() => {
