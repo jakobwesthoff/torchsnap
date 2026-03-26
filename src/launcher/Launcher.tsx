@@ -62,7 +62,7 @@ export function Launcher() {
         actionId: action.id,
       });
 
-      if (postAction === "dismiss") {
+      if (postAction === "Dismiss") {
         dismiss();
       }
     },
