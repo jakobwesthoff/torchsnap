@@ -43,14 +43,8 @@ struct EmojibaseEntry {
     label: String,
     #[serde(default)]
     tags: Vec<String>,
-    // Intentionally unused — deserialized for potential future
-    // grouping/filtering but not read currently.
-    #[serde(default)]
-    #[allow(dead_code)]
-    group: u32,
-    #[serde(default)]
-    #[allow(dead_code)]
-    order: u32,
+    group: Option<u32>,
+    order: Option<u32>,
 }
 
 /// Emojibase shortcode files map hexcode → string or array of strings.
@@ -85,9 +79,12 @@ struct EmojiData {
     shortcodes: Vec<String>,
     /// Search keywords/tags from emojibase.
     tags: Vec<String>,
-    /// Sort key for stable ordering when scores are equal or absent.
-    #[allow(dead_code)]
-    order: u32,
+    /// Unicode CLDR group (smileys=0, people=1, … flags=8).
+    /// `None` for entries outside any group (e.g., regional indicators).
+    group: Option<u32>,
+    /// Sort key within the group for stable ordering.
+    /// `None` for entries without a defined position.
+    order: Option<u32>,
 }
 
 // =========================================================
@@ -158,11 +155,11 @@ impl EmojiPickerPlugin {
             }
         }
 
-        // Convert the hexcode in emoji data to the format used as
-        // shortcode key. Emojibase `data.json` doesn't include
-        // hexcode directly in a convenient form, but we can derive
-        // it from the emoji's Unicode codepoints.
-        raw_entries
+        // Convert the raw emojibase entries, then sort by (group, order)
+        // so browse order matches the standard Unicode CLDR grouping
+        // (smileys first, flags last). Without this, emojibase's raw
+        // array order puts regional indicator letters at the top.
+        let mut data: Vec<EmojiData> = raw_entries
             .into_iter()
             .map(|entry| {
                 let hexcode = entry
@@ -188,10 +185,19 @@ impl EmojiPickerPlugin {
                     label: entry.label,
                     shortcodes,
                     tags: entry.tags,
+                    group: entry.group,
                     order: entry.order,
                 }
             })
-            .collect()
+            .collect();
+
+        // Entries without a group (e.g., regional indicator letters)
+        // sort last. Within grouped entries, sort by (group, order).
+        data.sort_by_key(|e| match (e.group, e.order) {
+            (Some(g), Some(o)) => (0, g, o),
+            _ => (1, 0, 0),
+        });
+        data
     }
 }
 
