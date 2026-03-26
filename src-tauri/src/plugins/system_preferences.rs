@@ -65,15 +65,11 @@ fn cache_pane_icons(
     for pane in panes.iter_mut() {
         let key = IconCacheKey::new(&pane.id);
 
-        let icon_source = pane.icon_source.clone();
         if let Some(path) = icon_cache.ensure_icon(
             "system-preferences",
             &key,
             None, // System icons don't change between OS updates.
-            || match icon_source.as_deref() {
-                Some(source) => discovery.render_icon(source),
-                None => Ok(None),
-            },
+            || discovery.icon(pane),
         ) {
             pane.icon_path = Some(path);
         }

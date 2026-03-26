@@ -12,7 +12,7 @@
 // pick up newly installed or removed applications without
 // blocking the search path.
 //
-// Icons are extracted via `AppDiscovery::extract_icon` and
+// Icons are extracted via `AppDiscovery::icon` and
 // cached on disk as WebP. The `IconCache` handles mtime-based
 // invalidation and orphan cleanup.
 //
@@ -134,7 +134,7 @@ fn extract_icons(
             "app-launcher",
             &key,
             source_mtime,
-            || discovery.extract_icon(app),
+            || discovery.icon(app),
         ) {
             app.icon_path = Some(path);
         }

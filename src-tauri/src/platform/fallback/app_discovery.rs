@@ -20,7 +20,7 @@ impl AppDiscovery for FallbackDiscovery {
         Ok(Vec::new())
     }
 
-    fn extract_icon(
+    fn icon(
         &self,
         _app: &DiscoveredApp,
     ) -> anyhow::Result<Option<image::DynamicImage>> {
