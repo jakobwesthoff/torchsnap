@@ -19,6 +19,7 @@
 
 pub mod app_discovery;
 pub mod icon_extraction;
+pub mod settings_discovery;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -26,6 +27,8 @@ mod macos;
 pub use macos::MacosIconExtractor as PlatformIconExtractor;
 #[cfg(target_os = "macos")]
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
+#[cfg(target_os = "macos")]
+pub use macos::MacosSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(target_os = "macos")]
 pub use macos::MacosTray as PlatformTray;
 #[cfg(target_os = "macos")]
@@ -39,6 +42,8 @@ pub use fallback::FallbackDiscovery as PlatformAppDiscovery;
 pub use fallback::FallbackIconExtractor as PlatformIconExtractor;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackTray as PlatformTray;
 

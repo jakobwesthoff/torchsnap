@@ -5,9 +5,11 @@
 mod app_discovery;
 mod icon_extraction;
 mod launcher_panel;
+mod settings_discovery;
 mod tray;
 
 pub use app_discovery::FallbackDiscovery;
 pub use icon_extraction::FallbackIconExtractor;
 pub use launcher_panel::FallbackLauncherPanel;
+pub use settings_discovery::FallbackSettingsDiscovery;
 pub use tray::FallbackTray;
