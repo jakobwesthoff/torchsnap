@@ -14,7 +14,7 @@ use anyhow::Context;
 use tauri::Emitter;
 
 use super::CatalogPlugin;
-use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon};
+use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 pub struct BuiltInCommandsPlugin;
 
@@ -74,7 +74,7 @@ impl CatalogPlugin for BuiltInCommandsPlugin {
         entry_id: &str,
         _action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PostAction> {
         match entry_id {
             "quit" => {
                 app.exit(0);
@@ -88,6 +88,6 @@ impl CatalogPlugin for BuiltInCommandsPlugin {
             }
             other => anyhow::bail!("unknown built-in command entry: {other}"),
         }
-        Ok(())
+        Ok(PostAction::Dismiss)
     }
 }

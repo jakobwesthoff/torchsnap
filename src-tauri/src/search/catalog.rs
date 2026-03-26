@@ -18,7 +18,7 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
-use super::types::{ActionId, ScoredEntry};
+use super::types::{ActionId, PostAction, ScoredEntry};
 use crate::plugins::{CatalogPlugin, QueryPlugin};
 
 use std::sync::Arc;
@@ -221,13 +221,15 @@ impl CatalogRegistry {
     /// Execute an action on an entry, routing to the owning plugin.
     ///
     /// Searches both catalog and query plugins by source ID.
+    /// Returns the plugin's `PostAction` so the caller can decide
+    /// whether to dismiss the launcher.
     pub fn execute(
         &self,
         source: &str,
         entry_id: &str,
         action_id: &ActionId,
         app: &tauri::AppHandle,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<PostAction> {
         // Check catalog plugins first.
         if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
             return plugin.execute(entry_id, action_id, app);

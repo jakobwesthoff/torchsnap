@@ -13,6 +13,25 @@
 use serde::{Deserialize, Serialize};
 
 // =========================================================
+// Post-Action Behavior
+// =========================================================
+
+/// What the launcher should do after executing a plugin action.
+///
+/// Returned by `CatalogPlugin::execute()` and `QueryPlugin::execute()`
+/// to let the plugin control whether the launcher stays open.
+/// Serialized to the frontend so it can act on the decision.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PostAction {
+    /// Hide the launcher (default for most actions).
+    Dismiss,
+    /// Keep the launcher open (e.g., for multi-select workflows).
+    #[allow(dead_code)]
+    KeepOpen,
+}
+
+// =========================================================
 // Action Types
 // =========================================================
 

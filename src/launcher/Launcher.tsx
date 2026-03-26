@@ -49,20 +49,24 @@ export function Launcher() {
   // =========================================================
 
   const handleExecute = useCallback(
-    (entry?: ScoredEntry, actionIndex = 0) => {
+    async (entry?: ScoredEntry, actionIndex = 0) => {
       const target = entry ?? results[selectedIndex];
       if (!target || target.actions.length === 0) return;
 
       const action = target.actions[actionIndex];
       if (!action) return;
 
-      invoke("execute_action", {
+      const postAction = await invoke<string>("execute_action", {
         source: target.source,
         entryId: target.id,
         actionId: action.id,
       });
+
+      if (postAction === "dismiss") {
+        dismiss();
+      }
     },
-    [results, selectedIndex],
+    [results, selectedIndex, dismiss],
   );
 
   // =========================================================
