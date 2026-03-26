@@ -5,19 +5,27 @@
 // =========================================================
 // Plugin System
 //
-// Plugins provide entries to the launcher's search system.
-// Currently only catalog plugins are supported — they provide
-// a finite list of entries that the host filters via nucleo.
-// Query plugins (that handle their own filtering) will follow.
+// Two plugin traits serve different search modes (ADR 0012):
 //
-// The trait is structured so it can later become the boundary
-// for a WASM plugin interface.
+// - CatalogPlugin: provides a finite entry list. The host
+//   filters it with nucleo. Never sees the query.
+// - QueryPlugin: receives the raw query and returns pre-scored
+//   results. Optionally registers prefixes for exclusive
+//   routing (e.g., ":" for emoji).
+//
+// Both traits are structured so they can later become the
+// boundary for a WASM plugin interface.
 // =========================================================
 
 pub mod app_launcher;
 pub mod commands;
+pub mod emoji;
 
-use crate::search::types::{ActionId, CatalogEntry};
+use crate::search::types::{ActionId, CatalogEntry, QueryResult};
+
+// =========================================================
+// CatalogPlugin
+// =========================================================
 
 /// A plugin that provides a static catalog of entries.
 ///
@@ -55,6 +63,66 @@ pub trait CatalogPlugin: Send + Sync {
     /// trivially cheap. Plugins with dynamic content (e.g. if
     /// settings change) can rebuild the list on each call.
     fn entries(&self) -> Vec<CatalogEntry>;
+
+    /// Execute an action on an entry owned by this plugin.
+    fn execute(
+        &self,
+        entry_id: &str,
+        action_id: &ActionId,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<()>;
+}
+
+// =========================================================
+// QueryPlugin
+// =========================================================
+
+/// A plugin that handles its own search logic.
+///
+/// Unlike `CatalogPlugin`, a query plugin receives the raw query
+/// string and returns pre-scored results. This is useful for
+/// plugins that need custom matching (e.g., two-pass shortcode +
+/// keyword search for emoji) or that generate results dynamically.
+///
+/// ## Prefix routing (ADR 0012)
+///
+/// Plugins may register one or more prefixes via `prefixes()`.
+/// When the user's query starts with a registered prefix:
+///
+/// - Only the owning plugin is called (exclusive routing).
+/// - Catalog plugins and prefix-less query plugins are skipped.
+/// - The prefix is stripped before passing the query.
+/// - `matched_prefix` tells the plugin which prefix triggered.
+///
+/// Plugins with no prefixes run on every query alongside catalog
+/// plugins.
+///
+/// ## Lifecycle
+///
+/// Same as `CatalogPlugin`: construct → register → `setup()` →
+/// `search()` on every keystroke → `execute()` on action.
+pub trait QueryPlugin: Send + Sync {
+    /// Unique identifier for this plugin.
+    fn id(&self) -> &str;
+
+    /// Prefixes that activate exclusive routing for this plugin.
+    ///
+    /// Return an empty slice to receive every query (always-on).
+    /// Prefixes can be multi-character (e.g., `":"`, `"g "`,
+    /// `"http://"`). Longest prefix wins when multiple match.
+    fn prefixes(&self) -> &[&str] {
+        &[]
+    }
+
+    /// One-time initialization. See `CatalogPlugin::setup()`.
+    fn setup(&self) {}
+
+    /// Search for results matching the given query.
+    ///
+    /// `matched_prefix` is `Some(prefix)` when a registered prefix
+    /// triggered this call (query is already stripped), or `None`
+    /// when running as an always-on plugin.
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Vec<QueryResult>;
 
     /// Execute an action on an entry owned by this plugin.
     fn execute(

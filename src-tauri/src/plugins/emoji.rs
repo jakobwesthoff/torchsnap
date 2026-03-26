@@ -1,0 +1,373 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// =========================================================
+// Emoji Picker Plugin
+//
+// Activated by the ":" prefix. Searches emoji by shortcode and
+// keyword with two-pass nucleo matching: shortcode matches rank
+// above keyword matches. Copies the selected emoji to the
+// clipboard.
+//
+// Data is sourced from emojibase (npm package) and embedded at
+// compile time via include_str!(). Shortcodes come from both
+// the GitHub and emojibase preset files for broad coverage.
+// =========================================================
+
+use std::collections::HashMap;
+use std::sync::RwLock;
+
+use anyhow::Context;
+use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
+use serde::Deserialize;
+use tauri_plugin_clipboard_manager::ClipboardExt;
+
+use super::QueryPlugin;
+use crate::search::types::{Action, ActionId, ActionKeybinding, EntryIcon, QueryResult};
+
+// =========================================================
+// Emojibase Data Deserialization
+// =========================================================
+
+/// A single entry from the emojibase `en/data.json` full format.
+///
+/// We intentionally omit fields we don't need (skins, version,
+/// hexcode, text, type, subgroup) — serde skips them silently.
+#[derive(Deserialize)]
+struct EmojibaseEntry {
+    emoji: String,
+    label: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    // Intentionally unused — deserialized for potential future
+    // grouping/filtering but not read currently.
+    #[allow(dead_code)]
+    group: u32,
+    #[serde(default)]
+    #[allow(dead_code)]
+    order: u32,
+}
+
+/// Emojibase shortcode files map hexcode → string or array of strings.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ShortcodeValue {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl ShortcodeValue {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            ShortcodeValue::Single(s) => vec![s],
+            ShortcodeValue::Multiple(v) => v,
+        }
+    }
+}
+
+// =========================================================
+// Internal Emoji Data
+// =========================================================
+
+/// Processed emoji entry ready for search.
+struct EmojiData {
+    /// The Unicode emoji character(s).
+    emoji: String,
+    /// Descriptive label (e.g., "grinning face").
+    label: String,
+    /// Shortcodes from github + emojibase presets (e.g., "rocket").
+    /// Stored without the surrounding colons.
+    shortcodes: Vec<String>,
+    /// Search keywords/tags from emojibase.
+    tags: Vec<String>,
+    /// Sort key for stable ordering when scores are equal or absent.
+    #[allow(dead_code)]
+    order: u32,
+}
+
+// =========================================================
+// Embedded Data
+// =========================================================
+
+const EMOJI_DATA_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/emoji-data.json"));
+const SHORTCODES_GITHUB_JSON: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/emoji-shortcodes-github.json"));
+const SHORTCODES_EMOJIBASE_JSON: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/emoji-shortcodes-emojibase.json"));
+
+/// Number of results to show when the query is empty (just ":"
+/// typed). Acts as a browse preview.
+// TODO: Replace with frecency-based ordering once the ranking
+// system is built (see emoji-frecency todo).
+const EMPTY_QUERY_LIMIT: usize = 50;
+
+/// Score bonus added to shortcode matches so they always rank
+/// above keyword-only matches for the same query.
+const SHORTCODE_SCORE_BONUS: u32 = 100;
+
+// =========================================================
+// Plugin Implementation
+// =========================================================
+
+pub struct EmojiPickerPlugin {
+    entries: RwLock<Vec<EmojiData>>,
+}
+
+impl EmojiPickerPlugin {
+    pub fn new() -> Self {
+        Self {
+            entries: RwLock::new(Vec::new()),
+        }
+    }
+
+    /// Parse the embedded emojibase JSON and merge shortcodes from
+    /// both GitHub and emojibase preset files.
+    fn parse_emoji_data() -> Vec<EmojiData> {
+        let raw_entries: Vec<EmojibaseEntry> =
+            serde_json::from_str(EMOJI_DATA_JSON).expect("parse embedded emoji data JSON");
+
+        // Shortcode files are keyed by hexcode (e.g., "1F680").
+        let github_shortcodes: HashMap<String, ShortcodeValue> =
+            serde_json::from_str(SHORTCODES_GITHUB_JSON)
+                .expect("parse embedded GitHub shortcodes JSON");
+        let emojibase_shortcodes: HashMap<String, ShortcodeValue> =
+            serde_json::from_str(SHORTCODES_EMOJIBASE_JSON)
+                .expect("parse embedded emojibase shortcodes JSON");
+
+        // Build a hexcode → merged shortcode list map. GitHub
+        // shortcodes come first (more recognizable), then emojibase
+        // ones that aren't duplicates.
+        let mut shortcode_map: HashMap<String, Vec<String>> = HashMap::new();
+        for (hexcode, value) in github_shortcodes {
+            shortcode_map
+                .entry(hexcode)
+                .or_default()
+                .extend(value.into_vec());
+        }
+        for (hexcode, value) in emojibase_shortcodes {
+            let existing = shortcode_map.entry(hexcode).or_default();
+            for sc in value.into_vec() {
+                if !existing.contains(&sc) {
+                    existing.push(sc);
+                }
+            }
+        }
+
+        // Convert the hexcode in emoji data to the format used as
+        // shortcode key. Emojibase `data.json` doesn't include
+        // hexcode directly in a convenient form, but we can derive
+        // it from the emoji's Unicode codepoints.
+        raw_entries
+            .into_iter()
+            .map(|entry| {
+                let hexcode = entry
+                    .emoji
+                    .chars()
+                    .map(|c| format!("{:X}", c as u32))
+                    // Join with hyphen for multi-codepoint sequences
+                    // (e.g., flags, ZWJ sequences).
+                    .collect::<Vec<_>>()
+                    .join("-");
+
+                // Strip variation selectors (FE0F) from the key to
+                // match emojibase shortcode file conventions.
+                let hexcode_stripped = hexcode.replace("-FE0F", "");
+
+                let shortcodes = shortcode_map
+                    .remove(&hexcode)
+                    .or_else(|| shortcode_map.remove(&hexcode_stripped))
+                    .unwrap_or_default();
+
+                EmojiData {
+                    emoji: entry.emoji,
+                    label: entry.label,
+                    shortcodes,
+                    tags: entry.tags,
+                    order: entry.order,
+                }
+            })
+            .collect()
+    }
+}
+
+impl QueryPlugin for EmojiPickerPlugin {
+    fn id(&self) -> &str {
+        "emoji-picker"
+    }
+
+    fn prefixes(&self) -> &[&str] {
+        &[":"]
+    }
+
+    fn setup(&self) {
+        let data = Self::parse_emoji_data();
+        let mut entries = self.entries.write().expect("emoji entries write lock");
+        *entries = data;
+    }
+
+    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> Vec<QueryResult> {
+        let entries = self.entries.read().expect("emoji entries read lock");
+
+        if entries.is_empty() {
+            // setup() hasn't completed yet.
+            return Vec::new();
+        }
+
+        // -------------------------------------------------------
+        // Empty query (just ":" typed): show the first N emoji by
+        // their natural emojibase order as a browse preview.
+        // -------------------------------------------------------
+        if query.is_empty() {
+            // TODO: Replace with frecency-based ordering once the
+            // ranking system is built (see emoji-frecency todo).
+            return entries
+                .iter()
+                .filter(|e| !e.shortcodes.is_empty())
+                .take(EMPTY_QUERY_LIMIT)
+                .map(|e| emoji_to_query_result(e, 0, vec![]))
+                .collect();
+        }
+
+        // -------------------------------------------------------
+        // Two-pass nucleo matching (ADR 0012 context):
+        //   Pass 1: shortcodes (with score bonus)
+        //   Pass 2: keywords/tags (entries not yet matched)
+        // -------------------------------------------------------
+        let mut matcher = Matcher::new(Config::DEFAULT);
+        let pattern = Pattern::parse(query, CaseMatching::Smart, Normalization::Smart);
+        let mut char_buf = Vec::new();
+        let mut indices_buf = Vec::new();
+
+        // Track which entries matched in pass 1 so we skip them
+        // in pass 2. Key: index into `entries`.
+        let mut matched: HashMap<usize, (u32, Vec<u32>, usize)> = HashMap::new();
+
+        // Pass 1: shortcode matching.
+        for (idx, entry) in entries.iter().enumerate() {
+            let mut best_score: Option<u32> = None;
+            let mut best_positions = Vec::new();
+            let mut best_shortcode_idx = 0;
+
+            for (sc_idx, shortcode) in entry.shortcodes.iter().enumerate() {
+                indices_buf.clear();
+                let haystack = Utf32Str::new(shortcode, &mut char_buf);
+                if let Some(score) = pattern.indices(haystack, &mut matcher, &mut indices_buf) {
+                    let boosted = score + SHORTCODE_SCORE_BONUS;
+                    if best_score.is_none_or(|s| boosted > s) {
+                        best_score = Some(boosted);
+                        best_positions = indices_buf.clone();
+                        best_shortcode_idx = sc_idx;
+                    }
+                }
+            }
+
+            if let Some(score) = best_score {
+                matched.insert(idx, (score, best_positions, best_shortcode_idx));
+            }
+        }
+
+        // Pass 2: keyword/tag matching for entries not matched in pass 1.
+        for (idx, entry) in entries.iter().enumerate() {
+            if matched.contains_key(&idx) {
+                continue;
+            }
+
+            // Build a combined haystack from label + tags.
+            let combined = if entry.tags.is_empty() {
+                entry.label.clone()
+            } else {
+                format!("{} {}", entry.label, entry.tags.join(" "))
+            };
+
+            let haystack = Utf32Str::new(&combined, &mut char_buf);
+            if let Some(score) = pattern.score(haystack, &mut matcher) {
+                // No title positions for keyword matches — we show
+                // the shortcode as title but matched against keywords.
+                matched.insert(idx, (score, vec![], 0));
+            }
+        }
+
+        // -------------------------------------------------------
+        // Build results, sort by score descending.
+        // -------------------------------------------------------
+        let mut results: Vec<QueryResult> = matched
+            .into_iter()
+            .filter_map(|(idx, (score, positions, sc_idx))| {
+                let entry = &entries[idx];
+
+                // Skip entries without shortcodes — they can't be
+                // displayed meaningfully (no title to show).
+                if entry.shortcodes.is_empty() {
+                    return None;
+                }
+
+                // Use the best-matching shortcode for the title, or
+                // fall back to the first one for keyword matches.
+                let display_shortcode = &entry.shortcodes[sc_idx];
+
+                // Adjust positions to account for the ":" prefix we
+                // add to the displayed shortcode.
+                let adjusted_positions: Vec<u32> = positions.iter().map(|p| p + 1).collect();
+
+                Some(QueryResult {
+                    id: entry.emoji.clone(),
+                    title: format!(":{display_shortcode}:"),
+                    subtitle: Some(entry.label.clone()),
+                    icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
+                    score,
+                    title_positions: adjusted_positions,
+                    subtitle_positions: vec![],
+                    actions: vec![Action {
+                        id: ActionId::Copy,
+                        label: "Copy to Clipboard".into(),
+                        keybinding: Some(ActionKeybinding {
+                            modifiers: vec![],
+                            key: "Enter".into(),
+                        }),
+                    }],
+                })
+            })
+            .collect();
+
+        results.sort_by(|a, b| b.score.cmp(&a.score));
+        results
+    }
+
+    fn execute(
+        &self,
+        entry_id: &str,
+        _action_id: &ActionId,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<()> {
+        // entry_id is the emoji character itself.
+        app.clipboard()
+            .write_text(entry_id)
+            .context("write emoji to clipboard")?;
+        Ok(())
+    }
+}
+
+/// Convert an `EmojiData` entry to a `QueryResult` for display.
+fn emoji_to_query_result(entry: &EmojiData, score: u32, title_positions: Vec<u32>) -> QueryResult {
+    let display_shortcode = entry.shortcodes.first().map(|s| s.as_str()).unwrap_or("");
+
+    QueryResult {
+        id: entry.emoji.clone(),
+        title: format!(":{display_shortcode}:"),
+        subtitle: Some(entry.label.clone()),
+        icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
+        score,
+        title_positions,
+        subtitle_positions: vec![],
+        actions: vec![Action {
+            id: ActionId::Copy,
+            label: "Copy to Clipboard".into(),
+            keybinding: Some(ActionKeybinding {
+                modifiers: vec![],
+                key: "Enter".into(),
+            }),
+        }],
+    }
+}

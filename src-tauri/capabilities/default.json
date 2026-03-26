@@ -17,6 +17,7 @@
     "global-shortcut:allow-unregister",
     "process:default",
     "core:app:allow-app-hide",
-    "core:app:allow-app-show"
+    "core:app:allow-app-show",
+    "clipboard-manager:allow-write-text"
   ]
 }

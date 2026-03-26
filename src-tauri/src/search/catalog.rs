@@ -3,18 +3,23 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Catalog Registry
+// Plugin Registry
 //
-// Holds all registered catalog plugins and provides the core
-// search function: run nucleo fuzzy matching against every
-// catalog entry, return scored results sorted by relevance.
+// Holds all registered plugins (both catalog and query) and
+// provides the unified search function with prefix-based
+// routing (ADR 0012):
+//
+// - No prefix match → nucleo over catalog entries + always-on
+//   query plugins
+// - Prefix match → exclusive routing to the owning query plugin,
+//   catalog plugins skipped entirely
 // =========================================================
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 use super::types::{ActionId, ScoredEntry};
-use crate::plugins::CatalogPlugin;
+use crate::plugins::{CatalogPlugin, QueryPlugin};
 
 use std::sync::Arc;
 use std::thread;
@@ -22,18 +27,24 @@ use std::thread;
 use rayon::prelude::*;
 
 pub struct CatalogRegistry {
-    plugins: Vec<Arc<dyn CatalogPlugin>>,
+    catalog_plugins: Vec<Arc<dyn CatalogPlugin>>,
+    query_plugins: Vec<Arc<dyn QueryPlugin>>,
 }
 
 impl CatalogRegistry {
     pub fn new() -> Self {
         Self {
-            plugins: Vec::new(),
+            catalog_plugins: Vec::new(),
+            query_plugins: Vec::new(),
         }
     }
 
     pub fn register(&mut self, plugin: Box<dyn CatalogPlugin>) {
-        self.plugins.push(Arc::from(plugin));
+        self.catalog_plugins.push(Arc::from(plugin));
+    }
+
+    pub fn register_query(&mut self, plugin: Box<dyn QueryPlugin>) {
+        self.query_plugins.push(Arc::from(plugin));
     }
 
     /// Call `setup()` on every registered plugin in parallel.
@@ -42,10 +53,21 @@ impl CatalogRegistry {
     /// one plugin finishes, the next one starts. Returns immediately;
     /// a coordinator thread manages the pool in the background.
     ///
-    /// Plugins must handle `entries()` being called before `setup()`
-    /// completes (e.g., return an empty list).
+    /// Both catalog and query plugins are set up together in the
+    /// same pool.
     pub fn setup_all(&self) {
-        let plugins: Vec<_> = self.plugins.iter().map(Arc::clone).collect();
+        // Collect setup closures from both plugin types into a single
+        // vec so rayon can schedule them as a unified work pool.
+        let mut setup_fns: Vec<Box<dyn FnOnce() + Send>> = Vec::new();
+
+        for p in &self.catalog_plugins {
+            let p = Arc::clone(p);
+            setup_fns.push(Box::new(move || p.setup()));
+        }
+        for p in &self.query_plugins {
+            let p = Arc::clone(p);
+            setup_fns.push(Box::new(move || p.setup()));
+        }
 
         thread::spawn(move || {
             // Use 70% of available cores for plugin setup, leaving
@@ -63,18 +85,18 @@ impl CatalogRegistry {
                 .expect("rayon setup thread pool");
 
             pool.install(|| {
-                plugins.par_iter().for_each(|plugin| {
-                    plugin.setup();
-                });
+                setup_fns.into_par_iter().for_each(|f| f());
             });
         });
     }
 
-    /// Search all catalog entries against the given query.
+    /// Search all plugins against the given query.
     ///
-    /// Empty query returns all entries with score 0 (home screen).
-    /// Non-empty query uses nucleo fuzzy matching on the title and
-    /// keywords, returning only entries that match.
+    /// Routing follows ADR 0012:
+    /// - If the query starts with a registered prefix → exclusive
+    ///   routing to that query plugin only
+    /// - Otherwise → nucleo over catalog entries + always-on query
+    ///   plugins, merged by score
     pub fn search(&self, query: &str) -> Vec<ScoredEntry> {
         // TODO: Empty query could show recent/pinned items in the future.
         // For now, return nothing — the launcher should feel clean on open.
@@ -82,6 +104,63 @@ impl CatalogRegistry {
             return Vec::new();
         }
 
+        // -------------------------------------------------------
+        // Prefix routing: check if the query matches a registered
+        // prefix. Longest match wins to handle overlapping prefixes
+        // (e.g., ":" vs ":e" — the longer one takes priority).
+        // -------------------------------------------------------
+        if let Some((plugin, prefix)) = self.find_prefix_match(query) {
+            let stripped = &query[prefix.len()..];
+            let source = plugin.id().to_string();
+            return plugin
+                .search(stripped, Some(prefix))
+                .into_iter()
+                .map(|r| r.into_scored_entry(source.clone()))
+                .collect();
+        }
+
+        // -------------------------------------------------------
+        // No prefix match: run catalog plugins (nucleo) + always-on
+        // query plugins, merge results.
+        // -------------------------------------------------------
+        let mut results = self.search_catalogs(query);
+
+        // Always-on query plugins (no prefixes registered).
+        for plugin in &self.query_plugins {
+            if !plugin.prefixes().is_empty() {
+                continue;
+            }
+            let source = plugin.id().to_string();
+            for result in plugin.search(query, None) {
+                results.push(result.into_scored_entry(source.clone()));
+            }
+        }
+
+        results.sort_by(|a, b| b.score.cmp(&a.score));
+        results
+    }
+
+    /// Find the query plugin whose prefix matches the start of the
+    /// query. Returns the plugin and the matched prefix string.
+    /// Longest prefix wins; first plugin wins on ties.
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn QueryPlugin>, &'a str)> {
+        let mut best: Option<(&Arc<dyn QueryPlugin>, &str)> = None;
+        let mut best_len = 0;
+
+        for plugin in &self.query_plugins {
+            for &prefix in plugin.prefixes() {
+                if prefix.len() > best_len && query.starts_with(prefix) {
+                    best = Some((plugin, prefix));
+                    best_len = prefix.len();
+                }
+            }
+        }
+
+        best
+    }
+
+    /// Run nucleo fuzzy matching across all catalog plugin entries.
+    fn search_catalogs(&self, query: &str) -> Vec<ScoredEntry> {
         // Matcher allocates ~135KB of scratch space. Creating it per
         // search call is acceptable for small catalogs (sub-ms). When
         // catalogs grow large, switch to `Nucleo<T>` async worker.
@@ -92,25 +171,21 @@ impl CatalogRegistry {
         let mut char_buf = Vec::new();
         let mut title_indices = Vec::new();
 
-        for plugin in &self.plugins {
+        for plugin in &self.catalog_plugins {
             let source = plugin.id().to_string();
 
             for entry in plugin.entries() {
-                // -------------------------------------------------------
                 // Match against title — this produces the highlight
                 // positions shown in the UI.
-                // -------------------------------------------------------
                 title_indices.clear();
                 let title_haystack = Utf32Str::new(&entry.title, &mut char_buf);
                 let title_score = pattern.indices(title_haystack, &mut matcher, &mut title_indices);
 
-                // -------------------------------------------------------
                 // Match against keywords as a fallback. If the title
                 // didn't match, try "{title} {keywords}" to catch
                 // aliases like "exit" matching "Quit Torchsnap".
                 // We don't track keyword positions for highlighting —
                 // only the title positions matter for display.
-                // -------------------------------------------------------
                 let score = match title_score {
                     Some(s) => Some(s),
                     None if !entry.keywords.is_empty() => {
@@ -140,11 +215,12 @@ impl CatalogRegistry {
             }
         }
 
-        results.sort_by(|a, b| b.score.cmp(&a.score));
         results
     }
 
     /// Execute an action on an entry, routing to the owning plugin.
+    ///
+    /// Searches both catalog and query plugins by source ID.
     pub fn execute(
         &self,
         source: &str,
@@ -152,23 +228,27 @@ impl CatalogRegistry {
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<()> {
-        let plugin = self
-            .plugins
-            .iter()
-            .find(|p| p.id() == source)
-            .ok_or_else(|| anyhow::anyhow!("unknown plugin source: {source}"))?;
+        // Check catalog plugins first.
+        if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
+            return plugin.execute(entry_id, action_id, app);
+        }
 
-        plugin.execute(entry_id, action_id, app)
+        // Then query plugins.
+        if let Some(plugin) = self.query_plugins.iter().find(|p| p.id() == source) {
+            return plugin.execute(entry_id, action_id, app);
+        }
+
+        anyhow::bail!("unknown plugin source: {source}");
     }
 
-    /// Return all entries from all plugins with score 0 and no
+    /// Return all entries from all catalog plugins with score 0 and no
     /// highlight positions. Will be used for the empty-query home
     /// screen (recent/pinned items) once that feature is built.
     #[allow(dead_code)]
     fn all_entries_unscored(&self) -> Vec<ScoredEntry> {
         let mut results = Vec::new();
 
-        for plugin in &self.plugins {
+        for plugin in &self.catalog_plugins {
             let source = plugin.id().to_string();
             for entry in plugin.entries() {
                 results.push(ScoredEntry {
