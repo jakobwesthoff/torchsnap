@@ -206,50 +206,24 @@ impl Mdfind {
     }
 }
 
-/// Check if a plist key is truthy: boolean `true` or string `"1"`.
+/// Whether an app path is inside an Applications directory.
 ///
-/// macOS plists use both representations for flag keys like
-/// `LSUIElement` and `LSBackgroundOnly` depending on the tool
-/// that generated the plist.
-fn is_plist_truthy(dict: &plist::Dictionary, key: &str) -> bool {
-    dict.get(key)
-        .is_some_and(|v| v.as_boolean() == Some(true) || v.as_string() == Some("1"))
-}
-
-/// Directories where the user (or App Store) explicitly installs apps.
-/// Apps here are always included regardless of `LSUIElement` — many
-/// legitimate menubar/agent apps (Bartender, Alfred, Yoink, etc.) set
-/// `LSUIElement = true` to hide from the dock but are still meant to
-/// be launched by the user.
-const USER_APP_DIRS: &[&str] = &["/Applications", "/Users"];
-
-/// Whether an app path is inside a user-managed application directory.
-fn is_user_installed(path: &Path) -> bool {
-    let s = path.to_string_lossy();
-    USER_APP_DIRS.iter().any(|prefix| s.starts_with(prefix))
+/// Matches any path containing `/Applications/` — this covers
+/// `/Applications/`, `/System/Applications/`, `~/Applications/`,
+/// and any other location following the macOS convention.
+fn is_in_applications_dir(path: &Path) -> bool {
+    path.to_string_lossy().contains("/Applications/")
 }
 
 /// Read an app bundle's `Info.plist` and extract display name
-/// and visibility metadata.
+/// and metadata for a user-facing application.
 ///
-/// Returns `None` for system background agents — apps outside
-/// user directories that have `LSUIElement` or `LSBackgroundOnly`
-/// set. User-installed apps (under `/Applications` or `~/Applications`)
-/// are always included since many legitimate menubar apps use these
-/// flags to hide from the dock.
+/// The caller is responsible for pre-filtering paths to allowed
+/// directories. This function only reads metadata — it does not
+/// filter by directory.
 fn try_discover_app(path: &Path) -> anyhow::Result<Option<DiscoveredApp>> {
     let plist_path = path.join("Contents/Info.plist");
     let info: plist::Dictionary = plist::from_file(&plist_path).context("read Info.plist")?;
-
-    // Only filter background agents from system directories. Apps
-    // in /Applications and ~/Applications are user-chosen and should
-    // always appear — even if they set LSUIElement to hide the dock
-    // icon (common for menubar-only apps like Bartender, Alfred, etc.).
-    if !is_user_installed(path)
-        && (is_plist_truthy(&info, "LSUIElement") || is_plist_truthy(&info, "LSBackgroundOnly"))
-    {
-        return Ok(None);
-    }
 
     // Display name resolution order:
     //   1. CFBundleDisplayName — the localized user-facing name
@@ -294,6 +268,13 @@ impl AppDiscovery for MdfindDiscovery {
         let mut apps = Vec::with_capacity(paths.len());
 
         for path in &paths {
+            // Only index apps in known application directories.
+            // This skips system agents in /System/Library/CoreServices/,
+            // framework helpers, and other non-user-facing bundles.
+            if !is_in_applications_dir(path) {
+                continue;
+            }
+
             match try_discover_app(path) {
                 Ok(Some(app)) => apps.push(app),
                 // Filtered out (background app) — silently skip.
