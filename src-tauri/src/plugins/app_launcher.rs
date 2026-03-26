@@ -31,7 +31,8 @@ use anyhow::Context;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::icons::IconCache;
+use crate::platform::icon_extraction::IconExtractor;
+use crate::icons::{IconCache, IconCacheKey};
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
 
 use super::CatalogPlugin;
@@ -46,16 +47,22 @@ pub struct AppLauncherPlugin {
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
     icon_cache: Arc<IconCache>,
+    extractor: Arc<dyn IconExtractor>,
 }
 
 impl AppLauncherPlugin {
-    pub fn new(discovery: impl AppDiscovery + 'static, icon_cache: IconCache) -> Self {
+    pub fn new(
+        discovery: impl AppDiscovery + 'static,
+        icon_cache: Arc<IconCache>,
+        extractor: impl IconExtractor + 'static,
+    ) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
-            icon_cache: Arc::new(icon_cache),
+            icon_cache,
+            extractor: Arc::new(extractor),
         }
     }
 
@@ -86,12 +93,13 @@ impl AppLauncherPlugin {
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
         let icon_cache = Arc::clone(&self.icon_cache);
+        let extractor = Arc::clone(&self.extractor);
 
         thread::spawn(move || {
             match discovery.discover() {
                 Ok(mut apps) => {
-                    let valid_keys = extract_icons(&icon_cache, &mut apps);
-                    icon_cache.cleanup(&valid_keys);
+                    let valid_keys = extract_icons(&icon_cache, &*extractor, &mut apps);
+                    icon_cache.cleanup("app-launcher", &valid_keys);
 
                     let mut guard = cache.write().expect("app cache not poisoned");
                     *guard = apps;
@@ -110,12 +118,31 @@ impl AppLauncherPlugin {
 /// Run icon extraction for each discovered app, populating their
 /// `icon_path` field and returning the set of valid cache keys
 /// for orphan cleanup.
-fn extract_icons(icon_cache: &IconCache, apps: &mut [DiscoveredApp]) -> HashSet<String> {
+fn extract_icons(
+    icon_cache: &IconCache,
+    extractor: &dyn IconExtractor,
+    apps: &mut [DiscoveredApp],
+) -> HashSet<IconCacheKey> {
     let mut valid_keys = HashSet::with_capacity(apps.len());
 
     for app in apps.iter_mut() {
-        let key = IconCache::cache_key(app);
-        if let Some(path) = icon_cache.ensure_icon(app) {
+        let key = IconCacheKey::new(&format!(
+            "{}:{}",
+            app.path.display(),
+            app.bundle_id.as_deref().unwrap_or("")
+        ));
+
+        let source_mtime = std::fs::metadata(&app.path)
+            .and_then(|m| m.modified())
+            .ok();
+
+        let app_path = app.path.clone();
+        if let Some(path) = icon_cache.ensure_icon(
+            "app-launcher",
+            &key,
+            source_mtime,
+            || extractor.extract(&app_path),
+        ) {
             app.icon_path = Some(path);
         }
         valid_keys.insert(key);
@@ -147,8 +174,8 @@ impl CatalogPlugin for AppLauncherPlugin {
 
                 // Now extract icons (the slow part). Once done,
                 // swap the cache with icon-enriched entries.
-                let valid_keys = extract_icons(&self.icon_cache, &mut apps);
-                self.icon_cache.cleanup(&valid_keys);
+                let valid_keys = extract_icons(&self.icon_cache, &*self.extractor, &mut apps);
+                self.icon_cache.cleanup("app-launcher", &valid_keys);
 
                 let mut guard = self.cache.write().expect("app cache not poisoned");
                 *guard = apps;
