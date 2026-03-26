@@ -266,12 +266,19 @@ fn try_discover_app(path: &Path) -> anyhow::Result<Option<DiscoveredApp>> {
                 .unwrap_or_else(|| path.display().to_string())
         });
 
+    let bundle_id = info
+        .get("CFBundleIdentifier")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+
     let id = path.to_string_lossy().into_owned();
 
     Ok(Some(DiscoveredApp {
         id,
         name,
         path: path.to_owned(),
+        bundle_id,
+        icon_path: None,
     }))
 }
 
@@ -300,5 +307,56 @@ impl AppDiscovery for MdfindDiscovery {
         }
 
         Ok(apps)
+    }
+}
+
+// =========================================================
+// Icon Extraction
+//
+// Uses NSWorkspace to get the system-composited app icon,
+// which handles all icon sources: .icns files, Asset Catalogs
+// (.car), and system-provided defaults. The icon is rendered
+// at 128×128 and encoded as PNG via NSBitmapImageRep.
+// =========================================================
+
+use super::icon_extraction::IconExtractor;
+
+pub struct MacosIconExtractor;
+
+impl IconExtractor for MacosIconExtractor {
+    fn extract(&self, app_path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+        use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWorkspace};
+        use objc2_foundation::{NSDictionary, NSSize, NSString};
+
+        let ns_path = NSString::from_str(&app_path.to_string_lossy());
+
+        // All NSWorkspace icon calls are safe to invoke from
+        // background threads — they read from the Launch Services
+        // icon cache which is thread-safe.
+        unsafe {
+            let workspace = NSWorkspace::sharedWorkspace();
+            let image = workspace.iconForFile(&ns_path);
+
+            // Render at 128×128 points. NSImage renders at the
+            // best available representation for this size.
+            image.setSize(NSSize::new(128.0, 128.0));
+
+            let Some(tiff_data) = image.TIFFRepresentation() else {
+                return Ok(None);
+            };
+
+            let Some(bitmap_rep) = NSBitmapImageRep::imageRepWithData(&tiff_data) else {
+                return Ok(None);
+            };
+
+            let png_data = bitmap_rep
+                .representationUsingType_properties(
+                    NSBitmapImageFileType::PNG,
+                    &NSDictionary::new(),
+                )
+                .context("encode icon as PNG")?;
+
+            Ok(Some(png_data.to_vec()))
+        }
     }
 }

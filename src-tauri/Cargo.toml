@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-global-shortcut = "2"
@@ -26,7 +26,9 @@ serde = { version = "1.0.228", features = ["derive"] }
 nucleo-matcher = "0.3.1"
 plist = "1.8.0"
 rayon = "1.11.0"
+blake3 = "1.8.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-objc2-app-kit = { version = "0.3.2", features = ["NSWindow"] }
+objc2-app-kit = { version = "0.3.2", features = ["NSWindow", "NSWorkspace", "NSImage", "NSBitmapImageRep"] }
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSData", "NSGeometry"] }

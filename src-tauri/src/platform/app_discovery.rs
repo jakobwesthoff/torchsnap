@@ -18,6 +18,7 @@
 use std::path::PathBuf;
 
 /// A single discovered application on the system.
+#[derive(Clone)]
 pub struct DiscoveredApp {
     /// Unique identifier for this application. On macOS this is the
     /// absolute path to the `.app` bundle; other platforms use their
@@ -30,6 +31,17 @@ pub struct DiscoveredApp {
     /// Filesystem path to the application. Used as subtitle in the
     /// result list and for launching/revealing.
     pub path: PathBuf,
+
+    /// Platform-specific application identifier (e.g., macOS
+    /// `CFBundleIdentifier` like `"com.apple.Safari"`). Used as part
+    /// of the icon cache key. `None` on platforms that don't have
+    /// bundle identifiers.
+    pub bundle_id: Option<String>,
+
+    /// Absolute filesystem path to the cached icon file. Populated
+    /// by `IconCache::ensure_icon()` during plugin setup; `None`
+    /// until then or if icon extraction failed.
+    pub icon_path: Option<String>,
 }
 
 /// Discovers installed applications on the current platform.

@@ -6,6 +6,8 @@ mod platform;
 mod plugins;
 mod search;
 
+use std::sync::Mutex;
+
 use anyhow::Context;
 use tauri::{Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
 
@@ -221,11 +223,22 @@ pub fn run() {
             // =========================================================
             let mut catalog = search::catalog::CatalogRegistry::new();
             catalog.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
+
+            let icon_cache_dir = app
+                .path()
+                .app_cache_dir()
+                .context("resolve app cache dir")?
+                .join("icons");
+            let icon_cache = platform::icon_cache::IconCache::new(
+                icon_cache_dir,
+                Box::new(platform::PlatformIconExtractor),
+            );
             catalog.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
                 platform::PlatformAppDiscovery,
+                icon_cache,
             )));
             catalog.setup_all();
-            app.manage(std::sync::Mutex::new(catalog));
+            app.manage(Mutex::new(catalog));
 
             // =========================================================
             // Hide dock icon (macOS only)
