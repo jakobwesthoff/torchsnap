@@ -52,7 +52,7 @@ export function useHalfPageScroll({
           const half = el.clientHeight / 2;
           const maxScroll = el.scrollHeight - el.clientHeight;
           const target = Math.min(el.scrollTop + half, maxScroll);
-          el.scrollTo({ top: target, behavior: "smooth" });
+          el.scrollTo({ top: target, behavior: "instant" });
         },
         keybindings: [
           { combo: { modifiers: ["Ctrl"], key: "d" }, allowInInput },
@@ -67,7 +67,7 @@ export function useHalfPageScroll({
           if (!el) return;
           const half = el.clientHeight / 2;
           const target = Math.max(el.scrollTop - half, 0);
-          el.scrollTo({ top: target, behavior: "smooth" });
+          el.scrollTo({ top: target, behavior: "instant" });
         },
         keybindings: [
           { combo: { modifiers: ["Ctrl"], key: "u" }, allowInInput },
