@@ -6,6 +6,7 @@ mod icons;
 mod platform;
 mod plugins;
 mod search;
+mod storage;
 
 use std::sync::{Arc, Mutex};
 

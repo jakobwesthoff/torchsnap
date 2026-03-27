@@ -29,9 +29,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 
+use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::icons::{IconCache, IconCacheKey};
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
+use crate::storage::StorageKey;
 
 use super::CatalogPlugin;
 
@@ -116,11 +117,11 @@ fn extract_icons(
     icon_cache: &IconCache,
     discovery: &dyn AppDiscovery,
     apps: &mut [DiscoveredApp],
-) -> HashSet<IconCacheKey> {
+) -> HashSet<StorageKey> {
     let mut valid_keys = HashSet::with_capacity(apps.len());
 
     for app in apps.iter_mut() {
-        let key = IconCacheKey::new(&format!(
+        let key = StorageKey::new(&format!(
             "{}:{}",
             app.path.display(),
             app.bundle_id.as_deref().unwrap_or("")

@@ -12,46 +12,27 @@
 //
 // Callers provide:
 //   - A plugin ID (directory scope)
-//   - A typesafe `IconCacheKey` (blake3 hash of arbitrary input)
+//   - A typesafe `StorageKey` (blake3 hash of arbitrary input)
 //   - An optional source mtime for staleness checks
 //   - A lazy closure that produces a `DynamicImage` on cache miss
 //
-// The cache handles directory creation, WebP encoding via
-// `icon_processing::process_icon`, and per-plugin cleanup.
+// File I/O is delegated to `FileStorage` from the storage
+// module. The icon-specific logic (WebP encoding, per-plugin
+// subdirectories, mtime-based invalidation) stays here.
 // =========================================================
 
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use image::DynamicImage;
 
+use crate::storage::{FileStorage, StorageKey};
+
 use super::icon_processing;
 
-// =========================================================
-// IconCacheKey
-// =========================================================
-
-/// Typesafe cache key — prevents accidentally passing raw
-/// strings where a hashed key is expected.
-///
-/// Constructed via `IconCacheKey::new(input)`, which blake3-
-/// hashes the input into a 64-character hex string.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IconCacheKey(String);
-
-impl IconCacheKey {
-    /// Hash an arbitrary input string to produce a cache key.
-    pub fn new(input: &str) -> Self {
-        Self(blake3::hash(input.as_bytes()).to_hex().to_string())
-    }
-
-    /// The hex string representation.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+/// Extension used for all cached icon files.
+const ICON_EXT: &str = "webp";
 
 // =========================================================
 // IconCache
@@ -59,7 +40,7 @@ impl IconCacheKey {
 
 /// Disk-based icon cache shared across plugins.
 ///
-/// Directory layout:
+/// Directory layout (managed by `FileStorage`):
 /// ```text
 /// base_dir/
 ///   <plugin_id>/
@@ -67,31 +48,21 @@ impl IconCacheKey {
 ///       <full-hash>.webp
 /// ```
 pub struct IconCache {
-    base_dir: PathBuf,
+    storage: FileStorage,
 }
 
 impl IconCache {
     pub fn new(base_dir: PathBuf) -> Self {
-        Self { base_dir }
-    }
-
-    /// Absolute path to the cached icon for a given plugin and key.
-    ///
-    /// Shards into subdirectories using the first two hex characters
-    /// of the key to keep any single directory small.
-    fn cache_path(&self, plugin_id: &str, key: &IconCacheKey) -> PathBuf {
-        let hex = key.as_str();
-        self.base_dir
-            .join(plugin_id)
-            .join(&hex[..2])
-            .join(format!("{hex}.webp"))
+        Self {
+            storage: FileStorage::new(base_dir),
+        }
     }
 
     /// Return the absolute path to a valid cached icon, processing
     /// and storing the result of `image_fn` on cache miss.
     ///
     /// - `plugin_id` scopes the cache subdirectory.
-    /// - `key` is a blake3-hashed `IconCacheKey`.
+    /// - `key` is a blake3-hashed `StorageKey`.
     /// - `source_mtime` controls staleness: `Some(t)` means the
     ///   cached icon must be at least as new as `t`; `None` means
     ///   any existing cached file is valid (for immutable sources
@@ -102,11 +73,12 @@ impl IconCache {
     pub fn ensure_icon(
         &self,
         plugin_id: &str,
-        key: &IconCacheKey,
+        key: &StorageKey,
         source_mtime: Option<SystemTime>,
         image_fn: impl FnOnce() -> anyhow::Result<Option<DynamicImage>>,
     ) -> Option<String> {
-        let icon_path = self.cache_path(plugin_id, key);
+        let plugin_storage = self.storage.scoped(plugin_id);
+        let icon_path = plugin_storage.resolve(key, ICON_EXT);
 
         if self.is_cache_valid(&icon_path, source_mtime) {
             return Some(icon_path.to_string_lossy().into_owned());
@@ -119,26 +91,22 @@ impl IconCache {
                 let webp_bytes = match icon_processing::process_icon(image) {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        eprintln!("process icon for cache key {}: {e:#}", key.as_str());
+                        eprintln!("process icon for cache key {}: {e:#}", &**key);
                         return None;
                     }
                 };
 
-                if let Some(parent) = icon_path.parent() {
-                    if let Err(e) = fs::create_dir_all(parent) {
-                        eprintln!("create icon cache dir: {e:#}");
-                        return None;
+                match plugin_storage.store(key, &webp_bytes, ICON_EXT) {
+                    Ok(()) => Some(icon_path.to_string_lossy().into_owned()),
+                    Err(e) => {
+                        eprintln!("write icon cache: {e:#}");
+                        None
                     }
                 }
-                if let Err(e) = fs::write(&icon_path, &webp_bytes) {
-                    eprintln!("write icon cache {}: {e:#}", icon_path.display());
-                    return None;
-                }
-                Some(icon_path.to_string_lossy().into_owned())
             }
             Ok(None) => None,
             Err(e) => {
-                eprintln!("extract icon for cache key {}: {e:#}", key.as_str());
+                eprintln!("extract icon for cache key {}: {e:#}", &**key);
                 None
             }
         }
@@ -147,47 +115,18 @@ impl IconCache {
     /// Remove cached icons not referenced by any active entry.
     ///
     /// Only touches the subtree for `plugin_id`. Walks all shard
-    /// subdirectories and deletes `.webp` files whose stem is not
-    /// in the valid set.
-    pub fn cleanup(&self, plugin_id: &str, valid_keys: &HashSet<IconCacheKey>) {
-        let plugin_dir = self.base_dir.join(plugin_id);
-        let shard_dirs = match fs::read_dir(&plugin_dir) {
-            Ok(entries) => entries,
-            // Plugin dir doesn't exist yet — nothing to clean up.
-            Err(_) => return,
-        };
+    /// subdirectories and deletes files whose key is not in the
+    /// valid set.
+    pub fn cleanup(&self, plugin_id: &str, valid_keys: &HashSet<StorageKey>) {
+        let plugin_storage = self.storage.scoped(plugin_id);
 
         // Collect valid hex strings for fast lookup.
-        let valid_stems: HashSet<&str> = valid_keys.iter().map(|k| k.as_str()).collect();
+        let valid_stems: HashSet<&str> = valid_keys.iter().map(|k| &**k).collect();
 
-        for shard_entry in shard_dirs.flatten() {
-            let shard_path = shard_entry.path();
-            if !shard_path.is_dir() {
-                continue;
-            }
-
-            let files = match fs::read_dir(&shard_path) {
-                Ok(f) => f,
-                Err(_) => continue,
-            };
-
-            for file_entry in files.flatten() {
-                let path = file_entry.path();
-
-                let is_cached_icon = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|ext| ext == "webp");
-
-                if !is_cached_icon {
-                    continue;
-                }
-
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    if !valid_stems.contains(stem) {
-                        let _ = fs::remove_file(&path);
-                    }
-                }
+        for (key, ext, _meta) in plugin_storage.entries() {
+            if !valid_stems.contains(&*key) {
+                // Best effort — ignore errors during cleanup.
+                let _ = plugin_storage.delete(&key, &ext);
             }
         }
     }
@@ -198,7 +137,7 @@ impl IconCache {
     /// (for immutable sources like system-provided symbols).
     /// When `Some(t)`, the cached icon must have an mtime >= t.
     fn is_cache_valid(&self, icon_path: &Path, source_mtime: Option<SystemTime>) -> bool {
-        let icon_meta = match fs::metadata(icon_path) {
+        let icon_meta = match std::fs::metadata(icon_path) {
             Ok(m) => m,
             Err(_) => return false,
         };
