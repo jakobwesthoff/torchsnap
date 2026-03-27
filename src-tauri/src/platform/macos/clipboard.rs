@@ -42,7 +42,7 @@ impl ClipboardPlatform for MacosClipboard {
         has_pasteboard_type(SELF_WRITE_TYPE)
     }
 
-    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
+    fn ownership_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
         Some(clipboard_rs::ClipboardContent::Other(
             SELF_WRITE_TYPE.to_string(),
             Vec::new(),

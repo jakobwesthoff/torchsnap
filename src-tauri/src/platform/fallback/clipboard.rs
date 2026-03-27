@@ -24,7 +24,7 @@ impl ClipboardPlatform for FallbackClipboard {
         false
     }
 
-    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
+    fn ownership_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
         None
     }
 }
