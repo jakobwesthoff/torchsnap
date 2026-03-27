@@ -19,13 +19,20 @@ export interface ClipboardListEntry {
   primaryFormat: string;
 }
 
+/** How a format's content is delivered. */
+export type FormatData =
+  | { type: "string"; data: string }
+  | { type: "json"; document: unknown }
+  | { type: "asset"; path: string };
+
 /** Full entry returned by `load_full_entry` for the detail view. */
 export interface ClipboardHistoryEntry {
   id: string;
   capturedAt: string;
   /** Full display text (up to 128K characters). */
   displayText: string;
-  formats: string[];
-  /** Absolute path to the image file, if this entry has an image. */
-  imagePath: string | null;
+  /** Entry type derived from format priority (e.g. "text", "files", "image"). */
+  primaryFormat: string;
+  /** All stored formats keyed by name, each with typed content. */
+  formats: Record<string, FormatData>;
 }

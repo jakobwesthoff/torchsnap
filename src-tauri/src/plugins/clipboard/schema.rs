@@ -9,6 +9,8 @@
 // communication, and plugin-level constants.
 // =========================================================
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 // =========================================================
@@ -32,9 +34,9 @@ pub const RETENTION_INTERVAL: u32 = 100;
 /// FTS5 for full-text search and triggers to keep the index in
 /// sync with the display table.
 ///
-/// Content is stored format-agnostically: each format row holds raw
-/// bytes either inline (as a BLOB) or in FileStorage (via file_key).
-/// Format names are platform-native identifiers (UTIs on macOS).
+/// Content is stored as raw bytes per format, either inline (as a
+/// BLOB) or in FileStorage (via file_key). Format names are our own
+/// identifiers: "text", "html", "rtf", "files", "image".
 pub const MIGRATION_001: &str = "
 CREATE TABLE clipboard_entries (
     id          TEXT PRIMARY KEY,
@@ -43,8 +45,7 @@ CREATE TABLE clipboard_entries (
 
 CREATE INDEX idx_entries_captured_at ON clipboard_entries(captured_at DESC);
 
--- Raw clipboard content per format. Format name is the platform-
--- specific identifier (UTI on macOS, e.g. 'public.utf8-plain-text').
+-- Raw clipboard content per format (text, html, rtf, files, image).
 -- Small content (<=256KB) stored inline as data BLOB. Large content
 -- or always-binary formats stored in FileStorage with a file_key ref.
 CREATE TABLE clipboard_content (
@@ -108,6 +109,23 @@ pub struct ClipboardListEntry {
     pub primary_format: String,
 }
 
+/// How a format's content is delivered to the frontend.
+///
+/// The variant determines how the frontend accesses the data:
+/// - `String`: inline text content, ready to display
+/// - `Json`: inline structured data (e.g. file paths as a parsed array)
+/// - `Asset`: binary or large content in FileStorage, accessed via asset URL
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum FormatData {
+    #[serde(rename = "string")]
+    String { data: String },
+    #[serde(rename = "json")]
+    Json { document: serde_json::Value },
+    #[serde(rename = "asset")]
+    Asset { path: String },
+}
+
 /// Full entry returned by `load_full_entry` when the user selects an
 /// entry in the list.
 #[derive(Debug, Clone, Serialize)]
@@ -117,10 +135,12 @@ pub struct ClipboardHistoryEntry {
     pub captured_at: String,
     /// Full display text (up to [`DISPLAY_TEXT_MAX_CHARS`]).
     pub display_text: String,
-    pub formats: Vec<String>,
-    /// Absolute path to the image file, if this entry has an
-    /// image format. The frontend converts this to an asset URL.
-    pub image_path: Option<String>,
+    /// Entry type derived from format priority
+    /// (e.g. "text", "files", "image").
+    pub primary_format: String,
+    /// All stored formats keyed by name, each with its content
+    /// delivered as string, json, or asset reference.
+    pub formats: HashMap<String, FormatData>,
 }
 
 #[derive(Debug, Deserialize)]
