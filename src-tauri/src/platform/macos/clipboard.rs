@@ -25,7 +25,7 @@ use objc2_foundation::NSString;
 use super::super::clipboard::ClipboardPlatform;
 
 /// Custom pasteboard type used to mark our own writes.
-const SELF_WRITE_TYPE: &str = "com.torchsnap.clipboard-self-write";
+const SELF_WRITE_TYPE: &str = "app.torchsnap.clipboard-self-write";
 
 /// Standard macOS pasteboard type set by password managers and
 /// other apps that write sensitive content.

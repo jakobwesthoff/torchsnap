@@ -34,9 +34,9 @@ use tauri::Manager;
 
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::storage::{FileStorage, SqlStorage, SqlValue};
+use crate::storage::{FileStorage, SqlStorage};
 
-use self::formats::{restore_contents, StoredContent};
+use self::formats::restore_contents;
 use self::schema::{EntryIdPayload, SubscribePayload, MIGRATION_001, PLUGIN_ID};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
@@ -236,30 +236,16 @@ impl CatalogPlugin for ClipboardPlugin {
                 let params: EntryIdPayload =
                     serde_json::from_value(payload).context("parse paste payload")?;
 
-                // Load stored content rows on the current thread (fast
-                // SQL query), then spawn the clipboard write on a
-                // background thread so we don't block the IPC thread.
-                // This lets the frontend dismiss the launcher immediately.
-                let stored: Vec<StoredContent> = state
-                    .sql
-                    .query_map(
-                        "SELECT format, text_value, file_key FROM clipboard_content
-                         WHERE entry_id = ?1",
-                        &[SqlValue::from(params.id.as_str())],
-                        |row| {
-                            Ok(StoredContent {
-                                format: row.get(0)?,
-                                text_value: row.get(1)?,
-                                file_key: row.get(2)?,
-                            })
-                        },
-                    )?;
+                // Load all raw format data on the current thread (fast
+                // SQL + optional file reads), then spawn the clipboard
+                // write on a background thread so we don't block the
+                // IPC thread. This lets the frontend dismiss immediately.
+                let captured = state.load_entry_content(&params.id)?;
 
-                let files = state.files.clone();
                 let platform = Arc::clone(&self.platform);
 
                 thread::spawn(move || {
-                    let mut clipboard_contents = restore_contents(&stored, &files);
+                    let mut clipboard_contents = restore_contents(&captured);
 
                     if clipboard_contents.is_empty() {
                         return;
