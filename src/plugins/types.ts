@@ -13,6 +13,7 @@
 
 import type { RefObject } from "react";
 import type { ActionId, FooterState, ScoredEntry } from "@torchsnap/types";
+import type { createPluginSettingHook } from "../hooks/usePluginSetting";
 
 export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
@@ -46,4 +47,19 @@ export interface PluginViewProps {
     payload: TPayload,
     onMessage?: (msg: TStream) => void,
   ) => Promise<TResult>;
+}
+
+// =========================================================
+// Plugin Settings UI
+// =========================================================
+
+/**
+ * Props passed to a plugin's settings component when rendered in
+ * the settings sidebar. The `usePluginSetting` hook is pre-bound
+ * to the plugin's namespace so the component only deals with
+ * short key names.
+ */
+export interface PluginSettingsProps {
+  pluginId: string;
+  usePluginSetting: ReturnType<typeof createPluginSettingHook>;
 }

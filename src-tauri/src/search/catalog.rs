@@ -20,6 +20,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 use super::types::{ActionId, PostAction, ScoredEntry, SearchResult};
 use crate::plugins::{CatalogPlugin, QueryPlugin};
+use crate::settings::{PluginSettings, SettingsInit};
 
 use std::sync::Arc;
 use std::thread;
@@ -47,29 +48,66 @@ impl CatalogRegistry {
         self.query_plugins.push(Arc::from(plugin));
     }
 
-    /// Call `setup()` on every registered plugin in parallel.
+    /// Initialize plugin settings defaults and then call `setup()`
+    /// on every registered plugin in parallel.
     ///
-    /// Uses a rayon thread pool with a rolling window — as soon as
-    /// one plugin finishes, the next one starts. Returns immediately;
-    /// a coordinator thread manages the pool in the background.
+    /// Runs in two phases:
     ///
-    /// Both catalog and query plugins are set up together in the
-    /// same pool.
-    pub fn setup_all(&self, app: &tauri::AppHandle) {
-        // Collect setup closures from both plugin types into a single
-        // vec so rayon can schedule them as a unified work pool.
+    /// 1. **Synchronous init** (on the calling thread): iterates all
+    ///    plugins, calls `initialize_settings()` to fill in missing
+    ///    defaults, and writes them to the store. This guarantees all
+    ///    settings values are present before any webview loads.
+    ///
+    /// 2. **Parallel setup** (background rayon pool): builds a scoped
+    ///    `PluginSettings` per plugin and passes it into `setup()`.
+    ///    Uses a rolling window — as soon as one plugin finishes, the
+    ///    next one starts. Returns immediately; a coordinator thread
+    ///    manages the pool in the background.
+    pub fn setup_all(
+        &self,
+        app: &tauri::AppHandle,
+        store: &Arc<tauri_plugin_store::Store<tauri::Wry>>,
+    ) {
+        // -------------------------------------------------------
+        // Phase 1: Initialize plugin settings defaults (synchronous)
+        //
+        // Each plugin declares its expected settings via
+        // `initialize_settings()`. We load the current persisted
+        // values for that plugin, let the plugin fill in any
+        // missing defaults, and write the result back. This runs
+        // before setup() and before any webview is created, so the
+        // frontend always sees fully initialized values.
+        // -------------------------------------------------------
+        for p in &self.catalog_plugins {
+            let prefix = format!("plugins.{}.", p.id());
+            let current = SettingsInit::from_store(store, &prefix);
+            let initialized = p.initialize_settings(current);
+            initialized.apply(store, &prefix);
+        }
+        for p in &self.query_plugins {
+            let prefix = format!("plugins.{}.", p.id());
+            let current = SettingsInit::from_store(store, &prefix);
+            let initialized = p.initialize_settings(current);
+            initialized.apply(store, &prefix);
+        }
+
+        // -------------------------------------------------------
+        // Phase 2: Parallel plugin setup with injected settings
+        // -------------------------------------------------------
         let mut setup_fns: Vec<Box<dyn FnOnce() + Send>> = Vec::new();
 
         let handle = app.clone();
         for p in &self.catalog_plugins {
             let p = Arc::clone(p);
             let h = handle.clone();
-            setup_fns.push(Box::new(move || p.setup(&h)));
+            let settings = PluginSettings::new(Arc::clone(store), p.id());
+            setup_fns.push(Box::new(move || p.setup(&h, &settings)));
         }
         for p in &self.query_plugins {
             let p = Arc::clone(p);
             let h = handle.clone();
-            setup_fns.push(Box::new(move || p.setup(&h)));
+            let settings = PluginSettings::new(Arc::clone(store), p.id());
+            setup_fns.push(Box::new(move || p.setup(&h, &settings)));
         }
 
         thread::spawn(move || {

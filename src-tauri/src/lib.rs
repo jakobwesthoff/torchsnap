@@ -6,6 +6,7 @@ mod icons;
 mod platform;
 mod plugins;
 mod search;
+mod settings;
 mod storage;
 
 use std::sync::{Arc, Mutex};
@@ -155,10 +156,10 @@ fn toggle_launcher_window(app: &tauri::AppHandle) {
 // Global Shortcut
 // =========================================================
 
-const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
-
-/// Read the stored shortcut from the plugin-store, falling back to the
-/// compile-time default when no user override exists.
+/// Read the stored shortcut from the plugin-store.
+///
+/// Global defaults are initialized before this is called, so the
+/// key is guaranteed to exist.
 fn read_shortcut(app: &tauri::AppHandle) -> String {
     use tauri_plugin_store::StoreExt;
 
@@ -166,7 +167,7 @@ fn read_shortcut(app: &tauri::AppHandle) -> String {
     store
         .get("globalShortcut")
         .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string())
+        .expect("globalShortcut initialized by settings defaults")
 }
 
 /// Re-register the global shortcut at runtime. Unregisters all existing
@@ -224,6 +225,22 @@ pub fn run() {
     let app = builder
         .setup(|app| {
             // =========================================================
+            // Global settings defaults
+            //
+            // Ensure all expected global settings keys exist in the
+            // store before any webview loads. The frontend pre-loads
+            // the store synchronously at startup and relies on every
+            // key being present — no fallback defaults on the JS side.
+            // =========================================================
+            use tauri_plugin_store::StoreExt;
+
+            let store = app.store("settings.json").expect("settings store");
+            settings::SettingsInit::from_store(&store, "")
+                .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
+                .ensure("mascotMode", "center")
+                .apply(&store, "");
+
+            // =========================================================
             // Search catalog
             //
             // Initialize the catalog registry and register built-in
@@ -256,7 +273,7 @@ pub fn run() {
                 platform::PlatformClipboard,
             )));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            catalog.setup_all(app.handle());
+            catalog.setup_all(app.handle(), &store);
             app.manage(Mutex::new(catalog));
 
             // =========================================================
@@ -308,8 +325,9 @@ pub fn run() {
             let mut settings_builder =
                 WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
                     .title("Torchsnap Settings")
-                    .inner_size(480.0, 600.0)
-                    .resizable(false)
+                    .inner_size(720.0, 520.0)
+                    .min_inner_size(600.0, 400.0)
+                    .resizable(true)
                     .visible(false)
                     .focused(false)
                     .center();

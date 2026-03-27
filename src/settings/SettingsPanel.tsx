@@ -2,70 +2,133 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { cn } from "../lib/cn";
-import { useSetting } from "../hooks/useSetting";
-import { SETTINGS_DEFAULTS } from "../settingsDefaults";
-import { SettingsSection } from "../components/SettingsSection";
-import { SettingsEntry } from "../components/SettingsEntry";
-import { Switch } from "../components/Switch";
-import { ThemeToggle } from "../components/ThemeToggle";
-import { ShortcutSection } from "./ShortcutSection";
+import { Suspense, useMemo, useState } from "react";
+import {
+  Cog6ToothIcon,
+  SwatchIcon,
+} from "@heroicons/react/24/outline";
+import {
+  getPluginSettingsComponent,
+  getPluginsWithSettings,
+} from "../plugins/registry";
+import { createPluginSettingHook } from "../hooks/usePluginSetting";
+import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
+import { GeneralSection } from "./sections/GeneralSection";
+import { AppearanceSection } from "./sections/AppearanceSection";
+
+// =========================================================
+// Built-in sidebar sections
+// =========================================================
+
+const BUILT_IN_SECTIONS: SidebarItem[] = [
+  { id: "general", label: "General", settingsIcon: Cog6ToothIcon },
+  { id: "appearance", label: "Appearance", settingsIcon: SwatchIcon },
+];
+
+// =========================================================
+// Settings Panel
+// =========================================================
 
 export function SettingsPanel() {
-  const [globalShortcut, setGlobalShortcut, shortcutReady] = useSetting(
-    "globalShortcut",
-    SETTINGS_DEFAULTS.globalShortcut,
-  );
+  const [activeSection, setActiveSection] = useState("general");
 
-  const [mascotMode, setMascotMode, mascotReady] = useSetting(
-    "mascotMode",
-    SETTINGS_DEFAULTS.mascotMode,
-  );
-
-  const mascotEnabled = mascotMode !== "off";
-
-  const loading = !shortcutReady || !mascotReady;
+  // Discover which plugins have settings components. This is
+  // evaluated once per mount — plugins are registered statically.
+  const pluginSections = useMemo(() => getPluginsWithSettings(), []);
 
   return (
-    <div
-      className={cn(
-        "min-h-screen font-sans antialiased",
-        "bg-surface text-text-primary",
-        loading ? "opacity-0" : "opacity-100 transition-opacity duration-300",
-      )}
-    >
-      {/* Drag region — macOS overlay titlebar */}
-      <div data-tauri-drag-region className="h-12 w-full select-none" />
+    <div className="flex h-screen font-sans antialiased bg-surface text-text-primary">
+      {/* Drag region — macOS overlay titlebar. Covers the full width
+          so the user can drag from anywhere along the top edge. */}
+      <div
+        data-tauri-drag-region
+        className="absolute inset-x-0 top-0 h-12 select-none z-10"
+      />
 
-      {/* Content */}
-      <div className="px-6 pb-6">
-        <h2 className="text-lg font-semibold mb-4">Settings</h2>
-
-        <ShortcutSection
-          globalShortcut={globalShortcut}
-          setGlobalShortcut={setGlobalShortcut}
+      {/* Sidebar */}
+      <aside className="w-[200px] shrink-0 border-r border-border pt-12 overflow-y-auto">
+        <SettingsSidebar
+          builtInItems={BUILT_IN_SECTIONS}
+          pluginItems={pluginSections}
+          activeId={activeSection}
+          onSelect={setActiveSection}
         />
+      </aside>
 
-        {/* Appearance */}
-        <SettingsSection title="Appearance" className="mt-4">
-          <SettingsEntry label="Theme">
-            <ThemeToggle />
-          </SettingsEntry>
-          <SettingsEntry label="Show Snappy mascot">
-            <Switch
-              checked={mascotEnabled}
-              onChange={(on) => setMascotMode(on ? "center" : "off")}
-            />
-          </SettingsEntry>
-          <SettingsEntry label="Snappy is only a Sidekick">
-            <Switch
-              checked={mascotMode === "sidekick"}
-              onChange={(on) => setMascotMode(on ? "sidekick" : "center")}
-              disabled={!mascotEnabled}
-            />
-          </SettingsEntry>
-        </SettingsSection>
-      </div>
+      {/* Content area */}
+      <main className="flex-1 overflow-y-auto pt-12 px-6 pb-6">
+        <SectionContent
+          activeSection={activeSection}
+          pluginSections={pluginSections}
+        />
+      </main>
     </div>
   );
+}
+
+// =========================================================
+// Section content router
+// =========================================================
+
+function SectionContent({
+  activeSection,
+  pluginSections,
+}: {
+  activeSection: string;
+  pluginSections: Array<{ id: string; label: string }>;
+}) {
+  // Built-in sections
+  if (activeSection === "general") {
+    return <GeneralSection />;
+  }
+  if (activeSection === "appearance") {
+    return <AppearanceSection />;
+  }
+
+  // Plugin sections — look up the settings component and inject
+  // the scoped usePluginSetting hook.
+  const plugin = pluginSections.find((p) => p.id === activeSection);
+  if (!plugin) {
+    return null;
+  }
+
+  const SettingsComponent = getPluginSettingsComponent(plugin.id);
+  if (!SettingsComponent) {
+    return null;
+  }
+
+  return (
+    <Suspense
+      fallback={
+        <div className="text-text-muted text-sm">Loading settings…</div>
+      }
+    >
+      <PluginSectionWrapper pluginId={plugin.id} Component={SettingsComponent} />
+    </Suspense>
+  );
+}
+
+// =========================================================
+// Plugin section wrapper
+//
+// Memoizes the scoped hook factory per plugin ID so it stays
+// referentially stable across re-renders.
+// =========================================================
+
+function PluginSectionWrapper({
+  pluginId,
+  Component,
+}: {
+  pluginId: string;
+  Component: React.ComponentType<{
+    pluginId: string;
+    usePluginSetting: ReturnType<typeof createPluginSettingHook>;
+  }>;
+}) {
+  const usePluginSetting = useMemo(
+    () => createPluginSettingHook(pluginId),
+    [pluginId],
+  );
+
+  return <Component pluginId={pluginId} usePluginSetting={usePluginSetting} />;
 }

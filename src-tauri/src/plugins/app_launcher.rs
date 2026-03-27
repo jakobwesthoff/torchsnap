@@ -37,6 +37,7 @@ use crate::search::types::{
 use crate::storage::StorageKey;
 
 use super::CatalogPlugin;
+use crate::settings::PluginSettings;
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
@@ -144,7 +145,7 @@ impl CatalogPlugin for AppLauncherPlugin {
         "app-launcher"
     }
 
-    fn setup(&self, _app: &tauri::AppHandle) {
+    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {
         // Called on a dedicated background thread by the registry.
         //
         // Phase 1: Discover apps and publish immediately so search

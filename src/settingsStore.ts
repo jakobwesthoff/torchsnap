@@ -15,6 +15,15 @@
  * piece is *notification*, which we solve with a global Tauri event
  * (`settings-changed`).
  *
+ * ## Pre-loading
+ *
+ * The store must be loaded before React mounts so that `useSetting`
+ * can read values synchronously on the very first render — no loading
+ * states, no default values, no `ready` flag. Both entry points
+ * (`launcher/main.tsx`, `settings/main.tsx`) call `await initStore()`
+ * before `createRoot().render()`. After that, `getSettingSync()` is
+ * safe to call from any render path.
+ *
  * Consumers should not use this module directly — use the
  * `useSetting()` hook instead.
  */
@@ -36,40 +45,48 @@ interface SettingsChangedPayload {
 // Singleton state
 // =========================================================
 
-let storePromise: Promise<Store> | null = null;
+/** The loaded store instance. `null` until `initStore()` completes. */
+let store: Store | null = null;
+
+/**
+ * In-memory mirror of all store entries, populated by `initStore()`
+ * and kept in sync by the cross-window event listener. This enables
+ * synchronous reads from React render paths.
+ */
+const cache = new Map<string, unknown>();
+
 const listeners = new Set<Listener>();
-let eventListenerInstalled = false;
 
 // =========================================================
-// Lazy store initialization
+// Store initialization
 // =========================================================
 
-function getStore(): Promise<Store> {
-  if (storePromise) {
-    return storePromise;
-  }
-
-  storePromise = load("settings.json");
-
-  return storePromise;
-}
-
-// =========================================================
-// Cross-window event listener (installed once per webview)
-// =========================================================
-
-function ensureEventListener() {
-  if (eventListenerInstalled) {
+/**
+ * Eagerly load the store and populate the synchronous cache.
+ *
+ * Must be awaited once per webview before React mounts. Subsequent
+ * calls are idempotent and return immediately.
+ */
+export async function initStore(): Promise<void> {
+  if (store) {
     return;
   }
-  eventListenerInstalled = true;
 
-  listen<SettingsChangedPayload>("settings-changed", async (event) => {
-    // Re-read the value from the store. The Rust-side singleton
-    // already has the updated data — we just need the new value
-    // to pass to subscribers.
-    const s = await getStore();
-    const value = await s.get<unknown>(event.payload.key);
+  store = await load("settings.json");
+
+  // Populate the synchronous cache with all current entries so that
+  // getSettingSync() works from the very first render.
+  const entries = await store.entries();
+  for (const [key, value] of entries) {
+    cache.set(key, value);
+  }
+
+  // Install the cross-window event listener. When any webview writes
+  // a setting, all webviews (including the originator) re-read the
+  // value and update their caches + subscribers.
+  await listen<SettingsChangedPayload>("settings-changed", async (event) => {
+    const value = await store!.get<unknown>(event.payload.key);
+    cache.set(event.payload.key, value);
     notifyListeners(event.payload.key, value);
   });
 }
@@ -89,20 +106,26 @@ function notifyListeners(key: string, value: unknown) {
 // =========================================================
 
 /**
- * Read a single key from the settings store.
+ * Read a setting synchronously from the in-memory cache.
+ *
+ * Only safe to call after `initStore()` has completed. Returns
+ * the value cast to `T`. The backend initializes all defaults
+ * at startup, so every expected key is guaranteed to be present.
  */
-export async function getSetting<T>(key: string): Promise<T | undefined> {
-  const s = await getStore();
-  return s.get<T>(key);
+export function getSettingSync<T>(key: string): T {
+  return cache.get(key) as T;
 }
 
 /**
  * Write a single key to the settings store and notify all webviews.
  */
 export async function setSetting<T>(key: string, value: T): Promise<void> {
-  const s = await getStore();
-  await s.set(key, value);
-  await s.save();
+  if (!store) {
+    throw new Error("setSetting called before initStore()");
+  }
+
+  await store.set(key, value);
+  await store.save();
 
   // Broadcast globally so every webview (including this one) picks
   // up the change through the same code path.
@@ -116,7 +139,6 @@ export async function setSetting<T>(key: string, value: T): Promise<void> {
  * Returns an unsubscribe function.
  */
 export function subscribe(listener: Listener): () => void {
-  ensureEventListener();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

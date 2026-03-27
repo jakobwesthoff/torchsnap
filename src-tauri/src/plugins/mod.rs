@@ -25,6 +25,7 @@ pub mod system_commands;
 pub mod system_preferences;
 
 use crate::search::types::{ActionId, CatalogEntry, PostAction, SearchResponse};
+use crate::settings::{PluginSettings, SettingsInit};
 
 // =========================================================
 // CatalogPlugin
@@ -47,6 +48,25 @@ pub trait CatalogPlugin: Send + Sync {
     /// field in `ScoredEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
 
+    /// Declare default settings for this plugin.
+    ///
+    /// Called synchronously at startup *before* `setup()`. The
+    /// `current` parameter contains any previously persisted values
+    /// for this plugin. Use `ensure()` to fill in missing defaults:
+    ///
+    /// ```ignore
+    /// fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
+    ///     settings
+    ///         .ensure("pollingInterval", 500)
+    ///         .ensure("retentionDays", 30)
+    /// }
+    /// ```
+    ///
+    /// The default implementation is a pass-through (no settings).
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
+        settings
+    }
+
     /// One-time initialization after registration.
     ///
     /// Called once during app startup on a dedicated background
@@ -56,12 +76,15 @@ pub trait CatalogPlugin: Send + Sync {
     ///
     /// The `AppHandle` gives plugins access to Tauri APIs (path
     /// resolution, managed state, etc.) during initialization.
+    /// `settings` provides scoped read access to this plugin's
+    /// settings namespace (values guaranteed present after
+    /// `initialize_settings` ran).
     ///
     /// `entries()` must handle the case where `setup()` has not
     /// yet completed (e.g., return an empty list).
     ///
     /// The default implementation is a no-op.
-    fn setup(&self, _app: &tauri::AppHandle) {}
+    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {}
 
     /// Cleanup before the application exits.
     ///
@@ -142,8 +165,13 @@ pub trait QueryPlugin: Send + Sync {
         &[]
     }
 
+    /// Declare default settings. See `CatalogPlugin::initialize_settings()`.
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
+        settings
+    }
+
     /// One-time initialization. See `CatalogPlugin::setup()`.
-    fn setup(&self, _app: &tauri::AppHandle) {}
+    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {}
 
     /// Cleanup before application exit. See `CatalogPlugin::teardown()`.
     fn teardown(&self) {}
