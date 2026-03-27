@@ -382,12 +382,11 @@ impl SharedState {
 /// "files" is stored as JSON-encoded paths → `Json` with parsed value.
 /// All other inline formats are UTF-8 text → `String`.
 fn inline_blob_to_format_data(format: &str, blob: &[u8]) -> FormatData {
-    if format == "files" {
-        if let Ok(text) = std::str::from_utf8(blob) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
-                return FormatData::Json { document: value };
-            }
-        }
+    if format == "files"
+        && let Ok(text) = std::str::from_utf8(blob)
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(text)
+    {
+        return FormatData::Json { document: value };
     }
 
     // All other inline formats are UTF-8 text.

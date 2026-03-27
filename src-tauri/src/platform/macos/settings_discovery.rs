@@ -180,10 +180,10 @@ fn try_loctable_name(loctable_path: &Path, system_lang: &str) -> Option<String> 
     }
 
     // Fall back to English.
-    if system_lang != "en" {
-        if let Some(name) = loctable_display_name(&loctable, "en") {
-            return Some(name);
-        }
+    if system_lang != "en"
+        && let Some(name) = loctable_display_name(&loctable, "en")
+    {
+        return Some(name);
     }
 
     None

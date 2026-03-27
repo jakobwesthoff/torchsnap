@@ -250,7 +250,7 @@ impl SqlStorage {
 
         configure_connection(&conn).context("configure database connection")?;
 
-        let migration_set: Vec<M<'_>> = migrations.iter().map(|sql| M::up(*sql)).collect();
+        let migration_set: Vec<M<'_>> = migrations.iter().map(|sql| M::up(sql)).collect();
         let migrations = Migrations::new(migration_set);
 
         migrations

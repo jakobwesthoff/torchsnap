@@ -182,25 +182,25 @@ fn read_format(
 /// display text (they're markup, not readable content).
 fn derive_display_text(clipboard: &ClipboardContext) -> String {
     // Files: structured display with filenames and count.
-    if let Ok(files) = clipboard.get_files() {
-        if !files.is_empty() {
-            return truncate_display_text(&file_paths_to_display_text(&files));
-        }
+    if let Ok(files) = clipboard.get_files()
+        && !files.is_empty()
+    {
+        return truncate_display_text(&file_paths_to_display_text(&files));
     }
 
     // Plain text: the most common and broadly useful display.
-    if let Ok(text) = clipboard.get_text() {
-        if !text.is_empty() {
-            return truncate_display_text(&text);
-        }
+    if let Ok(text) = clipboard.get_text()
+        && !text.is_empty()
+    {
+        return truncate_display_text(&text);
     }
 
     // Image: show dimensions as a summary.
-    if let Ok(image) = clipboard.get_image() {
-        if !image.is_empty() {
-            let (w, h) = image.get_size();
-            return format!("Image ({w}×{h})");
-        }
+    if let Ok(image) = clipboard.get_image()
+        && !image.is_empty()
+    {
+        let (w, h) = image.get_size();
+        return format!("Image ({w}×{h})");
     }
 
     String::new()
