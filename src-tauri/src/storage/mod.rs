@@ -15,4 +15,4 @@ mod file_storage;
 mod sql_storage;
 
 pub use file_storage::{FileStorage, StorageKey};
-pub use sql_storage::SqlStorage;
+pub use sql_storage::{SqlRow, SqlStorage, SqlValue};
