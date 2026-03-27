@@ -42,12 +42,19 @@ export function Launcher() {
   const inputRef = useRef<HTMLInputElement>(null);
   const mouseActiveRef = useRef(false);
 
+  // Local override for when execute_action returns ShowCustomUI.
+  // Takes precedence over the search-driven customPluginView.
+  const [executePluginView, setExecutePluginView] = useState<string | null>(
+    null,
+  );
+
   const { dismiss } = useWindowLifecycle({
     inputRef,
     mouseActiveRef,
     resetState: useCallback(() => {
       setQuery("");
       setSelectedIndex(0);
+      setExecutePluginView(null);
     }, []),
   });
 
@@ -60,12 +67,6 @@ export function Launcher() {
     customPluginView: searchPluginView,
     matchedPrefix,
   } = useSearch(query);
-
-  // Local override for when execute_action returns ShowCustomUI.
-  // Takes precedence over the search-driven customPluginView.
-  const [executePluginView, setExecutePluginView] = useState<string | null>(
-    null,
-  );
 
   const customPluginView = executePluginView ?? searchPluginView;
 

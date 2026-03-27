@@ -243,7 +243,7 @@ impl CatalogPlugin for ClipboardPlugin {
 
                 // Reconstruct clipboard contents and write them.
                 let clipboard_contents =
-                    restore_contents(&stored, &params.id, &state.files);
+                    restore_contents(&stored, &state.files);
 
                 if !clipboard_contents.is_empty() {
                     let ctx = ClipboardContext::new()

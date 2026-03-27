@@ -201,35 +201,30 @@ fn read_format(
 /// to reconstruct a `ClipboardContent` for paste-back.
 pub struct StoredContent {
     pub format: String,
+    /// Text-like content stored directly in SQL.
     pub text_value: Option<String>,
-    /// Currently unused during restore (the image branch
-    /// derives the storage key from the entry ID), but kept
-    /// for schema completeness and future format support.
-    #[allow(dead_code)]
+    /// Storage key for binary content stored in FileStorage.
     pub file_key: Option<String>,
 }
 
-/// Reconstruct clipboard contents from stored data and write
-/// them to the given clipboard context.
+/// Reconstruct clipboard contents from stored data.
 ///
 /// Loads binary content from `files` using the stored file key.
 /// Returns the list of `ClipboardContent` items ready for
 /// `ctx.set()`.
 pub fn restore_contents(
     stored: &[StoredContent],
-    entry_id: &str,
     files: &FileStorage,
 ) -> Vec<clipboard_rs::ClipboardContent> {
     stored
         .iter()
-        .filter_map(|sc| restore_format(sc, entry_id, files))
+        .filter_map(|sc| restore_format(sc, files))
         .collect()
 }
 
 /// Reconstruct a single `ClipboardContent` from a stored row.
 fn restore_format(
     stored: &StoredContent,
-    entry_id: &str,
     files: &FileStorage,
 ) -> Option<clipboard_rs::ClipboardContent> {
     match stored.format.as_str() {
@@ -251,7 +246,8 @@ fn restore_format(
             Some(clipboard_rs::ClipboardContent::Files(paths))
         }
         "image" => {
-            let key = StorageKey::new(entry_id);
+            let raw_key = stored.file_key.as_ref()?;
+            let key = StorageKey::from_raw(raw_key.clone());
             let data = files.load(&key, "png").ok()??;
             let img = clipboard_rs::RustImageData::from_bytes(&data).ok()?;
             Some(clipboard_rs::ClipboardContent::Image(img))
