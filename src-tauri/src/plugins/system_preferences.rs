@@ -27,8 +27,9 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
-use crate::icons::{IconCache, IconCacheKey};
+use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
+use crate::storage::StorageKey;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 use super::CatalogPlugin;
@@ -59,11 +60,11 @@ fn cache_pane_icons(
     icon_cache: &IconCache,
     discovery: &dyn SettingsDiscovery,
     panes: &mut [SettingsPane],
-) -> HashSet<IconCacheKey> {
+) -> HashSet<StorageKey> {
     let mut valid_keys = HashSet::with_capacity(panes.len());
 
     for pane in panes.iter_mut() {
-        let key = IconCacheKey::new(&pane.id);
+        let key = StorageKey::new(&pane.id);
 
         if let Some(path) = icon_cache.ensure_icon(
             "system-preferences",

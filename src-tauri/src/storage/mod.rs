@@ -3,15 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Icon Infrastructure
+// Storage Infrastructure
 //
-// Platform-independent icon caching and processing. The
-// platform-specific extraction trait lives in `platform::
-// icon_extraction`; everything here works with the decoded
-// images that extractors produce.
+// Generic storage primitives shared across plugins. File-
+// based blob storage uses a sharded directory layout; SQL
+// storage (added later) provides structured per-plugin
+// databases.
 // =========================================================
 
-mod icon_cache;
-mod icon_processing;
+mod file_storage;
 
-pub use icon_cache::IconCache;
+pub use file_storage::{FileStorage, StorageKey};
