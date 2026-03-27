@@ -56,6 +56,9 @@
   --color-accent: var(--color-orange-500);
   --color-accent-hover: var(--color-orange-600);
   --color-accent-muted: var(--color-orange-400);
+
+  /* --- Selection ------------------------------------------- */
+  --color-selection: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 /* =========================================================
@@ -88,6 +91,9 @@
 
   /* --- Accent tints -------------------------------------- */
   --color-accent-muted: var(--color-orange-400);
+
+  /* --- Selection ---------------------------------------- */
+  --color-selection: color-mix(in srgb, var(--color-accent) 10%, transparent);
 
   /* --- Placeholder fix ----------------------------------- */
   & ::placeholder {

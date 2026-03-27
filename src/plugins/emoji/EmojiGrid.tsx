@@ -48,7 +48,7 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
         "flex aspect-square items-center justify-center rounded-lg",
         "cursor-default select-none",
         selected
-          ? "bg-accent/10 border border-accent/30"
+          ? "bg-selection border border-accent/30"
           : "border border-transparent",
       )}
       onMouseEnter={() => {
