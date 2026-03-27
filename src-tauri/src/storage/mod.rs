@@ -15,4 +15,5 @@ mod file_storage;
 mod sql_storage;
 
 pub use file_storage::{FileStorage, StorageKey};
-pub use sql_storage::{SqlRow, SqlStorage, SqlValue};
+// TODO: `SqlRow` is not yet used outside this module — re-export once needed.
+pub use sql_storage::{SqlStorage, SqlValue};

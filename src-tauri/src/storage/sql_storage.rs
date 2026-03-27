@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 
 // =========================================================
@@ -305,31 +305,6 @@ impl SqlStorage {
         Ok(result)
     }
 
-    /// Execute a query expected to return zero or one row.
-    /// Returns `Ok(None)` if the query produces no results.
-    pub fn query_optional<T>(
-        &self,
-        sql: &str,
-        params: &[SqlValue],
-        f: impl FnOnce(&SqlRow) -> Result<T>,
-    ) -> Result<Option<T>> {
-        let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
-            .iter()
-            .map(|v| v as &dyn rusqlite::types::ToSql)
-            .collect();
-        let mut stmt = conn.prepare(sql).context("prepare SQL query")?;
-
-        let maybe_row = stmt
-            .query_row(param_refs.as_slice(), materialize_row)
-            .optional()
-            .context("execute optional query")?;
-
-        match maybe_row {
-            Some(sql_row) => Ok(Some(f(&sql_row)?)),
-            None => Ok(None),
-        }
-    }
 }
 
 // =========================================================
@@ -394,23 +369,15 @@ mod tests {
             .expect("query rows");
         assert_eq!(names, vec!["hello".to_string()]);
 
-        let found: Option<String> = storage
-            .query_optional(
-                "SELECT name FROM items WHERE id = ?1",
-                &[SqlValue::from(1i64)],
-                |row| row.get(0),
-            )
-            .expect("optional query");
-        assert_eq!(found, Some("hello".to_string()));
-
-        let missing: Option<String> = storage
-            .query_optional(
+        // Querying for a non-existent row should yield an empty result set.
+        let missing: Vec<String> = storage
+            .query_map(
                 "SELECT name FROM items WHERE id = ?1",
                 &[SqlValue::from(999i64)],
                 |row| row.get(0),
             )
-            .expect("optional query for missing row");
-        assert_eq!(missing, None);
+            .expect("query missing row");
+        assert!(missing.is_empty());
     }
 
     #[test]
