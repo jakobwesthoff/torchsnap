@@ -119,7 +119,7 @@ export default function ClipboardView({
     onFooterChange({
       primary: {
         combo: { modifiers: [], key: "Enter" },
-        label: "Paste",
+        label: "Copy to Clipboard",
       },
       hints: [
         {
