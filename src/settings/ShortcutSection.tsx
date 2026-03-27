@@ -202,7 +202,7 @@ export function ShortcutSection({
       <div
         className={cn(
           "flex items-center justify-between px-4 py-3 transition-colors",
-          recording && "bg-accent/10",
+          recording && "bg-selection",
         )}
       >
         <span className="text-sm text-text-primary">
