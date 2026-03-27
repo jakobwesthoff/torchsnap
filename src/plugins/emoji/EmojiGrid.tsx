@@ -11,7 +11,7 @@
  * cell.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/keybindings";
 import { cn } from "../../lib/cn";
 import { highlightText } from "../../lib/highlightText";
@@ -74,8 +74,6 @@ export default function EmojiGrid({
   onFooterChange,
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const gridRef = useRef<HTMLDivElement>(null);
-
   // Reset selection when results change (new query).
   useEffect(() => {
     setSelectedIndex(0);
@@ -85,13 +83,12 @@ export default function EmojiGrid({
   // Windowing
   // -------------------------------------------------------
 
-  const { windowStartRow } = useWindowedGrid({
+  const { windowStartRow, wheelRef: gridRef } = useWindowedGrid({
     selectedIndex,
     setSelectedIndex,
     resultCount: results.length,
     columns: GRID_COLUMNS,
     visibleRows: GRID_VISIBLE_ROWS,
-    gridRef,
   });
 
   // -------------------------------------------------------

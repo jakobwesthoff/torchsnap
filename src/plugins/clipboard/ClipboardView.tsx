@@ -129,7 +129,7 @@ function EntryList({
   onSelect: (index: number) => void;
   onPaste: () => void;
   mouseActiveRef: RefObject<boolean>;
-  wheelRef: RefObject<HTMLDivElement | null>;
+  wheelRef: (el: HTMLDivElement | null) => void;
 }) {
   return (
     <div
@@ -215,7 +215,6 @@ export default function ClipboardView({
   onFooterChange,
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const wheelRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
 
   // Stable payload reference — only changes when the query does.
@@ -236,12 +235,11 @@ export default function ClipboardView({
   // Virtual Scroll
   // -------------------------------------------------------
 
-  const { windowStart } = useWindowedList({
+  const { windowStart, wheelRef } = useWindowedList({
     selectedIndex,
     setSelectedIndex,
     resultCount: entries.length,
     pageSize: PAGE_SIZE,
-    wheelRef,
   });
 
   const visibleEntries = entries.slice(windowStart, windowStart + PAGE_SIZE);
