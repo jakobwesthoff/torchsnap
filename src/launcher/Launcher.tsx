@@ -24,7 +24,10 @@ function actionsToFooterState(actions: Action[]): FooterState {
     .slice(1)
     .filter((a) => a.keybinding)
     .map((a) => ({
-      combo: { modifiers: a.keybinding!.modifiers ?? [], key: a.keybinding!.key },
+      combo: {
+        modifiers: a.keybinding!.modifiers ?? [],
+        key: a.keybinding!.key,
+      },
       label: a.label,
     }));
 
@@ -209,7 +212,7 @@ export function Launcher() {
   // intentionally excludes to avoid macOS Cmd/Ctrl collisions.
   const emacsBindings = useEmacsBindings(inputRef, setQuery);
 
-  const [showMascot] = useSetting("showMascot", SETTINGS_DEFAULTS.showMascot);
+  const [mascotMode] = useSetting("mascotMode", SETTINGS_DEFAULTS.mascotMode);
 
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
@@ -222,8 +225,8 @@ export function Launcher() {
       onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
-        {/* Mascot — decorative, positioned above the top-right corner */}
-        {showMascot && (
+        {/* Mascot — decorative, positioned relative to the launcher card */}
+        {mascotMode === "sidekick" && (
           <img
             src="/images/mascot/snappy-original-96.webp"
             srcSet="/images/mascot/snappy-original-96.webp 1x, /images/mascot/snappy-original-192.webp 2x"
@@ -232,6 +235,18 @@ export function Launcher() {
             alt=""
             draggable={false}
             className="absolute -top-[72px] -right-2.5 z-10 pointer-events-none -scale-x-100"
+            style={{ WebkitUserDrag: "none" } as React.CSSProperties}
+          />
+        )}
+        {mascotMode === "center" && (
+          <img
+            src="/images/mascot/snappy-original-192.webp"
+            srcSet="/images/mascot/snappy-original-192.webp 1x, /images/mascot/snappy-original-384.webp 2x"
+            width={192}
+            height={192}
+            alt=""
+            draggable={false}
+            className="absolute -top-[156px] left-1/2 -translate-x-1/2 z-10 pointer-events-none"
             style={{ WebkitUserDrag: "none" } as React.CSSProperties}
           />
         )}
