@@ -5,6 +5,7 @@
 mod app_discovery;
 pub(crate) mod cgimage_conversion;
 mod clipboard;
+pub(crate) mod osascript;
 mod launcher_panel;
 mod settings_discovery;
 mod tray;

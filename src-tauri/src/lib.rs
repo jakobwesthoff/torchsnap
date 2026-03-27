@@ -232,6 +232,9 @@ pub fn run() {
             // =========================================================
             let mut catalog = search::catalog::CatalogRegistry::new();
             catalog.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
+            catalog.register(Box::new(
+                plugins::system_commands::SystemCommandsPlugin::new(),
+            ));
 
             let icon_cache_dir = app
                 .path()
