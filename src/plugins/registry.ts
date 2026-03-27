@@ -18,6 +18,7 @@ import type { PluginViewProps } from "./types";
 // Lazy-load plugin components so they don't bloat the initial bundle.
 const PLUGIN_COMPONENTS: Record<string, ComponentType<PluginViewProps>> = {
   "emoji-picker": lazy(() => import("./emoji/EmojiGrid")),
+  "clipboard-manager": lazy(() => import("./clipboard/ClipboardView")),
 };
 
 export function getPluginComponent(
