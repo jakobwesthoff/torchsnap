@@ -5,19 +5,21 @@
 /**
  * Clipboard History — plugin custom UI component.
  *
- * Split-pane layout: left panel is a scrollable entry list, right
- * panel shows a preview of the selected entry. The component
- * subscribes to live updates from the backend via `usePluginStream`
- * so new clipboard captures appear immediately.
+ * Split-pane layout: left panel is a virtually-scrolled entry list,
+ * right panel shows a detail preview of the selected entry. The list
+ * subscribes to lightweight `ClipboardListEntry` updates via
+ * `usePluginStream`. Full entry detail is loaded on demand when the
+ * selection changes, with an LRU cache to avoid re-fetching during
+ * rapid keyboard navigation.
  *
  * Keybindings:
  *   - ArrowUp/Down: navigate entries
  *   - Enter: paste the selected entry (writes to clipboard, dismisses)
- *   - Delete/Backspace: remove the selected entry
+ *   - Meta+Backspace: remove the selected entry
  *   - Escape: go back to the launcher
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   ClipboardDocumentListIcon,
@@ -30,10 +32,18 @@ import {
   type KeyBindingDefinition,
 } from "../../keybindings/matching";
 import { usePluginStream } from "../../hooks/usePluginStream";
+import { useWindowedList } from "../../launcher/hooks/useWindowedList";
+import { LruCache } from "../../lib/LruCache";
 import type { PluginViewProps } from "../types";
-import type { ClipboardHistoryEntry } from "./types";
+import type { ClipboardHistoryEntry, ClipboardListEntry } from "./types";
 
 const PLUGIN_LAYER = LAYER.COMPONENT + 2;
+
+/** Number of list rows visible at once in the clipboard panel. */
+const PAGE_SIZE = 10;
+
+/** Capacity of the detail entry LRU cache. */
+const DETAIL_CACHE_CAPACITY = 20;
 
 // =========================================================
 // Relative Time Formatting
@@ -51,6 +61,137 @@ function relativeTime(iso: string): string {
 }
 
 // =========================================================
+// Sub-components
+// =========================================================
+
+function EmptyState({ query }: { query: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full text-text-muted text-sm gap-2">
+      <ClipboardDocumentListIcon className="h-8 w-8" />
+      <span>{query ? "No matches found" : "Clipboard history is empty"}</span>
+    </div>
+  );
+}
+
+function EntryRow({
+  entry,
+  selected,
+  onSelect,
+  onPaste,
+  mouseActiveRef,
+}: {
+  entry: ClipboardListEntry;
+  selected: boolean;
+  onSelect: () => void;
+  onPaste: () => void;
+  mouseActiveRef: RefObject<boolean>;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-2 cursor-default text-sm ${
+        selected
+          ? "bg-accent/10 text-text-primary"
+          : "text-text-secondary"
+      }`}
+      onMouseEnter={() => {
+        if (mouseActiveRef.current) onSelect();
+      }}
+      onClick={onPaste}
+    >
+      {entry.primaryFormat === "image" ? (
+        <PhotoIcon className="h-4 w-4 shrink-0 text-text-muted" />
+      ) : (
+        <DocumentTextIcon className="h-4 w-4 shrink-0 text-text-muted" />
+      )}
+      <span className="flex-1 truncate">{entry.preview}</span>
+      <span className="shrink-0 text-xs text-text-muted">
+        {relativeTime(entry.capturedAt)}
+      </span>
+    </div>
+  );
+}
+
+function EntryList({
+  entries,
+  selectedIndex,
+  windowStart,
+  onSelect,
+  onPaste,
+  mouseActiveRef,
+}: {
+  entries: ClipboardListEntry[];
+  selectedIndex: number;
+  windowStart: number;
+  onSelect: (index: number) => void;
+  onPaste: () => void;
+  mouseActiveRef: RefObject<boolean>;
+}) {
+  return (
+    <div
+      className="w-[40%] h-full overflow-hidden border-r border-border"
+      onMouseMove={() => {
+        mouseActiveRef.current = true;
+      }}
+    >
+      {entries.map((entry, visualIndex) => {
+        const absoluteIndex = windowStart + visualIndex;
+        return (
+          <EntryRow
+            key={entry.id}
+            entry={entry}
+            selected={absoluteIndex === selectedIndex}
+            onSelect={() => onSelect(absoluteIndex)}
+            onPaste={onPaste}
+            mouseActiveRef={mouseActiveRef}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function DetailPreview({
+  detail,
+  loading,
+}: {
+  detail: ClipboardHistoryEntry | null;
+  loading: boolean;
+}) {
+  if (loading && !detail) {
+    return (
+      <div className="w-[60%] overflow-hidden p-4 flex items-center justify-center text-text-muted text-sm">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return <div className="w-[60%] overflow-hidden p-4" />;
+  }
+
+  if (detail.imagePath) {
+    return (
+      <div className="w-[60%] overflow-hidden p-4">
+        <img
+          src={convertFileSrc(detail.imagePath)}
+          alt="Clipboard image"
+          className="max-w-full max-h-full object-contain rounded"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-[60%] overflow-hidden p-4">
+      <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none pointer-events-none font-mono leading-relaxed">
+        {detail.preview}
+      </pre>
+    </div>
+  );
+}
+
+// =========================================================
 // ClipboardView Component
 // =========================================================
 
@@ -63,21 +204,35 @@ export default function ClipboardView({
   onFooterChange,
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
 
   // Stable payload reference — only changes when the query does.
   const subscribePayload = useMemo(
-    () => ({ query: query || null, limit: 50 }),
+    () => ({ query: query || null }),
     [query],
   );
 
-  // Subscribe to live clipboard history from the backend.
+  // Subscribe to lightweight list entries from the backend.
   const history = usePluginStream<
-    { query: string | null; limit: number },
-    ClipboardHistoryEntry[]
+    { query: string | null },
+    ClipboardListEntry[]
   >(sendMessage, "subscribe", subscribePayload);
 
   const entries = history ?? [];
+
+  // -------------------------------------------------------
+  // Virtual Scroll
+  // -------------------------------------------------------
+
+  const { windowStart } = useWindowedList({
+    selectedIndex,
+    setSelectedIndex,
+    resultCount: entries.length,
+    pageSize: PAGE_SIZE,
+    wheelRef,
+  });
+
+  const visibleEntries = entries.slice(windowStart, windowStart + PAGE_SIZE);
 
   // Clamp selection when entries change.
   useEffect(() => {
@@ -86,13 +241,59 @@ export default function ClipboardView({
     );
   }, [entries.length]);
 
-  // Keep the selected item scrolled into view.
+  // -------------------------------------------------------
+  // Detail Loading with LRU Cache
+  // -------------------------------------------------------
+
+  const detailCacheRef = useRef(
+    new LruCache<string, ClipboardHistoryEntry>(DETAIL_CACHE_CAPACITY),
+  );
+  const [detail, setDetail] = useState<ClipboardHistoryEntry | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const selectedEntry = entries[selectedIndex] ?? null;
+  const selectedId = selectedEntry?.id ?? null;
+
   useEffect(() => {
-    const container = listRef.current;
-    if (!container) return;
-    const item = container.children[selectedIndex] as HTMLElement | undefined;
-    item?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex]);
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+
+    // Check cache first.
+    const cached = detailCacheRef.current.get(selectedId);
+    if (cached) {
+      setDetail(cached);
+      return;
+    }
+
+    let cancelled = false;
+    setDetailLoading(true);
+
+    sendMessage<{ id: string }, ClipboardHistoryEntry | null>(
+      "load_full_entry",
+      { id: selectedId },
+    ).then(
+      (result) => {
+        if (cancelled) return;
+        if (result) {
+          detailCacheRef.current.set(selectedId, result);
+        }
+        setDetail(result);
+        setDetailLoading(false);
+      },
+      (err) => {
+        if (cancelled) return;
+        console.error("load_full_entry failed:", err);
+        setDetail(null);
+        setDetailLoading(false);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, sendMessage]);
 
   // -------------------------------------------------------
   // Actions
@@ -197,84 +398,29 @@ export default function ClipboardView({
   useKeyBindings(bindings);
 
   // -------------------------------------------------------
-  // Selected entry for preview
-  // -------------------------------------------------------
-
-  const selected = entries[selectedIndex] ?? null;
-
-  // -------------------------------------------------------
   // Render
+  //
+  // The outer div always renders so that wheelRef is attached
+  // on mount — useWindowedList's wheel listener depends on it.
   // -------------------------------------------------------
-
-  if (entries.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-text-muted text-sm gap-2">
-        <ClipboardDocumentListIcon className="h-8 w-8" />
-        <span>{query ? "No matches found" : "Clipboard history is empty"}</span>
-      </div>
-    );
-  }
 
   return (
-    <div className="flex h-[360px]">
-      {/* Left panel — entry list */}
-      <div
-        ref={listRef}
-        className="w-[40%] overflow-y-auto border-r border-border"
-        onMouseMove={() => {
-          mouseActiveRef.current = true;
-        }}
-      >
-        {entries.map((entry, index) => (
-          <div
-            key={entry.id}
-            className={`flex items-center gap-2 px-3 py-2 cursor-default text-sm ${
-              index === selectedIndex
-                ? "bg-accent/10 text-text-primary"
-                : "text-text-secondary hover:bg-surface-hover"
-            }`}
-            onMouseEnter={() => {
-              if (mouseActiveRef.current) setSelectedIndex(index);
-            }}
-            onClick={() => void handlePaste()}
-          >
-            {/* Content type icon */}
-            {entry.formats.includes("image") ? (
-              <PhotoIcon className="h-4 w-4 shrink-0 text-text-muted" />
-            ) : (
-              <DocumentTextIcon className="h-4 w-4 shrink-0 text-text-muted" />
-            )}
-
-            {/* Preview text */}
-            <span className="flex-1 truncate">{entry.preview}</span>
-
-            {/* Timestamp */}
-            <span className="shrink-0 text-xs text-text-muted">
-              {relativeTime(entry.capturedAt)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Right panel — preview */}
-      <div className="w-[60%] overflow-auto p-4">
-        {selected && (
-          <>
-            {selected.imagePath ? (
-              <img
-                src={convertFileSrc(selected.imagePath)}
-                alt="Clipboard image"
-                className="max-w-full max-h-full object-contain rounded"
-                draggable={false}
-              />
-            ) : (
-              <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none pointer-events-none font-mono leading-relaxed">
-                {selected.preview}
-              </pre>
-            )}
-          </>
-        )}
-      </div>
+    <div ref={wheelRef} className="flex h-[360px]">
+      {entries.length === 0 ? (
+        <EmptyState query={query} />
+      ) : (
+        <>
+          <EntryList
+            entries={visibleEntries}
+            selectedIndex={selectedIndex}
+            windowStart={windowStart}
+            onSelect={setSelectedIndex}
+            onPaste={() => void handlePaste()}
+            mouseActiveRef={mouseActiveRef}
+          />
+          <DetailPreview detail={detail} loading={detailLoading} />
+        </>
+      )}
     </div>
   );
 }

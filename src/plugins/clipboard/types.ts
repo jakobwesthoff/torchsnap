@@ -6,9 +6,19 @@
  * Types for the clipboard manager plugin frontend.
  *
  * These mirror the Rust-side serialized types from
- * `plugins::clipboard::ClipboardHistoryEntry`.
+ * `plugins::clipboard::schema`.
  */
 
+/** Lightweight entry used for list display — sent via subscribe/notify. */
+export interface ClipboardListEntry {
+  id: string;
+  capturedAt: string;
+  preview: string;
+  /** Highest-priority format (e.g. "image", "text", "files"). */
+  primaryFormat: string;
+}
+
+/** Full entry returned by `load_full_entry` for the detail preview. */
 export interface ClipboardHistoryEntry {
   id: string;
   capturedAt: string;
