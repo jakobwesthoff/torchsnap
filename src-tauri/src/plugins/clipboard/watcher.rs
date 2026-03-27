@@ -29,7 +29,7 @@ use super::storage::SharedState;
 /// Clipboard change handler passed to clipboard-rs.
 ///
 /// On each change: checks platform flags (self-written,
-/// sensitive), captures all formats via `formats::capture_all`,
+/// sensitive), extracts all formats via `formats::extract_all_formats`,
 /// stores the entry, and notifies subscribers.
 pub struct WatcherHandler {
     pub platform: Arc<dyn ClipboardPlatform>,
@@ -50,15 +50,15 @@ impl ClipboardHandler for WatcherHandler {
             return;
         }
 
-        if let Err(e) = self.capture() {
-            eprintln!("clipboard: capture failed: {e:#}");
+        if let Err(e) = self.process_clipboard_change() {
+            eprintln!("clipboard: process change failed: {e:#}");
         }
     }
 }
 
 impl WatcherHandler {
-    fn capture(&mut self) -> Result<()> {
-        let result = formats::capture_all(&self.clipboard);
+    fn process_clipboard_change(&mut self) -> Result<()> {
+        let result = formats::extract_all_formats(&self.clipboard);
 
         // Nothing captured — skip.
         if result.formats.is_empty() {
@@ -76,7 +76,7 @@ impl WatcherHandler {
             .capture_count
             .fetch_add(1, Ordering::Relaxed);
         if count > 0 && count % RETENTION_INTERVAL == 0 {
-            if let Err(e) = self.state.run_retention() {
+            if let Err(e) = self.state.delete_expired_entries() {
                 eprintln!("clipboard: periodic retention failed: {e:#}");
             }
         }

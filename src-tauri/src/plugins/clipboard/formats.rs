@@ -5,10 +5,10 @@
 // =========================================================
 // Clipboard Format Handling
 //
-// Captures and restores clipboard content across all known
+// Extracts and converts clipboard content across all known
 // formats. Each format is read via its typed clipboard-rs
 // getter and serialized to raw bytes for uniform storage.
-// On restore, the format name maps back to the corresponding
+// On conversion back, the format name maps to the corresponding
 // `ClipboardContent` variant.
 //
 // Supported formats:
@@ -71,7 +71,7 @@ const KNOWN_FORMATS: &[ContentFormat] = &[
 /// Captures every known format that is present, then derives
 /// a human-readable display string separately with its own
 /// priority logic.
-pub fn capture_all(clipboard: &ClipboardContext) -> CaptureResult {
+pub fn extract_all_formats(clipboard: &ClipboardContext) -> CaptureResult {
     let mut formats = Vec::new();
 
     for content_format in KNOWN_FORMATS {
@@ -184,14 +184,14 @@ fn derive_display_text(clipboard: &ClipboardContext) -> String {
     // Files: structured display with filenames and count.
     if let Ok(files) = clipboard.get_files() {
         if !files.is_empty() {
-            return cap_display_text(&format_file_display(&files));
+            return truncate_display_text(&file_paths_to_display_text(&files));
         }
     }
 
     // Plain text: the most common and broadly useful display.
     if let Ok(text) = clipboard.get_text() {
         if !text.is_empty() {
-            return cap_display_text(&text);
+            return truncate_display_text(&text);
         }
     }
 
@@ -207,7 +207,7 @@ fn derive_display_text(clipboard: &ClipboardContext) -> String {
 }
 
 /// Cap display text at [`DISPLAY_TEXT_MAX_CHARS`].
-fn cap_display_text(s: &str) -> String {
+fn truncate_display_text(s: &str) -> String {
     if s.chars().count() > DISPLAY_TEXT_MAX_CHARS {
         s.chars().take(DISPLAY_TEXT_MAX_CHARS).collect()
     } else {
@@ -224,7 +224,7 @@ fn cap_display_text(s: &str) -> String {
 /// Uses filenames (not full paths) to keep the display compact.
 /// Single files show just the name, multiple files show the
 /// count followed by the names.
-fn format_file_display(paths: &[String]) -> String {
+fn file_paths_to_display_text(paths: &[String]) -> String {
     use std::path::Path;
 
     let names: Vec<&str> = paths
@@ -245,19 +245,19 @@ fn format_file_display(paths: &[String]) -> String {
 }
 
 // =========================================================
-// Restore
+// Clipboard Content Conversion
 // =========================================================
 
-/// Reconstruct clipboard contents from stored format data.
+/// Convert captured formats back to clipboard-writable contents.
 ///
 /// Maps each format name back to the corresponding
 /// `ClipboardContent` variant. Unknown format names are
 /// silently skipped.
-pub fn restore_contents(formats: &[CapturedFormat]) -> Vec<clipboard_rs::ClipboardContent> {
-    formats.iter().filter_map(restore_format).collect()
+pub fn captured_to_clipboard_contents(formats: &[CapturedFormat]) -> Vec<clipboard_rs::ClipboardContent> {
+    formats.iter().filter_map(captured_to_clipboard_content).collect()
 }
 
-fn restore_format(cf: &CapturedFormat) -> Option<clipboard_rs::ClipboardContent> {
+fn captured_to_clipboard_content(cf: &CapturedFormat) -> Option<clipboard_rs::ClipboardContent> {
     match cf.format.as_str() {
         "text" => {
             let text = String::from_utf8(cf.data.clone()).ok()?;
