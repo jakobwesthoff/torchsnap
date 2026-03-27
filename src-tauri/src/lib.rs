@@ -250,7 +250,7 @@ pub fn run() {
                 ),
             ));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            catalog.setup_all();
+            catalog.setup_all(app.handle());
             app.manage(Mutex::new(catalog));
 
             // =========================================================
@@ -346,19 +346,23 @@ pub fn run() {
         .expect("error while building tauri application");
 
     // Intercept window close: hide instead of destroying, so the
-    // menubar app keeps running.
-    app.run(|app, event| {
-        if let RunEvent::WindowEvent {
+    // menubar app keeps running. On exit, teardown all plugins.
+    app.run(|app, event| match &event {
+        RunEvent::WindowEvent {
             label,
             event: WindowEvent::CloseRequested { api, .. },
             ..
-        } = &event
-            && (label == "main" || label == "settings")
-        {
+        } if label == "main" || label == "settings" => {
             api.prevent_close();
             if let Some(win) = app.get_webview_window(label) {
                 let _ = win.hide();
             }
         }
+        RunEvent::Exit => {
+            let state = app.state::<Mutex<search::catalog::CatalogRegistry>>();
+            let registry = state.lock().expect("catalog registry lock");
+            registry.teardown_all();
+        }
+        _ => {}
     });
 }

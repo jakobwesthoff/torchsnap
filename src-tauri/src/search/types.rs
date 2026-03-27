@@ -29,6 +29,10 @@ pub enum PostAction {
     /// Keep the launcher open (e.g., for multi-select workflows).
     #[allow(dead_code)]
     KeepOpen,
+    /// Switch to the plugin's custom UI component. The frontend
+    /// mounts the component registered for the executing plugin's
+    /// ID, replacing the standard result list.
+    ShowCustomUI,
 }
 
 // =========================================================

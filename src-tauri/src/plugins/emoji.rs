@@ -210,7 +210,7 @@ impl QueryPlugin for EmojiPickerPlugin {
         &[":"]
     }
 
-    fn setup(&self) {
+    fn setup(&self, _app: &tauri::AppHandle) {
         let data = Self::parse_emoji_data();
         let mut entries = self.entries.write().expect("emoji entries write lock");
         *entries = data;
