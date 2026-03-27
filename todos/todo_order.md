@@ -38,6 +38,9 @@ Core systems that support everything else.
 - [visual-identity-brainstorm](01kmh1h2b95jvtfk76hwyd80kd-visual-identity-brainstorm.md) `[discuss]`
 - [design-logo-and-icons](01kmh1h2b95jvtfk76hwyd80ke-design-logo-and-icons.md)
 - [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
+- [selection-highlight-contrast](01kmpq5kc4yts04f0c2wwvhng6-selection-highlight-contrast.md)
+- [investigate-double-hide-on-dismiss](01kmpjrsretm2sdvm71yknd2k3-investigate-double-hide-on-dismiss.md)
+- [frontend-backend-error-handling](01kmpk3scmw3h8vpptdfjnp2bv-frontend-backend-error-handling.md)
 - [onboarding-first-run](01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md)
 
 ## Phase 3: Plugin system extraction
@@ -72,6 +75,7 @@ Build out the plugin ecosystem once the API is stable.
 - [clipboard-source-app-identification](01kmp9wsa756avh7nc72vfs0ez-clipboard-source-app-identification.md) *(after plugin-clipboard-manager)*
 - [clipboard-plugin-settings](01kmp5hfhw5dr3nwzg7xjmrp0y-clipboard-plugin-settings.md) *(after plugin-clipboard-manager)*
 - [clipboard-keyboard-shortcut-activation](01kmp5hfhw5dr3nwzg7xjmrp0z-clipboard-keyboard-shortcut-activation.md) *(after plugin-clipboard-manager)*
+- [clipboard-load-image-from-copied-file](01kmphkx6n34kaqjq4cdsapkpw-clipboard-load-image-from-copied-file.md) *(after plugin-clipboard-manager)*
 - [plugin-file-search](01kmh0n9gmxjbt0xxy56h0ajh3-plugin-file-search.md)
 - [plugin-task-switcher](01kmh0dspar1gga0ahh1pyp355-plugin-task-switcher.md)
 - [plugin-contact-search](01kmh0dspar1gga0ahh1pyp352-plugin-contact-search.md)
