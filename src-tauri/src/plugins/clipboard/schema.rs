@@ -68,11 +68,32 @@ END;
 // Serialized Types (sent to/from the frontend)
 // =========================================================
 
+/// Lightweight entry used for list display. Sent via subscribe/notify
+/// to keep payload size minimal — detail data is loaded on demand via
+/// `load_full_entry`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardListEntry {
+    pub id: String,
+    pub captured_at: String,
+    /// Truncated to [`LIST_PREVIEW_MAX_CHARS`] characters.
+    pub preview: String,
+    /// Highest-priority format for this entry, used to determine
+    /// the list icon (e.g. image vs text vs files).
+    pub primary_format: String,
+}
+
+/// Maximum preview length transmitted for list entries.
+pub const LIST_PREVIEW_MAX_CHARS: usize = 40;
+
+/// Full entry returned by `load_full_entry` when the user selects an
+/// entry in the list.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardHistoryEntry {
     pub id: String,
     pub captured_at: String,
+    /// Truncated to [`DETAIL_PREVIEW_MAX_CHARS`] characters.
     pub preview: String,
     pub formats: Vec<String>,
     /// Absolute path to the image file, if this entry has an
@@ -80,17 +101,14 @@ pub struct ClipboardHistoryEntry {
     pub image_path: Option<String>,
 }
 
+/// Maximum preview length transmitted for detail entries.
+pub const DETAIL_PREVIEW_MAX_CHARS: usize = 1000;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscribePayload {
     #[serde(default)]
     pub query: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-fn default_limit() -> usize {
-    50
 }
 
 #[derive(Debug, Deserialize)]

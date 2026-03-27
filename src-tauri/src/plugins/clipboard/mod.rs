@@ -202,8 +202,19 @@ impl CatalogPlugin for ClipboardPlugin {
                     subs.push(channel);
                 }
 
-                let history = state.query_history(params.query.as_deref(), params.limit)?;
+                let history = state.query_history(params.query.as_deref())?;
                 Ok(serde_json::to_value(&history).context("serialize history")?)
+            }
+
+            // -----------------------------------------------
+            // Load full entry: return complete detail data for
+            // a single entry (formats, image path, longer preview).
+            // -----------------------------------------------
+            "load_full_entry" => {
+                let params: EntryIdPayload =
+                    serde_json::from_value(payload).context("parse load_full_entry payload")?;
+                let entry = state.load_full_entry(&params.id)?;
+                Ok(serde_json::to_value(&entry).context("serialize full entry")?)
             }
 
             // -----------------------------------------------
