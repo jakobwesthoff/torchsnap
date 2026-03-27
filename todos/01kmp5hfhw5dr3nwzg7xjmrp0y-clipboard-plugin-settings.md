@@ -11,10 +11,11 @@ plugin that needs its own configuration beyond global app settings.
 - Polling interval override (default 500ms)
 - Toggle for recording concealed/transient entries
 
-## Open questions
+## Resolved
 
-- Do we need a generic per-plugin settings infrastructure, or is it
-  fine to hardcode clipboard settings into the existing settings store
-  under a namespaced key (e.g., `plugins.clipboard.*`)?
-- Settings UI: separate settings pane per plugin, or a single settings
-  view with plugin sections?
+- Generic per-plugin settings infrastructure built: `SettingsInit` for
+  defaults, `PluginSettings` for runtime reads, `usePluginSetting` hook
+  on the frontend. All namespaced under `plugins.<id>.<key>`.
+- Settings UI redesigned with sidebar navigation. Each plugin with a
+  settings component gets its own section. Clipboard has a placeholder
+  entry — replace it with the actual controls listed above.
