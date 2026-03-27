@@ -81,6 +81,7 @@ pub struct EntryMetadata {
 ///   <first-2-hex-chars>/
 ///     <full-64-char-hash>.<ext>
 /// ```
+#[derive(Clone)]
 pub struct FileStorage {
     base_dir: PathBuf,
 }
