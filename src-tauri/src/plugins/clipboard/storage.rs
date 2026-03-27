@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use anyhow::Result;
 use tauri::ipc::Channel;
 
-use crate::storage::{FileStorage, SqlStorage, StorageKey};
+use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
 
 use super::formats::{CapturedContent, CapturedFormat};
 use super::schema::{ClipboardHistoryEntry, RETENTION_DAYS};
@@ -50,7 +50,7 @@ impl SharedState {
                      WHERE clipboard_fts MATCH ?1
                      ORDER BY rank
                      LIMIT ?2",
-                    &[&fts_query as &dyn rusqlite::types::ToSql, &(limit as i64)],
+                    &[SqlValue::from(fts_query), SqlValue::from(limit as i64)],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?
             }
@@ -59,7 +59,7 @@ impl SharedState {
                  FROM clipboard_entries
                  ORDER BY captured_at DESC
                  LIMIT ?1",
-                &[&(limit as i64) as &dyn rusqlite::types::ToSql],
+                &[SqlValue::from(limit as i64)],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )?,
         };
@@ -70,7 +70,7 @@ impl SharedState {
                 .sql
                 .query_map(
                     "SELECT format FROM clipboard_content WHERE entry_id = ?1",
-                    &[&id as &dyn rusqlite::types::ToSql],
+                    &[SqlValue::from(id.as_str())],
                     |row| row.get(0),
                 )
                 .unwrap_or_default();
@@ -108,7 +108,7 @@ impl SharedState {
     ) -> Result<()> {
         self.sql.execute(
             "INSERT INTO clipboard_entries (id, preview) VALUES (?1, ?2)",
-            &[&id as &dyn rusqlite::types::ToSql, &preview],
+            &[SqlValue::from(id), SqlValue::from(preview)],
         )?;
 
         for fmt in formats {
@@ -127,10 +127,10 @@ impl SharedState {
                 "INSERT INTO clipboard_content (entry_id, format, text_value, file_key)
                  VALUES (?1, ?2, ?3, ?4)",
                 &[
-                    &id as &dyn rusqlite::types::ToSql,
-                    &fmt.name.as_str(),
-                    &text_value,
-                    &file_key.as_deref(),
+                    SqlValue::from(id),
+                    SqlValue::from(fmt.name.as_str()),
+                    SqlValue::from(text_value),
+                    SqlValue::from(file_key),
                 ],
             )?;
         }
@@ -147,7 +147,7 @@ impl SharedState {
         // handle the index cleanup.
         self.sql.execute(
             "DELETE FROM clipboard_entries WHERE id = ?1",
-            &[&id as &dyn rusqlite::types::ToSql],
+            &[SqlValue::from(id)],
         )?;
 
         Ok(())
@@ -160,7 +160,7 @@ impl SharedState {
         let old_ids: Vec<String> = self.sql.query_map(
             "SELECT id FROM clipboard_entries
              WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
-            &[&cutoff as &dyn rusqlite::types::ToSql],
+            &[SqlValue::from(cutoff.as_str())],
             |row| row.get(0),
         )?;
 
@@ -172,7 +172,7 @@ impl SharedState {
         self.sql.execute(
             "DELETE FROM clipboard_entries
              WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
-            &[&cutoff as &dyn rusqlite::types::ToSql],
+            &[SqlValue::from(cutoff)],
         )?;
 
         Ok(())

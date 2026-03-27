@@ -34,7 +34,7 @@ use tauri::Manager;
 
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::storage::{FileStorage, SqlStorage};
+use crate::storage::{FileStorage, SqlStorage, SqlValue};
 
 use self::formats::{restore_contents, StoredContent};
 use self::schema::{EntryIdPayload, SubscribePayload, MIGRATION_001, PLUGIN_ID};
@@ -234,7 +234,7 @@ impl CatalogPlugin for ClipboardPlugin {
                     .query_map(
                         "SELECT format, text_value, file_key FROM clipboard_content
                          WHERE entry_id = ?1",
-                        &[&params.id as &dyn rusqlite::types::ToSql],
+                        &[SqlValue::from(params.id.as_str())],
                         |row| {
                             Ok(StoredContent {
                                 format: row.get(0)?,
