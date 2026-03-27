@@ -27,7 +27,7 @@ interface UseWindowedListParams {
   setSelectedIndex: (index: number) => void;
   resultCount: number;
   pageSize: number;
-  listRef: RefObject<HTMLDivElement | null>;
+  wheelRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useWindowedList({
@@ -35,7 +35,7 @@ export function useWindowedList({
   setSelectedIndex,
   resultCount,
   pageSize,
-  listRef,
+  wheelRef,
 }: UseWindowedListParams): { windowStart: number } {
   // =========================================================
   // Window Position (ref-based, adjusted synchronously)
@@ -108,7 +108,7 @@ export function useWindowedList({
   stateRef.current = { selectedIndex, resultCount, pageSize };
 
   useEffect(() => {
-    const el = listRef.current;
+    const el = wheelRef.current;
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
@@ -134,7 +134,7 @@ export function useWindowedList({
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [listRef, setSelectedIndex]);
+  }, [wheelRef, setSelectedIndex]);
 
   return { windowStart: windowStartRef.current };
 }
