@@ -20,6 +20,7 @@ use tauri::ipc::Channel;
 
 use catalog::CatalogRegistry;
 use types::{ActionId, PostAction, SearchMessage};
+use serde_json::Value;
 
 /// Search all registered catalogs and stream results to the frontend.
 ///
@@ -56,5 +57,26 @@ pub fn execute_action(
     let registry = state.lock().expect("catalog registry lock");
     registry
         .execute(&source, &entry_id, &action_id, &app)
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// Send a custom message to a plugin and optionally receive
+/// streamed updates over the channel.
+///
+/// The plugin is identified by `source` (its ID). The `method`
+/// and `payload` are forwarded to the plugin's `handle_message`
+/// implementation. The `channel` can be used by the plugin to
+/// push live updates back to the frontend.
+#[tauri::command]
+pub fn plugin_message(
+    source: String,
+    method: String,
+    payload: Value,
+    channel: Channel<Value>,
+    state: State<'_, Mutex<CatalogRegistry>>,
+) -> Result<Value, String> {
+    let registry = state.lock().expect("catalog registry lock");
+    registry
+        .handle_message(&source, &method, payload, channel)
         .map_err(|e| format!("{e:#}"))
 }

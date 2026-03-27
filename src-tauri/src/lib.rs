@@ -209,6 +209,7 @@ pub fn run() {
             update_global_shortcut,
             search::search,
             search::execute_action,
+            search::plugin_message,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())

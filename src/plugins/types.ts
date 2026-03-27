@@ -35,4 +35,15 @@ export interface PluginViewProps {
   /** Set the footer content. The plugin is responsible for keeping
    *  this in sync with its actual keybindings. */
   onFooterChange: (state: FooterState) => void;
+  /** Send a custom message to the plugin's backend handler.
+   *
+   *  The host routes this to the plugin identified by the active
+   *  customPluginView. `onMessage` (if provided) receives streaming
+   *  updates pushed by the backend over a Tauri channel before the
+   *  promise resolves with the final response. */
+  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
+    method: string,
+    payload: TPayload,
+    onMessage?: (msg: TStream) => void,
+  ) => Promise<TResult>;
 }

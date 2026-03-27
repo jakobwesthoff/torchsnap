@@ -269,6 +269,29 @@ impl CatalogRegistry {
         anyhow::bail!("unknown plugin source: {source}");
     }
 
+    /// Route a custom message to the plugin identified by `source`.
+    ///
+    /// Searches both catalog and query plugins by ID, then forwards
+    /// the method, payload, and streaming channel to the plugin's
+    /// `handle_message` implementation.
+    pub fn handle_message(
+        &self,
+        source: &str,
+        method: &str,
+        payload: serde_json::Value,
+        channel: tauri::ipc::Channel<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
+            return plugin.handle_message(method, payload, channel);
+        }
+
+        if let Some(plugin) = self.query_plugins.iter().find(|p| p.id() == source) {
+            return plugin.handle_message(method, payload, channel);
+        }
+
+        anyhow::bail!("unknown plugin source: {source}");
+    }
+
     /// Return all entries from all catalog plugins with score 0 and no
     /// highlight positions. Will be used for the empty-query home
     /// screen (recent/pinned items) once that feature is built.
