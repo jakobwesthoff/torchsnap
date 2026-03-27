@@ -16,6 +16,7 @@
  *   - ArrowUp/Down: navigate entries
  *   - Enter: paste the selected entry (writes to clipboard, dismisses)
  *   - Meta+Backspace: remove the selected entry
+ *   - Ctrl+D / Ctrl+U: scroll detail preview down/up by half a page
  *   - Escape: go back to the launcher
  */
 
@@ -34,6 +35,8 @@ import {
 import { usePluginStream } from "../../hooks/usePluginStream";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
 import { LruCache } from "../../lib/LruCache";
+import { useHalfPageScroll } from "../../hooks/useHalfPageScroll";
+import type { FooterHint } from "@torchsnap/types";
 import type { PluginViewProps } from "../types";
 import type { ClipboardHistoryEntry, ClipboardListEntry } from "./types";
 
@@ -118,6 +121,7 @@ function EntryList({
   onSelect,
   onPaste,
   mouseActiveRef,
+  wheelRef,
 }: {
   entries: ClipboardListEntry[];
   selectedIndex: number;
@@ -125,9 +129,11 @@ function EntryList({
   onSelect: (index: number) => void;
   onPaste: () => void;
   mouseActiveRef: RefObject<boolean>;
+  wheelRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <div
+      ref={wheelRef}
       className="w-[40%] h-full overflow-hidden border-r border-border"
       onMouseMove={() => {
         mouseActiveRef.current = true;
@@ -153,9 +159,11 @@ function EntryList({
 function DetailPreview({
   detail,
   loading,
+  scrollRef,
 }: {
   detail: ClipboardHistoryEntry | null;
   loading: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
 }) {
   if (loading && !detail) {
     return (
@@ -171,7 +179,7 @@ function DetailPreview({
 
   if (detail.imagePath) {
     return (
-      <div className="w-[60%] overflow-hidden p-4">
+      <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
         <img
           src={convertFileSrc(detail.imagePath)}
           alt="Clipboard image"
@@ -183,8 +191,8 @@ function DetailPreview({
   }
 
   return (
-    <div className="w-[60%] overflow-hidden p-4">
-      <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none pointer-events-none font-mono leading-relaxed">
+    <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
+      <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none font-mono leading-relaxed">
         {detail.preview}
       </pre>
     </div>
@@ -205,6 +213,7 @@ export default function ClipboardView({
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const wheelRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   // Stable payload reference — only changes when the query does.
   const subscribePayload = useMemo(
@@ -250,6 +259,7 @@ export default function ClipboardView({
   );
   const [detail, setDetail] = useState<ClipboardHistoryEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailOverflows, setDetailOverflows] = useState(false);
 
   const selectedEntry = entries[selectedIndex] ?? null;
   const selectedId = selectedEntry?.id ?? null;
@@ -320,19 +330,34 @@ export default function ClipboardView({
   // -------------------------------------------------------
 
   useEffect(() => {
+    const hints: FooterHint[] = [
+      {
+        combo: { modifiers: ["Meta"], key: "Backspace" },
+        label: "Remove",
+      },
+    ];
+
+    if (detailOverflows) {
+      hints.push(
+        {
+          combo: { modifiers: ["Ctrl"], key: "d" },
+          label: "Scroll Down",
+        },
+        {
+          combo: { modifiers: ["Ctrl"], key: "u" },
+          label: "Scroll Up",
+        },
+      );
+    }
+
     onFooterChange({
       primary: {
         combo: { modifiers: [], key: "Enter" },
         label: "Copy to Clipboard",
       },
-      hints: [
-        {
-          combo: { modifiers: ["Meta"], key: "Backspace" },
-          label: "Remove",
-        },
-      ],
+      hints,
     });
-  }, [onFooterChange]);
+  }, [onFooterChange, detailOverflows]);
 
   // -------------------------------------------------------
   // Keybindings
@@ -398,14 +423,41 @@ export default function ClipboardView({
   useKeyBindings(bindings);
 
   // -------------------------------------------------------
+  // Half-Page Scroll (Ctrl-U / Ctrl-D)
+  // -------------------------------------------------------
+
+  useHalfPageScroll({
+    ref: detailRef,
+    layer: PLUGIN_LAYER,
+    order: 20,
+    allowInInput: true,
+  });
+
+  // Reset detail scroll position when the selection changes so
+  // each entry starts at the top.
+  useEffect(() => {
+    if (detailRef.current) {
+      detailRef.current.scrollTop = 0;
+    }
+  }, [selectedId]);
+
+  // Detect whether the detail panel content overflows its container.
+  // Used to conditionally show Ctrl-U/D scroll hints in the footer.
+  useEffect(() => {
+    const el = detailRef.current;
+    setDetailOverflows(el ? el.scrollHeight > el.clientHeight : false);
+  }, [detail]);
+
+  // -------------------------------------------------------
   // Render
   //
-  // The outer div always renders so that wheelRef is attached
-  // on mount — useWindowedList's wheel listener depends on it.
+  // wheelRef is on the EntryList so wheel events over the list
+  // navigate entries, while wheel events over the detail panel
+  // scroll the preview natively.
   // -------------------------------------------------------
 
   return (
-    <div ref={wheelRef} className="flex h-[360px]">
+    <div className="flex h-[360px]">
       {entries.length === 0 ? (
         <EmptyState query={query} />
       ) : (
@@ -417,8 +469,9 @@ export default function ClipboardView({
             onSelect={setSelectedIndex}
             onPaste={() => void handlePaste()}
             mouseActiveRef={mouseActiveRef}
+            wheelRef={wheelRef}
           />
-          <DetailPreview detail={detail} loading={detailLoading} />
+          <DetailPreview detail={detail} loading={detailLoading} scrollRef={detailRef} />
         </>
       )}
     </div>
