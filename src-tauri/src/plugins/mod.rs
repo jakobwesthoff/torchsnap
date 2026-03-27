@@ -18,6 +18,7 @@
 // =========================================================
 
 pub mod app_launcher;
+pub mod clipboard;
 pub mod commands;
 pub mod emoji;
 pub mod system_preferences;

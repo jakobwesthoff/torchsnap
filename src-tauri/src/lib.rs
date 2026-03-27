@@ -249,6 +249,9 @@ pub fn run() {
                     Arc::clone(&icon_cache),
                 ),
             ));
+            catalog.register(Box::new(
+                plugins::clipboard::ClipboardPlugin::new(platform::PlatformClipboard),
+            ));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             catalog.setup_all(app.handle());
             app.manage(Mutex::new(catalog));
