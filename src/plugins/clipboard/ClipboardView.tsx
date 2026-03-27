@@ -57,6 +57,7 @@ function relativeTime(iso: string): string {
 export default function ClipboardView({
   query,
   goBack,
+  dismiss,
   mouseActiveRef,
   sendMessage,
   onFooterChange,
@@ -101,7 +102,8 @@ export default function ClipboardView({
     const entry = entries[selectedIndex];
     if (!entry) return;
     await sendMessage("paste", { id: entry.id });
-  }, [entries, selectedIndex, sendMessage]);
+    dismiss();
+  }, [entries, selectedIndex, sendMessage, dismiss]);
 
   const handleDelete = useCallback(async () => {
     const entry = entries[selectedIndex];
