@@ -41,8 +41,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SubscribePayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::CatalogPlugin;
-use crate::settings::PluginSettings;
+use super::{CatalogPlugin, PluginContext};
 
 // =========================================================
 // ClipboardPlugin
@@ -79,7 +78,7 @@ impl CatalogPlugin for ClipboardPlugin {
         PLUGIN_ID
     }
 
-    fn setup(&self, app: &tauri::AppHandle, _settings: &PluginSettings) {
+    fn setup(&self, app: &tauri::AppHandle, _ctx: &PluginContext) {
         let data_dir = app
             .path()
             .app_data_dir()

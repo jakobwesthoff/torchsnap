@@ -19,8 +19,9 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 use super::types::{ActionId, PostAction, ScoredEntry, SearchResult};
-use crate::plugins::{CatalogPlugin, QueryPlugin};
+use crate::plugins::{CatalogPlugin, PluginContext, QueryPlugin};
 use crate::settings::{PluginSettings, SettingsInit};
+use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
 
 use std::sync::Arc;
 use std::thread;
@@ -67,6 +68,7 @@ impl CatalogRegistry {
         &self,
         app: &tauri::AppHandle,
         store: &Arc<tauri_plugin_store::Store<tauri::Wry>>,
+        notifier: &Arc<SettingsNotifier>,
     ) {
         // -------------------------------------------------------
         // Phase 1: Initialize plugin settings defaults (synchronous)
@@ -100,14 +102,20 @@ impl CatalogRegistry {
         for p in &self.catalog_plugins {
             let p = Arc::clone(p);
             let h = handle.clone();
-            let settings = PluginSettings::new(Arc::clone(store), p.id());
-            setup_fns.push(Box::new(move || p.setup(&h, &settings)));
+            let ctx = PluginContext {
+                settings: PluginSettings::new(Arc::clone(store), p.id()),
+                notifier: PluginSettingsNotifier::new(Arc::clone(notifier), Arc::clone(store), p.id()),
+            };
+            setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
         }
         for p in &self.query_plugins {
             let p = Arc::clone(p);
             let h = handle.clone();
-            let settings = PluginSettings::new(Arc::clone(store), p.id());
-            setup_fns.push(Box::new(move || p.setup(&h, &settings)));
+            let ctx = PluginContext {
+                settings: PluginSettings::new(Arc::clone(store), p.id()),
+                notifier: PluginSettingsNotifier::new(Arc::clone(notifier), Arc::clone(store), p.id()),
+            };
+            setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
         }
 
         thread::spawn(move || {
