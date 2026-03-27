@@ -21,8 +21,8 @@ use std::path::Path;
 use anyhow::Context;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use super::cgimage_conversion::nsworkspace_icon_for_file;
+use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 
 /// Directory where macOS installs Settings extension bundles.
 const EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
@@ -33,8 +33,8 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
     fn discover(&self) -> anyhow::Result<Vec<SettingsPane>> {
         let extensions_dir = Path::new(EXTENSIONS_DIR);
 
-        let entries = fs::read_dir(extensions_dir)
-            .context("read ExtensionKit extensions directory")?;
+        let entries =
+            fs::read_dir(extensions_dir).context("read ExtensionKit extensions directory")?;
 
         let system_lang = resolve_system_language();
 
@@ -56,10 +56,7 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
                 Ok(Some(pane)) => panes.push(pane),
                 Ok(None) => {}
                 Err(e) => {
-                    eprintln!(
-                        "skip settings extension {}: {e:#}",
-                        path.display()
-                    );
+                    eprintln!("skip settings extension {}: {e:#}", path.display());
                 }
             }
         }
@@ -91,13 +88,9 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
 /// Returns `Ok(None)` if the bundle doesn't support the
 /// `x-apple.systempreferences:` URL scheme (i.e., it's not a
 /// settings pane we can open).
-fn try_discover_pane(
-    appex_path: &Path,
-    system_lang: &str,
-) -> anyhow::Result<Option<SettingsPane>> {
+fn try_discover_pane(appex_path: &Path, system_lang: &str) -> anyhow::Result<Option<SettingsPane>> {
     let plist_path = appex_path.join("Contents/Info.plist");
-    let info: plist::Dictionary =
-        plist::from_file(&plist_path).context("read Info.plist")?;
+    let info: plist::Dictionary = plist::from_file(&plist_path).context("read Info.plist")?;
 
     // -------------------------------------------------------
     // Check for URL scheme support
@@ -152,11 +145,7 @@ fn try_discover_pane(
 // =========================================================
 
 /// Resolve the localized display name for a settings extension.
-fn resolve_display_name(
-    appex_path: &Path,
-    info: &plist::Dictionary,
-    system_lang: &str,
-) -> String {
+fn resolve_display_name(appex_path: &Path, info: &plist::Dictionary, system_lang: &str) -> String {
     // Try the loctable first — it has properly localized names.
     let loctable_path = appex_path.join("Contents/Resources/InfoPlist.loctable");
     if let Some(name) = try_loctable_name(&loctable_path, system_lang) {
@@ -164,10 +153,7 @@ fn resolve_display_name(
     }
 
     // Fall back to the Info.plist fields.
-    if let Some(name) = info
-        .get("CFBundleDisplayName")
-        .and_then(|v| v.as_string())
-    {
+    if let Some(name) = info.get("CFBundleDisplayName").and_then(|v| v.as_string()) {
         return name.to_string();
     }
 
@@ -225,9 +211,5 @@ fn resolve_system_language() -> String {
 
     // BCP-47 tags look like "de-DE" or "en-US". We only need
     // the language subtag for loctable lookup.
-    locale
-        .split('-')
-        .next()
-        .unwrap_or("en")
-        .to_string()
+    locale.split('-').next().unwrap_or("en").to_string()
 }

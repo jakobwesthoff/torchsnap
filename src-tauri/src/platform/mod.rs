@@ -26,13 +26,13 @@ pub mod settings_discovery;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]
+pub use macos::MacosClipboard as PlatformClipboard;
+#[cfg(target_os = "macos")]
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
 #[cfg(target_os = "macos")]
 pub use macos::MacosSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(target_os = "macos")]
 pub use macos::MacosTray as PlatformTray;
-#[cfg(target_os = "macos")]
-pub use macos::MacosClipboard as PlatformClipboard;
 #[cfg(target_os = "macos")]
 pub use macos::MdfindDiscovery as PlatformAppDiscovery;
 

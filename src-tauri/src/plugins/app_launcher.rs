@@ -31,7 +31,9 @@ use anyhow::Context;
 
 use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
+use crate::search::types::{
+    Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction,
+};
 use crate::storage::StorageKey;
 
 use super::CatalogPlugin;
@@ -49,10 +51,7 @@ pub struct AppLauncherPlugin {
 }
 
 impl AppLauncherPlugin {
-    pub fn new(
-        discovery: impl AppDiscovery + 'static,
-        icon_cache: Arc<IconCache>,
-    ) -> Self {
+    pub fn new(discovery: impl AppDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
@@ -127,16 +126,11 @@ fn extract_icons(
             app.bundle_id.as_deref().unwrap_or("")
         ));
 
-        let source_mtime = std::fs::metadata(&app.path)
-            .and_then(|m| m.modified())
-            .ok();
+        let source_mtime = std::fs::metadata(&app.path).and_then(|m| m.modified()).ok();
 
-        if let Some(path) = icon_cache.ensure_icon(
-            "app-launcher",
-            &key,
-            source_mtime,
-            || discovery.icon(app),
-        ) {
+        if let Some(path) =
+            icon_cache.ensure_icon("app-launcher", &key, source_mtime, || discovery.icon(app))
+        {
             app.icon_path = Some(path);
         }
         valid_keys.insert(key);

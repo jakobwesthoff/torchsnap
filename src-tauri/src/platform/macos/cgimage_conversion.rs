@@ -38,9 +38,7 @@ const K_CG_IMAGE_ALPHA_PREMULTIPLIED_LAST: u32 = 1;
 /// color space mapping, and alpha un-premultiplication.
 ///
 /// Returns `Ok(None)` if the image has zero dimensions.
-pub fn cgimage_to_dynamic_image(
-    cg_image: &CGImage,
-) -> anyhow::Result<Option<image::DynamicImage>> {
+pub fn cgimage_to_dynamic_image(cg_image: &CGImage) -> anyhow::Result<Option<image::DynamicImage>> {
     let width = CGImage::width(Some(cg_image));
     let height = CGImage::height(Some(cg_image));
 
@@ -53,8 +51,7 @@ pub fn cgimage_to_dynamic_image(
     // Create an 8-bit RGBA bitmap context. Core Graphics will
     // convert the source image's pixel format (including 16-bit
     // float) to 8-bit integer during the draw call.
-    let color_space =
-        CGColorSpace::new_device_rgb().context("create device RGB color space")?;
+    let color_space = CGColorSpace::new_device_rgb().context("create device RGB color space")?;
 
     // SAFETY: Passing null for `data` makes CG allocate its own
     // buffer. The color space, dimensions, and bitmap info are
@@ -91,8 +88,7 @@ pub fn cgimage_to_dynamic_image(
     let total_bytes = height * bytes_per_row;
     // SAFETY: The bitmap context owns the buffer, which remains
     // valid while `ctx` is alive. We copy it out immediately.
-    let premultiplied =
-        unsafe { std::slice::from_raw_parts(data_ptr as *const u8, total_bytes) };
+    let premultiplied = unsafe { std::slice::from_raw_parts(data_ptr as *const u8, total_bytes) };
 
     // Un-premultiply alpha. The bitmap context produces
     // premultiplied RGBA, but the `image` crate and WebP
@@ -145,11 +141,7 @@ pub fn nsworkspace_icon_for_file(path: &str) -> anyhow::Result<Option<DynamicIma
     // duration of this call. The returned CGImage borrows from
     // the NSImage and is used immediately.
     let Some(cg_image) = (unsafe {
-        ns_image.CGImageForProposedRect_context_hints(
-            std::ptr::null_mut(),
-            None,
-            None,
-        )
+        ns_image.CGImageForProposedRect_context_hints(std::ptr::null_mut(), None, None)
     }) else {
         return Ok(None);
     };

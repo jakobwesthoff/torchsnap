@@ -253,8 +253,13 @@ fn file_paths_to_display_text(paths: &[String]) -> String {
 /// Maps each format name back to the corresponding
 /// `ClipboardContent` variant. Unknown format names are
 /// silently skipped.
-pub fn captured_to_clipboard_contents(formats: &[CapturedFormat]) -> Vec<clipboard_rs::ClipboardContent> {
-    formats.iter().filter_map(captured_to_clipboard_content).collect()
+pub fn captured_to_clipboard_contents(
+    formats: &[CapturedFormat],
+) -> Vec<clipboard_rs::ClipboardContent> {
+    formats
+        .iter()
+        .filter_map(captured_to_clipboard_content)
+        .collect()
 }
 
 fn captured_to_clipboard_content(cf: &CapturedFormat) -> Option<clipboard_rs::ClipboardContent> {

@@ -20,10 +20,7 @@ impl AppDiscovery for FallbackDiscovery {
         Ok(Vec::new())
     }
 
-    fn icon(
-        &self,
-        _app: &DiscoveredApp,
-    ) -> anyhow::Result<Option<image::DynamicImage>> {
+    fn icon(&self, _app: &DiscoveredApp) -> anyhow::Result<Option<image::DynamicImage>> {
         Ok(None)
     }
 

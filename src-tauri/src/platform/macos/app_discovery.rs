@@ -20,8 +20,8 @@ use anyhow::Context;
 use image::DynamicImage;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use super::cgimage_conversion::nsworkspace_icon_for_file;
+use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 
 /// Thin wrapper around the macOS `mdfind` Spotlight CLI.
 struct Mdfind;

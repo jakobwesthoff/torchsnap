@@ -40,8 +40,8 @@ impl Tray for FallbackTray {
         // Full-color icon — no template tinting on non-macOS.
         // TODO: Use a dedicated tray icon optimized for small sizes
         // and dark/light system themes on Windows and Linux.
-        let tray_icon =
-            Image::from_bytes(include_bytes!("../../../icons/32x32.png")).context("load tray icon")?;
+        let tray_icon = Image::from_bytes(include_bytes!("../../../icons/32x32.png"))
+            .context("load tray icon")?;
 
         TrayIconBuilder::new()
             .icon(tray_icon)

@@ -10,8 +10,8 @@
 // notifies subscriber channels.
 // =========================================================
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use clipboard_rs::{ClipboardContext, ClipboardHandler};
@@ -71,10 +71,7 @@ impl WatcherHandler {
         self.state.notify_subscribers();
 
         // Periodic retention cleanup.
-        let count = self
-            .state
-            .capture_count
-            .fetch_add(1, Ordering::Relaxed);
+        let count = self.state.capture_count.fetch_add(1, Ordering::Relaxed);
         if count > 0 && count % RETENTION_INTERVAL == 0 {
             if let Err(e) = self.state.delete_expired_entries() {
                 eprintln!("clipboard: periodic retention failed: {e:#}");

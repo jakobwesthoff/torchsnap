@@ -19,8 +19,8 @@ use tauri::State;
 use tauri::ipc::Channel;
 
 use catalog::CatalogRegistry;
-use types::{ActionId, PostAction, SearchMessage};
 use serde_json::Value;
+use types::{ActionId, PostAction, SearchMessage};
 
 /// Search all registered catalogs and stream results to the frontend.
 ///
