@@ -27,8 +27,8 @@ use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
 
 use super::formats::CapturedFormat;
 use super::schema::{
-    ClipboardHistoryEntry, ClipboardListEntry, INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS,
-    RETENTION_DAYS,
+    ClipboardHistoryEntry, ClipboardListEntry, FormatData, INLINE_STORAGE_MAX_BYTES,
+    LIST_DISPLAY_MAX_CHARS, RETENTION_DAYS,
 };
 
 // =========================================================
@@ -110,8 +110,8 @@ impl SharedState {
         Ok(result)
     }
 
-    /// Load the full detail for a single clipboard entry, including all
-    /// format names, the resolved image path, and the full display text.
+    /// Load the full detail for a single clipboard entry, including
+    /// all format data and the derived primary format.
     pub fn load_full_entry(&self, id: &str) -> Result<Option<ClipboardHistoryEntry>> {
         let entry: Option<(String, String, String)> = self
             .sql
@@ -131,43 +131,54 @@ impl SharedState {
             return Ok(None);
         };
 
-        // Collect format names and file_keys in one query so we can
-        // resolve image paths from formats stored in FileStorage.
-        let content_rows: Vec<(String, Option<String>)> = self
+        // Load all content rows: format name, inline data, file_key.
+        let content_rows: Vec<(String, Option<Vec<u8>>, Option<String>)> = self
             .sql
             .query_map(
-                "SELECT format, file_key FROM clipboard_content WHERE entry_id = ?1",
+                "SELECT format, data, file_key FROM clipboard_content
+                 WHERE entry_id = ?1",
                 &[SqlValue::from(id.as_str())],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap_or_default();
 
-        let formats: Vec<String> = content_rows.iter().map(|(f, _)| f.clone()).collect();
-
-        // Resolve the image path from the first image format that has
-        // a file stored in FileStorage.
-        let image_path = content_rows
+        // Build the format name list for primary_format derivation.
+        let format_names_csv: String = content_rows
             .iter()
-            .find_map(|(format, file_key)| {
-                if format != "image" {
-                    return None;
-                }
-                let raw_key = file_key.as_ref()?;
+            .map(|(f, _, _)| f.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let primary_format =
+            primary_format_from_csv(Some(&format_names_csv)).to_owned();
+
+        // Build the formats map with typed FormatData for each entry.
+        let mut formats = std::collections::HashMap::new();
+        for (format, inline_data, file_key) in &content_rows {
+            let format_data = if let Some(raw_key) = file_key {
+                // Content stored in FileStorage → asset reference.
                 let key = StorageKey::from_raw(raw_key.clone());
-                let path = self.files.resolve(&key, file_ext_for_format(format));
-                if path.exists() {
-                    Some(path.to_string_lossy().into_owned())
-                } else {
-                    None
+                let ext = file_ext_for_format(format);
+                let path = self.files.resolve(&key, ext);
+                FormatData::Asset {
+                    path: path.to_string_lossy().into_owned(),
                 }
-            });
+            } else if let Some(blob) = inline_data {
+                // Inline content — choose string vs json based on format.
+                format_data_from_inline(format, blob)
+            } else {
+                continue;
+            };
+
+            formats.insert(format.clone(), format_data);
+        }
 
         Ok(Some(ClipboardHistoryEntry {
             id,
             captured_at,
             display_text,
+            primary_format,
             formats,
-            image_path,
         }))
     }
 
@@ -369,6 +380,24 @@ impl SharedState {
 // =========================================================
 // Helpers
 // =========================================================
+
+/// Convert inline BLOB data to the appropriate `FormatData` variant.
+///
+/// "files" is stored as JSON-encoded paths → `Json` with parsed value.
+/// All other inline formats are UTF-8 text → `String`.
+fn format_data_from_inline(format: &str, blob: &[u8]) -> FormatData {
+    if format == "files" {
+        if let Ok(text) = std::str::from_utf8(blob) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+                return FormatData::Json { document: value };
+            }
+        }
+    }
+
+    // All other inline formats are UTF-8 text.
+    let data = String::from_utf8_lossy(blob).into_owned();
+    FormatData::String { data }
+}
 
 /// File extension used for FileStorage. Images are stored as
 /// PNG so Tauri's asset protocol can serve them with the correct

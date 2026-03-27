@@ -177,11 +177,14 @@ function DetailPreview({
     return <div className="w-[60%] overflow-hidden p-4" />;
   }
 
-  if (detail.imagePath) {
+  // TODO: Add type-specific detail views for files, html, etc.
+  // For now, images get a preview and everything else shows display text.
+  const imageFormat = detail.formats.image;
+  if (detail.primaryFormat === "image" && imageFormat?.type === "asset") {
     return (
       <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
         <img
-          src={convertFileSrc(detail.imagePath)}
+          src={convertFileSrc(imageFormat.path)}
           alt="Clipboard image"
           className="max-w-full max-h-full object-contain rounded"
           draggable={false}
