@@ -7,12 +7,13 @@ mod platform;
 mod plugins;
 mod search;
 mod settings;
+mod settings_notifier;
 mod storage;
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use tauri::{Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
+use tauri::{Listener, Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -239,6 +240,31 @@ pub fn run() {
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
                 .apply(&store, "");
+
+            // =========================================================
+            // Settings notifier
+            //
+            // Listens for `settings-changed` Tauri events (emitted by
+            // the frontend settingsStore) and pushes new values to
+            // watch channels so backend subscribers react immediately.
+            // =========================================================
+            let notifier = Arc::new(settings_notifier::SettingsNotifier::new());
+            {
+                let notifier = Arc::clone(&notifier);
+                let store_for_listener = Arc::clone(&store);
+                app.listen("settings-changed", move |event: tauri::Event| {
+                    #[derive(serde::Deserialize)]
+                    struct Payload {
+                        key: String,
+                    }
+                    if let Ok(payload) = serde_json::from_str::<Payload>(event.payload()) {
+                        let value = store_for_listener
+                            .get(&payload.key)
+                            .unwrap_or(serde_json::Value::Null);
+                        notifier.notify(&payload.key, value);
+                    }
+                });
+            }
 
             // =========================================================
             // Search catalog
