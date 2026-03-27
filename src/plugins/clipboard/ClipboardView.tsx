@@ -121,7 +121,7 @@ export default function ClipboardView({
       },
       hints: [
         {
-          combo: { modifiers: [], key: "Delete" },
+          combo: { modifiers: ["Meta"], key: "Backspace" },
           label: "Remove",
         },
       ],
@@ -173,8 +173,7 @@ export default function ClipboardView({
         order: 3,
         handler: () => void handleDelete(),
         keybindings: [
-          { combo: { modifiers: [], key: "Delete" }, allowInInput: true },
-          { combo: { modifiers: [], key: "Backspace" }, allowInInput: true },
+          { combo: { modifiers: ["Meta"], key: "Backspace" }, allowInInput: true },
         ],
       },
       {
