@@ -416,7 +416,13 @@ impl WatcherHandler {
             }
         }
 
-        if self.clipboard.has(ContentFormat::Image) {
+        // Only capture images when the clipboard does NOT contain
+        // files. When a file is copied from Finder, macOS puts the
+        // file's type icon on the clipboard as the "image"
+        // representation — not the file's actual content.
+        let has_files = self.clipboard.has(ContentFormat::Files);
+
+        if !has_files && self.clipboard.has(ContentFormat::Image) {
             if let Ok(image) = self.clipboard.get_image() {
                 if !image.is_empty() {
                     if let Ok(png_buf) = image.to_png() {
