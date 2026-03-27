@@ -22,7 +22,7 @@
 // =========================================================
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use image::DynamicImage;
@@ -78,9 +78,9 @@ impl IconCache {
         image_fn: impl FnOnce() -> anyhow::Result<Option<DynamicImage>>,
     ) -> Option<String> {
         let plugin_storage = self.storage.scoped(plugin_id);
-        let icon_path = plugin_storage.resolve(key, ICON_EXT);
 
-        if self.is_cache_valid(&icon_path, source_mtime) {
+        if self.is_cache_valid(&plugin_storage, key, source_mtime) {
+            let icon_path = plugin_storage.resolve(key, ICON_EXT);
             return Some(icon_path.to_string_lossy().into_owned());
         }
 
@@ -97,7 +97,10 @@ impl IconCache {
                 };
 
                 match plugin_storage.store(key, &webp_bytes, ICON_EXT) {
-                    Ok(()) => Some(icon_path.to_string_lossy().into_owned()),
+                    Ok(()) => {
+                        let icon_path = plugin_storage.resolve(key, ICON_EXT);
+                        Some(icon_path.to_string_lossy().into_owned())
+                    }
                     Err(e) => {
                         eprintln!("write icon cache: {e:#}");
                         None
@@ -136,18 +139,20 @@ impl IconCache {
     /// When `source_mtime` is `None`, any existing file is valid
     /// (for immutable sources like system-provided symbols).
     /// When `Some(t)`, the cached icon must have an mtime >= t.
-    fn is_cache_valid(&self, icon_path: &Path, source_mtime: Option<SystemTime>) -> bool {
-        let icon_meta = match std::fs::metadata(icon_path) {
-            Ok(m) => m,
-            Err(_) => return false,
+    fn is_cache_valid(
+        &self,
+        storage: &FileStorage,
+        key: &StorageKey,
+        source_mtime: Option<SystemTime>,
+    ) -> bool {
+        let entry_meta = match storage.metadata(key, ICON_EXT) {
+            Some(m) => m,
+            None => return false,
         };
 
         match source_mtime {
             None => true,
-            Some(source_time) => {
-                let icon_mtime = icon_meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-                icon_mtime >= source_time
-            }
+            Some(source_time) => entry_meta.modified >= source_time,
         }
     }
 }
