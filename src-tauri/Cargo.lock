@@ -4838,6 +4838,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-store",
  "tempfile",
+ "tokio",
  "ulid",
 ]
 
