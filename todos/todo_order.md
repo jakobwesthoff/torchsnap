@@ -30,6 +30,7 @@ Core systems that support everything else.
 - [i18n-system](01kmh1ah0j1c2cx7pa39rmp7k1-i18n-system.md)
 - [create-dedicated-tray-icon](01kmgymgjvkr1e6egscdwctf2m-create-dedicated-tray-icon.md)
 - [react-perf-audit](01kmnmb0v2rm892d51qj1j5zp0-react-perf-audit.md)
+- [extract-reusable-virtual-scroll-hook](01kmpmt7j2p015zgy7mgjm7x38-extract-reusable-virtual-scroll-hook.md)
 - [refactor-icon-cache-to-use-plugin-id](01kmp77jp2h413hz2ck55sszms-refactor-icon-cache-to-use-plugin-id.md)
 - [rename-search-module](01kmpc7et0w3erf8qysgcc25cj-rename-search-module.md)
 - [plugin-suspense-fallback](01kmnjk9wv8w4m2dhd8x2q8ra6-plugin-suspense-fallback.md)
@@ -63,6 +64,9 @@ Make the launcher work properly on Linux and Windows.
 Build out the plugin ecosystem once the API is stable.
 
 - [plugin-clipboard-manager](01kmh0dspar1gga0ahh1pyp351-plugin-clipboard-manager.md)
+- [clipboard-lazy-detail-loading](01kmpkm3dwpta8g1werx9pygws-clipboard-lazy-detail-loading.md) *(after plugin-clipboard-manager)* **← next**
+- [clipboard-scrollable-preview-with-more-content](01kmppw7hbbv82591mcspd5ph5-clipboard-scrollable-preview-with-more-content.md) *(after clipboard-lazy-detail-loading)*
+- [clipboard-preview-syntax-highlighting](01kmppw7hbbv82591mcspd5ph6-clipboard-preview-syntax-highlighting.md) *(after clipboard-lazy-detail-loading)*
 - [execute-triggered-custom-ui-state-snapshot](01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md) *(after plugin-clipboard-manager)*
 - [clipboard-pinned-entries](01kmpamgxr089fmyx43e4gwdam-clipboard-pinned-entries.md) *(after plugin-clipboard-manager)*
 - [clipboard-source-app-identification](01kmp9wsa756avh7nc72vfs0ez-clipboard-source-app-identification.md) *(after plugin-clipboard-manager)*
