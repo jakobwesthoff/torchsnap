@@ -32,14 +32,14 @@ export function ResultList({
   onExecute,
   mouseActiveRef,
 }: ResultListProps) {
-  const listRef = useRef<HTMLDivElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
 
   const { windowStart } = useWindowedList({
     selectedIndex,
     setSelectedIndex: onSelectIndex,
     resultCount: results.length,
     pageSize: PAGE_SIZE,
-    listRef,
+    wheelRef,
   });
 
   if (results.length === 0) {
@@ -55,7 +55,7 @@ export function ResultList({
 
   return (
     <div
-      ref={listRef}
+      ref={wheelRef}
       className="overflow-hidden"
       onMouseMove={() => {
         mouseActiveRef.current = true;
