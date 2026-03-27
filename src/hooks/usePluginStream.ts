@@ -23,7 +23,7 @@ import type { PluginViewProps } from "../plugins/types";
 
 type SendMessage = PluginViewProps["sendMessage"];
 
-export function useSyncSubscription<TPayload, TSnapshot>(
+export function usePluginStream<TPayload, TSnapshot>(
   sendMessage: SendMessage,
   method: string,
   payload: TPayload,
@@ -61,7 +61,7 @@ export function useSyncSubscription<TPayload, TSnapshot>(
       (result) => update(result),
       (err) => {
         if (!cancelled) {
-          console.error(`useSyncSubscription(${method}) error:`, err);
+          console.error(`usePluginStream(${method}) error:`, err);
         }
       },
     );
