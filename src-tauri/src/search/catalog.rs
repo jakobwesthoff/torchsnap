@@ -55,18 +55,21 @@ impl CatalogRegistry {
     ///
     /// Both catalog and query plugins are set up together in the
     /// same pool.
-    pub fn setup_all(&self) {
+    pub fn setup_all(&self, app: &tauri::AppHandle) {
         // Collect setup closures from both plugin types into a single
         // vec so rayon can schedule them as a unified work pool.
         let mut setup_fns: Vec<Box<dyn FnOnce() + Send>> = Vec::new();
 
+        let handle = app.clone();
         for p in &self.catalog_plugins {
             let p = Arc::clone(p);
-            setup_fns.push(Box::new(move || p.setup()));
+            let h = handle.clone();
+            setup_fns.push(Box::new(move || p.setup(&h)));
         }
         for p in &self.query_plugins {
             let p = Arc::clone(p);
-            setup_fns.push(Box::new(move || p.setup()));
+            let h = handle.clone();
+            setup_fns.push(Box::new(move || p.setup(&h)));
         }
 
         thread::spawn(move || {
@@ -88,6 +91,19 @@ impl CatalogRegistry {
                 setup_fns.into_par_iter().for_each(|f| f());
             });
         });
+    }
+
+    /// Call `teardown()` on every registered plugin.
+    ///
+    /// Called during `RunEvent::Exit` so plugins can flush writes,
+    /// stop background threads, and release resources.
+    pub fn teardown_all(&self) {
+        for p in &self.catalog_plugins {
+            p.teardown();
+        }
+        for p in &self.query_plugins {
+            p.teardown();
+        }
     }
 
     /// Search all plugins against the given query.

@@ -52,11 +52,20 @@ pub trait CatalogPlugin: Send + Sync {
     /// filesystem, run subprocesses). The host spawns one thread
     /// per plugin so all setups run in parallel.
     ///
+    /// The `AppHandle` gives plugins access to Tauri APIs (path
+    /// resolution, managed state, etc.) during initialization.
+    ///
     /// `entries()` must handle the case where `setup()` has not
     /// yet completed (e.g., return an empty list).
     ///
     /// The default implementation is a no-op.
-    fn setup(&self) {}
+    fn setup(&self, _app: &tauri::AppHandle) {}
+
+    /// Cleanup before the application exits.
+    ///
+    /// Called once during `RunEvent::Exit`. Plugins should release
+    /// resources, flush pending writes, and stop background threads.
+    fn teardown(&self) {}
 
     /// Return all catalog entries this plugin provides.
     ///
@@ -132,7 +141,10 @@ pub trait QueryPlugin: Send + Sync {
     }
 
     /// One-time initialization. See `CatalogPlugin::setup()`.
-    fn setup(&self) {}
+    fn setup(&self, _app: &tauri::AppHandle) {}
+
+    /// Cleanup before application exit. See `CatalogPlugin::teardown()`.
+    fn teardown(&self) {}
 
     /// Search for results matching the given query.
     ///

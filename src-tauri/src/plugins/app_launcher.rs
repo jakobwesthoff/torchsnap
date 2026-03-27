@@ -150,7 +150,7 @@ impl CatalogPlugin for AppLauncherPlugin {
         "app-launcher"
     }
 
-    fn setup(&self) {
+    fn setup(&self, _app: &tauri::AppHandle) {
         // Called on a dedicated background thread by the registry.
         //
         // Phase 1: Discover apps and publish immediately so search

@@ -55,7 +55,25 @@ export function Launcher() {
   // Search
   // =========================================================
 
-  const { results, customPluginView, matchedPrefix } = useSearch(query);
+  const {
+    results,
+    customPluginView: searchPluginView,
+    matchedPrefix,
+  } = useSearch(query);
+
+  // Local override for when execute_action returns ShowCustomUI.
+  // Takes precedence over the search-driven customPluginView.
+  const [executePluginView, setExecutePluginView] = useState<string | null>(
+    null,
+  );
+
+  // Clear the execute override when the query changes — the user
+  // is typing again, so we return to normal search mode.
+  useEffect(() => {
+    setExecutePluginView(null);
+  }, [query]);
+
+  const customPluginView = executePluginView ?? searchPluginView;
 
   // Reset selection when results change (new query, different
   // result set).
@@ -105,9 +123,14 @@ export function Launcher() {
     [customPluginView, dismiss],
   );
 
-  // For prefix-triggered plugins, goBack clears the query which
-  // deactivates the plugin through the normal search flow.
+  // Pop back from plugin UI: clear the execute override and
+  // reset the query. For prefix-triggered plugins this deactivates
+  // the plugin through the normal search flow; for execute-triggered
+  // plugins it returns to the empty launcher state.
+  // TODO: Snapshot/restore the pre-plugin query state instead of
+  // always clearing to empty (see clipboard-plugin-settings todo).
   const handleGoBack = useCallback(() => {
+    setExecutePluginView(null);
     setQuery("");
   }, []);
 
@@ -158,6 +181,8 @@ export function Launcher() {
 
       if (postAction === "Dismiss") {
         dismiss();
+      } else if (postAction === "ShowCustomUI") {
+        setExecutePluginView(target.source);
       }
     },
     [results, selectedIndex, dismiss],

@@ -85,7 +85,7 @@ impl CatalogPlugin for SystemPreferencesPlugin {
         "system-preferences"
     }
 
-    fn setup(&self) {
+    fn setup(&self, _app: &tauri::AppHandle) {
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.
