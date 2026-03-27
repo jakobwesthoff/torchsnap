@@ -12,7 +12,6 @@ Build 2–3 plugins as internal features to discover the real API
 surface. These inform all later plugin architecture decisions.
 
 - [plugin-calculator](01kmh0dspar1gga0ahh1pyp350-plugin-calculator.md)
-- [plugin-system-commands](01kmh0n9gmxjbt0xxy56h0ajh4-plugin-system-commands.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
 - [result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md)
