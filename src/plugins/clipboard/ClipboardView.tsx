@@ -110,9 +110,9 @@ function EntryRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 cursor-default text-sm ${
+      className={`flex items-center gap-2 px-3 py-2 cursor-default text-sm border-l-2 border-transparent ${
         selected
-          ? "bg-selection text-text-primary"
+          ? "bg-selection border-accent text-text-primary"
           : "text-text-secondary"
       }`}
       onMouseEnter={() => {
