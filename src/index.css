@@ -104,3 +104,27 @@
     cursor: pointer;
   }
 }
+
+/* =========================================================
+ * Scrollbar Utilities
+ *
+ * Thin accent-colored scrollbar for use in preview panels and
+ * similar containers. All Tauri target platforms use WebKit/Blink
+ * renderers, so ::-webkit-scrollbar covers every platform.
+ * ========================================================= */
+
+.scrollbar-accent {
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--color-accent) 50%, transparent);
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent);
+  }
+}

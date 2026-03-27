@@ -67,9 +67,7 @@ Make the launcher work properly on Linux and Windows.
 Build out the plugin ecosystem once the API is stable.
 
 - [plugin-clipboard-manager](01kmh0dspar1gga0ahh1pyp351-plugin-clipboard-manager.md)
-- [clipboard-lazy-detail-loading](01kmpkm3dwpta8g1werx9pygws-clipboard-lazy-detail-loading.md) *(after plugin-clipboard-manager)* **← next**
-- [clipboard-scrollable-preview-with-more-content](01kmppw7hbbv82591mcspd5ph5-clipboard-scrollable-preview-with-more-content.md) *(after clipboard-lazy-detail-loading)*
-- [clipboard-preview-syntax-highlighting](01kmppw7hbbv82591mcspd5ph6-clipboard-preview-syntax-highlighting.md) *(after clipboard-lazy-detail-loading)*
+- [clipboard-preview-syntax-highlighting](01kmppw7hbbv82591mcspd5ph6-clipboard-preview-syntax-highlighting.md) *(after plugin-clipboard-manager)* **← next**
 - [execute-triggered-custom-ui-state-snapshot](01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md) *(after plugin-clipboard-manager)*
 - [clipboard-pinned-entries](01kmpamgxr089fmyx43e4gwdam-clipboard-pinned-entries.md) *(after plugin-clipboard-manager)*
 - [clipboard-source-app-identification](01kmp9wsa756avh7nc72vfs0ez-clipboard-source-app-identification.md) *(after plugin-clipboard-manager)*

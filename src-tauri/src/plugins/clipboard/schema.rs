@@ -101,8 +101,10 @@ pub struct ClipboardHistoryEntry {
     pub image_path: Option<String>,
 }
 
-/// Maximum preview length transmitted for detail entries.
-pub const DETAIL_PREVIEW_MAX_CHARS: usize = 1000;
+/// Maximum preview length transmitted for detail entries. Large enough
+/// to show virtually any clipboard content while still capping IPC size
+/// at a reasonable bound.
+pub const DETAIL_PREVIEW_MAX_CHARS: usize = 128_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
