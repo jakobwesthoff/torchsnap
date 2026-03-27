@@ -72,7 +72,7 @@ asset-app-icons:
 asset-tray-icon:
     #!/usr/bin/env bash
     set -euo pipefail
-    src="assets/snappy-tray-template-44px.png"
+    src="assets/snappy-tray-template-2-44px.png"
     tray="src-tauri/icons/tray-icon-template.png"
     if [ -f "$tray" ] && [ "$tray" -nt "$src" ]; then
         echo "Tray icon: up to date."
