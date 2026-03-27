@@ -225,7 +225,10 @@ impl CatalogPlugin for ClipboardPlugin {
                 let params: EntryIdPayload =
                     serde_json::from_value(payload).context("parse paste payload")?;
 
-                // Load all stored content rows for this entry.
+                // Load stored content rows on the current thread (fast
+                // SQL query), then spawn the clipboard write on a
+                // background thread so we don't block the IPC thread.
+                // This lets the frontend dismiss the launcher immediately.
                 let stored: Vec<StoredContent> = state
                     .sql
                     .query_map(
@@ -241,21 +244,33 @@ impl CatalogPlugin for ClipboardPlugin {
                         },
                     )?;
 
-                // Reconstruct clipboard contents and write them.
-                let clipboard_contents =
-                    restore_contents(&stored, &state.files);
+                let files = state.files.clone();
+                let platform = Arc::clone(&self.platform);
 
-                if !clipboard_contents.is_empty() {
-                    let ctx = ClipboardContext::new()
-                        .map_err(|e| anyhow::anyhow!("{e}"))?;
-                    ctx.set(clipboard_contents)
-                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+                thread::spawn(move || {
+                    let clipboard_contents = restore_contents(&stored, &files);
 
-                    // Mark as our own write so the watcher skips it.
-                    if let Err(e) = self.platform.mark_self_written() {
+                    if clipboard_contents.is_empty() {
+                        return;
+                    }
+
+                    let ctx = match ClipboardContext::new() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("clipboard: create context for paste: {e}");
+                            return;
+                        }
+                    };
+
+                    if let Err(e) = ctx.set(clipboard_contents) {
+                        eprintln!("clipboard: write to clipboard: {e}");
+                        return;
+                    }
+
+                    if let Err(e) = platform.mark_self_written() {
                         eprintln!("clipboard: mark_self_written failed: {e:#}");
                     }
-                }
+                });
 
                 Ok(serde_json::json!({ "postAction": "Dismiss" }))
             }
