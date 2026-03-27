@@ -98,10 +98,13 @@ export default function ClipboardView({
   // Actions
   // -------------------------------------------------------
 
-  const handlePaste = useCallback(async () => {
+  const handlePaste = useCallback(() => {
     const entry = entries[selectedIndex];
     if (!entry) return;
-    await sendMessage("paste", { id: entry.id });
+    // Fire and forget — dismiss immediately without waiting for
+    // the clipboard write to complete. The macOS pasteboard API
+    // is synchronous and slow enough to feel laggy if we await.
+    sendMessage("paste", { id: entry.id });
     dismiss();
   }, [entries, selectedIndex, sendMessage, dismiss]);
 
