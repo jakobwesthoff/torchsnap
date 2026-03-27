@@ -416,11 +416,30 @@ impl WatcherHandler {
             }
         }
 
+        // Capture file paths so paste-back restores the full file
+        // reference, not just the filename from the text representation.
+        let has_files = self.clipboard.has(ContentFormat::Files);
+
+        if has_files {
+            if let Ok(files) = self.clipboard.get_files() {
+                if !files.is_empty() {
+                    if preview.is_empty() {
+                        preview = files.join(", ");
+                        preview = preview.chars().take(500).collect();
+                    }
+                    // Store as JSON array so we can reconstruct the
+                    // Vec<String> on paste-back.
+                    let json = serde_json::to_string(&files)
+                        .unwrap_or_default();
+                    contents.push(("files".to_string(), Some(json), None));
+                }
+            }
+        }
+
         // Only capture images when the clipboard does NOT contain
         // files. When a file is copied from Finder, macOS puts the
         // file's type icon on the clipboard as the "image"
         // representation — not the file's actual content.
-        let has_files = self.clipboard.has(ContentFormat::Files);
 
         if !has_files && self.clipboard.has(ContentFormat::Image) {
             if let Ok(image) = self.clipboard.get_image() {
@@ -645,6 +664,16 @@ impl CatalogPlugin for ClipboardPlugin {
                             if let Some(rtf) = text_value {
                                 clipboard_contents
                                     .push(clipboard_rs::ClipboardContent::Rtf(rtf.clone()));
+                            }
+                        }
+                        "files" => {
+                            if let Some(json) = text_value {
+                                if let Ok(paths) =
+                                    serde_json::from_str::<Vec<String>>(json)
+                                {
+                                    clipboard_contents
+                                        .push(clipboard_rs::ClipboardContent::Files(paths));
+                                }
                             }
                         }
                         "image" => {
