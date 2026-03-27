@@ -3,11 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod app_discovery;
+mod clipboard;
 mod launcher_panel;
 mod settings_discovery;
 mod tray;
 
 pub use app_discovery::FallbackDiscovery;
+pub use clipboard::FallbackClipboard;
 pub use launcher_panel::FallbackLauncherPanel;
 pub use settings_discovery::FallbackSettingsDiscovery;
 pub use tray::FallbackTray;

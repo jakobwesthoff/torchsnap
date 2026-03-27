@@ -33,6 +33,8 @@ image = { version = "0.25.10", features = ["webp"], default-features = false }
 tauri-plugin-os = "2"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 rusqlite_migration = "2.5.0"
+clipboard-rs = "0.3.3"
+objc2-app-kit = { version = "0.3.2", features = ["NSPasteboard"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

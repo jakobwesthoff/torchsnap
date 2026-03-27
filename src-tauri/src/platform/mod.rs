@@ -20,6 +20,7 @@
 // =========================================================
 
 pub mod app_discovery;
+pub mod clipboard;
 pub mod settings_discovery;
 
 #[cfg(target_os = "macos")]
@@ -31,10 +32,14 @@ pub use macos::MacosSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(target_os = "macos")]
 pub use macos::MacosTray as PlatformTray;
 #[cfg(target_os = "macos")]
+pub use macos::MacosClipboard as PlatformClipboard;
+#[cfg(target_os = "macos")]
 pub use macos::MdfindDiscovery as PlatformAppDiscovery;
 
 #[cfg(not(target_os = "macos"))]
 mod fallback;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackClipboard as PlatformClipboard;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackDiscovery as PlatformAppDiscovery;
 #[cfg(not(target_os = "macos"))]
