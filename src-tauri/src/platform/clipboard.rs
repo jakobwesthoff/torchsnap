@@ -32,9 +32,11 @@ pub trait ClipboardPlatform: Send + Sync {
     /// duplicating paste-back operations.
     fn is_self_written(&self) -> bool;
 
-    /// Mark the current clipboard contents as written by
-    /// Torchsnap. Called after writing content to the clipboard
-    /// during a paste-back operation. The marker is a custom
-    /// pasteboard type that only Torchsnap checks for.
-    fn mark_self_written(&self) -> anyhow::Result<()>;
+    /// Return a `ClipboardContent::Other` item that marks the
+    /// clipboard as written by Torchsnap. Include this in the
+    /// content list passed to `ctx.set()` so the marker is
+    /// written atomically with the content — avoids the race
+    /// where the watcher detects the change before a separate
+    /// `mark_self_written()` call runs.
+    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent>;
 }

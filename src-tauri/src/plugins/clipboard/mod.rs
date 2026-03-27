@@ -248,10 +248,19 @@ impl CatalogPlugin for ClipboardPlugin {
                 let platform = Arc::clone(&self.platform);
 
                 thread::spawn(move || {
-                    let clipboard_contents = restore_contents(&stored, &files);
+                    let mut clipboard_contents = restore_contents(&stored, &files);
 
                     if clipboard_contents.is_empty() {
                         return;
+                    }
+
+                    // Include the self-write marker in the content list
+                    // so it's written atomically with ctx.set(). A
+                    // separate mark_self_written() call after set() races
+                    // with the watcher — it can detect the change before
+                    // the marker is added.
+                    if let Some(marker) = platform.self_write_marker() {
+                        clipboard_contents.push(marker);
                     }
 
                     let ctx = match ClipboardContext::new() {
@@ -264,11 +273,6 @@ impl CatalogPlugin for ClipboardPlugin {
 
                     if let Err(e) = ctx.set(clipboard_contents) {
                         eprintln!("clipboard: write to clipboard: {e}");
-                        return;
-                    }
-
-                    if let Err(e) = platform.mark_self_written() {
-                        eprintln!("clipboard: mark_self_written failed: {e:#}");
                     }
                 });
 
