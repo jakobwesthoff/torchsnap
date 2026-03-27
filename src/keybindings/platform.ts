@@ -40,12 +40,14 @@ export const platform: Platform = detectPlatform();
 
 const MODIFIER_SYMBOLS_MACOS: Record<ModifierKey, string> = {
   Meta: "⌘",
+  Ctrl: "⌃",
   Shift: "⇧",
   Alt: "⌥",
 };
 
 const MODIFIER_LABELS_OTHER: Record<ModifierKey, string> = {
   Meta: "Ctrl",
+  Ctrl: "Ctrl",
   Shift: "Shift",
   Alt: "Alt",
 };

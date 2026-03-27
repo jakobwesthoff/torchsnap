@@ -19,14 +19,16 @@
  * Supported modifier keys.
  *
  * `Meta` maps to Cmd on macOS and Ctrl on Windows/Linux — both for event
- * matching and display. There is intentionally no raw `Ctrl` modifier to
- * prevent collisions: on macOS Meta+A (Cmd+A) and Ctrl+A are distinct
- * physical combos, but on Windows both would map to ctrlKey+A. By not
- * exposing raw Ctrl, the type system makes this collision impossible.
+ * matching and display.
  *
- * TODO: Add a `Ctrl` escape hatch if terminal-style bindings are ever needed.
+ * `Ctrl` always maps to the physical Ctrl key (`event.ctrlKey`). On macOS
+ * this is distinct from Meta (Cmd), so both can coexist. On Windows/Linux
+ * both `Ctrl` and `Meta` resolve to `ctrlKey`, making `Ctrl+X` and `Meta+X`
+ * indistinguishable at runtime. The keybinding system warns when such
+ * collisions are registered on the same layer and resolves them via the
+ * standard layer/order precedence.
  */
-export type ModifierKey = "Meta" | "Shift" | "Alt";
+export type ModifierKey = "Meta" | "Ctrl" | "Shift" | "Alt";
 
 export interface KeyCombo {
   modifiers: ModifierKey[];
@@ -77,9 +79,14 @@ export const LAYER = {
 /**
  * Check whether a keyboard event matches a key combo.
  *
- * Platform-aware: `Meta` modifier checks `metaKey` on macOS and `ctrlKey`
- * on Windows/Linux. On macOS, physical Ctrl presses (ctrlKey without
- * metaKey) are rejected so they don't accidentally match `Meta` bindings.
+ * Platform-aware modifier mapping:
+ * - `Meta` → `metaKey` on macOS, `ctrlKey` on Windows/Linux
+ * - `Ctrl` → `ctrlKey` on all platforms
+ *
+ * On macOS, Meta (Cmd) and Ctrl are distinct physical keys, so both
+ * modifiers work independently. On Windows/Linux, `Meta` and `Ctrl`
+ * both map to `ctrlKey` — collisions are resolved by layer/order
+ * precedence and warned about at registration time.
  *
  * Shift handling: only enforced as a strict modifier for single lowercase
  * letter keys (a-z). Characters like `?`, `!`, `+` naturally require Shift
@@ -102,28 +109,36 @@ export function matchesCombo(
   // Modifier state extraction
   // -------------------------------------------------------
   const wantsMeta = combo.modifiers.includes("Meta");
+  const wantsCtrl = combo.modifiers.includes("Ctrl");
   const wantsShift = combo.modifiers.includes("Shift");
   const wantsAlt = combo.modifiers.includes("Alt");
 
-  // Meta maps to metaKey on macOS, ctrlKey on others
+  // Meta maps to metaKey on macOS, ctrlKey on others.
   const metaPressed = isMacOS ? event.metaKey : event.ctrlKey;
 
   if (wantsMeta !== metaPressed) {
     return false;
   }
 
-  // On macOS, reject physical Ctrl presses that are not part of Meta.
-  // This prevents Ctrl+A from matching a Meta+A binding on macOS where
-  // Meta is Cmd, not Ctrl.
-  if (isMacOS && event.ctrlKey && !wantsMeta) {
-    return false;
-  }
-  // Also reject if ctrlKey is pressed alongside metaKey on macOS (extra modifier)
-  if (isMacOS && event.ctrlKey && event.metaKey) {
+  // Ctrl always maps to the physical ctrlKey.
+  if (wantsCtrl !== event.ctrlKey) {
     return false;
   }
 
-  // On non-macOS, reject metaKey as an extra modifier (Windows/Super key)
+  // On macOS, reject ctrlKey as a stray modifier when the binding
+  // wants neither Meta nor Ctrl. This prevents bare Ctrl presses
+  // from matching unmodified or Meta-only bindings.
+  if (isMacOS && event.ctrlKey && !wantsMeta && !wantsCtrl) {
+    return false;
+  }
+
+  // On macOS, reject Ctrl+Cmd chords unless the binding explicitly
+  // wants both — prevents Ctrl+Cmd+X from matching a Cmd+X binding.
+  if (isMacOS && event.ctrlKey && event.metaKey && !(wantsMeta && wantsCtrl)) {
+    return false;
+  }
+
+  // On non-macOS, reject metaKey as an extra modifier (Windows/Super key).
   if (!isMacOS && event.metaKey) {
     return false;
   }
