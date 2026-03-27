@@ -5,66 +5,60 @@
 // =========================================================
 // Clipboard Format Handling
 //
-// Format-agnostic capture and restore logic. The clipboard
-// carries content in multiple formats simultaneously (text,
-// HTML, RTF, files, image, …). This module reads all formats
-// that are present during capture and reconstructs them
-// faithfully during paste-back.
+// Captures and restores clipboard content across all known
+// formats. Each format is read via its typed clipboard-rs
+// getter and serialized to raw bytes for uniform storage.
+// On restore, the format name maps back to the corresponding
+// `ClipboardContent` variant.
 //
-// Storage model:
-//   - Text-like formats → stored as a string in SQL
-//   - Binary formats (images) → stored in FileStorage, SQL
-//     holds a reference key
+// Supported formats:
+//   text   — plain text (UTF-8 bytes)
+//   html   — HTML markup (UTF-8 bytes)
+//   rtf    — Rich Text Format (UTF-8 bytes)
+//   files  — file paths, JSON-encoded (UTF-8 bytes)
+//   image  — PNG-encoded pixel data (binary)
 //
-// No format receives special treatment beyond the text/binary
-// split. Adding a new format means extending `KNOWN_FORMATS`,
-// `read_format`, and `restore_format`.
+// The storage layer treats all content as opaque bytes — it
+// only needs the format name for the restore mapping and the
+// file extension decision (PNG for images, .bin otherwise).
 // =========================================================
 
 use clipboard_rs::common::RustImage;
 use clipboard_rs::{Clipboard, ClipboardContext, ContentFormat};
 
-use crate::storage::{FileStorage, StorageKey};
+use super::schema::DISPLAY_TEXT_MAX_CHARS;
 
 // =========================================================
 // Captured Content
 // =========================================================
 
-/// Content read from the clipboard for a single format.
-pub enum CapturedContent {
-    /// Text-like content stored directly in SQL (plain text,
-    /// HTML, RTF, JSON-encoded file paths).
-    Text(String),
-    /// Binary content stored in FileStorage. `ext` is the file
-    /// extension used for storage (e.g., "png").
-    Binary { data: Vec<u8>, ext: String },
-}
-
-/// A single captured format ready for storage.
+/// A single format captured from the clipboard, serialized to
+/// raw bytes for uniform storage.
 pub struct CapturedFormat {
-    /// Format identifier stored in the database (e.g., "text",
-    /// "html", "image").
-    pub name: String,
-    pub content: CapturedContent,
+    /// Our format identifier: "text", "html", "rtf", "files",
+    /// or "image".
+    pub format: String,
+    /// Serialized content. Text-like formats are UTF-8 bytes,
+    /// images are PNG-encoded.
+    pub data: Vec<u8>,
 }
 
 /// Result of capturing all clipboard formats.
 pub struct CaptureResult {
     /// All formats that were successfully read.
     pub formats: Vec<CapturedFormat>,
-    /// Human-readable preview for the list UI, derived from
-    /// the most representative format available.
-    pub preview: String,
+    /// Human-readable display text derived from the most
+    /// representative format. Capped at [`DISPLAY_TEXT_MAX_CHARS`].
+    pub display_text: String,
 }
 
 // =========================================================
-// Known Formats
-//
-// Ordered by preview preference: the first text-producing
-// format provides the preview string.
+// Capture
 // =========================================================
 
-const KNOWN_FORMATS: &[ContentFormat] = &[
+/// Formats to capture, in display-text priority order: the
+/// first format that produces a display string wins.
+const CAPTURE_ORDER: &[ContentFormat] = &[
     ContentFormat::Text,
     ContentFormat::Html,
     ContentFormat::Rtf,
@@ -72,72 +66,62 @@ const KNOWN_FORMATS: &[ContentFormat] = &[
     ContentFormat::Image,
 ];
 
-/// Map a `ContentFormat` variant to the string stored in the
-/// database.
-fn format_name(format: &ContentFormat) -> &'static str {
-    match format {
-        ContentFormat::Text => "text",
-        ContentFormat::Html => "html",
-        ContentFormat::Rtf => "rtf",
-        ContentFormat::Files => "files",
-        ContentFormat::Image => "image",
-        ContentFormat::Other(_) => "other",
-    }
-}
-
-// =========================================================
-// Capture
-// =========================================================
-
 /// Read all available formats from the clipboard.
 ///
-/// Iterates `KNOWN_FORMATS`, reads each one that is present,
-/// and builds a preview from the first text-producing format.
+/// Iterates known formats, reads each via its typed getter,
+/// serializes to bytes, and derives a display string from the
+/// first text-producing format.
 pub fn capture_all(clipboard: &ClipboardContext) -> CaptureResult {
     let mut formats = Vec::new();
-    let mut preview = String::new();
+    let mut display_text = String::new();
 
-    for format in KNOWN_FORMATS {
-        if !clipboard.has(format.clone()) {
+    for content_format in CAPTURE_ORDER {
+        if !clipboard.has(content_format.clone()) {
             continue;
         }
 
-        if let Some((captured, format_preview)) = read_format(clipboard, format) {
-            // Use the first non-empty preview we encounter.
-            if preview.is_empty() {
-                if let Some(p) = format_preview {
-                    preview = p;
+        if let Some((captured, format_display)) = read_format(clipboard, content_format) {
+            if display_text.is_empty() {
+                if let Some(d) = format_display {
+                    display_text = d;
                 }
             }
 
-            formats.push(CapturedFormat {
-                name: format_name(format).to_string(),
-                content: captured,
-            });
+            formats.push(captured);
         }
     }
 
-    CaptureResult { formats, preview }
+    // Cap at the storage limit.
+    if display_text.chars().count() > DISPLAY_TEXT_MAX_CHARS {
+        display_text = display_text.chars().take(DISPLAY_TEXT_MAX_CHARS).collect();
+    }
+
+    CaptureResult {
+        formats,
+        display_text,
+    }
 }
 
-/// Read a single format from the clipboard.
-///
-/// Returns the captured content and an optional preview string.
-/// The preview is only produced for formats that contribute
-/// meaningful human-readable text (plain text, file paths,
-/// image dimensions).
+/// Read a single format from the clipboard, returning
+/// serialized bytes and an optional display text contribution.
 fn read_format(
     clipboard: &ClipboardContext,
-    format: &ContentFormat,
-) -> Option<(CapturedContent, Option<String>)> {
-    match format {
+    content_format: &ContentFormat,
+) -> Option<(CapturedFormat, Option<String>)> {
+    match content_format {
         ContentFormat::Text => {
             let text = clipboard.get_text().ok()?;
             if text.is_empty() {
                 return None;
             }
-            let preview: String = text.chars().take(500).collect();
-            Some((CapturedContent::Text(text), Some(preview)))
+            let display = text.clone();
+            Some((
+                CapturedFormat {
+                    format: "text".into(),
+                    data: text.into_bytes(),
+                },
+                Some(display),
+            ))
         }
 
         ContentFormat::Html => {
@@ -145,9 +129,13 @@ fn read_format(
             if html.is_empty() {
                 return None;
             }
-            // HTML is not suitable as a preview — we rely on the
-            // text format for that.
-            Some((CapturedContent::Text(html), None))
+            Some((
+                CapturedFormat {
+                    format: "html".into(),
+                    data: html.into_bytes(),
+                },
+                None,
+            ))
         }
 
         ContentFormat::Rtf => {
@@ -155,7 +143,13 @@ fn read_format(
             if rtf.is_empty() {
                 return None;
             }
-            Some((CapturedContent::Text(rtf), None))
+            Some((
+                CapturedFormat {
+                    format: "rtf".into(),
+                    data: rtf.into_bytes(),
+                },
+                None,
+            ))
         }
 
         ContentFormat::Files => {
@@ -163,9 +157,15 @@ fn read_format(
             if files.is_empty() {
                 return None;
             }
-            let preview: String = files.join(", ").chars().take(500).collect();
+            let display = files.join(", ");
             let json = serde_json::to_string(&files).ok()?;
-            Some((CapturedContent::Text(json), Some(preview)))
+            Some((
+                CapturedFormat {
+                    format: "files".into(),
+                    data: json.into_bytes(),
+                },
+                Some(display),
+            ))
         }
 
         ContentFormat::Image => {
@@ -176,20 +176,19 @@ fn read_format(
             let png_buf = image.to_png().ok()?;
             let data = png_buf.get_bytes().to_vec();
             let (w, h) = image.get_size();
-            let preview = format!("Image ({w}×{h})");
+            let display = format!("Image ({w}×{h})");
             Some((
-                CapturedContent::Binary {
+                CapturedFormat {
+                    format: "image".into(),
                     data,
-                    ext: "png".to_string(),
                 },
-                Some(preview),
+                Some(display),
             ))
         }
 
-        ContentFormat::Other(_) => {
-            // TODO: Could use get_buffer() for arbitrary formats.
-            None
-        }
+        // Intentionally not capturing unknown formats — see
+        // module-level comment for rationale.
+        ContentFormat::Other(_) => None,
     }
 }
 
@@ -197,59 +196,36 @@ fn read_format(
 // Restore
 // =========================================================
 
-/// Stored content row from the database — the inputs needed
-/// to reconstruct a `ClipboardContent` for paste-back.
-pub struct StoredContent {
-    pub format: String,
-    /// Text-like content stored directly in SQL.
-    pub text_value: Option<String>,
-    /// Storage key for binary content stored in FileStorage.
-    pub file_key: Option<String>,
-}
-
-/// Reconstruct clipboard contents from stored data.
+/// Reconstruct clipboard contents from stored format data.
 ///
-/// Loads binary content from `files` using the stored file key.
-/// Returns the list of `ClipboardContent` items ready for
-/// `ctx.set()`.
-pub fn restore_contents(
-    stored: &[StoredContent],
-    files: &FileStorage,
-) -> Vec<clipboard_rs::ClipboardContent> {
-    stored
-        .iter()
-        .filter_map(|sc| restore_format(sc, files))
-        .collect()
+/// Maps each format name back to the corresponding
+/// `ClipboardContent` variant. Unknown format names are
+/// silently skipped.
+pub fn restore_contents(formats: &[CapturedFormat]) -> Vec<clipboard_rs::ClipboardContent> {
+    formats.iter().filter_map(restore_format).collect()
 }
 
-/// Reconstruct a single `ClipboardContent` from a stored row.
-fn restore_format(
-    stored: &StoredContent,
-    files: &FileStorage,
-) -> Option<clipboard_rs::ClipboardContent> {
-    match stored.format.as_str() {
+fn restore_format(cf: &CapturedFormat) -> Option<clipboard_rs::ClipboardContent> {
+    match cf.format.as_str() {
         "text" => {
-            let text = stored.text_value.as_ref()?;
-            Some(clipboard_rs::ClipboardContent::Text(text.clone()))
+            let text = String::from_utf8(cf.data.clone()).ok()?;
+            Some(clipboard_rs::ClipboardContent::Text(text))
         }
         "html" => {
-            let html = stored.text_value.as_ref()?;
-            Some(clipboard_rs::ClipboardContent::Html(html.clone()))
+            let html = String::from_utf8(cf.data.clone()).ok()?;
+            Some(clipboard_rs::ClipboardContent::Html(html))
         }
         "rtf" => {
-            let rtf = stored.text_value.as_ref()?;
-            Some(clipboard_rs::ClipboardContent::Rtf(rtf.clone()))
+            let rtf = String::from_utf8(cf.data.clone()).ok()?;
+            Some(clipboard_rs::ClipboardContent::Rtf(rtf))
         }
         "files" => {
-            let json = stored.text_value.as_ref()?;
-            let paths: Vec<String> = serde_json::from_str(json).ok()?;
+            let json = String::from_utf8(cf.data.clone()).ok()?;
+            let paths: Vec<String> = serde_json::from_str(&json).ok()?;
             Some(clipboard_rs::ClipboardContent::Files(paths))
         }
         "image" => {
-            let raw_key = stored.file_key.as_ref()?;
-            let key = StorageKey::from_raw(raw_key.clone());
-            let data = files.load(&key, "png").ok()??;
-            let img = clipboard_rs::RustImageData::from_bytes(&data).ok()?;
+            let img = clipboard_rs::RustImageData::from_bytes(&cf.data).ok()?;
             Some(clipboard_rs::ClipboardContent::Image(img))
         }
         _ => None,

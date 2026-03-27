@@ -67,7 +67,7 @@ impl WatcherHandler {
 
         let id = ulid::Ulid::new().to_string().to_lowercase();
         self.state
-            .store_entry(&id, &result.preview, &result.formats)?;
+            .store_entry(&id, &result.display_text, &result.formats)?;
         self.state.notify_subscribers();
 
         // Periodic retention cleanup.

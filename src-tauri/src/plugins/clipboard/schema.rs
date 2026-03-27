@@ -30,43 +30,68 @@ pub const RETENTION_INTERVAL: u32 = 100;
 
 /// Single migration that creates the clipboard schema including
 /// FTS5 for full-text search and triggers to keep the index in
-/// sync with the content table.
+/// sync with the display table.
+///
+/// Content is stored format-agnostically: each format row holds raw
+/// bytes either inline (as a BLOB) or in FileStorage (via file_key).
+/// Format names are platform-native identifiers (UTIs on macOS).
 pub const MIGRATION_001: &str = "
 CREATE TABLE clipboard_entries (
     id          TEXT PRIMARY KEY,
-    captured_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    preview     TEXT NOT NULL DEFAULT ''
+    captured_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX idx_entries_captured_at ON clipboard_entries(captured_at DESC);
 
+-- Raw clipboard content per format. Format name is the platform-
+-- specific identifier (UTI on macOS, e.g. 'public.utf8-plain-text').
+-- Small content (<=256KB) stored inline as data BLOB. Large content
+-- or always-binary formats stored in FileStorage with a file_key ref.
 CREATE TABLE clipboard_content (
-    entry_id    TEXT NOT NULL REFERENCES clipboard_entries(id) ON DELETE CASCADE,
-    format      TEXT NOT NULL,
-    text_value  TEXT,
-    file_key    TEXT,
+    entry_id  TEXT NOT NULL REFERENCES clipboard_entries(id) ON DELETE CASCADE,
+    format    TEXT NOT NULL,
+    data      BLOB,
+    file_key  TEXT,
     PRIMARY KEY (entry_id, format)
 );
 
+-- Derived human-readable display text, capped at DISPLAY_TEXT_MAX_CHARS.
+CREATE TABLE clipboard_display (
+    entry_id     TEXT PRIMARY KEY REFERENCES clipboard_entries(id) ON DELETE CASCADE,
+    display_text TEXT NOT NULL DEFAULT ''
+);
+
 CREATE VIRTUAL TABLE clipboard_fts USING fts5(
-    preview,
-    content='clipboard_entries',
+    display_text,
+    content='clipboard_display',
     content_rowid='rowid'
 );
 
-CREATE TRIGGER clipboard_fts_insert AFTER INSERT ON clipboard_entries BEGIN
-    INSERT INTO clipboard_fts(rowid, preview) VALUES (new.rowid, new.preview);
+CREATE TRIGGER clipboard_fts_insert AFTER INSERT ON clipboard_display BEGIN
+    INSERT INTO clipboard_fts(rowid, display_text)
+        VALUES (new.rowid, new.display_text);
 END;
 
-CREATE TRIGGER clipboard_fts_delete AFTER DELETE ON clipboard_entries BEGIN
-    INSERT INTO clipboard_fts(clipboard_fts, rowid, preview)
-        VALUES ('delete', old.rowid, old.preview);
+CREATE TRIGGER clipboard_fts_delete AFTER DELETE ON clipboard_display BEGIN
+    INSERT INTO clipboard_fts(clipboard_fts, rowid, display_text)
+        VALUES ('delete', old.rowid, old.display_text);
 END;
 ";
 
 // =========================================================
 // Serialized Types (sent to/from the frontend)
 // =========================================================
+
+/// Maximum length of the `display_text` stored in the database and
+/// indexed by FTS. Capping at this bound keeps the DB and search
+/// index at a reasonable size even for very large clipboard entries.
+pub const DISPLAY_TEXT_MAX_CHARS: usize = 128_000;
+
+/// Maximum display text length transmitted for list entries.
+pub const LIST_DISPLAY_MAX_CHARS: usize = 40;
+
+/// Content larger than this goes to FileStorage instead of inline BLOB.
+pub const INLINE_STORAGE_MAX_BYTES: usize = 256 * 1024;
 
 /// Lightweight entry used for list display. Sent via subscribe/notify
 /// to keep payload size minimal — detail data is loaded on demand via
@@ -76,15 +101,12 @@ END;
 pub struct ClipboardListEntry {
     pub id: String,
     pub captured_at: String,
-    /// Truncated to [`LIST_PREVIEW_MAX_CHARS`] characters.
-    pub preview: String,
+    /// Display text truncated to [`LIST_DISPLAY_MAX_CHARS`] characters.
+    pub display_text: String,
     /// Highest-priority format for this entry, used to determine
     /// the list icon (e.g. image vs text vs files).
     pub primary_format: String,
 }
-
-/// Maximum preview length transmitted for list entries.
-pub const LIST_PREVIEW_MAX_CHARS: usize = 40;
 
 /// Full entry returned by `load_full_entry` when the user selects an
 /// entry in the list.
@@ -93,18 +115,13 @@ pub const LIST_PREVIEW_MAX_CHARS: usize = 40;
 pub struct ClipboardHistoryEntry {
     pub id: String,
     pub captured_at: String,
-    /// Truncated to [`DETAIL_PREVIEW_MAX_CHARS`] characters.
-    pub preview: String,
+    /// Full display text (up to [`DISPLAY_TEXT_MAX_CHARS`]).
+    pub display_text: String,
     pub formats: Vec<String>,
     /// Absolute path to the image file, if this entry has an
     /// image format. The frontend converts this to an asset URL.
     pub image_path: Option<String>,
 }
-
-/// Maximum preview length transmitted for detail entries. Large enough
-/// to show virtually any clipboard content while still capping IPC size
-/// at a reasonable bound.
-pub const DETAIL_PREVIEW_MAX_CHARS: usize = 128_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

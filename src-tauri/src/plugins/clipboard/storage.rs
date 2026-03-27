@@ -9,19 +9,25 @@
 // subscriber channels. Provides query, store, delete,
 // retention, and notification methods used by both the plugin
 // message handler and the watcher thread.
+//
+// All clipboard content is stored format-agnostically as raw
+// bytes. Small content (<=INLINE_STORAGE_MAX_BYTES) is stored
+// inline as a BLOB in the clipboard_content table. Large or
+// always-binary formats are stored in FileStorage with a
+// file_key reference in the table.
 // =========================================================
 
 use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tauri::ipc::Channel;
 
 use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
 
-use super::formats::{CapturedContent, CapturedFormat};
+use super::formats::CapturedFormat;
 use super::schema::{
-    ClipboardHistoryEntry, ClipboardListEntry, DETAIL_PREVIEW_MAX_CHARS, LIST_PREVIEW_MAX_CHARS,
+    ClipboardHistoryEntry, ClipboardListEntry, INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS,
     RETENTION_DAYS,
 };
 
@@ -49,6 +55,9 @@ impl SharedState {
         // pick the highest-priority format in Rust. This keeps the SQL simple
         // and avoids duplicating priority logic in CASE expressions.
         //
+        // Display text comes from clipboard_display (1:1 PK join) and is
+        // truncated to LIST_DISPLAY_MAX_CHARS for the list view.
+        //
         // Performance note: if this join becomes a bottleneck with very
         // large histories, we could denormalize primary_format into a
         // column on clipboard_entries and set it at capture time.
@@ -56,10 +65,12 @@ impl SharedState {
             Some(term) if !term.is_empty() => {
                 let fts_query = format!("{term}*");
                 self.sql.query_map(
-                    "SELECT e.id, e.captured_at, e.preview,
+                    "SELECT e.id, e.captured_at,
+                            COALESCE(d.display_text, ''),
                             GROUP_CONCAT(c.format)
                      FROM clipboard_entries e
-                     JOIN clipboard_fts f ON f.rowid = e.rowid
+                     JOIN clipboard_display d ON d.entry_id = e.id
+                     JOIN clipboard_fts f ON f.rowid = d.rowid
                      LEFT JOIN clipboard_content c ON c.entry_id = e.id
                      WHERE clipboard_fts MATCH ?1
                      GROUP BY e.id
@@ -69,9 +80,11 @@ impl SharedState {
                 )?
             }
             _ => self.sql.query_map(
-                "SELECT e.id, e.captured_at, e.preview,
+                "SELECT e.id, e.captured_at,
+                        COALESCE(d.display_text, ''),
                         GROUP_CONCAT(c.format)
                  FROM clipboard_entries e
+                 LEFT JOIN clipboard_display d ON d.entry_id = e.id
                  LEFT JOIN clipboard_content c ON c.entry_id = e.id
                  GROUP BY e.id
                  ORDER BY e.captured_at DESC",
@@ -82,13 +95,13 @@ impl SharedState {
 
         let result = entries
             .into_iter()
-            .map(|(id, captured_at, preview, formats_csv)| {
+            .map(|(id, captured_at, display_text, formats_csv)| {
                 let primary_format = primary_format_from_csv(formats_csv.as_deref());
-                let truncated = truncate_preview(&preview, LIST_PREVIEW_MAX_CHARS);
+                let truncated = truncate_chars(&display_text, LIST_DISPLAY_MAX_CHARS);
                 ClipboardListEntry {
                     id,
                     captured_at,
-                    preview: truncated,
+                    display_text: truncated,
                     primary_format: primary_format.to_owned(),
                 }
             })
@@ -98,97 +111,177 @@ impl SharedState {
     }
 
     /// Load the full detail for a single clipboard entry, including all
-    /// format names, the resolved image path, and a longer preview.
+    /// format names, the resolved image path, and the full display text.
     pub fn load_full_entry(&self, id: &str) -> Result<Option<ClipboardHistoryEntry>> {
         let entry: Option<(String, String, String)> = self
             .sql
             .query_map(
-                "SELECT id, captured_at, preview FROM clipboard_entries WHERE id = ?1",
+                "SELECT e.id, e.captured_at,
+                        COALESCE(d.display_text, '')
+                 FROM clipboard_entries e
+                 LEFT JOIN clipboard_display d ON d.entry_id = e.id
+                 WHERE e.id = ?1",
                 &[SqlValue::from(id)],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )?
             .into_iter()
             .next();
 
-        let Some((id, captured_at, preview)) = entry else {
+        let Some((id, captured_at, display_text)) = entry else {
             return Ok(None);
         };
 
-        let formats: Vec<String> = self
+        // Collect format names and file_keys in one query so we can
+        // resolve image paths from formats stored in FileStorage.
+        let content_rows: Vec<(String, Option<String>)> = self
             .sql
             .query_map(
-                "SELECT format FROM clipboard_content WHERE entry_id = ?1",
+                "SELECT format, file_key FROM clipboard_content WHERE entry_id = ?1",
                 &[SqlValue::from(id.as_str())],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap_or_default();
 
-        let image_path = if formats.iter().any(|f| f == "image") {
-            let key = StorageKey::new(&id);
-            let path = self.files.resolve(&key, "png");
-            if path.exists() {
-                Some(path.to_string_lossy().into_owned())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let formats: Vec<String> = content_rows.iter().map(|(f, _)| f.clone()).collect();
 
-        let truncated = truncate_preview(&preview, DETAIL_PREVIEW_MAX_CHARS);
+        // Resolve the image path from the first image format that has
+        // a file stored in FileStorage.
+        let image_path = content_rows
+            .iter()
+            .find_map(|(format, file_key)| {
+                if format != "image" {
+                    return None;
+                }
+                let raw_key = file_key.as_ref()?;
+                let key = StorageKey::from_raw(raw_key.clone());
+                let path = self.files.resolve(&key, file_ext_for_format(format));
+                if path.exists() {
+                    Some(path.to_string_lossy().into_owned())
+                } else {
+                    None
+                }
+            });
 
         Ok(Some(ClipboardHistoryEntry {
             id,
             captured_at,
-            preview: truncated,
+            display_text,
             formats,
             image_path,
         }))
     }
 
+    /// Load all raw format data for a single entry, ready for
+    /// paste-back via `ClipboardContent::Other`.
+    pub fn load_entry_content(&self, id: &str) -> Result<Vec<CapturedFormat>> {
+        let rows: Vec<(String, Option<Vec<u8>>, Option<String>)> = self
+            .sql
+            .query_map(
+                "SELECT format, data, file_key FROM clipboard_content
+                 WHERE entry_id = ?1",
+                &[SqlValue::from(id)],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .context("query clipboard content for paste")?;
+
+        let mut formats = Vec::with_capacity(rows.len());
+
+        for (format, inline_data, file_key) in rows {
+            let data = if let Some(blob) = inline_data {
+                blob
+            } else if let Some(ref raw_key) = file_key {
+                let key = StorageKey::from_raw(raw_key.clone());
+                match self.files.load(&key, file_ext_for_format(&format)) {
+                    Ok(Some(bytes)) => bytes,
+                    Ok(None) => {
+                        eprintln!(
+                            "clipboard: file missing for entry {id}, \
+                             format {format}, key {raw_key}"
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "clipboard: load file for entry {id}, \
+                             format {format}: {e:#}"
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                // Row has neither inline data nor file_key — skip.
+                continue;
+            };
+
+            formats.push(CapturedFormat { format, data });
+        }
+
+        Ok(formats)
+    }
+
     /// Store a new clipboard entry with its captured formats.
+    ///
+    /// Each format's raw bytes are stored either inline as a BLOB
+    /// (when small enough) or in FileStorage (for large or
+    /// always-binary formats like images).
     pub fn store_entry(
         &self,
         id: &str,
-        preview: &str,
+        display_text: &str,
         formats: &[CapturedFormat],
     ) -> Result<()> {
         self.sql.execute(
-            "INSERT INTO clipboard_entries (id, preview) VALUES (?1, ?2)",
-            &[SqlValue::from(id), SqlValue::from(preview)],
+            "INSERT INTO clipboard_entries (id) VALUES (?1)",
+            &[SqlValue::from(id)],
+        )?;
+
+        self.sql.execute(
+            "INSERT INTO clipboard_display (entry_id, display_text) VALUES (?1, ?2)",
+            &[SqlValue::from(id), SqlValue::from(display_text)],
         )?;
 
         for fmt in formats {
-            let (text_value, file_key) = match &fmt.content {
-                CapturedContent::Text(s) => (Some(s.as_str()), None),
-                CapturedContent::Binary { data, ext } => {
-                    let key = StorageKey::new(id);
-                    self.files
-                        .store(&key, data, ext)
-                        .map_err(|e| anyhow::anyhow!("store binary content: {e:#}"))?;
-                    (None, Some(key.to_string()))
-                }
-            };
+            let use_file_storage =
+                fmt.format == "image" || fmt.data.len() > INLINE_STORAGE_MAX_BYTES;
 
-            self.sql.execute(
-                "INSERT INTO clipboard_content (entry_id, format, text_value, file_key)
-                 VALUES (?1, ?2, ?3, ?4)",
-                &[
-                    SqlValue::from(id),
-                    SqlValue::from(fmt.name.as_str()),
-                    SqlValue::from(text_value),
-                    SqlValue::from(file_key),
-                ],
-            )?;
+            if use_file_storage {
+                // Store in FileStorage. The key is derived from
+                // "{id}-{format}" so each format gets its own file.
+                let ext = file_ext_for_format(&fmt.format);
+                let key = StorageKey::new(&format!("{id}-{}", fmt.format));
+                self.files
+                    .store(&key, &fmt.data, ext)
+                    .context("store file content")?;
+
+                self.sql.execute(
+                    "INSERT INTO clipboard_content (entry_id, format, data, file_key)
+                     VALUES (?1, ?2, NULL, ?3)",
+                    &[
+                        SqlValue::from(id),
+                        SqlValue::from(fmt.format.as_str()),
+                        SqlValue::from(key.to_string()),
+                    ],
+                )?;
+            } else {
+                self.sql.execute(
+                    "INSERT INTO clipboard_content (entry_id, format, data, file_key)
+                     VALUES (?1, ?2, ?3, NULL)",
+                    &[
+                        SqlValue::from(id),
+                        SqlValue::from(fmt.format.as_str()),
+                        SqlValue::from(fmt.data.clone()),
+                    ],
+                )?;
+            }
         }
 
         Ok(())
     }
 
-    /// Delete an entry and its associated files.
+    /// Delete an entry and its associated FileStorage files.
     pub fn delete_entry(&self, id: &str) -> Result<()> {
-        let key = StorageKey::new(id);
-        let _ = self.files.delete(&key, "png");
+        // Collect file_keys before CASCADE deletes the rows.
+        self.delete_file_storage_for_entry(id);
 
         // CASCADE deletes clipboard_content rows and FTS triggers
         // handle the index cleanup.
@@ -212,8 +305,7 @@ impl SharedState {
         )?;
 
         for id in &old_ids {
-            let key = StorageKey::new(id);
-            let _ = self.files.delete(&key, "png");
+            self.delete_file_storage_for_entry(id);
         }
 
         self.sql.execute(
@@ -247,17 +339,51 @@ impl SharedState {
         let mut subs = self.subscribers.lock().expect("subscribers not poisoned");
         subs.retain(|ch| ch.send(payload.clone()).is_ok());
     }
+
+    // -------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------
+
+    /// Delete all FileStorage files associated with an entry.
+    /// Must be called before the SQL rows are deleted (CASCADE
+    /// would remove the file_key references we need to find the
+    /// files).
+    fn delete_file_storage_for_entry(&self, id: &str) {
+        let rows: Vec<(String, String)> = self
+            .sql
+            .query_map(
+                "SELECT format, file_key FROM clipboard_content
+                 WHERE entry_id = ?1 AND file_key IS NOT NULL",
+                &[SqlValue::from(id)],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or_default();
+
+        for (format, raw_key) in &rows {
+            let key = StorageKey::from_raw(raw_key.clone());
+            let _ = self.files.delete(&key, file_ext_for_format(format));
+        }
+    }
 }
 
 // =========================================================
 // Helpers
 // =========================================================
 
-/// Pick the highest-priority format from a comma-separated list returned
-/// by SQLite's `GROUP_CONCAT(format)`. Priority: image > files > text.
-/// Returns `"text"` as the default when no formats are present.
+/// File extension used for FileStorage. Images are stored as
+/// PNG so Tauri's asset protocol can serve them with the correct
+/// content type. Everything else uses a generic extension.
+fn file_ext_for_format(format: &str) -> &'static str {
+    match format {
+        "image" => "png",
+        _ => "bin",
+    }
+}
+
+/// Pick the highest-priority format from a comma-separated list
+/// returned by SQLite's `GROUP_CONCAT(format)`.
+/// Priority: image > files > text. Returns "text" as default.
 fn primary_format_from_csv(csv: Option<&str>) -> &'static str {
-    // Format priority from highest to lowest. The first match wins.
     const PRIORITY: &[&str] = &["image", "files", "html", "rtf", "text"];
 
     let Some(csv) = csv else { return "text" };
@@ -271,7 +397,7 @@ fn primary_format_from_csv(csv: Option<&str>) -> &'static str {
 
 /// Truncate a string to at most `max_chars` Unicode characters, appending
 /// an ellipsis when the string is longer.
-fn truncate_preview(s: &str, max_chars: usize) -> String {
+fn truncate_chars(s: &str, max_chars: usize) -> String {
     let mut chars = s.chars();
     let truncated: String = chars.by_ref().take(max_chars).collect();
     if chars.next().is_some() {

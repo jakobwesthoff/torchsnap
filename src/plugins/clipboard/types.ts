@@ -13,16 +13,18 @@
 export interface ClipboardListEntry {
   id: string;
   capturedAt: string;
-  preview: string;
+  /** Display text truncated for the list view. */
+  displayText: string;
   /** Highest-priority format (e.g. "image", "text", "files"). */
   primaryFormat: string;
 }
 
-/** Full entry returned by `load_full_entry` for the detail preview. */
+/** Full entry returned by `load_full_entry` for the detail view. */
 export interface ClipboardHistoryEntry {
   id: string;
   capturedAt: string;
-  preview: string;
+  /** Full display text (up to 128K characters). */
+  displayText: string;
   formats: string[];
   /** Absolute path to the image file, if this entry has an image. */
   imagePath: string | null;

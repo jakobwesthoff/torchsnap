@@ -106,7 +106,7 @@ function EntryRow({
       ) : (
         <DocumentTextIcon className="h-4 w-4 shrink-0 text-text-muted" />
       )}
-      <span className="flex-1 truncate">{entry.preview}</span>
+      <span className="flex-1 truncate">{entry.displayText}</span>
       <span className="shrink-0 text-xs text-text-muted">
         {relativeTime(entry.capturedAt)}
       </span>
@@ -193,7 +193,7 @@ function DetailPreview({
   return (
     <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
       <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none font-mono leading-relaxed">
-        {detail.preview}
+        {detail.displayText}
       </pre>
     </div>
   );
