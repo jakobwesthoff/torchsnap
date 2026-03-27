@@ -67,12 +67,6 @@ export function Launcher() {
     null,
   );
 
-  // Clear the execute override when the query changes — the user
-  // is typing again, so we return to normal search mode.
-  useEffect(() => {
-    setExecutePluginView(null);
-  }, [query]);
-
   const customPluginView = executePluginView ?? searchPluginView;
 
   // Reset selection when results change (new query, different
@@ -183,6 +177,7 @@ export function Launcher() {
         dismiss();
       } else if (postAction === "ShowCustomUI") {
         setExecutePluginView(target.source);
+        setQuery("");
       }
     },
     [results, selectedIndex, dismiss],
