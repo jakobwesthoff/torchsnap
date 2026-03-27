@@ -105,9 +105,7 @@ impl FileStorage {
     /// extension would be stored.
     pub fn resolve(&self, key: &StorageKey, ext: &str) -> PathBuf {
         let hex: &str = key;
-        self.base_dir
-            .join(&hex[..2])
-            .join(format!("{hex}.{ext}"))
+        self.base_dir.join(&hex[..2]).join(format!("{hex}.{ext}"))
     }
 
     /// Write `data` to the storage location for `key` with
@@ -164,10 +162,7 @@ impl FileStorage {
     /// Silently skips files whose names cannot be parsed as valid
     /// entries (e.g. no extension, non-UTF-8 names).
     pub fn entries(&self) -> impl Iterator<Item = (StorageKey, String, EntryMetadata)> {
-        let shard_dirs = fs::read_dir(&self.base_dir)
-            .into_iter()
-            .flatten()
-            .flatten();
+        let shard_dirs = fs::read_dir(&self.base_dir).into_iter().flatten().flatten();
 
         shard_dirs.flat_map(|shard_entry| {
             let shard_path = shard_entry.path();

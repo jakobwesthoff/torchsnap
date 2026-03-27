@@ -29,8 +29,8 @@ use anyhow::Context;
 
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
-use crate::storage::StorageKey;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::storage::StorageKey;
 
 use super::CatalogPlugin;
 
@@ -41,10 +41,7 @@ pub struct SystemPreferencesPlugin {
 }
 
 impl SystemPreferencesPlugin {
-    pub fn new(
-        discovery: impl SettingsDiscovery + 'static,
-        icon_cache: Arc<IconCache>,
-    ) -> Self {
+    pub fn new(discovery: impl SettingsDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             discovery: Arc::new(discovery),
@@ -95,8 +92,7 @@ impl CatalogPlugin for SystemPreferencesPlugin {
                 }
 
                 // Render and cache SF Symbol icons for each pane.
-                let valid_keys =
-                    cache_pane_icons(&self.icon_cache, &*self.discovery, &mut panes);
+                let valid_keys = cache_pane_icons(&self.icon_cache, &*self.discovery, &mut panes);
                 self.icon_cache.cleanup("system-preferences", &valid_keys);
 
                 // Swap in icon-enriched entries.
@@ -124,11 +120,7 @@ impl CatalogPlugin for SystemPreferencesPlugin {
                         .map(|p| EntryIcon::AssetIcon(p.clone()))
                         .unwrap_or_else(|| EntryIcon::HeroIcon("cog-6-tooth".into())),
                 ),
-                keywords: vec![
-                    "settings".into(),
-                    "preferences".into(),
-                    "system".into(),
-                ],
+                keywords: vec!["settings".into(), "preferences".into(), "system".into()],
                 actions: vec![Action {
                     id: ActionId::Open,
                     label: "Open".into(),

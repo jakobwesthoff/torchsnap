@@ -29,15 +29,15 @@ use anyhow::{Context, Result};
 use clipboard_rs::{
     Clipboard, ClipboardContext, ClipboardWatcher, ClipboardWatcherContext, WatcherShutdown,
 };
-use tauri::ipc::Channel;
 use tauri::Manager;
+use tauri::ipc::Channel;
 
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::{FileStorage, SqlStorage};
 
 use self::formats::captured_to_clipboard_contents;
-use self::schema::{EntryIdPayload, SubscribePayload, MIGRATION_001, PLUGIN_ID};
+use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SubscribePayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
@@ -89,8 +89,7 @@ impl CatalogPlugin for ClipboardPlugin {
         let db_path = data_dir.join("clipboard.db");
         let files_dir = data_dir.join("files");
 
-        let sql = SqlStorage::open(db_path, &[MIGRATION_001])
-            .expect("open clipboard database");
+        let sql = SqlStorage::open(db_path, &[MIGRATION_001]).expect("open clipboard database");
         let files = FileStorage::new(files_dir);
 
         let shared = Arc::new(SharedState {

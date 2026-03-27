@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{M, Migrations};
 
 // =========================================================
 // SqlValue — query parameters
@@ -129,8 +129,7 @@ impl SqlRow {
             .columns
             .get(index)
             .ok_or_else(|| anyhow::anyhow!("column index {index} out of bounds"))?;
-        T::from_sql_value(value)
-            .ok_or_else(|| anyhow::anyhow!("column {index}: type mismatch"))
+        T::from_sql_value(value).ok_or_else(|| anyhow::anyhow!("column {index}: type mismatch"))
     }
 }
 
@@ -267,8 +266,10 @@ impl SqlStorage {
     /// DELETE). Returns the number of rows affected.
     pub fn execute(&self, sql: &str, params: &[SqlValue]) -> Result<usize> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+            .iter()
+            .map(|v| v as &dyn rusqlite::types::ToSql)
+            .collect();
         conn.execute(sql, param_refs.as_slice())
             .context("execute SQL statement")
     }
@@ -286,8 +287,10 @@ impl SqlStorage {
         mut f: impl FnMut(&SqlRow) -> Result<T>,
     ) -> Result<Vec<T>> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+            .iter()
+            .map(|v| v as &dyn rusqlite::types::ToSql)
+            .collect();
         let mut stmt = conn.prepare(sql).context("prepare SQL query")?;
 
         let rows = stmt
@@ -311,8 +314,10 @@ impl SqlStorage {
         f: impl FnOnce(&SqlRow) -> Result<T>,
     ) -> Result<Option<T>> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+            .iter()
+            .map(|v| v as &dyn rusqlite::types::ToSql)
+            .collect();
         let mut stmt = conn.prepare(sql).context("prepare SQL query")?;
 
         let maybe_row = stmt
@@ -434,16 +439,11 @@ mod tests {
             .expect("insert with null");
 
         let results: Vec<(i64, Option<String>)> = storage
-            .query_map(
-                "SELECT id, value FROM data ORDER BY id",
-                &[],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
+            .query_map("SELECT id, value FROM data ORDER BY id", &[], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .expect("query");
 
-        assert_eq!(results, vec![
-            (1, Some("present".to_string())),
-            (2, None),
-        ]);
+        assert_eq!(results, vec![(1, Some("present".to_string())), (2, None),]);
     }
 }

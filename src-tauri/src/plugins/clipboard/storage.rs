@@ -17,8 +17,8 @@
 // file_key reference in the table.
 // =========================================================
 
-use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU32;
 
 use anyhow::{Context, Result};
 use tauri::ipc::Channel;
@@ -46,10 +46,7 @@ impl SharedState {
     /// Query clipboard history as lightweight list entries, optionally
     /// filtering with FTS5. Returns all matching entries — the frontend
     /// handles windowed rendering.
-    pub fn search_history(
-        &self,
-        search: Option<&str>,
-    ) -> Result<Vec<ClipboardListEntry>> {
+    pub fn search_history(&self, search: Option<&str>) -> Result<Vec<ClipboardListEntry>> {
         // Each entry needs its primary_format derived from clipboard_content.
         // We use GROUP_CONCAT in SQL to collect format names per entry, then
         // pick the highest-priority format in Rust. This keeps the SQL simple
@@ -149,8 +146,7 @@ impl SharedState {
             .collect::<Vec<_>>()
             .join(",");
 
-        let primary_format =
-            primary_format_from_csv(Some(&format_names_csv)).to_owned();
+        let primary_format = primary_format_from_csv(Some(&format_names_csv)).to_owned();
 
         // Build the formats map with typed FormatData for each entry.
         let mut formats = std::collections::HashMap::new();

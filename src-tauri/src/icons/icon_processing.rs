@@ -16,8 +16,8 @@
 // =========================================================
 
 use anyhow::Context;
-use image::imageops::FilterType;
 use image::DynamicImage;
+use image::imageops::FilterType;
 use std::io::Cursor;
 
 /// Target icon size in pixels. 256×256 covers Retina displays
@@ -39,10 +39,7 @@ pub fn process_icon(img: DynamicImage) -> anyhow::Result<Vec<u8>> {
 
     let mut webp_bytes = Vec::new();
     resized
-        .write_to(
-            &mut Cursor::new(&mut webp_bytes),
-            image::ImageFormat::WebP,
-        )
+        .write_to(&mut Cursor::new(&mut webp_bytes), image::ImageFormat::WebP)
         .context("encode icon as WebP")?;
 
     Ok(webp_bytes)
