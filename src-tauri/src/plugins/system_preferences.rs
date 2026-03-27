@@ -32,8 +32,7 @@ use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::StorageKey;
 
-use super::CatalogPlugin;
-use crate::settings::PluginSettings;
+use super::{CatalogPlugin, PluginContext};
 
 pub struct SystemPreferencesPlugin {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
@@ -83,7 +82,7 @@ impl CatalogPlugin for SystemPreferencesPlugin {
         "system-preferences"
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {
+    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.

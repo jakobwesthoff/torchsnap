@@ -24,8 +24,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Deserialize;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-use super::QueryPlugin;
-use crate::settings::PluginSettings;
+use super::{PluginContext, QueryPlugin};
 use crate::search::types::{
     Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult, SearchResponse,
 };
@@ -211,7 +210,7 @@ impl QueryPlugin for EmojiPickerPlugin {
         &[":"]
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {
+    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
         let data = Self::parse_emoji_data();
         let mut entries = self.entries.write().expect("emoji entries write lock");
         *entries = data;

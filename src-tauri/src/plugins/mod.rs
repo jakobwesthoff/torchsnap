@@ -26,6 +26,20 @@ pub mod system_preferences;
 
 use crate::search::types::{ActionId, CatalogEntry, PostAction, SearchResponse};
 use crate::settings::{PluginSettings, SettingsInit};
+use crate::settings_notifier::PluginSettingsNotifier;
+
+// =========================================================
+// PluginContext — bundled runtime context for plugin setup
+// =========================================================
+
+/// Runtime context passed to plugins during `setup()`.
+///
+/// Bundles scoped settings access and change notification so
+/// plugins don't need an ever-growing parameter list.
+pub struct PluginContext {
+    pub settings: PluginSettings,
+    pub notifier: PluginSettingsNotifier,
+}
 
 // =========================================================
 // CatalogPlugin
@@ -84,7 +98,7 @@ pub trait CatalogPlugin: Send + Sync {
     /// yet completed (e.g., return an empty list).
     ///
     /// The default implementation is a no-op.
-    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {}
+    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
 
     /// Cleanup before the application exits.
     ///
@@ -171,7 +185,7 @@ pub trait QueryPlugin: Send + Sync {
     }
 
     /// One-time initialization. See `CatalogPlugin::setup()`.
-    fn setup(&self, _app: &tauri::AppHandle, _settings: &PluginSettings) {}
+    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
 
     /// Cleanup before application exit. See `CatalogPlugin::teardown()`.
     fn teardown(&self) {}

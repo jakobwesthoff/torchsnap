@@ -299,7 +299,7 @@ pub fn run() {
                 platform::PlatformClipboard,
             )));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            catalog.setup_all(app.handle(), &store);
+            catalog.setup_all(app.handle(), &store, &notifier);
             app.manage(Mutex::new(catalog));
 
             // =========================================================
