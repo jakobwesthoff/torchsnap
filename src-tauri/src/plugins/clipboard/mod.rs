@@ -42,6 +42,7 @@ use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
 use super::CatalogPlugin;
+use crate::settings::PluginSettings;
 
 // =========================================================
 // ClipboardPlugin
@@ -78,7 +79,7 @@ impl CatalogPlugin for ClipboardPlugin {
         PLUGIN_ID
     }
 
-    fn setup(&self, app: &tauri::AppHandle) {
+    fn setup(&self, app: &tauri::AppHandle, _settings: &PluginSettings) {
         let data_dir = app
             .path()
             .app_data_dir()

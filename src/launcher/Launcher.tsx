@@ -8,7 +8,6 @@ import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useSetting } from "../hooks/useSetting";
-import { SETTINGS_DEFAULTS } from "../settingsDefaults";
 import { getPluginComponent } from "../plugins/registry";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
@@ -212,7 +211,7 @@ export function Launcher() {
   // intentionally excludes to avoid macOS Cmd/Ctrl collisions.
   const emacsBindings = useEmacsBindings(inputRef, setQuery);
 
-  const [mascotMode] = useSetting("mascotMode", SETTINGS_DEFAULTS.mascotMode);
+  const [mascotMode] = useSetting<string>("mascotMode");
 
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
