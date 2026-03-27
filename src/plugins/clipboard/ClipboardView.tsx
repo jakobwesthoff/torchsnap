@@ -21,12 +21,17 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   ClipboardDocumentListIcon,
+  CodeBracketIcon,
+  DocumentIcon,
   DocumentTextIcon,
+  FolderIcon,
   PhotoIcon,
 } from "@heroicons/react/24/outline";
+import { DisplayTextPreview } from "./detail/DisplayTextPreview";
+import { ImagePreview } from "./detail/ImagePreview";
+import { FileListPreview } from "./detail/FileListPreview";
 import { useKeyBindings } from "../../keybindings";
 import {
   LAYER,
@@ -67,6 +72,20 @@ function relativeTime(iso: string): string {
 // Sub-components
 // =========================================================
 
+/** Maps a `primaryFormat` value to the corresponding HeroIcon. */
+const FORMAT_ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+  text: DocumentTextIcon,
+  image: PhotoIcon,
+  files: FolderIcon,
+  html: CodeBracketIcon,
+  rtf: DocumentIcon,
+};
+
+function EntryIcon({ format }: { format: string }) {
+  const Icon = FORMAT_ICONS[format] ?? DocumentTextIcon;
+  return <Icon className="h-4 w-4 shrink-0 text-text-muted" />;
+}
+
 function EmptyState({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center w-full h-full text-text-muted text-sm gap-2">
@@ -101,11 +120,7 @@ function EntryRow({
       }}
       onClick={onPaste}
     >
-      {entry.primaryFormat === "image" ? (
-        <PhotoIcon className="h-4 w-4 shrink-0 text-text-muted" />
-      ) : (
-        <DocumentTextIcon className="h-4 w-4 shrink-0 text-text-muted" />
-      )}
+      <EntryIcon format={entry.primaryFormat} />
       <span className="flex-1 truncate">{entry.displayText}</span>
       <span className="shrink-0 text-xs text-text-muted">
         {relativeTime(entry.capturedAt)}
@@ -177,29 +192,14 @@ function DetailPreview({
     return <div className="w-[60%] overflow-hidden p-4" />;
   }
 
-  // TODO: Add type-specific detail views for files, html, etc.
-  // For now, images get a preview and everything else shows display text.
-  const imageFormat = detail.formats.image;
-  if (detail.primaryFormat === "image" && imageFormat?.type === "asset") {
-    return (
-      <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
-        <img
-          src={convertFileSrc(imageFormat.path)}
-          alt="Clipboard image"
-          className="max-w-full max-h-full object-contain rounded"
-          draggable={false}
-        />
-      </div>
-    );
+  switch (detail.primaryFormat) {
+    case "image":
+      return <ImagePreview detail={detail} scrollRef={scrollRef} />;
+    case "files":
+      return <FileListPreview detail={detail} scrollRef={scrollRef} />;
+    default:
+      return <DisplayTextPreview detail={detail} scrollRef={scrollRef} />;
   }
-
-  return (
-    <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
-      <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none font-mono leading-relaxed">
-        {detail.displayText}
-      </pre>
-    </div>
-  );
 }
 
 // =========================================================
