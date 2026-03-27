@@ -259,7 +259,7 @@ impl CatalogPlugin for ClipboardPlugin {
                     // separate mark_self_written() call after set() races
                     // with the watcher — it can detect the change before
                     // the marker is added.
-                    if let Some(marker) = platform.self_write_marker() {
+                    if let Some(marker) = platform.ownership_marker() {
                         clipboard_contents.push(marker);
                     }
 

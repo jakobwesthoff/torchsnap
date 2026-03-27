@@ -38,5 +38,5 @@ pub trait ClipboardPlatform: Send + Sync {
     /// written atomically with the content — avoids the race
     /// where the watcher detects the change before a separate
     /// `mark_self_written()` call runs.
-    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent>;
+    fn ownership_marker(&self) -> Option<clipboard_rs::ClipboardContent>;
 }
