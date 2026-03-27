@@ -117,8 +117,8 @@ export function ResultRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 pl-3 pr-5 py-2.5 cursor-default",
-        selected && "bg-selection",
+        "flex items-center gap-3 pl-3 pr-5 py-2.5 cursor-default border-l-2 border-transparent",
+        selected && "bg-selection border-accent",
       )}
       onMouseEnter={() => {
         if (mouseActiveRef.current) {

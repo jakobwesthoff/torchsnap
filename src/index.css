@@ -93,7 +93,7 @@
   --color-accent-muted: var(--color-orange-400);
 
   /* --- Selection ---------------------------------------- */
-  --color-selection: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --color-selection: #2a2a2c;
 
   /* --- Placeholder fix ----------------------------------- */
   & ::placeholder {
