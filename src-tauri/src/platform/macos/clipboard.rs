@@ -14,13 +14,13 @@
 //   set by our own paste-back so the watcher can skip it.
 //
 // Both checks inspect `types` on the general pasteboard. The
-// self-write marker is added via `setData:forType:` with empty
-// data — the mere presence of the type is the signal.
+// self-write marker is included as a `ClipboardContent::Other`
+// item in the `ctx.set()` call so it's written atomically with
+// the content — the mere presence of the type is the signal.
 // =========================================================
 
-use anyhow::Result;
 use objc2_app_kit::NSPasteboard;
-use objc2_foundation::{NSData, NSString};
+use objc2_foundation::NSString;
 
 use super::super::clipboard::ClipboardPlatform;
 
@@ -42,19 +42,11 @@ impl ClipboardPlatform for MacosClipboard {
         has_pasteboard_type(SELF_WRITE_TYPE)
     }
 
-    fn mark_self_written(&self) -> Result<()> {
-        let pb = NSPasteboard::generalPasteboard();
-        let type_str = NSString::from_str(SELF_WRITE_TYPE);
-        let empty = NSData::new();
-
-        // `setData:forType:` returns false on failure but doesn't
-        // provide an error object. Treat it as a generic error.
-        let ok = pb.setData_forType(Some(&empty), &type_str);
-        if ok {
-            Ok(())
-        } else {
-            anyhow::bail!("NSPasteboard setData:forType: returned false")
-        }
+    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
+        Some(clipboard_rs::ClipboardContent::Other(
+            SELF_WRITE_TYPE.to_string(),
+            Vec::new(),
+        ))
     }
 }
 

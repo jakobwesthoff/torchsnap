@@ -24,7 +24,7 @@ impl ClipboardPlatform for FallbackClipboard {
         false
     }
 
-    fn mark_self_written(&self) -> anyhow::Result<()> {
-        Ok(())
+    fn self_write_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
+        None
     }
 }
