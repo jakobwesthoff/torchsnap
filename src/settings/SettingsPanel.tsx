@@ -17,10 +17,12 @@ export function SettingsPanel() {
     SETTINGS_DEFAULTS.globalShortcut,
   );
 
-  const [showMascot, setShowMascot, mascotReady] = useSetting(
-    "showMascot",
-    SETTINGS_DEFAULTS.showMascot,
+  const [mascotMode, setMascotMode, mascotReady] = useSetting(
+    "mascotMode",
+    SETTINGS_DEFAULTS.mascotMode,
   );
+
+  const mascotEnabled = mascotMode !== "off";
 
   const loading = !shortcutReady || !mascotReady;
 
@@ -50,7 +52,17 @@ export function SettingsPanel() {
             <ThemeToggle />
           </SettingsEntry>
           <SettingsEntry label="Show Snappy mascot">
-            <Switch checked={showMascot} onChange={setShowMascot} />
+            <Switch
+              checked={mascotEnabled}
+              onChange={(on) => setMascotMode(on ? "center" : "off")}
+            />
+          </SettingsEntry>
+          <SettingsEntry label="Snappy is only a Sidekick">
+            <Switch
+              checked={mascotMode === "sidekick"}
+              onChange={(on) => setMascotMode(on ? "sidekick" : "center")}
+              disabled={!mascotEnabled}
+            />
           </SettingsEntry>
         </SettingsSection>
       </div>

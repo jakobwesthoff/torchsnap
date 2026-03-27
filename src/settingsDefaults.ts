@@ -10,7 +10,9 @@
  * hook returns the default from this map.
  */
 
+export type MascotMode = "off" | "center" | "sidekick";
+
 export const SETTINGS_DEFAULTS = {
   globalShortcut: "CmdOrCtrl+Shift+Space",
-  showMascot: true,
+  mascotMode: "center" as MascotMode,
 } satisfies Record<string, unknown>;
