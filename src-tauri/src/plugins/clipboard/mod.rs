@@ -272,7 +272,7 @@ impl CatalogPlugin for ClipboardPlugin {
                     }
                 });
 
-                Ok(serde_json::json!({ "postAction": "Dismiss" }))
+                Ok(serde_json::Value::Null)
             }
 
             other => anyhow::bail!("unknown clipboard message method: {other}"),
