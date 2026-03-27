@@ -56,9 +56,9 @@ pub struct CaptureResult {
 // Capture
 // =========================================================
 
-/// Formats to capture, in display-text priority order: the
-/// first format that produces a display string wins.
-const CAPTURE_ORDER: &[ContentFormat] = &[
+/// All clipboard formats we know how to capture. Order does
+/// not matter — every present format is read unconditionally.
+const KNOWN_FORMATS: &[ContentFormat] = &[
     ContentFormat::Text,
     ContentFormat::Html,
     ContentFormat::Rtf,
@@ -68,33 +68,23 @@ const CAPTURE_ORDER: &[ContentFormat] = &[
 
 /// Read all available formats from the clipboard.
 ///
-/// Iterates known formats, reads each via its typed getter,
-/// serializes to bytes, and derives a display string from the
-/// first text-producing format.
+/// Captures every known format that is present, then derives
+/// a human-readable display string separately with its own
+/// priority logic.
 pub fn capture_all(clipboard: &ClipboardContext) -> CaptureResult {
     let mut formats = Vec::new();
-    let mut display_text = String::new();
 
-    for content_format in CAPTURE_ORDER {
+    for content_format in KNOWN_FORMATS {
         if !clipboard.has(content_format.clone()) {
             continue;
         }
 
-        if let Some((captured, format_display)) = read_format(clipboard, content_format) {
-            if display_text.is_empty() {
-                if let Some(d) = format_display {
-                    display_text = d;
-                }
-            }
-
+        if let Some(captured) = read_format(clipboard, content_format) {
             formats.push(captured);
         }
     }
 
-    // Cap at the storage limit.
-    if display_text.chars().count() > DISPLAY_TEXT_MAX_CHARS {
-        display_text = display_text.chars().take(DISPLAY_TEXT_MAX_CHARS).collect();
-    }
+    let display_text = derive_display_text(clipboard);
 
     CaptureResult {
         formats,
@@ -103,25 +93,21 @@ pub fn capture_all(clipboard: &ClipboardContext) -> CaptureResult {
 }
 
 /// Read a single format from the clipboard, returning
-/// serialized bytes and an optional display text contribution.
+/// serialized bytes ready for storage.
 fn read_format(
     clipboard: &ClipboardContext,
     content_format: &ContentFormat,
-) -> Option<(CapturedFormat, Option<String>)> {
+) -> Option<CapturedFormat> {
     match content_format {
         ContentFormat::Text => {
             let text = clipboard.get_text().ok()?;
             if text.is_empty() {
                 return None;
             }
-            let display = text.clone();
-            Some((
-                CapturedFormat {
-                    format: "text".into(),
-                    data: text.into_bytes(),
-                },
-                Some(display),
-            ))
+            Some(CapturedFormat {
+                format: "text".into(),
+                data: text.into_bytes(),
+            })
         }
 
         ContentFormat::Html => {
@@ -129,13 +115,10 @@ fn read_format(
             if html.is_empty() {
                 return None;
             }
-            Some((
-                CapturedFormat {
-                    format: "html".into(),
-                    data: html.into_bytes(),
-                },
-                None,
-            ))
+            Some(CapturedFormat {
+                format: "html".into(),
+                data: html.into_bytes(),
+            })
         }
 
         ContentFormat::Rtf => {
@@ -143,13 +126,10 @@ fn read_format(
             if rtf.is_empty() {
                 return None;
             }
-            Some((
-                CapturedFormat {
-                    format: "rtf".into(),
-                    data: rtf.into_bytes(),
-                },
-                None,
-            ))
+            Some(CapturedFormat {
+                format: "rtf".into(),
+                data: rtf.into_bytes(),
+            })
         }
 
         ContentFormat::Files => {
@@ -157,15 +137,11 @@ fn read_format(
             if files.is_empty() {
                 return None;
             }
-            let display = files.join(", ");
             let json = serde_json::to_string(&files).ok()?;
-            Some((
-                CapturedFormat {
-                    format: "files".into(),
-                    data: json.into_bytes(),
-                },
-                Some(display),
-            ))
+            Some(CapturedFormat {
+                format: "files".into(),
+                data: json.into_bytes(),
+            })
         }
 
         ContentFormat::Image => {
@@ -175,20 +151,96 @@ fn read_format(
             }
             let png_buf = image.to_png().ok()?;
             let data = png_buf.get_bytes().to_vec();
-            let (w, h) = image.get_size();
-            let display = format!("Image ({w}×{h})");
-            Some((
-                CapturedFormat {
-                    format: "image".into(),
-                    data,
-                },
-                Some(display),
-            ))
+            Some(CapturedFormat {
+                format: "image".into(),
+                data,
+            })
         }
 
         // Intentionally not capturing unknown formats — see
         // module-level comment for rationale.
         ContentFormat::Other(_) => None,
+    }
+}
+
+// =========================================================
+// Display Text Derivation
+//
+// Separate from capture — uses its own priority to pick the
+// most meaningful human-readable representation. The typed
+// clipboard-rs getters are called again here (cheap, data is
+// still on the pasteboard) so capture and display concerns
+// stay fully decoupled.
+// =========================================================
+
+/// Derive a human-readable display string from the clipboard.
+///
+/// Priority: files → text → image dimensions. Files take
+/// precedence over text because when files are copied, macOS
+/// also provides the paths as plain text — but the structured
+/// file display is more useful. HTML and RTF don't produce
+/// display text (they're markup, not readable content).
+fn derive_display_text(clipboard: &ClipboardContext) -> String {
+    // Files: structured display with filenames and count.
+    if let Ok(files) = clipboard.get_files() {
+        if !files.is_empty() {
+            return cap_display_text(&format_file_display(&files));
+        }
+    }
+
+    // Plain text: the most common and broadly useful display.
+    if let Ok(text) = clipboard.get_text() {
+        if !text.is_empty() {
+            return cap_display_text(&text);
+        }
+    }
+
+    // Image: show dimensions as a summary.
+    if let Ok(image) = clipboard.get_image() {
+        if !image.is_empty() {
+            let (w, h) = image.get_size();
+            return format!("Image ({w}×{h})");
+        }
+    }
+
+    String::new()
+}
+
+/// Cap display text at [`DISPLAY_TEXT_MAX_CHARS`].
+fn cap_display_text(s: &str) -> String {
+    if s.chars().count() > DISPLAY_TEXT_MAX_CHARS {
+        s.chars().take(DISPLAY_TEXT_MAX_CHARS).collect()
+    } else {
+        s.to_string()
+    }
+}
+
+// =========================================================
+// File Display
+// =========================================================
+
+/// Build a display string for a list of file paths.
+///
+/// Uses filenames (not full paths) to keep the display compact.
+/// Single files show just the name, multiple files show the
+/// count followed by the names.
+fn format_file_display(paths: &[String]) -> String {
+    use std::path::Path;
+
+    let names: Vec<&str> = paths
+        .iter()
+        .map(|p| {
+            Path::new(p)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(p)
+        })
+        .collect();
+
+    if names.len() == 1 {
+        names[0].to_string()
+    } else {
+        format!("{} files: {}", names.len(), names.join(", "))
     }
 }
 

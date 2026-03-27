@@ -384,7 +384,7 @@ fn file_ext_for_format(format: &str) -> &'static str {
 /// returned by SQLite's `GROUP_CONCAT(format)`.
 /// Priority: image > files > text. Returns "text" as default.
 fn primary_format_from_csv(csv: Option<&str>) -> &'static str {
-    const PRIORITY: &[&str] = &["image", "files", "html", "rtf", "text"];
+    const PRIORITY: &[&str] = &["files", "image", "html", "rtf", "text"];
 
     let Some(csv) = csv else { return "text" };
     for &fmt in PRIORITY {
