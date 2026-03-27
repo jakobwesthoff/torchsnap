@@ -66,6 +66,10 @@ impl Deref for StorageKey {
 /// Filesystem metadata for a stored entry.
 pub struct EntryMetadata {
     pub modified: SystemTime,
+    /// Not currently read by any consumer, but essentially free to
+    /// collect alongside `modified` and useful for future diagnostics
+    /// or cache-eviction strategies.
+    #[allow(dead_code)]
     pub size: u64,
 }
 
@@ -139,11 +143,6 @@ impl FileStorage {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e).with_context(|| format!("delete {}", path.display())),
         }
-    }
-
-    /// Check whether a file exists for the given key and extension.
-    pub fn exists(&self, key: &StorageKey, ext: &str) -> bool {
-        self.resolve(key, ext).exists()
     }
 
     /// Return filesystem metadata for a stored entry, or `None`

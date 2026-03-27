@@ -72,7 +72,8 @@ impl WatcherHandler {
 
         // Periodic retention cleanup.
         let count = self.state.capture_count.fetch_add(1, Ordering::Relaxed);
-        if count > 0 && count.is_multiple_of(RETENTION_INTERVAL)
+        if count > 0
+            && count.is_multiple_of(RETENTION_INTERVAL)
             && let Err(e) = self.state.delete_expired_entries()
         {
             eprintln!("clipboard: periodic retention failed: {e:#}");
