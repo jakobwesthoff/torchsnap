@@ -30,6 +30,8 @@ Core systems that support everything else.
 - [i18n-system](01kmh1ah0j1c2cx7pa39rmp7k1-i18n-system.md)
 - [create-dedicated-tray-icon](01kmgymgjvkr1e6egscdwctf2m-create-dedicated-tray-icon.md)
 - [react-perf-audit](01kmnmb0v2rm892d51qj1j5zp0-react-perf-audit.md)
+- [refactor-icon-cache-to-use-plugin-id](01kmp77jp2h413hz2ck55sszms-refactor-icon-cache-to-use-plugin-id.md)
+- [rename-search-module](01kmpc7et0w3erf8qysgcc25cj-rename-search-module.md)
 - [plugin-suspense-fallback](01kmnjk9wv8w4m2dhd8x2q8ra6-plugin-suspense-fallback.md)
 - [random-mascot-variants](01kmj9zbb6ysgtgpvfjmace188-random-mascot-variants.md)
 - [visual-identity-brainstorm](01kmh1h2b95jvtfk76hwyd80kd-visual-identity-brainstorm.md) `[discuss]`
@@ -61,6 +63,11 @@ Make the launcher work properly on Linux and Windows.
 Build out the plugin ecosystem once the API is stable.
 
 - [plugin-clipboard-manager](01kmh0dspar1gga0ahh1pyp351-plugin-clipboard-manager.md)
+- [execute-triggered-custom-ui-state-snapshot](01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md) *(after plugin-clipboard-manager)*
+- [clipboard-pinned-entries](01kmpamgxr089fmyx43e4gwdam-clipboard-pinned-entries.md) *(after plugin-clipboard-manager)*
+- [clipboard-source-app-identification](01kmp9wsa756avh7nc72vfs0ez-clipboard-source-app-identification.md) *(after plugin-clipboard-manager)*
+- [clipboard-plugin-settings](01kmp5hfhw5dr3nwzg7xjmrp0y-clipboard-plugin-settings.md) *(after plugin-clipboard-manager)*
+- [clipboard-keyboard-shortcut-activation](01kmp5hfhw5dr3nwzg7xjmrp0z-clipboard-keyboard-shortcut-activation.md) *(after plugin-clipboard-manager)*
 - [plugin-file-search](01kmh0n9gmxjbt0xxy56h0ajh3-plugin-file-search.md)
 - [plugin-task-switcher](01kmh0dspar1gga0ahh1pyp355-plugin-task-switcher.md)
 - [plugin-contact-search](01kmh0dspar1gga0ahh1pyp352-plugin-contact-search.md)
