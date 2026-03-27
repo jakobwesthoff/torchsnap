@@ -20,14 +20,13 @@
  *   hover-selection path.
  */
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseWindowedListParams {
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
   resultCount: number;
   pageSize: number;
-  wheelRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useWindowedList({
@@ -35,8 +34,10 @@ export function useWindowedList({
   setSelectedIndex,
   resultCount,
   pageSize,
-  wheelRef,
-}: UseWindowedListParams): { windowStart: number } {
+}: UseWindowedListParams): {
+  windowStart: number;
+  wheelRef: (el: HTMLDivElement | null) => void;
+} {
   // =========================================================
   // Window Position (ref-based, adjusted synchronously)
   //
@@ -80,6 +81,11 @@ export function useWindowedList({
   // =========================================================
   // Mouse Wheel
   //
+  // Uses a callback ref so the wheel listener is attached
+  // exactly when the target element mounts — even if it is
+  // conditionally rendered (e.g. hidden while the list is
+  // empty). When the element unmounts the effect cleans up.
+  //
   // Shifts the window and co-shifts `selectedIndex` by the same
   // delta so the highlight stays at the same visual row position.
   // Without the co-shift, there would be a single frame where the
@@ -102,14 +108,20 @@ export function useWindowedList({
   // passive in modern browsers.
   // =========================================================
 
+  // Callback ref: React calls this when the element mounts or
+  // unmounts, updating `wheelEl` state and triggering the effect.
+  const [wheelEl, setWheelEl] = useState<HTMLDivElement | null>(null);
+  const wheelRef = useCallback((el: HTMLDivElement | null) => {
+    setWheelEl(el);
+  }, []);
+
   // Stable ref for the wheel handler to read current values
   // without re-registering the listener on every render.
   const stateRef = useRef({ selectedIndex, resultCount, pageSize });
   stateRef.current = { selectedIndex, resultCount, pageSize };
 
   useEffect(() => {
-    const el = wheelRef.current;
-    if (!el) return;
+    if (!wheelEl) return;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -132,9 +144,9 @@ export function useWindowedList({
       setSelectedIndex(newSel);
     };
 
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [wheelRef, setSelectedIndex]);
+    wheelEl.addEventListener("wheel", onWheel, { passive: false });
+    return () => wheelEl.removeEventListener("wheel", onWheel);
+  }, [wheelEl, setSelectedIndex]);
 
-  return { windowStart: windowStartRef.current };
+  return { windowStart: windowStartRef.current, wheelRef };
 }

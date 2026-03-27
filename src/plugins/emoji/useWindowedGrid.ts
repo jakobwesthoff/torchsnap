@@ -12,7 +12,7 @@
  * through the existing mouseenter path).
  */
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseWindowedGridParams {
   selectedIndex: number;
@@ -20,13 +20,14 @@ interface UseWindowedGridParams {
   resultCount: number;
   columns: number;
   visibleRows: number;
-  gridRef: RefObject<HTMLDivElement | null>;
 }
 
 interface UseWindowedGridResult {
   /** First visible row index (0-based). Multiply by columns to get
    *  the first visible item index. */
   windowStartRow: number;
+  /** Callback ref to attach to the grid container element. */
+  wheelRef: (el: HTMLDivElement | null) => void;
 }
 
 export function useWindowedGrid({
@@ -35,7 +36,6 @@ export function useWindowedGrid({
   resultCount,
   columns,
   visibleRows,
-  gridRef,
 }: UseWindowedGridParams): UseWindowedGridResult {
   const windowStartRowRef = useRef(0);
 
@@ -66,15 +66,20 @@ export function useWindowedGrid({
   windowStartRowRef.current = wsRow;
 
   // -------------------------------------------------------
-  // Mouse wheel — shift by one row at a time, co-shifting
-  // the selected index to maintain the visual row offset.
+  // Mouse wheel — uses a callback ref so the listener is
+  // attached exactly when the target element mounts, even
+  // if it is conditionally rendered.
   // -------------------------------------------------------
+  const [wheelEl, setWheelEl] = useState<HTMLDivElement | null>(null);
+  const wheelRef = useCallback((el: HTMLDivElement | null) => {
+    setWheelEl(el);
+  }, []);
+
   const stateRef = useRef({ selectedIndex, resultCount, columns, visibleRows });
   stateRef.current = { selectedIndex, resultCount, columns, visibleRows };
 
   useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
+    if (!wheelEl) return;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -100,9 +105,9 @@ export function useWindowedGrid({
       setSelectedIndex(newSel);
     };
 
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [gridRef, setSelectedIndex]);
+    wheelEl.addEventListener("wheel", onWheel, { passive: false });
+    return () => wheelEl.removeEventListener("wheel", onWheel);
+  }, [wheelEl, setSelectedIndex]);
 
-  return { windowStartRow: windowStartRowRef.current };
+  return { windowStartRow: windowStartRowRef.current, wheelRef };
 }

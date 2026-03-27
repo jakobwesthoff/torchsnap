@@ -11,7 +11,7 @@
  * selection). There is no native scroll container or scrollbar.
  */
 
-import { useRef, type RefObject } from "react";
+import { type RefObject } from "react";
 import type { ScoredEntry } from "./types";
 import { ResultRow } from "./ResultRow";
 import { PAGE_SIZE } from "./constants";
@@ -32,14 +32,11 @@ export function ResultList({
   onExecute,
   mouseActiveRef,
 }: ResultListProps) {
-  const wheelRef = useRef<HTMLDivElement>(null);
-
-  const { windowStart } = useWindowedList({
+  const { windowStart, wheelRef } = useWindowedList({
     selectedIndex,
     setSelectedIndex: onSelectIndex,
     resultCount: results.length,
     pageSize: PAGE_SIZE,
-    wheelRef,
   });
 
   if (results.length === 0) {
