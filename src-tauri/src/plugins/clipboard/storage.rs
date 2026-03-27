@@ -46,7 +46,7 @@ impl SharedState {
     /// Query clipboard history as lightweight list entries, optionally
     /// filtering with FTS5. Returns all matching entries — the frontend
     /// handles windowed rendering.
-    pub fn query_history(
+    pub fn search_history(
         &self,
         search: Option<&str>,
     ) -> Result<Vec<ClipboardListEntry>> {
@@ -165,7 +165,7 @@ impl SharedState {
                 }
             } else if let Some(blob) = inline_data {
                 // Inline content — choose string vs json based on format.
-                format_data_from_inline(format, blob)
+                inline_blob_to_format_data(format, blob)
             } else {
                 continue;
             };
@@ -184,7 +184,7 @@ impl SharedState {
 
     /// Load all raw format data for a single entry, ready for
     /// paste-back via `ClipboardContent::Other`.
-    pub fn load_entry_content(&self, id: &str) -> Result<Vec<CapturedFormat>> {
+    pub fn load_captured_formats(&self, id: &str) -> Result<Vec<CapturedFormat>> {
         let rows: Vec<(String, Option<Vec<u8>>, Option<String>)> = self
             .sql
             .query_map(
@@ -305,7 +305,7 @@ impl SharedState {
     }
 
     /// Delete entries older than the retention period.
-    pub fn run_retention(&self) -> Result<()> {
+    pub fn delete_expired_entries(&self) -> Result<()> {
         let cutoff = format!("-{RETENTION_DAYS} days");
 
         let old_ids: Vec<String> = self.sql.query_map(
@@ -331,7 +331,7 @@ impl SharedState {
     /// Push the current history to all connected subscriber channels.
     /// Drops channels that have been closed by the frontend.
     pub fn notify_subscribers(&self) {
-        let history = match self.query_history(None) {
+        let history = match self.search_history(None) {
             Ok(h) => h,
             Err(e) => {
                 eprintln!("clipboard: notify query failed: {e:#}");
@@ -385,7 +385,7 @@ impl SharedState {
 ///
 /// "files" is stored as JSON-encoded paths → `Json` with parsed value.
 /// All other inline formats are UTF-8 text → `String`.
-fn format_data_from_inline(format: &str, blob: &[u8]) -> FormatData {
+fn inline_blob_to_format_data(format: &str, blob: &[u8]) -> FormatData {
     if format == "files" {
         if let Ok(text) = std::str::from_utf8(blob) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {

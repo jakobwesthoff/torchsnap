@@ -10,7 +10,7 @@
 // and paste previous entries via a custom UI.
 //
 // Module layout:
-//   formats  — format-agnostic capture and restore logic
+//   formats  — format-agnostic extraction and conversion logic
 //   schema   — database migrations, serialized types, constants
 //   storage  — SharedState (SQL + file storage + subscribers)
 //   watcher  — clipboard change handler (background thread)
@@ -36,7 +36,7 @@ use crate::platform::clipboard::ClipboardPlatform;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::{FileStorage, SqlStorage};
 
-use self::formats::restore_contents;
+use self::formats::captured_to_clipboard_contents;
 use self::schema::{EntryIdPayload, SubscribePayload, MIGRATION_001, PLUGIN_ID};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
@@ -106,7 +106,7 @@ impl CatalogPlugin for ClipboardPlugin {
         );
 
         // Clean up old entries on startup.
-        if let Err(e) = shared.run_retention() {
+        if let Err(e) = shared.delete_expired_entries() {
             eprintln!("clipboard: retention cleanup failed: {e:#}");
         }
 
@@ -202,7 +202,7 @@ impl CatalogPlugin for ClipboardPlugin {
                     subs.push(channel);
                 }
 
-                let history = state.query_history(params.query.as_deref())?;
+                let history = state.search_history(params.query.as_deref())?;
                 Ok(serde_json::to_value(&history).context("serialize history")?)
             }
 
@@ -240,12 +240,12 @@ impl CatalogPlugin for ClipboardPlugin {
                 // SQL + optional file reads), then spawn the clipboard
                 // write on a background thread so we don't block the
                 // IPC thread. This lets the frontend dismiss immediately.
-                let captured = state.load_entry_content(&params.id)?;
+                let captured = state.load_captured_formats(&params.id)?;
 
                 let platform = Arc::clone(&self.platform);
 
                 thread::spawn(move || {
-                    let mut clipboard_contents = restore_contents(&captured);
+                    let mut clipboard_contents = captured_to_clipboard_contents(&captured);
 
                     if clipboard_contents.is_empty() {
                         return;
