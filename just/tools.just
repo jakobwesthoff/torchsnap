@@ -6,7 +6,7 @@
 memsnap *ARGS:
     tools/memsnap {{ARGS}}
 
-# Run an automated memory benchmark scenario
+# Run a full memory benchmark (build → launch → measure → report)
 bench-memory *ARGS:
     tools/bench-memory {{ARGS}}
 
