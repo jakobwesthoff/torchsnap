@@ -4,50 +4,43 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # =========================================================
-# memsnap-report — Format memsnap JSON into an ASCII table
+# memsnap-report — Format memsnap output into ASCII tables
 #
-# Reads a JSON file produced by `tools/memsnap` (which wraps
-# the macOS `footprint --sample -j` output) and prints a
-# self-contained ASCII report block with per-process memory
-# statistics.
+# Generates a full report with:
+# - Per-process min/max/avg/delta statistics (from continuous
+#   samples produced by `memsnap sample`)
+# - Phase-by-phase memory breakdown (from labeled snapshots
+#   produced by `memsnap snapshot`)
 #
-# Designed to be appended to a log file to build a protocol
-# of measurement runs over time:
+# Either input can be omitted for a partial report.
 #
-#   tools/memsnap-report -d "baseline, no optimizations" \
-#       memsnap-20260328.json >> memory-log.txt
+# Usage:
+#   memsnap-report -d "description" \
+#       --samples data.json --snapshots phases.jsonl
 #
 # Prerequisites:
-#   - jq installed (brew install jq)
+#   - jq (brew install jq)
 # =========================================================
 
 set -euo pipefail
 
 # =========================================================
 # Table rendering
-#
-# Reusable functions for printing bordered ASCII tables.
-# Feed tab-separated rows, get auto-sized columns with
-# box-drawing separator lines.
 # =========================================================
 
-# Print a line of $width copies of character $char.
 _repeat_char() {
-    local width="$1"
-    local char="$2"
-    printf '%s' "$(printf "%${width}s" '' | sed -e "s/ /${char}/g")"
-    echo
+    local width="$1" char="$2"
+    printf '%s\n' "$(printf "%${width}s" '' | sed -e "s/ /${char}/g")"
 }
 
-# Render a bordered table from tab-separated input.
-#
-# Expects a newline-separated string of tab-delimited rows.
-# The first row is treated as the header, the last row as a
-# footer (totals). All rows in between are data rows.
-#
-# Uses `column -t` for auto-sizing, then draws ═ lines for
-# outer borders and ─ lines for inner separators. The
-# separator width matches the longest line in the output.
+_max_line_width() {
+    local max=0
+    while IFS= read -r line; do
+        (( ${#line} > max )) && max=${#line}
+    done <<< "$1"
+    echo "$max"
+}
+
 render_table() {
     local tsv_rows="$1"
     local formatted
@@ -56,128 +49,17 @@ render_table() {
     local total_lines
     total_lines=$(echo "$formatted" | wc -l | tr -d ' ')
 
-    # Find the longest line to size separators correctly
-    local max_width=0
-    while IFS= read -r line; do
-        (( ${#line} > max_width )) && max_width=${#line}
-    done <<< "$formatted"
+    local width
+    width=$(_max_line_width "$formatted")
 
-    _repeat_char "$max_width" "═"
+    _repeat_char "$width" "═"
     echo "$formatted" | head -1
-    _repeat_char "$max_width" "─"
+    _repeat_char "$width" "─"
     echo "$formatted" | tail -n +"2" | head -n "$((total_lines - 2))"
-    _repeat_char "$max_width" "─"
+    _repeat_char "$width" "─"
     echo "$formatted" | tail -1
-    _repeat_char "$max_width" "═"
+    _repeat_char "$width" "═"
 }
-
-# =========================================================
-# CLI
-# =========================================================
-
-DESCRIPTION=""
-
-usage() {
-    cat <<'EOF'
-Usage: memsnap-report [OPTIONS] <json-file>
-
-Format a memsnap JSON file into an ASCII summary table.
-
-Options:
-  -d, --description <TEXT>   Description of what was tested
-  -h, --help                 Show this help
-EOF
-}
-
-POSITIONAL=()
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -d|--description) DESCRIPTION="$2"; shift 2 ;;
-        -h|--help)        usage; exit 0 ;;
-        -*)
-            echo "Unknown option: $1" >&2
-            usage >&2
-            exit 1
-            ;;
-        *)
-            POSITIONAL+=("$1")
-            shift
-            ;;
-    esac
-done
-
-if [[ ${#POSITIONAL[@]} -ne 1 ]]; then
-    echo "Error: Expected exactly one JSON file argument." >&2
-    usage >&2
-    exit 1
-fi
-
-JSON_FILE="${POSITIONAL[0]}"
-
-if [[ ! -f "$JSON_FILE" ]]; then
-    echo "Error: File not found: $JSON_FILE" >&2
-    exit 1
-fi
-
-if ! command -v jq &>/dev/null; then
-    echo "Error: jq is not installed. Install it with: brew install jq" >&2
-    exit 1
-fi
-
-# =========================================================
-# Extract statistics from JSON
-#
-# A single jq invocation computes per-process min/max/avg
-# and totals, then emits tab-separated lines tagged with
-# META / PROC / TOTAL for easy bash parsing.
-# =========================================================
-
-REPORT_DATA=$(jq -r '
-    (.samples | length) as $num_samples |
-    (.samples[0].start_time.date // "unknown") as $start_date |
-
-    [
-        .samples[].processes[] | {
-            name: .name,
-            pid: .pid,
-            footprint: .auxiliary.phys_footprint
-        }
-    ] |
-    group_by(.pid) |
-    . as $groups |
-    {
-        meta: {
-            num_samples: $num_samples,
-            start_date: $start_date
-        },
-        processes: [
-            $groups[] | {
-                name: .[0].name,
-                pid: .[0].pid,
-                min: ([.[].footprint] | min),
-                max: ([.[].footprint] | max),
-                avg: (([.[].footprint] | add) / length | round),
-                first: (.[0].footprint),
-                last: (.[-1].footprint)
-            }
-        ] | sort_by(-.avg),
-        totals: {
-            min: [$groups[] | [.[].footprint] | min] | add,
-            max: [$groups[] | [.[].footprint] | max] | add,
-            avg: [$groups[] | (([.[].footprint] | add) / length | round)] | add,
-            first: [$groups[] | .[0].footprint] | add,
-            last: [$groups[] | .[-1].footprint] | add
-        }
-    } |
-
-    "META\t\(.meta.num_samples)\t\(.meta.start_date)",
-
-    (.processes[] |
-        "PROC\t\(.name)\t\(.pid)\t\(.min)\t\(.max)\t\(.avg)\t\(.first)\t\(.last)"
-    ),
-
-    "TOTAL\t\(.totals.min)\t\(.totals.max)\t\(.totals.avg)\t\(.totals.first)\t\(.totals.last)"
-' "$JSON_FILE")
 
 # =========================================================
 # Format helpers
@@ -192,46 +74,197 @@ fmt_delta() {
 }
 
 # =========================================================
-# Build table rows
-#
-# Parse the tagged jq output into tab-separated table rows.
+# CLI
 # =========================================================
 
-NUM_SAMPLES=""
-START_DATE=""
-ROWS="Process	PID	Min	Max	Avg	Delta"
+DESCRIPTION=""
+SAMPLES_FILE=""
+SNAPSHOTS_FILE=""
 
-while IFS=$'\t' read -r tag rest; do
-    case "$tag" in
-        META)
-            IFS=$'\t' read -r NUM_SAMPLES START_DATE <<< "$rest"
-            ;;
-        PROC)
-            IFS=$'\t' read -r name pid min max avg first last <<< "$rest"
-            ROWS+=$'\n'"${name}	${pid}	$(fmt_mb "$min")	$(fmt_mb "$max")	$(fmt_mb "$avg")	$(fmt_delta "$((last - first))")"
-            ;;
-        TOTAL)
-            IFS=$'\t' read -r t_min t_max t_avg t_first t_last <<< "$rest"
-            ROWS+=$'\n'"TOTAL	 	$(fmt_mb "$t_min")	$(fmt_mb "$t_max")	$(fmt_mb "$t_avg")	$(fmt_delta "$((t_last - t_first))")"
-            ;;
-    esac
-done <<< "$REPORT_DATA"
+usage() {
+    cat <<'EOF'
+Usage: memsnap-report [OPTIONS]
 
-# =========================================================
-# Output
-# =========================================================
+Generate a memory report from memsnap data.
 
-# Report header (description + timestamp)
-{
-    if [[ -n "$DESCRIPTION" ]]; then
-        echo "  $DESCRIPTION"
-    fi
-    # Truncate ISO date to date + time (drop fractional seconds and timezone)
-    local_date="${START_DATE%%.*}"
-    local_date="${local_date%%+*}"
-    echo "  ${local_date} | ${NUM_SAMPLES} samples"
+At least one of --samples or --snapshots must be provided.
+
+Options:
+  -d, --description <TEXT>      Description of what was tested
+  -s, --samples <FILE>          Continuous samples JSON (from `memsnap sample`)
+  -n, --snapshots <FILE>        Phase snapshots JSONL (from `memsnap snapshot`)
+  -h, --help                    Show this help
+EOF
 }
 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--description) DESCRIPTION="$2"; shift 2 ;;
+        -s|--samples)     SAMPLES_FILE="$2"; shift 2 ;;
+        -n|--snapshots)   SNAPSHOTS_FILE="$2"; shift 2 ;;
+        -h|--help)        usage; exit 0 ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            echo "Unexpected argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$SAMPLES_FILE" ]] && [[ -z "$SNAPSHOTS_FILE" ]]; then
+    echo "Error: At least one of --samples or --snapshots is required." >&2
+    usage >&2
+    exit 1
+fi
+
+if [[ -n "$SAMPLES_FILE" ]] && [[ ! -f "$SAMPLES_FILE" ]]; then
+    echo "Error: Samples file not found: $SAMPLES_FILE" >&2
+    exit 1
+fi
+
+if [[ -n "$SNAPSHOTS_FILE" ]] && [[ ! -f "$SNAPSHOTS_FILE" ]]; then
+    echo "Error: Snapshots file not found: $SNAPSHOTS_FILE" >&2
+    exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is not installed. Install it with: brew install jq" >&2
+    exit 1
+fi
+
+# =========================================================
+# Report header
+# =========================================================
+
+if [[ -n "$DESCRIPTION" ]]; then
+    echo "  $DESCRIPTION"
+fi
+echo "  $(date +%Y-%m-%dT%H:%M:%S)"
 echo
 
-render_table "$ROWS"
+# =========================================================
+# Section 1: Per-process statistics (continuous samples)
+# =========================================================
+
+if [[ -n "$SAMPLES_FILE" ]]; then
+    REPORT_DATA=$(jq -r '
+        (.samples | length) as $num_samples |
+
+        [
+            .samples[].processes[] | {
+                name: .name,
+                pid: .pid,
+                footprint: .auxiliary.phys_footprint
+            }
+        ] |
+        group_by(.pid) |
+        . as $groups |
+        {
+            meta: { num_samples: $num_samples },
+            processes: [
+                $groups[] | {
+                    name: .[0].name,
+                    pid: .[0].pid,
+                    min: ([.[].footprint] | min),
+                    max: ([.[].footprint] | max),
+                    avg: (([.[].footprint] | add) / length | round),
+                    first: (.[0].footprint),
+                    last: (.[-1].footprint)
+                }
+            ] | sort_by(-.avg),
+            totals: {
+                min: [$groups[] | [.[].footprint] | min] | add,
+                max: [$groups[] | [.[].footprint] | max] | add,
+                avg: [$groups[] | (([.[].footprint] | add) / length | round)] | add,
+                first: [$groups[] | .[0].footprint] | add,
+                last: [$groups[] | .[-1].footprint] | add
+            }
+        } |
+
+        "META\t\(.meta.num_samples)",
+        (.processes[] |
+            "PROC\t\(.name)\t\(.pid)\t\(.min)\t\(.max)\t\(.avg)\t\(.first)\t\(.last)"
+        ),
+        "TOTAL\t\(.totals.min)\t\(.totals.max)\t\(.totals.avg)\t\(.totals.first)\t\(.totals.last)"
+    ' "$SAMPLES_FILE")
+
+    NUM_SAMPLES=""
+    ROWS="Process	PID	Min	Max	Avg	Delta"
+
+    while IFS=$'\t' read -r tag rest; do
+        case "$tag" in
+            META)
+                NUM_SAMPLES="$rest"
+                ;;
+            PROC)
+                IFS=$'\t' read -r name pid min max avg first last <<< "$rest"
+                ROWS+=$'\n'"${name}	${pid}	$(fmt_mb "$min")	$(fmt_mb "$max")	$(fmt_mb "$avg")	$(fmt_delta "$((last - first))")"
+                ;;
+            TOTAL)
+                IFS=$'\t' read -r t_min t_max t_avg t_first t_last <<< "$rest"
+                ROWS+=$'\n'"TOTAL	 	$(fmt_mb "$t_min")	$(fmt_mb "$t_max")	$(fmt_mb "$t_avg")	$(fmt_delta "$((t_last - t_first))")"
+                ;;
+        esac
+    done <<< "$REPORT_DATA"
+
+    echo "  Continuous samples: ${NUM_SAMPLES}"
+    echo
+    render_table "$ROWS"
+fi
+
+# =========================================================
+# Section 2: Phase-by-phase breakdown (snapshots)
+# =========================================================
+
+if [[ -n "$SNAPSHOTS_FILE" ]]; then
+    NUM_SNAPSHOTS=$(wc -l < "$SNAPSHOTS_FILE" | tr -d ' ')
+
+    PHASE_TABLE=$(jq -s -r '
+        . as $snaps |
+        [.[] | .processes[]] | group_by(.name) |
+        sort_by(-([.[].auxiliary.phys_footprint] | add)) |
+        map(.[0].name) as $names |
+
+        # Shorten: "com.apple.WebKit.WebContent" → "WebContent"
+        ($names | map(split(".") | last)) as $short |
+
+        # Header
+        (["Phase"] + $short + ["TOTAL"] | join("\t")),
+
+        # Data rows
+        ($snaps | to_entries[] |
+            .value as $snap |
+            [$names[] as $n |
+                ($snap.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0)
+            ] as $vals |
+            ([$vals[] | . / 1048576 | . * 10 | round / 10 | tostring + " MB"]) as $fmt |
+            ($vals | add | . / 1048576 | . * 10 | round / 10 | tostring + " MB") as $t |
+            ([$snap.phase] + $fmt + [$t] | join("\t"))
+        ),
+
+        # Delta row
+        ($snaps[0] as $first | $snaps[-1] as $last |
+            [$names[] as $n |
+                (($last.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0) -
+                 ($first.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0))
+            ] as $d |
+            ([$d[] | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB"]) as $fmt |
+            ($d | add | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB") as $t |
+            (["Δ first → last"] + $fmt + [$t] | join("\t"))
+        )
+    ' "$SNAPSHOTS_FILE")
+
+    # Add spacing between sections if we already printed samples
+    if [[ -n "$SAMPLES_FILE" ]]; then
+        echo
+    fi
+
+    echo "  Phase snapshots: ${NUM_SNAPSHOTS}"
+    echo
+    render_table "$PHASE_TABLE"
+fi

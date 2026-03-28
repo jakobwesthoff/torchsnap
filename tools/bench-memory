@@ -7,14 +7,16 @@
 # bench-memory — End-to-end memory benchmark for Torchsnap
 #
 # Performs a full benchmark cycle:
-# 1. Builds the release app
+# 1. Builds the release app (app bundle only, no DMG)
 # 2. Ensures the Control API is enabled in settings
 # 3. Launches the app
 # 4. Waits for the control socket to become available
-# 5. Starts memory sampling in the background
-# 6. Runs a realistic usage scenario via the Control API
+# 5. Starts continuous memory sampling in the background
+# 6. Runs a realistic usage scenario via the Control API,
+#    taking a discrete memory snapshot after each phase
 # 7. Stops sampling and kills the app
-# 8. Appends a formatted report to the benchmark log
+# 8. Appends a combined report (overall stats + phase
+#    breakdown) to the benchmark log
 #
 # Usage:
 #   tools/bench-memory -d "baseline, no optimizations"
@@ -131,6 +133,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ---------------------------------------------------------
+# Snapshot helper — delegates to `memsnap snapshot`
+# ---------------------------------------------------------
+
+SAMPLES_FILE="bench-memory-$(date +%Y%m%d-%H%M%S).json"
+SNAPSHOTS_FILE="bench-memory-$(date +%Y%m%d-%H%M%S).snapshots.jsonl"
+
+snap() {
+    "$SCRIPT_DIR/memsnap" snapshot -l "$1" -o "$SNAPSHOTS_FILE"
+}
+
 # =========================================================
 # Step 1: Build release app
 # =========================================================
@@ -155,7 +168,6 @@ fi
 mkdir -p "$SETTINGS_DIR"
 
 if [[ -f "$SETTINGS_FILE" ]]; then
-    # Enable the control channel if it isn't already
     CURRENT=$(jq -r '.["controlChannel.enabled"] // false' "$SETTINGS_FILE")
     if [[ "$CURRENT" != "true" ]]; then
         echo "Enabling Control API in settings..."
@@ -184,12 +196,9 @@ fi
 echo "Launching Torchsnap..."
 open "$APP_BUNDLE"
 
-# Wait for the process to appear
 for _ in $(seq 1 30); do
     APP_PID=$(pgrep -x torchsnap 2>/dev/null || true)
-    if [[ -n "$APP_PID" ]]; then
-        break
-    fi
+    if [[ -n "$APP_PID" ]]; then break; fi
     sleep 0.2
 done
 
@@ -204,15 +213,10 @@ echo "Torchsnap PID: $APP_PID"
 # Step 5: Wait for the control socket
 # =========================================================
 
-# Wait for the control socket to appear AND accept connections.
-# The socket file may exist before the server calls accept(), so
-# we retry the health check rather than just testing -S.
 echo "Waiting for control socket..."
 CONTROL_READY=false
 for _ in $(seq 1 50); do
     if [[ -S "$SOCK" ]]; then
-        # Try an actual connection — suppress errors since the
-        # server may not be accepting yet.
         if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' \
             | socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
             CONTROL_READY=true
@@ -230,10 +234,8 @@ fi
 echo "Control API ready."
 
 # =========================================================
-# Step 6: Start memory sampler
+# Step 6: Start continuous sampler (background)
 # =========================================================
-
-OUTPUT="bench-memory-$(date +%Y%m%d-%H%M%S).json"
 
 echo
 echo "=== Torchsnap Memory Benchmark ==="
@@ -244,80 +246,82 @@ echo
 send "dismiss"
 sleep 0.5
 
-# The scenario below takes roughly this many seconds; add
-# a buffer so the sampler outlasts the scenario.
-SCENARIO_DURATION=45
+SCENARIO_DURATION=55
 
-echo "Starting memory sampler (${SCENARIO_DURATION}s, 200ms interval)..."
-"$SCRIPT_DIR/memsnap" \
+echo "Starting background sampler (${SCENARIO_DURATION}s, 200ms interval)..."
+"$SCRIPT_DIR/memsnap" sample \
     -i 0.2 \
     -d "$SCENARIO_DURATION" \
-    -o "$OUTPUT" &
+    -o "$SAMPLES_FILE" &
 MEMSNAP_PID=$!
-
-# Give footprint a moment to initialize
 sleep 1
 
 # =========================================================
 # Step 7: Run the test scenario
 #
-# A realistic usage pattern: multiple show/dismiss cycles,
-# various query types, including one that triggers the emoji
-# picker (`:` prefix).
+# Each phase ends with a discrete memory snapshot via
+# `memsnap snapshot`. The phase labels become rows in the
+# final report.
 # =========================================================
 
-phase() {
-    echo "  [$1] ${2}s..."
-    sleep "$2"
-}
-
 echo "Running scenario..."
+echo
 
-# --- Phase 1: Baseline (hidden, idle) ---
-phase "idle baseline" 3
+# --- Baseline: app just started, launcher hidden ---
+snap "app started (idle)"
 
-# --- Phase 2: First show/dismiss cycle ---
+# --- First show/dismiss cycle ---
 send "show"
-phase "visible (empty)" 2
+sleep 2
+snap "launcher visible (empty)"
 send "dismiss"
-phase "post-dismiss" 2
+sleep 2
+snap "after first dismiss"
 
-# --- Phase 3: Show and search for an app ---
+# --- App search ---
 send "show"
-phase "visible (empty)" 1
+sleep 1
 send "query" '{"text":"Safari"}'
-phase "query: Safari" 2
+sleep 2
+snap "query: Safari"
 send "query" '{"text":"Terminal"}'
-phase "query: Terminal" 2
+sleep 2
+snap "query: Terminal"
 send "dismiss"
-phase "post-dismiss" 2
+sleep 2
+snap "after app search dismiss"
 
-# --- Phase 4: Show and use the emoji picker ---
+# --- Emoji picker ---
 send "show"
-phase "visible (empty)" 1
+sleep 1
 send "query" '{"text":":rocket"}'
-phase "query: :rocket (emoji)" 2
+sleep 2
+snap "query: :rocket (emoji)"
 send "query" '{"text":":fire"}'
-phase "query: :fire (emoji)" 2
+sleep 2
+snap "query: :fire (emoji)"
 send "dismiss"
-phase "post-dismiss" 2
+sleep 2
+snap "after emoji dismiss"
 
-# --- Phase 5: Rapid show/dismiss cycles ---
-for i in 1 2 3; do
+# --- Rapid show/dismiss cycles ---
+for _ in 1 2 3 4 5; do
     send "show"
     sleep 0.3
     send "dismiss"
     sleep 0.3
-    echo "  [rapid cycle $i]"
 done
-phase "post-rapid" 2
+sleep 2
+snap "after 5 rapid cycles"
 
-# --- Phase 6: Settings query + longer idle ---
+# --- Final query + long idle ---
 send "show"
 send "query" '{"text":"settings"}'
-phase "query: settings" 3
+sleep 3
+snap "query: settings"
 send "dismiss"
-phase "final idle" 5
+sleep 5
+snap "final idle"
 
 echo
 echo "Scenario complete. Waiting for sampler..."
@@ -329,11 +333,6 @@ echo "Scenario complete. Waiting for sampler..."
 wait "$MEMSNAP_PID" 2>/dev/null || true
 MEMSNAP_PID=""
 
-if [[ ! -f "$OUTPUT" ]]; then
-    echo "Error: Output file not found. The sampler may have failed." >&2
-    exit 1
-fi
-
 # =========================================================
 # Step 9: Stop the app
 # =========================================================
@@ -344,14 +343,24 @@ wait "$APP_PID" 2>/dev/null || true
 APP_PID=""
 
 # =========================================================
-# Step 10: Append report to log
+# Step 10: Generate and append report
 # =========================================================
 
 echo
-REPORT=$("$SCRIPT_DIR/memsnap-report" -d "$DESCRIPTION" "$OUTPUT")
+
+REPORT_ARGS=(-d "$DESCRIPTION")
+if [[ -f "$SAMPLES_FILE" ]]; then
+    REPORT_ARGS+=(-s "$SAMPLES_FILE")
+fi
+if [[ -f "$SNAPSHOTS_FILE" ]]; then
+    REPORT_ARGS+=(-n "$SNAPSHOTS_FILE")
+fi
+
+REPORT=$("$SCRIPT_DIR/memsnap-report" "${REPORT_ARGS[@]}")
 echo "$REPORT"
 echo "$REPORT" >> "$LOG_FILE"
 
 echo
 echo "Report appended to: $LOG_FILE"
-echo "Raw data: $OUTPUT"
+echo "Continuous data: $SAMPLES_FILE"
+echo "Snapshot data: $SNAPSHOTS_FILE"
