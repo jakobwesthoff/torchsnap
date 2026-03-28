@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# =========================================================
+# bench-memory — Automated memory benchmark for Torchsnap
+#
+# Orchestrates a full measurement run:
+# 1. Starts memsnap (memory sampler) in the background
+# 2. Records a baseline while the launcher is hidden
+# 3. Drives a test scenario via the Control API:
+#    show → query → dismiss → idle
+# 4. Stops the sampler
+# 5. Prints a summary of per-process memory by phase
+#
+# Prerequisites:
+#   - Torchsnap running with Control API enabled
+#   - socat installed (brew install socat)
+# =========================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SOCK="$HOME/Library/Application Support/app.torchsnap/control.sock"
+
+# ---------------------------------------------------------
+# Prerequisites
+# ---------------------------------------------------------
+
+if ! pgrep -x torchsnap &>/dev/null; then
+    echo "Error: Torchsnap is not running." >&2
+    exit 1
+fi
+
+if [[ ! -S "$SOCK" ]]; then
+    echo "Error: Control socket not found at $SOCK" >&2
+    echo "Make sure the Control API is enabled in Settings → General → Advanced." >&2
+    exit 1
+fi
+
+if ! command -v socat &>/dev/null; then
+    echo "Error: socat is not installed. Install it with: brew install socat" >&2
+    exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is not installed. Install it with: brew install jq" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------
+# Control API helper
+# ---------------------------------------------------------
+
+LAST_ID=0
+send() {
+    local method="$1"
+    local params="${2:-}"
+    local id=$((LAST_ID++))
+
+    local request
+    if [[ -n "$params" ]]; then
+        request="{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\",\"params\":$params}"
+    else
+        request="{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\"}"
+    fi
+
+    local response
+    response=$(echo "$request" | socat - UNIX-CONNECT:"$SOCK")
+
+    # Check for errors
+    local error
+    error=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null)
+    if [[ -n "$error" ]]; then
+        echo "  Error from $method: $error" >&2
+    fi
+}
+
+# ---------------------------------------------------------
+# Scenario timing (seconds)
+# ---------------------------------------------------------
+
+BASELINE_WAIT=3
+SHOW_WAIT=2
+QUERY_WAIT=3
+POST_DISMISS_WAIT=5
+
+TOTAL_DURATION=$((BASELINE_WAIT + SHOW_WAIT + QUERY_WAIT + POST_DISMISS_WAIT + 2))
+
+# ---------------------------------------------------------
+# Output file
+# ---------------------------------------------------------
+
+OUTPUT="bench-memory-$(date +%Y%m%d-%H%M%S).json"
+
+# ---------------------------------------------------------
+# Start memory sampler
+# ---------------------------------------------------------
+
+echo "=== Torchsnap Memory Benchmark ==="
+echo
+echo "Output: $OUTPUT"
+echo "Scenario: baseline(${BASELINE_WAIT}s) → show(${SHOW_WAIT}s) → query(${QUERY_WAIT}s) → dismiss+idle(${POST_DISMISS_WAIT}s)"
+echo
+
+# Ensure the launcher starts in a known hidden state
+send "dismiss"
+sleep 0.5
+
+echo "Starting memory sampler..."
+"$SCRIPT_DIR/memsnap" \
+    -i 0.2 \
+    -d "$TOTAL_DURATION" \
+    -o "$OUTPUT" &
+MEMSNAP_PID=$!
+
+# Give footprint a moment to start sampling
+sleep 0.5
+
+# ---------------------------------------------------------
+# Test scenario
+# ---------------------------------------------------------
+
+phase() {
+    local name="$1"
+    local duration="$2"
+    echo "  [$name] ${duration}s..."
+    sleep "$duration"
+}
+
+echo
+echo "Running scenario..."
+
+# Phase 1: Baseline — launcher hidden and idle
+phase "baseline" "$BASELINE_WAIT"
+
+# Phase 2: Show the launcher
+send "show"
+phase "visible" "$SHOW_WAIT"
+
+# Phase 3: Type a search query
+send "query" '{"text":"settings"}'
+phase "query" "$QUERY_WAIT"
+
+# Phase 4: Dismiss and measure post-dismiss recovery
+send "dismiss"
+phase "post-dismiss" "$POST_DISMISS_WAIT"
+
+echo
+echo "Scenario complete. Waiting for sampler to finish..."
+
+# ---------------------------------------------------------
+# Wait for memsnap to complete
+# ---------------------------------------------------------
+
+wait "$MEMSNAP_PID" 2>/dev/null || true
+
+# ---------------------------------------------------------
+# Summary
+#
+# Parse the JSON output and print per-process min/max/avg
+# phys_footprint across all samples.
+# ---------------------------------------------------------
+
+echo
+echo "=== Summary ==="
+echo
+
+if [[ ! -f "$OUTPUT" ]]; then
+    echo "Warning: Output file not found. The sampler may have failed." >&2
+    exit 1
+fi
+
+jq -r '
+    # Flatten all process samples into a single stream with process identity
+    [.samples[].processes[] | {
+        name: .name,
+        pid: .pid,
+        footprint: .auxiliary.phys_footprint
+    }]
+    # Group by process
+    | group_by(.pid)[]
+    # Compute stats per process
+    | {
+        name: .[0].name,
+        pid: .[0].pid,
+        samples: length,
+        min: ([.[].footprint] | min),
+        max: ([.[].footprint] | max),
+        avg: (([.[].footprint] | add) / length | round)
+    }
+    | "\(.name) (PID \(.pid)):\n  samples: \(.samples)\n  min: \(.min / 1048576 | . * 10 | round / 10) MB\n  max: \(.max / 1048576 | . * 10 | round / 10) MB\n  avg: \(.avg / 1048576 | . * 10 | round / 10) MB"
+' "$OUTPUT"
+
+echo
+echo "Full data: $OUTPUT"

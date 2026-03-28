@@ -31,10 +31,12 @@ if ! command -v socat &>/dev/null; then
 fi
 
 # Helper: send a JSON-RPC request and print the response.
+LAST_ID=0
 send() {
-    local id="$1"
-    local method="$2"
-    local params="${3:-}"
+    local method="$1"
+    local params="${2:-}"
+
+    local id="$((LAST_ID++))"
 
     local request
     if [[ -n "$params" ]]; then
@@ -53,18 +55,26 @@ send() {
 echo "=== Torchsnap Control API Demo ==="
 echo
 
-# 1. Check current status
-send 1 "status"
+# Check current status
+send "status"
 
-# 2. Show the launcher
-send 2 "show"
+# Show the launcher
+send "show"
 sleep 0.5
 
-# 3. Type a search query
-send 3 "query" '{"text":"settings"}'
-sleep 5
+# Type a search query
+send "query" '{"text":"settings"}'
+sleep 2
 
-# 4. Dismiss (reset state + hide)
-send 4 "dismiss"
+# Type a search query
+send "query" '{"text":""}'
+sleep 2
+
+# Type a search query
+send "query" '{"text":":rocket"}'
+sleep 2
+
+# Dismiss (reset state + hide)
+send "dismiss"
 
 echo "Done."

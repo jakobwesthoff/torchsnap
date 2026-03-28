@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Memory benchmark output
+memsnap-*.json
+bench-memory-*.json

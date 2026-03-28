@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# =========================================================
+# memsnap — Memory footprint sampler for Torchsnap
+#
+# Discovers the Torchsnap main process and all its WebKit
+# XPC child processes (WebContent, GPU, Networking) via
+# macOS coalition groups, then samples their physical memory
+# footprint at a configurable interval using the `footprint`
+# tool.
+#
+# Output is a JSON file (from `footprint -j`) containing
+# timestamped per-process phys_footprint values. A human-
+# readable summary is printed to stderr while sampling.
+#
+# Prerequisites:
+#   - Torchsnap must be running
+#   - macOS (uses `footprint` and `lsappinfo`)
+# =========================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------
+# Defaults
+# ---------------------------------------------------------
+
+INTERVAL=0.5
+DURATION=0
+OUTPUT=""
+PID=""
+
+# ---------------------------------------------------------
+# Usage
+# ---------------------------------------------------------
+
+usage() {
+    cat <<'EOF'
+Usage: memsnap [OPTIONS]
+
+Sample memory footprint of Torchsnap and its WebKit processes.
+
+Options:
+  -i, --interval <SEC>   Sampling interval in seconds [default: 0.5]
+  -d, --duration <SEC>   Stop after this many seconds, 0 = unlimited [default: 0]
+  -o, --output <FILE>    JSON output file [default: memsnap-<timestamp>.json]
+  -p, --pid <PID>        Torchsnap PID (auto-detected if omitted)
+  -h, --help             Show this help
+EOF
+}
+
+# ---------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -i|--interval) INTERVAL="$2"; shift 2 ;;
+        -d|--duration) DURATION="$2"; shift 2 ;;
+        -o|--output)   OUTPUT="$2"; shift 2 ;;
+        -p|--pid)      PID="$2"; shift 2 ;;
+        -h|--help)     usage; exit 0 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# ---------------------------------------------------------
+# Find Torchsnap PID
+# ---------------------------------------------------------
+
+if [[ -z "$PID" ]]; then
+    PID=$(pgrep -x torchsnap 2>/dev/null || true)
+    if [[ -z "$PID" ]]; then
+        echo "Error: Torchsnap is not running." >&2
+        exit 1
+    fi
+    # pgrep may return multiple matches — take the first
+    PID=$(echo "$PID" | head -1)
+fi
+
+if ! kill -0 "$PID" 2>/dev/null; then
+    echo "Error: PID $PID is not a running process." >&2
+    exit 1
+fi
+
+echo "Torchsnap PID: $PID" >&2
+
+# ---------------------------------------------------------
+# Discover coalition members
+#
+# lsappinfo exposes coalition groups for running apps. The
+# torchsnap entry looks like:
+#
+#   coalition: 5528  { 68227 68229 68230 68231 68232 }
+#
+# All PIDs in the braces belong to the same coalition —
+# this includes the main process and its WebKit XPC
+# services.
+# ---------------------------------------------------------
+
+COALITION_LINE=$(lsappinfo list | grep -E "coalition:.*\{.*\b${PID}\b.*\}" || true)
+
+if [[ -z "$COALITION_LINE" ]]; then
+    echo "Warning: Could not find coalition for PID $PID. Sampling only the main process." >&2
+    ALL_PIDS=("$PID")
+else
+    # Extract the PID list from within { ... }
+    PID_LIST="${COALITION_LINE#*\{}"
+    PID_LIST="${PID_LIST%%\}*}"
+    read -ra ALL_PIDS <<< "$PID_LIST"
+fi
+
+# Build the footprint -p arguments
+FP_ARGS=()
+for pid in "${ALL_PIDS[@]}"; do
+    FP_ARGS+=(-p "$pid")
+done
+
+echo "Tracking ${#ALL_PIDS[@]} process(es): ${ALL_PIDS[*]}" >&2
+
+# Resolve process names for the initial summary
+for pid in "${ALL_PIDS[@]}"; do
+    name=$(ps -p "$pid" -o comm= 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
+    echo "  $pid  $name" >&2
+done
+
+# ---------------------------------------------------------
+# Output file
+# ---------------------------------------------------------
+
+if [[ -z "$OUTPUT" ]]; then
+    OUTPUT="memsnap-$(date +%Y%m%d-%H%M%S).json"
+fi
+
+echo "Output: $OUTPUT" >&2
+echo "Interval: ${INTERVAL}s" >&2
+if [[ "$DURATION" == "0" ]]; then
+    echo "Duration: unlimited (Ctrl-C to stop)" >&2
+else
+    echo "Duration: ${DURATION}s" >&2
+fi
+echo >&2
+
+# ---------------------------------------------------------
+# Run footprint with sampling
+#
+# --noCategories suppresses the per-category breakdown,
+# keeping the JSON compact. The auxiliary block still
+# includes phys_footprint and phys_footprint_peak.
+# ---------------------------------------------------------
+
+DURATION_ARGS=()
+if [[ "$DURATION" != "0" ]]; then
+    DURATION_ARGS=(--sample-duration "$DURATION")
+fi
+
+echo "Sampling... (Ctrl-C to stop)" >&2
+
+footprint \
+    "${FP_ARGS[@]}" \
+    --noCategories \
+    --sample "$INTERVAL" \
+    "${DURATION_ARGS[@]}" \
+    -j "$OUTPUT"
