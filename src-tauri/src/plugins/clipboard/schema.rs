@@ -136,6 +136,19 @@ pub struct ClipboardHistoryEntry {
     pub formats: HashMap<String, FormatData>,
 }
 
+/// Statistics about the clipboard history. Returned by the
+/// `stats` message handler for the settings UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardStats {
+    /// Total number of entries in the history.
+    pub total_entries: u64,
+    /// Number of entries per primary format (e.g., "text": 42).
+    pub entries_by_format: HashMap<String, u64>,
+    /// Total storage size in bytes (inline blobs + file storage).
+    pub total_size_bytes: u64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscribePayload {

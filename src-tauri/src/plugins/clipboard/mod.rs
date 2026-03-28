@@ -470,6 +470,25 @@ impl CatalogPlugin for ClipboardPlugin {
                 Ok(serde_json::Value::Null)
             }
 
+            // -----------------------------------------------
+            // Stats: return history statistics for the
+            // settings UI (entry counts, storage size).
+            // -----------------------------------------------
+            "stats" => {
+                let stats = state.stats()?;
+                Ok(serde_json::to_value(&stats).context("serialize stats")?)
+            }
+
+            // -----------------------------------------------
+            // Clear history: delete all entries and files,
+            // then notify subscribers so the UI updates.
+            // -----------------------------------------------
+            "clear_history" => {
+                state.clear_all()?;
+                state.notify_subscribers();
+                Ok(serde_json::Value::Null)
+            }
+
             other => anyhow::bail!("unknown clipboard message method: {other}"),
         }
     }

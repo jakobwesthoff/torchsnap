@@ -26,8 +26,8 @@ use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
 
 use super::formats::CapturedFormat;
 use super::schema::{
-    ClipboardHistoryEntry, ClipboardListEntry, FormatData, INLINE_STORAGE_MAX_BYTES,
-    LIST_DISPLAY_MAX_CHARS,
+    ClipboardHistoryEntry, ClipboardListEntry, ClipboardStats, FormatData,
+    INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS,
 };
 
 // =========================================================
@@ -318,6 +318,87 @@ impl SharedState {
              WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
             &[SqlValue::from(cutoff)],
         )?;
+
+        Ok(())
+    }
+
+    /// Compute statistics about the clipboard history.
+    ///
+    /// Returns total entry count, per-format counts, and total
+    /// storage size (inline blobs + file storage on disk).
+    pub fn stats(&self) -> Result<ClipboardStats> {
+        // Total entries.
+        let total_entries: i64 = self
+            .sql
+            .query_map(
+                "SELECT COUNT(*) FROM clipboard_entries",
+                &[],
+                |row| row.get(0),
+            )?
+            .into_iter()
+            .next()
+            .unwrap_or(0);
+
+        // Count per primary format. We use the same format-priority
+        // logic as the list view: GROUP_CONCAT formats per entry,
+        // then pick the primary one in Rust.
+        let rows: Vec<Option<String>> = self.sql.query_map(
+            "SELECT GROUP_CONCAT(c.format)
+             FROM clipboard_entries e
+             LEFT JOIN clipboard_content c ON c.entry_id = e.id
+             GROUP BY e.id",
+            &[],
+            |row| row.get(0),
+        )?;
+
+        let mut entries_by_format = std::collections::HashMap::new();
+        for formats_csv in &rows {
+            let fmt = primary_format_from_csv(formats_csv.as_deref());
+            *entries_by_format.entry(fmt.to_owned()).or_insert(0u64) += 1;
+        }
+
+        // Total inline blob size.
+        let inline_size: i64 = self
+            .sql
+            .query_map(
+                "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM clipboard_content WHERE data IS NOT NULL",
+                &[],
+                |row| row.get(0),
+            )?
+            .into_iter()
+            .next()
+            .unwrap_or(0);
+
+        // Total file storage size on disk.
+        let file_size: u64 = self.files.entries().map(|(_, _, meta)| meta.size).sum();
+
+        Ok(ClipboardStats {
+            total_entries: total_entries as u64,
+            entries_by_format,
+            total_size_bytes: inline_size as u64 + file_size,
+        })
+    }
+
+    /// Delete all clipboard history entries and their associated
+    /// files on disk. Used by the "clear history" button in settings.
+    pub fn clear_all(&self) -> Result<()> {
+        // Collect all file keys before CASCADE deletes the rows.
+        let file_rows: Vec<(String, String)> = self
+            .sql
+            .query_map(
+                "SELECT format, file_key FROM clipboard_content
+                 WHERE file_key IS NOT NULL",
+                &[],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or_default();
+
+        for (format, raw_key) in &file_rows {
+            let key = StorageKey::from_raw(raw_key.clone());
+            let _ = self.files.delete(&key, file_ext_for_format(format));
+        }
+
+        self.sql.execute("DELETE FROM clipboard_entries", &[])?;
 
         Ok(())
     }
