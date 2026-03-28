@@ -58,6 +58,13 @@ export function useSearch(query: string): UseSearchResult {
     };
 
     invoke("search_query", { query, onResults: channel });
+
+    // When the query changes, silence the old channel so its closure
+    // (and the state setters it captures) can be garbage-collected
+    // once the backend finishes sending on it.
+    return () => {
+      channel.onmessage = () => {};
+    };
   }, [query]);
 
   return { results, customPluginView, matchedPrefix, loading };
