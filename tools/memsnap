@@ -4,17 +4,26 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # =========================================================
-# memsnap — Memory footprint sampler for Torchsnap
+# memsnap — Memory footprint tool for Torchsnap
 #
-# Discovers the Torchsnap main process and all its WebKit
-# XPC child processes (WebContent, GPU, Networking) via
-# macOS coalition groups, then samples their physical memory
-# footprint at a configurable interval using the `footprint`
-# tool.
+# Two modes of operation:
 #
-# Output is a JSON file (from `footprint -j`) containing
-# timestamped per-process phys_footprint values. A human-
-# readable summary is printed to stderr while sampling.
+# 1. Continuous sampling (default):
+#    Samples physical memory footprint at a configurable
+#    interval using the `footprint` tool. Output is a JSON
+#    file with timestamped per-process data.
+#
+#      memsnap sample -i 0.2 -d 10 -o output.json
+#
+# 2. Single snapshot:
+#    Takes a one-shot footprint measurement and appends it
+#    to a JSONL file with a phase label. Designed to be
+#    called from bench-memory at each scenario boundary.
+#
+#      memsnap snapshot -l "app started" -o snapshots.jsonl
+#
+# Both modes auto-discover the Torchsnap process and its
+# WebKit XPC child processes via macOS coalition groups.
 #
 # Prerequisites:
 #   - Torchsnap must be running
@@ -23,24 +32,90 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------
+# =========================================================
+# Process discovery
+#
+# Shared between both modes. Finds the torchsnap process
+# and all coalition members (WebKit XPC services).
+# =========================================================
 
-INTERVAL=0.5
-DURATION=0
-OUTPUT=""
-PID=""
+# Find the torchsnap PID, either from the argument or by
+# searching. Sets the global PID variable.
+resolve_pid() {
+    local explicit_pid="$1"
+    if [[ -n "$explicit_pid" ]]; then
+        PID="$explicit_pid"
+    else
+        PID=$(pgrep -x torchsnap 2>/dev/null | head -1 || true)
+        if [[ -z "$PID" ]]; then
+            echo "Error: Torchsnap is not running." >&2
+            exit 1
+        fi
+    fi
 
-# ---------------------------------------------------------
-# Usage
-# ---------------------------------------------------------
+    if ! kill -0 "$PID" 2>/dev/null; then
+        echo "Error: PID $PID is not a running process." >&2
+        exit 1
+    fi
+}
 
-usage() {
-    cat <<'EOF'
-Usage: memsnap [OPTIONS]
+# Discover coalition members for the given PID.
+# Sets ALL_PIDS (array) and FP_ARGS (footprint -p flags).
+discover_coalition() {
+    local pid="$1"
 
-Sample memory footprint of Torchsnap and its WebKit processes.
+    local coalition_line
+    coalition_line=$(lsappinfo list | grep -E "coalition:.*\{.*\b${pid}\b.*\}" || true)
+
+    if [[ -z "$coalition_line" ]]; then
+        echo "Warning: Could not find coalition for PID $pid. Using only the main process." >&2
+        ALL_PIDS=("$pid")
+    else
+        local pid_list="${coalition_line#*\{}"
+        pid_list="${pid_list%%\}*}"
+        read -ra ALL_PIDS <<< "$pid_list"
+    fi
+
+    FP_ARGS=()
+    for p in "${ALL_PIDS[@]}"; do
+        FP_ARGS+=(-p "$p")
+    done
+}
+
+# Print the tracked process list to stderr.
+print_process_summary() {
+    echo "Torchsnap PID: $PID" >&2
+    echo "Tracking ${#ALL_PIDS[@]} process(es): ${ALL_PIDS[*]}" >&2
+    for pid in "${ALL_PIDS[@]}"; do
+        local name
+        name=$(ps -p "$pid" -o comm= 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
+        echo "  $pid  $name" >&2
+    done
+}
+
+# =========================================================
+# Subcommand: sample
+#
+# Continuous sampling via `footprint --sample`.
+# =========================================================
+
+cmd_sample() {
+    local interval=0.5
+    local duration=0
+    local output=""
+    local explicit_pid=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|--interval) interval="$2"; shift 2 ;;
+            -d|--duration) duration="$2"; shift 2 ;;
+            -o|--output)   output="$2"; shift 2 ;;
+            -p|--pid)      explicit_pid="$2"; shift 2 ;;
+            -h|--help)
+                cat <<'EOF'
+Usage: memsnap sample [OPTIONS]
+
+Continuously sample memory footprint at a fixed interval.
 
 Options:
   -i, --interval <SEC>   Sampling interval in seconds [default: 0.5]
@@ -49,125 +124,146 @@ Options:
   -p, --pid <PID>        Torchsnap PID (auto-detected if omitted)
   -h, --help             Show this help
 EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    resolve_pid "$explicit_pid"
+    discover_coalition "$PID"
+    print_process_summary
+
+    if [[ -z "$output" ]]; then
+        output="memsnap-$(date +%Y%m%d-%H%M%S).json"
+    fi
+
+    echo "Output: $output" >&2
+    echo "Interval: ${interval}s" >&2
+    if [[ "$duration" == "0" ]]; then
+        echo "Duration: unlimited (Ctrl-C to stop)" >&2
+    else
+        echo "Duration: ${duration}s" >&2
+    fi
+    echo >&2
+    echo "Sampling... (Ctrl-C to stop)" >&2
+
+    local duration_args=()
+    if [[ "$duration" != "0" ]]; then
+        duration_args=(--sample-duration "$duration")
+    fi
+
+    footprint \
+        "${FP_ARGS[@]}" \
+        --noCategories \
+        --sample "$interval" \
+        "${duration_args[@]}" \
+        -j "$output" \
+        > /dev/null
 }
 
-# ---------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------
+# =========================================================
+# Subcommand: snapshot
+#
+# Single-shot footprint measurement appended to a JSONL
+# file with a phase label. Each line is a self-contained
+# JSON object with a "phase" field and the full footprint
+# process data.
+# =========================================================
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -i|--interval) INTERVAL="$2"; shift 2 ;;
-        -d|--duration) DURATION="$2"; shift 2 ;;
-        -o|--output)   OUTPUT="$2"; shift 2 ;;
-        -p|--pid)      PID="$2"; shift 2 ;;
-        -h|--help)     usage; exit 0 ;;
-        *)
-            echo "Unknown option: $1" >&2
-            usage >&2
-            exit 1
-            ;;
-    esac
-done
+cmd_snapshot() {
+    local label=""
+    local output=""
+    local explicit_pid=""
 
-# ---------------------------------------------------------
-# Find Torchsnap PID
-# ---------------------------------------------------------
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -l|--label)  label="$2"; shift 2 ;;
+            -o|--output) output="$2"; shift 2 ;;
+            -p|--pid)    explicit_pid="$2"; shift 2 ;;
+            -h|--help)
+                cat <<'EOF'
+Usage: memsnap snapshot [OPTIONS]
 
-if [[ -z "$PID" ]]; then
-    PID=$(pgrep -x torchsnap 2>/dev/null || true)
-    if [[ -z "$PID" ]]; then
-        echo "Error: Torchsnap is not running." >&2
+Take a single memory footprint snapshot and append it to a JSONL file.
+
+Options:
+  -l, --label <TEXT>     Phase label for this snapshot (required)
+  -o, --output <FILE>    JSONL output file (appended to) [default: snapshots.jsonl]
+  -p, --pid <PID>        Torchsnap PID (auto-detected if omitted)
+  -h, --help             Show this help
+EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$label" ]]; then
+        echo "Error: -l/--label is required." >&2
         exit 1
     fi
-    # pgrep may return multiple matches — take the first
-    PID=$(echo "$PID" | head -1)
-fi
 
-if ! kill -0 "$PID" 2>/dev/null; then
-    echo "Error: PID $PID is not a running process." >&2
+    if [[ -z "$output" ]]; then
+        output="snapshots.jsonl"
+    fi
+
+    resolve_pid "$explicit_pid"
+    discover_coalition "$PID"
+
+    # Take a one-shot footprint measurement
+    local tmp
+    tmp=$(mktemp /tmp/memsnap-snap-XXXXXX.json)
+    footprint "${FP_ARGS[@]}" --noCategories -j "$tmp" > /dev/null
+
+    # Inject the phase label and append as a single JSONL line
+    jq -c --arg phase "$label" '. + {phase: $phase}' "$tmp" >> "$output"
+    rm -f "$tmp"
+
+    # Print a live summary to stderr
+    local total_mb
+    total_mb=$(jq '[.processes[].auxiliary.phys_footprint] | add / 1048576 | . * 10 | round / 10' "$tmp" 2>/dev/null || \
+        tail -1 "$output" | jq '[.processes[].auxiliary.phys_footprint] | add / 1048576 | . * 10 | round / 10')
+    echo "  [$label] ${total_mb} MB total" >&2
+}
+
+# =========================================================
+# Dispatch
+# =========================================================
+
+usage() {
+    cat <<'EOF'
+Usage: memsnap <command> [OPTIONS]
+
+Commands:
+  sample     Continuously sample memory at a fixed interval
+  snapshot   Take a single labeled memory snapshot
+
+Run `memsnap <command> --help` for command-specific options.
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+    usage
     exit 1
 fi
 
-echo "Torchsnap PID: $PID" >&2
+COMMAND="$1"
+shift
 
-# ---------------------------------------------------------
-# Discover coalition members
-#
-# lsappinfo exposes coalition groups for running apps. The
-# torchsnap entry looks like:
-#
-#   coalition: 5528  { 68227 68229 68230 68231 68232 }
-#
-# All PIDs in the braces belong to the same coalition —
-# this includes the main process and its WebKit XPC
-# services.
-# ---------------------------------------------------------
-
-COALITION_LINE=$(lsappinfo list | grep -E "coalition:.*\{.*\b${PID}\b.*\}" || true)
-
-if [[ -z "$COALITION_LINE" ]]; then
-    echo "Warning: Could not find coalition for PID $PID. Sampling only the main process." >&2
-    ALL_PIDS=("$PID")
-else
-    # Extract the PID list from within { ... }
-    PID_LIST="${COALITION_LINE#*\{}"
-    PID_LIST="${PID_LIST%%\}*}"
-    read -ra ALL_PIDS <<< "$PID_LIST"
-fi
-
-# Build the footprint -p arguments
-FP_ARGS=()
-for pid in "${ALL_PIDS[@]}"; do
-    FP_ARGS+=(-p "$pid")
-done
-
-echo "Tracking ${#ALL_PIDS[@]} process(es): ${ALL_PIDS[*]}" >&2
-
-# Resolve process names for the initial summary
-for pid in "${ALL_PIDS[@]}"; do
-    name=$(ps -p "$pid" -o comm= 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
-    echo "  $pid  $name" >&2
-done
-
-# ---------------------------------------------------------
-# Output file
-# ---------------------------------------------------------
-
-if [[ -z "$OUTPUT" ]]; then
-    OUTPUT="memsnap-$(date +%Y%m%d-%H%M%S).json"
-fi
-
-echo "Output: $OUTPUT" >&2
-echo "Interval: ${INTERVAL}s" >&2
-if [[ "$DURATION" == "0" ]]; then
-    echo "Duration: unlimited (Ctrl-C to stop)" >&2
-else
-    echo "Duration: ${DURATION}s" >&2
-fi
-echo >&2
-
-# ---------------------------------------------------------
-# Run footprint with sampling
-#
-# --noCategories suppresses the per-category breakdown,
-# keeping the JSON compact. The auxiliary block still
-# includes phys_footprint and phys_footprint_peak.
-# ---------------------------------------------------------
-
-DURATION_ARGS=()
-if [[ "$DURATION" != "0" ]]; then
-    DURATION_ARGS=(--sample-duration "$DURATION")
-fi
-
-echo "Sampling... (Ctrl-C to stop)" >&2
-
-# The human-readable output goes to stdout; the JSON data we
-# care about goes to the -j file. Suppress stdout.
-footprint \
-    "${FP_ARGS[@]}" \
-    --noCategories \
-    --sample "$INTERVAL" \
-    "${DURATION_ARGS[@]}" \
-    -j "$OUTPUT" \
-    > /dev/null
+case "$COMMAND" in
+    sample)   cmd_sample "$@" ;;
+    snapshot) cmd_snapshot "$@" ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+        echo "Unknown command: $COMMAND" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
