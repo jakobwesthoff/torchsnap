@@ -253,6 +253,10 @@ impl CatalogPlugin for ClipboardPlugin {
         self.enabled.load(Ordering::Relaxed)
     }
 
+    fn enabled_settings_key(&self) -> Option<&'static str> {
+        Some("enabled")
+    }
+
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
             .ensure("enabled", true)
