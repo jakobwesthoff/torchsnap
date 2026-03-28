@@ -253,6 +253,23 @@ impl CatalogPlugin for ClipboardPlugin {
         settings
             .ensure("enabled", true)
             .ensure("retentionDays", 30)
+            .ensure("shortcut.open-clipboard", "CmdOrCtrl+Shift+V")
+    }
+
+    fn shortcuts(&self) -> Vec<super::PluginShortcut> {
+        vec![super::PluginShortcut {
+            id: "open-clipboard",
+            label: "Open Clipboard History",
+            default_shortcut: "CmdOrCtrl+Shift+V",
+        }]
+    }
+
+    fn handle_shortcut(
+        &self,
+        _shortcut_id: &str,
+        _app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction> {
+        Ok(PostAction::ShowCustomUI)
     }
 
     fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
