@@ -68,12 +68,16 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
-  // Fetch stats on mount.
-  useEffect(() => {
+  const refreshStats = useCallback(() => {
     pluginMessage<ClipboardStats>("stats")
       .then(setStats)
       .catch((e) => console.error("clipboard: fetch stats failed:", e));
   }, []);
+
+  // Fetch stats on mount.
+  useEffect(() => {
+    refreshStats();
+  }, [refreshStats]);
 
   const handleClearHistory = useCallback(async () => {
     if (!confirmClear) {
@@ -84,16 +88,14 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
     setClearing(true);
     try {
       await pluginMessage("clear_history");
-      // Refresh stats after clearing.
-      const newStats = await pluginMessage<ClipboardStats>("stats");
-      setStats(newStats);
+      refreshStats();
     } catch (e) {
       console.error("clipboard: clear history failed:", e);
     } finally {
       setClearing(false);
       setConfirmClear(false);
     }
-  }, [confirmClear]);
+  }, [confirmClear, refreshStats]);
 
   // Reset confirmation when clicking elsewhere.
   const handleCancelClear = useCallback(() => {
@@ -130,7 +132,16 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
       </SettingsSection>
 
       {/* ---- Statistics ---- */}
-      <SettingsSection title="Statistics">
+      <SettingsSection>
+        <div className="flex items-center justify-between -mt-0.5 mb-1">
+          <h3 className="text-sm font-medium text-text-secondary">Statistics</h3>
+          <button
+            onClick={refreshStats}
+            className="rounded-lg px-2 py-0.5 text-xs text-text-tertiary transition-colors hover:text-text-secondary hover:bg-surface-hover"
+          >
+            Refresh
+          </button>
+        </div>
         {stats ? (
           <div className="flex flex-col gap-2">
             <StatRow label="Total entries" value={String(stats.totalEntries)} />
