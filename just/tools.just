@@ -7,8 +7,8 @@ memsnap *ARGS:
     tools/memsnap {{ARGS}}
 
 # Run a full memory benchmark (build → launch → measure → report)
-bench-memory *ARGS:
-    tools/bench-memory {{ARGS}}
+bench-memory description *ARGS:
+    tools/bench-memory -d "{{description}}" {{ARGS}}
 
 # Format a memsnap JSON file into an ASCII summary table
 memsnap-report *ARGS:
