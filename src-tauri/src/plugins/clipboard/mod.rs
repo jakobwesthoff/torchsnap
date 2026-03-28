@@ -375,10 +375,6 @@ impl CatalogPlugin for ClipboardPlugin {
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {
-        if !self.enabled.load(Ordering::Relaxed) {
-            return vec![];
-        }
-
         vec![CatalogEntry {
             id: "clipboard-history".into(),
             title: "Clipboard History".into(),

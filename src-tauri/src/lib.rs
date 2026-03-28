@@ -4,14 +4,14 @@
 
 mod icons;
 mod platform;
+mod plugin_host;
 mod plugins;
 mod search;
 mod settings;
 mod settings_notifier;
-mod shortcut_manager;
 mod storage;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::Context;
 use tauri::{Listener, Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
@@ -27,9 +27,6 @@ use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as 
 
 /// Show and focus the pre-created settings window.
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
-    // Activate the app so the window actually comes to the foreground.
-    // Without this, Accessory-policy apps require a second click because
-    // the first click only activates the process.
     #[cfg(target_os = "macos")]
     {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -37,14 +34,6 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
     }
 
     if let Some(win) = app.get_webview_window("settings") {
-        // Move the window to the currently active Space so it doesn't
-        // pull the user back to the Space where it was originally created.
-        //
-        // Tauri only exposes `set_visible_on_all_workspaces()`, which maps
-        // to `CanJoinAllSpaces` (pins the window to every Space at once).
-        // We need `MoveToActiveSpace` instead (window follows the user to
-        // whichever Space they're on). Neither Tauri nor tao abstract this
-        // flag, so we go through the raw NSWindow pointer.
         #[cfg(target_os = "macos")]
         {
             use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
@@ -58,9 +47,6 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
             ns_window.setCollectionBehavior(NSWindowCollectionBehavior::MoveToActiveSpace);
         }
 
-        // Center the settings window on the monitor the cursor is on,
-        // so it appears on the screen the user is currently working on
-        // rather than wherever it was initially created.
         if let Some(monitor) = monitor_under_cursor(app)
             && let Ok(win_size) = win.outer_size()
         {
@@ -85,16 +71,9 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
 // Launcher Window
 // =========================================================
 
-/// Find the monitor the cursor is currently on, falling back to the
-/// primary monitor.
 fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
     let cursor = app.cursor_position().ok()?;
 
-    // `cursor_position()` returns physical pixel coordinates, but
-    // `monitor_from_point()` expects logical coordinates. We find
-    // the matching monitor by iterating the monitor list manually,
-    // converting each monitor's physical bounds to the cursor's
-    // coordinate space for a hit-test.
     app.available_monitors()
         .ok()
         .and_then(|monitors| {
@@ -111,10 +90,6 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
         .or_else(|| app.primary_monitor().ok().flatten())
 }
 
-/// Position the launcher to cover the monitor the cursor is on.
-///
-/// Uses physical cursor coordinates to find the matching monitor,
-/// then sets the window's logical size and position to cover it.
 pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
         return;
@@ -136,7 +111,6 @@ pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
     }
 }
 
-/// Toggle the launcher overlay on the monitor where the cursor currently is.
 pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
     let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
 
@@ -155,39 +129,6 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 }
 
 // =========================================================
-// Global Shortcut
-// =========================================================
-
-/// Re-register the global shortcut at runtime. Unregisters all existing
-/// shortcuts first, then registers the new one with the real toggle
-/// handler. Called from the settings UI when the user changes the
-/// shortcut — the JS side persists the value to the store separately.
-#[tauri::command]
-fn update_global_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
-
-    let parsed = shortcut
-        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-        .map_err(|e| format!("invalid shortcut: {e}"))?;
-
-    // Unregister all existing shortcuts so the old one is removed.
-    app.global_shortcut()
-        .unregister_all()
-        .map_err(|e| format!("failed to unregister shortcuts: {e}"))?;
-
-    let handle = app.clone();
-    app.global_shortcut()
-        .on_shortcut(parsed, move |_app, _shortcut, event| {
-            if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                toggle_launcher_window(&handle);
-            }
-        })
-        .map_err(|e| format!("failed to register shortcut: {e}"))?;
-
-    Ok(())
-}
-
-// =========================================================
 // App Entry Point
 // =========================================================
 
@@ -195,7 +136,6 @@ fn update_global_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<(),
 pub fn run() {
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            update_global_shortcut,
             search::search,
             search::execute_action,
             search::plugin_message,
@@ -214,11 +154,6 @@ pub fn run() {
         .setup(|app| {
             // =========================================================
             // Global settings defaults
-            //
-            // Ensure all expected global settings keys exist in the
-            // store before any webview loads. The frontend pre-loads
-            // the store synchronously at startup and relies on every
-            // key being present — no fallback defaults on the JS side.
             // =========================================================
             use tauri_plugin_store::StoreExt;
 
@@ -230,15 +165,67 @@ pub fn run() {
 
             // =========================================================
             // Settings notifier
-            //
-            // Listens for `settings-changed` Tauri events (emitted by
-            // the frontend settingsStore) and pushes new values to
-            // watch channels so backend subscribers react immediately.
             // =========================================================
             let notifier = Arc::new(settings_notifier::SettingsNotifier::new());
+
+            // =========================================================
+            // Plugin host
+            //
+            // Central authority for plugin lifecycle: registration,
+            // settings init, parallel setup, shortcut management,
+            // search routing, and teardown.
+            // =========================================================
+            let mut host = plugin_host::PluginHost::new(
+                Arc::clone(&store),
+                Arc::clone(&notifier),
+            );
+            host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
+            host.register(Box::new(
+                plugins::system_commands::SystemCommandsPlugin::new(),
+            ));
+
+            let icon_cache_dir = app
+                .path()
+                .app_cache_dir()
+                .context("resolve app cache dir")?
+                .join("icons");
+            let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
+            host.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
+                platform::PlatformAppDiscovery,
+                Arc::clone(&icon_cache),
+            )));
+            host.register(Box::new(
+                plugins::system_preferences::SystemPreferencesPlugin::new(
+                    platform::PlatformSettingsDiscovery,
+                    Arc::clone(&icon_cache),
+                ),
+            ));
+            host.register(Box::new(plugins::clipboard::ClipboardPlugin::new(
+                platform::PlatformClipboard,
+            )));
+            host.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
+
+            // Settings init + shortcut registration + parallel setup.
+            host.initialize_and_start(app.handle());
+
+            let host = Arc::new(host);
+
+            // Spawn the shortcut reactor — watches for settings changes
+            // and re-registers all shortcuts when relevant keys change.
+            host.start_shortcut_reactor(app.handle());
+
+            app.manage(Arc::clone(&host));
+
+            // =========================================================
+            // Settings-changed listener
+            //
+            // Propagates store changes to watch channels AND signals
+            // the shortcut reactor when a relevant key changes.
+            // =========================================================
             {
                 let notifier = Arc::clone(&notifier);
                 let store_for_listener = Arc::clone(&store);
+                let host_for_listener = Arc::clone(&host);
                 app.listen("settings-changed", move |event: tauri::Event| {
                     #[derive(serde::Deserialize)]
                     struct Payload {
@@ -249,63 +236,18 @@ pub fn run() {
                             .get(&payload.key)
                             .unwrap_or(serde_json::Value::Null);
                         notifier.notify(&payload.key, value);
+
+                        // Signal shortcut re-registration if the changed
+                        // key affects shortcuts or plugin enabled state.
+                        if host_for_listener.is_key_watched(&payload.key) {
+                            host_for_listener.notify_shortcut_change();
+                        }
                     }
                 });
             }
 
             // =========================================================
-            // Search catalog
-            //
-            // Initialize the catalog registry and register built-in
-            // plugins. The registry is stored in Tauri managed state
-            // so the search command can access it.
-            // =========================================================
-            let mut catalog = search::catalog::CatalogRegistry::new();
-            catalog.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
-            catalog.register(Box::new(
-                plugins::system_commands::SystemCommandsPlugin::new(),
-            ));
-
-            let icon_cache_dir = app
-                .path()
-                .app_cache_dir()
-                .context("resolve app cache dir")?
-                .join("icons");
-            let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
-            catalog.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
-                platform::PlatformAppDiscovery,
-                Arc::clone(&icon_cache),
-            )));
-            catalog.register(Box::new(
-                plugins::system_preferences::SystemPreferencesPlugin::new(
-                    platform::PlatformSettingsDiscovery,
-                    Arc::clone(&icon_cache),
-                ),
-            ));
-            catalog.register(Box::new(plugins::clipboard::ClipboardPlugin::new(
-                platform::PlatformClipboard,
-            )));
-            catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            catalog.setup_all(app.handle(), &store, &notifier);
-
-            // =========================================================
-            // Global shortcuts
-            //
-            // Register the launcher toggle shortcut and all plugin-
-            // declared shortcuts. Must happen after plugin settings
-            // are initialized (so key combos are in the store) but
-            // before the registry is moved into managed state.
-            // =========================================================
-            shortcut_manager::register_all(app.handle(), &store, &catalog);
-
-            app.manage(Mutex::new(catalog));
-
-            // =========================================================
             // Hide dock icon (macOS only)
-            //
-            // Torchsnap is a menubar-only app on macOS — no dock icon
-            // or app switcher entry. On Linux/Windows, the app will
-            // appear in the taskbar normally.
             // =========================================================
             #[cfg(target_os = "macos")]
             {
@@ -314,20 +256,12 @@ pub fn run() {
 
             // =========================================================
             // Tray icon with context menu
-            //
-            // Delegated to the platform module so each OS can use its
-            // native icon format and click conventions.
             // =========================================================
             PlatformTray::build(app, toggle_launcher_window, show_settings_window)
                 .context("build platform tray")?;
 
             // =========================================================
             // Preload windows
-            //
-            // Both windows are created hidden at startup. This avoids
-            // the flash / delay that comes from creating a webview on
-            // demand when the user triggers the shortcut or opens
-            // settings.
             // =========================================================
 
             let launcher_win =
@@ -341,8 +275,6 @@ pub fn run() {
                     .build()
                     .context("create launcher window")?;
 
-            // Platform-specific panel initialization (NSPanel on macOS,
-            // no-op on other platforms).
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;
 
@@ -384,9 +316,8 @@ pub fn run() {
             }
         }
         RunEvent::Exit => {
-            let state = app.state::<Mutex<search::catalog::CatalogRegistry>>();
-            let registry = state.lock().expect("catalog registry lock");
-            registry.teardown_all();
+            let host = app.state::<Arc<plugin_host::PluginHost>>();
+            host.teardown_all();
         }
         _ => {}
     });

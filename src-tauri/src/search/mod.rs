@@ -10,30 +10,25 @@
 // channel for progressive rendering on the frontend.
 // =========================================================
 
-pub mod catalog;
 pub mod types;
 
-use std::sync::Mutex;
+use std::sync::Arc;
 
 use tauri::State;
 use tauri::ipc::Channel;
 
-use catalog::CatalogRegistry;
+use crate::plugin_host::PluginHost;
 use serde_json::Value;
 use types::{ActionId, PostAction, SearchMessage};
 
 /// Search all registered catalogs and stream results to the frontend.
-///
-/// Synchronous because catalog search is sub-millisecond for small
-/// entry sets. Will become async when query plugins are added.
 #[tauri::command]
 pub fn search(
     query: String,
     on_results: Channel<SearchMessage>,
-    state: State<'_, Mutex<CatalogRegistry>>,
+    state: State<'_, Arc<PluginHost>>,
 ) {
-    let registry = state.lock().expect("catalog registry lock");
-    let result = registry.search(&query);
+    let result = state.search(&query);
 
     let _ = on_results.send(SearchMessage::CatalogResults {
         entries: result.entries,
@@ -51,32 +46,25 @@ pub fn execute_action(
     source: String,
     entry_id: String,
     action_id: ActionId,
-    state: State<'_, Mutex<CatalogRegistry>>,
+    state: State<'_, Arc<PluginHost>>,
     app: tauri::AppHandle,
 ) -> Result<PostAction, String> {
-    let registry = state.lock().expect("catalog registry lock");
-    registry
+    state
         .execute(&source, &entry_id, &action_id, &app)
         .map_err(|e| format!("{e:#}"))
 }
 
 /// Send a custom message to a plugin and optionally receive
 /// streamed updates over the channel.
-///
-/// The plugin is identified by `source` (its ID). The `method`
-/// and `payload` are forwarded to the plugin's `handle_message`
-/// implementation. The `channel` can be used by the plugin to
-/// push live updates back to the frontend.
 #[tauri::command]
 pub fn plugin_message(
     source: String,
     method: String,
     payload: Value,
     channel: Channel<Value>,
-    state: State<'_, Mutex<CatalogRegistry>>,
+    state: State<'_, Arc<PluginHost>>,
 ) -> Result<Value, String> {
-    let registry = state.lock().expect("catalog registry lock");
-    registry
+    state
         .handle_message(&source, &method, payload, channel)
         .map_err(|e| format!("{e:#}"))
 }
