@@ -29,6 +29,28 @@ use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::PluginSettingsNotifier;
 
 // =========================================================
+// PluginShortcut — global shortcut declaration
+// =========================================================
+
+/// A global keyboard shortcut that a plugin wants to register.
+///
+/// Plugins declare shortcuts via `shortcuts()`. The host registers
+/// them with the OS at startup and routes activations back through
+/// `handle_shortcut()`. The actual key combo is persisted in the
+/// plugin's settings namespace under `shortcut.<id>`, so users
+/// can reconfigure it.
+pub struct PluginShortcut {
+    /// Stable identifier for this shortcut (e.g., "open-clipboard").
+    /// Used as the settings key suffix and for routing.
+    pub id: &'static str,
+    /// Human-readable label shown in the settings UI.
+    pub label: &'static str,
+    /// Default key combo in Tauri shortcut syntax
+    /// (e.g., "CmdOrCtrl+Shift+V").
+    pub default_shortcut: &'static str,
+}
+
+// =========================================================
 // PluginContext — bundled runtime context for plugin setup
 // =========================================================
 
@@ -121,6 +143,33 @@ pub trait CatalogPlugin: Send + Sync {
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
 
+    /// Declare global keyboard shortcuts this plugin wants to register.
+    ///
+    /// The host reads the actual key combos from settings (falling
+    /// back to `PluginShortcut::default_shortcut`) and registers
+    /// them with the OS. When a shortcut fires, the host calls
+    /// `handle_shortcut()` with the matching shortcut ID.
+    ///
+    /// The default implementation declares no shortcuts.
+    fn shortcuts(&self) -> Vec<PluginShortcut> {
+        vec![]
+    }
+
+    /// Handle a global shortcut activation.
+    ///
+    /// Called when one of this plugin's registered shortcuts fires.
+    /// Returns a `PostAction` that tells the host what to do (e.g.,
+    /// `ShowCustomUI` to open the launcher with this plugin's view).
+    ///
+    /// The default implementation does nothing.
+    fn handle_shortcut(
+        &self,
+        _shortcut_id: &str,
+        _app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction> {
+        Ok(PostAction::Nothing)
+    }
+
     /// Handle a custom message from the plugin's frontend component.
     ///
     /// This is the plugin-side handler for the `sendMessage` prop
@@ -208,6 +257,20 @@ pub trait QueryPlugin: Send + Sync {
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
+
+    /// Declare global shortcuts. See `CatalogPlugin::shortcuts()`.
+    fn shortcuts(&self) -> Vec<PluginShortcut> {
+        vec![]
+    }
+
+    /// Handle a shortcut activation. See `CatalogPlugin::handle_shortcut()`.
+    fn handle_shortcut(
+        &self,
+        _shortcut_id: &str,
+        _app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction> {
+        Ok(PostAction::Nothing)
+    }
 
     /// Handle a custom message from the plugin's frontend component.
     ///

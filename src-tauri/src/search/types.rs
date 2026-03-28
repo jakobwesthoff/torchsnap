@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum PostAction {
+    /// Do nothing — no launcher state change.
+    Nothing,
     /// Hide the launcher (default for most actions).
     Dismiss,
     /// Keep the launcher open (e.g., for multi-select workflows).
