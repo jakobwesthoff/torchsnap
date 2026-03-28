@@ -14,6 +14,13 @@
 //   schema   — database migrations, serialized types, constants
 //   storage  — SharedState (SQL + file storage + subscribers)
 //   watcher  — clipboard change handler (background thread)
+//
+// Lifecycle:
+//   State (DB, file storage) is always initialized in setup().
+//   The clipboard watcher and retention thread are only started
+//   when the plugin is enabled. The `enabled` setting is watched
+//   reactively — toggling it starts/stops the watcher without
+//   requiring an app restart.
 // =========================================================
 
 mod formats;
@@ -21,9 +28,10 @@ mod schema;
 mod storage;
 mod watcher;
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clipboard_rs::{
@@ -34,6 +42,8 @@ use tauri::ipc::Channel;
 
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::settings::SettingsInit;
+use crate::settings_notifier::SettingsWatch;
 use crate::storage::{FileStorage, SqlStorage};
 
 use self::formats::captured_to_clipboard_contents;
@@ -43,29 +53,190 @@ use self::watcher::WatcherHandler;
 
 use super::{CatalogPlugin, PluginContext};
 
+/// How often the retention cleanup thread wakes to delete expired
+/// entries. Chosen to be infrequent enough to be negligible, but
+/// frequent enough that disk usage doesn't grow unbounded.
+const RETENTION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
+// =========================================================
+// WatcherLifecycle — shared mutable watcher state
+//
+// Extracted into its own struct behind Arc<Mutex<...>> so that
+// both the lifecycle management thread and teardown() can
+// start/stop the watcher independently.
+// =========================================================
+
+pub(super) struct WatcherLifecycle {
+    /// Shutdown handle for clipboard-rs. Present while running.
+    watcher_shutdown: Option<WatcherShutdown>,
+
+    /// Whether the watcher is currently running.
+    pub running: bool,
+
+    /// Flipped to true during app teardown. The lifecycle thread
+    /// checks this to know when to exit entirely (vs. just
+    /// stopping the watcher because `enabled` was toggled off).
+    pub app_shutting_down: bool,
+}
+
 // =========================================================
 // ClipboardPlugin
 // =========================================================
 
 pub struct ClipboardPlugin {
     platform: Arc<dyn ClipboardPlatform>,
-    state: OnceLock<Arc<SharedState>>,
-    shutdown: Arc<AtomicBool>,
-    watcher_shutdown: Mutex<Option<WatcherShutdown>>,
+
+    /// Shared state (DB + file storage). Always initialized in
+    /// `setup()` regardless of enabled state — the data persists
+    /// even when the plugin is disabled.
+    state: Mutex<Option<Arc<SharedState>>>,
+
+    /// Tracks whether the plugin is currently enabled. Shared
+    /// with the lifecycle management thread via Arc so both
+    /// sides see the same value.
+    enabled: Arc<AtomicBool>,
+
+    /// Shared lifecycle state for the watcher, accessible from
+    /// both the lifecycle management thread and teardown().
+    lifecycle: Arc<Mutex<WatcherLifecycle>>,
+
+    /// Condvar paired with `lifecycle` mutex. Signaled when the
+    /// retention thread should wake (either for cleanup or
+    /// shutdown).
+    retention_condvar: Arc<Condvar>,
 }
 
 impl ClipboardPlugin {
     pub fn new(platform: impl ClipboardPlatform + 'static) -> Self {
         Self {
             platform: Arc::new(platform),
-            state: OnceLock::new(),
-            shutdown: Arc::new(AtomicBool::new(false)),
-            watcher_shutdown: Mutex::new(None),
+            state: Mutex::new(None),
+            enabled: Arc::new(AtomicBool::new(true)),
+            lifecycle: Arc::new(Mutex::new(WatcherLifecycle {
+                watcher_shutdown: None,
+                running: false,
+                app_shutting_down: false,
+            })),
+            retention_condvar: Arc::new(Condvar::new()),
         }
     }
 
-    fn state(&self) -> &Arc<SharedState> {
-        self.state.get().expect("clipboard state initialized")
+    fn state(&self) -> Arc<SharedState> {
+        self.state
+            .lock()
+            .expect("state not poisoned")
+            .as_ref()
+            .expect("clipboard state initialized")
+            .clone()
+    }
+}
+
+/// Start the clipboard watcher and retention cleanup thread.
+///
+/// Standalone function (not a method) so it can be called from
+/// the lifecycle management thread without holding a reference
+/// to `ClipboardPlugin`.
+fn start_watcher(
+    platform: &Arc<dyn ClipboardPlatform>,
+    state: &Arc<SharedState>,
+    lifecycle: &Arc<Mutex<WatcherLifecycle>>,
+    retention_condvar: &Arc<Condvar>,
+    retention_days_watch: &SettingsWatch<u32>,
+) {
+    let mut lc = lifecycle.lock().expect("lifecycle not poisoned");
+    if lc.running {
+        return;
+    }
+
+    // ----- Clipboard watcher thread -----
+    let mut watcher_ctx: ClipboardWatcherContext<WatcherHandler> =
+        ClipboardWatcherContext::new().expect("create clipboard watcher");
+
+    let handler = WatcherHandler {
+        platform: Arc::clone(platform),
+        state: Arc::clone(state),
+        shutdown: Arc::clone(lifecycle),
+        clipboard: ClipboardContext::new().expect("clipboard context"),
+    };
+
+    watcher_ctx.add_handler(handler);
+    lc.watcher_shutdown = Some(watcher_ctx.get_shutdown_channel());
+    lc.running = true;
+
+    // Drop the lock before spawning threads.
+    drop(lc);
+
+    thread::spawn(move || {
+        watcher_ctx.start_watch();
+    });
+
+    // ----- Retention cleanup thread -----
+    let retention_state = Arc::clone(state);
+    let retention_lifecycle = Arc::clone(lifecycle);
+    let retention_cv = Arc::clone(retention_condvar);
+    let retention_days = retention_days_watch.clone();
+
+    thread::spawn(move || {
+        retention_cleanup_loop(
+            retention_state,
+            retention_lifecycle,
+            retention_cv,
+            retention_days,
+        );
+    });
+}
+
+/// Stop the clipboard watcher and signal the retention thread
+/// to exit.
+fn stop_watcher(
+    lifecycle: &Arc<Mutex<WatcherLifecycle>>,
+    retention_condvar: &Arc<Condvar>,
+) {
+    let mut lc = lifecycle.lock().expect("lifecycle not poisoned");
+    if !lc.running {
+        return;
+    }
+
+    lc.running = false;
+
+    if let Some(shutdown) = lc.watcher_shutdown.take() {
+        shutdown.stop();
+    }
+
+    // Wake the retention thread so it sees the flag and exits.
+    retention_condvar.notify_all();
+}
+
+/// Retention cleanup loop. Runs on a dedicated thread, sleeping
+/// for `RETENTION_CLEANUP_INTERVAL` between cycles. Reads the
+/// current `retentionDays` setting each cycle. Exits when the
+/// lifecycle transitions to not-running or app shutdown.
+fn retention_cleanup_loop(
+    state: Arc<SharedState>,
+    lifecycle: Arc<Mutex<WatcherLifecycle>>,
+    condvar: Arc<Condvar>,
+    days_watch: SettingsWatch<u32>,
+) {
+    loop {
+        let days = days_watch.get();
+
+        if let Err(e) = state.delete_expired_entries(days) {
+            eprintln!("clipboard: retention cleanup failed: {e:#}");
+        }
+
+        // Sleep until either the interval elapses or we're
+        // signaled to wake (shutdown/disable).
+        let lc = lifecycle.lock().expect("lifecycle not poisoned");
+        let result = condvar
+            .wait_timeout(lc, RETENTION_CLEANUP_INTERVAL)
+            .expect("lifecycle not poisoned");
+
+        // Check if we should exit: either no longer running
+        // (disabled) or app is shutting down.
+        let lc = result.0;
+        if !lc.running || lc.app_shutting_down {
+            break;
+        }
     }
 }
 
@@ -78,7 +249,14 @@ impl CatalogPlugin for ClipboardPlugin {
         PLUGIN_ID
     }
 
-    fn setup(&self, app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
+        settings
+            .ensure("enabled", true)
+            .ensure("retentionDays", 30)
+    }
+
+    fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
+        // ----- Always initialize state (DB + file storage) -----
         let data_dir = app
             .path()
             .app_data_dir()
@@ -96,58 +274,85 @@ impl CatalogPlugin for ClipboardPlugin {
             sql,
             files,
             subscribers: Mutex::new(Vec::new()),
-            capture_count: AtomicU32::new(0),
         });
 
-        assert!(
-            self.state.set(Arc::clone(&shared)).is_ok(),
-            "clipboard state already initialized"
-        );
+        *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
 
-        // Clean up old entries on startup.
-        if let Err(e) = shared.delete_expired_entries() {
-            eprintln!("clipboard: retention cleanup failed: {e:#}");
+        // ----- Read initial enabled state -----
+        let initial_enabled: bool = ctx.settings.get("enabled").unwrap_or(true);
+        self.enabled.store(initial_enabled, Ordering::Relaxed);
+
+        // Subscribe to future changes for both settings.
+        let mut enabled_watch: SettingsWatch<bool> = ctx.notifier.watch("enabled");
+        let retention_days_watch: SettingsWatch<u32> = ctx.notifier.watch("retentionDays");
+
+        // ----- Start watcher if enabled -----
+        if initial_enabled {
+            start_watcher(
+                &self.platform,
+                &shared,
+                &self.lifecycle,
+                &self.retention_condvar,
+                &retention_days_watch,
+            );
         }
 
-        // Spawn the clipboard watcher on a dedicated thread.
-        let mut watcher_ctx: ClipboardWatcherContext<WatcherHandler> =
-            ClipboardWatcherContext::new().expect("create clipboard watcher");
+        // ----- Lifecycle management thread -----
+        //
+        // Watches the `enabled` setting and starts/stops the
+        // watcher accordingly. Runs until app shutdown.
+        let platform = Arc::clone(&self.platform);
+        let state_for_lifecycle = Arc::clone(&shared);
+        let lifecycle = Arc::clone(&self.lifecycle);
+        let retention_condvar = Arc::clone(&self.retention_condvar);
+        let enabled_flag = Arc::clone(&self.enabled);
 
-        let handler = WatcherHandler {
-            platform: Arc::clone(&self.platform),
-            state: Arc::clone(&shared),
-            shutdown: Arc::clone(&self.shutdown),
-            clipboard: ClipboardContext::new().expect("clipboard context"),
-        };
-
-        watcher_ctx.add_handler(handler);
-        let ws = watcher_ctx.get_shutdown_channel();
-
-        *self
-            .watcher_shutdown
-            .lock()
-            .expect("watcher_shutdown not poisoned") = Some(ws);
-
-        // start_watch() blocks, so run on a dedicated thread.
         thread::spawn(move || {
-            watcher_ctx.start_watch();
+            loop {
+                // Block until `enabled` changes.
+                let Some(new_enabled) = enabled_watch.blocking_changed() else {
+                    // Sender dropped — app is shutting down.
+                    break;
+                };
+
+                enabled_flag.store(new_enabled, Ordering::Relaxed);
+
+                {
+                    let lc = lifecycle.lock().expect("lifecycle not poisoned");
+                    if lc.app_shutting_down {
+                        break;
+                    }
+                }
+
+                if new_enabled {
+                    start_watcher(
+                        &platform,
+                        &state_for_lifecycle,
+                        &lifecycle,
+                        &retention_condvar,
+                        &retention_days_watch,
+                    );
+                } else {
+                    stop_watcher(&lifecycle, &retention_condvar);
+                }
+            }
         });
     }
 
     fn teardown(&self) {
-        self.shutdown.store(true, Ordering::Relaxed);
-
-        if let Some(shutdown) = self
-            .watcher_shutdown
-            .lock()
-            .expect("watcher_shutdown not poisoned")
-            .take()
+        // Signal app shutdown and stop everything.
         {
-            shutdown.stop();
+            let mut lc = self.lifecycle.lock().expect("lifecycle not poisoned");
+            lc.app_shutting_down = true;
         }
+        stop_watcher(&self.lifecycle, &self.retention_condvar);
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return vec![];
+        }
+
         vec![CatalogEntry {
             id: "clipboard-history".into(),
             title: "Clipboard History".into(),
@@ -235,12 +440,7 @@ impl CatalogPlugin for ClipboardPlugin {
                 let params: EntryIdPayload =
                     serde_json::from_value(payload).context("parse paste payload")?;
 
-                // Load all raw format data on the current thread (fast
-                // SQL + optional file reads), then spawn the clipboard
-                // write on a background thread so we don't block the
-                // IPC thread. This lets the frontend dismiss immediately.
                 let captured = state.load_captured_formats(&params.id)?;
-
                 let platform = Arc::clone(&self.platform);
 
                 thread::spawn(move || {
@@ -250,11 +450,6 @@ impl CatalogPlugin for ClipboardPlugin {
                         return;
                     }
 
-                    // Include the self-write marker in the content list
-                    // so it's written atomically with ctx.set(). A
-                    // separate mark_self_written() call after set() races
-                    // with the watcher — it can detect the change before
-                    // the marker is added.
                     if let Some(marker) = platform.ownership_marker() {
                         clipboard_contents.push(marker);
                     }

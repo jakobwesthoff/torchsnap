@@ -18,7 +18,6 @@
 // =========================================================
 
 use std::sync::Mutex;
-use std::sync::atomic::AtomicU32;
 
 use anyhow::{Context, Result};
 use tauri::ipc::Channel;
@@ -28,7 +27,7 @@ use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
 use super::formats::CapturedFormat;
 use super::schema::{
     ClipboardHistoryEntry, ClipboardListEntry, FormatData, INLINE_STORAGE_MAX_BYTES,
-    LIST_DISPLAY_MAX_CHARS, RETENTION_DAYS,
+    LIST_DISPLAY_MAX_CHARS,
 };
 
 // =========================================================
@@ -39,7 +38,6 @@ pub struct SharedState {
     pub sql: SqlStorage,
     pub files: FileStorage,
     pub subscribers: Mutex<Vec<Channel<serde_json::Value>>>,
-    pub capture_count: AtomicU32,
 }
 
 impl SharedState {
@@ -300,9 +298,9 @@ impl SharedState {
         Ok(())
     }
 
-    /// Delete entries older than the retention period.
-    pub fn delete_expired_entries(&self) -> Result<()> {
-        let cutoff = format!("-{RETENTION_DAYS} days");
+    /// Delete entries older than the given retention period (in days).
+    pub fn delete_expired_entries(&self, retention_days: u32) -> Result<()> {
+        let cutoff = format!("-{retention_days} days");
 
         let old_ids: Vec<String> = self.sql.query_map(
             "SELECT id FROM clipboard_entries
