@@ -11,15 +11,15 @@
 // =========================================================
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use anyhow::Result;
 use clipboard_rs::{ClipboardContext, ClipboardHandler};
 
 use crate::platform::clipboard::ClipboardPlatform;
 
+use super::WatcherLifecycle;
 use super::formats;
-use super::schema::RETENTION_INTERVAL;
 use super::storage::SharedState;
 
 // =========================================================
@@ -34,14 +34,19 @@ use super::storage::SharedState;
 pub struct WatcherHandler {
     pub platform: Arc<dyn ClipboardPlatform>,
     pub state: Arc<SharedState>,
-    pub shutdown: Arc<AtomicBool>,
+    pub shutdown: Arc<Mutex<WatcherLifecycle>>,
     pub clipboard: ClipboardContext,
 }
 
 impl ClipboardHandler for WatcherHandler {
     fn on_clipboard_change(&mut self) {
-        if self.shutdown.load(Ordering::Relaxed) {
-            return;
+        // Check if the watcher has been stopped (disabled or
+        // app shutting down).
+        {
+            let lc = self.shutdown.lock().expect("lifecycle not poisoned");
+            if !lc.running || lc.app_shutting_down {
+                return;
+            }
         }
 
         // Skip our own writes and sensitive content (e.g.,
@@ -69,15 +74,6 @@ impl WatcherHandler {
         self.state
             .store_entry(&id, &result.display_text, &result.formats)?;
         self.state.notify_subscribers();
-
-        // Periodic retention cleanup.
-        let count = self.state.capture_count.fetch_add(1, Ordering::Relaxed);
-        if count > 0
-            && count.is_multiple_of(RETENTION_INTERVAL)
-            && let Err(e) = self.state.delete_expired_entries()
-        {
-            eprintln!("clipboard: periodic retention failed: {e:#}");
-        }
 
         Ok(())
     }

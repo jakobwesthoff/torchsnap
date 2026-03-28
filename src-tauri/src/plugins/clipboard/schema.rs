@@ -19,13 +19,6 @@ use serde::{Deserialize, Serialize};
 
 pub const PLUGIN_ID: &str = "clipboard-manager";
 
-/// Entries older than this many days are deleted on startup
-/// and periodically during operation.
-pub const RETENTION_DAYS: u32 = 30;
-
-/// Run retention cleanup every N captured entries.
-pub const RETENTION_INTERVAL: u32 = 100;
-
 // =========================================================
 // Database Migration
 // =========================================================
