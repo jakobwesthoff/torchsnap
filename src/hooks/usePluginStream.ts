@@ -76,15 +76,11 @@ export function usePluginStream<TPayload, TResult, TSnapshot>(
       }
     };
 
-    sendMessage<TPayload, TResult, TSnapshot>(
-      method,
-      payload,
-      (msg) => {
-        if (cancelled) return;
-        stateRef.current = { ...stateRef.current, snapshot: msg };
-        notify();
-      },
-    ).then(
+    sendMessage<TPayload, TResult, TSnapshot>(method, payload, (msg) => {
+      if (cancelled) return;
+      stateRef.current = { ...stateRef.current, snapshot: msg };
+      notify();
+    }).then(
       (result) => {
         if (cancelled) return;
         stateRef.current = { ...stateRef.current, established: true, result };

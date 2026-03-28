@@ -41,11 +41,7 @@ async function main() {
               onMeasure={async (cardWidth, cardHeight) => {
                 await invoke("launcher_set_layout", {
                   windowWidth: cardWidth + 2 * SHADOW_PADDING,
-                  windowHeight:
-                    SHADOW_PADDING +
-                    MASCOT_HEADROOM +
-                    cardHeight +
-                    SHADOW_PADDING,
+                  windowHeight: SHADOW_PADDING + MASCOT_HEADROOM + cardHeight + SHADOW_PADDING,
                   cardTopOffset: CARD_TOP_OFFSET,
                 });
                 resolve();

@@ -54,9 +54,7 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
 /**
  * Look up the custom UI (launcher view) component for a plugin.
  */
-export function getPluginComponent(
-  pluginId: string,
-): ComponentType<PluginViewProps> | undefined {
+export function getPluginComponent(pluginId: string): ComponentType<PluginViewProps> | undefined {
   return PLUGIN_REGISTRY[pluginId]?.view;
 }
 

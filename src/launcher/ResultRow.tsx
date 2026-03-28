@@ -59,25 +59,13 @@ function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   if (icon.type === "dataUrl") {
     return (
       <div className="flex h-9 w-9 items-center justify-center">
-        <img
-          src={icon.value}
-          alt=""
-          className="h-7 w-7"
-          draggable={false}
-        />
+        <img src={icon.value} alt="" className="h-7 w-7" draggable={false} />
       </div>
     );
   }
 
   if (icon.type === "assetIcon") {
-    return (
-      <img
-        src={convertFileSrc(icon.value)}
-        alt=""
-        className="h-9 w-9"
-        draggable={false}
-      />
-    );
+    return <img src={convertFileSrc(icon.value)} alt="" className="h-9 w-9" draggable={false} />;
   }
 
   if (icon.type === "emoji") {

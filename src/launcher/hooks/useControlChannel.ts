@@ -24,14 +24,9 @@ interface UseControlChannelParams {
   setQuery: (text: string) => void;
 }
 
-type ControlCommand =
-  | { type: "dismiss" }
-  | { type: "setQuery"; text: string };
+type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: string };
 
-export function useControlChannel({
-  resetState,
-  setQuery,
-}: UseControlChannelParams) {
+export function useControlChannel({ resetState, setQuery }: UseControlChannelParams) {
   // Keep stable refs to the callbacks so the effect can run exactly
   // once while always dispatching through the latest functions.
   const resetStateRef = useRef(resetState);

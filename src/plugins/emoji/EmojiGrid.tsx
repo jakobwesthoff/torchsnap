@@ -47,9 +47,7 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
       className={cn(
         "flex aspect-square items-center justify-center rounded-lg",
         "cursor-default select-none",
-        selected
-          ? "bg-selection border border-accent/30"
-          : "border border-transparent",
+        selected ? "bg-selection border border-accent/30" : "border border-transparent",
       )}
       onMouseEnter={() => {
         if (mouseActiveRef.current) onSelect();
@@ -106,15 +104,17 @@ export default function EmojiGrid({
         label: "Copy to Clipboard",
       },
       hints: entry
-        ? [{
-            label: (
-              <>
-                {highlightText(entry.title, entry.titlePositions, FOOTER_HIGHLIGHT)}
-                {" · "}
-                {highlightText(entry.subtitle ?? "", entry.subtitlePositions, FOOTER_HIGHLIGHT)}
-              </>
-            ),
-          }]
+        ? [
+            {
+              label: (
+                <>
+                  {highlightText(entry.title, entry.titlePositions, FOOTER_HIGHLIGHT)}
+                  {" · "}
+                  {highlightText(entry.subtitle ?? "", entry.subtitlePositions, FOOTER_HIGHLIGHT)}
+                </>
+              ),
+            },
+          ]
         : [],
     });
   }, [selectedIndex, results, onFooterChange]);
@@ -132,10 +132,7 @@ export default function EmojiGrid({
         // For vertical movement (delta is a multiple of GRID_COLUMNS),
         // don't jump to the last item if the target column doesn't
         // exist in the target row. Instead, stay put.
-        if (
-          Math.abs(delta) >= GRID_COLUMNS &&
-          (target < 0 || target >= results.length)
-        ) {
+        if (Math.abs(delta) >= GRID_COLUMNS && (target < 0 || target >= results.length)) {
           return prev;
         }
 
@@ -159,72 +156,56 @@ export default function EmojiGrid({
         layer: PLUGIN_LAYER,
         order: 0,
         handler: () => moveSelection(1),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowRight" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowRight" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-left",
         layer: PLUGIN_LAYER,
         order: 1,
         handler: () => moveSelection(-1),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowLeft" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowLeft" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-down",
         layer: PLUGIN_LAYER,
         order: 2,
         handler: () => moveSelection(GRID_COLUMNS),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-up",
         layer: PLUGIN_LAYER,
         order: 3,
         handler: () => moveSelection(-GRID_COLUMNS),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-page-down",
         layer: PLUGIN_LAYER,
         order: 4,
         handler: () => moveSelection(GRID_COLUMNS * GRID_VISIBLE_ROWS),
-        keybindings: [
-          { combo: { modifiers: [], key: "PageDown" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "PageDown" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-page-up",
         layer: PLUGIN_LAYER,
         order: 5,
         handler: () => moveSelection(-GRID_COLUMNS * GRID_VISIBLE_ROWS),
-        keybindings: [
-          { combo: { modifiers: [], key: "PageUp" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "PageUp" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-enter",
         layer: PLUGIN_LAYER,
         order: 6,
         handler: handleEnter,
-        keybindings: [
-          { combo: { modifiers: [], key: "Enter" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       },
       {
         id: "emoji-grid-escape",
         layer: PLUGIN_LAYER,
         order: 10,
         handler: () => goBack(),
-        keybindings: [
-          { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Escape" }, allowInInput: true }],
       },
     ],
     [moveSelection, handleEnter, goBack],
@@ -237,10 +218,7 @@ export default function EmojiGrid({
   // -------------------------------------------------------
 
   const startIdx = windowStartRow * GRID_COLUMNS;
-  const endIdx = Math.min(
-    startIdx + GRID_COLUMNS * GRID_VISIBLE_ROWS,
-    results.length,
-  );
+  const endIdx = Math.min(startIdx + GRID_COLUMNS * GRID_VISIBLE_ROWS, results.length);
   const visible = results.slice(startIdx, endIdx);
 
   return (

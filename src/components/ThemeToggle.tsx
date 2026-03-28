@@ -10,11 +10,7 @@
  * with an absolutely-positioned pill that slides via CSS translateX.
  */
 
-import {
-  SunIcon,
-  MoonIcon,
-  ComputerDesktopIcon,
-} from "@heroicons/react/24/outline";
+import { SunIcon, MoonIcon, ComputerDesktopIcon } from "@heroicons/react/24/outline";
 import { useTheme } from "../hooks/useTheme";
 import { cn } from "../lib/cn";
 import type { ThemePreference } from "../contexts/ThemeContext";

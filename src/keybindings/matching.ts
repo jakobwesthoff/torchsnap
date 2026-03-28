@@ -93,11 +93,7 @@ export const LAYER = {
  * to produce but don't list it in modifiers — the matcher permits Shift
  * for those cases.
  */
-export function matchesCombo(
-  event: KeyboardEvent,
-  combo: KeyCombo,
-  isMacOS: boolean,
-): boolean {
+export function matchesCombo(event: KeyboardEvent, combo: KeyCombo, isMacOS: boolean): boolean {
   // -------------------------------------------------------
   // Key match
   // -------------------------------------------------------
@@ -154,8 +150,7 @@ export function matchesCombo(
   // For single lowercase letter keys, strictly enforce shift state.
   // For everything else (punctuation, symbols), allow shift since it may
   // be needed to produce the character.
-  const isSingleLetter =
-    combo.key.length === 1 && combo.key >= "a" && combo.key <= "z";
+  const isSingleLetter = combo.key.length === 1 && combo.key >= "a" && combo.key <= "z";
   if (isSingleLetter) {
     if (wantsShift !== event.shiftKey) {
       return false;
@@ -192,10 +187,7 @@ export function isInputFocused(): boolean {
   }
 
   // Check both the computed property and the raw attribute for maximum compatibility.
-  if (
-    el instanceof HTMLElement &&
-    (el.isContentEditable || el.contentEditable === "true")
-  ) {
+  if (el instanceof HTMLElement && (el.isContentEditable || el.contentEditable === "true")) {
     return true;
   }
 

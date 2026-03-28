@@ -36,9 +36,7 @@ function actionsToFooterState(actions: Action[]): FooterState {
     }));
 
   return {
-    primary: primary
-      ? { combo: { modifiers: [], key: "Enter" }, label: primary.label }
-      : undefined,
+    primary: primary ? { combo: { modifiers: [], key: "Enter" }, label: primary.label } : undefined,
     hints,
   };
 }
@@ -84,9 +82,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // Local override for when execute_action returns ShowCustomUI.
   // Takes precedence over the search-driven customPluginView.
-  const [executePluginView, setExecutePluginView] = useState<string | null>(
-    null,
-  );
+  const [executePluginView, setExecutePluginView] = useState<string | null>(null);
 
   const resetState = useCallback(() => {
     setQuery("");
@@ -114,15 +110,12 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // =========================================================
 
   useEffect(() => {
-    const unlisten = listen<{ pluginId: string }>(
-      "activate-plugin-custom-ui",
-      (event) => {
-        setQuery("");
-        setSelectedIndex(0);
-        setExecutePluginView(event.payload.pluginId);
-        inputRef.current?.focus();
-      },
-    );
+    const unlisten = listen<{ pluginId: string }>("activate-plugin-custom-ui", (event) => {
+      setQuery("");
+      setSelectedIndex(0);
+      setExecutePluginView(event.payload.pluginId);
+      inputRef.current?.focus();
+    });
 
     return () => {
       unlisten.then((fn) => fn());
@@ -133,11 +126,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Search
   // =========================================================
 
-  const {
-    results,
-    customPluginView: searchPluginView,
-    matchedPrefix,
-  } = useSearch(query);
+  const { results, customPluginView: searchPluginView, matchedPrefix } = useSearch(query);
 
   const customPluginView = executePluginView ?? searchPluginView;
 
@@ -152,9 +141,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Plugin Custom UI
   // =========================================================
 
-  const PluginView = customPluginView
-    ? getPluginComponent(customPluginView)
-    : undefined;
+  const PluginView = customPluginView ? getPluginComponent(customPluginView) : undefined;
 
   // Footer state: either set by the plugin or derived from the
   // selected entry's actions in list mode.
@@ -167,8 +154,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     }
   }, [customPluginView]);
 
-  const footer =
-    pluginFooter ?? actionsToFooterState(results[selectedIndex]?.actions ?? []);
+  const footer = pluginFooter ?? actionsToFooterState(results[selectedIndex]?.actions ?? []);
 
   // Plugin execute handler — wraps the Tauri invoke with the
   // plugin's source ID and handles PostAction.
@@ -303,13 +289,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     contentFooter = <LauncherFooter footer={MEASURE_FOOTER} />;
   } else if (PluginView) {
     contentBody = (
-      <Suspense
-        fallback={
-          <div className="p-4 text-center text-text-muted text-sm">
-            Loading…
-          </div>
-        }
-      >
+      <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
         <PluginView
           results={results}
           query={strippedQuery}

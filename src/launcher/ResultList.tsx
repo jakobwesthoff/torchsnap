@@ -40,11 +40,7 @@ export function ResultList({
   });
 
   if (results.length === 0) {
-    return (
-      <div className="px-5 py-4 text-sm text-text-muted text-center">
-        No results
-      </div>
-    );
+    return <div className="px-5 py-4 text-sm text-text-muted text-center">No results</div>;
   }
 
   const windowEnd = Math.min(windowStart + PAGE_SIZE, results.length);

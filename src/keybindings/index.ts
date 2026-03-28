@@ -3,12 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Types and matching
-export type {
-  ModifierKey,
-  KeyCombo,
-  KeyBinding,
-  KeyBindingDefinition,
-} from "./matching";
+export type { ModifierKey, KeyCombo, KeyBinding, KeyBindingDefinition } from "./matching";
 export {
   LAYER,
   matchesCombo,

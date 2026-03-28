@@ -86,7 +86,12 @@ export function useWindowedGrid({
       const delta = Math.sign(e.deltaY);
       if (delta === 0) return;
 
-      const { selectedIndex: sel, resultCount: count, columns: cols, visibleRows: vr } = stateRef.current;
+      const {
+        selectedIndex: sel,
+        resultCount: count,
+        columns: cols,
+        visibleRows: vr,
+      } = stateRef.current;
       const total = Math.ceil(count / cols);
       const maxStart = Math.max(0, total - vr);
       const currentWsRow = windowStartRowRef.current;
