@@ -9,3 +9,7 @@ memsnap *ARGS:
 # Run an automated memory benchmark scenario
 bench-memory *ARGS:
     tools/bench-memory {{ARGS}}
+
+# Format a memsnap JSON file into an ASCII summary table
+memsnap-report *ARGS:
+    tools/memsnap-report {{ARGS}}
