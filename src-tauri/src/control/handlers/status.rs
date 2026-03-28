@@ -8,6 +8,10 @@
 // Reports the current launcher state. Currently limited to
 // visibility; query text and selected result require a
 // frontend round-trip and may be added later.
+//
+// `is_visible` queries the NSPanel state, which must happen
+// on the main thread — dispatched via the same helper used
+// by the launcher handlers.
 // =========================================================
 
 use serde_json::Value;
@@ -19,11 +23,14 @@ pub struct StatusHandler;
 
 impl Handler for StatusHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
-        let visible = PlatformLauncherPanel::is_visible(app).map_err(|e| {
-            ControlError::Internal {
+        let handle = app.clone();
+        let visible =
+            super::launcher::on_main_thread(app, move || {
+                PlatformLauncherPanel::is_visible(&handle)
+            })?
+            .map_err(|e| ControlError::Internal {
                 message: format!("{e:#}"),
-            }
-        })?;
+            })?;
 
         Ok(serde_json::json!({
             "visible": visible,
