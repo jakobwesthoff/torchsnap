@@ -152,6 +152,19 @@ impl CatalogRegistry {
         }
     }
 
+    /// Provide read access to the catalog plugin list.
+    ///
+    /// Used by the `ShortcutManager` to iterate plugins and collect
+    /// their declared shortcuts without duplicating the plugin Arcs.
+    pub fn catalog_plugins(&self) -> &[Arc<dyn CatalogPlugin>] {
+        &self.catalog_plugins
+    }
+
+    /// Provide read access to the query plugin list.
+    pub fn query_plugins(&self) -> &[Arc<dyn QueryPlugin>] {
+        &self.query_plugins
+    }
+
     /// Search all plugins against the given query.
     ///
     /// Returns the scored entries and an optional active plugin ID.

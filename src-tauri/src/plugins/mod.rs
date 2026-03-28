@@ -41,13 +41,17 @@ use crate::settings_notifier::PluginSettingsNotifier;
 /// can reconfigure it.
 pub struct PluginShortcut {
     /// Stable identifier for this shortcut (e.g., "open-clipboard").
-    /// Used as the settings key suffix and for routing.
+    /// Used for routing activations back to the plugin.
     pub id: &'static str,
     /// Human-readable label shown in the settings UI.
     pub label: &'static str,
     /// Default key combo in Tauri shortcut syntax
     /// (e.g., "CmdOrCtrl+Shift+V").
     pub default_shortcut: &'static str,
+    /// Plugin-scoped settings key where the current combo is stored
+    /// (e.g., "shortcut.open-clipboard"). The manager reads
+    /// `plugins.<plugin_id>.<settings_key>` from the store.
+    pub settings_key: &'static str,
 }
 
 // =========================================================
