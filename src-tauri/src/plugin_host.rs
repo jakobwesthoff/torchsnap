@@ -29,7 +29,7 @@ use std::thread;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use rayon::prelude::*;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
@@ -599,7 +599,11 @@ fn collect_watched_keys_into(
 /// Show the launcher and emit `activate-plugin-custom-ui` so the
 /// frontend switches to the plugin's view.
 fn show_launcher_with_plugin(app: &tauri::AppHandle, plugin_id: &str) {
-    crate::position_launcher_on_cursor_monitor(app);
+    let Some(layout) = app.state::<crate::LauncherLayoutState>().get().copied() else {
+        eprintln!("shortcut: launcher layout not yet received, ignoring");
+        return;
+    };
+    crate::position_launcher_on_cursor_monitor(app, &layout);
 
     if let Err(e) = PlatformLauncherPanel::show(app) {
         eprintln!("shortcut: failed to show launcher: {e:#}");

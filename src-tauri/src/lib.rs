@@ -12,7 +12,7 @@ mod settings;
 mod settings_notifier;
 mod storage;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
 use tauri::{
@@ -31,36 +31,47 @@ use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as 
 // The launcher window is sized to tightly fit its content
 // rather than filling the entire screen. This keeps the
 // WebKit backing-store allocation proportional to the actual
-// UI area instead of the full monitor resolution.
+// UI area instead of the full monitor resolution (ADR 0020).
+//
+// Layout dimensions are defined on the frontend side
+// (`src/launcher/layout.ts`) — the single source of truth —
+// and sent to the backend via the `launcher_set_layout`
+// command after React mounts. The first show is gated on
+// this signal to prevent flashing an unsized window.
 // =========================================================
 
-/// Width of the launcher card (logical px). Must match the CSS
-/// `w-[680px]` in `Launcher.tsx`.
-const LAUNCHER_CARD_WIDTH: f64 = 680.0;
+/// Window layout dimensions received from the frontend.
+///
+/// Set once at mount time via `launcher_set_layout` and never
+/// changes for the lifetime of the app. The `OnceLock` doubles
+/// as a readiness gate: `toggle_launcher_window` will not show
+/// the panel until the layout has been received.
+#[derive(Debug, Clone, Copy)]
+struct LauncherLayout {
+    window_width: f64,
+    window_height: f64,
+    card_top_offset: f64,
+}
 
-/// Maximum height of the launcher card content (logical px).
-/// Search bar (~52) + separator (1) + 8 result rows (8 × 56 = 448)
-/// + footer (~41) = ~542.
-const LAUNCHER_CARD_MAX_HEIGHT: f64 = 542.0;
+/// Managed state wrapper. The `OnceLock` is empty until the
+/// frontend sends layout dimensions, at which point it is set
+/// exactly once.
+struct LauncherLayoutState(OnceLock<LauncherLayout>);
 
-/// Padding around the card for CSS box-shadow bleed (logical px).
-/// The largest shadow is `0 16px 48px` which needs ~64px clearance.
-const LAUNCHER_SHADOW_PADDING: f64 = 64.0;
+impl LauncherLayoutState {
+    fn new() -> Self {
+        Self(OnceLock::new())
+    }
 
-/// Space above the card reserved for the decorative mascot image
-/// (logical px). The center-mode mascot is 192px tall, positioned
-/// at `top: -156px`, so it needs ~160px of headroom.
-const LAUNCHER_MASCOT_HEADROOM: f64 = 160.0;
+    fn set(&self, layout: LauncherLayout) {
+        // Ignore if already set (e.g. hot-reload sending it twice).
+        let _ = self.0.set(layout);
+    }
 
-/// Total window dimensions (logical px).
-const LAUNCHER_WINDOW_WIDTH: f64 = LAUNCHER_CARD_WIDTH + 2.0 * LAUNCHER_SHADOW_PADDING;
-const LAUNCHER_WINDOW_HEIGHT: f64 =
-    LAUNCHER_SHADOW_PADDING + LAUNCHER_MASCOT_HEADROOM + LAUNCHER_CARD_MAX_HEIGHT + LAUNCHER_SHADOW_PADDING;
-
-/// Vertical position of the card within the window (logical px).
-/// The CSS `pt-[224px]` in `Launcher.tsx` must match this value.
-#[allow(dead_code)]
-const LAUNCHER_CARD_TOP_OFFSET: f64 = LAUNCHER_SHADOW_PADDING + LAUNCHER_MASCOT_HEADROOM;
+    fn get(&self) -> Option<&LauncherLayout> {
+        self.0.get()
+    }
+}
 
 // =========================================================
 // Settings Window
@@ -186,7 +197,7 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
         .or_else(|| app.primary_monitor().ok().flatten())
 }
 
-pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
+pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout: &LauncherLayout) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
@@ -204,13 +215,13 @@ pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
         // Center the launcher window horizontally on the monitor.
         // Vertically, place the card at ~25% of monitor height by
         // offsetting the window top so that the card (which sits at
-        // LAUNCHER_CARD_TOP_OFFSET within the window) lands there.
-        let win_x = monitor_x + (monitor_w - LAUNCHER_WINDOW_WIDTH) / 2.0;
-        let win_y = monitor_y + (0.25 * monitor_h) - LAUNCHER_CARD_TOP_OFFSET;
+        // card_top_offset within the window) lands there.
+        let win_x = monitor_x + (monitor_w - layout.window_width) / 2.0;
+        let win_y = monitor_y + (0.25 * monitor_h) - layout.card_top_offset;
 
         let _ = win.set_size(tauri::LogicalSize::new(
-            LAUNCHER_WINDOW_WIDTH,
-            LAUNCHER_WINDOW_HEIGHT,
+            layout.window_width,
+            layout.window_height,
         ));
         let _ = win.set_position(tauri::LogicalPosition::new(win_x, win_y));
     }
@@ -242,6 +253,27 @@ fn launcher_hide(app: tauri::AppHandle) {
     hide_launcher(&app);
 }
 
+/// Tauri command called by the frontend after React mounts to
+/// report the launcher's layout dimensions. This also serves as
+/// the readiness signal — the first show is gated on it.
+#[tauri::command]
+fn launcher_set_layout(
+    window_width: f64,
+    window_height: f64,
+    card_top_offset: f64,
+    app: tauri::AppHandle,
+) {
+    println!(
+        "launcher layout received: {window_width}×{window_height} (card top offset: {card_top_offset})"
+    );
+    let state = app.state::<LauncherLayoutState>();
+    state.set(LauncherLayout {
+        window_width,
+        window_height,
+        card_top_offset,
+    });
+}
+
 pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
     let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
 
@@ -250,7 +282,15 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
         return;
     }
 
-    position_launcher_on_cursor_monitor(app);
+    // Wait for the frontend to report layout dimensions before
+    // showing for the first time. This prevents flashing an
+    // unsized or mis-sized window.
+    let Some(layout) = app.state::<LauncherLayoutState>().get().copied() else {
+        eprintln!("launcher layout not yet received from frontend, ignoring show");
+        return;
+    };
+
+    position_launcher_on_cursor_monitor(app, &layout);
 
     if let Err(e) = PlatformLauncherPanel::show(app) {
         eprintln!("failed to show launcher: {e:#}");
@@ -285,6 +325,7 @@ pub fn run() {
             search::plugin_message,
             control_subscribe,
             launcher_hide,
+            launcher_set_layout,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -398,6 +439,7 @@ pub fn run() {
             // Control API server (Unix domain socket, JSON-RPC 2.0)
             // =========================================================
             app.manage(control::ControlChannelState::new());
+            app.manage(LauncherLayoutState::new());
             control::start_control_server_reactor(
                 app.handle(),
                 &notifier,

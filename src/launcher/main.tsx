@@ -4,10 +4,12 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { invoke } from "@tauri-apps/api/core";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { KeyBindingProvider } from "../keybindings";
 import { initStore } from "../settingsStore";
 import { Launcher } from "./Launcher";
+import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
 import "../index.css";
 
 // The settings store must be loaded before React mounts so that
@@ -18,7 +20,45 @@ import "../index.css";
 async function main() {
   await initStore();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = createRoot(document.getElementById("root")!);
+
+  // Phase 1: Render the launcher in measurement mode. The card
+  // renders at its maximum possible size (search bar + max-height
+  // content area + footer). The onMeasure callback fires once the
+  // ResizeObserver reports the card's dimensions, at which point
+  // we compute the window size and notify the backend.
+  //
+  // Phase 2: Re-render without measurement props. The launcher
+  // switches to normal mode with no ResizeObserver overhead.
+
+  await new Promise<void>((resolve) => {
+    root.render(
+      <StrictMode>
+        <ThemeProvider>
+          <KeyBindingProvider>
+            <Launcher
+              measureDummy
+              onMeasure={async (cardWidth, cardHeight) => {
+                await invoke("launcher_set_layout", {
+                  windowWidth: cardWidth + 2 * SHADOW_PADDING,
+                  windowHeight:
+                    SHADOW_PADDING +
+                    MASCOT_HEADROOM +
+                    cardHeight +
+                    SHADOW_PADDING,
+                  cardTopOffset: CARD_TOP_OFFSET,
+                });
+                resolve();
+              }}
+            />
+          </KeyBindingProvider>
+        </ThemeProvider>
+      </StrictMode>,
+    );
+  });
+
+  // Phase 2: normal render, no measurement overhead.
+  root.render(
     <StrictMode>
       <ThemeProvider>
         <KeyBindingProvider>

@@ -22,6 +22,7 @@ use crate::control::handler::{ControlError, Handler};
 use crate::control::ControlCommand;
 use crate::hide_launcher;
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
+use crate::LauncherLayoutState;
 
 /// Run a closure on the main thread and block until it completes,
 /// returning its result. Needed because AppKit/NSPanel calls must
@@ -53,9 +54,16 @@ pub struct ShowHandler;
 
 impl Handler for ShowHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
+        let layout = *app
+            .state::<LauncherLayoutState>()
+            .get()
+            .ok_or_else(|| ControlError::Internal {
+                message: "launcher layout not yet received from frontend".to_string(),
+            })?;
+
         let handle = app.clone();
         on_main_thread(app, move || {
-            crate::position_launcher_on_cursor_monitor(&handle);
+            crate::position_launcher_on_cursor_monitor(&handle, &layout);
             PlatformLauncherPanel::show(&handle)
         })?
         .map_err(|e| ControlError::Internal {
