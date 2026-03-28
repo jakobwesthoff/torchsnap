@@ -249,7 +249,7 @@ export function Launcher() {
 
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center pt-[25vh]"
+      className="fixed inset-0 flex flex-col items-center pt-[224px]"
       onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
