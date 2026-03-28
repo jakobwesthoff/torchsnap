@@ -261,6 +261,7 @@ impl CatalogPlugin for ClipboardPlugin {
             id: "open-clipboard",
             label: "Open Clipboard History",
             default_shortcut: "CmdOrCtrl+Shift+V",
+            settings_key: "shortcut.open-clipboard",
         }]
     }
 

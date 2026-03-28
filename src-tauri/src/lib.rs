@@ -8,6 +8,7 @@ mod plugins;
 mod search;
 mod settings;
 mod settings_notifier;
+mod shortcut_manager;
 mod storage;
 
 use std::sync::{Arc, Mutex};
@@ -114,7 +115,7 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
 ///
 /// Uses physical cursor coordinates to find the matching monitor,
 /// then sets the window's logical size and position to cover it.
-fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
+pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
@@ -136,7 +137,7 @@ fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
 }
 
 /// Toggle the launcher overlay on the monitor where the cursor currently is.
-fn toggle_launcher_window(app: &tauri::AppHandle) {
+pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
     let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
 
     if is_visible {
@@ -156,20 +157,6 @@ fn toggle_launcher_window(app: &tauri::AppHandle) {
 // =========================================================
 // Global Shortcut
 // =========================================================
-
-/// Read the stored shortcut from the plugin-store.
-///
-/// Global defaults are initialized before this is called, so the
-/// key is guaranteed to exist.
-fn read_shortcut(app: &tauri::AppHandle) -> String {
-    use tauri_plugin_store::StoreExt;
-
-    let store = app.store("settings.json").expect("settings store");
-    store
-        .get("globalShortcut")
-        .and_then(|v| v.as_str().map(String::from))
-        .expect("globalShortcut initialized by settings defaults")
-}
 
 /// Re-register the global shortcut at runtime. Unregisters all existing
 /// shortcuts first, then registers the new one with the real toggle
@@ -300,6 +287,17 @@ pub fn run() {
             )));
             catalog.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             catalog.setup_all(app.handle(), &store, &notifier);
+
+            // =========================================================
+            // Global shortcuts
+            //
+            // Register the launcher toggle shortcut and all plugin-
+            // declared shortcuts. Must happen after plugin settings
+            // are initialized (so key combos are in the store) but
+            // before the registry is moved into managed state.
+            // =========================================================
+            shortcut_manager::register_all(app.handle(), &store, &catalog);
+
             app.manage(Mutex::new(catalog));
 
             // =========================================================
@@ -366,29 +364,6 @@ pub fn run() {
             }
 
             settings_builder.build().context("create settings window")?;
-
-            // =========================================================
-            // Global shortcut
-            //
-            // Register the user's configured shortcut (or the default).
-            // The handler toggles the launcher overlay directly.
-            // =========================================================
-            let shortcut = read_shortcut(app.handle());
-
-            use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            let handle = app.handle().clone();
-            app.global_shortcut()
-                .on_shortcut(
-                    shortcut
-                        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-                        .expect("valid shortcut string"),
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            toggle_launcher_window(&handle);
-                        }
-                    },
-                )
-                .context("register global shortcut")?;
 
             Ok(())
         })
