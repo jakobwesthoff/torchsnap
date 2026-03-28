@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# =========================================================
+# memsnap-report — Format memsnap JSON into an ASCII table
+#
+# Reads a JSON file produced by `tools/memsnap` (which wraps
+# the macOS `footprint --sample -j` output) and prints a
+# self-contained ASCII report block with per-process memory
+# statistics.
+#
+# Designed to be appended to a log file to build a protocol
+# of measurement runs over time:
+#
+#   tools/memsnap-report -d "baseline, no optimizations" \
+#       memsnap-20260328.json >> memory-log.txt
+#
+# Prerequisites:
+#   - jq installed (brew install jq)
+# =========================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------
+# Defaults
+# ---------------------------------------------------------
+
+DESCRIPTION=""
+
+# ---------------------------------------------------------
+# Usage
+# ---------------------------------------------------------
+
+usage() {
+    cat <<'EOF'
+Usage: memsnap-report [OPTIONS] <json-file>
+
+Format a memsnap JSON file into an ASCII summary table.
+
+Options:
+  -d, --description <TEXT>   Description of what was tested
+  -h, --help                 Show this help
+EOF
+}
+
+# ---------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------
+
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--description) DESCRIPTION="$2"; shift 2 ;;
+        -h|--help)        usage; exit 0 ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ${#POSITIONAL[@]} -ne 1 ]]; then
+    echo "Error: Expected exactly one JSON file argument." >&2
+    usage >&2
+    exit 1
+fi
+
+JSON_FILE="${POSITIONAL[0]}"
+
+if [[ ! -f "$JSON_FILE" ]]; then
+    echo "Error: File not found: $JSON_FILE" >&2
+    exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is not installed. Install it with: brew install jq" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------
+# Extract metadata and compute statistics
+#
+# The JSON structure from `footprint --sample -j` is:
+#
+#   {
+#     "samples": [
+#       {
+#         "start_time": { "date": "...", ... },
+#         "processes": [
+#           {
+#             "name": "torchsnap",
+#             "pid": 68227,
+#             "auxiliary": {
+#               "phys_footprint": 36604544,
+#               "phys_footprint_peak": 45304192
+#             }
+#           }, ...
+#         ]
+#       }, ...
+#     ]
+#   }
+# ---------------------------------------------------------
+
+# Pull all the numbers we need in a single jq invocation to
+# avoid repeated parsing of potentially large JSON files.
+REPORT_DATA=$(jq -r '
+    # Metadata
+    (.samples | length) as $num_samples |
+    (.samples[0].start_time.date // "unknown") as $start_date |
+    (.samples[-1].start_time.date // "unknown") as $end_date |
+
+    # Per-process statistics
+    [
+        .samples[].processes[] | {
+            name: .name,
+            pid: .pid,
+            footprint: .auxiliary.phys_footprint
+        }
+    ] |
+
+    # Group by process (keyed on PID for uniqueness)
+    group_by(.pid) |
+
+    # Compute stats per process, plus a running total
+    . as $groups |
+    {
+        meta: {
+            num_samples: $num_samples,
+            start_date: $start_date,
+            end_date: $end_date
+        },
+        processes: [
+            $groups[] | {
+                name: .[0].name,
+                pid: .[0].pid,
+                min: ([.[].footprint] | min),
+                max: ([.[].footprint] | max),
+                avg: (([.[].footprint] | add) / length | round),
+                first: (.[0].footprint),
+                last: (.[-1].footprint)
+            }
+        ] | sort_by(-.avg),
+        totals: {
+            min: [$groups[] | [.[].footprint] | min] | add,
+            max: [$groups[] | [.[].footprint] | max] | add,
+            avg: [$groups[] | (([.[].footprint] | add) / length | round)] | add,
+            first: [$groups[] | .[0].footprint] | add,
+            last: [$groups[] | .[-1].footprint] | add
+        }
+    } |
+
+    # Output as tab-separated lines for easy parsing in bash.
+    # First line: metadata
+    "META\t\(.meta.num_samples)\t\(.meta.start_date)\t\(.meta.end_date)",
+
+    # Per-process lines
+    (.processes[] |
+        "PROC\t\(.name)\t\(.pid)\t\(.min)\t\(.max)\t\(.avg)\t\(.first)\t\(.last)"
+    ),
+
+    # Totals line
+    "TOTAL\t\(.totals.min)\t\(.totals.max)\t\(.totals.avg)\t\(.totals.first)\t\(.totals.last)"
+' "$JSON_FILE")
+
+# ---------------------------------------------------------
+# Format helpers
+# ---------------------------------------------------------
+
+# Convert bytes to a human-readable MB string with one decimal
+fmt_mb() {
+    local bytes="$1"
+    awk "BEGIN { printf \"%.1f MB\", $bytes / 1048576 }"
+}
+
+# Format a delta in bytes as a signed MB string
+fmt_delta() {
+    local bytes="$1"
+    awk "BEGIN { d = $bytes / 1048576; printf \"%+.1f MB\", d }"
+}
+
+# ---------------------------------------------------------
+# Parse the jq output
+# ---------------------------------------------------------
+
+NUM_SAMPLES=""
+START_DATE=""
+_END_DATE=""
+
+declare -a PROC_NAMES=()
+declare -a PROC_PIDS=()
+declare -a PROC_MINS=()
+declare -a PROC_MAXS=()
+declare -a PROC_AVGS=()
+declare -a PROC_DELTAS=()
+
+TOTAL_MIN=""
+TOTAL_MAX=""
+TOTAL_AVG=""
+TOTAL_DELTA=""
+
+while IFS=$'\t' read -r type rest; do
+    case "$type" in
+        META)
+            IFS=$'\t' read -r NUM_SAMPLES START_DATE _END_DATE <<< "$rest"
+            ;;
+        PROC)
+            IFS=$'\t' read -r name pid min max avg first last <<< "$rest"
+            PROC_NAMES+=("$name")
+            PROC_PIDS+=("$pid")
+            PROC_MINS+=("$min")
+            PROC_MAXS+=("$max")
+            PROC_AVGS+=("$avg")
+            PROC_DELTAS+=("$((last - first))")
+            ;;
+        TOTAL)
+            IFS=$'\t' read -r TOTAL_MIN TOTAL_MAX TOTAL_AVG total_first total_last <<< "$rest"
+            TOTAL_DELTA="$((total_last - total_first))"
+            ;;
+    esac
+done <<< "$REPORT_DATA"
+
+# ---------------------------------------------------------
+# Render the ASCII table
+# ---------------------------------------------------------
+
+WIDTH=78
+DOUBLE_LINE=$(printf '═%.0s' $(seq 1 "$WIDTH"))
+SINGLE_LINE=$(printf '─%.0s' $(seq 1 "$WIDTH"))
+
+# Truncate the ISO date to just date + time (no timezone, no fractional seconds)
+START_SHORT="${START_DATE%%.*}"
+START_SHORT="${START_SHORT%%+*}"
+
+# Header block
+echo "$DOUBLE_LINE"
+if [[ -n "$DESCRIPTION" ]]; then
+    printf "  %s\n" "$DESCRIPTION"
+fi
+printf "  %s | %s samples\n" "$START_SHORT" "$NUM_SAMPLES"
+echo "$DOUBLE_LINE"
+
+# Column headers
+printf "%-36s %7s %9s %9s %9s %9s\n" \
+    "Process" "PID" "Min" "Max" "Avg" "Delta"
+echo "$SINGLE_LINE"
+
+# Process rows
+for i in "${!PROC_NAMES[@]}"; do
+    printf "%-36s %7s %9s %9s %9s %9s\n" \
+        "${PROC_NAMES[$i]}" \
+        "${PROC_PIDS[$i]}" \
+        "$(fmt_mb "${PROC_MINS[$i]}")" \
+        "$(fmt_mb "${PROC_MAXS[$i]}")" \
+        "$(fmt_mb "${PROC_AVGS[$i]}")" \
+        "$(fmt_delta "${PROC_DELTAS[$i]}")"
+done
+
+# Totals row
+echo "$SINGLE_LINE"
+printf "%-36s %7s %9s %9s %9s %9s\n" \
+    "TOTAL" \
+    "" \
+    "$(fmt_mb "$TOTAL_MIN")" \
+    "$(fmt_mb "$TOTAL_MAX")" \
+    "$(fmt_mb "$TOTAL_AVG")" \
+    "$(fmt_delta "$TOTAL_DELTA")"
+echo "$DOUBLE_LINE"
+echo

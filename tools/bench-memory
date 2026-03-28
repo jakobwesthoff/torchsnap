@@ -158,40 +158,17 @@ wait "$MEMSNAP_PID" 2>/dev/null || true
 
 # ---------------------------------------------------------
 # Summary
-#
-# Parse the JSON output and print per-process min/max/avg
-# phys_footprint across all samples.
 # ---------------------------------------------------------
-
-echo
-echo "=== Summary ==="
-echo
 
 if [[ ! -f "$OUTPUT" ]]; then
     echo "Warning: Output file not found. The sampler may have failed." >&2
     exit 1
 fi
 
-jq -r '
-    # Flatten all process samples into a single stream with process identity
-    [.samples[].processes[] | {
-        name: .name,
-        pid: .pid,
-        footprint: .auxiliary.phys_footprint
-    }]
-    # Group by process
-    | group_by(.pid)[]
-    # Compute stats per process
-    | {
-        name: .[0].name,
-        pid: .[0].pid,
-        samples: length,
-        min: ([.[].footprint] | min),
-        max: ([.[].footprint] | max),
-        avg: (([.[].footprint] | add) / length | round)
-    }
-    | "\(.name) (PID \(.pid)):\n  samples: \(.samples)\n  min: \(.min / 1048576 | . * 10 | round / 10) MB\n  max: \(.max / 1048576 | . * 10 | round / 10) MB\n  avg: \(.avg / 1048576 | . * 10 | round / 10) MB"
-' "$OUTPUT"
-
 echo
+
+"$SCRIPT_DIR/memsnap-report" \
+    -d "bench-memory: baseline(${BASELINE_WAIT}s) → show(${SHOW_WAIT}s) → query(${QUERY_WAIT}s) → dismiss(${POST_DISMISS_WAIT}s)" \
+    "$OUTPUT"
+
 echo "Full data: $OUTPUT"
