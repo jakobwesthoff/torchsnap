@@ -9,6 +9,7 @@ import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
+import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
 import { getPluginComponent } from "../plugins/registry";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
@@ -17,6 +18,7 @@ import { useControlChannel } from "./hooks/useControlChannel";
 import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
+import { CARD_TOP_OFFSET } from "./layout";
 import type { Action, ActionId, FooterState, ScoredEntry } from "./types";
 
 /** Derive a generic FooterState from an entry's action list. */
@@ -41,11 +43,44 @@ function actionsToFooterState(actions: Action[]): FooterState {
   };
 }
 
-export function Launcher() {
+/** Dummy footer state used during measurement to ensure the footer
+ *  renders at its real height. */
+const MEASURE_FOOTER: FooterState = {
+  primary: { combo: { modifiers: [], key: "Enter" }, label: "Action" },
+  hints: [],
+};
+
+interface LauncherProps {
+  /** When true, renders an empty content area at max height + a dummy
+   *  footer instead of real content. Used for the initial layout
+   *  measurement before the first show. */
+  measureDummy?: boolean;
+  /** Called with the card's dimensions whenever its size changes.
+   *  When undefined, no ResizeObserver is attached. */
+  onMeasure?: (width: number, height: number) => void;
+}
+
+export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const mouseActiveRef = useRef(false);
+
+  // =========================================================
+  // Card size observation
+  // =========================================================
+
+  const resizeCallback = useCallback(
+    (entry: ResizeObserverEntry) => {
+      if (!onMeasure) return;
+      const { width, height } = entry.contentRect;
+      onMeasure(width, height);
+    },
+    [onMeasure],
+  );
+
+  useResizeObserver(cardRef, onMeasure ? resizeCallback : undefined);
 
   // Local override for when execute_action returns ShowCustomUI.
   // Takes precedence over the search-driven customPluginView.
@@ -247,9 +282,73 @@ export function Launcher() {
   const pluginPrefix = matchedPrefix ?? "";
   const strippedQuery = pluginPrefix ? query.slice(pluginPrefix.length) : query;
 
+  // =========================================================
+  // Content area
+  //
+  // Four states:
+  //   1. Measurement  — full-height placeholder + dummy footer
+  //   2. Empty        — search bar only, no content section
+  //   3. List view    — result rows + footer
+  //   4. Plugin view  — plugin custom UI + footer
+  //
+  // The max-h-[448px] constraint on the content wrapper defines
+  // the maximum height all views must fit within.
+  // =========================================================
+
+  let contentBody: React.ReactNode = null;
+  let contentFooter: React.ReactNode = null;
+
+  if (measureDummy) {
+    contentBody = <div className="h-[448px]" />;
+    contentFooter = <LauncherFooter footer={MEASURE_FOOTER} />;
+  } else if (PluginView) {
+    contentBody = (
+      <Suspense
+        fallback={
+          <div className="p-4 text-center text-text-muted text-sm">
+            Loading…
+          </div>
+        }
+      >
+        <PluginView
+          results={results}
+          query={strippedQuery}
+          matchedPrefix={pluginPrefix}
+          goBack={handleGoBack}
+          dismiss={dismiss}
+          mouseActiveRef={mouseActiveRef}
+          onExecute={handlePluginExecute}
+          onFooterChange={setPluginFooter}
+          sendMessage={sendMessage}
+        />
+      </Suspense>
+    );
+    contentFooter = <LauncherFooter footer={footer} />;
+  } else if (results.length > 0) {
+    contentBody = (
+      <ResultList
+        results={results}
+        selectedIndex={selectedIndex}
+        onSelectIndex={setSelectedIndex}
+        onExecute={handleExecute}
+        mouseActiveRef={mouseActiveRef}
+      />
+    );
+    contentFooter = <LauncherFooter footer={footer} />;
+  }
+
+  const contentSection = contentBody ? (
+    <>
+      <div className="border-t border-border" />
+      <div className="max-h-[448px]">{contentBody}</div>
+      {contentFooter}
+    </>
+  ) : null;
+
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center pt-[224px]"
+      className="fixed inset-0 flex flex-col items-center"
+      style={{ paddingTop: CARD_TOP_OFFSET }}
       onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -280,6 +379,7 @@ export function Launcher() {
         )}
         {/* Launcher card */}
         <div
+          ref={cardRef}
           className="w-[680px] rounded-2xl bg-surface overflow-hidden"
           style={{
             boxShadow: [
@@ -308,42 +408,7 @@ export function Launcher() {
             <KeyBindingPill modifiers={[]} keyName="Escape" />
           </div>
 
-          {/* Result area + footer */}
-          {(results.length > 0 || PluginView) && (
-            <>
-              <div className="border-t border-border" />
-              {PluginView ? (
-                <Suspense
-                  fallback={
-                    <div className="p-4 text-center text-text-muted text-sm">
-                      Loading…
-                    </div>
-                  }
-                >
-                  <PluginView
-                    results={results}
-                    query={strippedQuery}
-                    matchedPrefix={pluginPrefix}
-                    goBack={handleGoBack}
-                    dismiss={dismiss}
-                    mouseActiveRef={mouseActiveRef}
-                    onExecute={handlePluginExecute}
-                    onFooterChange={setPluginFooter}
-                    sendMessage={sendMessage}
-                  />
-                </Suspense>
-              ) : (
-                <ResultList
-                  results={results}
-                  selectedIndex={selectedIndex}
-                  onSelectIndex={setSelectedIndex}
-                  onExecute={handleExecute}
-                  mouseActiveRef={mouseActiveRef}
-                />
-              )}
-              <LauncherFooter footer={footer} />
-            </>
-          )}
+          {contentSection}
         </div>
       </div>
     </div>
