@@ -26,6 +26,43 @@ use tauri::TitleBarStyle;
 use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as _};
 
 // =========================================================
+// Launcher Window Layout
+//
+// The launcher window is sized to tightly fit its content
+// rather than filling the entire screen. This keeps the
+// WebKit backing-store allocation proportional to the actual
+// UI area instead of the full monitor resolution.
+// =========================================================
+
+/// Width of the launcher card (logical px). Must match the CSS
+/// `w-[680px]` in `Launcher.tsx`.
+const LAUNCHER_CARD_WIDTH: f64 = 680.0;
+
+/// Maximum height of the launcher card content (logical px).
+/// Search bar (~52) + separator (1) + 8 result rows (8 × 56 = 448)
+/// + footer (~41) = ~542.
+const LAUNCHER_CARD_MAX_HEIGHT: f64 = 542.0;
+
+/// Padding around the card for CSS box-shadow bleed (logical px).
+/// The largest shadow is `0 16px 48px` which needs ~64px clearance.
+const LAUNCHER_SHADOW_PADDING: f64 = 64.0;
+
+/// Space above the card reserved for the decorative mascot image
+/// (logical px). The center-mode mascot is 192px tall, positioned
+/// at `top: -156px`, so it needs ~160px of headroom.
+const LAUNCHER_MASCOT_HEADROOM: f64 = 160.0;
+
+/// Total window dimensions (logical px).
+const LAUNCHER_WINDOW_WIDTH: f64 = LAUNCHER_CARD_WIDTH + 2.0 * LAUNCHER_SHADOW_PADDING;
+const LAUNCHER_WINDOW_HEIGHT: f64 =
+    LAUNCHER_SHADOW_PADDING + LAUNCHER_MASCOT_HEADROOM + LAUNCHER_CARD_MAX_HEIGHT + LAUNCHER_SHADOW_PADDING;
+
+/// Vertical position of the card within the window (logical px).
+/// The CSS `pt-[224px]` in `Launcher.tsx` must match this value.
+#[allow(dead_code)]
+const LAUNCHER_CARD_TOP_OFFSET: f64 = LAUNCHER_SHADOW_PADDING + LAUNCHER_MASCOT_HEADROOM;
+
+// =========================================================
 // Settings Window
 // =========================================================
 
@@ -159,14 +196,23 @@ pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
         let pos = monitor.position();
         let scale = monitor.scale_factor();
 
-        let logical_width = size.width as f64 / scale;
-        let logical_height = size.height as f64 / scale;
+        let monitor_w = size.width as f64 / scale;
+        let monitor_h = size.height as f64 / scale;
+        let monitor_x = pos.x as f64 / scale;
+        let monitor_y = pos.y as f64 / scale;
 
-        let _ = win.set_size(tauri::LogicalSize::new(logical_width, logical_height));
-        let _ = win.set_position(tauri::LogicalPosition::new(
-            pos.x as f64 / scale,
-            pos.y as f64 / scale,
+        // Center the launcher window horizontally on the monitor.
+        // Vertically, place the card at ~25% of monitor height by
+        // offsetting the window top so that the card (which sits at
+        // LAUNCHER_CARD_TOP_OFFSET within the window) lands there.
+        let win_x = monitor_x + (monitor_w - LAUNCHER_WINDOW_WIDTH) / 2.0;
+        let win_y = monitor_y + (0.25 * monitor_h) - LAUNCHER_CARD_TOP_OFFSET;
+
+        let _ = win.set_size(tauri::LogicalSize::new(
+            LAUNCHER_WINDOW_WIDTH,
+            LAUNCHER_WINDOW_HEIGHT,
         ));
+        let _ = win.set_position(tauri::LogicalPosition::new(win_x, win_y));
     }
 }
 
