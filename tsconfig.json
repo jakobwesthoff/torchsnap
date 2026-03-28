@@ -20,10 +20,14 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
+    /* Ensure Vite's client types (import.meta.env, CSS modules,
+     * etc.) are available. TS 6 defaults `types` to [] so this
+     * must be explicit. */
+    "types": ["vite/client"],
+
     /* Path aliases — stable import paths for plugin SDK surface.
      * Internal aliases now, real packages later. Must be kept in
      * sync with vite.config.ts resolve.alias. */
-    "baseUrl": ".",
     "paths": {
       "@torchsnap/keybindings": ["./src/keybindings"],
       "@torchsnap/components": ["./src/components"],
