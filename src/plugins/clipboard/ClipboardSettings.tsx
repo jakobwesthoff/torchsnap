@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 import type { PluginSettingsProps } from "../types";
 import { SettingsSection } from "../../components/SettingsSection";
@@ -44,6 +44,7 @@ async function pluginMessage<T>(method: string, payload: unknown = {}): Promise<
     source: PLUGIN_ID,
     method,
     payload,
+    channel: new Channel(),
   });
 }
 
