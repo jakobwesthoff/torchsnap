@@ -75,7 +75,7 @@ export function FileListPreview({
       {/* ------------------------------------------------- */}
       {/* File list                                          */}
       {/* ------------------------------------------------- */}
-      <div className="flex flex-col gap-1 w-full min-w-0">
+      <div className="flex flex-col gap-1 max-w-full min-w-0">
         <span className="text-xs text-text-muted select-none">
           {paths.length} {paths.length === 1 ? "file" : "files"}
         </span>
