@@ -249,6 +249,10 @@ impl CatalogPlugin for ClipboardPlugin {
         PLUGIN_ID
     }
 
+    fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
             .ensure("enabled", true)
