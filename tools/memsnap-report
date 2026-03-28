@@ -31,15 +31,12 @@ set -euo pipefail
 # box-drawing separator lines.
 # =========================================================
 
-# Print a separator line matching the column widths of an
-# already-formatted table. Reads the first line of $1 to
-# determine the width, then prints a line of character $2.
-_table_separator() {
-    local formatted="$1"
+# Print a line of $width copies of character $char.
+_repeat_char() {
+    local width="$1"
     local char="$2"
-    local first_line
-    first_line=$(echo "$formatted" | head -1)
-    printf '%s\n' "${first_line//?/$char}"
+    printf '%s' "$(printf "%${width}s" '' | sed -e "s/ /${char}/g")"
+    echo
 }
 
 # Render a bordered table from tab-separated input.
@@ -49,7 +46,8 @@ _table_separator() {
 # footer (totals). All rows in between are data rows.
 #
 # Uses `column -t` for auto-sizing, then draws ═ lines for
-# outer borders and ─ lines for inner separators.
+# outer borders and ─ lines for inner separators. The
+# separator width matches the longest line in the output.
 render_table() {
     local tsv_rows="$1"
     local formatted
@@ -58,13 +56,19 @@ render_table() {
     local total_lines
     total_lines=$(echo "$formatted" | wc -l | tr -d ' ')
 
-    _table_separator "$formatted" "═"
+    # Find the longest line to size separators correctly
+    local max_width=0
+    while IFS= read -r line; do
+        (( ${#line} > max_width )) && max_width=${#line}
+    done <<< "$formatted"
+
+    _repeat_char "$max_width" "═"
     echo "$formatted" | head -1
-    _table_separator "$formatted" "─"
+    _repeat_char "$max_width" "─"
     echo "$formatted" | tail -n +"2" | head -n "$((total_lines - 2))"
-    _table_separator "$formatted" "─"
+    _repeat_char "$max_width" "─"
     echo "$formatted" | tail -1
-    _table_separator "$formatted" "═"
+    _repeat_char "$max_width" "═"
 }
 
 # =========================================================
