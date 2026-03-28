@@ -24,13 +24,12 @@ pub struct StatusHandler;
 impl Handler for StatusHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
         let handle = app.clone();
-        let visible =
-            super::launcher::on_main_thread(app, move || {
-                PlatformLauncherPanel::is_visible(&handle)
-            })?
-            .map_err(|e| ControlError::Internal {
-                message: format!("{e:#}"),
-            })?;
+        let visible = super::launcher::on_main_thread(app, move || {
+            PlatformLauncherPanel::is_visible(&handle)
+        })?
+        .map_err(|e| ControlError::Internal {
+            message: format!("{e:#}"),
+        })?;
 
         Ok(serde_json::json!({
             "visible": visible,

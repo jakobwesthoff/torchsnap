@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::ipc::Channel;
 use tauri::Manager;
+use tauri::ipc::Channel;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::watch as tokio_watch;
 
@@ -287,10 +287,8 @@ pub fn start_control_server_reactor(
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or(false);
 
-    let mut enabled_watch: SettingsWatch<bool> = notifier.watch_with_initial(
-        "controlChannel.enabled",
-        Value::from(initial_enabled),
-    );
+    let mut enabled_watch: SettingsWatch<bool> =
+        notifier.watch_with_initial("controlChannel.enabled", Value::from(initial_enabled));
 
     let app_handle = app.clone();
 

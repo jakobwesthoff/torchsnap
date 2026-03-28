@@ -17,8 +17,8 @@
 use serde_json::Value;
 use tauri::Manager;
 
-use crate::control::handler::{ControlError, Handler};
 use crate::control::ControlCommand;
+use crate::control::handler::{ControlError, Handler};
 
 pub struct QueryHandler;
 

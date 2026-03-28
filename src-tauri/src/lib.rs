@@ -336,10 +336,7 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 /// control channel. The channel is stored in managed state
 /// so that control handlers can push commands to it.
 #[tauri::command]
-fn control_subscribe(
-    channel: Channel<control::ControlCommand>,
-    app: tauri::AppHandle,
-) {
+fn control_subscribe(channel: Channel<control::ControlCommand>, app: tauri::AppHandle) {
     app.state::<control::ControlChannelState>().set(channel);
 }
 
@@ -471,11 +468,7 @@ pub fn run() {
             // =========================================================
             app.manage(control::ControlChannelState::new());
             app.manage(LauncherLayoutState::new());
-            control::start_control_server_reactor(
-                app.handle(),
-                &notifier,
-                &store,
-            );
+            control::start_control_server_reactor(app.handle(), &notifier, &store);
 
             // =========================================================
             // Hide dock icon (macOS only)
