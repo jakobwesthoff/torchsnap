@@ -32,7 +32,7 @@ export function ImagePreview({
   return (
     <div
       ref={scrollRef}
-      className="w-[60%] overflow-y-auto p-4 scrollbar-accent flex flex-col items-center justify-center gap-2"
+      className="w-[60%] overflow-y-auto overflow-x-hidden p-4 scrollbar-accent flex flex-col items-center justify-center gap-2"
     >
       <img
         src={convertFileSrc(imageFormat.path)}
