@@ -88,6 +88,16 @@ pub trait CatalogPlugin: Send + Sync {
     /// field in `ScoredEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
 
+    /// Whether the plugin is currently active.
+    ///
+    /// Plugins that support an enable/disable toggle override this
+    /// to reflect their current state. The host checks this before
+    /// registering shortcuts and may use it for other gating in the
+    /// future. The default is always enabled.
+    fn is_enabled(&self) -> bool {
+        true
+    }
+
     /// Declare default settings for this plugin.
     ///
     /// Called synchronously at startup *before* `setup()`. The
@@ -222,6 +232,11 @@ pub trait CatalogPlugin: Send + Sync {
 pub trait QueryPlugin: Send + Sync {
     /// Unique identifier for this plugin.
     fn id(&self) -> &str;
+
+    /// Whether the plugin is currently active. See `CatalogPlugin::is_enabled()`.
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     /// Prefixes that activate exclusive routing for this plugin.
     ///

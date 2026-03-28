@@ -68,8 +68,11 @@ pub fn register_all(
 ) {
     let mut registered: Vec<RegisteredShortcut> = Vec::new();
 
-    // Collect shortcuts from catalog plugins.
+    // Collect shortcuts from catalog plugins, skipping disabled ones.
     for plugin in registry.catalog_plugins() {
+        if !plugin.is_enabled() {
+            continue;
+        }
         let plugin_id = plugin.id().to_string();
         for decl in plugin.shortcuts() {
             if let Some(r) = resolve_shortcut(
@@ -83,8 +86,11 @@ pub fn register_all(
         }
     }
 
-    // Collect shortcuts from query plugins.
+    // Collect shortcuts from query plugins, skipping disabled ones.
     for plugin in registry.query_plugins() {
+        if !plugin.is_enabled() {
+            continue;
+        }
         let plugin_id = plugin.id().to_string();
         for decl in plugin.shortcuts() {
             if let Some(r) = resolve_shortcut(
@@ -131,8 +137,11 @@ pub fn register_all(
 
             // Plugin shortcut routing.
             let Some(r) = registered.iter().find(|r| r.shortcut == *shortcut) else {
+                eprintln!("shortcut: no registered handler for {shortcut:?}");
                 return;
             };
+
+            eprintln!("shortcut: routing {}.{}", r.plugin_id, r.shortcut_id);
 
             let result = match &r.owner {
                 ShortcutOwner::Catalog(p) => p.handle_shortcut(&r.shortcut_id, &handle),
@@ -141,6 +150,7 @@ pub fn register_all(
 
             match result {
                 Ok(PostAction::ShowCustomUI) => {
+                    eprintln!("shortcut: showing launcher with plugin {}", r.plugin_id);
                     show_launcher_with_plugin(&handle, &r.plugin_id);
                 }
                 Ok(_) => {}
@@ -194,7 +204,9 @@ fn resolve_shortcut(
 fn show_launcher_with_plugin(app: &tauri::AppHandle, plugin_id: &str) {
     crate::position_launcher_on_cursor_monitor(app);
 
-    if let Err(e) = PlatformLauncherPanel::show(app) {
+    let show_result = PlatformLauncherPanel::show(app);
+    eprintln!("shortcut: PlatformLauncherPanel::show result: {show_result:?}");
+    if let Err(e) = show_result {
         eprintln!("shortcut: failed to show launcher: {e:#}");
         return;
     }
