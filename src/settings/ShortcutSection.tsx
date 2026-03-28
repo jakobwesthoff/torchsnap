@@ -21,10 +21,7 @@ interface ShortcutSectionProps {
   setGlobalShortcut: (v: string) => Promise<void>;
 }
 
-export function ShortcutSection({
-  globalShortcut,
-  setGlobalShortcut,
-}: ShortcutSectionProps) {
+export function ShortcutSection({ globalShortcut, setGlobalShortcut }: ShortcutSectionProps) {
   const [error, setError] = useState<string | null>(null);
 
   const handleChange = useCallback(
@@ -44,9 +41,7 @@ export function ShortcutSection({
       <SettingsEntry label="Global Shortcut">
         <ShortcutRecorder value={globalShortcut} onChange={handleChange} />
       </SettingsEntry>
-      {error && (
-        <p className="text-sm text-red-500">{error}</p>
-      )}
+      {error && <p className="text-sm text-red-500">{error}</p>}
     </SettingsSection>
   );
 }

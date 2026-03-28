@@ -2,13 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   ThemeContext,
@@ -47,11 +41,8 @@ function applyToDOM(effective: EffectiveTheme) {
 // =========================================================
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] =
-    useState<ThemePreference>(readStoredPreference);
-  const [effective, setEffective] = useState<EffectiveTheme>(() =>
-    resolveEffective(preference),
-  );
+  const [preference, setPreferenceState] = useState<ThemePreference>(readStoredPreference);
+  const [effective, setEffective] = useState<EffectiveTheme>(() => resolveEffective(preference));
 
   // Sync the DOM attribute whenever the effective theme changes.
   useEffect(() => {
@@ -107,10 +98,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unlisten = listen("toggle-theme", () => {
       setPreferenceState((current) => {
-        const currentEffective =
-          current === "system" ? resolveEffective("system") : current;
-        const next: ThemePreference =
-          currentEffective === "dark" ? "light" : "dark";
+        const currentEffective = current === "system" ? resolveEffective("system") : current;
+        const next: ThemePreference = currentEffective === "dark" ? "light" : "dark";
         localStorage.setItem(THEME_STORAGE_KEY, next);
         setEffective(resolveEffective(next));
         return next;
@@ -127,7 +116,5 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [preference, effective, setPreference],
   );
 
-  return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

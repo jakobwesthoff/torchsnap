@@ -19,10 +19,7 @@ export function AppearanceSection() {
         <ThemeToggle />
       </SettingsEntry>
       <SettingsEntry label="Show Snappy mascot">
-        <Switch
-          checked={mascotEnabled}
-          onChange={(on) => setMascotMode(on ? "center" : "off")}
-        />
+        <Switch checked={mascotEnabled} onChange={(on) => setMascotMode(on ? "center" : "off")} />
       </SettingsEntry>
       <SettingsEntry label="Snappy is only a Sidekick">
         <Switch

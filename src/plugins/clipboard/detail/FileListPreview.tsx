@@ -81,13 +81,9 @@ export function FileListPreview({
         </span>
         {paths.map((path) => (
           <div key={path} className="flex flex-col py-1">
-            <span className="text-sm text-text-primary truncate">
-              {filename(path)}
-            </span>
+            <span className="text-sm text-text-primary truncate">{filename(path)}</span>
             {parentDir(path) && (
-              <span className="text-xs text-text-muted truncate">
-                {parentDir(path)}
-              </span>
+              <span className="text-xs text-text-muted truncate">{parentDir(path)}</span>
             )}
           </div>
         ))}

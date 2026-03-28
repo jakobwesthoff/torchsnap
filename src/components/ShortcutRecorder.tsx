@@ -26,10 +26,14 @@ import { KeyCap } from "./KeyCap";
 // =========================================================
 
 const MODIFIER_CODES = new Set([
-  "MetaLeft", "MetaRight",
-  "ControlLeft", "ControlRight",
-  "AltLeft", "AltRight",
-  "ShiftLeft", "ShiftRight",
+  "MetaLeft",
+  "MetaRight",
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight",
 ]);
 
 /**
@@ -52,9 +56,7 @@ function buildAccelerator(e: KeyboardEvent): string {
   }
 
   if (!MODIFIER_CODES.has(e.code)) {
-    const key = e.code
-      .replace(/^Key([A-Z])$/, "$1")
-      .replace(/^Digit([0-9])$/, "$1");
+    const key = e.code.replace(/^Key([A-Z])$/, "$1").replace(/^Digit([0-9])$/, "$1");
     parts.push(key);
   }
 
@@ -112,11 +114,7 @@ interface ShortcutRecorderProps {
   disabled?: boolean;
 }
 
-export function ShortcutRecorder({
-  value,
-  onChange,
-  disabled = false,
-}: ShortcutRecorderProps) {
+export function ShortcutRecorder({ value, onChange, disabled = false }: ShortcutRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -198,7 +196,14 @@ export function ShortcutRecorder({
             className="flex h-5 w-5 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-inset hover:text-text-primary"
             aria-label="Cancel shortcut recording"
           >
-            <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg
+              viewBox="0 0 12 12"
+              className="h-3 w-3"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
               <path d="M3 3l6 6M9 3l-6 6" />
             </svg>
           </button>

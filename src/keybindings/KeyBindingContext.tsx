@@ -24,6 +24,4 @@ export interface KeyBindingContextValue {
  * KeyBinding context — use `useKeyBindings()` hook to register bindings,
  * not this context directly.
  */
-export const KeyBindingContext = createContext<KeyBindingContextValue | null>(
-  null,
-);
+export const KeyBindingContext = createContext<KeyBindingContextValue | null>(null);

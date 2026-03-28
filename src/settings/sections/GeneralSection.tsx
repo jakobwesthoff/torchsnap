@@ -11,11 +11,9 @@ import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
 
 export function GeneralSection() {
-  const [globalShortcut, setGlobalShortcut] =
-    useSetting<string>("globalShortcut");
+  const [globalShortcut, setGlobalShortcut] = useSetting<string>("globalShortcut");
 
-  const [controlApiEnabled, setControlApiEnabled] =
-    useSetting<boolean>("controlChannel.enabled");
+  const [controlApiEnabled, setControlApiEnabled] = useSetting<boolean>("controlChannel.enabled");
 
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
@@ -48,17 +46,11 @@ export function GeneralSection() {
         </SettingsEntry>
       </SettingsSection>
 
-      <ShortcutSection
-        globalShortcut={globalShortcut}
-        setGlobalShortcut={setGlobalShortcut}
-      />
+      <ShortcutSection globalShortcut={globalShortcut} setGlobalShortcut={setGlobalShortcut} />
 
       <SettingsSection title="Advanced">
         <SettingsEntry label="Control API">
-          <Switch
-            checked={controlApiEnabled}
-            onChange={setControlApiEnabled}
-          />
+          <Switch checked={controlApiEnabled} onChange={setControlApiEnabled} />
         </SettingsEntry>
       </SettingsSection>
     </div>

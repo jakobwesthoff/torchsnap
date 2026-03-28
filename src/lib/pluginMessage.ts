@@ -13,11 +13,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-export function sendPluginMessage<
-  TPayload = unknown,
-  TResult = unknown,
-  TStream = never,
->(
+export function sendPluginMessage<TPayload = unknown, TResult = unknown, TStream = never>(
   source: string,
   method: string,
   payload: TPayload,

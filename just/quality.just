@@ -3,8 +3,8 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # This file contains all code quality gates: type checking, clippy
-# linting, and formatting. The `fullcycle` recipe runs them all in
-# sequence as a pre-push validation step.
+# linting, eslint, formatting, and build verification. The `fullcycle`
+# recipe runs them all in sequence as a pre-push validation step.
 
 # Check compilation (Rust) and types (TypeScript)
 check: check-crates check-types
@@ -17,17 +17,42 @@ check-crates:
 check-types:
     bun run tsc --noEmit
 
-# Lint Rust (clippy) — runs all checks, fails if any fail
-lint:
+# Lint everything (Rust + frontend)
+lint: lint-crates lint-frontend
+
+# Lint Rust (clippy)
+lint-crates:
     cargo clippy --manifest-path src-tauri/Cargo.toml
 
-# Format Rust (cargo fmt) — runs all checks, fails if any fail
-fmt:
+# Lint frontend (eslint)
+lint-frontend:
+    bun run lint
+
+# Format everything (Rust + frontend)
+fmt: fmt-crates fmt-frontend
+
+# Format Rust (cargo fmt)
+fmt-crates:
     cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-# Run the full quality cycle: format, lint, check, then build frontend
+# Format frontend (prettier)
+fmt-frontend:
+    bun run fmt
+
+# Check formatting without writing (Rust + frontend)
+fmt-check: fmt-check-crates fmt-check-frontend
+
+# Check Rust formatting
+fmt-check-crates:
+    cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
+
+# Check frontend formatting
+fmt-check-frontend:
+    bun run fmt:check
+
+# Run the full quality cycle: format check, lint, type check, then build
 fullcycle:
-    just fmt
+    just fmt-check
     just lint
     just check
     just build-frontend

@@ -54,9 +54,7 @@ export function useHalfPageScroll({
           const target = Math.min(el.scrollTop + half, maxScroll);
           el.scrollTo({ top: target, behavior: "instant" });
         },
-        keybindings: [
-          { combo: { modifiers: ["Ctrl"], key: "d" }, allowInInput },
-        ],
+        keybindings: [{ combo: { modifiers: ["Ctrl"], key: "d" }, allowInInput }],
       },
       {
         id: "half-page-scroll-up",
@@ -69,9 +67,7 @@ export function useHalfPageScroll({
           const target = Math.max(el.scrollTop - half, 0);
           el.scrollTo({ top: target, behavior: "instant" });
         },
-        keybindings: [
-          { combo: { modifiers: ["Ctrl"], key: "u" }, allowInInput },
-        ],
+        keybindings: [{ combo: { modifiers: ["Ctrl"], key: "u" }, allowInInput }],
       },
     ],
     [ref, layer, order, allowInInput],

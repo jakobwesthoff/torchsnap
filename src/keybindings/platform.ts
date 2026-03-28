@@ -58,13 +58,8 @@ const MODIFIER_LABELS_OTHER: Record<ModifierKey, string> = {
  * Exported with explicit platform parameter for testability;
  * consumers typically use `formatModifier` which reads the detected platform.
  */
-export function formatModifierForPlatform(
-  modifier: ModifierKey,
-  p: Platform,
-): string {
-  return p === "macos"
-    ? MODIFIER_SYMBOLS_MACOS[modifier]
-    : MODIFIER_LABELS_OTHER[modifier];
+export function formatModifierForPlatform(modifier: ModifierKey, p: Platform): string {
+  return p === "macos" ? MODIFIER_SYMBOLS_MACOS[modifier] : MODIFIER_LABELS_OTHER[modifier];
 }
 
 export function formatModifier(modifier: ModifierKey): string {

@@ -22,9 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSettingSync, setSetting, subscribe } from "../settingsStore";
 
-export function useSetting<T>(
-  key: string,
-): [value: T, setValue: (v: T) => Promise<void>] {
+export function useSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
   // Initial value is read synchronously from the pre-loaded cache.
   // No async gap, no loading state, no default parameter needed.
   const [value, setValueState] = useState<T>(() => getSettingSync<T>(key));

@@ -12,10 +12,7 @@
 
 import { useContext, useEffect, useRef } from "react";
 import { KeyBindingContext } from "./KeyBindingContext";
-import {
-  keyBindingDefinitionsChanged,
-  type KeyBindingDefinition,
-} from "./matching";
+import { keyBindingDefinitionsChanged, type KeyBindingDefinition } from "./matching";
 
 /**
  * Register a group of keybinding definitions tied to the component lifecycle.
@@ -55,11 +52,7 @@ export function useKeyBindings<T extends KeyBindingDefinition>(
     }
 
     // Only re-register when the registration identity changes.
-    if (
-      prevRef.current &&
-      !hasChanged(prevRef.current, definitions) &&
-      cleanupRef.current
-    ) {
+    if (prevRef.current && !hasChanged(prevRef.current, definitions) && cleanupRef.current) {
       prevRef.current = definitions;
       return;
     }
@@ -70,18 +63,16 @@ export function useKeyBindings<T extends KeyBindingDefinition>(
     }
 
     // Assign default order from array index, then wrap handlers in stable refs.
-    const registered: KeyBindingDefinition[] = definitions.map(
-      (def, index) => ({
-        ...def,
-        order: def.order ?? index,
-        handler: (): void => {
-          const latest = handlersRef.current.get(def.id);
-          if (latest) {
-            latest();
-          }
-        },
-      }),
-    );
+    const registered: KeyBindingDefinition[] = definitions.map((def, index) => ({
+      ...def,
+      order: def.order ?? index,
+      handler: (): void => {
+        const latest = handlersRef.current.get(def.id);
+        if (latest) {
+          latest();
+        }
+      },
+    }));
 
     cleanupRef.current = register(registered);
     prevRef.current = definitions;

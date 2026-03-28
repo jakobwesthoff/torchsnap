@@ -85,9 +85,7 @@ function SidebarButton({
       onClick={() => onSelect(item.id)}
       className={cn(
         "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
-        active
-          ? "bg-accent text-white font-medium"
-          : "text-text-primary hover:bg-surface-hover",
+        active ? "bg-accent text-white font-medium" : "text-text-primary hover:bg-surface-hover",
       )}
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" />}

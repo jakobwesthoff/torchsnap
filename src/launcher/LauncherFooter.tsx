@@ -40,15 +40,9 @@ export function LauncherFooter({ footer }: LauncherFooterProps) {
       {footer.hints.length > 0 && (
         <div className="flex items-center gap-4">
           {footer.hints.map((hint, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1.5 text-xs text-text-muted"
-            >
+            <span key={i} className="inline-flex items-center gap-1.5 text-xs text-text-muted">
               {hint.combo && (
-                <KeyBindingPill
-                  modifiers={hint.combo.modifiers}
-                  keyName={hint.combo.key}
-                />
+                <KeyBindingPill modifiers={hint.combo.modifiers} keyName={hint.combo.key} />
               )}
               <span>{hint.label}</span>
             </span>

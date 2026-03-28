@@ -34,10 +34,7 @@ import { DisplayTextPreview } from "./detail/DisplayTextPreview";
 import { ImagePreview } from "./detail/ImagePreview";
 import { FileListPreview } from "./detail/FileListPreview";
 import { useKeyBindings } from "../../keybindings";
-import {
-  LAYER,
-  type KeyBindingDefinition,
-} from "../../keybindings/matching";
+import { LAYER, type KeyBindingDefinition } from "../../keybindings/matching";
 import { usePluginStream } from "../../hooks/usePluginStream";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
 import { LruCache } from "../../lib/LruCache";
@@ -112,9 +109,7 @@ function EntryRow({
   return (
     <div
       className={`flex items-center gap-2 px-3 py-2 cursor-default text-sm border-l-2 border-transparent ${
-        selected
-          ? "bg-selection border-accent text-text-primary"
-          : "text-text-secondary"
+        selected ? "bg-selection border-accent text-text-primary" : "text-text-secondary"
       }`}
       onMouseEnter={() => {
         if (mouseActiveRef.current) onSelect();
@@ -123,9 +118,7 @@ function EntryRow({
     >
       <EntryIcon format={entry.primaryFormat} />
       <span className="flex-1 truncate">{entry.displayText}</span>
-      <span className="shrink-0 text-xs text-text-muted">
-        {relativeTime(entry.capturedAt)}
-      </span>
+      <span className="shrink-0 text-xs text-text-muted">{relativeTime(entry.capturedAt)}</span>
     </div>
   );
 }
@@ -219,10 +212,7 @@ export default function ClipboardView({
   const detailRef = useRef<HTMLDivElement>(null);
 
   // Stable payload reference — only changes when the query does.
-  const searchPayload = useMemo(
-    () => ({ query: query || null }),
-    [query],
-  );
+  const searchPayload = useMemo(() => ({ query: query || null }), [query]);
 
   // Search clipboard history. Results are pushed through the channel
   // both initially and on data changes (new entry, delete, clear).
@@ -249,18 +239,14 @@ export default function ClipboardView({
 
   // Clamp selection when entries change.
   useEffect(() => {
-    setSelectedIndex((prev) =>
-      entries.length === 0 ? 0 : Math.min(prev, entries.length - 1),
-    );
+    setSelectedIndex((prev) => (entries.length === 0 ? 0 : Math.min(prev, entries.length - 1)));
   }, [entries.length]);
 
   // -------------------------------------------------------
   // Detail Loading with LRU Cache
   // -------------------------------------------------------
 
-  const detailCacheRef = useRef(
-    new LruCache<string, ClipboardHistoryEntry>(DETAIL_CACHE_CAPACITY),
-  );
+  const detailCacheRef = useRef(new LruCache<string, ClipboardHistoryEntry>(DETAIL_CACHE_CAPACITY));
   const [detail, setDetail] = useState<ClipboardHistoryEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailOverflows, setDetailOverflows] = useState(false);
@@ -284,10 +270,9 @@ export default function ClipboardView({
     let cancelled = false;
     setDetailLoading(true);
 
-    sendMessage<{ id: string }, ClipboardHistoryEntry | null>(
-      "load_full_entry",
-      { id: selectedId },
-    ).then(
+    sendMessage<{ id: string }, ClipboardHistoryEntry | null>("load_full_entry", {
+      id: selectedId,
+    }).then(
       (result) => {
         if (cancelled) return;
         if (result) {
@@ -377,9 +362,7 @@ export default function ClipboardView({
           mouseActiveRef.current = false;
           setSelectedIndex((i) => Math.max(0, i - 1));
         },
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true }],
       },
       {
         id: "clipboard-down",
@@ -389,36 +372,28 @@ export default function ClipboardView({
           mouseActiveRef.current = false;
           setSelectedIndex((i) => Math.min(entries.length - 1, i + 1));
         },
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true }],
       },
       {
         id: "clipboard-paste",
         layer: PLUGIN_LAYER,
         order: 2,
         handler: () => void handlePaste(),
-        keybindings: [
-          { combo: { modifiers: [], key: "Enter" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       },
       {
         id: "clipboard-delete",
         layer: PLUGIN_LAYER,
         order: 3,
         handler: () => void handleDelete(),
-        keybindings: [
-          { combo: { modifiers: ["Meta"], key: "Backspace" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: ["Meta"], key: "Backspace" }, allowInInput: true }],
       },
       {
         id: "clipboard-escape",
         layer: PLUGIN_LAYER,
         order: 10,
         handler: () => goBack(),
-        keybindings: [
-          { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Escape" }, allowInInput: true }],
       },
     ],
     [entries.length, handlePaste, handleDelete, goBack, mouseActiveRef],

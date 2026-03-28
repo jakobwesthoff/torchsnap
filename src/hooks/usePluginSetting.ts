@@ -22,9 +22,7 @@
 import { useSetting } from "./useSetting";
 
 export function createPluginSettingHook(pluginId: string) {
-  return function usePluginSetting<T>(
-    key: string,
-  ): [value: T, setValue: (v: T) => Promise<void>] {
+  return function usePluginSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
     return useSetting<T>(`plugins.${pluginId}.${key}`);
   };
 }

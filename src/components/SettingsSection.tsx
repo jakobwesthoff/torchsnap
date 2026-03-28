@@ -18,18 +18,10 @@ interface SettingsSectionProps {
   className?: string;
 }
 
-export function SettingsSection({
-  title,
-  children,
-  className,
-}: SettingsSectionProps) {
+export function SettingsSection({ title, children, className }: SettingsSectionProps) {
   return (
     <div className={cn("rounded-xl border border-border p-4", className)}>
-      {title && (
-        <h3 className="text-sm font-medium text-text-secondary mb-3">
-          {title}
-        </h3>
-      )}
+      {title && <h3 className="text-sm font-medium text-text-secondary mb-3">{title}</h3>}
       <div className="flex flex-col gap-3">{children}</div>
     </div>
   );

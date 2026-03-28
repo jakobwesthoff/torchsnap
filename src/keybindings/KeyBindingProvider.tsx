@@ -14,16 +14,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import {
-  KeyBindingContext,
-  type KeyBindingContextValue,
-} from "./KeyBindingContext";
-import {
-  matchesCombo,
-  isInputFocused,
-  type KeyBindingDefinition,
-  type KeyCombo,
-} from "./matching";
+import { KeyBindingContext, type KeyBindingContextValue } from "./KeyBindingContext";
+import { matchesCombo, isInputFocused, type KeyBindingDefinition, type KeyCombo } from "./matching";
 import { platform } from "./platform";
 
 export interface KeyBindingProviderProps {
@@ -214,14 +206,7 @@ export function KeyBindingProvider({
   // Context Value
   // =========================================================
 
-  const contextValue: KeyBindingContextValue = useMemo(
-    () => ({ register }),
-    [register],
-  );
+  const contextValue: KeyBindingContextValue = useMemo(() => ({ register }), [register]);
 
-  return (
-    <KeyBindingContext.Provider value={contextValue}>
-      {children}
-    </KeyBindingContext.Provider>
-  );
+  return <KeyBindingContext.Provider value={contextValue}>{children}</KeyBindingContext.Provider>;
 }

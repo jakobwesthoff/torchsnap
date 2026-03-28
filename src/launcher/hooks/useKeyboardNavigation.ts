@@ -65,9 +65,7 @@ export function useKeyboardNavigation({
   const moveSelection = useCallback(
     (delta: number) => {
       mouseActiveRef.current = false;
-      setSelectedIndex(
-        Math.max(0, Math.min(selectedIndex + delta, resultCount - 1)),
-      );
+      setSelectedIndex(Math.max(0, Math.min(selectedIndex + delta, resultCount - 1)));
     },
     [selectedIndex, resultCount, setSelectedIndex, mouseActiveRef],
   );
@@ -104,9 +102,7 @@ export function useKeyboardNavigation({
             dismiss();
           }
         },
-        keybindings: [
-          { combo: { modifiers: [], key: "Escape" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Escape" }, allowInInput: true }],
       },
     ],
     [query, setQuery, dismiss],
@@ -129,45 +125,35 @@ export function useKeyboardNavigation({
         layer: LAUNCHER_LAYER,
         order: 0,
         handler: () => moveSelection(1),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true }],
       },
       {
         id: "launcher-arrow-up",
         layer: LAUNCHER_LAYER,
         order: 1,
         handler: () => moveSelection(-1),
-        keybindings: [
-          { combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true }],
       },
       {
         id: "launcher-page-down",
         layer: LAUNCHER_LAYER,
         order: 2,
         handler: () => moveSelection(PAGE_SIZE),
-        keybindings: [
-          { combo: { modifiers: [], key: "PageDown" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "PageDown" }, allowInInput: true }],
       },
       {
         id: "launcher-page-up",
         layer: LAUNCHER_LAYER,
         order: 3,
         handler: () => moveSelection(-PAGE_SIZE),
-        keybindings: [
-          { combo: { modifiers: [], key: "PageUp" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "PageUp" }, allowInInput: true }],
       },
       {
         id: "launcher-enter",
         layer: LAUNCHER_LAYER,
         order: 4,
         handler: () => onExecute(),
-        keybindings: [
-          { combo: { modifiers: [], key: "Enter" }, allowInInput: true },
-        ],
+        keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       },
     ];
   }, [enabled, moveSelection, onExecute]);

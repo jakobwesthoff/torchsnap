@@ -116,11 +116,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
       {/* ---- Shortcut ---- */}
       <SettingsSection>
         <SettingsEntry label="Open Clipboard History">
-          <ShortcutRecorder
-            value={shortcut}
-            onChange={setShortcut}
-            disabled={!enabled}
-          />
+          <ShortcutRecorder value={shortcut} onChange={setShortcut} disabled={!enabled} />
         </SettingsEntry>
       </SettingsSection>
 
@@ -128,9 +124,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
       <SettingsSection title="Retention">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-text-primary">
-              Keep entries for
-            </span>
+            <span className="text-sm text-text-primary">Keep entries for</span>
           </div>
           <Slider
             value={retentionDays}
@@ -161,17 +155,9 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
             {Object.entries(stats.entriesByFormat)
               .sort(([, a], [, b]) => b - a)
               .map(([format, count]) => (
-                <StatRow
-                  key={format}
-                  label={formatLabel(format)}
-                  value={String(count)}
-                  indent
-                />
+                <StatRow key={format} label={formatLabel(format)} value={String(count)} indent />
               ))}
-            <StatRow
-              label="Storage used"
-              value={formatBytes(stats.totalSizeBytes)}
-            />
+            <StatRow label="Storage used" value={formatBytes(stats.totalSizeBytes)} />
           </div>
         ) : (
           <span className="text-sm text-text-muted">Loading...</span>
@@ -233,9 +219,7 @@ function StatRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span
-        className={`text-sm ${indent ? "text-text-tertiary pl-3" : "text-text-secondary"}`}
-      >
+      <span className={`text-sm ${indent ? "text-text-tertiary pl-3" : "text-text-secondary"}`}>
         {label}
       </span>
       <span className="text-sm text-text-primary tabular-nums">{value}</span>
@@ -246,11 +230,17 @@ function StatRow({
 /** Capitalize a format name for display. */
 function formatLabel(format: string): string {
   switch (format) {
-    case "text": return "Text";
-    case "image": return "Images";
-    case "files": return "Files";
-    case "html": return "HTML";
-    case "rtf": return "Rich Text";
-    default: return format.charAt(0).toUpperCase() + format.slice(1);
+    case "text":
+      return "Text";
+    case "image":
+      return "Images";
+    case "files":
+      return "Files";
+    case "html":
+      return "HTML";
+    case "rtf":
+      return "Rich Text";
+    default:
+      return format.charAt(0).toUpperCase() + format.slice(1);
   }
 }

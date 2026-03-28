@@ -3,14 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { Suspense, useMemo, useState } from "react";
-import {
-  Cog6ToothIcon,
-  SwatchIcon,
-} from "@heroicons/react/24/outline";
-import {
-  getPluginSettingsComponent,
-  getPluginsWithSettings,
-} from "../plugins/registry";
+import { Cog6ToothIcon, SwatchIcon } from "@heroicons/react/24/outline";
+import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { GeneralSection } from "./sections/GeneralSection";
@@ -40,10 +34,7 @@ export function SettingsPanel() {
     <div className="flex h-screen font-sans antialiased bg-surface text-text-primary">
       {/* Drag region — macOS overlay titlebar. Covers the full width
           so the user can drag from anywhere along the top edge. */}
-      <div
-        data-tauri-drag-region
-        className="absolute inset-x-0 top-0 h-12 select-none z-10"
-      />
+      <div data-tauri-drag-region className="absolute inset-x-0 top-0 h-12 select-none z-10" />
 
       {/* Sidebar */}
       <aside className="w-[200px] shrink-0 border-r border-border pt-12 overflow-y-auto">
@@ -57,10 +48,7 @@ export function SettingsPanel() {
 
       {/* Content area */}
       <main className="flex-1 overflow-y-auto pt-12 px-6 pb-6">
-        <SectionContent
-          activeSection={activeSection}
-          pluginSections={pluginSections}
-        />
+        <SectionContent activeSection={activeSection} pluginSections={pluginSections} />
       </main>
     </div>
   );
@@ -98,11 +86,7 @@ function SectionContent({
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="text-text-muted text-sm">Loading settings…</div>
-      }
-    >
+    <Suspense fallback={<div className="text-text-muted text-sm">Loading settings…</div>}>
       <PluginSectionWrapper pluginId={plugin.id} Component={SettingsComponent} />
     </Suspense>
   );
@@ -125,10 +109,7 @@ function PluginSectionWrapper({
     usePluginSetting: ReturnType<typeof createPluginSettingHook>;
   }>;
 }) {
-  const usePluginSetting = useMemo(
-    () => createPluginSettingHook(pluginId),
-    [pluginId],
-  );
+  const usePluginSetting = useMemo(() => createPluginSettingHook(pluginId), [pluginId]);
 
   return <Component pluginId={pluginId} usePluginSetting={usePluginSetting} />;
 }
