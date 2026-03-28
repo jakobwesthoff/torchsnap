@@ -24,7 +24,7 @@ export default defineConfig(async () => ({
   },
 
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: resolve(__dirname, "launcher.html"),
         settings: resolve(__dirname, "settings.html"),
