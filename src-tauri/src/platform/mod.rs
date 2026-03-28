@@ -69,6 +69,31 @@ pub trait LauncherPanel {
 
     /// Whether the launcher panel is currently visible.
     fn is_visible(app: &tauri::AppHandle) -> anyhow::Result<bool>;
+
+    /// Set the launcher window's position and size in one step.
+    ///
+    /// The default implementation uses separate Tauri `set_position`
+    /// + `set_size` calls which may race. Platforms that support
+    /// atomic frame updates (e.g. macOS `setFrame:display:`) should
+    /// override this.
+    fn set_frame(
+        app: &tauri::AppHandle,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        use tauri::Manager;
+        let win = app
+            .get_webview_window("main")
+            .context("get launcher window")?;
+        win.set_position(tauri::LogicalPosition::new(x, y))
+            .context("set launcher position")?;
+        win.set_size(tauri::LogicalSize::new(width, height))
+            .context("set launcher size")?;
+        Ok(())
+    }
 }
 
 /// Abstraction over platform-specific system tray setup.

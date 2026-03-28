@@ -92,4 +92,60 @@ impl LauncherPanel for MacosLauncherPanel {
             .map_err(|e| anyhow::anyhow!("retrieve launcher panel: {e:?}"))?;
         Ok(panel.is_visible())
     }
+
+    /// Atomic position + size via `NSWindow.setFrame(_:display:)`.
+    ///
+    /// Avoids the race between separate `set_position` and
+    /// `set_size` calls that can cause a visible flash when the
+    /// window is resized from 1×1 on first show.
+    ///
+    /// Coordinates are in logical pixels with a top-left origin
+    /// (matching Tauri's convention). The flip to macOS bottom-left
+    /// coordinates uses the primary screen as reference, since
+    /// global display coordinates are relative to its bottom-left
+    /// corner.
+    ///
+    /// Dispatches to the main thread if not already there, since
+    /// AppKit calls require it.
+    fn set_frame(
+        app: &tauri::AppHandle,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            use objc2_app_kit::NSScreen;
+            use objc2_foundation::NSRect;
+            use tauri_nspanel::objc2::MainThreadMarker;
+
+            let Ok(panel) = handle.get_webview_panel("main") else {
+                eprintln!("set_frame: failed to retrieve launcher panel");
+                return;
+            };
+
+            // SAFETY: This closure runs inside `run_on_main_thread`,
+            // which guarantees main-thread execution.
+            let mtm = unsafe { MainThreadMarker::new_unchecked() };
+
+            // macOS global coordinates use bottom-left origin relative
+            // to the primary screen. Flip the top-left y coordinate.
+            let primary_height = NSScreen::mainScreen(mtm)
+                .map(|s| s.frame().size.height)
+                .unwrap_or(0.0);
+            let flipped_y = primary_height - y - height;
+
+            let frame = NSRect::new(
+                objc2_foundation::NSPoint::new(x, flipped_y),
+                objc2_foundation::NSSize::new(width, height),
+            );
+            panel.as_panel().setFrame_display(frame, true);
+        })
+        .context("dispatch set_frame to main thread")?;
+
+        Ok(())
+    }
 }
