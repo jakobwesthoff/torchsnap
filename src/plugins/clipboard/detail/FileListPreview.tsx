@@ -54,7 +54,7 @@ export function FileListPreview({
   return (
     <div
       ref={scrollRef}
-      className="w-[60%] overflow-y-auto p-4 scrollbar-accent flex flex-col items-center justify-center gap-4"
+      className="w-[60%] overflow-y-auto overflow-x-hidden p-4 scrollbar-accent flex flex-col items-center justify-center gap-4"
     >
       {/* ------------------------------------------------- */}
       {/* Icon area — Finder icon or multi-file placeholder  */}
@@ -75,7 +75,7 @@ export function FileListPreview({
       {/* ------------------------------------------------- */}
       {/* File list                                          */}
       {/* ------------------------------------------------- */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full min-w-0">
         <span className="text-xs text-text-muted select-none">
           {paths.length} {paths.length === 1 ? "file" : "files"}
         </span>

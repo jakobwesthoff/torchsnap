@@ -20,7 +20,7 @@ export function DisplayTextPreview({
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div ref={scrollRef} className="w-[60%] overflow-y-auto p-4 scrollbar-accent">
+    <div ref={scrollRef} className="w-[60%] overflow-y-auto overflow-x-hidden p-4 scrollbar-accent">
       <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words select-none font-mono leading-relaxed">
         {detail.displayText}
       </pre>
