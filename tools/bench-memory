@@ -144,7 +144,7 @@ if [[ "$SKIP_BUILD" == true ]]; then
     fi
 else
     echo "Building release app..."
-    (cd "$PROJECT_DIR" && bun run tauri build)
+    (cd "$PROJECT_DIR" && bun run tauri build -b app)
     echo
 fi
 
@@ -204,21 +204,29 @@ echo "Torchsnap PID: $APP_PID"
 # Step 5: Wait for the control socket
 # =========================================================
 
+# Wait for the control socket to appear AND accept connections.
+# The socket file may exist before the server calls accept(), so
+# we retry the health check rather than just testing -S.
 echo "Waiting for control socket..."
+CONTROL_READY=false
 for _ in $(seq 1 50); do
     if [[ -S "$SOCK" ]]; then
-        break
+        # Try an actual connection — suppress errors since the
+        # server may not be accepting yet.
+        if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' \
+            | socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
+            CONTROL_READY=true
+            break
+        fi
     fi
     sleep 0.2
 done
 
-if [[ ! -S "$SOCK" ]]; then
-    echo "Error: Control socket did not appear within 10 seconds." >&2
+if [[ "$CONTROL_READY" != true ]]; then
+    echo "Error: Control API did not become ready within 10 seconds." >&2
     exit 1
 fi
 
-# Quick health check
-send "status"
 echo "Control API ready."
 
 # =========================================================
