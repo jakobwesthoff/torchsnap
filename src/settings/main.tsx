@@ -4,6 +4,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { initStore } from "../settingsStore";
 import { SettingsPanel } from "./SettingsPanel";
@@ -22,6 +23,15 @@ async function main() {
       </ThemeProvider>
     </StrictMode>,
   );
+
+  // Signal the Rust backend that the settings UI has rendered so it
+  // can make the window visible without flashing an empty frame.
+  // NOTE: This fires right after `render()` returns, which schedules
+  // the React tree but may not have painted yet. In practice the
+  // round-trip through Tauri's event system and `run_on_main_thread`
+  // adds enough latency that the first frame is composited before
+  // the window becomes visible — but this is not guaranteed.
+  await getCurrentWebviewWindow().emit("react-ready");
 }
 
 main();
