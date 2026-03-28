@@ -424,8 +424,7 @@ impl CatalogPlugin for ClipboardPlugin {
                     serde_json::from_value(payload).context("parse search payload")?;
 
                 let history = state.search_history(params.query.as_deref())?;
-                let payload =
-                    serde_json::to_value(&history).context("serialize search results")?;
+                let payload = serde_json::to_value(&history).context("serialize search results")?;
 
                 // Push initial results through the channel — same path
                 // as subsequent updates from refresh_active_query.
@@ -437,8 +436,10 @@ impl CatalogPlugin for ClipboardPlugin {
                 // Replacing the previous ActiveQuery drops the old
                 // channel, which closes it on the frontend side.
                 {
-                    let mut active =
-                        state.active_query.lock().expect("active_query not poisoned");
+                    let mut active = state
+                        .active_query
+                        .lock()
+                        .expect("active_query not poisoned");
                     *active = Some(storage::ActiveQuery {
                         channel,
                         query: params.query,
