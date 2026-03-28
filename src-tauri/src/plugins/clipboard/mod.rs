@@ -12,7 +12,7 @@
 // Module layout:
 //   formats  — format-agnostic extraction and conversion logic
 //   schema   — database migrations, serialized types, constants
-//   storage  — SharedState (SQL + file storage + subscribers)
+//   storage  — SharedState (SQL + file storage + active query)
 //   watcher  — clipboard change handler (background thread)
 //
 // Lifecycle:
@@ -47,7 +47,7 @@ use crate::settings_notifier::SettingsWatch;
 use crate::storage::{FileStorage, SqlStorage};
 
 use self::formats::captured_to_clipboard_contents;
-use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SubscribePayload};
+use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
@@ -296,7 +296,7 @@ impl CatalogPlugin for ClipboardPlugin {
         let shared = Arc::new(SharedState {
             sql,
             files,
-            subscribers: Mutex::new(Vec::new()),
+            active_query: Mutex::new(None),
         });
 
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
@@ -413,20 +413,39 @@ impl CatalogPlugin for ClipboardPlugin {
 
         match method {
             // -----------------------------------------------
-            // Subscribe: store the channel for live updates,
-            // return the current history as the initial snapshot.
+            // Search: run a filtered query and stream results
+            // through the channel. The channel is stored as the
+            // active query so that data changes (new entry,
+            // delete, clear) can re-run the query and push
+            // updated results automatically.
             // -----------------------------------------------
-            "subscribe" => {
-                let params: SubscribePayload =
-                    serde_json::from_value(payload).context("parse subscribe payload")?;
-
-                {
-                    let mut subs = state.subscribers.lock().expect("subscribers not poisoned");
-                    subs.push(channel);
-                }
+            "search" => {
+                let params: SearchPayload =
+                    serde_json::from_value(payload).context("parse search payload")?;
 
                 let history = state.search_history(params.query.as_deref())?;
-                Ok(serde_json::to_value(&history).context("serialize history")?)
+                let payload =
+                    serde_json::to_value(&history).context("serialize search results")?;
+
+                // Push initial results through the channel — same path
+                // as subsequent updates from refresh_active_query.
+                channel
+                    .send(payload)
+                    .context("send initial search results")?;
+
+                // Store the channel for future data-change pushes.
+                // Replacing the previous ActiveQuery drops the old
+                // channel, which closes it on the frontend side.
+                {
+                    let mut active =
+                        state.active_query.lock().expect("active_query not poisoned");
+                    *active = Some(storage::ActiveQuery {
+                        channel,
+                        query: params.query,
+                    });
+                }
+
+                Ok(serde_json::Value::Null)
             }
 
             // -----------------------------------------------
@@ -441,13 +460,14 @@ impl CatalogPlugin for ClipboardPlugin {
             }
 
             // -----------------------------------------------
-            // Delete: remove an entry and notify subscribers.
+            // Delete: remove an entry and refresh the active
+            // query so the UI reflects the change.
             // -----------------------------------------------
             "delete" => {
                 let params: EntryIdPayload =
                     serde_json::from_value(payload).context("parse delete payload")?;
                 state.delete_entry(&params.id)?;
-                state.notify_subscribers();
+                state.refresh_active_query();
                 Ok(serde_json::Value::Null)
             }
 
@@ -500,11 +520,11 @@ impl CatalogPlugin for ClipboardPlugin {
 
             // -----------------------------------------------
             // Clear history: delete all entries and files,
-            // then notify subscribers so the UI updates.
+            // then refresh the active query so the UI updates.
             // -----------------------------------------------
             "clear_history" => {
                 state.clear_all()?;
-                state.notify_subscribers();
+                state.refresh_active_query();
                 Ok(serde_json::Value::Null)
             }
 

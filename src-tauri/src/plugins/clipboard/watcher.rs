@@ -7,7 +7,7 @@
 //
 // Background handler that responds to clipboard changes,
 // captures all available formats, stores the entry, and
-// notifies subscriber channels.
+// refreshes the active query so the UI updates.
 // =========================================================
 
 use std::sync::Arc;
@@ -73,7 +73,7 @@ impl WatcherHandler {
         let id = ulid::Ulid::new().to_string().to_lowercase();
         self.state
             .store_entry(&id, &result.display_text, &result.formats)?;
-        self.state.notify_subscribers();
+        self.state.refresh_active_query();
 
         Ok(())
     }

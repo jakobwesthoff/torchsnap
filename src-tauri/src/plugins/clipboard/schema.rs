@@ -89,9 +89,9 @@ pub const LIST_DISPLAY_MAX_CHARS: usize = 40;
 /// Content larger than this goes to FileStorage instead of inline BLOB.
 pub const INLINE_STORAGE_MAX_BYTES: usize = 256 * 1024;
 
-/// Lightweight entry used for list display. Sent via subscribe/notify
-/// to keep payload size minimal — detail data is loaded on demand via
-/// `load_full_entry`.
+/// Lightweight entry used for list display. Sent through the active
+/// query channel to keep payload size minimal — detail data is loaded
+/// on demand via `load_full_entry`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardListEntry {
@@ -153,7 +153,7 @@ pub struct ClipboardStats {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SubscribePayload {
+pub struct SearchPayload {
     #[serde(default)]
     pub query: Option<String>,
 }

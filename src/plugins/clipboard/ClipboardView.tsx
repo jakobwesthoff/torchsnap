@@ -7,8 +7,9 @@
  *
  * Split-pane layout: left panel is a virtually-scrolled entry list,
  * right panel shows a detail preview of the selected entry. The list
- * subscribes to lightweight `ClipboardListEntry` updates via
- * `usePluginStream`. Full entry detail is loaded on demand when the
+ * searches lightweight `ClipboardListEntry` data via `usePluginStream`,
+ * which also keeps a channel open for live updates when the underlying
+ * data changes. Full entry detail is loaded on demand when the
  * selection changes, with an LRU cache to avoid re-fetching during
  * rapid keyboard navigation.
  *
@@ -218,16 +219,18 @@ export default function ClipboardView({
   const detailRef = useRef<HTMLDivElement>(null);
 
   // Stable payload reference — only changes when the query does.
-  const subscribePayload = useMemo(
+  const searchPayload = useMemo(
     () => ({ query: query || null }),
     [query],
   );
 
-  // Subscribe to lightweight list entries from the backend.
-  const history = usePluginStream<
+  // Search clipboard history. Results are pushed through the channel
+  // both initially and on data changes (new entry, delete, clear).
+  const { snapshot: history } = usePluginStream<
     { query: string | null },
+    null,
     ClipboardListEntry[]
-  >(sendMessage, "subscribe", subscribePayload);
+  >(sendMessage, "search", searchPayload);
 
   const entries = history ?? [];
 
