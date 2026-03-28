@@ -12,6 +12,7 @@ mod settings;
 mod settings_notifier;
 mod storage;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
@@ -55,21 +56,37 @@ struct LauncherLayout {
 
 /// Managed state wrapper. The `OnceLock` is empty until the
 /// frontend sends layout dimensions, at which point it is set
-/// exactly once.
-struct LauncherLayoutState(OnceLock<LauncherLayout>);
+/// exactly once. If a show was requested before the layout
+/// arrived, `show_pending` is set so that `launcher_set_layout`
+/// can trigger the show once the dimensions are available.
+struct LauncherLayoutState {
+    layout: OnceLock<LauncherLayout>,
+    show_pending: AtomicBool,
+}
 
 impl LauncherLayoutState {
     fn new() -> Self {
-        Self(OnceLock::new())
+        Self {
+            layout: OnceLock::new(),
+            show_pending: AtomicBool::new(false),
+        }
     }
 
     fn set(&self, layout: LauncherLayout) {
         // Ignore if already set (e.g. hot-reload sending it twice).
-        let _ = self.0.set(layout);
+        let _ = self.layout.set(layout);
     }
 
     fn get(&self) -> Option<&LauncherLayout> {
-        self.0.get()
+        self.layout.get()
+    }
+
+    fn request_show(&self) {
+        self.show_pending.store(true, Ordering::Relaxed);
+    }
+
+    fn take_pending_show(&self) -> bool {
+        self.show_pending.swap(false, Ordering::Relaxed)
     }
 }
 
@@ -263,15 +280,22 @@ fn launcher_set_layout(
     card_top_offset: f64,
     app: tauri::AppHandle,
 ) {
-    println!(
-        "launcher layout received: {window_width}×{window_height} (card top offset: {card_top_offset})"
-    );
-    let state = app.state::<LauncherLayoutState>();
-    state.set(LauncherLayout {
+    let layout = LauncherLayout {
         window_width,
         window_height,
         card_top_offset,
-    });
+    };
+    let state = app.state::<LauncherLayoutState>();
+    state.set(layout);
+
+    // If a show was requested before the layout arrived, trigger
+    // it now that we have the dimensions.
+    if state.take_pending_show() {
+        position_launcher_on_cursor_monitor(&app, &layout);
+        if let Err(e) = PlatformLauncherPanel::show(&app) {
+            eprintln!("failed to show launcher (deferred): {e:#}");
+        }
+    }
 }
 
 pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
@@ -282,11 +306,11 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
         return;
     }
 
-    // Wait for the frontend to report layout dimensions before
-    // showing for the first time. This prevents flashing an
-    // unsized or mis-sized window.
-    let Some(layout) = app.state::<LauncherLayoutState>().get().copied() else {
-        eprintln!("launcher layout not yet received from frontend, ignoring show");
+    // If the frontend hasn't reported layout dimensions yet,
+    // queue the show so it fires once the layout arrives.
+    let layout_state = app.state::<LauncherLayoutState>();
+    let Some(layout) = layout_state.get().copied() else {
+        layout_state.request_show();
         return;
     };
 
