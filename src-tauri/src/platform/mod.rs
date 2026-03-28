@@ -70,6 +70,22 @@ pub trait LauncherPanel {
     /// Whether the launcher panel is currently visible.
     fn is_visible(app: &tauri::AppHandle) -> anyhow::Result<bool>;
 
+    /// Force the webview to composite its first frame while the
+    /// panel remains visually hidden.
+    ///
+    /// WebKit may defer full compositor initialization until the
+    /// window is shown for the first time, causing a brief flash
+    /// of empty content on the first real show. This method makes
+    /// the window briefly "visible" to the compositor without the
+    /// user seeing it, so that subsequent shows are flicker-free.
+    ///
+    /// Should be called once after the layout dimensions are known
+    /// and the frame has been set, but before the first real show.
+    /// The default implementation is a no-op.
+    fn warm_up(_app: &tauri::AppHandle) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     /// Set the launcher window's position and size in one step.
     ///
     /// The default implementation uses separate Tauri `set_position`

@@ -288,8 +288,15 @@ fn launcher_set_layout(
     let state = app.state::<LauncherLayoutState>();
     state.set(layout);
 
+    // Set the frame and warm up the compositor so that the first
+    // real show has no flash of empty content.
+    position_launcher_on_cursor_monitor(&app, &layout);
+    if let Err(e) = PlatformLauncherPanel::warm_up(&app) {
+        eprintln!("failed to warm up launcher: {e:#}");
+    }
+
     // If a show was requested before the layout arrived, trigger
-    // it now that we have the dimensions.
+    // it now that the window is ready.
     if state.take_pending_show() {
         position_launcher_on_cursor_monitor(&app, &layout);
         if let Err(e) = PlatformLauncherPanel::show(&app) {
