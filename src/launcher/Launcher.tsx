@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
+import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
@@ -131,10 +132,10 @@ export function Launcher() {
     setQuery("");
   }, []);
 
-  // Plugin message handler — wraps the Tauri invoke with a
-  // streaming channel so plugins can push live updates.
+  // Plugin message handler — delegates to the shared utility
+  // with the active plugin view as the source.
   const sendMessage = useCallback(
-    async <TPayload = unknown, TResult = unknown, TStream = never>(
+    <TPayload = unknown, TResult = unknown, TStream = never>(
       method: string,
       payload: TPayload,
       onMessage?: (msg: TStream) => void,
@@ -143,17 +144,12 @@ export function Launcher() {
         throw new Error("sendMessage called without an active plugin view");
       }
 
-      const channel = new Channel<TStream>();
-      if (onMessage) {
-        channel.onmessage = onMessage;
-      }
-
-      return invoke<TResult>("plugin_message", {
-        source: customPluginView,
+      return sendPluginMessage<TPayload, TResult, TStream>(
+        customPluginView,
         method,
         payload,
-        channel,
-      });
+        onMessage,
+      );
     },
     [customPluginView],
   );

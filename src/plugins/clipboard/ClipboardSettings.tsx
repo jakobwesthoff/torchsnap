@@ -14,9 +14,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
-
 import type { PluginSettingsProps } from "../types";
+import { sendPluginMessage } from "../../lib/pluginMessage";
 import { SettingsSection } from "../../components/SettingsSection";
 import { SettingsEntry } from "../../components/SettingsEntry";
 import { Switch } from "../../components/Switch";
@@ -39,13 +38,8 @@ interface ClipboardStats {
 const PLUGIN_ID = "clipboard-manager";
 
 /** Send a message to the clipboard plugin's backend handler. */
-async function pluginMessage<T>(method: string, payload: unknown = {}): Promise<T> {
-  return invoke<T>("plugin_message", {
-    source: PLUGIN_ID,
-    method,
-    payload,
-    channel: new Channel(),
-  });
+function pluginMessage<T>(method: string, payload: unknown = {}): Promise<T> {
+  return sendPluginMessage<unknown, T>(PLUGIN_ID, method, payload);
 }
 
 /** Format a byte count as a human-readable string. */
