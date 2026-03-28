@@ -84,11 +84,27 @@ export async function initStore(): Promise<void> {
   // Install the cross-window event listener. When any webview writes
   // a setting, all webviews (including the originator) re-read the
   // value and update their caches + subscribers.
-  await listen<SettingsChangedPayload>("settings-changed", async (event) => {
-    const value = await store!.get<unknown>(event.payload.key);
-    cache.set(event.payload.key, value);
-    notifyListeners(event.payload.key, value);
-  });
+  const unlisten = await listen<SettingsChangedPayload>(
+    "settings-changed",
+    async (event) => {
+      const value = await store!.get<unknown>(event.payload.key);
+      cache.set(event.payload.key, value);
+      notifyListeners(event.payload.key, value);
+    },
+  );
+
+  // During Vite HMR the module is re-evaluated from scratch, resetting
+  // all module-level state (`store` goes back to `null`). Without
+  // cleanup the old listener would stay registered while `initStore`
+  // runs again and adds a second one. `import.meta.hot.dispose` runs
+  // just before the old module is discarded, giving us a chance to
+  // remove the stale listener.
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      unlisten();
+      store = null;
+    });
+  }
 }
 
 // =========================================================

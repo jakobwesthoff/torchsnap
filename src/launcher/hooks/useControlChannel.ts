@@ -16,7 +16,7 @@
  * itself never changes.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 interface UseControlChannelParams {
@@ -32,20 +32,34 @@ export function useControlChannel({
   resetState,
   setQuery,
 }: UseControlChannelParams) {
+  // Keep stable refs to the callbacks so the effect can run exactly
+  // once while always dispatching through the latest functions.
+  const resetStateRef = useRef(resetState);
+  resetStateRef.current = resetState;
+  const setQueryRef = useRef(setQuery);
+  setQueryRef.current = setQuery;
+
   useEffect(() => {
     const channel = new Channel<ControlCommand>();
 
     channel.onmessage = (command) => {
       switch (command.type) {
         case "dismiss":
-          resetState();
+          resetStateRef.current();
           break;
         case "setQuery":
-          setQuery(command.text);
+          setQueryRef.current(command.text);
           break;
       }
     };
 
     invoke("control_subscribe", { channel });
-  }, [resetState, setQuery]);
+
+    // The backend replaces the old channel on re-subscribe, so there
+    // is no explicit unsubscribe needed. Silencing the handler is
+    // enough to prevent leaking closures if this ever re-runs.
+    return () => {
+      channel.onmessage = () => {};
+    };
+  }, []);
 }
