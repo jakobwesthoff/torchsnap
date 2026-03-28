@@ -83,5 +83,5 @@ asset-tray-icon:
     # convert to an alpha mask where luminance becomes opacity.
     tmp=$(mktemp /tmp/tray-resized-XXXXXX.png)
     magick "$src" -filter Lanczos -resize 44x44 "$tmp"
-    scripts/png-to-alpha-mask "$tmp" "$tray"
+    tools/png-to-alpha-mask "$tmp" "$tray"
     rm -f "$tmp"
