@@ -210,16 +210,14 @@ mod tests {
     #[test]
     fn watch_returns_initial_value() {
         let notifier = SettingsNotifier::new();
-        let watch: SettingsWatch<u32> =
-            notifier.watch_with_initial("retention", Value::from(30));
+        let watch: SettingsWatch<u32> = notifier.watch_with_initial("retention", Value::from(30));
         assert_eq!(watch.get(), 30);
     }
 
     #[test]
     fn notify_updates_value() {
         let notifier = SettingsNotifier::new();
-        let watch: SettingsWatch<u32> =
-            notifier.watch_with_initial("retention", Value::from(30));
+        let watch: SettingsWatch<u32> = notifier.watch_with_initial("retention", Value::from(30));
 
         notifier.notify("retention", Value::from(60));
         assert_eq!(watch.get(), 60);
@@ -228,8 +226,7 @@ mod tests {
     #[test]
     fn notify_unknown_key_is_noop() {
         let notifier = SettingsNotifier::new();
-        let watch: SettingsWatch<bool> =
-            notifier.watch_with_initial("enabled", Value::from(true));
+        let watch: SettingsWatch<bool> = notifier.watch_with_initial("enabled", Value::from(true));
 
         // Notifying a different key should not affect the watched key.
         notifier.notify("other_key", Value::from(false));
@@ -239,10 +236,8 @@ mod tests {
     #[test]
     fn multiple_receivers_same_key() {
         let notifier = SettingsNotifier::new();
-        let w1: SettingsWatch<u32> =
-            notifier.watch_with_initial("retention", Value::from(30));
-        let w2: SettingsWatch<u32> =
-            notifier.watch_with_initial("retention", Value::from(999));
+        let w1: SettingsWatch<u32> = notifier.watch_with_initial("retention", Value::from(30));
+        let w2: SettingsWatch<u32> = notifier.watch_with_initial("retention", Value::from(999));
 
         // w2 should join the existing channel, ignoring the new initial.
         assert_eq!(w1.get(), 30);
@@ -256,8 +251,7 @@ mod tests {
     #[test]
     fn cloned_receiver_sees_updates() {
         let notifier = SettingsNotifier::new();
-        let w1: SettingsWatch<String> =
-            notifier.watch_with_initial("name", Value::from("alice"));
+        let w1: SettingsWatch<String> = notifier.watch_with_initial("name", Value::from("alice"));
         let w2 = w1.clone();
 
         notifier.notify("name", Value::from("bob"));
@@ -268,10 +262,8 @@ mod tests {
     #[test]
     fn independent_keys_do_not_interfere() {
         let notifier = SettingsNotifier::new();
-        let w_a: SettingsWatch<u32> =
-            notifier.watch_with_initial("a", Value::from(1));
-        let w_b: SettingsWatch<u32> =
-            notifier.watch_with_initial("b", Value::from(2));
+        let w_a: SettingsWatch<u32> = notifier.watch_with_initial("a", Value::from(1));
+        let w_b: SettingsWatch<u32> = notifier.watch_with_initial("b", Value::from(2));
 
         notifier.notify("a", Value::from(10));
         assert_eq!(w_a.get(), 10);

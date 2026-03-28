@@ -57,7 +57,7 @@ export function useSearch(query: string): UseSearchResult {
       }
     };
 
-    invoke("search", { query, onResults: channel });
+    invoke("search_query", { query, onResults: channel });
   }, [query]);
 
   return { results, customPluginView, matchedPrefix, loading };

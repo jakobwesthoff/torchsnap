@@ -13,6 +13,7 @@ import { useSetting } from "../hooks/useSetting";
 import { getPluginComponent } from "../plugins/registry";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
+import { useControlChannel } from "./hooks/useControlChannel";
 import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
@@ -52,15 +53,22 @@ export function Launcher() {
     null,
   );
 
+  const resetState = useCallback(() => {
+    setQuery("");
+    setSelectedIndex(0);
+    setExecutePluginView(null);
+  }, []);
+
   const { dismiss } = useWindowLifecycle({
     inputRef,
     mouseActiveRef,
-    resetState: useCallback(() => {
-      setQuery("");
-      setSelectedIndex(0);
-      setExecutePluginView(null);
-    }, []),
+    resetState,
   });
+
+  // =========================================================
+  // Control API — external command channel
+  // =========================================================
+  useControlChannel({ resetState, setQuery });
 
   // =========================================================
   // Plugin activation via global shortcut
@@ -133,7 +141,7 @@ export function Launcher() {
     async (entryId: string, actionId: ActionId) => {
       if (!customPluginView) return;
 
-      const postAction = await invoke<string>("execute_action", {
+      const postAction = await invoke<string>("search_execute", {
         source: customPluginView,
         entryId,
         actionId,
@@ -191,7 +199,7 @@ export function Launcher() {
       const action = target.actions[actionIndex];
       if (!action) return;
 
-      const postAction = await invoke<string>("execute_action", {
+      const postAction = await invoke<string>("search_execute", {
         source: target.source,
         entryId: target.id,
         actionId: action.id,

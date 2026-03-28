@@ -359,11 +359,9 @@ impl SharedState {
         // Total entries.
         let total_entries: i64 = self
             .sql
-            .query_map(
-                "SELECT COUNT(*) FROM clipboard_entries",
-                &[],
-                |row| row.get(0),
-            )?
+            .query_map("SELECT COUNT(*) FROM clipboard_entries", &[], |row| {
+                row.get(0)
+            })?
             .into_iter()
             .next()
             .unwrap_or(0);
