@@ -23,15 +23,55 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------
+# =========================================================
+# Table rendering
+#
+# Reusable functions for printing bordered ASCII tables.
+# Feed tab-separated rows, get auto-sized columns with
+# box-drawing separator lines.
+# =========================================================
+
+# Print a separator line matching the column widths of an
+# already-formatted table. Reads the first line of $1 to
+# determine the width, then prints a line of character $2.
+_table_separator() {
+    local formatted="$1"
+    local char="$2"
+    local first_line
+    first_line=$(echo "$formatted" | head -1)
+    printf '%s\n' "${first_line//?/$char}"
+}
+
+# Render a bordered table from tab-separated input.
+#
+# Expects a newline-separated string of tab-delimited rows.
+# The first row is treated as the header, the last row as a
+# footer (totals). All rows in between are data rows.
+#
+# Uses `column -t` for auto-sizing, then draws ═ lines for
+# outer borders and ─ lines for inner separators.
+render_table() {
+    local tsv_rows="$1"
+    local formatted
+    formatted=$(echo "$tsv_rows" | column -t -s$'\t')
+
+    local total_lines
+    total_lines=$(echo "$formatted" | wc -l | tr -d ' ')
+
+    _table_separator "$formatted" "═"
+    echo "$formatted" | head -1
+    _table_separator "$formatted" "─"
+    echo "$formatted" | tail -n +"2" | head -n "$((total_lines - 2))"
+    _table_separator "$formatted" "─"
+    echo "$formatted" | tail -1
+    _table_separator "$formatted" "═"
+}
+
+# =========================================================
+# CLI
+# =========================================================
 
 DESCRIPTION=""
-
-# ---------------------------------------------------------
-# Usage
-# ---------------------------------------------------------
 
 usage() {
     cat <<'EOF'
@@ -44,10 +84,6 @@ Options:
   -h, --help                 Show this help
 EOF
 }
-
-# ---------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------
 
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
@@ -84,39 +120,18 @@ if ! command -v jq &>/dev/null; then
     exit 1
 fi
 
-# ---------------------------------------------------------
-# Extract metadata and compute statistics
+# =========================================================
+# Extract statistics from JSON
 #
-# The JSON structure from `footprint --sample -j` is:
-#
-#   {
-#     "samples": [
-#       {
-#         "start_time": { "date": "...", ... },
-#         "processes": [
-#           {
-#             "name": "torchsnap",
-#             "pid": 68227,
-#             "auxiliary": {
-#               "phys_footprint": 36604544,
-#               "phys_footprint_peak": 45304192
-#             }
-#           }, ...
-#         ]
-#       }, ...
-#     ]
-#   }
-# ---------------------------------------------------------
+# A single jq invocation computes per-process min/max/avg
+# and totals, then emits tab-separated lines tagged with
+# META / PROC / TOTAL for easy bash parsing.
+# =========================================================
 
-# Pull all the numbers we need in a single jq invocation to
-# avoid repeated parsing of potentially large JSON files.
 REPORT_DATA=$(jq -r '
-    # Metadata
     (.samples | length) as $num_samples |
     (.samples[0].start_time.date // "unknown") as $start_date |
-    (.samples[-1].start_time.date // "unknown") as $end_date |
 
-    # Per-process statistics
     [
         .samples[].processes[] | {
             name: .name,
@@ -124,17 +139,12 @@ REPORT_DATA=$(jq -r '
             footprint: .auxiliary.phys_footprint
         }
     ] |
-
-    # Group by process (keyed on PID for uniqueness)
     group_by(.pid) |
-
-    # Compute stats per process, plus a running total
     . as $groups |
     {
         meta: {
             num_samples: $num_samples,
-            start_date: $start_date,
-            end_date: $end_date
+            start_date: $start_date
         },
         processes: [
             $groups[] | {
@@ -156,120 +166,68 @@ REPORT_DATA=$(jq -r '
         }
     } |
 
-    # Output as tab-separated lines for easy parsing in bash.
-    # First line: metadata
-    "META\t\(.meta.num_samples)\t\(.meta.start_date)\t\(.meta.end_date)",
+    "META\t\(.meta.num_samples)\t\(.meta.start_date)",
 
-    # Per-process lines
     (.processes[] |
         "PROC\t\(.name)\t\(.pid)\t\(.min)\t\(.max)\t\(.avg)\t\(.first)\t\(.last)"
     ),
 
-    # Totals line
     "TOTAL\t\(.totals.min)\t\(.totals.max)\t\(.totals.avg)\t\(.totals.first)\t\(.totals.last)"
 ' "$JSON_FILE")
 
-# ---------------------------------------------------------
+# =========================================================
 # Format helpers
-# ---------------------------------------------------------
+# =========================================================
 
-# Convert bytes to a human-readable MB string with one decimal
 fmt_mb() {
-    local bytes="$1"
-    awk "BEGIN { printf \"%.1f MB\", $bytes / 1048576 }"
+    awk "BEGIN { printf \"%.1f MB\", $1 / 1048576 }"
 }
 
-# Format a delta in bytes as a signed MB string
 fmt_delta() {
-    local bytes="$1"
-    awk "BEGIN { d = $bytes / 1048576; printf \"%+.1f MB\", d }"
+    awk "BEGIN { printf \"%+.1f MB\", $1 / 1048576 }"
 }
 
-# ---------------------------------------------------------
-# Parse the jq output
-# ---------------------------------------------------------
+# =========================================================
+# Build table rows
+#
+# Parse the tagged jq output into tab-separated table rows.
+# =========================================================
 
 NUM_SAMPLES=""
 START_DATE=""
-_END_DATE=""
+ROWS="Process	PID	Min	Max	Avg	Delta"
 
-declare -a PROC_NAMES=()
-declare -a PROC_PIDS=()
-declare -a PROC_MINS=()
-declare -a PROC_MAXS=()
-declare -a PROC_AVGS=()
-declare -a PROC_DELTAS=()
-
-TOTAL_MIN=""
-TOTAL_MAX=""
-TOTAL_AVG=""
-TOTAL_DELTA=""
-
-while IFS=$'\t' read -r type rest; do
-    case "$type" in
+while IFS=$'\t' read -r tag rest; do
+    case "$tag" in
         META)
-            IFS=$'\t' read -r NUM_SAMPLES START_DATE _END_DATE <<< "$rest"
+            IFS=$'\t' read -r NUM_SAMPLES START_DATE <<< "$rest"
             ;;
         PROC)
             IFS=$'\t' read -r name pid min max avg first last <<< "$rest"
-            PROC_NAMES+=("$name")
-            PROC_PIDS+=("$pid")
-            PROC_MINS+=("$min")
-            PROC_MAXS+=("$max")
-            PROC_AVGS+=("$avg")
-            PROC_DELTAS+=("$((last - first))")
+            ROWS+=$'\n'"${name}	${pid}	$(fmt_mb "$min")	$(fmt_mb "$max")	$(fmt_mb "$avg")	$(fmt_delta "$((last - first))")"
             ;;
         TOTAL)
-            IFS=$'\t' read -r TOTAL_MIN TOTAL_MAX TOTAL_AVG total_first total_last <<< "$rest"
-            TOTAL_DELTA="$((total_last - total_first))"
+            IFS=$'\t' read -r t_min t_max t_avg t_first t_last <<< "$rest"
+            ROWS+=$'\n'"TOTAL		$(fmt_mb "$t_min")	$(fmt_mb "$t_max")	$(fmt_mb "$t_avg")	$(fmt_delta "$((t_last - t_first))")"
             ;;
     esac
 done <<< "$REPORT_DATA"
 
-# ---------------------------------------------------------
-# Render the ASCII table
-# ---------------------------------------------------------
+# =========================================================
+# Output
+# =========================================================
 
-WIDTH=78
-DOUBLE_LINE=$(printf '═%.0s' $(seq 1 "$WIDTH"))
-SINGLE_LINE=$(printf '─%.0s' $(seq 1 "$WIDTH"))
+# Report header (description + timestamp)
+{
+    if [[ -n "$DESCRIPTION" ]]; then
+        echo "  $DESCRIPTION"
+    fi
+    # Truncate ISO date to date + time (drop fractional seconds and timezone)
+    local_date="${START_DATE%%.*}"
+    local_date="${local_date%%+*}"
+    echo "  ${local_date} | ${NUM_SAMPLES} samples"
+}
 
-# Truncate the ISO date to just date + time (no timezone, no fractional seconds)
-START_SHORT="${START_DATE%%.*}"
-START_SHORT="${START_SHORT%%+*}"
-
-# Header block
-echo "$DOUBLE_LINE"
-if [[ -n "$DESCRIPTION" ]]; then
-    printf "  %s\n" "$DESCRIPTION"
-fi
-printf "  %s | %s samples\n" "$START_SHORT" "$NUM_SAMPLES"
-echo "$DOUBLE_LINE"
-
-# Column headers
-printf "%-36s %7s %9s %9s %9s %9s\n" \
-    "Process" "PID" "Min" "Max" "Avg" "Delta"
-echo "$SINGLE_LINE"
-
-# Process rows
-for i in "${!PROC_NAMES[@]}"; do
-    printf "%-36s %7s %9s %9s %9s %9s\n" \
-        "${PROC_NAMES[$i]}" \
-        "${PROC_PIDS[$i]}" \
-        "$(fmt_mb "${PROC_MINS[$i]}")" \
-        "$(fmt_mb "${PROC_MAXS[$i]}")" \
-        "$(fmt_mb "${PROC_AVGS[$i]}")" \
-        "$(fmt_delta "${PROC_DELTAS[$i]}")"
-done
-
-# Totals row
-echo "$SINGLE_LINE"
-printf "%-36s %7s %9s %9s %9s %9s\n" \
-    "TOTAL" \
-    "" \
-    "$(fmt_mb "$TOTAL_MIN")" \
-    "$(fmt_mb "$TOTAL_MAX")" \
-    "$(fmt_mb "$TOTAL_AVG")" \
-    "$(fmt_delta "$TOTAL_DELTA")"
-echo "$DOUBLE_LINE"
 echo
+
+render_table "$ROWS"
