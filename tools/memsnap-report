@@ -212,7 +212,7 @@ while IFS=$'\t' read -r tag rest; do
             ;;
         TOTAL)
             IFS=$'\t' read -r t_min t_max t_avg t_first t_last <<< "$rest"
-            ROWS+=$'\n'"TOTAL		$(fmt_mb "$t_min")	$(fmt_mb "$t_max")	$(fmt_mb "$t_avg")	$(fmt_delta "$((t_last - t_first))")"
+            ROWS+=$'\n'"TOTAL	 	$(fmt_mb "$t_min")	$(fmt_mb "$t_max")	$(fmt_mb "$t_avg")	$(fmt_delta "$((t_last - t_first))")"
             ;;
     esac
 done <<< "$REPORT_DATA"
