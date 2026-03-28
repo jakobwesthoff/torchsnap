@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const appWindow = getCurrentWebviewWindow();
@@ -30,7 +31,10 @@ export function useWindowLifecycle({
   const dismiss = useCallback(() => {
     setVisible(false);
     resetState();
-    appWindow.hide();
+    // Route through the Rust-side `launcher_hide` command rather than
+    // `appWindow.hide()` so that the window is also shrunk to 1×1 px,
+    // prompting WebKit to release its backing stores. See ADR 0020.
+    invoke("launcher_hide");
   }, [resetState]);
 
   useEffect(() => {
