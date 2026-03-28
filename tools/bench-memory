@@ -4,50 +4,85 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # =========================================================
-# bench-memory — Automated memory benchmark for Torchsnap
+# bench-memory — End-to-end memory benchmark for Torchsnap
 #
-# Orchestrates a full measurement run:
-# 1. Starts memsnap (memory sampler) in the background
-# 2. Records a baseline while the launcher is hidden
-# 3. Drives a test scenario via the Control API:
-#    show → query → dismiss → idle
-# 4. Stops the sampler
-# 5. Prints a summary of per-process memory by phase
+# Performs a full benchmark cycle:
+# 1. Builds the release app
+# 2. Ensures the Control API is enabled in settings
+# 3. Launches the app
+# 4. Waits for the control socket to become available
+# 5. Starts memory sampling in the background
+# 6. Runs a realistic usage scenario via the Control API
+# 7. Stops sampling and kills the app
+# 8. Appends a formatted report to the benchmark log
+#
+# Usage:
+#   tools/bench-memory -d "baseline, no optimizations"
 #
 # Prerequisites:
-#   - Torchsnap running with Control API enabled
-#   - socat installed (brew install socat)
+#   - socat (brew install socat)
+#   - jq (brew install jq)
 # =========================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SOCK="$HOME/Library/Application Support/app.torchsnap/control.sock"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+APP_BUNDLE="$PROJECT_DIR/src-tauri/target/release/bundle/macos/torchsnap.app"
+SETTINGS_DIR="$HOME/Library/Application Support/app.torchsnap"
+SETTINGS_FILE="$SETTINGS_DIR/settings.json"
+SOCK="$SETTINGS_DIR/control.sock"
+LOG_FILE="$PROJECT_DIR/memory-benchmark.log"
+
+# ---------------------------------------------------------
+# CLI
+# ---------------------------------------------------------
+
+DESCRIPTION=""
+SKIP_BUILD=false
+
+usage() {
+    cat <<'EOF'
+Usage: bench-memory [OPTIONS]
+
+Run a full memory benchmark cycle (build → launch → measure → report).
+
+Options:
+  -d, --description <TEXT>   Description for the log entry (required)
+  --skip-build               Skip the release build step
+  -h, --help                 Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--description) DESCRIPTION="$2"; shift 2 ;;
+        --skip-build)     SKIP_BUILD=true; shift ;;
+        -h|--help)        usage; exit 0 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$DESCRIPTION" ]]; then
+    echo "Error: -d/--description is required." >&2
+    usage >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------
 # Prerequisites
 # ---------------------------------------------------------
 
-if ! pgrep -x torchsnap &>/dev/null; then
-    echo "Error: Torchsnap is not running." >&2
-    exit 1
-fi
-
-if [[ ! -S "$SOCK" ]]; then
-    echo "Error: Control socket not found at $SOCK" >&2
-    echo "Make sure the Control API is enabled in Settings → General → Advanced." >&2
-    exit 1
-fi
-
-if ! command -v socat &>/dev/null; then
-    echo "Error: socat is not installed. Install it with: brew install socat" >&2
-    exit 1
-fi
-
-if ! command -v jq &>/dev/null; then
-    echo "Error: jq is not installed. Install it with: brew install jq" >&2
-    exit 1
-fi
+for cmd in socat jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "Error: $cmd is not installed. Install it with: brew install $cmd" >&2
+        exit 1
+    fi
+done
 
 # ---------------------------------------------------------
 # Control API helper
@@ -69,106 +104,246 @@ send() {
     local response
     response=$(echo "$request" | socat - UNIX-CONNECT:"$SOCK")
 
-    # Check for errors
     local error
     error=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null)
     if [[ -n "$error" ]]; then
-        echo "  Error from $method: $error" >&2
+        echo "  Warning: $method returned error: $error" >&2
     fi
 }
 
 # ---------------------------------------------------------
-# Scenario timing (seconds)
+# Cleanup — kill the app and sampler on exit
 # ---------------------------------------------------------
 
-BASELINE_WAIT=3
-SHOW_WAIT=2
-QUERY_WAIT=3
-POST_DISMISS_WAIT=5
+APP_PID=""
+MEMSNAP_PID=""
 
-TOTAL_DURATION=$((BASELINE_WAIT + SHOW_WAIT + QUERY_WAIT + POST_DISMISS_WAIT + 2))
-
-# ---------------------------------------------------------
-# Output file
-# ---------------------------------------------------------
-
-OUTPUT="bench-memory-$(date +%Y%m%d-%H%M%S).json"
-
-# ---------------------------------------------------------
-# Start memory sampler
-# ---------------------------------------------------------
-
-echo "=== Torchsnap Memory Benchmark ==="
-echo
-echo "Output: $OUTPUT"
-echo "Scenario: baseline(${BASELINE_WAIT}s) → show(${SHOW_WAIT}s) → query(${QUERY_WAIT}s) → dismiss+idle(${POST_DISMISS_WAIT}s)"
-echo
-
-# Ensure the launcher starts in a known hidden state
-send "dismiss"
-sleep 0.5
-
-echo "Starting memory sampler..."
-"$SCRIPT_DIR/memsnap" \
-    -i 0.2 \
-    -d "$TOTAL_DURATION" \
-    -o "$OUTPUT" &
-MEMSNAP_PID=$!
-
-# Give footprint a moment to start sampling
-sleep 0.5
-
-# ---------------------------------------------------------
-# Test scenario
-# ---------------------------------------------------------
-
-phase() {
-    local name="$1"
-    local duration="$2"
-    echo "  [$name] ${duration}s..."
-    sleep "$duration"
+cleanup() {
+    if [[ -n "$MEMSNAP_PID" ]] && kill -0 "$MEMSNAP_PID" 2>/dev/null; then
+        kill "$MEMSNAP_PID" 2>/dev/null || true
+        wait "$MEMSNAP_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
+        echo "Stopping Torchsnap (PID $APP_PID)..."
+        kill "$APP_PID" 2>/dev/null || true
+        wait "$APP_PID" 2>/dev/null || true
+    fi
 }
+trap cleanup EXIT
 
-echo
-echo "Running scenario..."
+# =========================================================
+# Step 1: Build release app
+# =========================================================
 
-# Phase 1: Baseline — launcher hidden and idle
-phase "baseline" "$BASELINE_WAIT"
+if [[ "$SKIP_BUILD" == true ]]; then
+    echo "Skipping build (--skip-build)."
+    if [[ ! -d "$APP_BUNDLE" ]]; then
+        echo "Error: App bundle not found at $APP_BUNDLE" >&2
+        echo "Run without --skip-build first." >&2
+        exit 1
+    fi
+else
+    echo "Building release app..."
+    (cd "$PROJECT_DIR" && bun run tauri build)
+    echo
+fi
 
-# Phase 2: Show the launcher
-send "show"
-phase "visible" "$SHOW_WAIT"
+# =========================================================
+# Step 2: Ensure Control API is enabled
+# =========================================================
 
-# Phase 3: Type a search query
-send "query" '{"text":"settings"}'
-phase "query" "$QUERY_WAIT"
+mkdir -p "$SETTINGS_DIR"
 
-# Phase 4: Dismiss and measure post-dismiss recovery
-send "dismiss"
-phase "post-dismiss" "$POST_DISMISS_WAIT"
+if [[ -f "$SETTINGS_FILE" ]]; then
+    # Enable the control channel if it isn't already
+    CURRENT=$(jq -r '.["controlChannel.enabled"] // false' "$SETTINGS_FILE")
+    if [[ "$CURRENT" != "true" ]]; then
+        echo "Enabling Control API in settings..."
+        jq '.["controlChannel.enabled"] = true' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp"
+        mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+    fi
+else
+    echo "Creating settings with Control API enabled..."
+    echo '{"controlChannel.enabled": true}' > "$SETTINGS_FILE"
+fi
 
-echo
-echo "Scenario complete. Waiting for sampler to finish..."
+# =========================================================
+# Step 3: Kill any existing Torchsnap instance
+# =========================================================
 
-# ---------------------------------------------------------
-# Wait for memsnap to complete
-# ---------------------------------------------------------
+if pgrep -x torchsnap &>/dev/null; then
+    echo "Stopping existing Torchsnap instance..."
+    pkill -x torchsnap
+    sleep 1
+fi
 
-wait "$MEMSNAP_PID" 2>/dev/null || true
+# =========================================================
+# Step 4: Launch the app
+# =========================================================
 
-# ---------------------------------------------------------
-# Summary
-# ---------------------------------------------------------
+echo "Launching Torchsnap..."
+open "$APP_BUNDLE"
 
-if [[ ! -f "$OUTPUT" ]]; then
-    echo "Warning: Output file not found. The sampler may have failed." >&2
+# Wait for the process to appear
+for _ in $(seq 1 30); do
+    APP_PID=$(pgrep -x torchsnap 2>/dev/null || true)
+    if [[ -n "$APP_PID" ]]; then
+        break
+    fi
+    sleep 0.2
+done
+
+if [[ -z "$APP_PID" ]]; then
+    echo "Error: Torchsnap did not start within 6 seconds." >&2
     exit 1
 fi
 
+echo "Torchsnap PID: $APP_PID"
+
+# =========================================================
+# Step 5: Wait for the control socket
+# =========================================================
+
+echo "Waiting for control socket..."
+for _ in $(seq 1 50); do
+    if [[ -S "$SOCK" ]]; then
+        break
+    fi
+    sleep 0.2
+done
+
+if [[ ! -S "$SOCK" ]]; then
+    echo "Error: Control socket did not appear within 10 seconds." >&2
+    exit 1
+fi
+
+# Quick health check
+send "status"
+echo "Control API ready."
+
+# =========================================================
+# Step 6: Start memory sampler
+# =========================================================
+
+OUTPUT="bench-memory-$(date +%Y%m%d-%H%M%S).json"
+
+echo
+echo "=== Torchsnap Memory Benchmark ==="
+echo "  $DESCRIPTION"
 echo
 
-"$SCRIPT_DIR/memsnap-report" \
-    -d "bench-memory: baseline(${BASELINE_WAIT}s) → show(${SHOW_WAIT}s) → query(${QUERY_WAIT}s) → dismiss(${POST_DISMISS_WAIT}s)" \
-    "$OUTPUT"
+# Ensure the launcher starts hidden
+send "dismiss"
+sleep 0.5
 
-echo "Full data: $OUTPUT"
+# The scenario below takes roughly this many seconds; add
+# a buffer so the sampler outlasts the scenario.
+SCENARIO_DURATION=45
+
+echo "Starting memory sampler (${SCENARIO_DURATION}s, 200ms interval)..."
+"$SCRIPT_DIR/memsnap" \
+    -i 0.2 \
+    -d "$SCENARIO_DURATION" \
+    -o "$OUTPUT" &
+MEMSNAP_PID=$!
+
+# Give footprint a moment to initialize
+sleep 1
+
+# =========================================================
+# Step 7: Run the test scenario
+#
+# A realistic usage pattern: multiple show/dismiss cycles,
+# various query types, including one that triggers the emoji
+# picker (`:` prefix).
+# =========================================================
+
+phase() {
+    echo "  [$1] ${2}s..."
+    sleep "$2"
+}
+
+echo "Running scenario..."
+
+# --- Phase 1: Baseline (hidden, idle) ---
+phase "idle baseline" 3
+
+# --- Phase 2: First show/dismiss cycle ---
+send "show"
+phase "visible (empty)" 2
+send "dismiss"
+phase "post-dismiss" 2
+
+# --- Phase 3: Show and search for an app ---
+send "show"
+phase "visible (empty)" 1
+send "query" '{"text":"Safari"}'
+phase "query: Safari" 2
+send "query" '{"text":"Terminal"}'
+phase "query: Terminal" 2
+send "dismiss"
+phase "post-dismiss" 2
+
+# --- Phase 4: Show and use the emoji picker ---
+send "show"
+phase "visible (empty)" 1
+send "query" '{"text":":rocket"}'
+phase "query: :rocket (emoji)" 2
+send "query" '{"text":":fire"}'
+phase "query: :fire (emoji)" 2
+send "dismiss"
+phase "post-dismiss" 2
+
+# --- Phase 5: Rapid show/dismiss cycles ---
+for i in 1 2 3; do
+    send "show"
+    sleep 0.3
+    send "dismiss"
+    sleep 0.3
+    echo "  [rapid cycle $i]"
+done
+phase "post-rapid" 2
+
+# --- Phase 6: Settings query + longer idle ---
+send "show"
+send "query" '{"text":"settings"}'
+phase "query: settings" 3
+send "dismiss"
+phase "final idle" 5
+
+echo
+echo "Scenario complete. Waiting for sampler..."
+
+# =========================================================
+# Step 8: Collect results
+# =========================================================
+
+wait "$MEMSNAP_PID" 2>/dev/null || true
+MEMSNAP_PID=""
+
+if [[ ! -f "$OUTPUT" ]]; then
+    echo "Error: Output file not found. The sampler may have failed." >&2
+    exit 1
+fi
+
+# =========================================================
+# Step 9: Stop the app
+# =========================================================
+
+echo "Stopping Torchsnap..."
+kill "$APP_PID" 2>/dev/null || true
+wait "$APP_PID" 2>/dev/null || true
+APP_PID=""
+
+# =========================================================
+# Step 10: Append report to log
+# =========================================================
+
+echo
+REPORT=$("$SCRIPT_DIR/memsnap-report" -d "$DESCRIPTION" "$OUTPUT")
+echo "$REPORT"
+echo "$REPORT" >> "$LOG_FILE"
+
+echo
+echo "Report appended to: $LOG_FILE"
+echo "Raw data: $OUTPUT"

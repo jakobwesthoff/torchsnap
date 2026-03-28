@@ -26,3 +26,4 @@ dist-ssr
 # Memory benchmark output
 memsnap-*.json
 bench-memory-*.json
+memory-benchmark.log
