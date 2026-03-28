@@ -20,6 +20,7 @@ import { SettingsSection } from "../../components/SettingsSection";
 import { SettingsEntry } from "../../components/SettingsEntry";
 import { Switch } from "../../components/Switch";
 import { Slider } from "../../components/Slider";
+import { ShortcutRecorder } from "../../components/ShortcutRecorder";
 
 // =========================================================
 // Types
@@ -63,6 +64,7 @@ function formatRetentionDays(days: number): string {
 export default function ClipboardSettings({ usePluginSetting }: PluginSettingsProps) {
   const [enabled, setEnabled] = usePluginSetting<boolean>("enabled");
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+  const [shortcut, setShortcut] = usePluginSetting<string>("shortcut.open-clipboard");
 
   const [stats, setStats] = useState<ClipboardStats | null>(null);
   const [clearing, setClearing] = useState(false);
@@ -108,6 +110,17 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
       <SettingsSection>
         <SettingsEntry label="Enable clipboard history">
           <Switch checked={enabled} onChange={setEnabled} />
+        </SettingsEntry>
+      </SettingsSection>
+
+      {/* ---- Shortcut ---- */}
+      <SettingsSection>
+        <SettingsEntry label="Open Clipboard History">
+          <ShortcutRecorder
+            value={shortcut}
+            onChange={setShortcut}
+            disabled={!enabled}
+          />
         </SettingsEntry>
       </SettingsSection>
 
