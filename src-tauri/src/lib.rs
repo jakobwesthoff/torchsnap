@@ -25,7 +25,14 @@ use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as 
 // Settings Window
 // =========================================================
 
-/// Show and focus the pre-created settings window.
+/// Create, show, and focus the settings window.
+///
+/// The settings window is created on demand and destroyed when closed
+/// to keep memory usage low while it is not visible. On first creation
+/// the window stays hidden until the frontend emits `"react-ready"`,
+/// preventing a flash of empty content. If the window already exists
+/// (e.g. the user triggered "Settings..." twice quickly) it is simply
+/// focused.
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
@@ -33,38 +40,86 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
         let _ = app.show();
     }
 
-    if let Some(win) = app.get_webview_window("settings") {
-        #[cfg(target_os = "macos")]
-        {
-            use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
-
-            let ns_window = win.ns_window().expect("settings NSWindow handle");
-            // SAFETY: Tauri's `ns_window()` returns a valid `*mut c_void`
-            // pointing to the underlying NSWindow. The pointer is valid for
-            // the lifetime of the WebviewWindow and we only borrow it
-            // briefly to set a collection behavior flag.
-            let ns_window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
-            ns_window.setCollectionBehavior(NSWindowCollectionBehavior::MoveToActiveSpace);
-        }
-
-        if let Some(monitor) = monitor_under_cursor(app)
-            && let Ok(win_size) = win.outer_size()
-        {
-            let mon_size = monitor.size();
-            let mon_pos = monitor.position();
-            let scale = monitor.scale_factor();
-
-            let x = mon_pos.x as f64 / scale
-                + (mon_size.width as f64 / scale - win_size.width as f64 / scale) / 2.0;
-            let y = mon_pos.y as f64 / scale
-                + (mon_size.height as f64 / scale - win_size.height as f64 / scale) / 2.0;
-
-            let _ = win.set_position(tauri::LogicalPosition::new(x, y));
-        }
-
-        let _ = win.show();
-        let _ = win.set_focus();
+    // If the window is already alive just bring it to front.
+    if let Some(existing) = app.get_webview_window("settings") {
+        present_settings_window(&existing, app);
+        return;
     }
+
+    // Build the window hidden — the frontend will signal readiness.
+    let mut builder =
+        WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("Torchsnap Settings")
+            .inner_size(720.0, 520.0)
+            .min_inner_size(600.0, 400.0)
+            .resizable(true)
+            .visible(false)
+            .focused(false)
+            .center();
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    let win = match builder.build() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("failed to create settings window: {e:#}");
+            return;
+        }
+    };
+
+    // Wait for the React frontend to finish its first render before
+    // making the window visible. The event listener runs on a
+    // background thread, so we dispatch to the main thread since
+    // `present_settings_window` accesses the NSWindow handle.
+    let handle = app.clone();
+    win.once("react-ready", move |_| {
+        let inner_handle = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if let Some(win) = inner_handle.get_webview_window("settings") {
+                present_settings_window(&win, &inner_handle);
+            }
+        });
+    });
+}
+
+/// Position, show, and focus the settings window on the monitor under
+/// the cursor.
+fn present_settings_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
+
+        let ns_window = win.ns_window().expect("settings NSWindow handle");
+        // SAFETY: Tauri's `ns_window()` returns a valid `*mut c_void`
+        // pointing to the underlying NSWindow. The pointer is valid for
+        // the lifetime of the WebviewWindow and we only borrow it
+        // briefly to set a collection behavior flag.
+        let ns_window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
+        ns_window.setCollectionBehavior(NSWindowCollectionBehavior::MoveToActiveSpace);
+    }
+
+    if let Some(monitor) = monitor_under_cursor(app)
+        && let Ok(win_size) = win.outer_size()
+    {
+        let mon_size = monitor.size();
+        let mon_pos = monitor.position();
+        let scale = monitor.scale_factor();
+
+        let x = mon_pos.x as f64 / scale
+            + (mon_size.width as f64 / scale - win_size.width as f64 / scale) / 2.0;
+        let y = mon_pos.y as f64 / scale
+            + (mon_size.height as f64 / scale - win_size.height as f64 / scale) / 2.0;
+
+        let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+    }
+
+    let _ = win.show();
+    let _ = win.set_focus();
 }
 
 // =========================================================
@@ -282,38 +337,22 @@ pub fn run() {
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;
 
-            let mut settings_builder =
-                WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-                    .title("Torchsnap Settings")
-                    .inner_size(720.0, 520.0)
-                    .min_inner_size(600.0, 400.0)
-                    .resizable(true)
-                    .visible(false)
-                    .focused(false)
-                    .center();
-
-            #[cfg(target_os = "macos")]
-            {
-                settings_builder = settings_builder
-                    .title_bar_style(TitleBarStyle::Overlay)
-                    .hidden_title(true);
-            }
-
-            settings_builder.build().context("create settings window")?;
-
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // Intercept window close: hide instead of destroying, so the
-    // menubar app keeps running. On exit, teardown all plugins.
+    // Intercept window close for the launcher: hide instead of destroying,
+    // so the menubar app keeps running. The settings window is allowed to
+    // close normally — it will be recreated on demand next time the user
+    // opens it, keeping RAM usage low while it is not visible.
+    // On exit, teardown all plugins.
     app.run(|app, event| match &event {
         RunEvent::WindowEvent {
             label,
             event: WindowEvent::CloseRequested { api, .. },
             ..
-        } if label == "main" || label == "settings" => {
+        } if label == "main" => {
             api.prevent_close();
             if let Some(win) = app.get_webview_window(label) {
                 let _ = win.hide();

@@ -7,6 +7,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Torchsnap Settings</title>
+    <script>
+      // Resolve the theme before the first paint so the correct
+      // background is shown immediately — no React needed.
+      (function () {
+        var pref = localStorage.getItem("torchsnap_theme") || "system";
+        var dark =
+          pref === "dark" ||
+          (pref === "system" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.dataset.theme = "dark";
+      })();
+    </script>
     <style>
       /* Prevent white flash during load — matches surface token */
       html { background: #fff; }
