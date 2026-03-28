@@ -32,11 +32,13 @@ pub const PLUGIN_ID: &str = "clipboard-manager";
 /// identifiers: "text", "html", "rtf", "files", "image".
 pub const MIGRATION_001: &str = "
 CREATE TABLE clipboard_entries (
-    id          TEXT PRIMARY KEY,
-    captured_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    id           TEXT PRIMARY KEY,
+    captured_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    content_hash TEXT NOT NULL
 );
 
 CREATE INDEX idx_entries_captured_at ON clipboard_entries(captured_at DESC);
+CREATE UNIQUE INDEX idx_entries_content_hash ON clipboard_entries(content_hash);
 
 -- Raw clipboard content per format (text, html, rtf, files, image).
 -- Small content (<=256KB) stored inline as data BLOB. Large content
