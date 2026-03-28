@@ -224,20 +224,49 @@ impl SharedState {
         Ok(formats)
     }
 
-    /// Store a new clipboard entry with its captured formats.
+    /// Store a new clipboard entry with its captured formats, or
+    /// deduplicate if an identical entry already exists.
     ///
-    /// Each format's raw bytes are stored either inline as a BLOB
-    /// (when small enough) or in FileStorage (for large or
-    /// always-binary formats like images).
+    /// Computes a blake3 hash over all format names and data (in
+    /// sorted order for determinism). If an existing entry has the
+    /// same hash, its `captured_at` timestamp is updated to now
+    /// (moving it to the top of the history) and no new data is
+    /// stored. Returns `true` if a new entry was created, `false`
+    /// if an existing entry was bumped.
     pub fn store_entry(
         &self,
         id: &str,
         display_text: &str,
         formats: &[CapturedFormat],
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        let content_hash = compute_content_hash(formats);
+
+        // Check for an existing entry with the same content.
+        let existing: Option<String> = self
+            .sql
+            .query_map(
+                "SELECT id FROM clipboard_entries WHERE content_hash = ?1",
+                &[SqlValue::from(content_hash.as_str())],
+                |row| row.get(0),
+            )?
+            .into_iter()
+            .next();
+
+        if let Some(existing_id) = existing {
+            // Bump the existing entry's timestamp to now.
+            self.sql.execute(
+                "UPDATE clipboard_entries
+                 SET captured_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE id = ?1",
+                &[SqlValue::from(existing_id.as_str())],
+            )?;
+            return Ok(false);
+        }
+
+        // No duplicate — insert a new entry.
         self.sql.execute(
-            "INSERT INTO clipboard_entries (id) VALUES (?1)",
-            &[SqlValue::from(id)],
+            "INSERT INTO clipboard_entries (id, content_hash) VALUES (?1, ?2)",
+            &[SqlValue::from(id), SqlValue::from(content_hash.as_str())],
         )?;
 
         self.sql.execute(
@@ -280,7 +309,7 @@ impl SharedState {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Delete an entry and its associated FileStorage files.
@@ -455,6 +484,28 @@ impl SharedState {
 // =========================================================
 // Helpers
 // =========================================================
+
+/// Compute a deterministic blake3 hash over all captured format data.
+///
+/// Formats are sorted by name before hashing so the result is
+/// independent of capture order. Each format contributes its name
+/// (as UTF-8) followed by its raw data bytes, with a length prefix
+/// to prevent ambiguous concatenation.
+fn compute_content_hash(formats: &[CapturedFormat]) -> String {
+    let mut sorted: Vec<&CapturedFormat> = formats.iter().collect();
+    sorted.sort_by(|a, b| a.format.cmp(&b.format));
+
+    let mut hasher = blake3::Hasher::new();
+    for fmt in &sorted {
+        let name_bytes = fmt.format.as_bytes();
+        hasher.update(&(name_bytes.len() as u32).to_le_bytes());
+        hasher.update(name_bytes);
+        hasher.update(&(fmt.data.len() as u64).to_le_bytes());
+        hasher.update(&fmt.data);
+    }
+
+    hasher.finalize().to_hex().to_string()
+}
 
 /// Convert inline BLOB data to the appropriate `FormatData` variant.
 ///
