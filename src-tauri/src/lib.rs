@@ -216,13 +216,37 @@ pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle) {
     }
 }
 
+/// Shrink the launcher window to a tiny size so that WebKit can
+/// release its full-size backing stores while the panel is hidden.
+fn shrink_launcher_window(app: &tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = win.set_size(tauri::LogicalSize::new(1.0, 1.0));
+}
+
+/// Hide the launcher panel and shrink the window to reclaim
+/// WebKit backing-store memory.
+pub(crate) fn hide_launcher(app: &tauri::AppHandle) {
+    if let Err(e) = PlatformLauncherPanel::hide(app) {
+        eprintln!("failed to hide launcher: {e:#}");
+    }
+    shrink_launcher_window(app);
+}
+
+/// Tauri command so the frontend can hide the launcher through
+/// the same path as the hotkey toggle and control API, ensuring
+/// the window shrink always happens.
+#[tauri::command]
+fn launcher_hide(app: tauri::AppHandle) {
+    hide_launcher(&app);
+}
+
 pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
     let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
 
     if is_visible {
-        if let Err(e) = PlatformLauncherPanel::hide(app) {
-            eprintln!("failed to hide launcher: {e:#}");
-        }
+        hide_launcher(app);
         return;
     }
 
@@ -260,6 +284,7 @@ pub fn run() {
             search::search_execute,
             search::plugin_message,
             control_subscribe,
+            launcher_hide,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())

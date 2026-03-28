@@ -20,6 +20,7 @@ use tauri::Manager;
 
 use crate::control::handler::{ControlError, Handler};
 use crate::control::ControlCommand;
+use crate::hide_launcher;
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 
 /// Run a closure on the main thread and block until it completes,
@@ -74,10 +75,7 @@ pub struct HideHandler;
 impl Handler for HideHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
         let handle = app.clone();
-        on_main_thread(app, move || PlatformLauncherPanel::hide(&handle))?
-            .map_err(|e| ControlError::Internal {
-                message: format!("{e:#}"),
-            })?;
+        on_main_thread(app, move || hide_launcher(&handle))?;
 
         Ok(serde_json::json!({ "ok": true }))
     }
@@ -118,10 +116,7 @@ impl Handler for DismissHandler {
         channel_state.send(ControlCommand::Dismiss);
 
         let handle = app.clone();
-        on_main_thread(app, move || PlatformLauncherPanel::hide(&handle))?
-            .map_err(|e| ControlError::Internal {
-                message: format!("{e:#}"),
-            })?;
+        on_main_thread(app, move || hide_launcher(&handle))?;
 
         Ok(serde_json::json!({ "ok": true }))
     }
