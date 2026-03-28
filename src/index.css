@@ -119,6 +119,28 @@
  * renderers, so ::-webkit-scrollbar covers every platform.
  * ========================================================= */
 
+/* =========================================================
+ * Slider Thumb
+ *
+ * Custom thumb styling for <input type="range"> used by the
+ * Slider component. The track background is set inline via
+ * a CSS gradient so the filled portion matches the accent.
+ * ========================================================= */
+
+.slider-track::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.05);
+  cursor: pointer;
+}
+
+.slider-track:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
 .scrollbar-accent {
   &::-webkit-scrollbar {
     width: 4px;
