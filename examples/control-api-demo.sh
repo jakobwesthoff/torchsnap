@@ -62,7 +62,7 @@ sleep 0.5
 
 # 3. Type a search query
 send 3 "query" '{"text":"settings"}'
-sleep 2
+sleep 5
 
 # 4. Dismiss (reset state + hide)
 send 4 "dismiss"

@@ -7,6 +7,12 @@
 //
 // JSON-RPC methods for controlling the launcher window:
 // show, hide, toggle, and dismiss.
+//
+// All platform panel operations (show, hide, is_visible) must
+// run on the main thread on macOS. Since the control server
+// runs in a tokio task, we dispatch through
+// `app.run_on_main_thread()` and block on a oneshot channel
+// to get the result back.
 // =========================================================
 
 use serde_json::Value;
@@ -16,6 +22,28 @@ use crate::control::handler::{ControlError, Handler};
 use crate::control::ControlCommand;
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 
+/// Run a closure on the main thread and block until it completes,
+/// returning its result. Needed because AppKit/NSPanel calls must
+/// happen on the main thread, but control handlers execute in a
+/// tokio task.
+pub(super) fn on_main_thread<F, R>(app: &tauri::AppHandle, f: F) -> Result<R, ControlError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(f());
+    })
+    .map_err(|e| ControlError::Internal {
+        message: format!("dispatch to main thread: {e:#}"),
+    })?;
+
+    rx.recv().map_err(|_| ControlError::Internal {
+        message: "main thread closure dropped without sending result".to_string(),
+    })
+}
+
 // =========================================================
 // show — Make the launcher visible
 // =========================================================
@@ -24,11 +52,14 @@ pub struct ShowHandler;
 
 impl Handler for ShowHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
-        crate::position_launcher_on_cursor_monitor(app);
-        PlatformLauncherPanel::show(app)
-            .map_err(|e| ControlError::Internal {
-                message: format!("{e:#}"),
-            })?;
+        let handle = app.clone();
+        on_main_thread(app, move || {
+            crate::position_launcher_on_cursor_monitor(&handle);
+            PlatformLauncherPanel::show(&handle)
+        })?
+        .map_err(|e| ControlError::Internal {
+            message: format!("{e:#}"),
+        })?;
 
         Ok(serde_json::json!({ "ok": true }))
     }
@@ -42,9 +73,11 @@ pub struct HideHandler;
 
 impl Handler for HideHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
-        PlatformLauncherPanel::hide(app).map_err(|e| ControlError::Internal {
-            message: format!("{e:#}"),
-        })?;
+        let handle = app.clone();
+        on_main_thread(app, move || PlatformLauncherPanel::hide(&handle))?
+            .map_err(|e| ControlError::Internal {
+                message: format!("{e:#}"),
+            })?;
 
         Ok(serde_json::json!({ "ok": true }))
     }
@@ -58,7 +91,11 @@ pub struct ToggleHandler;
 
 impl Handler for ToggleHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
-        crate::toggle_launcher_window(app);
+        let handle = app.clone();
+        on_main_thread(app, move || {
+            crate::toggle_launcher_window(&handle);
+        })?;
+
         Ok(serde_json::json!({ "ok": true }))
     }
 }
@@ -80,9 +117,11 @@ impl Handler for DismissHandler {
         let channel_state = app.state::<crate::control::ControlChannelState>();
         channel_state.send(ControlCommand::Dismiss);
 
-        PlatformLauncherPanel::hide(app).map_err(|e| ControlError::Internal {
-            message: format!("{e:#}"),
-        })?;
+        let handle = app.clone();
+        on_main_thread(app, move || PlatformLauncherPanel::hide(&handle))?
+            .map_err(|e| ControlError::Internal {
+                message: format!("{e:#}"),
+            })?;
 
         Ok(serde_json::json!({ "ok": true }))
     }
