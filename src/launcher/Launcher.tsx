@@ -12,6 +12,7 @@ import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
 import { getPluginComponent } from "../plugins/registry";
+import type { PluginViewProps } from "../plugins/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
@@ -57,6 +58,19 @@ interface LauncherProps {
    *  When undefined, no ResizeObserver is attached. */
   onMeasure?: (width: number, height: number) => void;
 }
+
+// ESLINT: `getPluginComponent` performs a static registry lookup — the
+// returned component reference is referentially stable for any given
+// pluginId. The `static-components` rule cannot prove this statically,
+// so the lint fires even though no component is truly "created" during
+// render.
+/* eslint-disable react-hooks/static-components */
+function PluginViewContainer({ pluginId, ...props }: PluginViewProps & { pluginId: string }) {
+  const View = getPluginComponent(pluginId);
+  if (!View) return null;
+  return <View {...props} />;
+}
+/* eslint-enable react-hooks/static-components */
 
 export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const [query, setQuery] = useState("");
@@ -141,7 +155,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Plugin Custom UI
   // =========================================================
 
-  const PluginView = customPluginView ? getPluginComponent(customPluginView) : undefined;
+  const hasPluginView = customPluginView != null;
 
   // Footer state: either set by the plugin or derived from the
   // selected entry's actions in list mode.
@@ -287,10 +301,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   if (measureDummy) {
     contentBody = <div className="h-[448px]" />;
     contentFooter = <LauncherFooter footer={MEASURE_FOOTER} />;
-  } else if (PluginView) {
+  } else if (hasPluginView) {
     contentBody = (
       <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
-        <PluginView
+        <PluginViewContainer
+          pluginId={customPluginView}
           results={results}
           query={strippedQuery}
           matchedPrefix={pluginPrefix}
