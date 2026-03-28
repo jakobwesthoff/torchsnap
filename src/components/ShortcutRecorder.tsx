@@ -191,7 +191,10 @@ export function ShortcutRecorder({
           )}
           <button
             type="button"
-            onClick={cancelRecording}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              cancelRecording();
+            }}
             className="flex h-5 w-5 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-inset hover:text-text-primary"
             aria-label="Cancel shortcut recording"
           >
