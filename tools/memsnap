@@ -162,9 +162,12 @@ fi
 
 echo "Sampling... (Ctrl-C to stop)" >&2
 
+# The human-readable output goes to stdout; the JSON data we
+# care about goes to the -j file. Suppress stdout.
 footprint \
     "${FP_ARGS[@]}" \
     --noCategories \
     --sample "$INTERVAL" \
     "${DURATION_ARGS[@]}" \
-    -j "$OUTPUT"
+    -j "$OUTPUT" \
+    > /dev/null
