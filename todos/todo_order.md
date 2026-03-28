@@ -6,6 +6,10 @@ but phases should be tackled roughly in order. Items marked with
 
 ---
 
+## Priority: Architecture fixes
+
+- [clipboard-subscribe-channel-architecture](01kmtn6msqqjpnc9aeb3rh8gnw-clipboard-subscribe-channel-architecture.md) `[discuss]`
+
 ## Phase 1: First internal plugins (build before abstracting)
 
 Build 2–3 plugins as internal features to discover the real API
@@ -36,6 +40,8 @@ Core systems that support everything else.
 - [visual-identity-brainstorm](01kmh1h2b95jvtfk76hwyd80kd-visual-identity-brainstorm.md) `[discuss]`
 - [design-logo-and-icons](01kmh1h2b95jvtfk76hwyd80ke-design-logo-and-icons.md)
 - [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
+- [frontend-memory-leak-cleanup](01kmtfq0erkn5vxqnzka4jz2ce-frontend-memory-leak-cleanup.md)
+- [frontend-memleak-audit-followup](01kmtn27vgjzndwwgan03pwzyp-frontend-memleak-audit-followup.md)
 - [investigate-double-hide-on-dismiss](01kmpjrsretm2sdvm71yknd2k3-investigate-double-hide-on-dismiss.md)
 - [frontend-backend-error-handling](01kmpk3scmw3h8vpptdfjnp2bv-frontend-backend-error-handling.md)
 - [onboarding-first-run](01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md)
