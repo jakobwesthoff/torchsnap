@@ -5,10 +5,10 @@
 // =========================================================
 // Clipboard Storage
 //
-// Shared state holding the SQL database, file storage, and
-// subscriber channels. Provides query, store, delete,
-// retention, and notification methods used by both the plugin
-// message handler and the watcher thread.
+// Shared state holding the SQL database, file storage, and the
+// active search query. Provides query, store, delete, retention,
+// and update-push methods used by both the plugin message handler
+// and the watcher thread.
 //
 // All clipboard content is stored format-agnostically as raw
 // bytes. Small content (<=INLINE_STORAGE_MAX_BYTES) is stored
@@ -31,13 +31,29 @@ use super::schema::{
 };
 
 // =========================================================
+// ActiveQuery
+// =========================================================
+
+/// Tracks the currently active search: the channel to push
+/// updates through and the query to filter results by. When
+/// the frontend issues a new search, the previous `ActiveQuery`
+/// is replaced (dropping the old channel). When the underlying
+/// data changes (new entry, delete, clear), the stored query is
+/// re-executed and filtered results are pushed through the
+/// channel.
+pub struct ActiveQuery {
+    pub channel: Channel<serde_json::Value>,
+    pub query: Option<String>,
+}
+
+// =========================================================
 // SharedState
 // =========================================================
 
 pub struct SharedState {
     pub sql: SqlStorage,
     pub files: FileStorage,
-    pub subscribers: Mutex<Vec<Channel<serde_json::Value>>>,
+    pub active_query: Mutex<Option<ActiveQuery>>,
 }
 
 impl SharedState {
@@ -430,13 +446,17 @@ impl SharedState {
         Ok(())
     }
 
-    /// Push the current history to all connected subscriber channels.
-    /// Drops channels that have been closed by the frontend.
-    pub fn notify_subscribers(&self) {
-        let history = match self.search_history(None) {
+    /// Re-execute the active query and push filtered results through
+    /// the stored channel. If the channel has been closed by the
+    /// frontend (send returns an error), the active query is cleared.
+    pub fn refresh_active_query(&self) {
+        let mut active = self.active_query.lock().expect("active_query not poisoned");
+        let Some(aq) = active.as_ref() else { return };
+
+        let history = match self.search_history(aq.query.as_deref()) {
             Ok(h) => h,
             Err(e) => {
-                eprintln!("clipboard: notify query failed: {e:#}");
+                eprintln!("clipboard: refresh query failed: {e:#}");
                 return;
             }
         };
@@ -444,13 +464,14 @@ impl SharedState {
         let payload = match serde_json::to_value(&history) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("clipboard: notify serialize failed: {e:#}");
+                eprintln!("clipboard: refresh serialize failed: {e:#}");
                 return;
             }
         };
 
-        let mut subs = self.subscribers.lock().expect("subscribers not poisoned");
-        subs.retain(|ch| ch.send(payload.clone()).is_ok());
+        if aq.channel.send(payload).is_err() {
+            *active = None;
+        }
     }
 
     // -------------------------------------------------------
