@@ -46,7 +46,6 @@ Extract the plugin API from the patterns established in Phase 1.
 
 - [decide-plugin-architecture](01kmh0ttdtq583cqcjqcsgmyys-decide-plugin-architecture.md) `[discuss]`
 - [dynamic-plugin-component-registration](01kmnh1g0dy48yp93s3x7qxr8v-dynamic-plugin-component-registration.md)
-- [plugin-message-bus](01kmnh1g0eq2955mtnp6fk7tvn-plugin-message-bus.md)
 - [execute-triggered-custom-ui](01kmnh3rx87jzknw7cfrdh0pfs-execute-triggered-custom-ui.md)
 - [extract-shared-component-library](01kmh0dspar1gga0ahh1pyp34x-extract-shared-component-library.md)
 - [plugin-system-wasm](01kmh0dspar1gga0ahh1pyp34y-plugin-system-wasm.md)
@@ -68,8 +67,6 @@ Build out the plugin ecosystem once the API is stable.
 - [execute-triggered-custom-ui-state-snapshot](01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md) *(after plugin-clipboard-manager)*
 - [clipboard-pinned-entries](01kmpamgxr089fmyx43e4gwdam-clipboard-pinned-entries.md) *(after plugin-clipboard-manager)*
 - [clipboard-source-app-identification](01kmp9wsa756avh7nc72vfs0ez-clipboard-source-app-identification.md) *(after plugin-clipboard-manager)*
-- [clipboard-plugin-settings](01kmp5hfhw5dr3nwzg7xjmrp0y-clipboard-plugin-settings.md) *(after plugin-clipboard-manager)*
-- [clipboard-keyboard-shortcut-activation](01kmp5hfhw5dr3nwzg7xjmrp0z-clipboard-keyboard-shortcut-activation.md) *(after plugin-clipboard-manager)*
 - [clipboard-load-image-from-copied-file](01kmphkx6n34kaqjq4cdsapkpw-clipboard-load-image-from-copied-file.md) *(after plugin-clipboard-manager)*
 - [plugin-file-search](01kmh0n9gmxjbt0xxy56h0ajh3-plugin-file-search.md)
 - [plugin-task-switcher](01kmh0dspar1gga0ahh1pyp355-plugin-task-switcher.md)
