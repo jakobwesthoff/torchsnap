@@ -96,7 +96,6 @@ export function usePluginStream<TPayload, TResult, TSnapshot>(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- payload identity is the trigger
   }, [sendMessage, method, payload]);
 
   return useSyncExternalStore(subscribe, getSnapshot);
