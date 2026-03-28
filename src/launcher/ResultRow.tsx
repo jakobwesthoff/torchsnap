@@ -38,6 +38,22 @@ function resolveHeroIcon(
   return (HeroIcons as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>)[pascal];
 }
 
+// ESLINT: `resolveHeroIcon` performs a property lookup on the static
+// `HeroIcons` module — the returned component reference is referentially
+// stable for any given name. The `static-components` rule cannot prove
+// this statically, so the lint fires even though no component is truly
+// "created" during render.
+/* eslint-disable react-hooks/static-components */
+function HeroIconView({ name }: { name: string }) {
+  const Icon = resolveHeroIcon(name) ?? HeroIcons.CommandLineIcon;
+  return (
+    <div className="flex h-9 w-9 items-center justify-center">
+      <Icon className="h-7 w-7 text-text-secondary" />
+    </div>
+  );
+}
+/* eslint-enable react-hooks/static-components */
+
 function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   if (!icon) {
     return (
@@ -48,12 +64,7 @@ function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   }
 
   if (icon.type === "heroIcon") {
-    const Icon = resolveHeroIcon(icon.value) ?? HeroIcons.CommandLineIcon;
-    return (
-      <div className="flex h-9 w-9 items-center justify-center">
-        <Icon className="h-7 w-7 text-text-secondary" />
-      </div>
-    );
+    return <HeroIconView name={icon.value} />;
   }
 
   if (icon.type === "dataUrl") {
