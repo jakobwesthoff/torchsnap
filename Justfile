@@ -12,6 +12,7 @@ import 'just/quality.just'
 import 'just/assets.just'
 import 'just/doctor.just'
 import 'just/maintenance.just'
+import 'just/tools.just'
 
 # Show available recipes
 default:
