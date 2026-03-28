@@ -5,13 +5,13 @@
 /**
  * Global shortcut configuration for the launcher toggle.
  *
- * Wraps the reusable `ShortcutRecorder` and handles persisting
- * the new combo to the settings store and re-registering with
- * the OS via the `update_global_shortcut` Tauri command.
+ * Wraps the reusable `ShortcutRecorder`. When the user records a
+ * new combo, we write it to the settings store. The backend's
+ * shortcut reactor picks up the change and re-registers all
+ * shortcuts automatically — no explicit Tauri command needed.
  */
 
 import { useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { SettingsSection } from "../components/SettingsSection";
 import { SettingsEntry } from "../components/SettingsEntry";
@@ -30,7 +30,6 @@ export function ShortcutSection({
   const handleChange = useCallback(
     async (combo: string) => {
       try {
-        await invoke("update_global_shortcut", { shortcut: combo });
         await setGlobalShortcut(combo);
         setError(null);
       } catch (err) {
