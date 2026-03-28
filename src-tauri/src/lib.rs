@@ -215,10 +215,6 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
 }
 
 pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout: &LauncherLayout) {
-    let Some(win) = app.get_webview_window("main") else {
-        return;
-    };
-
     if let Some(monitor) = monitor_under_cursor(app) {
         let size = monitor.size();
         let pos = monitor.position();
@@ -236,11 +232,15 @@ pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout
         let win_x = monitor_x + (monitor_w - layout.window_width) / 2.0;
         let win_y = monitor_y + (0.25 * monitor_h) - layout.card_top_offset;
 
-        let _ = win.set_size(tauri::LogicalSize::new(
+        if let Err(e) = PlatformLauncherPanel::set_frame(
+            app,
+            win_x,
+            win_y,
             layout.window_width,
             layout.window_height,
-        ));
-        let _ = win.set_position(tauri::LogicalPosition::new(win_x, win_y));
+        ) {
+            eprintln!("failed to set launcher frame: {e:#}");
+        }
     }
 }
 
