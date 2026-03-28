@@ -9,3 +9,4 @@ clean:
     cargo clean --manifest-path src-tauri/Cargo.toml
     rm -rf dist
     rm -rf node_modules
+    rm -f *.tsbuildinfo
