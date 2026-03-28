@@ -4,6 +4,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
@@ -60,6 +61,30 @@ export function Launcher() {
       setExecutePluginView(null);
     }, []),
   });
+
+  // =========================================================
+  // Plugin activation via global shortcut
+  //
+  // The backend emits `activate-plugin-custom-ui` when a plugin
+  // shortcut fires and the handler returns ShowCustomUI. We
+  // clear the query and switch to that plugin's view.
+  // =========================================================
+
+  useEffect(() => {
+    const unlisten = listen<{ pluginId: string }>(
+      "activate-plugin-custom-ui",
+      (event) => {
+        setQuery("");
+        setSelectedIndex(0);
+        setExecutePluginView(event.payload.pluginId);
+        inputRef.current?.focus();
+      },
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // =========================================================
   // Search
