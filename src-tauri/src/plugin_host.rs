@@ -145,10 +145,20 @@ impl PluginHost {
         // &mut self.watched_keys simultaneously.
         let mut keys_to_watch = Vec::new();
         for p in &self.catalog_plugins {
-            collect_watched_keys_into(p.id(), p.enabled_settings_key(), &p.shortcuts(), &mut keys_to_watch);
+            collect_watched_keys_into(
+                p.id(),
+                p.enabled_settings_key(),
+                &p.shortcuts(),
+                &mut keys_to_watch,
+            );
         }
         for p in &self.query_plugins {
-            collect_watched_keys_into(p.id(), p.enabled_settings_key(), &p.shortcuts(), &mut keys_to_watch);
+            collect_watched_keys_into(
+                p.id(),
+                p.enabled_settings_key(),
+                &p.shortcuts(),
+                &mut keys_to_watch,
+            );
         }
         self.watched_keys.extend(keys_to_watch);
 
@@ -314,43 +324,43 @@ impl PluginHost {
         let registered = Arc::new(registered);
         let handle = app.clone();
 
-        if let Err(e) = app.global_shortcut().on_shortcuts(
-            all_combos,
-            move |_app, shortcut, event| {
-                if event.state != ShortcutState::Pressed {
-                    return;
-                }
-
-                // Launcher toggle.
-                if *shortcut == launcher_shortcut {
-                    crate::toggle_launcher_window(&handle);
-                    return;
-                }
-
-                // Plugin shortcut routing.
-                let Some(r) = registered.iter().find(|r| r.shortcut == *shortcut) else {
-                    return;
-                };
-
-                let result = match &r.owner {
-                    ShortcutOwner::Catalog(p) => p.handle_shortcut(&r.shortcut_id, &handle),
-                    ShortcutOwner::Query(p) => p.handle_shortcut(&r.shortcut_id, &handle),
-                };
-
-                match result {
-                    Ok(PostAction::ShowCustomUI) => {
-                        show_launcher_with_plugin(&handle, &r.plugin_id);
+        if let Err(e) =
+            app.global_shortcut()
+                .on_shortcuts(all_combos, move |_app, shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
+                        return;
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        eprintln!(
-                            "shortcut: {}.{} handler failed: {e:#}",
-                            r.plugin_id, r.shortcut_id
-                        );
+
+                    // Launcher toggle.
+                    if *shortcut == launcher_shortcut {
+                        crate::toggle_launcher_window(&handle);
+                        return;
                     }
-                }
-            },
-        ) {
+
+                    // Plugin shortcut routing.
+                    let Some(r) = registered.iter().find(|r| r.shortcut == *shortcut) else {
+                        return;
+                    };
+
+                    let result = match &r.owner {
+                        ShortcutOwner::Catalog(p) => p.handle_shortcut(&r.shortcut_id, &handle),
+                        ShortcutOwner::Query(p) => p.handle_shortcut(&r.shortcut_id, &handle),
+                    };
+
+                    match result {
+                        Ok(PostAction::ShowCustomUI) => {
+                            show_launcher_with_plugin(&handle, &r.plugin_id);
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!(
+                                "shortcut: {}.{} handler failed: {e:#}",
+                                r.plugin_id, r.shortcut_id
+                            );
+                        }
+                    }
+                })
+        {
             eprintln!("shortcut: failed to register shortcuts: {e}");
         }
     }
@@ -444,10 +454,7 @@ impl PluginHost {
         }
     }
 
-    fn find_prefix_match<'a>(
-        &'a self,
-        query: &str,
-    ) -> Option<(&'a Arc<dyn QueryPlugin>, &'a str)> {
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn QueryPlugin>, &'a str)> {
         let mut best: Option<(&Arc<dyn QueryPlugin>, &str)> = None;
         let mut best_len = 0;
 
@@ -485,8 +492,7 @@ impl PluginHost {
             for entry in plugin.entries() {
                 title_indices.clear();
                 let title_haystack = Utf32Str::new(&entry.title, &mut char_buf);
-                let title_score =
-                    pattern.indices(title_haystack, &mut matcher, &mut title_indices);
+                let title_score = pattern.indices(title_haystack, &mut matcher, &mut title_indices);
 
                 let score = match title_score {
                     Some(s) => Some(s),

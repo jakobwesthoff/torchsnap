@@ -152,11 +152,7 @@ impl SystemCommand for Shutdown {
             title: "Shut Down".into(),
             subtitle: Some("Shut down this Mac".into()),
             icon: Some(EntryIcon::HeroIcon("power".into())),
-            keywords: vec![
-                "shutdown".into(),
-                "power off".into(),
-                "turn off".into(),
-            ],
+            keywords: vec!["shutdown".into(), "power off".into(), "turn off".into()],
             actions: vec![Action {
                 id: ActionId::Open,
                 label: "Shut Down".into(),
@@ -192,11 +188,7 @@ impl SystemCommand for LogOut {
             title: "Log Out".into(),
             subtitle: Some("Log out of this user account".into()),
             icon: Some(EntryIcon::HeroIcon("arrow-right-on-rectangle".into())),
-            keywords: vec![
-                "log out".into(),
-                "logout".into(),
-                "sign out".into(),
-            ],
+            keywords: vec!["log out".into(), "logout".into(), "sign out".into()],
             actions: vec![Action {
                 id: ActionId::Open,
                 label: "Log Out".into(),

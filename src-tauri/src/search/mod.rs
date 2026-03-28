@@ -23,7 +23,7 @@ use types::{ActionId, PostAction, SearchMessage};
 
 /// Search all registered catalogs and stream results to the frontend.
 #[tauri::command]
-pub fn search(
+pub fn search_query(
     query: String,
     on_results: Channel<SearchMessage>,
     state: State<'_, Arc<PluginHost>>,
@@ -42,7 +42,7 @@ pub fn search(
 /// that owns it. Returns the plugin's `PostAction` so the frontend
 /// can decide whether to dismiss the launcher.
 #[tauri::command]
-pub fn execute_action(
+pub fn search_execute(
     source: String,
     entry_id: String,
     action_id: ActionId,

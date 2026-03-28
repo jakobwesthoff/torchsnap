@@ -36,7 +36,7 @@ rusqlite_migration = "2.5.0"
 clipboard-rs = "0.3.3"
 objc2-app-kit = { version = "0.3.2", features = ["NSPasteboard"] }
 ulid = "1.2.1"
-tokio = { version = "1.50.0", default-features = false, features = ["sync", "time"] }
+tokio = { version = "1.50.0", default-features = false, features = ["sync", "time", "net", "io-util"] }
 tauri-plugin-autostart = "2.5.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]

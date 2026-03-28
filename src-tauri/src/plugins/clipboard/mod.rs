@@ -188,10 +188,7 @@ fn start_watcher(
 
 /// Stop the clipboard watcher and signal the retention thread
 /// to exit.
-fn stop_watcher(
-    lifecycle: &Arc<Mutex<WatcherLifecycle>>,
-    retention_condvar: &Arc<Condvar>,
-) {
+fn stop_watcher(lifecycle: &Arc<Mutex<WatcherLifecycle>>, retention_condvar: &Arc<Condvar>) {
     let mut lc = lifecycle.lock().expect("lifecycle not poisoned");
     if !lc.running {
         return;

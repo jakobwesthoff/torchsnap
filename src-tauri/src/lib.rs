@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod control;
 mod icons;
 mod platform;
 mod plugin_host;
@@ -14,7 +15,10 @@ mod storage;
 use std::sync::Arc;
 
 use anyhow::Context;
-use tauri::{Listener, Manager, RunEvent, WebviewUrl, WindowEvent, webview::WebviewWindowBuilder};
+use tauri::{
+    Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
+    webview::WebviewWindowBuilder,
+};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -184,6 +188,21 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 }
 
 // =========================================================
+// Control API — frontend channel subscription
+// =========================================================
+
+/// Called by the frontend at mount time to establish the
+/// control channel. The channel is stored in managed state
+/// so that control handlers can push commands to it.
+#[tauri::command]
+fn control_subscribe(
+    channel: Channel<control::ControlCommand>,
+    app: tauri::AppHandle,
+) {
+    app.state::<control::ControlChannelState>().set(channel);
+}
+
+// =========================================================
 // App Entry Point
 // =========================================================
 
@@ -191,9 +210,10 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            search::search,
-            search::execute_action,
+            search::search_query,
+            search::search_execute,
             search::plugin_message,
+            control_subscribe,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -220,6 +240,7 @@ pub fn run() {
             settings::SettingsInit::from_store(&store, "")
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
+                .ensure("controlChannel.enabled", false)
                 .apply(&store, "");
 
             // =========================================================
@@ -234,10 +255,7 @@ pub fn run() {
             // settings init, parallel setup, shortcut management,
             // search routing, and teardown.
             // =========================================================
-            let mut host = plugin_host::PluginHost::new(
-                Arc::clone(&store),
-                Arc::clone(&notifier),
-            );
+            let mut host = plugin_host::PluginHost::new(Arc::clone(&store), Arc::clone(&notifier));
             host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
             host.register(Box::new(
                 plugins::system_commands::SystemCommandsPlugin::new(),
@@ -306,6 +324,16 @@ pub fn run() {
             }
 
             // =========================================================
+            // Control API server (Unix domain socket, JSON-RPC 2.0)
+            // =========================================================
+            app.manage(control::ControlChannelState::new());
+            control::start_control_server_reactor(
+                app.handle(),
+                &notifier,
+                &store,
+            );
+
+            // =========================================================
             // Hide dock icon (macOS only)
             // =========================================================
             #[cfg(target_os = "macos")]
@@ -361,6 +389,13 @@ pub fn run() {
         RunEvent::Exit => {
             let host = app.state::<Arc<plugin_host::PluginHost>>();
             host.teardown_all();
+
+            // Belt-and-suspenders cleanup for the control socket.
+            // The reactor task also cleans up, but this is synchronous
+            // and guaranteed to run.
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                let _ = std::fs::remove_file(data_dir.join("control.sock"));
+            }
         }
         _ => {}
     });
