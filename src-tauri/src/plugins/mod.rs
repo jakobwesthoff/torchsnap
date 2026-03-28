@@ -92,10 +92,21 @@ pub trait CatalogPlugin: Send + Sync {
     ///
     /// Plugins that support an enable/disable toggle override this
     /// to reflect their current state. The host checks this before
-    /// registering shortcuts and may use it for other gating in the
-    /// future. The default is always enabled.
+    /// including entries in search results, registering shortcuts,
+    /// and other gating decisions. The default is always enabled.
     fn is_enabled(&self) -> bool {
         true
+    }
+
+    /// Plugin-scoped settings key that controls whether this plugin
+    /// is enabled. Return `None` if the plugin has no user-facing
+    /// toggle and is always active.
+    ///
+    /// The host watches `plugins.<id>.<key>` reactively so it can
+    /// re-register shortcuts and update gating when the value
+    /// changes at runtime.
+    fn enabled_settings_key(&self) -> Option<&'static str> {
+        None
     }
 
     /// Declare default settings for this plugin.
@@ -236,6 +247,11 @@ pub trait QueryPlugin: Send + Sync {
     /// Whether the plugin is currently active. See `CatalogPlugin::is_enabled()`.
     fn is_enabled(&self) -> bool {
         true
+    }
+
+    /// Enabled settings key. See `CatalogPlugin::enabled_settings_key()`.
+    fn enabled_settings_key(&self) -> Option<&'static str> {
+        None
     }
 
     /// Prefixes that activate exclusive routing for this plugin.
