@@ -18,9 +18,6 @@ surface. These inform all later plugin architecture decisions.
 - [plugin-calculator](01kmh0dspar1gga0ahh1pyp350-plugin-calculator.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
-- [result-ranking-system](01kmh1ah0j1c2cx7pa39rmp7jz-result-ranking-system.md)
-- [emoji-frecency](01kmk0ren28xy1g66r2h4k0tzc-emoji-frecency.md) *(after result-ranking-system)*
-- [emoji-frecency-empty-query](01kmnh1g0eq2955mtnp6fk7tvp-emoji-frecency-empty-query.md) *(after emoji-frecency)*
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
 
 ## Phase 2: Infrastructure and polish
