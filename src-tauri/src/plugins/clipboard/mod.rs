@@ -104,6 +104,10 @@ pub struct ClipboardPlugin {
     /// retention thread should wake (either for cleanup or
     /// shutdown).
     retention_condvar: Arc<Condvar>,
+
+    /// Plugin settings handle for reading settings outside of
+    /// `setup()`. Initialized in `setup()`.
+    settings: Mutex<Option<crate::settings::PluginSettings>>,
 }
 
 impl ClipboardPlugin {
@@ -118,6 +122,7 @@ impl ClipboardPlugin {
                 app_shutting_down: false,
             })),
             retention_condvar: Arc::new(Condvar::new()),
+            settings: Mutex::new(None),
         }
     }
 
@@ -128,6 +133,15 @@ impl ClipboardPlugin {
             .as_ref()
             .expect("clipboard state initialized")
             .clone()
+    }
+
+    fn setting<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        self.settings
+            .lock()
+            .expect("settings not poisoned")
+            .as_ref()
+            .expect("clipboard settings initialized")
+            .get(key)
     }
 }
 
@@ -258,6 +272,7 @@ impl CatalogPlugin for ClipboardPlugin {
         settings
             .ensure("enabled", true)
             .ensure("retentionDays", 30)
+            .ensure("bringToFrontOnPaste", true)
             .ensure("shortcut.open-clipboard", "CmdOrCtrl+Shift+V")
     }
 
@@ -300,6 +315,7 @@ impl CatalogPlugin for ClipboardPlugin {
         });
 
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
+        *self.settings.lock().expect("settings not poisoned") = Some(ctx.settings.clone());
 
         // ----- Read initial enabled state -----
         let initial_enabled: bool = ctx.settings.get("enabled").unwrap_or(true);
@@ -483,14 +499,20 @@ impl CatalogPlugin for ClipboardPlugin {
                 let captured = state.load_captured_formats(&params.id)?;
                 let platform = Arc::clone(&self.platform);
 
-                // Bump the entry's timestamp so it moves to the top of
-                // the history list. The ownership marker prevents the
-                // watcher from re-processing it, so dedup won't run —
-                // we handle the timestamp update directly here.
-                state
-                    .touch_entry(&params.id)
-                    .context("touch pasted entry")?;
-                state.refresh_active_query();
+                // When enabled, bump the entry's timestamp so it moves
+                // to the top of the history list. The ownership marker
+                // prevents the watcher from re-processing the paste,
+                // so dedup won't run — we handle the update directly.
+                let bring_to_front: bool = self
+                    .setting("bringToFrontOnPaste")
+                    .unwrap_or(true);
+
+                if bring_to_front {
+                    state
+                        .touch_entry(&params.id)
+                        .context("touch pasted entry")?;
+                    state.refresh_active_query();
+                }
 
                 thread::spawn(move || {
                     let mut clipboard_contents = captured_to_clipboard_contents(&captured);
