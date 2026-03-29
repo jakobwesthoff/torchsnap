@@ -106,41 +106,54 @@ fn preprocess_math_functions(expr: &str) -> String {
         .into_owned()
 }
 
-/// Evaluate a math expression string, returning a formatted
-/// result or `None` for parse errors, incomplete expressions,
-/// or unsupported result types.
+/// Evaluate a math expression string. Returns `Ok(EvalResult)` on
+/// success, or `Err(message)` with a human-readable error from the
+/// parser or evaluator.
 ///
 /// All integer literals are promoted to floats via AST rewriting
 /// before evaluation. This ensures `1/2` returns `0.5` instead
 /// of `0` (evalexpr's default integer division behavior).
 /// Boolean results from comparison operators are preserved since
 /// only `Const` nodes are rewritten.
-fn evaluate(expr: &str) -> Option<EvalResult> {
+fn evaluate(expr: &str) -> Result<EvalResult, String> {
     let preprocessed = preprocess_math_functions(expr);
-    let mut tree = build_operator_tree(&preprocessed).ok()?;
+    let mut tree =
+        build_operator_tree(&preprocessed).map_err(|e| format_evalexpr_error(&e.to_string()))?;
     promote_ints_to_floats(&mut tree);
 
     // Each query gets a fresh context — no state persists between
     // queries, but intra-expression variables work (e.g., `a=5; a+1`).
     let mut context = evalexpr::HashMapContext::new();
-    let value = tree.eval_with_context_mut(&mut context).ok()?;
+    let value = tree
+        .eval_with_context_mut(&mut context)
+        .map_err(|e| format_evalexpr_error(&e.to_string()))?;
 
     match value {
-        Value::Float(f) => Some(EvalResult {
+        Value::Float(f) => Ok(EvalResult {
             value: format_float(f),
             result_type: "number",
         }),
-        Value::Int(i) => Some(EvalResult {
+        Value::Int(i) => Ok(EvalResult {
             value: i.to_string(),
             result_type: "number",
         }),
-        Value::Boolean(b) => Some(EvalResult {
+        Value::Boolean(b) => Ok(EvalResult {
             value: b.to_string(),
             result_type: "boolean",
         }),
         // String, Tuple, Empty — unsupported for display.
-        _ => None,
+        _ => Err("unsupported result type".to_string()),
     }
+}
+
+/// Clean up evalexpr's error messages for display. The crate's
+/// error strings are verbose — strip internal details and keep
+/// the user-facing message.
+fn format_evalexpr_error(msg: &str) -> String {
+    // evalexpr errors look like: "Expected a value, but found operator +."
+    // or "No value in expression". Keep them as-is for now — they're
+    // reasonably readable.
+    msg.to_string()
 }
 
 /// Walk the parsed AST and replace all integer constants with
@@ -549,12 +562,16 @@ impl QueryPlugin for CalculatorPlugin {
                 // with inline result data + history entries.
                 let eval_result = evaluate(query);
 
-                let data = eval_result.as_ref().map(|r| {
-                    json!({
+                let data = Some(match &eval_result {
+                    Ok(r) => json!({
                         "expression": query,
                         "result": r.value,
                         "resultType": r.result_type,
-                    })
+                    }),
+                    Err(error) => json!({
+                        "expression": query,
+                        "error": error,
+                    }),
                 });
 
                 // Query history (filtered by expression if non-empty).
@@ -584,8 +601,8 @@ impl QueryPlugin for CalculatorPlugin {
                 };
 
                 let result = match evaluate(expr) {
-                    Some(r) => r,
-                    None => return SearchResponse::Nothing,
+                    Ok(r) => r,
+                    Err(_) => return SearchResponse::Nothing,
                 };
 
                 SearchResponse::InlineUI {
@@ -743,12 +760,12 @@ mod tests {
 
     #[test]
     fn incomplete_expression() {
-        assert!(evaluate("3+").is_none());
+        assert!(evaluate("3+").is_err());
     }
 
     #[test]
     fn parse_error() {
-        assert!(evaluate("abc").is_none());
+        assert!(evaluate("abc").is_err());
     }
 
     #[test]
