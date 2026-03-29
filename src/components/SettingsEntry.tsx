@@ -23,9 +23,7 @@ export function SettingsEntry({ label, description, children }: SettingsEntryPro
     <label className="flex items-center justify-between cursor-pointer">
       <div className="flex flex-col">
         <span className="text-sm text-text-primary">{label}</span>
-        {description && (
-          <span className="text-xs text-text-tertiary">{description}</span>
-        )}
+        {description && <span className="text-xs text-text-tertiary">{description}</span>}
       </div>
       {children}
     </label>

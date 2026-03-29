@@ -503,9 +503,7 @@ impl CatalogPlugin for ClipboardPlugin {
                 // to the top of the history list. The ownership marker
                 // prevents the watcher from re-processing the paste,
                 // so dedup won't run — we handle the update directly.
-                let bring_to_front: bool = self
-                    .setting("bringToFrontOnPaste")
-                    .unwrap_or(true);
+                let bring_to_front: bool = self.setting("bringToFrontOnPaste").unwrap_or(true);
 
                 if bring_to_front {
                     state

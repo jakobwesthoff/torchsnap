@@ -124,8 +124,15 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
 
       {/* ---- Behaviour ---- */}
       <SettingsSection>
-        <SettingsEntry label="Bring to front on paste" description="Move pasted entries to the top of the history list">
-          <Switch checked={bringToFrontOnPaste} onChange={setBringToFrontOnPaste} disabled={!enabled} />
+        <SettingsEntry
+          label="Bring to front on paste"
+          description="Move pasted entries to the top of the history list"
+        >
+          <Switch
+            checked={bringToFrontOnPaste}
+            onChange={setBringToFrontOnPaste}
+            disabled={!enabled}
+          />
         </SettingsEntry>
       </SettingsSection>
 
