@@ -71,6 +71,17 @@ export interface FooterState {
 }
 
 // =========================================================
+// Plugin View Reference
+// =========================================================
+
+/** Reference to a plugin view component, sent from the backend. */
+export interface PluginViewRef {
+  pluginId: string;
+  view: string;
+  data?: unknown;
+}
+
+// =========================================================
 // Channel Messages
 // =========================================================
 
@@ -78,8 +89,10 @@ export type SearchMessage =
   | {
       type: "catalogResults";
       entries: ScoredEntry[];
-      /** Plugin ID when the plugin requested custom UI (ADR 0013). */
-      customPluginView: string | null;
+      /** View reference when the plugin requested custom UI. */
+      customPluginView: PluginViewRef | null;
+      /** View reference when the plugin requested inline UI. */
+      inlinePluginView: PluginViewRef | null;
       /** The prefix that triggered exclusive routing (e.g., ":"). */
       matchedPrefix: string | null;
     }

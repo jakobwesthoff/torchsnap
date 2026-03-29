@@ -36,6 +36,10 @@ export interface PluginViewProps {
   /** Set the footer content. The plugin is responsible for keeping
    *  this in sync with its actual keybindings. */
   onFooterChange: (state: FooterState) => void;
+  /** Update the search input display without triggering a new search.
+   *  Used by plugins like the calculator to show a history entry's
+   *  expression in the input field while keeping the search stable. */
+  setDisplayQuery: (query: string) => void;
   /** Send a custom message to the plugin's backend handler.
    *
    *  The host routes this to the plugin identified by the active
@@ -47,6 +51,48 @@ export interface PluginViewProps {
     payload: TPayload,
     onMessage?: (msg: TStream) => void,
   ) => Promise<TResult>;
+}
+
+// =========================================================
+// Plugin View Reference
+// =========================================================
+
+/**
+ * Reference to a plugin view component, sent from the backend.
+ * The frontend resolves this to a React component via the plugin
+ * registry: `registry[pluginId].views[view]` for CustomUI,
+ * `registry[pluginId].inlineViews[view]` for InlineUI.
+ */
+export interface PluginViewRef {
+  pluginId: string;
+  view: string;
+  data?: unknown;
+}
+
+// =========================================================
+// Inline View Props
+// =========================================================
+
+/**
+ * Props for inline view components (InlineUI). Rendered above the
+ * standard result list, these participate in the host's selection
+ * model at index 0.
+ */
+export interface InlineViewProps {
+  /** Opaque data from the backend's `PluginViewRef.data`. */
+  data: unknown;
+  /** Current search query (stripped of prefix). */
+  query: string;
+  /** Prefix that activated the plugin (empty in heuristic mode). */
+  matchedPrefix: string;
+  /** Whether the inline slot is currently selected (index 0). */
+  selected: boolean;
+  /** Delegate execution to the host. */
+  onExecute: (entryId: string, actionId: ActionId) => void;
+  /** Returns footer state while the inline slot is selected. */
+  getFooterState: () => FooterState;
+  /** Close the launcher. */
+  dismiss: () => void;
 }
 
 // =========================================================
