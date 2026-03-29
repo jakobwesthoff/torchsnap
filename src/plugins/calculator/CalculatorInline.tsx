@@ -46,7 +46,7 @@ export default function CalculatorInline({
       id: "calculator-inline-enter",
       layer: LAYER.COMPONENT + 2,
       active: selected && calcData != null,
-      keybindings: [{ combo: { modifiers: [], key: "Enter" } }],
+      keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       handler: () => {
         if (!calcData) return;
         // Copy the result value. The backend's execute() copies
@@ -59,7 +59,7 @@ export default function CalculatorInline({
   if (!calcData) return null;
 
   return (
-    <div className={`transition-colors ${selected ? "bg-surface-selected" : ""}`}>
+    <div className={`transition-colors ${selected ? "bg-selection" : ""}`}>
       <CalculatorResult
         expression={calcData.expression}
         result={calcData.result}

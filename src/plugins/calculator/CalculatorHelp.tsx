@@ -18,10 +18,14 @@ const EXAMPLES = [
   { label: "Variables", expr: "a = 5; a * 3" },
 ];
 
-export function CalculatorHelp() {
+export function CalculatorHelp({ error }: { error?: string } = {}) {
   return (
     <div className="px-5 py-3">
-      <p className="text-sm text-text-muted mb-2">Type a math expression to evaluate</p>
+      {error ? (
+        <p className="text-sm text-red-400 mb-2">{error}</p>
+      ) : (
+        <p className="text-sm text-text-muted mb-2">Type a math expression to evaluate</p>
+      )}
       <div className="flex flex-col gap-1">
         {EXAMPLES.map((ex) => (
           <div key={ex.expr} className="flex items-baseline gap-2">

@@ -31,8 +31,9 @@ const PAGE_SIZE = 8;
 
 interface CalcData {
   expression: string;
-  result: string;
-  resultType: string;
+  result?: string;
+  resultType?: string;
+  error?: string;
 }
 
 /** Static footer — always the same in prefix mode. */
@@ -55,7 +56,17 @@ export default function CalculatorView({
 }: PluginViewProps) {
   // The backend's search() returns the eval result in the `data`
   // field of the CustomUI response, threaded through PluginViewRef.
-  const evalData = data as CalcData | null | undefined;
+  const rawData = data as CalcData | null | undefined;
+  // Separate success (has result) from error (has error message).
+  const evalResult =
+    rawData?.result != null
+      ? {
+          expression: rawData.expression,
+          result: rawData.result,
+          resultType: rawData.resultType ?? "number",
+        }
+      : null;
+  const evalError = rawData?.error ?? null;
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [originalQuery, setOriginalQuery] = useState(query);
@@ -104,7 +115,7 @@ export default function CalculatorView({
     {
       id: "calculator-view-up",
       layer: LAYER.COMPONENT + 2,
-      keybindings: [{ combo: { modifiers: [], key: "ArrowUp" } }],
+      keybindings: [{ combo: { modifiers: [], key: "ArrowUp" }, allowInInput: true }],
       handler: () => {
         mouseActiveRef.current = false;
         setSelectedIndex((prev) => Math.max(0, prev - 1));
@@ -113,7 +124,7 @@ export default function CalculatorView({
     {
       id: "calculator-view-down",
       layer: LAYER.COMPONENT + 2,
-      keybindings: [{ combo: { modifiers: [], key: "ArrowDown" } }],
+      keybindings: [{ combo: { modifiers: [], key: "ArrowDown" }, allowInInput: true }],
       handler: () => {
         mouseActiveRef.current = false;
         setSelectedIndex((prev) => Math.min(totalCount - 1, prev + 1));
@@ -122,17 +133,17 @@ export default function CalculatorView({
     {
       id: "calculator-view-enter",
       layer: LAYER.COMPONENT + 2,
-      keybindings: [{ combo: { modifiers: [], key: "Enter" } }],
+      keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       handler: () => {
         // Determine which result to copy.
         let resultToCopy: string | null = null;
         let expressionToSave: string | null = null;
         let resultType: string | null = null;
 
-        if (selectedIndex === 0 && evalData) {
-          resultToCopy = evalData.result;
-          expressionToSave = evalData.expression;
-          resultType = evalData.resultType;
+        if (selectedIndex === 0 && evalResult) {
+          resultToCopy = evalResult.result;
+          expressionToSave = evalResult.expression;
+          resultType = evalResult.resultType;
         } else if (selectedIndex > 0 && selectedIndex - 1 < historyEntries.length) {
           const entry = historyEntries[selectedIndex - 1];
           resultToCopy = entry.subtitle ?? entry.title;
@@ -157,7 +168,7 @@ export default function CalculatorView({
     {
       id: "calculator-view-escape",
       layer: LAYER.COMPONENT + 2,
-      keybindings: [{ combo: { modifiers: [], key: "Escape" } }],
+      keybindings: [{ combo: { modifiers: [], key: "Escape" }, allowInInput: true }],
       handler: () => {
         goBack();
       },
@@ -169,24 +180,24 @@ export default function CalculatorView({
   // =========================================================
 
   const isExpressionEmpty = !query.trim();
-  // An expression is "incomplete" if it's non-empty but produced
-  // no eval result, and ends with an operator or open paren.
-  const isIncomplete = !isExpressionEmpty && !evalData && /[+\-*/^(,;]\s*$/.test(query);
 
   let inlineArea: React.ReactNode;
-  if (evalData) {
+  if (evalResult) {
     inlineArea = (
       <CalculatorResult
-        expression={evalData.expression}
-        result={evalData.result}
-        resultType={evalData.resultType}
+        expression={evalResult.expression}
+        result={evalResult.result}
+        resultType={evalResult.resultType}
       />
     );
-  } else if (isIncomplete) {
-    // Empty inline area — user is mid-typing.
-    inlineArea = <div className="h-[60px]" />;
+  } else if (isExpressionEmpty) {
+    // Just `=` typed — show usage examples.
+    inlineArea = <CalculatorHelp />;
+  } else if (evalError) {
+    // Parser/evaluator error — show it alongside the help examples.
+    inlineArea = <CalculatorHelp error={evalError} />;
   } else {
-    // Empty expression or evaluation error → show help.
+    // No data at all (shouldn't happen, but be safe).
     inlineArea = <CalculatorHelp />;
   }
 
@@ -215,7 +226,7 @@ export default function CalculatorView({
               <div
                 key={entry.id}
                 className={`flex items-center gap-3 px-5 py-2 cursor-default transition-colors ${
-                  isSelected ? "bg-surface-selected" : ""
+                  isSelected ? "bg-selection" : ""
                 }`}
                 onMouseMove={() => {
                   if (!mouseActiveRef.current) return;
