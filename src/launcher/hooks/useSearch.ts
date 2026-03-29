@@ -35,9 +35,20 @@ export function useSearch(query: string): UseSearchResult {
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
+  // Signal loading=true as soon as the query changes, during the same
+  // render that receives the new query. This is separated from the
+  // effect below because setting state inside a useEffect would cause
+  // an extra render cycle (render → effect → setState → render again).
+  // The effect is still responsible for clearing loading=false once
+  // the backend sends a "done" message.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
+    setLoading(true);
+  }
+
   useEffect(() => {
     const generation = ++generationRef.current;
-    setLoading(true);
 
     const channel = new Channel<SearchMessage>();
 
