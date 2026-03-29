@@ -181,7 +181,7 @@ fn format_float(f: f64) -> String {
     let abs = f.abs();
 
     // Scientific notation for extremes.
-    if abs != 0.0 && (abs > 1e15 || abs < 1e-6) {
+    if abs != 0.0 && !(1e-6..=1e15).contains(&abs) {
         return format!("{:.6e}", f)
             .trim_end_matches('0')
             .trim_end_matches('.')

@@ -83,13 +83,13 @@ impl ControlChannelState {
     /// send is silently skipped.
     pub fn send(&self, command: ControlCommand) {
         let mut guard = self.channel.lock().expect("channel lock not poisoned");
-        if let Some(ch) = guard.as_ref() {
-            if ch.send(command).is_err() {
-                // Channel closed — webview was destroyed. Clear the
-                // stale reference; the frontend will re-subscribe when
-                // the webview is recreated.
-                *guard = None;
-            }
+        if let Some(ch) = guard.as_ref()
+            && ch.send(command).is_err()
+        {
+            // Channel closed — webview was destroyed. Clear the
+            // stale reference; the frontend will re-subscribe when
+            // the webview is recreated.
+            *guard = None;
         }
     }
 }
@@ -318,10 +318,10 @@ pub fn start_control_server_reactor(
                 let mut s = ControlServer::new(Arc::clone(&registry));
                 s.start(&app_handle);
                 server = Some(s);
-            } else if !new_enabled {
-                if let Some(mut s) = server.take() {
-                    s.stop();
-                }
+            } else if !new_enabled
+                && let Some(mut s) = server.take()
+            {
+                s.stop();
             }
         }
 
