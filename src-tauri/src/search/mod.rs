@@ -33,6 +33,7 @@ pub fn search_query(
     let _ = on_results.send(SearchMessage::CatalogResults {
         entries: result.entries,
         custom_plugin_view: result.custom_plugin_view,
+        inline_plugin_view: result.inline_plugin_view,
         matched_prefix: result.matched_prefix,
     });
     let _ = on_results.send(SearchMessage::Done);
