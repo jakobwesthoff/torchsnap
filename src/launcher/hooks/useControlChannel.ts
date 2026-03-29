@@ -29,9 +29,18 @@ type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: string };
 export function useControlChannel({ resetState, setQuery }: UseControlChannelParams) {
   // Keep stable refs to the callbacks so the effect can run exactly
   // once while always dispatching through the latest functions.
+  //
+  // ESLINT: Both refs are only read inside the channel's onmessage
+  // callback, which cannot fire during render. Direct assignment
+  // during render is preferable to a useEffect wrapper because it
+  // guarantees the ref is current before any post-commit event —
+  // a useEffect would leave a gap where an incoming message could
+  // dispatch through a stale callback.
   const resetStateRef = useRef(resetState);
+  // eslint-disable-next-line react-hooks/refs
   resetStateRef.current = resetState;
   const setQueryRef = useRef(setQuery);
+  // eslint-disable-next-line react-hooks/refs
   setQueryRef.current = setQuery;
 
   useEffect(() => {
