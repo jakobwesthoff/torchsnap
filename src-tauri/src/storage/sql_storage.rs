@@ -40,6 +40,17 @@ pub enum SqlValue {
     Real(f64),
     Text(String),
     Blob(Vec<u8>),
+    /// A list of values for use with SQL `IN (?)` clauses.
+    ///
+    /// When `execute` or `query_map` encounters a `List` parameter, it
+    /// expands the single `?` placeholder in the SQL into `?, ?, ...`
+    /// (one per element) and flattens the values into the bind array.
+    /// This keeps caller SQL clean and injection-safe.
+    ///
+    /// An empty list expands to a single `NULL` to avoid the SQL
+    /// syntax error from `IN ()`. Nested `List` values are not
+    /// supported — all elements must be scalar variants.
+    List(Vec<SqlValue>),
 }
 
 // Convenience conversions so callers can write:
@@ -93,6 +104,9 @@ impl<T: Into<SqlValue>> From<Option<T>> for SqlValue {
 }
 
 /// Convert `SqlValue` to a rusqlite-compatible parameter.
+///
+/// `List` is never bound directly — it is expanded before reaching
+/// rusqlite. Attempting to bind a `List` is a programming error.
 impl rusqlite::types::ToSql for SqlValue {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         use rusqlite::types::{ToSqlOutput, Value};
@@ -102,6 +116,7 @@ impl rusqlite::types::ToSql for SqlValue {
             SqlValue::Real(f) => Ok(ToSqlOutput::Owned(Value::Real(*f))),
             SqlValue::Text(s) => Ok(ToSqlOutput::Owned(Value::Text(s.clone()))),
             SqlValue::Blob(b) => Ok(ToSqlOutput::Owned(Value::Blob(b.clone()))),
+            SqlValue::List(_) => panic!("List values must be expanded before binding"),
         }
     }
 }
@@ -264,13 +279,17 @@ impl SqlStorage {
 
     /// Execute a statement that modifies data (INSERT, UPDATE,
     /// DELETE). Returns the number of rows affected.
+    ///
+    /// Supports `SqlValue::List` parameters — see [`expand_params`]
+    /// for how `IN (?)` clauses are handled.
     pub fn execute(&self, sql: &str, params: &[SqlValue]) -> Result<usize> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+        let (expanded_sql, flat_params) = expand_params(sql, params);
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = flat_params
             .iter()
             .map(|v| v as &dyn rusqlite::types::ToSql)
             .collect();
-        conn.execute(sql, param_refs.as_slice())
+        conn.execute(&expanded_sql, param_refs.as_slice())
             .context("execute SQL statement")
     }
 
@@ -280,6 +299,9 @@ impl SqlStorage {
     /// Each row is materialized into a `SqlRow` before being
     /// passed to the mapper, so the closure never touches
     /// rusqlite types.
+    ///
+    /// Supports `SqlValue::List` parameters — see [`expand_params`]
+    /// for how `IN (?)` clauses are handled.
     pub fn query_map<T>(
         &self,
         sql: &str,
@@ -287,11 +309,12 @@ impl SqlStorage {
         mut f: impl FnMut(&SqlRow) -> Result<T>,
     ) -> Result<Vec<T>> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+        let (expanded_sql, flat_params) = expand_params(sql, params);
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = flat_params
             .iter()
             .map(|v| v as &dyn rusqlite::types::ToSql)
             .collect();
-        let mut stmt = conn.prepare(sql).context("prepare SQL query")?;
+        let mut stmt = conn.prepare(&expanded_sql).context("prepare SQL query")?;
 
         let rows = stmt
             .query_map(param_refs.as_slice(), materialize_row)
@@ -304,6 +327,84 @@ impl SqlStorage {
         }
         Ok(result)
     }
+}
+
+// =========================================================
+// List Parameter Expansion
+// =========================================================
+
+/// Expand `SqlValue::List` parameters into individual placeholders.
+///
+/// Walks through the SQL string looking for `?` placeholders in
+/// lockstep with `params`. When a param is a `List`:
+///
+/// - The single `?` is replaced with `?, ?, ...` (one per element).
+/// - The list elements are flattened into the output param vector.
+/// - An empty list expands to a single `NULL` to avoid the SQL
+///   syntax error from `IN ()`.
+///
+/// Non-list params pass through unchanged. If no `List` params are
+/// present, the SQL string is returned as-is (no allocation).
+fn expand_params(sql: &str, params: &[SqlValue]) -> (String, Vec<SqlValue>) {
+    // Fast path: skip allocation when no List params exist.
+    let has_list = params.iter().any(|p| matches!(p, SqlValue::List(_)));
+    if !has_list {
+        return (sql.to_string(), params.to_vec());
+    }
+
+    let mut expanded_sql = String::with_capacity(sql.len() + 32);
+    let mut flat_params = Vec::with_capacity(params.len());
+    let mut param_iter = params.iter();
+
+    // Walk the SQL character by character, replacing each `?` with
+    // the appropriate expansion for the corresponding parameter.
+    let mut chars = sql.chars().peekable();
+    while let Some(ch) = chars.next() {
+        // Skip over string literals so we don't mistake a `?`
+        // inside a quoted value for a placeholder.
+        if ch == '\'' {
+            expanded_sql.push(ch);
+            for inner in chars.by_ref() {
+                expanded_sql.push(inner);
+                if inner == '\'' {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if ch == '?' {
+            let param = param_iter.next().expect("more ? placeholders than params");
+
+            match param {
+                SqlValue::List(items) if items.is_empty() => {
+                    expanded_sql.push_str("NULL");
+                    // No values added to flat_params — NULL is literal SQL.
+                }
+                SqlValue::List(items) => {
+                    for (i, item) in items.iter().enumerate() {
+                        assert!(
+                            !matches!(item, SqlValue::List(_)),
+                            "nested List values are not supported"
+                        );
+                        if i > 0 {
+                            expanded_sql.push_str(", ");
+                        }
+                        expanded_sql.push('?');
+                        flat_params.push(item.clone());
+                    }
+                }
+                other => {
+                    expanded_sql.push('?');
+                    flat_params.push(other.clone());
+                }
+            }
+        } else {
+            expanded_sql.push(ch);
+        }
+    }
+
+    (expanded_sql, flat_params)
 }
 
 // =========================================================
@@ -411,5 +512,73 @@ mod tests {
             .expect("query");
 
         assert_eq!(results, vec![(1, Some("present".to_string())), (2, None),]);
+    }
+
+    #[test]
+    fn expand_params_no_lists() {
+        let (sql, params) = expand_params(
+            "SELECT * FROM t WHERE a = ? AND b = ?",
+            &[SqlValue::from(1i64), SqlValue::from("x")],
+        );
+        assert_eq!(sql, "SELECT * FROM t WHERE a = ? AND b = ?");
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn expand_params_with_list() {
+        let (sql, params) = expand_params(
+            "SELECT * FROM t WHERE a = ? AND b IN (?)",
+            &[
+                SqlValue::from("x"),
+                SqlValue::List(vec![
+                    SqlValue::from(1i64),
+                    SqlValue::from(2i64),
+                    SqlValue::from(3i64),
+                ]),
+            ],
+        );
+        assert_eq!(sql, "SELECT * FROM t WHERE a = ? AND b IN (?, ?, ?)");
+        assert_eq!(params.len(), 4);
+    }
+
+    #[test]
+    fn expand_params_empty_list() {
+        let (sql, _params) =
+            expand_params("SELECT * FROM t WHERE a IN (?)", &[SqlValue::List(vec![])]);
+        assert_eq!(sql, "SELECT * FROM t WHERE a IN (NULL)");
+    }
+
+    #[test]
+    fn list_query_map() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        for name in &["alpha", "beta", "gamma", "delta"] {
+            storage
+                .execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from(*name)],
+                )
+                .expect("insert");
+        }
+
+        let names: Vec<String> = storage
+            .query_map(
+                "SELECT name FROM items WHERE name IN (?) ORDER BY name",
+                &[SqlValue::List(vec![
+                    SqlValue::from("alpha"),
+                    SqlValue::from("gamma"),
+                ])],
+                |row| row.get(0),
+            )
+            .expect("query with list");
+
+        assert_eq!(names, vec!["alpha", "gamma"]);
     }
 }

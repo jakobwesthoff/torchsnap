@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::frecency::FrecencyTarget;
+
 // =========================================================
 // Post-Action Behavior
 // =========================================================
@@ -165,6 +167,15 @@ impl QueryResult {
     }
 }
 
+impl FrecencyTarget for QueryResult {
+    fn item_id(&self) -> &str {
+        &self.id
+    }
+    fn boost_score(&mut self, bonus: u32) {
+        self.score = self.score.saturating_add(bonus);
+    }
+}
+
 /// A raw catalog entry before scoring. Internal to the Rust side —
 /// plugins produce these, the catalog registry scores them, and
 /// `ScoredEntry` is what crosses the bridge to the frontend.
@@ -202,6 +213,15 @@ pub struct ScoredEntry {
     /// Which plugin produced this entry (plugin ID).
     pub source: String,
     pub actions: Vec<Action>,
+}
+
+impl FrecencyTarget for ScoredEntry {
+    fn item_id(&self) -> &str {
+        &self.id
+    }
+    fn boost_score(&mut self, bonus: u32) {
+        self.score = self.score.saturating_add(bonus);
+    }
 }
 
 // =========================================================
