@@ -48,6 +48,18 @@ export function useSearch(query: string): UseSearchResult {
   if (prevQuery !== query) {
     setPrevQuery(query);
     setLoading(true);
+
+    // When the query is cleared (e.g. goBack / Escape), synchronously
+    // reset plugin state so plugin views unmount on the same render.
+    // Without this, stale plugin views remain mounted until the async
+    // search result arrives, and their effects can re-inject partial
+    // state (like a matched prefix) into the display query.
+    if (!query) {
+      setResults([]);
+      setCustomPluginView(null);
+      setInlinePluginView(null);
+      setMatchedPrefix(null);
+    }
   }
 
   useEffect(() => {
