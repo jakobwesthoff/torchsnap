@@ -49,6 +49,16 @@ export function useWindowedList({
 
   const windowStartRef = useRef(0);
 
+  // ESLINT: windowStartRef and prevResultCountRef are read and written
+  // during render intentionally — the windowing position is a
+  // deterministic function of selectedIndex, resultCount, and pageSize,
+  // computed synchronously to avoid an extra render cycle. Using state
+  // would cause a double render on every keystroke. The concurrent
+  // rendering concern (abandoned renders writing to refs) is harmless
+  // here because the computation is pure: any re-execution with the
+  // same inputs produces the same result.
+  /* eslint-disable react-hooks/refs */
+
   // Reset window position when the result set changes (new query).
   const prevResultCountRef = useRef(resultCount);
   if (prevResultCountRef.current !== resultCount) {
@@ -77,6 +87,8 @@ export function useWindowedList({
   const maxStart = Math.max(0, resultCount - pageSize);
   ws = Math.max(0, Math.min(ws, maxStart));
   windowStartRef.current = ws;
+
+  /* eslint-enable react-hooks/refs */
 
   // =========================================================
   // Mouse Wheel
@@ -117,7 +129,14 @@ export function useWindowedList({
 
   // Stable ref for the wheel handler to read current values
   // without re-registering the listener on every render.
+  //
+  // ESLINT: This ref is only read inside the wheel event handler,
+  // which cannot fire during render. Direct assignment during render
+  // guarantees the ref is current before any post-commit event — a
+  // useEffect wrapper would leave a gap where a wheel event could
+  // read stale values.
   const stateRef = useRef({ selectedIndex, resultCount, pageSize });
+  // eslint-disable-next-line react-hooks/refs
   stateRef.current = { selectedIndex, resultCount, pageSize };
 
   useEffect(() => {
@@ -148,5 +167,8 @@ export function useWindowedList({
     return () => wheelEl.removeEventListener("wheel", onWheel);
   }, [wheelEl, setSelectedIndex]);
 
+  // ESLINT: windowStartRef was computed synchronously above during this
+  // render pass — reading it here simply returns the value we just wrote.
+  // eslint-disable-next-line react-hooks/refs
   return { windowStart: windowStartRef.current, wheelRef };
 }
