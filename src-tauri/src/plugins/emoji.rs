@@ -269,12 +269,22 @@ impl QueryPlugin for EmojiPickerPlugin {
         *frecency = Some(ctx.frecency.clone());
     }
 
-    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> SearchResponse {
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse {
+        // The emoji picker only operates in prefix mode. When called
+        // without a prefix (no-prefix fan-out), contribute nothing.
+        if matched_prefix.is_none() {
+            return SearchResponse::Nothing;
+        }
+
         let entries = self.entries.read().expect("emoji entries read lock");
 
         if entries.is_empty() {
             // setup() hasn't completed yet.
-            return SearchResponse::CustomUI(Vec::new());
+            return SearchResponse::CustomUI {
+                view: "picker".into(),
+                data: None,
+                results: Vec::new(),
+            };
         }
 
         // -------------------------------------------------------
@@ -283,7 +293,11 @@ impl QueryPlugin for EmojiPickerPlugin {
         // to the default emojibase browse order.
         // -------------------------------------------------------
         if query.is_empty() {
-            return SearchResponse::CustomUI(self.empty_query_results(&entries));
+            return SearchResponse::CustomUI {
+                view: "picker".into(),
+                data: None,
+                results: self.empty_query_results(&entries),
+            };
         }
 
         // -------------------------------------------------------
@@ -430,7 +444,11 @@ impl QueryPlugin for EmojiPickerPlugin {
         }
 
         results.sort_by(|a, b| b.score.cmp(&a.score));
-        SearchResponse::CustomUI(results)
+        SearchResponse::CustomUI {
+            view: "picker".into(),
+            data: None,
+            results,
+        }
     }
 
     fn execute(

@@ -105,32 +105,66 @@ pub enum EntryIcon {
     Emoji(String),
 }
 
-/// What a `QueryPlugin::search()` returns: either standard results
-/// for the host to render in `ResultList`, or a custom UI request
-/// where the plugin's frontend component takes over the result area.
+/// What a `QueryPlugin::search()` returns. Four variants control how
+/// the host renders the plugin's contribution:
 ///
-/// The decision is per-query — a plugin may return `Results` for
-/// some queries and `CustomUI` for others.
+/// - `Nothing` — plugin has nothing to show for this query.
+/// - `Results` — standard list entries merged into the result list.
+/// - `CustomUI` — plugin takes over the entire result area with a
+///   named React component.
+/// - `InlineUI` — plugin renders a component above the standard
+///   result list (e.g., calculator inline result).
 #[derive(Debug, Clone)]
 pub enum SearchResponse {
+    /// Plugin has nothing to contribute for this query.
+    Nothing,
     /// Standard result list — host renders via `ResultList`.
     Results(Vec<QueryResult>),
-    /// Plugin requests custom UI. Results are still provided for the
-    /// plugin component to use as props.
-    CustomUI(Vec<QueryResult>),
+    /// Plugin requests full custom UI (replaces the result list entirely).
+    /// The `view` field selects which registered React component to render.
+    CustomUI {
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    },
+    /// Plugin requests inline UI (rendered above the result list).
+    /// The `view` field selects which registered React component to render.
+    InlineUI {
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    },
 }
 
 impl SearchResponse {
     /// Extract the results regardless of variant.
     pub fn into_results(self) -> Vec<QueryResult> {
         match self {
-            SearchResponse::Results(r) | SearchResponse::CustomUI(r) => r,
+            SearchResponse::Nothing => Vec::new(),
+            SearchResponse::Results(r) => r,
+            SearchResponse::CustomUI { results, .. } | SearchResponse::InlineUI { results, .. } => {
+                results
+            }
         }
     }
 
-    /// Whether the plugin requested custom UI.
+    /// Whether the plugin requested full custom UI.
     pub fn is_custom_ui(&self) -> bool {
-        matches!(self, SearchResponse::CustomUI(_))
+        matches!(self, SearchResponse::CustomUI { .. })
+    }
+
+    /// Whether the plugin requested inline UI.
+    pub fn is_inline_ui(&self) -> bool {
+        matches!(self, SearchResponse::InlineUI { .. })
+    }
+
+    /// Extract the view name and data from `CustomUI` or `InlineUI`.
+    pub fn view_ref(&self) -> Option<(&str, Option<&serde_json::Value>)> {
+        match self {
+            SearchResponse::CustomUI { view, data, .. }
+            | SearchResponse::InlineUI { view, data, .. } => Some((view, data.as_ref())),
+            _ => None,
+        }
     }
 }
 
@@ -228,11 +262,26 @@ impl FrecencyTarget for ScoredEntry {
 // Channel Messages
 // =========================================================
 
+/// Reference to a plugin view component for frontend resolution.
+///
+/// Sent to the frontend so it can look up the correct React component
+/// in the plugin registry: `registry[pluginId].views[view]` for
+/// `CustomUI`, `registry[pluginId].inlineViews[view]` for `InlineUI`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginViewRef {
+    pub plugin_id: String,
+    pub view: String,
+    pub data: Option<serde_json::Value>,
+}
+
 /// Result of a registry search — entries plus routing metadata.
 pub struct SearchResult {
     pub entries: Vec<ScoredEntry>,
-    /// Plugin ID when a query plugin returned `SearchResponse::CustomUI`.
-    pub custom_plugin_view: Option<String>,
+    /// Set when a query plugin returned `SearchResponse::CustomUI`.
+    pub custom_plugin_view: Option<PluginViewRef>,
+    /// Set when a query plugin returned `SearchResponse::InlineUI`.
+    pub inline_plugin_view: Option<PluginViewRef>,
     /// The prefix that triggered exclusive routing (e.g., `":"`).
     pub matched_prefix: Option<String>,
 }
@@ -242,6 +291,7 @@ impl SearchResult {
         Self {
             entries: Vec::new(),
             custom_plugin_view: None,
+            inline_plugin_view: None,
             matched_prefix: None,
         }
     }
@@ -261,10 +311,14 @@ pub enum SearchMessage {
     CatalogResults {
         entries: Vec<ScoredEntry>,
         /// When a query plugin returned `SearchResponse::CustomUI`,
-        /// this contains the plugin's ID so the frontend can mount
+        /// this contains a view reference so the frontend can mount
         /// the plugin's React component. `None` for standard list
         /// rendering.
-        custom_plugin_view: Option<String>,
+        custom_plugin_view: Option<PluginViewRef>,
+        /// When a query plugin returned `SearchResponse::InlineUI`,
+        /// this contains a view reference for the inline component
+        /// rendered above the result list.
+        inline_plugin_view: Option<PluginViewRef>,
         /// The prefix that triggered exclusive routing. Sent to the
         /// frontend so the plugin component knows which prefix was
         /// matched. `None` when no prefix routing occurred.

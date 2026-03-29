@@ -37,7 +37,9 @@ use tokio::sync::mpsc;
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{CatalogPlugin, PluginContext, PluginShortcut, QueryPlugin};
-use crate::search::types::{ActionId, PostAction, ScoredEntry, SearchResult};
+use crate::search::types::{
+    ActionId, PluginViewRef, PostAction, ScoredEntry, SearchResponse, SearchResult,
+};
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
 
@@ -423,11 +425,26 @@ impl PluginHost {
             let source = plugin.id().to_string();
             let response = plugin.search(stripped, Some(prefix));
 
-            let custom_plugin_view = if response.is_custom_ui() {
-                Some(source.clone())
-            } else {
-                None
-            };
+            let mut custom_plugin_view = None;
+            let mut inline_plugin_view = None;
+
+            match &response {
+                SearchResponse::CustomUI { view, data, .. } => {
+                    custom_plugin_view = Some(PluginViewRef {
+                        plugin_id: source.clone(),
+                        view: view.clone(),
+                        data: data.clone(),
+                    });
+                }
+                SearchResponse::InlineUI { view, data, .. } => {
+                    inline_plugin_view = Some(PluginViewRef {
+                        plugin_id: source.clone(),
+                        view: view.clone(),
+                        data: data.clone(),
+                    });
+                }
+                _ => {}
+            }
 
             let entries = response
                 .into_results()
@@ -438,20 +455,45 @@ impl PluginHost {
             return SearchResult {
                 entries,
                 custom_plugin_view,
+                inline_plugin_view,
                 matched_prefix: Some(prefix.to_string()),
             };
         }
 
-        // No prefix: nucleo over catalog entries + always-on query plugins.
+        // No prefix: nucleo over catalog entries + all enabled query plugins.
         let mut results = self.search_catalogs(query);
+        let mut inline_plugin_view = None;
 
         for plugin in &self.query_plugins {
-            if !plugin.is_enabled() || !plugin.prefixes().is_empty() {
+            if !plugin.is_enabled() {
                 continue;
             }
             let source = plugin.id().to_string();
-            let mut plugin_results: Vec<ScoredEntry> = plugin
-                .search(query, None)
+            let response = plugin.search(query, None);
+
+            match &response {
+                SearchResponse::InlineUI { view, data, .. } => {
+                    if inline_plugin_view.is_none() {
+                        inline_plugin_view = Some(PluginViewRef {
+                            plugin_id: source.clone(),
+                            view: view.clone(),
+                            data: data.clone(),
+                        });
+                    } else {
+                        eprintln!(
+                            "search: dropping InlineUI from plugin '{}' — \
+                             another plugin already claimed the inline slot",
+                            source
+                        );
+                    }
+                }
+                // Safety: full UI takeover not permitted without prefix match.
+                // Downgrade to Results (extract entries only, ignore view/data).
+                SearchResponse::CustomUI { .. } => {}
+                _ => {}
+            }
+
+            let mut plugin_results: Vec<ScoredEntry> = response
                 .into_results()
                 .into_iter()
                 .map(|r| r.into_scored_entry(source.clone()))
@@ -464,6 +506,7 @@ impl PluginHost {
         SearchResult {
             entries: results,
             custom_plugin_view: None,
+            inline_plugin_view,
             matched_prefix: None,
         }
     }
