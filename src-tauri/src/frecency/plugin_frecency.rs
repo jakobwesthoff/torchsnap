@@ -20,6 +20,7 @@ use super::{FrecencyItem, FrecencyStore, FrecencyTarget};
 /// Binds `plugin_id` at construction — plugins cannot access
 /// other plugins' frecency data. Obtained from `PluginContext`
 /// during `setup()`.
+#[derive(Clone)]
 pub struct PluginFrecency {
     store: Arc<FrecencyStore>,
     plugin_id: String,
