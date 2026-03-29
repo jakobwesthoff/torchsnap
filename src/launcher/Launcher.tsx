@@ -124,14 +124,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // When the user types after a setDisplayQuery call, sync
   // searchQuery to whatever is in the input (which includes
   // any display-only changes).
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setDisplayQueryState(value);
-      setSearchQuery(value);
-    },
-    [],
-  );
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setDisplayQueryState(value);
+    setSearchQuery(value);
+  }, []);
 
   // =========================================================
   // Card size observation
@@ -442,9 +439,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       <>
         {activeInlineView != null && (
           <Suspense
-            fallback={
-              <div className="p-4 text-center text-text-muted text-sm">Loading…</div>
-            }
+            fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
           >
             <InlineViewContainer
               pluginId={activeInlineView.pluginId}
@@ -466,9 +461,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
           <ResultList
             results={results}
             selectedIndex={listSelectedIndex}
-            onSelectIndex={(idx) =>
-              setSelectedIndex(activeInlineView != null ? idx + 1 : idx)
-            }
+            onSelectIndex={(idx) => setSelectedIndex(activeInlineView != null ? idx + 1 : idx)}
             onExecute={handleExecute}
             mouseActiveRef={mouseActiveRef}
           />
