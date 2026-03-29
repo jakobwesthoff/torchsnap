@@ -302,6 +302,13 @@ impl SearchResult {
 /// The frontend receives these progressively: `CatalogResults`
 /// arrives first (sub-millisecond for static catalogs), then
 /// `Done` signals completion.
+// The size gap between `CatalogResults` and `Done` is large, but
+// these values are transient — created, serialized over a Tauri
+// channel, and dropped immediately. They are never stored in
+// collections or passed around by value in hot paths, so the
+// extra stack space of `Done` matching `CatalogResults` is not
+// a practical concern.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SearchMessage {
