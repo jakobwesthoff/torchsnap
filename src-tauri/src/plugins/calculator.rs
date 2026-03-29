@@ -479,8 +479,13 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
-                // Safety: the plugin (and its AtomicBool) is held alive
-                // by Arc in PluginHost for the lifetime of the app.
+                // UNSAFE: Reconstructing an `&AtomicBool` from a raw pointer
+                // that was cast through `usize` to make it `Send`. This is safe
+                // because the `CalculatorPlugin` struct (which owns the AtomicBool)
+                // is held alive inside an `Arc<dyn QueryPlugin>` in `PluginHost`
+                // for the entire lifetime of the application. The watch thread
+                // terminates when the notifier's sender is dropped (at app exit),
+                // which happens before the plugin is dropped.
                 let flag = unsafe { &*(flag as *const AtomicBool) };
                 while let Some(val) = watch.blocking_changed() {
                     flag.store(val, Ordering::Relaxed);
@@ -492,6 +497,10 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.heuristic_enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
+                // UNSAFE: Same pattern as the `enabled` watch above. The
+                // `heuristic_enabled` AtomicBool lives inside the Arc'd plugin
+                // and outlives this thread. See the comment on the `enabled`
+                // watch thread for the full safety argument.
                 let flag = unsafe { &*(flag as *const AtomicBool) };
                 while let Some(val) = watch.blocking_changed() {
                     flag.store(val, Ordering::Relaxed);
@@ -503,6 +512,10 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.history_enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
+                // UNSAFE: Same pattern as the `enabled` watch above. The
+                // `history_enabled` AtomicBool lives inside the Arc'd plugin
+                // and outlives this thread. See the comment on the `enabled`
+                // watch thread for the full safety argument.
                 let flag = unsafe { &*(flag as *const AtomicBool) };
                 while let Some(val) = watch.blocking_changed() {
                     flag.store(val, Ordering::Relaxed);

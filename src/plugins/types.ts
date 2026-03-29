@@ -19,6 +19,10 @@ export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
    *  decides whether to use them or ignore them. */
   results: ScoredEntry[];
+  /** Opaque data from the backend's PluginViewRef.data field.
+   *  Only present when the plugin returned CustomUI or InlineUI
+   *  with a data payload. */
+  data?: unknown;
   /** Current query, stripped of the matched prefix. */
   query: string;
   /** Which prefix activated the plugin. */

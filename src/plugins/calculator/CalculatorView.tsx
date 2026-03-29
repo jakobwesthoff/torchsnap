@@ -1,0 +1,269 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+/**
+ * Prefix mode custom UI for the calculator plugin.
+ *
+ * Registered as `views["history"]` in the plugin registry. Layout:
+ * - Top: CalculatorResult (or CalculatorHelp if no result)
+ * - Divider
+ * - History list (windowed, most recent first)
+ *
+ * Selection model:
+ * - Index 0: inline result area (no visual highlight)
+ * - Index 1+: history entries (with standard selection highlight)
+ *
+ * Enter always copies the current result to clipboard, saves to
+ * history (if valid), and dismisses.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import type { PluginViewProps } from "../types";
+import type { FooterState } from "../../launcher/types";
+import { CalculatorResult } from "./CalculatorResult";
+import { CalculatorHelp } from "./CalculatorHelp";
+import { useKeyBindings } from "../../keybindings/useKeyBindings";
+import { LAYER } from "../../keybindings/matching";
+import { useWindowedList } from "../../launcher/hooks/useWindowedList";
+
+const PAGE_SIZE = 8;
+
+interface CalcData {
+  expression: string;
+  result: string;
+  resultType: string;
+}
+
+/** Static footer — always the same in prefix mode. */
+const CALCULATOR_FOOTER: FooterState = {
+  primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
+  hints: [{ combo: { modifiers: [], key: "Escape" }, label: "Back" }],
+};
+
+export default function CalculatorView({
+  results,
+  data,
+  query,
+  matchedPrefix,
+  goBack,
+  mouseActiveRef,
+  onExecute,
+  onFooterChange,
+  setDisplayQuery,
+  sendMessage,
+}: PluginViewProps) {
+  // The backend's search() returns the eval result in the `data`
+  // field of the CustomUI response, threaded through PluginViewRef.
+  const evalData = data as CalcData | null | undefined;
+
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const originalQueryRef = useRef(query);
+
+  // Track when query changes from user typing (not from history selection).
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
+    setSelectedIndex(0);
+    originalQueryRef.current = query;
+  }
+
+  // Set footer on mount.
+  useEffect(() => {
+    onFooterChange(CALCULATOR_FOOTER);
+  }, [onFooterChange]);
+
+  // History entries from the search results.
+  const historyEntries = results;
+
+  // Total navigable items: result area (index 0) + history entries.
+  const totalCount = 1 + historyEntries.length;
+
+  // Windowed list for history (starts at index 1 in selection).
+  const historySelectedIndex = selectedIndex > 0 ? selectedIndex - 1 : -1;
+  const { windowStart, wheelRef } = useWindowedList({
+    selectedIndex: historySelectedIndex >= 0 ? historySelectedIndex : 0,
+    setSelectedIndex: (idx) => setSelectedIndex(idx + 1),
+    resultCount: historyEntries.length,
+    pageSize: PAGE_SIZE,
+  });
+
+  // When a history entry is selected, populate the display query.
+  useEffect(() => {
+    if (selectedIndex > 0 && selectedIndex - 1 < historyEntries.length) {
+      const entry = historyEntries[selectedIndex - 1];
+      setDisplayQuery(`${matchedPrefix}${entry.title}`);
+    } else if (selectedIndex === 0) {
+      // Revert to the original user-typed query.
+      setDisplayQuery(`${matchedPrefix}${originalQueryRef.current}`);
+    }
+  }, [selectedIndex, historyEntries, matchedPrefix, setDisplayQuery]);
+
+  // Keyboard navigation.
+  useKeyBindings([
+    {
+      id: "calculator-view-up",
+      layer: LAYER.COMPONENT + 2,
+      keybindings: [{ combo: { modifiers: [], key: "ArrowUp" } }],
+      handler: () => {
+        // eslint-disable-next-line react-hooks/refs
+        mouseActiveRef.current = false;
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+      },
+    },
+    {
+      id: "calculator-view-down",
+      layer: LAYER.COMPONENT + 2,
+      keybindings: [{ combo: { modifiers: [], key: "ArrowDown" } }],
+      handler: () => {
+        // eslint-disable-next-line react-hooks/refs
+        mouseActiveRef.current = false;
+        setSelectedIndex((prev) => Math.min(totalCount - 1, prev + 1));
+      },
+    },
+    {
+      id: "calculator-view-enter",
+      layer: LAYER.COMPONENT + 2,
+      keybindings: [{ combo: { modifiers: [], key: "Enter" } }],
+      handler: () => {
+        // Determine which result to copy.
+        let resultToCopy: string | null = null;
+        let expressionToSave: string | null = null;
+        let resultType: string | null = null;
+
+        if (selectedIndex === 0 && evalData) {
+          resultToCopy = evalData.result;
+          expressionToSave = evalData.expression;
+          resultType = evalData.resultType;
+        } else if (selectedIndex > 0 && selectedIndex - 1 < historyEntries.length) {
+          const entry = historyEntries[selectedIndex - 1];
+          resultToCopy = entry.subtitle ?? entry.title;
+          expressionToSave = entry.title;
+          resultType = "number";
+        }
+
+        if (resultToCopy) {
+          // Save to history before executing (which dismisses).
+          if (expressionToSave) {
+            sendMessage("save_history", {
+              expression: expressionToSave,
+              result: resultToCopy,
+              resultType: resultType ?? "number",
+            }).catch(() => {});
+          }
+
+          onExecute(resultToCopy, { type: "copy" });
+        }
+      },
+    },
+    {
+      id: "calculator-view-escape",
+      layer: LAYER.COMPONENT + 2,
+      keybindings: [{ combo: { modifiers: [], key: "Escape" } }],
+      handler: () => {
+        goBack();
+      },
+    },
+  ]);
+
+  // =========================================================
+  // Inline result area
+  // =========================================================
+
+  const isExpressionEmpty = !query.trim();
+  // An expression is "incomplete" if it's non-empty but produced
+  // no eval result, and ends with an operator or open paren.
+  const isIncomplete = !isExpressionEmpty && !evalData && /[+\-*/^(,;]\s*$/.test(query);
+
+  let inlineArea: React.ReactNode;
+  if (evalData) {
+    inlineArea = (
+      <CalculatorResult
+        expression={evalData.expression}
+        result={evalData.result}
+        resultType={evalData.resultType}
+      />
+    );
+  } else if (isIncomplete) {
+    // Empty inline area — user is mid-typing.
+    inlineArea = <div className="h-[60px]" />;
+  } else {
+    // Empty expression or evaluation error → show help.
+    inlineArea = <CalculatorHelp />;
+  }
+
+  // =========================================================
+  // Render
+  // =========================================================
+
+  const visibleHistory = historyEntries.slice(windowStart, windowStart + PAGE_SIZE);
+
+  return (
+    <div className="flex flex-col max-h-[360px]">
+      {/* Inline result / help area */}
+      {inlineArea}
+
+      {/* Divider */}
+      {historyEntries.length > 0 && <div className="border-t border-border" />}
+
+      {/* History list */}
+      {historyEntries.length > 0 && (
+        <div ref={wheelRef} className="flex-1 overflow-hidden">
+          {visibleHistory.map((entry, i) => {
+            const globalIndex = windowStart + i;
+            const isSelected = historySelectedIndex === globalIndex;
+
+            return (
+              <div
+                key={entry.id}
+                className={`flex items-center gap-3 px-5 py-2 cursor-default transition-colors ${
+                  isSelected ? "bg-surface-selected" : ""
+                }`}
+                onMouseMove={() => {
+                  if (!mouseActiveRef.current) return;
+                  setSelectedIndex(globalIndex + 1);
+                }}
+                onMouseEnter={() => {
+                  // eslint-disable-next-line react-hooks/refs
+                  mouseActiveRef.current = true;
+                }}
+                onClick={() => {
+                  setSelectedIndex(globalIndex + 1);
+                  if (entry.subtitle) {
+                    sendMessage("save_history", {
+                      expression: entry.title,
+                      result: entry.subtitle,
+                      resultType: "number",
+                    }).catch(() => {});
+                    onExecute(entry.subtitle, { type: "copy" });
+                  }
+                }}
+              >
+                {/* Clock icon */}
+                <svg
+                  className="h-4 w-4 shrink-0 text-text-muted"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                  />
+                </svg>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-sm text-text-primary truncate">{entry.title}</span>
+                  {entry.subtitle && (
+                    <span className="text-xs text-text-muted truncate">{entry.subtitle}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
