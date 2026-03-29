@@ -19,7 +19,7 @@
  *   differs (shallow equality).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getSettingSync, setSetting, subscribe } from "../settingsStore";
 
 export function useSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
@@ -27,24 +27,16 @@ export function useSetting<T>(key: string): [value: T, setValue: (v: T) => Promi
   // No async gap, no loading state, no default parameter needed.
   const [value, setValueState] = useState<T>(() => getSettingSync<T>(key));
 
-  // Keep a ref to the latest value so the subscription callback can
-  // compare without re-subscribing on every state change.
-  const valueRef = useRef<T>(value);
-  valueRef.current = value;
-
-  // Subscribe to changes (same-window and cross-window).
+  // Subscribe to changes (same-window and cross-window). The updater
+  // form of setState gives us access to the current value without a
+  // ref, so we can skip no-op updates without re-subscribing on every
+  // state change.
   useEffect(
     () =>
       subscribe((changedKey, newValue) => {
-        if (changedKey !== key) {
-          return;
-        }
+        if (changedKey !== key) return;
         const resolved = newValue as T;
-        // Only update state when the value actually changed.
-        if (resolved !== valueRef.current) {
-          valueRef.current = resolved;
-          setValueState(resolved);
-        }
+        setValueState((prev) => (resolved === prev ? prev : resolved));
       }),
     [key],
   );
