@@ -24,6 +24,7 @@ pub mod emoji;
 pub mod system_commands;
 pub mod system_preferences;
 
+use crate::frecency::PluginFrecency;
 use crate::search::types::{ActionId, CatalogEntry, PostAction, SearchResponse};
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::PluginSettingsNotifier;
@@ -65,6 +66,7 @@ pub struct PluginShortcut {
 pub struct PluginContext {
     pub settings: PluginSettings,
     pub notifier: PluginSettingsNotifier,
+    pub frecency: PluginFrecency,
 }
 
 // =========================================================

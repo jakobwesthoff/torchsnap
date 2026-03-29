@@ -34,6 +34,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
 
+use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{CatalogPlugin, PluginContext, PluginShortcut, QueryPlugin};
 use crate::search::types::{ActionId, PostAction, ScoredEntry, SearchResult};
@@ -74,6 +75,7 @@ pub struct PluginHost {
     query_plugins: Vec<Arc<dyn QueryPlugin>>,
     store: Arc<Store<tauri::Wry>>,
     notifier: Arc<SettingsNotifier>,
+    frecency: Arc<FrecencyStore>,
 
     /// Settings keys that affect shortcut registration. When
     /// any of these change, the reactor re-registers all shortcuts.
@@ -89,13 +91,18 @@ pub struct PluginHost {
 }
 
 impl PluginHost {
-    pub fn new(store: Arc<Store<tauri::Wry>>, notifier: Arc<SettingsNotifier>) -> Self {
+    pub fn new(
+        store: Arc<Store<tauri::Wry>>,
+        notifier: Arc<SettingsNotifier>,
+        frecency: Arc<FrecencyStore>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
             catalog_plugins: Vec::new(),
             query_plugins: Vec::new(),
             store,
             notifier,
+            frecency,
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
@@ -183,6 +190,7 @@ impl PluginHost {
                     Arc::clone(&self.store),
                     p.id(),
                 ),
+                frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
         }
@@ -196,6 +204,7 @@ impl PluginHost {
                     Arc::clone(&self.store),
                     p.id(),
                 ),
+                frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
         }
@@ -441,9 +450,14 @@ impl PluginHost {
                 continue;
             }
             let source = plugin.id().to_string();
-            for result in plugin.search(query, None).into_results() {
-                results.push(result.into_scored_entry(source.clone()));
-            }
+            let mut plugin_results: Vec<ScoredEntry> = plugin
+                .search(query, None)
+                .into_results()
+                .into_iter()
+                .map(|r| r.into_scored_entry(source.clone()))
+                .collect();
+            self.frecency.apply_scores(&source, &mut plugin_results);
+            results.extend(plugin_results);
         }
 
         results.sort_by(|a, b| b.score.cmp(&a.score));
@@ -489,6 +503,10 @@ impl PluginHost {
 
             let source = plugin.id().to_string();
 
+            // Track where this plugin's results start so we can
+            // apply frecency scores to just this slice afterwards.
+            let plugin_start = results.len();
+
             for entry in plugin.entries() {
                 title_indices.clear();
                 let title_haystack = Utf32Str::new(&entry.title, &mut char_buf);
@@ -521,6 +539,10 @@ impl PluginHost {
                     });
                 }
             }
+
+            // Apply frecency bonuses to this plugin's results.
+            self.frecency
+                .apply_scores(&source, &mut results[plugin_start..]);
         }
 
         results
@@ -537,6 +559,10 @@ impl PluginHost {
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
+        // Record frecency before execution — captures user intent
+        // regardless of whether the action succeeds.
+        self.frecency.record(source, entry_id);
+
         if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
             return plugin.execute(entry_id, action_id, app);
         }

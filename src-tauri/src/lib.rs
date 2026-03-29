@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod control;
+mod frecency;
 mod icons;
 mod platform;
 mod plugin_host;
@@ -329,6 +330,22 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 }
 
 // =========================================================
+// Frecency Commands
+// =========================================================
+
+#[tauri::command]
+fn frecency_stats(
+    frecency: tauri::State<'_, Arc<frecency::FrecencyStore>>,
+) -> Result<frecency::FrecencyStats, String> {
+    frecency.stats().map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+fn frecency_clear(frecency: tauri::State<'_, Arc<frecency::FrecencyStore>>) -> Result<(), String> {
+    frecency.clear_all().map_err(|e| format!("{e:#}"))
+}
+
+// =========================================================
 // Control API — frontend channel subscription
 // =========================================================
 
@@ -354,6 +371,8 @@ pub fn run() {
             control_subscribe,
             launcher_hide,
             launcher_set_layout,
+            frecency_stats,
+            frecency_clear,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -381,6 +400,7 @@ pub fn run() {
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
                 .ensure("controlChannel.enabled", false)
+                .ensure("frecency.enabled", true)
                 .apply(&store, "");
 
             // =========================================================
@@ -389,13 +409,25 @@ pub fn run() {
             let notifier = Arc::new(settings_notifier::SettingsNotifier::new());
 
             // =========================================================
+            // Frecency store
+            // =========================================================
+            let app_data_dir = app.path().app_data_dir().context("resolve app data dir")?;
+            let frecency_store = frecency::FrecencyStore::open(&app_data_dir, &notifier, &store)
+                .context("initialize frecency store")?;
+            let frecency_store = Arc::new(frecency_store);
+
+            // =========================================================
             // Plugin host
             //
             // Central authority for plugin lifecycle: registration,
             // settings init, parallel setup, shortcut management,
             // search routing, and teardown.
             // =========================================================
-            let mut host = plugin_host::PluginHost::new(Arc::clone(&store), Arc::clone(&notifier));
+            let mut host = plugin_host::PluginHost::new(
+                Arc::clone(&store),
+                Arc::clone(&notifier),
+                Arc::clone(&frecency_store),
+            );
             host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
             host.register(Box::new(
                 plugins::system_commands::SystemCommandsPlugin::new(),
@@ -432,6 +464,7 @@ pub fn run() {
             host.start_shortcut_reactor(app.handle());
 
             app.manage(Arc::clone(&host));
+            app.manage(Arc::clone(&frecency_store));
 
             // =========================================================
             // Settings-changed listener
