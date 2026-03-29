@@ -1,0 +1,35 @@
+# Add arbitrary data field to QueryResult for custom UIs
+
+## Problem
+
+`QueryResult` has a fixed set of fields (`id`, `title`, `subtitle`, `icon`,
+`score`, etc.). Plugins that render their own custom UI via `CustomUI` or
+`InlineUI` sometimes need to pass per-entry metadata that doesn't map to any
+existing field (e.g., timestamps, result types, raw values).
+
+Currently the only workaround is encoding extra data into existing fields
+(stuffing timestamps into IDs or subtitles) which is fragile and mixes
+display concerns with data transport.
+
+## Proposed solution
+
+Add an optional opaque data field to `QueryResult`:
+
+```rust
+pub struct QueryResult {
+    // ... existing fields ...
+    /// Plugin-specific metadata passed through to the frontend.
+    /// Only meaningful when the plugin renders its own UI component.
+    pub data: Option<serde_json::Value>,
+}
+```
+
+This would serialize through `ScoredEntry` to the frontend, where custom UI
+components can read it from each entry without parsing conventions out of
+display fields.
+
+## Concrete use case
+
+The calculator plugin's history entries need a `computed_at` timestamp for
+"x ago" display in the history list. Currently there's no clean way to pass
+this per-entry without abusing the subtitle or ID fields.
