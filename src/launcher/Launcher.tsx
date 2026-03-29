@@ -145,11 +145,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const customPluginView = executePluginView ?? searchPluginView;
 
   // Reset selection when results change (new query, different
-  // result set).
-  useEffect(() => {
+  // result set). Done during render (prev-vs-current pattern) to
+  // avoid an extra render cycle from a useEffect.
+  const [prevResults, setPrevResults] = useState(results);
+  if (prevResults !== results) {
+    setPrevResults(results);
     setSelectedIndex(0);
+    // ESLINT: mouseActiveRef is only read from mouse event handlers,
+    // which cannot fire during render. Writing it here is safe and
+    // ensures the flag is current before any post-render event.
+    // eslint-disable-next-line react-hooks/refs
     mouseActiveRef.current = false;
-  }, [results]);
+  }
 
   // =========================================================
   // Plugin Custom UI
