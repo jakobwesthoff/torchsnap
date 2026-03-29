@@ -18,7 +18,7 @@
  * history (if valid), and dismisses.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { PluginViewProps } from "../types";
 import type { FooterState } from "../../launcher/types";
 import { CalculatorResult } from "./CalculatorResult";
@@ -58,14 +58,14 @@ export default function CalculatorView({
   const evalData = data as CalcData | null | undefined;
 
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const originalQueryRef = useRef(query);
+  const [originalQuery, setOriginalQuery] = useState(query);
 
   // Track when query changes from user typing (not from history selection).
   const [prevQuery, setPrevQuery] = useState(query);
   if (prevQuery !== query) {
     setPrevQuery(query);
     setSelectedIndex(0);
-    originalQueryRef.current = query;
+    setOriginalQuery(query);
   }
 
   // Set footer on mount.
@@ -95,9 +95,9 @@ export default function CalculatorView({
       setDisplayQuery(`${matchedPrefix}${entry.title}`);
     } else if (selectedIndex === 0) {
       // Revert to the original user-typed query.
-      setDisplayQuery(`${matchedPrefix}${originalQueryRef.current}`);
+      setDisplayQuery(`${matchedPrefix}${originalQuery}`);
     }
-  }, [selectedIndex, historyEntries, matchedPrefix, setDisplayQuery]);
+  }, [selectedIndex, historyEntries, matchedPrefix, setDisplayQuery, originalQuery]);
 
   // Keyboard navigation.
   useKeyBindings([
@@ -106,7 +106,6 @@ export default function CalculatorView({
       layer: LAYER.COMPONENT + 2,
       keybindings: [{ combo: { modifiers: [], key: "ArrowUp" } }],
       handler: () => {
-        // eslint-disable-next-line react-hooks/refs
         mouseActiveRef.current = false;
         setSelectedIndex((prev) => Math.max(0, prev - 1));
       },
@@ -116,7 +115,6 @@ export default function CalculatorView({
       layer: LAYER.COMPONENT + 2,
       keybindings: [{ combo: { modifiers: [], key: "ArrowDown" } }],
       handler: () => {
-        // eslint-disable-next-line react-hooks/refs
         mouseActiveRef.current = false;
         setSelectedIndex((prev) => Math.min(totalCount - 1, prev + 1));
       },
@@ -224,7 +222,6 @@ export default function CalculatorView({
                   setSelectedIndex(globalIndex + 1);
                 }}
                 onMouseEnter={() => {
-                  // eslint-disable-next-line react-hooks/refs
                   mouseActiveRef.current = true;
                 }}
                 onClick={() => {
