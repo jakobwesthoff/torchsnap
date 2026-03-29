@@ -269,6 +269,11 @@ export default function ClipboardView({
       setDetail(null);
       setDetailLoading(false);
     } else {
+      // ESLINT: detailCacheRef holds a stable LRU cache instance that is
+      // never replaced — the ref is used as a persistent container, not
+      // as React-managed state. Reading from it during render is equivalent
+      // to reading from a module-level variable.
+      // eslint-disable-next-line react-hooks/refs
       const cached = detailCacheRef.current.get(selectedId);
       if (cached) {
         setDetail(cached);
