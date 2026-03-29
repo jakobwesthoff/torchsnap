@@ -90,8 +90,8 @@ pub trait LauncherPanel {
     ///
     /// The default implementation uses separate Tauri `set_position`
     /// + `set_size` calls which may race. Platforms that support
-    /// atomic frame updates (e.g. macOS `setFrame:display:`) should
-    /// override this.
+    ///   atomic frame updates (e.g. macOS `setFrame:display:`) should
+    ///   override this.
     fn set_frame(
         app: &tauri::AppHandle,
         x: f64,
