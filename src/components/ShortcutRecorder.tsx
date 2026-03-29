@@ -16,7 +16,7 @@
  * the parent.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { formatModifier, formatKey, type ModifierKey } from "../keybindings";
 import { KeyCap } from "./KeyCap";
@@ -117,17 +117,33 @@ interface ShortcutRecorderProps {
 export function ShortcutRecorder({ value, onChange, disabled = false }: ShortcutRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
+
+  // Mutable ref so the keyUp handler can read the latest pending combo
+  // and onChange callback without re-subscribing event listeners.
+  const pendingRef = useRef<string | null>(null);
+  const onChangeRef = useRef(onChange);
+  // ESLINT: This ref is only read from event handlers (onKeyUp), which
+  // cannot fire during render. The theoretical concern with ref writes
+  // during render is abandoned concurrent renders leaving stale values,
+  // but that is harmless here — the next committed render overwrites it
+  // immediately, and no event handler can observe the intermediate state.
+  // Wrapping this in useEffect would actually be *less* correct: there
+  // is a brief window between commit and effect execution where an event
+  // could fire and read the previous onChange, missing a prop update.
+  // Direct assignment during render guarantees the ref is current before
+  // any post-render event can read it.
+  // eslint-disable-next-line react-hooks/refs
+  onChangeRef.current = onChange;
 
   const startRecording = useCallback(() => {
     if (disabled) return;
     setRecording(true);
-    setPending(null);
+    pendingRef.current = null;
   }, [disabled]);
 
   const cancelRecording = useCallback(() => {
     setRecording(false);
-    setPending(null);
+    pendingRef.current = null;
     setPreview(null);
   }, []);
 
@@ -149,12 +165,18 @@ export function ShortcutRecorder({ value, onChange, disabled = false }: Shortcut
       }
 
       if (isComplete(e) && current) {
-        setPending(current);
+        pendingRef.current = current;
       }
     };
 
     const onKeyUp = () => {
+      const combo = pendingRef.current;
+      pendingRef.current = null;
       setRecording(false);
+      setPreview(null);
+      if (combo) {
+        onChangeRef.current(combo);
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -164,19 +186,6 @@ export function ShortcutRecorder({ value, onChange, disabled = false }: Shortcut
       window.removeEventListener("keyup", onKeyUp);
     };
   }, [recording, cancelRecording]);
-
-  // Commit pending combo when recording ends.
-  useEffect(() => {
-    if (recording || !pending) {
-      if (!recording) setPreview(null);
-      return;
-    }
-
-    const combo = pending;
-    setPending(null);
-    setPreview(null);
-    onChange(combo);
-  }, [recording, pending, onChange]);
 
   return (
     <div className="flex items-center gap-2.5">
