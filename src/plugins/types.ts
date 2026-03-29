@@ -93,8 +93,9 @@ export interface InlineViewProps {
   selected: boolean;
   /** Delegate execution to the host. */
   onExecute: (entryId: string, actionId: ActionId) => void;
-  /** Returns footer state while the inline slot is selected. */
-  getFooterState: () => FooterState;
+  /** Set the footer content. Called by the inline component to
+   *  report its footer to the host (same pattern as PluginViewProps). */
+  onFooterChange: (state: FooterState) => void;
   /** Close the launcher. */
   dismiss: () => void;
 }

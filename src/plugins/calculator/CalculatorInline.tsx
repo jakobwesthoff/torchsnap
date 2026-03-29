@@ -12,6 +12,7 @@
  * Enter copies the result to clipboard and dismisses.
  */
 
+import { useEffect } from "react";
 import type { InlineViewProps } from "../types";
 import { CalculatorResult } from "./CalculatorResult";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";
@@ -23,8 +24,21 @@ interface CalcData {
   resultType: string;
 }
 
-export default function CalculatorInline({ data, selected, onExecute }: InlineViewProps) {
+export default function CalculatorInline({
+  data,
+  selected,
+  onExecute,
+  onFooterChange,
+}: InlineViewProps) {
   const calcData = data as CalcData | undefined;
+
+  // Report our footer to the host on mount.
+  useEffect(() => {
+    onFooterChange({
+      primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
+      hints: [],
+    });
+  }, [onFooterChange]);
 
   // Register Enter key handler when the inline slot is selected.
   useKeyBindings([

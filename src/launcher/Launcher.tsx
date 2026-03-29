@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { sendPluginMessage } from "../lib/pluginMessage";
@@ -204,9 +204,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Resolve the active custom plugin view. Execute-triggered
   // views use just a plugin ID (resolves to "default" view).
   // Search-triggered views use a full PluginViewRef.
-  const customPluginView: PluginViewRef | null = executePluginView
-    ? { pluginId: executePluginView, view: "default" }
-    : searchPluginView;
+  const customPluginView: PluginViewRef | null = useMemo(
+    () => (executePluginView ? { pluginId: executePluginView, view: "default" } : searchPluginView),
+    [executePluginView, searchPluginView],
+  );
 
   // The inline view is only active when there is no custom view
   // taking over the entire result area.
@@ -232,10 +233,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const hasPluginView = customPluginView != null;
 
-  // Footer state: either set by the plugin, the inline view,
-  // or derived from the selected entry's actions in list mode.
+  // Footer state set by the active plugin or inline view via
+  // their onFooterChange callback. `null` means no plugin/inline
+  // footer — fall back to deriving from the selected entry's actions.
   const [pluginFooter, setPluginFooter] = useState<FooterState | null>(null);
-  const inlineFooterRef = useRef<(() => FooterState) | null>(null);
+  const [inlineFooter, setInlineFooter] = useState<FooterState | null>(null);
 
   // Reset plugin footer when leaving plugin mode.
   useEffect(() => {
@@ -244,15 +246,22 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     }
   }, [customPluginView]);
 
-  // Derive footer based on current state: plugin footer, inline
-  // footer (when inline slot is selected), or list entry actions.
+  // Reset inline footer when the inline view disappears.
+  useEffect(() => {
+    if (!activeInlineView) {
+      setInlineFooter(null);
+    }
+  }, [activeInlineView]);
+
   const inlineSelected = activeInlineView != null && selectedIndex === 0;
   const listSelectedIndex = activeInlineView != null ? selectedIndex - 1 : selectedIndex;
 
+  // Footer priority: plugin footer (custom UI) > inline footer
+  // (when inline slot is selected) > entry actions (list mode).
   const footer =
     pluginFooter ??
-    (inlineSelected && inlineFooterRef.current
-      ? inlineFooterRef.current()
+    (inlineSelected && inlineFooter
+      ? inlineFooter
       : actionsToFooterState(results[listSelectedIndex]?.actions ?? []));
 
   // Plugin execute handler — wraps the Tauri invoke with the
@@ -449,10 +458,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
               matchedPrefix={pluginPrefix}
               selected={inlineSelected}
               onExecute={handleInlineExecute}
-              getFooterState={() => ({
-                primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
-                hints: [],
-              })}
+              onFooterChange={setInlineFooter}
               dismiss={dismiss}
             />
           </Suspense>
@@ -470,19 +476,6 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     );
     contentFooter = <LauncherFooter footer={footer} />;
   }
-
-  // Store the inline footer getter for the footer derivation above.
-  // This is set here (after render) so the footer reflects the
-  // inline component's actual state. The ref is read synchronously
-  // during the next render's footer derivation.
-  // eslint-disable-next-line react-hooks/refs
-  inlineFooterRef.current =
-    activeInlineView != null
-      ? () => ({
-          primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
-          hints: [],
-        })
-      : null;
 
   const contentSection = contentBody ? (
     <>
