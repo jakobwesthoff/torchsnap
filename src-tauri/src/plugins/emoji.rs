@@ -25,6 +25,7 @@ use serde::Deserialize;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use super::{PluginContext, QueryPlugin};
+use crate::frecency::PluginFrecency;
 use crate::search::types::{
     Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult, SearchResponse,
 };
@@ -99,9 +100,13 @@ const SHORTCODES_EMOJIBASE_JSON: &str =
 
 /// Number of results to show when the query is empty (just ":"
 /// typed). Acts as a browse preview.
-// TODO: Replace with frecency-based ordering once the ranking
-// system is built (see emoji-frecency todo).
 const EMPTY_QUERY_LIMIT: usize = 10_000;
+
+/// Minimum number of frecency items required before we show a
+/// frecency-ordered list instead of the default browse order.
+/// Below this threshold the frecency list feels arbitrarily
+/// sparse, so we fall back to showing all emoji.
+const FRECENCY_MIN_ITEMS: usize = 2;
 
 /// Score bonus added to shortcode matches so they always rank
 /// above keyword-only matches for the same query.
@@ -113,12 +118,14 @@ const SHORTCODE_SCORE_BONUS: u32 = 100;
 
 pub struct EmojiPickerPlugin {
     entries: RwLock<Vec<EmojiData>>,
+    frecency: RwLock<Option<PluginFrecency>>,
 }
 
 impl EmojiPickerPlugin {
     pub fn new() -> Self {
         Self {
             entries: RwLock::new(Vec::new()),
+            frecency: RwLock::new(None),
         }
     }
 
@@ -201,6 +208,48 @@ impl EmojiPickerPlugin {
     }
 }
 
+impl EmojiPickerPlugin {
+    /// Build the result list for an empty query (just ":" typed).
+    ///
+    /// If frecency tracking has enough history (>= FRECENCY_MIN_ITEMS),
+    /// returns those items ordered by frecency score. Otherwise falls
+    /// back to the full emojibase browse order so the grid isn't
+    /// awkwardly sparse for new users.
+    fn empty_query_results(&self, entries: &[EmojiData]) -> Vec<QueryResult> {
+        let frecency = self.frecency.read().expect("emoji frecency read lock");
+
+        if let Some(ref frec) = *frecency {
+            let top = frec.top_items(EMPTY_QUERY_LIMIT);
+
+            if top.len() >= FRECENCY_MIN_ITEMS {
+                // Build a lookup from emoji char → EmojiData for the
+                // frecency items. item_id is the emoji character.
+                let entry_map: HashMap<&str, &EmojiData> =
+                    entries.iter().map(|e| (e.emoji.as_str(), e)).collect();
+
+                return top
+                    .iter()
+                    .filter_map(|item| {
+                        let entry = entry_map.get(item.item_id.as_str())?;
+                        if entry.shortcodes.is_empty() {
+                            return None;
+                        }
+                        Some(emoji_to_query_result(entry, item.score, vec![]))
+                    })
+                    .collect();
+            }
+        }
+
+        // Fallback: show all emoji in default emojibase browse order.
+        entries
+            .iter()
+            .filter(|e| !e.shortcodes.is_empty())
+            .take(EMPTY_QUERY_LIMIT)
+            .map(|e| emoji_to_query_result(e, 0, vec![]))
+            .collect()
+    }
+}
+
 impl QueryPlugin for EmojiPickerPlugin {
     fn id(&self) -> &str {
         "emoji-picker"
@@ -210,10 +259,14 @@ impl QueryPlugin for EmojiPickerPlugin {
         &[":"]
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
         let data = Self::parse_emoji_data();
         let mut entries = self.entries.write().expect("emoji entries write lock");
         *entries = data;
+
+        // Stash the frecency handle for empty-query ordering.
+        let mut frecency = self.frecency.write().expect("emoji frecency write lock");
+        *frecency = Some(ctx.frecency.clone());
     }
 
     fn search(&self, query: &str, _matched_prefix: Option<&str>) -> SearchResponse {
@@ -225,20 +278,12 @@ impl QueryPlugin for EmojiPickerPlugin {
         }
 
         // -------------------------------------------------------
-        // Empty query (just ":" typed): show the first N emoji by
-        // their natural emojibase order as a browse preview.
+        // Empty query (just ":" typed): show frecency-ordered
+        // results if enough history exists, otherwise fall back
+        // to the default emojibase browse order.
         // -------------------------------------------------------
         if query.is_empty() {
-            // TODO: Replace with frecency-based ordering once the
-            // ranking system is built (see emoji-frecency todo).
-            return SearchResponse::CustomUI(
-                entries
-                    .iter()
-                    .filter(|e| !e.shortcodes.is_empty())
-                    .take(EMPTY_QUERY_LIMIT)
-                    .map(|e| emoji_to_query_result(e, 0, vec![]))
-                    .collect(),
-            );
+            return SearchResponse::CustomUI(self.empty_query_results(&entries));
         }
 
         // -------------------------------------------------------
