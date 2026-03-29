@@ -23,11 +23,7 @@ interface CalcData {
   resultType: string;
 }
 
-export default function CalculatorInline({
-  data,
-  selected,
-  onExecute,
-}: InlineViewProps) {
+export default function CalculatorInline({ data, selected, onExecute }: InlineViewProps) {
   const calcData = data as CalcData | undefined;
 
   // Register Enter key handler when the inline slot is selected.
@@ -49,11 +45,7 @@ export default function CalculatorInline({
   if (!calcData) return null;
 
   return (
-    <div
-      className={`transition-colors ${
-        selected ? "bg-surface-selected" : ""
-      }`}
-    >
+    <div className={`transition-colors ${selected ? "bg-surface-selected" : ""}`}>
       <CalculatorResult
         expression={calcData.expression}
         result={calcData.result}

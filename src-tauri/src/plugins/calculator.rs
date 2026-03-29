@@ -29,9 +29,7 @@ use serde_json::json;
 use tauri::Manager;
 
 use super::{PluginContext, QueryPlugin};
-use crate::search::types::{
-    Action, ActionId, EntryIcon, PostAction, QueryResult, SearchResponse,
-};
+use crate::search::types::{Action, ActionId, EntryIcon, PostAction, QueryResult, SearchResponse};
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
 use crate::storage::{SqlStorage, SqlValue};
@@ -82,9 +80,8 @@ struct EvalResult {
 /// Functions like `floor`, `ceil`, `round`, `min`, `max` work
 /// without the prefix, but trig, log, sqrt, etc. need it.
 const MATH_PREFIX_FUNCTIONS: &[&str] = &[
-    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh",
-    "acosh", "atanh", "sqrt", "cbrt", "ln", "log", "log2", "log10", "exp", "exp2", "pow", "abs",
-    "hypot",
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh",
+    "atanh", "sqrt", "cbrt", "ln", "log", "log2", "log10", "exp", "exp2", "pow", "abs", "hypot",
 ];
 
 /// Preprocess an expression to add `math::` prefix to known math
@@ -155,7 +152,10 @@ fn evaluate(expr: &str) -> Option<EvalResult> {
 /// results from comparisons are preserved.
 fn promote_ints_to_floats(node: &mut Node) {
     for op in node.iter_operators_mut() {
-        if let Operator::Const { value: Value::Int(i) } = op {
+        if let Operator::Const {
+            value: Value::Int(i),
+        } = op
+        {
             *op = Operator::Const {
                 value: Value::Float(*i as f64),
             };
@@ -217,20 +217,17 @@ fn try_extract_math(query: &str) -> Option<&str> {
     // Two numeric operands with an arithmetic operator between them.
     // Matches: `20+24`, `3 * 4`, `2^10`
     // The operator set excludes comparison chars to avoid overlap.
-    static BINARY_OP: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\d\s*[+*/^]\s*\d").expect("binary op regex")
-    });
+    static BINARY_OP: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\d\s*[+*/^]\s*\d").expect("binary op regex"));
 
     // Subtraction/negative: digit, optional space, minus, optional space, digit.
     // Separate from BINARY_OP because `-` is also unary.
-    static SUBTRACTION: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\d\s*-\s*\d").expect("subtraction regex")
-    });
+    static SUBTRACTION: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\d\s*-\s*\d").expect("subtraction regex"));
 
     // Comparison operators between numeric operands.
-    static COMPARISON_OP: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\d\s*(>=|<=|==|!=|[><])\s*\d").expect("comparison op regex")
-    });
+    static COMPARISON_OP: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\d\s*(>=|<=|==|!=|[><])\s*\d").expect("comparison op regex"));
 
     // Known math function followed by opening paren.
     static MATH_FN: LazyLock<Regex> = LazyLock::new(|| {
