@@ -129,10 +129,21 @@ impl SettingsInit {
 ///
 /// Injected into `CatalogPlugin::setup()` / `QueryPlugin::setup()`
 /// after defaults have been initialized via `SettingsInit`.
-#[derive(Clone)]
 pub struct PluginSettings<R: tauri::Runtime = tauri::Wry> {
     store: Arc<Store<R>>,
     prefix: String,
+}
+
+// Manual `Clone` impl: the derive would require `R: Clone`, but
+// we only need `Arc::clone` and `String::clone` — neither depends
+// on `R` being `Clone`.
+impl<R: tauri::Runtime> Clone for PluginSettings<R> {
+    fn clone(&self) -> Self {
+        Self {
+            store: Arc::clone(&self.store),
+            prefix: self.prefix.clone(),
+        }
+    }
 }
 
 impl<R: tauri::Runtime> PluginSettings<R> {

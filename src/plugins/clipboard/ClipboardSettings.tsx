@@ -64,6 +64,8 @@ function formatRetentionDays(days: number): string {
 export default function ClipboardSettings({ usePluginSetting }: PluginSettingsProps) {
   const [enabled, setEnabled] = usePluginSetting<boolean>("enabled");
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+  const [bringToFrontOnPaste, setBringToFrontOnPaste] =
+    usePluginSetting<boolean>("bringToFrontOnPaste");
   const [shortcut, setShortcut] = usePluginSetting<string>("shortcut.open-clipboard");
 
   const [stats, setStats] = useState<ClipboardStats | null>(null);
@@ -117,6 +119,13 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
       <SettingsSection>
         <SettingsEntry label="Open Clipboard History">
           <ShortcutRecorder value={shortcut} onChange={setShortcut} disabled={!enabled} />
+        </SettingsEntry>
+      </SettingsSection>
+
+      {/* ---- Behaviour ---- */}
+      <SettingsSection>
+        <SettingsEntry label="Bring to front on paste" description="Move pasted entries to the top of the history list">
+          <Switch checked={bringToFrontOnPaste} onChange={setBringToFrontOnPaste} disabled={!enabled} />
         </SettingsEntry>
       </SettingsSection>
 
