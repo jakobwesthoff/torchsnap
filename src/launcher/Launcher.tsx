@@ -11,8 +11,8 @@ import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
-import { getPluginComponent } from "../plugins/registry";
-import type { PluginViewProps } from "../plugins/types";
+import { getPluginView, getPluginInlineView } from "../plugins/registry";
+import type { PluginViewProps, InlineViewProps } from "../plugins/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
@@ -20,7 +20,7 @@ import { useSearch } from "./hooks/useSearch";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, ScoredEntry } from "./types";
+import type { Action, ActionId, FooterState, PluginViewRef, ScoredEntry } from "./types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -59,25 +59,79 @@ interface LauncherProps {
   onMeasure?: (width: number, height: number) => void;
 }
 
-// ESLINT: `getPluginComponent` performs a static registry lookup — the
-// returned component reference is referentially stable for any given
-// pluginId. The `static-components` rule cannot prove this statically,
-// so the lint fires even though no component is truly "created" during
-// render.
+// ESLINT: Registry lookups return referentially stable component
+// references for any given pluginId + viewName. The lint cannot
+// prove this statically, but no component is truly "created"
+// during render.
 /* eslint-disable react-hooks/static-components */
-function PluginViewContainer({ pluginId, ...props }: PluginViewProps & { pluginId: string }) {
-  const View = getPluginComponent(pluginId);
+function PluginViewContainer({
+  pluginId,
+  viewName,
+  ...props
+}: PluginViewProps & { pluginId: string; viewName?: string }) {
+  const View = getPluginView(pluginId, viewName);
+  if (!View) return null;
+  return <View {...props} />;
+}
+
+function InlineViewContainer({
+  pluginId,
+  viewName,
+  ...props
+}: InlineViewProps & { pluginId: string; viewName: string }) {
+  const View = getPluginInlineView(pluginId, viewName);
   if (!View) return null;
   return <View {...props} />;
 }
 /* eslint-enable react-hooks/static-components */
 
 export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
-  const [query, setQuery] = useState("");
+  // =========================================================
+  // Query split: displayQuery vs searchQuery
+  //
+  // Normally in sync (user typing updates both). Plugins can
+  // call setDisplayQuery to update the input visually without
+  // triggering a new search. When the user next types,
+  // searchQuery syncs to displayQuery.
+  // =========================================================
+
+  const [displayQuery, setDisplayQueryState] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const mouseActiveRef = useRef(false);
+
+  // User typing: update both queries.
+  const setQuery = useCallback((value: string | ((prev: string) => string)) => {
+    if (typeof value === "function") {
+      setDisplayQueryState((prev) => {
+        const next = value(prev);
+        setSearchQuery(next);
+        return next;
+      });
+    } else {
+      setDisplayQueryState(value);
+      setSearchQuery(value);
+    }
+  }, []);
+
+  // Plugin-only: update display without triggering search.
+  const setDisplayQuery = useCallback((value: string) => {
+    setDisplayQueryState(value);
+  }, []);
+
+  // When the user types after a setDisplayQuery call, sync
+  // searchQuery to whatever is in the input (which includes
+  // any display-only changes).
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setDisplayQueryState(value);
+      setSearchQuery(value);
+    },
+    [],
+  );
 
   // =========================================================
   // Card size observation
@@ -96,10 +150,13 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // Local override for when execute_action returns ShowCustomUI.
   // Takes precedence over the search-driven customPluginView.
+  // Stored as a plugin ID string (no view name — execute-triggered
+  // plugins resolve to the "default" view).
   const [executePluginView, setExecutePluginView] = useState<string | null>(null);
 
   const resetState = useCallback(() => {
-    setQuery("");
+    setDisplayQueryState("");
+    setSearchQuery("");
     setSelectedIndex(0);
     setExecutePluginView(null);
   }, []);
@@ -134,15 +191,29 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [setQuery]);
 
   // =========================================================
   // Search
   // =========================================================
 
-  const { results, customPluginView: searchPluginView, matchedPrefix } = useSearch(query);
+  const {
+    results,
+    customPluginView: searchPluginView,
+    inlinePluginView,
+    matchedPrefix,
+  } = useSearch(searchQuery);
 
-  const customPluginView = executePluginView ?? searchPluginView;
+  // Resolve the active custom plugin view. Execute-triggered
+  // views use just a plugin ID (resolves to "default" view).
+  // Search-triggered views use a full PluginViewRef.
+  const customPluginView: PluginViewRef | null = executePluginView
+    ? { pluginId: executePluginView, view: "default" }
+    : searchPluginView;
+
+  // The inline view is only active when there is no custom view
+  // taking over the entire result area.
+  const activeInlineView = customPluginView == null ? inlinePluginView : null;
 
   // Reset selection when results change (new query, different
   // result set). Done during render (prev-vs-current pattern) to
@@ -164,9 +235,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const hasPluginView = customPluginView != null;
 
-  // Footer state: either set by the plugin or derived from the
-  // selected entry's actions in list mode.
+  // Footer state: either set by the plugin, the inline view,
+  // or derived from the selected entry's actions in list mode.
   const [pluginFooter, setPluginFooter] = useState<FooterState | null>(null);
+  const inlineFooterRef = useRef<(() => FooterState) | null>(null);
 
   // Reset plugin footer when leaving plugin mode.
   useEffect(() => {
@@ -175,7 +247,16 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     }
   }, [customPluginView]);
 
-  const footer = pluginFooter ?? actionsToFooterState(results[selectedIndex]?.actions ?? []);
+  // Derive footer based on current state: plugin footer, inline
+  // footer (when inline slot is selected), or list entry actions.
+  const inlineSelected = activeInlineView != null && selectedIndex === 0;
+  const listSelectedIndex = activeInlineView != null ? selectedIndex - 1 : selectedIndex;
+
+  const footer =
+    pluginFooter ??
+    (inlineSelected && inlineFooterRef.current
+      ? inlineFooterRef.current()
+      : actionsToFooterState(results[listSelectedIndex]?.actions ?? []));
 
   // Plugin execute handler — wraps the Tauri invoke with the
   // plugin's source ID and handles PostAction.
@@ -184,7 +265,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       if (!customPluginView) return;
 
       const postAction = await invoke<string>("search_execute", {
-        source: customPluginView,
+        source: customPluginView.pluginId,
         entryId,
         actionId,
       });
@@ -196,6 +277,25 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [customPluginView, dismiss],
   );
 
+  // Inline view execute handler — routes through the inline
+  // view's plugin ID.
+  const handleInlineExecute = useCallback(
+    async (entryId: string, actionId: ActionId) => {
+      if (!activeInlineView) return;
+
+      const postAction = await invoke<string>("search_execute", {
+        source: activeInlineView.pluginId,
+        entryId,
+        actionId,
+      });
+
+      if (postAction === "Dismiss") {
+        dismiss();
+      }
+    },
+    [activeInlineView, dismiss],
+  );
+
   // Pop back from plugin UI: clear the execute override and
   // reset the query. For prefix-triggered plugins this deactivates
   // the plugin through the normal search flow; for execute-triggered
@@ -205,7 +305,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const handleGoBack = useCallback(() => {
     setExecutePluginView(null);
     setQuery("");
-  }, []);
+  }, [setQuery]);
 
   // Plugin message handler — delegates to the shared utility
   // with the active plugin view as the source.
@@ -220,7 +320,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       }
 
       return sendPluginMessage<TPayload, TResult, TStream>(
-        customPluginView,
+        customPluginView.pluginId,
         method,
         payload,
         onMessage,
@@ -235,7 +335,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const handleExecute = useCallback(
     async (entry?: ScoredEntry, actionIndex = 0) => {
-      const target = entry ?? results[selectedIndex];
+      // When the inline slot is selected and Enter is pressed,
+      // the inline component handles it via onExecute — this
+      // handler only fires for list entries.
+      const target = entry ?? results[listSelectedIndex];
       if (!target || target.actions.length === 0) return;
 
       const action = target.actions[actionIndex];
@@ -254,20 +357,24 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         setQuery("");
       }
     },
-    [results, selectedIndex, dismiss],
+    [results, listSelectedIndex, dismiss, setQuery],
   );
 
   // =========================================================
   // Keyboard Navigation (disabled when plugin UI is active)
   // =========================================================
 
-  const selectedActions = results[selectedIndex]?.actions ?? [];
+  // When an inline view is active, the total navigable count
+  // includes the inline slot at index 0.
+  const totalCount = activeInlineView != null ? results.length + 1 : results.length;
+
+  const selectedActions = results[listSelectedIndex]?.actions ?? [];
 
   useKeyboardNavigation({
     dismiss,
-    query,
+    query: displayQuery,
     setQuery,
-    resultCount: results.length,
+    resultCount: totalCount,
     selectedIndex,
     setSelectedIndex,
     onExecute: handleExecute,
@@ -287,16 +394,17 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
   const pluginPrefix = matchedPrefix ?? "";
-  const strippedQuery = pluginPrefix ? query.slice(pluginPrefix.length) : query;
+  const strippedQuery = pluginPrefix ? searchQuery.slice(pluginPrefix.length) : searchQuery;
 
   // =========================================================
   // Content area
   //
-  // Four states:
+  // Five states:
   //   1. Measurement  — full-height placeholder + dummy footer
   //   2. Empty        — search bar only, no content section
   //   3. List view    — result rows + footer
   //   4. Plugin view  — plugin custom UI + footer
+  //   5. Inline + list — inline component above result list
   //
   // The max-h-[448px] constraint on the content wrapper defines
   // the maximum height all views must fit within.
@@ -312,7 +420,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     contentBody = (
       <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
         <PluginViewContainer
-          pluginId={customPluginView}
+          pluginId={customPluginView.pluginId}
+          viewName={customPluginView.view}
           results={results}
           query={strippedQuery}
           matchedPrefix={pluginPrefix}
@@ -321,23 +430,65 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
           mouseActiveRef={mouseActiveRef}
           onExecute={handlePluginExecute}
           onFooterChange={setPluginFooter}
+          setDisplayQuery={setDisplayQuery}
           sendMessage={sendMessage}
         />
       </Suspense>
     );
     contentFooter = <LauncherFooter footer={footer} />;
-  } else if (results.length > 0) {
+  } else if (activeInlineView != null || results.length > 0) {
     contentBody = (
-      <ResultList
-        results={results}
-        selectedIndex={selectedIndex}
-        onSelectIndex={setSelectedIndex}
-        onExecute={handleExecute}
-        mouseActiveRef={mouseActiveRef}
-      />
+      <>
+        {activeInlineView != null && (
+          <Suspense
+            fallback={
+              <div className="p-4 text-center text-text-muted text-sm">Loading…</div>
+            }
+          >
+            <InlineViewContainer
+              pluginId={activeInlineView.pluginId}
+              viewName={activeInlineView.view}
+              data={activeInlineView.data}
+              query={strippedQuery}
+              matchedPrefix={pluginPrefix}
+              selected={inlineSelected}
+              onExecute={handleInlineExecute}
+              getFooterState={() => ({
+                primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
+                hints: [],
+              })}
+              dismiss={dismiss}
+            />
+          </Suspense>
+        )}
+        {results.length > 0 && (
+          <ResultList
+            results={results}
+            selectedIndex={listSelectedIndex}
+            onSelectIndex={(idx) =>
+              setSelectedIndex(activeInlineView != null ? idx + 1 : idx)
+            }
+            onExecute={handleExecute}
+            mouseActiveRef={mouseActiveRef}
+          />
+        )}
+      </>
     );
     contentFooter = <LauncherFooter footer={footer} />;
   }
+
+  // Store the inline footer getter for the footer derivation above.
+  // This is set here (after render) so the footer reflects the
+  // inline component's actual state. The ref is read synchronously
+  // during the next render's footer derivation.
+  // eslint-disable-next-line react-hooks/refs
+  inlineFooterRef.current =
+    activeInlineView != null
+      ? () => ({
+          primary: { combo: { modifiers: [], key: "Enter" }, label: "Copy to Clipboard" },
+          hints: [],
+        })
+      : null;
 
   const contentSection = contentBody ? (
     <>
@@ -398,8 +549,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             <input
               ref={inputRef}
               type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={displayQuery}
+              onChange={handleInputChange}
               onKeyDown={emacsBindings.onKeyDown}
               placeholder="Type to search"
               className="flex-1 text-lg bg-transparent focus:outline-none placeholder:text-text-muted text-text-primary"

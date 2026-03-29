@@ -16,33 +16,46 @@
 
 import { lazy, type ComponentType, type SVGProps } from "react";
 import { ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
-import type { PluginViewProps, PluginSettingsProps } from "./types";
+import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
 
 // =========================================================
 // Registry shape
 // =========================================================
+
+type LazyComponent<P> = ComponentType<P>;
 
 interface PluginRegistryEntry {
   /** Human-readable name shown in the settings sidebar. */
   label: string;
   /** Icon shown next to the label in the settings sidebar. */
   settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
-  /** Custom UI component for the launcher result area. */
-  view?: ComponentType<PluginViewProps>;
+  /** Named view components for the launcher result area (CustomUI). */
+  views?: Record<string, LazyComponent<PluginViewProps>>;
+  /** Named inline view components rendered above the result list (InlineUI). */
+  inlineViews?: Record<string, LazyComponent<InlineViewProps>>;
   /** Settings component rendered in the settings sidebar. */
-  settings?: ComponentType<PluginSettingsProps>;
+  settings?: LazyComponent<PluginSettingsProps>;
 }
 
 // Lazy-load plugin components so they don't bloat the initial bundle.
 const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
   "emoji-picker": {
     label: "Emoji Picker",
-    view: lazy(() => import("./emoji/EmojiGrid")),
+    views: {
+      picker: lazy(() => import("./emoji/EmojiGrid")),
+    },
   },
   "clipboard-manager": {
     label: "Clipboard",
     settingsIcon: ClipboardDocumentListIcon,
-    view: lazy(() => import("./clipboard/ClipboardView")),
+    views: {
+      // The clipboard plugin uses execute-triggered custom UI
+      // (ShowCustomUI), so the view name is not sent by the backend.
+      // The frontend activates it via `executePluginView` with just
+      // the plugin ID. We register it under "default" and resolve
+      // with a fallback in `getPluginView`.
+      default: lazy(() => import("./clipboard/ClipboardView")),
+    },
     settings: lazy(() => import("./clipboard/ClipboardSettings")),
   },
 };
@@ -52,10 +65,27 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
 // =========================================================
 
 /**
- * Look up the custom UI (launcher view) component for a plugin.
+ * Look up a named view component for a plugin's CustomUI response.
+ * Falls back to "default" when no view name is specified (for
+ * execute-triggered plugins that don't send a view name).
  */
-export function getPluginComponent(pluginId: string): ComponentType<PluginViewProps> | undefined {
-  return PLUGIN_REGISTRY[pluginId]?.view;
+export function getPluginView(
+  pluginId: string,
+  viewName?: string,
+): LazyComponent<PluginViewProps> | undefined {
+  const views = PLUGIN_REGISTRY[pluginId]?.views;
+  if (!views) return undefined;
+  return views[viewName ?? "default"] ?? views["default"];
+}
+
+/**
+ * Look up a named inline view component for a plugin's InlineUI response.
+ */
+export function getPluginInlineView(
+  pluginId: string,
+  viewName: string,
+): LazyComponent<InlineViewProps> | undefined {
+  return PLUGIN_REGISTRY[pluginId]?.inlineViews?.[viewName];
 }
 
 /**
@@ -63,7 +93,7 @@ export function getPluginComponent(pluginId: string): ComponentType<PluginViewPr
  */
 export function getPluginSettingsComponent(
   pluginId: string,
-): ComponentType<PluginSettingsProps> | undefined {
+): LazyComponent<PluginSettingsProps> | undefined {
   return PLUGIN_REGISTRY[pluginId]?.settings;
 }
 

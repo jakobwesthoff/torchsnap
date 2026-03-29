@@ -17,12 +17,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ScoredEntry, SearchMessage } from "../types";
+import type { PluginViewRef, ScoredEntry, SearchMessage } from "../types";
 
 interface UseSearchResult {
   results: ScoredEntry[];
-  /** Plugin ID when the active plugin requested custom UI. */
-  customPluginView: string | null;
+  /** View reference when the active plugin requested custom UI. */
+  customPluginView: PluginViewRef | null;
+  /** View reference when the active plugin requested inline UI. */
+  inlinePluginView: PluginViewRef | null;
   /** The prefix that triggered exclusive routing (e.g., ":"). */
   matchedPrefix: string | null;
   loading: boolean;
@@ -30,7 +32,8 @@ interface UseSearchResult {
 
 export function useSearch(query: string): UseSearchResult {
   const [results, setResults] = useState<ScoredEntry[]>([]);
-  const [customPluginView, setCustomPluginView] = useState<string | null>(null);
+  const [customPluginView, setCustomPluginView] = useState<PluginViewRef | null>(null);
+  const [inlinePluginView, setInlinePluginView] = useState<PluginViewRef | null>(null);
   const [matchedPrefix, setMatchedPrefix] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
@@ -60,6 +63,7 @@ export function useSearch(query: string): UseSearchResult {
         case "catalogResults":
           setResults(message.entries);
           setCustomPluginView(message.customPluginView);
+          setInlinePluginView(message.inlinePluginView);
           setMatchedPrefix(message.matchedPrefix);
           break;
         case "done":
@@ -78,5 +82,5 @@ export function useSearch(query: string): UseSearchResult {
     };
   }, [query]);
 
-  return { results, customPluginView, matchedPrefix, loading };
+  return { results, customPluginView, inlinePluginView, matchedPrefix, loading };
 }
