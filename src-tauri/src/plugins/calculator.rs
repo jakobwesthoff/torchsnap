@@ -476,7 +476,7 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
-                // UNSAFE: Reconstructing an `&AtomicBool` from a raw pointer
+                // SAFETY: Reconstructing an `&AtomicBool` from a raw pointer
                 // that was cast through `usize` to make it `Send`. This is safe
                 // because the `CalculatorPlugin` struct (which owns the AtomicBool)
                 // is held alive inside an `Arc<dyn QueryPlugin>` in `PluginHost`
@@ -494,7 +494,7 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.heuristic_enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
-                // UNSAFE: Same pattern as the `enabled` watch above. The
+                // SAFETY: Same pattern as the `enabled` watch above. The
                 // `heuristic_enabled` AtomicBool lives inside the Arc'd plugin
                 // and outlives this thread. See the comment on the `enabled`
                 // watch thread for the full safety argument.
@@ -509,7 +509,7 @@ impl QueryPlugin for CalculatorPlugin {
             let flag = &self.history_enabled as *const AtomicBool as usize;
 
             std::thread::spawn(move || {
-                // UNSAFE: Same pattern as the `enabled` watch above. The
+                // SAFETY: Same pattern as the `enabled` watch above. The
                 // `history_enabled` AtomicBool lives inside the Arc'd plugin
                 // and outlives this thread. See the comment on the `enabled`
                 // watch thread for the full safety argument.
