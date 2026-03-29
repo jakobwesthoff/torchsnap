@@ -423,6 +423,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
           pluginId={customPluginView.pluginId}
           viewName={customPluginView.view}
           results={results}
+          data={customPluginView.data}
           query={strippedQuery}
           matchedPrefix={pluginPrefix}
           goBack={handleGoBack}

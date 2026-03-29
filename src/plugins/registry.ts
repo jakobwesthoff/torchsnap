@@ -15,7 +15,7 @@
  */
 
 import { lazy, type ComponentType, type SVGProps } from "react";
-import { ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
+import { CalculatorIcon, ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
 import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
 
 // =========================================================
@@ -57,6 +57,17 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
       default: lazy(() => import("./clipboard/ClipboardView")),
     },
     settings: lazy(() => import("./clipboard/ClipboardSettings")),
+  },
+  calculator: {
+    label: "Calculator",
+    settingsIcon: CalculatorIcon,
+    views: {
+      history: lazy(() => import("./calculator/CalculatorView")),
+    },
+    inlineViews: {
+      result: lazy(() => import("./calculator/CalculatorInline")),
+    },
+    settings: lazy(() => import("./calculator/CalculatorSettings")),
   },
 };
 
