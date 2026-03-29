@@ -213,6 +213,22 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // taking over the entire result area.
   const activeInlineView = customPluginView == null ? inlinePluginView : null;
 
+  // Stable refs so sendMessage/handlePluginExecute etc. don't need
+  // the view objects as useCallback deps (critical for React.memo).
+  //
+  // ESLINT: Writing refs during render risks an abandoned concurrent
+  // render leaving a stale value that an event handler then reads
+  // before the committed render overwrites it. Safe here because
+  // callbacks only read `.pluginId`, which is invariant across
+  // re-renders of the same plugin — a stale ref still holds the
+  // correct plugin ID.
+  const customPluginViewRef = useRef(customPluginView);
+  // eslint-disable-next-line react-hooks/refs
+  customPluginViewRef.current = customPluginView;
+  const activeInlineViewRef = useRef(activeInlineView);
+  // eslint-disable-next-line react-hooks/refs
+  activeInlineViewRef.current = activeInlineView;
+
   // Reset selection when results change (new query, different
   // result set). Done during render (prev-vs-current pattern) to
   // avoid an extra render cycle from a useEffect.
@@ -268,10 +284,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // plugin's source ID and handles PostAction.
   const handlePluginExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
-      if (!customPluginView) return;
+      const view = customPluginViewRef.current;
+      if (!view) return;
 
       const postAction = await invoke<string>("search_execute", {
-        source: customPluginView.pluginId,
+        source: view.pluginId,
         entryId,
         actionId,
       });
@@ -280,17 +297,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         dismiss();
       }
     },
-    [customPluginView, dismiss],
+    [dismiss],
   );
 
   // Inline view execute handler — routes through the inline
   // view's plugin ID.
   const handleInlineExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
-      if (!activeInlineView) return;
+      const view = activeInlineViewRef.current;
+      if (!view) return;
 
       const postAction = await invoke<string>("search_execute", {
-        source: activeInlineView.pluginId,
+        source: view.pluginId,
         entryId,
         actionId,
       });
@@ -299,7 +317,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         dismiss();
       }
     },
-    [activeInlineView, dismiss],
+    [dismiss],
   );
 
   // Inline view message handler — same pattern as the plugin
@@ -310,19 +328,26 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       payload: TPayload,
       onMessage?: (msg: TStream) => void,
     ): Promise<TResult> => {
-      if (!activeInlineView) {
+      const view = activeInlineViewRef.current;
+      if (!view) {
         throw new Error("sendInlineMessage called without an active inline view");
       }
 
       return sendPluginMessage<TPayload, TResult, TStream>(
-        activeInlineView.pluginId,
+        view.pluginId,
         method,
         payload,
         onMessage,
       );
     },
-    [activeInlineView],
+    [],
   );
+
+  // Stable index adapter for ResultList. When an inline view is
+  // active, list indices are offset by 1 (inline occupies index 0).
+  const handleListSelectIndex = useCallback((idx: number) => {
+    setSelectedIndex(activeInlineViewRef.current != null ? idx + 1 : idx);
+  }, []);
 
   // Pop back from plugin UI: clear the execute override and
   // reset the query. For prefix-triggered plugins this deactivates
@@ -343,49 +368,60 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       payload: TPayload,
       onMessage?: (msg: TStream) => void,
     ): Promise<TResult> => {
-      if (!customPluginView) {
+      const view = customPluginViewRef.current;
+      if (!view) {
         throw new Error("sendMessage called without an active plugin view");
       }
 
       return sendPluginMessage<TPayload, TResult, TStream>(
-        customPluginView.pluginId,
+        view.pluginId,
         method,
         payload,
         onMessage,
       );
     },
-    [customPluginView],
+    [],
   );
 
   // =========================================================
   // Action Execution (list mode)
   // =========================================================
 
-  const handleExecute = useCallback(
-    async (entry?: ScoredEntry, actionIndex = 0) => {
-      // When the inline slot is selected and Enter is pressed,
-      // the inline component handles it via onExecute — this
-      // handler only fires for list entries.
-      const target = entry ?? results[listSelectedIndex];
-      if (!target || target.actions.length === 0) return;
+  // Stable entry executor — always receives an explicit entry.
+  // Used by ResultList (via React.memo, so stability matters).
+  const executeEntry = useCallback(
+    async (entry: ScoredEntry, actionIndex = 0) => {
+      if (entry.actions.length === 0) return;
 
-      const action = target.actions[actionIndex];
+      const action = entry.actions[actionIndex];
       if (!action) return;
 
       const postAction = await invoke<string>("search_execute", {
-        source: target.source,
-        entryId: target.id,
+        source: entry.source,
+        entryId: entry.id,
         actionId: action.id,
       });
 
       if (postAction === "Dismiss") {
         dismiss();
       } else if (postAction === "ShowCustomUI") {
-        setExecutePluginView(target.source);
+        setExecutePluginView(entry.source);
         setQuery("");
       }
     },
-    [results, listSelectedIndex, dismiss, setQuery],
+    [dismiss, setQuery],
+  );
+
+  // Keyboard-path executor — resolves the currently selected
+  // entry and delegates to executeEntry. Unstable (depends on
+  // results/listSelectedIndex), but useKeyboardNavigation stores
+  // handlers in refs so instability costs nothing.
+  const executeSelected = useCallback(
+    (actionIndex?: number) => {
+      const target = results[listSelectedIndex];
+      if (target) executeEntry(target, actionIndex);
+    },
+    [results, listSelectedIndex, executeEntry],
   );
 
   // =========================================================
@@ -405,7 +441,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     resultCount: totalCount,
     selectedIndex,
     setSelectedIndex,
-    onExecute: handleExecute,
+    onExecute: executeSelected,
     selectedActions,
     mouseActiveRef,
     enabled: customPluginView === null,
@@ -490,8 +526,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
           <ResultList
             results={results}
             selectedIndex={listSelectedIndex}
-            onSelectIndex={(idx) => setSelectedIndex(activeInlineView != null ? idx + 1 : idx)}
-            onExecute={handleExecute}
+            onSelectIndex={handleListSelectIndex}
+            onExecute={executeEntry}
             mouseActiveRef={mouseActiveRef}
           />
         )}
