@@ -73,9 +73,11 @@ export default function EmojiGrid({
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Reset selection when results change (new query).
-  useEffect(() => {
+  const [prevResults, setPrevResults] = useState(results);
+  if (prevResults !== results) {
+    setPrevResults(results);
     setSelectedIndex(0);
-  }, [results]);
+  }
 
   // -------------------------------------------------------
   // Windowing
