@@ -423,6 +423,12 @@ impl QueryPlugin for EmojiPickerPlugin {
             })
             .collect();
 
+        // Apply frecency bonuses so frequently-used emoji float up.
+        let frecency = self.frecency.read().expect("emoji frecency read lock");
+        if let Some(ref frec) = *frecency {
+            frec.apply_scores(&mut results);
+        }
+
         results.sort_by(|a, b| b.score.cmp(&a.score));
         SearchResponse::CustomUI(results)
     }
