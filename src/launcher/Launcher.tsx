@@ -302,6 +302,28 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [activeInlineView, dismiss],
   );
 
+  // Inline view message handler — same pattern as the plugin
+  // sendMessage but routed through the inline view's plugin ID.
+  const sendInlineMessage = useCallback(
+    <TPayload = unknown, TResult = unknown, TStream = never>(
+      method: string,
+      payload: TPayload,
+      onMessage?: (msg: TStream) => void,
+    ): Promise<TResult> => {
+      if (!activeInlineView) {
+        throw new Error("sendInlineMessage called without an active inline view");
+      }
+
+      return sendPluginMessage<TPayload, TResult, TStream>(
+        activeInlineView.pluginId,
+        method,
+        payload,
+        onMessage,
+      );
+    },
+    [activeInlineView],
+  );
+
   // Pop back from plugin UI: clear the execute override and
   // reset the query. For prefix-triggered plugins this deactivates
   // the plugin through the normal search flow; for execute-triggered
@@ -460,6 +482,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
               onExecute={handleInlineExecute}
               onFooterChange={setInlineFooter}
               dismiss={dismiss}
+              sendMessage={sendInlineMessage}
             />
           </Suspense>
         )}
