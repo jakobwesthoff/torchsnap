@@ -237,10 +237,13 @@ export default function ClipboardView({
 
   const visibleEntries = entries.slice(windowStart, windowStart + PAGE_SIZE);
 
-  // Clamp selection when entries change.
-  useEffect(() => {
+  // Clamp selection when entries change (e.g. after a delete removes
+  // the entry that was at the end of the list).
+  const [prevEntriesLength, setPrevEntriesLength] = useState(entries.length);
+  if (prevEntriesLength !== entries.length) {
+    setPrevEntriesLength(entries.length);
     setSelectedIndex((prev) => (entries.length === 0 ? 0 : Math.min(prev, entries.length - 1)));
-  }, [entries.length]);
+  }
 
   // -------------------------------------------------------
   // Detail Loading with LRU Cache
@@ -254,21 +257,38 @@ export default function ClipboardView({
   const selectedEntry = entries[selectedIndex] ?? null;
   const selectedId = selectedEntry?.id ?? null;
 
-  useEffect(() => {
+  // Synchronously resolve detail state when the selection changes.
+  // Cache hits and deselection are handled here during render to avoid
+  // an extra render cycle. Cache misses set detailLoading=true so the
+  // UI can show a loading indicator immediately; the effect below then
+  // performs the actual async fetch.
+  const [prevSelectedId, setPrevSelectedId] = useState(selectedId);
+  if (prevSelectedId !== selectedId) {
+    setPrevSelectedId(selectedId);
     if (!selectedId) {
       setDetail(null);
-      return;
+      setDetailLoading(false);
+    } else {
+      const cached = detailCacheRef.current.get(selectedId);
+      if (cached) {
+        setDetail(cached);
+        setDetailLoading(false);
+      } else {
+        setDetail(null);
+        setDetailLoading(true);
+      }
     }
+  }
 
-    // Check cache first.
-    const cached = detailCacheRef.current.get(selectedId);
-    if (cached) {
-      setDetail(cached);
-      return;
-    }
+  // Fetch full entry detail from the backend for cache misses. The
+  // render-time block above already set detailLoading=true and cleared
+  // the stale detail, so this effect only needs to resolve the async
+  // result.
+  useEffect(() => {
+    if (!selectedId) return;
+    if (detailCacheRef.current.get(selectedId)) return;
 
     let cancelled = false;
-    setDetailLoading(true);
 
     sendMessage<{ id: string }, ClipboardHistoryEntry | null>("load_full_entry", {
       id: selectedId,
