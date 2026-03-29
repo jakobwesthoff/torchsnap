@@ -483,6 +483,15 @@ impl CatalogPlugin for ClipboardPlugin {
                 let captured = state.load_captured_formats(&params.id)?;
                 let platform = Arc::clone(&self.platform);
 
+                // Bump the entry's timestamp so it moves to the top of
+                // the history list. The ownership marker prevents the
+                // watcher from re-processing it, so dedup won't run —
+                // we handle the timestamp update directly here.
+                state
+                    .touch_entry(&params.id)
+                    .context("touch pasted entry")?;
+                state.refresh_active_query();
+
                 thread::spawn(move || {
                     let mut clipboard_contents = captured_to_clipboard_contents(&captured);
 

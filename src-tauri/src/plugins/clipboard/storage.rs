@@ -446,6 +446,19 @@ impl SharedState {
         Ok(())
     }
 
+    /// Bump an entry's `captured_at` timestamp to now, moving it to
+    /// the top of the chronological history. Used when restoring an
+    /// entry from history to the clipboard.
+    pub fn touch_entry(&self, id: &str) -> Result<()> {
+        self.sql.execute(
+            "UPDATE clipboard_entries
+             SET captured_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?1",
+            &[SqlValue::from(id)],
+        )?;
+        Ok(())
+    }
+
     /// Re-execute the active query and push filtered results through
     /// the stored channel. If the channel has been closed by the
     /// frontend (send returns an error), the active query is cleared.
