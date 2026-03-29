@@ -29,6 +29,7 @@ export default function CalculatorInline({
   selected,
   onExecute,
   onFooterChange,
+  sendMessage,
 }: InlineViewProps) {
   const calcData = data as CalcData | undefined;
 
@@ -49,8 +50,12 @@ export default function CalculatorInline({
       keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       handler: () => {
         if (!calcData) return;
-        // Copy the result value. The backend's execute() copies
-        // to clipboard and returns Dismiss.
+        // Save to history, then copy to clipboard and dismiss.
+        sendMessage("save_history", {
+          expression: calcData.expression,
+          result: calcData.result,
+          resultType: calcData.resultType,
+        }).catch(() => {});
         onExecute(calcData.result, { type: "copy" });
       },
     },

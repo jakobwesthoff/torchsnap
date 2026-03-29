@@ -98,6 +98,13 @@ export interface InlineViewProps {
   onFooterChange: (state: FooterState) => void;
   /** Close the launcher. */
   dismiss: () => void;
+  /** Send a custom message to the plugin's backend handler.
+   *  Same signature as PluginViewProps.sendMessage. */
+  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
+    method: string,
+    payload: TPayload,
+    onMessage?: (msg: TStream) => void,
+  ) => Promise<TResult>;
 }
 
 // =========================================================

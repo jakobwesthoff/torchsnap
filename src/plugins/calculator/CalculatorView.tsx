@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 import type { PluginViewProps } from "../types";
 import type { FooterState } from "../../launcher/types";
 import { CalculatorResult } from "./CalculatorResult";
-import { CalculatorHelp } from "./CalculatorHelp";
+import { CalculatorHelp, CalculatorError } from "./CalculatorHelp";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";
 import { LAYER } from "../../keybindings/matching";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
@@ -181,8 +181,24 @@ export default function CalculatorView({
 
   const isExpressionEmpty = !query.trim();
 
+  // When a history entry is selected, show its expression and result
+  // in the inline area instead of the typed query's evaluation.
+  const selectedHistoryEntry =
+    selectedIndex > 0 && selectedIndex - 1 < historyEntries.length
+      ? historyEntries[selectedIndex - 1]
+      : null;
+
   let inlineArea: React.ReactNode;
-  if (evalResult) {
+  if (selectedHistoryEntry && selectedHistoryEntry.subtitle) {
+    // History entry selected — display its stored expression and result.
+    inlineArea = (
+      <CalculatorResult
+        expression={selectedHistoryEntry.title}
+        result={selectedHistoryEntry.subtitle}
+        resultType="number"
+      />
+    );
+  } else if (evalResult) {
     inlineArea = (
       <CalculatorResult
         expression={evalResult.expression}
@@ -191,13 +207,12 @@ export default function CalculatorView({
       />
     );
   } else if (isExpressionEmpty) {
-    // Just `=` typed — show usage examples.
+    // Just `=` typed — show centered usage examples.
     inlineArea = <CalculatorHelp />;
   } else if (evalError) {
-    // Parser/evaluator error — show it alongside the help examples.
-    inlineArea = <CalculatorHelp error={evalError} />;
+    // Parser/evaluator error — show just the error, no help.
+    inlineArea = <CalculatorError message={evalError} />;
   } else {
-    // No data at all (shouldn't happen, but be safe).
     inlineArea = <CalculatorHelp />;
   }
 
