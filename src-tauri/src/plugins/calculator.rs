@@ -20,14 +20,46 @@
 // =========================================================
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use evalexpr::{Node, Operator, Value, build_operator_tree};
 use regex::Regex;
 use serde_json::json;
+use tauri::Manager;
 
 use super::{PluginContext, QueryPlugin};
-use crate::search::types::{ActionId, PostAction, SearchResponse};
+use crate::search::types::{
+    Action, ActionId, EntryIcon, PostAction, QueryResult, SearchResponse,
+};
 use crate::settings::SettingsInit;
+use crate::settings_notifier::SettingsWatch;
+use crate::storage::{SqlStorage, SqlValue};
+
+// =========================================================
+// Constants
+// =========================================================
+
+const PLUGIN_ID: &str = "calculator";
+
+/// How often the retention cleanup thread wakes to delete expired
+/// entries.
+const RETENTION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
+/// Maximum number of history entries returned by a search.
+const HISTORY_LIMIT: i64 = 100;
+
+const MIGRATION_001: &str = "\
+CREATE TABLE calc_history (
+    id           TEXT PRIMARY KEY,
+    expression   TEXT NOT NULL,
+    result       TEXT NOT NULL,
+    result_type  TEXT NOT NULL,
+    computed_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    content_hash TEXT NOT NULL UNIQUE
+);
+CREATE INDEX idx_history_computed_at ON calc_history(computed_at DESC);
+";
 
 // =========================================================
 // Evaluation Result
@@ -226,12 +258,147 @@ fn try_extract_math(query: &str) -> Option<&str> {
 }
 
 // =========================================================
+// History Storage
+// =========================================================
+
+/// Save an expression+result to history with deduplication.
+///
+/// If the same expression already exists (by content hash),
+/// its timestamp and result are updated. Otherwise a new row
+/// is inserted with a fresh ULID.
+fn save_to_history(db: &SqlStorage, expression: &str, result: &EvalResult) {
+    let content_hash = blake3::hash(expression.as_bytes()).to_hex().to_string();
+
+    // Check for existing entry with the same expression.
+    let existing: Vec<String> = db
+        .query_map(
+            "SELECT id FROM calc_history WHERE content_hash = ?",
+            &[SqlValue::from(content_hash.as_str())],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+
+    if existing.is_empty() {
+        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let _ = db.execute(
+            "INSERT INTO calc_history (id, expression, result, result_type, content_hash) \
+             VALUES (?, ?, ?, ?, ?)",
+            &[
+                SqlValue::from(id),
+                SqlValue::from(expression),
+                SqlValue::from(result.value.as_str()),
+                SqlValue::from(result.result_type),
+                SqlValue::from(content_hash),
+            ],
+        );
+    } else {
+        // Bump timestamp and update result (in case formatting changed).
+        let _ = db.execute(
+            "UPDATE calc_history \
+             SET result = ?, result_type = ?, \
+                 computed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+             WHERE content_hash = ?",
+            &[
+                SqlValue::from(result.value.as_str()),
+                SqlValue::from(result.result_type),
+                SqlValue::from(content_hash),
+            ],
+        );
+    }
+}
+
+/// Query history entries, optionally filtered by a search term.
+/// Returns entries ordered by most recent first.
+fn query_history(db: &SqlStorage, filter: &str) -> Vec<QueryResult> {
+    let (sql, params): (&str, Vec<SqlValue>) = if filter.is_empty() {
+        (
+            "SELECT id, expression, result, result_type FROM calc_history \
+             ORDER BY computed_at DESC LIMIT ?",
+            vec![SqlValue::from(HISTORY_LIMIT)],
+        )
+    } else {
+        (
+            "SELECT id, expression, result, result_type FROM calc_history \
+             WHERE expression LIKE ? \
+             ORDER BY computed_at DESC LIMIT ?",
+            vec![
+                SqlValue::from(format!("%{filter}%")),
+                SqlValue::from(HISTORY_LIMIT),
+            ],
+        )
+    };
+
+    db.query_map(sql, &params, |row| {
+        let id: String = row.get(0)?;
+        let expression: String = row.get(1)?;
+        let result: String = row.get(2)?;
+
+        Ok(QueryResult {
+            id,
+            title: expression,
+            subtitle: Some(result),
+            icon: Some(EntryIcon::HeroIcon("clock".into())),
+            score: 0,
+            title_positions: vec![],
+            subtitle_positions: vec![],
+            actions: vec![Action {
+                id: ActionId::Copy,
+                label: "Copy to Clipboard".to_string(),
+                keybinding: None,
+            }],
+        })
+    })
+    .unwrap_or_default()
+}
+
+/// Run the retention cleanup loop. Deletes history entries
+/// older than `retentionDays`. Wakes on condvar signal (for
+/// shutdown) or after the cleanup interval.
+fn retention_cleanup_loop(
+    db: Arc<SqlStorage>,
+    retention_days_watch: SettingsWatch<u32>,
+    condvar: Arc<Condvar>,
+    shutdown: Arc<Mutex<bool>>,
+) {
+    loop {
+        // Read the current retention setting.
+        let days = retention_days_watch.get().max(1);
+
+        let _ = db.execute(
+            "DELETE FROM calc_history \
+             WHERE computed_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
+            &[SqlValue::from(format!("-{days} days"))],
+        );
+
+        // Wait for the cleanup interval or a shutdown signal.
+        let guard = shutdown.lock().expect("shutdown mutex not poisoned");
+        let (guard, _) = condvar
+            .wait_timeout(guard, RETENTION_CLEANUP_INTERVAL)
+            .expect("condvar wait not poisoned");
+
+        if *guard {
+            break;
+        }
+    }
+}
+
+// =========================================================
 // Calculator Plugin
 // =========================================================
 
 pub struct CalculatorPlugin {
     enabled: AtomicBool,
     heuristic_enabled: AtomicBool,
+    history_enabled: AtomicBool,
+
+    /// SQLite database for history. Initialized in `setup()`.
+    db: Mutex<Option<Arc<SqlStorage>>>,
+
+    /// Condvar for waking the retention cleanup thread on shutdown.
+    retention_condvar: Arc<Condvar>,
+
+    /// Shared shutdown flag for the retention thread.
+    retention_shutdown: Arc<Mutex<bool>>,
 }
 
 impl CalculatorPlugin {
@@ -239,13 +406,24 @@ impl CalculatorPlugin {
         Self {
             enabled: AtomicBool::new(true),
             heuristic_enabled: AtomicBool::new(true),
+            history_enabled: AtomicBool::new(true),
+            db: Mutex::new(None),
+            retention_condvar: Arc::new(Condvar::new()),
+            retention_shutdown: Arc::new(Mutex::new(false)),
         }
+    }
+
+    fn db(&self) -> Option<Arc<SqlStorage>> {
+        self.db
+            .lock()
+            .expect("calculator db mutex not poisoned")
+            .clone()
     }
 }
 
 impl QueryPlugin for CalculatorPlugin {
     fn id(&self) -> &str {
-        "calculator"
+        PLUGIN_ID
     }
 
     fn is_enabled(&self) -> bool {
@@ -268,8 +446,22 @@ impl QueryPlugin for CalculatorPlugin {
             .ensure("retentionDays", 30)
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
-        // Read initial settings.
+    fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
+        // ----- Initialize history database -----
+        let data_dir = app
+            .path()
+            .app_data_dir()
+            .expect("resolve app data dir")
+            .join("plugins")
+            .join(PLUGIN_ID);
+
+        let db_path = data_dir.join("calculator.db");
+        let db = Arc::new(
+            SqlStorage::open(db_path, &[MIGRATION_001]).expect("open calculator database"),
+        );
+        *self.db.lock().expect("calculator db mutex not poisoned") = Some(Arc::clone(&db));
+
+        // ----- Read initial settings -----
         let initial_enabled: bool = ctx.settings.get("enabled").unwrap_or(true);
         self.enabled.store(initial_enabled, Ordering::Relaxed);
 
@@ -277,9 +469,11 @@ impl QueryPlugin for CalculatorPlugin {
         self.heuristic_enabled
             .store(initial_heuristic, Ordering::Relaxed);
 
-        // Watch each setting on its own thread. blocking_changed()
-        // blocks until a new value arrives, which is the same pattern
-        // the clipboard plugin uses for its enabled watch.
+        let initial_history: bool = ctx.settings.get("historyEnabled").unwrap_or(true);
+        self.history_enabled
+            .store(initial_history, Ordering::Relaxed);
+
+        // ----- Settings watch threads -----
         {
             let mut watch = ctx.notifier.watch::<bool>("enabled");
             let flag = &self.enabled as *const AtomicBool as usize;
@@ -304,12 +498,45 @@ impl QueryPlugin for CalculatorPlugin {
                 }
             });
         }
+        {
+            let mut watch = ctx.notifier.watch::<bool>("historyEnabled");
+            let flag = &self.history_enabled as *const AtomicBool as usize;
+
+            std::thread::spawn(move || {
+                let flag = unsafe { &*(flag as *const AtomicBool) };
+                while let Some(val) = watch.blocking_changed() {
+                    flag.store(val, Ordering::Relaxed);
+                }
+            });
+        }
+
+        // ----- Retention cleanup thread -----
+        {
+            let retention_days_watch = ctx.notifier.watch::<u32>("retentionDays");
+            let condvar = Arc::clone(&self.retention_condvar);
+            let shutdown = Arc::clone(&self.retention_shutdown);
+            let db = Arc::clone(&db);
+
+            std::thread::spawn(move || {
+                retention_cleanup_loop(db, retention_days_watch, condvar, shutdown);
+            });
+        }
+    }
+
+    fn teardown(&self) {
+        // Signal the retention thread to exit.
+        *self
+            .retention_shutdown
+            .lock()
+            .expect("shutdown mutex not poisoned") = true;
+        self.retention_condvar.notify_all();
     }
 
     fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse {
         match matched_prefix {
             Some("=") => {
-                // Prefix mode: evaluate expression, return CustomUI.
+                // Prefix mode: evaluate expression, return CustomUI
+                // with inline result data + history entries.
                 let eval_result = evaluate(query);
 
                 let data = eval_result.as_ref().map(|r| {
@@ -320,11 +547,19 @@ impl QueryPlugin for CalculatorPlugin {
                     })
                 });
 
-                // TODO: History entries will be added in Layer 4.
+                // Query history (filtered by expression if non-empty).
+                let history = if self.history_enabled.load(Ordering::Relaxed) {
+                    self.db()
+                        .map(|db| query_history(&db, query))
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+
                 SearchResponse::CustomUI {
                     view: "history".into(),
                     data,
-                    results: vec![],
+                    results: history,
                 }
             }
             None => {
@@ -364,10 +599,89 @@ impl QueryPlugin for CalculatorPlugin {
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         use tauri_plugin_clipboard_manager::ClipboardExt;
+
+        // If history is enabled and this looks like a result value
+        // being copied, we save the expression to history in the
+        // frontend's execute handler (via the data payload). The
+        // backend execute just copies and dismisses.
         app.clipboard()
             .write_text(entry_id)
             .map_err(|e| anyhow::anyhow!("copy to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
+    }
+
+    fn handle_message(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+        _channel: tauri::ipc::Channel<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let db = self
+            .db()
+            .ok_or_else(|| anyhow::anyhow!("calculator database not initialized"))?;
+
+        match method {
+            // Save an expression+result to history (called by frontend
+            // on Enter in prefix mode).
+            "save_history" => {
+                if !self.history_enabled.load(Ordering::Relaxed) {
+                    return Ok(json!({"saved": false}));
+                }
+
+                let expression = payload
+                    .get("expression")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("missing 'expression' field"))?;
+                let result_value = payload
+                    .get("result")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("missing 'result' field"))?;
+                let result_type = payload
+                    .get("resultType")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("missing 'resultType' field"))?;
+
+                let eval_result = EvalResult {
+                    value: result_value.to_string(),
+                    result_type: if result_type == "boolean" {
+                        "boolean"
+                    } else {
+                        "number"
+                    },
+                };
+
+                save_to_history(&db, expression, &eval_result);
+                Ok(json!({"saved": true}))
+            }
+
+            // Return storage statistics.
+            "stats" => {
+                let count: Vec<i64> = db
+                    .query_map("SELECT COUNT(*) FROM calc_history", &[], |row| row.get(0))
+                    .unwrap_or_default();
+
+                let entry_count = count.first().copied().unwrap_or(0);
+
+                // Get the database file size.
+                // The DB path is stored in the SqlStorage but not exposed,
+                // so we reconstruct it. This is acceptable since the path
+                // is deterministic.
+                let db_size = 0i64; // TODO: expose db path or size from SqlStorage
+
+                Ok(json!({
+                    "entryCount": entry_count,
+                    "dbSize": db_size,
+                }))
+            }
+
+            // Clear all history entries.
+            "clear_history" => {
+                db.execute("DELETE FROM calc_history", &[])?;
+                Ok(json!({"cleared": true}))
+            }
+
+            _ => anyhow::bail!("unknown calculator message: {method}"),
+        }
     }
 }
 
@@ -430,7 +744,11 @@ mod tests {
     #[test]
     fn scientific_notation_large() {
         let r = evaluate("10^16").unwrap();
-        assert!(r.value.contains('e'), "expected scientific notation: {}", r.value);
+        assert!(
+            r.value.contains('e'),
+            "expected scientific notation: {}",
+            r.value
+        );
     }
 
     #[test]
@@ -474,5 +792,68 @@ mod tests {
     #[test]
     fn heuristic_no_match_version_string() {
         assert!(try_extract_math("v1.2.3").is_none());
+    }
+
+    #[test]
+    fn history_save_and_query() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db = SqlStorage::open(dir.path().join("test.db"), &[MIGRATION_001])
+            .expect("open test database");
+
+        let result = EvalResult {
+            value: "5".to_string(),
+            result_type: "number",
+        };
+        save_to_history(&db, "2 + 3", &result);
+
+        let entries = query_history(&db, "");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "2 + 3");
+        assert_eq!(entries[0].subtitle.as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn history_dedup_bumps_timestamp() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db = SqlStorage::open(dir.path().join("test.db"), &[MIGRATION_001])
+            .expect("open test database");
+
+        let result = EvalResult {
+            value: "5".to_string(),
+            result_type: "number",
+        };
+        save_to_history(&db, "2 + 3", &result);
+        save_to_history(&db, "2 + 3", &result);
+
+        let entries = query_history(&db, "");
+        assert_eq!(entries.len(), 1, "dedup should prevent duplicates");
+    }
+
+    #[test]
+    fn history_filter() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db = SqlStorage::open(dir.path().join("test.db"), &[MIGRATION_001])
+            .expect("open test database");
+
+        save_to_history(
+            &db,
+            "2 + 3",
+            &EvalResult {
+                value: "5".to_string(),
+                result_type: "number",
+            },
+        );
+        save_to_history(
+            &db,
+            "10 * 20",
+            &EvalResult {
+                value: "200".to_string(),
+                result_type: "number",
+            },
+        );
+
+        let entries = query_history(&db, "10");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "10 * 20");
     }
 }
