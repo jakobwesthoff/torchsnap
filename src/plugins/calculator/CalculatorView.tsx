@@ -27,7 +27,16 @@ import { useKeyBindings } from "../../keybindings/useKeyBindings";
 import { LAYER } from "../../keybindings/matching";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
 
-const PAGE_SIZE = 8;
+// Layout constants. The inline area (result/help/error) has a fixed
+// height so the history list below it doesn't shift as the content
+// changes. The page size is derived from the remaining space.
+const INLINE_AREA_HEIGHT = 76; // px — fits CalculatorResult comfortably
+const HISTORY_ROW_HEIGHT = 52; // px — py-2 (16) + two text lines (36)
+const DIVIDER_HEIGHT = 1; // px — border-t
+const MAX_CONTENT_HEIGHT = 360; // px — max-h on the outer container
+const HISTORY_PAGE_SIZE = Math.floor(
+  (MAX_CONTENT_HEIGHT - INLINE_AREA_HEIGHT - DIVIDER_HEIGHT) / HISTORY_ROW_HEIGHT,
+);
 
 interface CalcData {
   expression: string;
@@ -96,7 +105,7 @@ export default function CalculatorView({
     selectedIndex: historySelectedIndex >= 0 ? historySelectedIndex : 0,
     setSelectedIndex: (idx) => setSelectedIndex(idx + 1),
     resultCount: historyEntries.length,
-    pageSize: PAGE_SIZE,
+    pageSize: HISTORY_PAGE_SIZE,
   });
 
   // When a history entry is selected, populate the display query.
@@ -220,12 +229,17 @@ export default function CalculatorView({
   // Render
   // =========================================================
 
-  const visibleHistory = historyEntries.slice(windowStart, windowStart + PAGE_SIZE);
+  const visibleHistory = historyEntries.slice(windowStart, windowStart + HISTORY_PAGE_SIZE);
 
   return (
-    <div className="flex flex-col max-h-[360px]">
-      {/* Inline result / help area */}
-      {inlineArea}
+    <div className="flex flex-col" style={{ maxHeight: MAX_CONTENT_HEIGHT }}>
+      {/* Inline result / help area — fixed height so history doesn't shift */}
+      <div
+        className="flex items-center overflow-hidden shrink-0"
+        style={{ height: INLINE_AREA_HEIGHT }}
+      >
+        <div className="w-full">{inlineArea}</div>
+      </div>
 
       {/* Divider */}
       {historyEntries.length > 0 && <div className="border-t border-border" />}
