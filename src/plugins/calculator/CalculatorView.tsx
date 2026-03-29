@@ -18,7 +18,7 @@
  * history (if valid), and dismisses.
  */
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { PluginViewProps } from "../types";
 import type { FooterState } from "../../launcher/types";
 import { CalculatorResult } from "./CalculatorResult";
@@ -51,7 +51,7 @@ const CALCULATOR_FOOTER: FooterState = {
   hints: [{ combo: { modifiers: [], key: "Escape" }, label: "Back" }],
 };
 
-export default function CalculatorView({
+export default memo(function CalculatorView({
   results,
   data,
   query,
@@ -254,7 +254,7 @@ export default function CalculatorView({
             return (
               <div
                 key={entry.id}
-                className={`flex items-center gap-3 px-5 py-2 cursor-default transition-colors ${
+                className={`flex items-center gap-3 px-5 py-2 cursor-default ${
                   isSelected ? "bg-selection" : ""
                 }`}
                 onMouseMove={() => {
@@ -303,4 +303,4 @@ export default function CalculatorView({
       )}
     </div>
   );
-}
+});

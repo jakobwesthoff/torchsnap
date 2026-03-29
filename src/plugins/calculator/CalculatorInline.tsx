@@ -12,7 +12,7 @@
  * Enter copies the result to clipboard and dismisses.
  */
 
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import type { InlineViewProps } from "../types";
 import { CalculatorResult } from "./CalculatorResult";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";
@@ -24,7 +24,7 @@ interface CalcData {
   resultType: string;
 }
 
-export default function CalculatorInline({
+export default memo(function CalculatorInline({
   data,
   selected,
   onExecute,
@@ -64,7 +64,7 @@ export default function CalculatorInline({
   if (!calcData) return null;
 
   return (
-    <div className={`transition-colors ${selected ? "bg-selection" : ""}`}>
+    <div className={selected ? "bg-selection" : ""}>
       <CalculatorResult
         expression={calcData.expression}
         result={calcData.result}
@@ -72,4 +72,4 @@ export default function CalculatorInline({
       />
     </div>
   );
-}
+});

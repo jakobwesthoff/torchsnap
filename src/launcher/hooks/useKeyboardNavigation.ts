@@ -19,9 +19,16 @@
  * 3. **Dynamic action bindings** — derived from the currently
  *    selected entry's secondary actions. Also disabled when a
  *    plugin is active.
+ *
+ * All handler state is read from a ref that is updated after each
+ * commit via `useEffect`. This keeps the `useMemo` arrays stable
+ * when only handler-relevant values change (selectedIndex, query,
+ * etc.), avoiding unnecessary keybinding re-registration. The
+ * `useKeyBindings` hook separately wraps handlers in refs, so the
+ * dispatch path always reaches the latest closure.
  */
 
-import { useCallback, useMemo, type RefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   useKeyBindings,
   LAYER,
@@ -38,9 +45,9 @@ interface UseKeyboardNavigationParams {
   resultCount: number;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
-  onExecute: (entry?: undefined, actionIndex?: number) => void;
+  onExecute: (actionIndex?: number) => void;
   selectedActions: Action[];
-  mouseActiveRef: RefObject<boolean>;
+  mouseActiveRef: React.RefObject<boolean>;
   /** When false, navigation and action bindings are deregistered.
    *  Global bindings (Tab trap, Escape) remain active. */
   enabled: boolean;
@@ -50,25 +57,17 @@ interface UseKeyboardNavigationParams {
 // priority over any app-level bindings for the same keys.
 const LAUNCHER_LAYER = LAYER.COMPONENT + 1;
 
-export function useKeyboardNavigation({
-  dismiss,
-  query,
-  setQuery,
-  resultCount,
-  selectedIndex,
-  setSelectedIndex,
-  onExecute,
-  selectedActions,
-  mouseActiveRef,
-  enabled,
-}: UseKeyboardNavigationParams) {
-  const moveSelection = useCallback(
-    (delta: number) => {
-      mouseActiveRef.current = false;
-      setSelectedIndex(Math.max(0, Math.min(selectedIndex + delta, resultCount - 1)));
-    },
-    [selectedIndex, resultCount, setSelectedIndex, mouseActiveRef],
-  );
+export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
+  const { enabled, selectedActions } = params;
+
+  // Ref holding the latest params, updated after each commit.
+  // Handlers read from this instead of closing over individual
+  // values, so the useMemo arrays below stay referentially stable
+  // when only handler-relevant state changes.
+  const stateRef = useRef(params);
+  useEffect(() => {
+    stateRef.current = params;
+  });
 
   // =========================================================
   // Global Bindings (always active)
@@ -96,6 +95,7 @@ export function useKeyboardNavigation({
         layer: LAUNCHER_LAYER,
         order: 10,
         handler: () => {
+          const { query, setQuery, dismiss } = stateRef.current;
           if (query) {
             setQuery("");
           } else {
@@ -105,7 +105,7 @@ export function useKeyboardNavigation({
         keybindings: [{ combo: { modifiers: [], key: "Escape" }, allowInInput: true }],
       },
     ],
-    [query, setQuery, dismiss],
+    [],
   );
 
   useKeyBindings(globalBindings);
@@ -118,6 +118,12 @@ export function useKeyboardNavigation({
 
   const navigationBindings: KeyBindingDefinition[] = useMemo(() => {
     if (!enabled) return [];
+
+    const moveSelection = (delta: number) => {
+      const { selectedIndex, resultCount, setSelectedIndex, mouseActiveRef } = stateRef.current;
+      mouseActiveRef.current = false;
+      setSelectedIndex(Math.max(0, Math.min(selectedIndex + delta, resultCount - 1)));
+    };
 
     return [
       {
@@ -152,11 +158,11 @@ export function useKeyboardNavigation({
         id: "launcher-enter",
         layer: LAUNCHER_LAYER,
         order: 4,
-        handler: () => onExecute(),
+        handler: () => stateRef.current.onExecute(),
         keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       },
     ];
-  }, [enabled, moveSelection, onExecute]);
+  }, [enabled]);
 
   useKeyBindings(navigationBindings);
 
@@ -177,11 +183,18 @@ export function useKeyboardNavigation({
       const action = selectedActions[i];
       if (!action.keybinding) continue;
 
+      const actionIndex = i;
+      // ESLINT: The linter flags `stateRef` because `push()` receives
+      // a closure that captures it — but `push()` stores the closure,
+      // it does not invoke it. The handler only runs from a DOM
+      // `keydown` event, which React guarantees flushes pending
+      // effects (including our stateRef update) before dispatching.
+      // eslint-disable-next-line react-hooks/refs
       bindings.push({
         id: `launcher-action-${i}`,
         layer: LAUNCHER_LAYER,
         order: 5 + i,
-        handler: () => onExecute(undefined, i),
+        handler: () => stateRef.current.onExecute(actionIndex),
         keybindings: [
           {
             combo: {
@@ -195,7 +208,7 @@ export function useKeyboardNavigation({
     }
 
     return bindings;
-  }, [enabled, selectedActions, onExecute]);
+  }, [enabled, selectedActions]);
 
   useKeyBindings(actionBindings);
 }

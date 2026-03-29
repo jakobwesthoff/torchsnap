@@ -11,7 +11,7 @@
  * selection). There is no native scroll container or scrollbar.
  */
 
-import { type RefObject } from "react";
+import { memo, type RefObject } from "react";
 import type { ScoredEntry } from "./types";
 import { ResultRow } from "./ResultRow";
 import { PAGE_SIZE } from "./constants";
@@ -25,7 +25,7 @@ interface ResultListProps {
   mouseActiveRef: RefObject<boolean>;
 }
 
-export function ResultList({
+export const ResultList = memo(function ResultList({
   results,
   selectedIndex,
   onSelectIndex,
@@ -69,4 +69,4 @@ export function ResultList({
       })}
     </div>
   );
-}
+});
