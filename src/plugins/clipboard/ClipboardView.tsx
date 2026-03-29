@@ -222,7 +222,7 @@ export default function ClipboardView({
     ClipboardListEntry[]
   >(sendMessage, "search", searchPayload);
 
-  const entries = history ?? [];
+  const entries = useMemo(() => history ?? [], [history]);
 
   // -------------------------------------------------------
   // Virtual Scroll
