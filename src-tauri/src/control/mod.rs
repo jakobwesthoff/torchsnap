@@ -318,9 +318,7 @@ pub fn start_control_server_reactor(
                 let mut s = ControlServer::new(Arc::clone(&registry));
                 s.start(&app_handle);
                 server = Some(s);
-            } else if !new_enabled
-                && let Some(mut s) = server.take()
-            {
+            } else if !new_enabled && let Some(mut s) = server.take() {
                 s.stop();
             }
         }
