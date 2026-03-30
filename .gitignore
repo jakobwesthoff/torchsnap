@@ -24,6 +24,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Generated asset data (source lives in assets/, copied by `just asset-mascot-data`)
+src/mascots.json
+
 # Memory benchmark output
 memsnap-*.json
 bench-memory-*.json
