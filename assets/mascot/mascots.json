@@ -1,4 +1,518 @@
 {
-  "original": { "alt": "Snappy ready to snap your search." },
-  "torchlight": { "alt": "Snappy lighting the way with a torch." }
+  "original": {
+    "alt": "Snappy — torch raised, ready to illuminate whatever you need to launch.",
+    "nsfw": false
+  },
+  "cloak-and-torch": {
+    "alt": "Snappy in a brown cloak with a satchel — the original flame-keeper, lighting the path to your apps.",
+    "nsfw": false
+  },
+  "torchbearer": {
+    "alt": "Snappy holding the torch aloft — every command finds its path.",
+    "nsfw": false
+  },
+  "torchbearer-backpack": {
+    "alt": "Snappy with a full pack and a lit torch — always prepared for the next launch.",
+    "nsfw": false
+  },
+  "explorer-cartographer": {
+    "alt": "Snappy charting unknown territory — compass, scroll, lantern, and a torch for good measure. No app goes unlaunched.",
+    "nsfw": false
+  },
+  "cloak-and-lantern": {
+    "alt": "Snappy carrying both a torch and a lantern — double the light, double the launches.",
+    "nsfw": false
+  },
+  "lamp-and-staff-explorer": {
+    "alt": "Snappy with a walking staff and a lantern — every expedition deserves a quick launcher.",
+    "nsfw": false
+  },
+  "rugged-explorer": {
+    "alt": "Snappy field-tested and torch-lit — goggles up, map in hand, ready to launch anything.",
+    "nsfw": false
+  },
+  "whip-and-torch-explorer": {
+    "alt": "Snappy on a relic hunt — apps. Why did it have to be apps?",
+    "nsfw": false
+  },
+  "gold-miner": {
+    "alt": "Snappy panning for pixel gold — the torch lights the way to buried commands.",
+    "nsfw": false
+  },
+  "yellow-chomping-ghost": {
+    "alt": "Snappy in a yellow chomping costume — wakka wakka wakka, app launched.",
+    "nsfw": false
+  },
+  "yellow-chomping-ghost-2": {
+    "alt": "Snappy in full chomping mode — the power pellet was a quick launch all along.",
+    "nsfw": false
+  },
+  "werewolf": {
+    "alt": "Snappy after that unfortunate bite — sharper claws, same dedication to launching on command.",
+    "nsfw": false
+  },
+  "werewolf-moon": {
+    "alt": "Snappy howling at the full moon — the launches must flow.",
+    "nsfw": false
+  },
+  "iron-circuit": {
+    "alt": "Snappy encased in glowing dark armor — the arc in its chest is just a very bright torch.",
+    "nsfw": false
+  },
+  "party": {
+    "alt": "Snappy ringing in the occasion — confetti optional, launch mandatory.",
+    "nsfw": false
+  },
+  "easter-bunny-nest": {
+    "alt": "Snappy in a hay nest with bunny ears — some apps are harder to find than others.",
+    "nsfw": false
+  },
+  "easter-bunny-flowers": {
+    "alt": "Snappy amid spring blooms, ears on — the hunt is afoot.",
+    "nsfw": false
+  },
+  "easter-bunny-wreath": {
+    "alt": "Snappy with a full flower wreath and a cracked egg — the season has officially started.",
+    "nsfw": false
+  },
+  "santa": {
+    "alt": "Snappy delivering gifts and app launches — checking the list twice.",
+    "nsfw": false
+  },
+  "halloween-witch-pumpkins": {
+    "alt": "Snappy in a witch hat amid carved pumpkins — trick or launch.",
+    "nsfw": false
+  },
+  "halloween-witch-lantern": {
+    "alt": "Snappy with a glowing jack-o-lantern bucket — carrying the light into the night.",
+    "nsfw": false
+  },
+  "steampunk": {
+    "alt": "Snappy from the age of brass and steam — pocket watch, goggles, and a cane for good measure.",
+    "nsfw": false
+  },
+  "steampunk-aviator": {
+    "alt": "Snappy in brass gear and aviator goggles — mechanically inclined to launch everything.",
+    "nsfw": false
+  },
+  "black-coat-shades": {
+    "alt": "Snappy in a black leather coat and oval sunglasses — there is no launcher. There never was.",
+    "nsfw": false
+  },
+  "black-coat-shades-2": {
+    "alt": "Snappy in the coat, leaning — you can feel the render distance increasing.",
+    "nsfw": false
+  },
+  "red-pill-blue-pill": {
+    "alt": "Snappy holding a glowing choice — one pill launches the app, the other lets you keep searching.",
+    "nsfw": false
+  },
+  "black-coat-shades-3": {
+    "alt": "Snappy in full black on a reflective surface — the agents are aware of the launcher.",
+    "nsfw": false
+  },
+  "fire-wizard-star": {
+    "alt": "Snappy in a star-emblemed wizard hat with a flaming wand — the spell was always a launch command.",
+    "nsfw": false
+  },
+  "fire-mage": {
+    "alt": "Snappy wielding fire in both hands — the torch was just the beginning.",
+    "nsfw": false
+  },
+  "proton-pack-buster-nsfw": {
+    "alt": "Snappy suited up with a proton pack — who you gonna call when the app won't launch?",
+    "nsfw": true
+  },
+  "proton-pack-buster-2-nsfw": {
+    "alt": "Snappy in ghost-hunting gear, goggles on — the readout is off the charts.",
+    "nsfw": true
+  },
+  "proton-pack-buster-3-nsfw": {
+    "alt": "Snappy locking in the proton stream — don't cross the beams. Or the launch commands.",
+    "nsfw": true
+  },
+  "scifi-scavenger-nsfw": {
+    "alt": "Snappy in tactical dark gear with a blaster — salvaging apps from the wreckage.",
+    "nsfw": true
+  },
+  "century-hopper-walkie": {
+    "alt": "Snappy in a puffer vest with a walkie and a glowing device — this launch command is from the future.",
+    "nsfw": false
+  },
+  "century-hopper-walkman": {
+    "alt": "Snappy with a cassette player and headphones — the roads where we're going don't need context.",
+    "nsfw": false
+  },
+  "boldly-go-gold": {
+    "alt": "Snappy in a gold starship uniform, communicator in hand — ready to boldly launch where no owl has launched before.",
+    "nsfw": false
+  },
+  "boldly-go-gold-nsfw": {
+    "alt": "Snappy in a gold starship uniform, phaser raised — set phasers to launch.",
+    "nsfw": true
+  },
+  "engage-crimson": {
+    "alt": "Snappy in a red starship uniform with a PADD — make it so.",
+    "nsfw": false
+  },
+  "engage-crimson-nsfw": {
+    "alt": "Snappy in a red starship uniform, phaser drawn — the app will be on screen in five seconds.",
+    "nsfw": true
+  },
+  "horned-trickster": {
+    "alt": "Snappy in golden horns and a green cloak, holding a scepter — burdened with glorious launching purpose.",
+    "nsfw": false
+  },
+  "horned-trickster-2": {
+    "alt": "Snappy in the horned helm, staff raised — glorious purpose, alternate angle.",
+    "nsfw": false
+  },
+  "hooded-blade-bearer-nsfw": {
+    "alt": "Snappy hooded in dark leather, golden sword drawn — the launcher must be protected.",
+    "nsfw": true
+  },
+  "time-wanderer-top-hat": {
+    "alt": "Snappy in a top hat and plaid cloak, sonic in hand — the one and only original. Grumpy, brilliant, unmistakable.",
+    "nsfw": false
+  },
+  "time-wanderer-pocket-watch": {
+    "alt": "Snappy with a pocket watch and a walking cane — playing second fiddle to no one, always on time to launch.",
+    "nsfw": false
+  },
+  "time-wanderer-mop-top": {
+    "alt": "Snappy with dark mop-top hair in a plaid waistcoat — the recorder was second only to the sonic, and the sonic always won.",
+    "nsfw": false
+  },
+  "time-wanderer-velvet-cape": {
+    "alt": "Snappy in a red-lined velvet cape with frilled cuffs — third time in exile, launching in elegant defiance.",
+    "nsfw": false
+  },
+  "time-wanderer-striped-scarf": {
+    "alt": "Snappy in a wide-brim hat with an impossibly long striped scarf — four jelly babies short, and twice as many apps to launch.",
+    "nsfw": false
+  },
+  "time-wanderer-striped-scarf-2": {
+    "alt": "Snappy in the iconic scarf, sonic raised — four pockets, all of them full of jelly babies and launch configs.",
+    "nsfw": false
+  },
+  "time-wanderer-striped-scarf-3": {
+    "alt": "Snappy in the wide-brim hat with four miles of scarf — same wanderer, rendered differently.",
+    "nsfw": false
+  },
+  "time-wanderer-cricket-whites": {
+    "alt": "Snappy in cricket whites and a decorated hat, holding a cricket ball — always taking five, sonic in one hand, launcher in the other.",
+    "nsfw": false
+  },
+  "time-wanderer-celery-lapel": {
+    "alt": "Snappy in cricket whites with a stick of celery on the lapel — the celery has five known uses. Not one of them is decorative.",
+    "nsfw": false
+  },
+  "time-wanderer-loud-coat": {
+    "alt": "Snappy in a gloriously loud waistcoat with an umbrella — a sixth sense for clashing colours, and an impeccable eye for launches.",
+    "nsfw": false
+  },
+  "time-wanderer-question-marks": {
+    "alt": "Snappy in a question-mark sweater with a curved umbrella — seven moves ahead and already launching the outcome.",
+    "nsfw": false
+  },
+  "time-wanderer-question-marks-2": {
+    "alt": "Snappy with a question-mark hat and a cane — seven schemes already in motion, different hat angle.",
+    "nsfw": false
+  },
+  "time-wanderer-forgotten": {
+    "alt": "Snappy as the unnumbered face — grizzled, battle-worn, launching what no one else would.",
+    "nsfw": false
+  },
+  "time-wanderer-waistcoat": {
+    "alt": "Snappy in a patterned waistcoat and dark coat, sonic raised — on cloud nine, and everything about it is fantastic.",
+    "nsfw": false
+  },
+  "time-wanderer-leather-jacket": {
+    "alt": "Snappy in a black leather jacket with a red V-neck — nine hundred years and still no time for accessories. Just launches.",
+    "nsfw": false
+  },
+  "time-wanderer-pinstripe": {
+    "alt": "Snappy in a brown pinstripe suit, glasses pushed up — a perfect ten. Allons-y.",
+    "nsfw": false
+  },
+  "time-wanderer-fez-and-bowtie": {
+    "alt": "Snappy in a fez with a red bow tie — turning it up to eleven. Fezzes are cool. So are quick launches.",
+    "nsfw": false
+  },
+  "time-wanderer-silver-sweep": {
+    "alt": "Snappy with swept silver hair in a dark navy coat — striking twelve with every entrance, launches like precision strikes.",
+    "nsfw": false
+  },
+  "time-wanderer-silver-sweep-2": {
+    "alt": "Snappy in silver and navy, sonic pointed forward — twelve centuries of disapproval. I am not a good owl. But the launches are impeccable.",
+    "nsfw": false
+  },
+  "time-wanderer-rainbow-stripe": {
+    "alt": "Snappy in a rainbow-stripe top and dungarees — a baker's dozen of apps launched before breakfast, fam.",
+    "nsfw": false
+  },
+  "time-wanderer-rainbow-stripe-2": {
+    "alt": "Snappy in the rainbow top, satchel on, sonic raised — thirteen items in the kit bag, all of them launch-ready.",
+    "nsfw": false
+  },
+  "time-wanderer-rainbow-stripe-3": {
+    "alt": "Snappy stepping forward in the rainbow-stripe outfit — thirteen destinations on the itinerary, and every single one needs a launcher.",
+    "nsfw": false
+  },
+  "time-wanderer-rainbow-stripe-4": {
+    "alt": "Snappy in the dungarees, satchel swung — baker's dozen of incarnations, and every single one eventually launches something.",
+    "nsfw": false
+  },
+  "dashing-captain": {
+    "alt": "Snappy in a military greatcoat with a roguish grin — it's all just a matter of timing the launch.",
+    "nsfw": false
+  },
+  "dashing-captain-nsfw": {
+    "alt": "Snappy in a military greatcoat, revolver raised — always pointing at something worth launching.",
+    "nsfw": true
+  },
+  "retro-computer-head": {
+    "alt": "Snappy wearing a CRT monitor as a head, floppy disk in hand — the original launch machine.",
+    "nsfw": false
+  },
+  "ninja-nsfw": {
+    "alt": "Snappy in full black ninja wrap with a katana on its back — the app was launched before you even noticed.",
+    "nsfw": true
+  },
+  "pirate-nsfw": {
+    "alt": "Snappy with a skull hat and a cutlass — X marks the launch target.",
+    "nsfw": true
+  },
+  "astronaut": {
+    "alt": "Snappy suited up for orbit — one small launch for an owl, one giant leap for owl-kind.",
+    "nsfw": false
+  },
+  "deep-sea-diver": {
+    "alt": "Snappy in a vintage brass diving suit — launching the deep web. Literally.",
+    "nsfw": false
+  },
+  "pixel-gamer-king": {
+    "alt": "Snappy with a pixelated crown and a Game Boy — the high score is the number of apps launched.",
+    "nsfw": false
+  },
+  "desert-force-wielder-nsfw": {
+    "alt": "Snappy in desert robes, hilt in hand — these aren't the apps you're looking for.",
+    "nsfw": true
+  },
+  "desert-force-wielder-2-nsfw": {
+    "alt": "Snappy in a hooded robe with an ignited blade — the force of a well-timed launch is strong with this one.",
+    "nsfw": true
+  },
+  "perfect-organism": {
+    "alt": "Snappy as the perfect organism — in darkness, no one can hear the launcher.",
+    "nsfw": false
+  },
+  "dreadlock-hunter-nsfw": {
+    "alt": "Snappy as a trophy-collecting hunter from the stars — if it installs, it can be launched.",
+    "nsfw": true
+  },
+  "adamantium-claw-berserker-nsfw": {
+    "alt": "Snappy with metal claws extended — the best there is at what it does, and what it does is launch apps.",
+    "nsfw": true
+  },
+  "automail-fire-alchemist": {
+    "alt": "Snappy bound by equivalent exchange — one command given, one app launched.",
+    "nsfw": false
+  },
+  "banana-goggle-minion": {
+    "alt": "Snappy in overalls with round goggles and a banana — LAUNCH! BA-NA-NA!",
+    "nsfw": false
+  },
+  "desert-face-wrapped-rider": {
+    "alt": "Snappy wrapped for the desert, goggles on — the launches must flow.",
+    "nsfw": false
+  },
+  "battle-scarred-cyborg": {
+    "alt": "Snappy half-machine with a glowing red eye — it'll be back. With a launch command.",
+    "nsfw": false
+  },
+  "battle-scarred-cyborg-nsfw": {
+    "alt": "Snappy as a battle-damaged cyborg, flaming gun raised — I need your launcher. Your commands. Your torch.",
+    "nsfw": true
+  },
+  "brave-little-astromech": {
+    "alt": "Snappy reimagined as a white-and-blue astromech — beeping urgently, holding all the launch commands.",
+    "nsfw": false
+  },
+  "cape-and-fangs": {
+    "alt": "Snappy in a high-collared cape with an amber gem — I vant to launch your applications.",
+    "nsfw": false
+  },
+  "cape-and-fangs-2": {
+    "alt": "Snappy in a dark winged cape — the night is long and there are many apps to launch.",
+    "nsfw": false
+  },
+  "cosmic-surfer-silver": {
+    "alt": "Snappy riding a silver board through the cosmos — the power to launch anything, anywhere.",
+    "nsfw": false
+  },
+  "daywalker-blade-nsfw": {
+    "alt": "Snappy half in shadow with a sword raised — some apps only get launched at night.",
+    "nsfw": true
+  },
+  "battle-helmet": {
+    "alt": "Snappy under a heavy combat helmet — suited up, launch ready.",
+    "nsfw": false
+  },
+  "clues-were-elementary": {
+    "alt": "Snappy in a deerstalker with a magnifying glass and a pipe — the launch was elementary.",
+    "nsfw": false
+  },
+  "clues-were-elementary-2": {
+    "alt": "Snappy on the case with glass, pipe, and pocket watch — the game is afoot. So is the app launcher.",
+    "nsfw": false
+  },
+  "hockey-mask-slasher-nsfw": {
+    "alt": "Snappy in a hockey mask with a very familiar blade — ch-ch-ch, launch-launch-launch.",
+    "nsfw": true
+  },
+  "striped-sweater-claw-nsfw": {
+    "alt": "Snappy with a battered hat and bladed glove — one, two, Snappy's launching it for you.",
+    "nsfw": true
+  },
+  "remember-remember-nsfw": {
+    "alt": "Snappy behind a grinning mask with a dagger — remember, remember to always launch in November.",
+    "nsfw": true
+  },
+  "lightning-bolt-scarlet": {
+    "alt": "Snappy in a scarlet suit surrounded by lightning — the fastest launcher alive.",
+    "nsfw": false
+  },
+  "orange-wing-pilot": {
+    "alt": "Snappy in an orange flight vest with a head bandage — the rebellion runs on quick launches.",
+    "nsfw": false
+  },
+  "orange-wing-pilot-nsfw": {
+    "alt": "Snappy in an orange flight vest, blaster raised — stay on target.",
+    "nsfw": true
+  },
+  "time-wanderer-bowtie-duster": {
+    "alt": "Snappy in a navy suit with a bow tie and open duster coat — a perfect ten in bow ties, and technically sonic.",
+    "nsfw": false
+  },
+  "sea-captain-lantern": {
+    "alt": "Snappy with a captain's hat, telescope, and lantern — navigating every app in the known waters.",
+    "nsfw": false
+  },
+  "whip-and-skull-torch": {
+    "alt": "Snappy with a whip and a skull-topped torch — fortune and glory, and a very specific keyboard shortcut.",
+    "nsfw": false
+  },
+  "flame-paladin-nsfw": {
+    "alt": "Snappy in a hooded cloak, flaming sword and shield raised — the launcher of righteousness stands ready.",
+    "nsfw": true
+  },
+  "relic-hunter-idol": {
+    "alt": "Snappy with goggles, a golden idol, and a torch — it belongs in the app catalogue.",
+    "nsfw": false
+  },
+  "forest-tunic-hero-nsfw": {
+    "alt": "Snappy in a green tunic with sword and triforce shield — it's dangerous to launch alone.",
+    "nsfw": true
+  },
+  "century-hopper-red-vest": {
+    "alt": "Snappy in a red puffer vest with a temporal gadget — where we're going, we don't need mouse clicks.",
+    "nsfw": false
+  },
+  "stone-gargoyle-battlement": {
+    "alt": "Snappy perched on a castle battlement, wings spread — guarding the launcher from above.",
+    "nsfw": false
+  },
+  "stone-gargoyle": {
+    "alt": "Snappy carved from stone with glowing wings — even gargoyles need a quick launcher.",
+    "nsfw": false
+  },
+  "stone-gargoyle-2": {
+    "alt": "Snappy in stone form, crouched and watchful — waiting for the next command.",
+    "nsfw": false
+  },
+  "stone-gargoyle-3": {
+    "alt": "Snappy as an ancient stone sentinel, wings wide — the command palette has been here all along.",
+    "nsfw": false
+  },
+  "jade-giant-rage": {
+    "alt": "Snappy gone jade and furious — the more apps you close, the angrier it gets.",
+    "nsfw": false
+  },
+  "mission-control": {
+    "alt": "Snappy in a mission officer's uniform with a headset — T-minus five seconds to launch.",
+    "nsfw": false
+  },
+  "mission-control-torch": {
+    "alt": "Snappy in a mission officer's uniform, torch in hand — all systems nominal, ready to launch.",
+    "nsfw": false
+  },
+  "mech-assault": {
+    "alt": "Snappy in the battle mech, weapons stowed — the suit alone is intimidating enough.",
+    "nsfw": false
+  },
+  "mech-assault-nsfw": {
+    "alt": "Snappy encased in full battle mech, guns raised — heavy ordnance, even heavier app library.",
+    "nsfw": true
+  },
+  "scarlet-merc": {
+    "alt": "Snappy in a red and black suit, finger pointing — maximum effort, maximum launches.",
+    "nsfw": false
+  },
+  "scarlet-merc-nsfw": {
+    "alt": "Snappy in the red suit with a katana on its back — the launcher is chimichanga-approved.",
+    "nsfw": true
+  },
+  "infinity-gauntlet-titan-nsfw": {
+    "alt": "Snappy in purple titanium armor, gauntlet raised — with a snap, half your open apps are gone.",
+    "nsfw": true
+  },
+  "stone-gargoyle-armored": {
+    "alt": "Snappy in ornate stone armor with a glowing chest gem — the ancient keeper of hotkeys.",
+    "nsfw": false
+  },
+  "proton-pack-buster": {
+    "alt": "Snappy in the proton-pack jumpsuit, ready but not firing — who you gonna call for a quick launch?",
+    "nsfw": false
+  },
+  "hooded-force-wanderer": {
+    "alt": "Snappy in a desert robe, lightsaber hilt at the belt — the force-sensitive approach to launching apps.",
+    "nsfw": false
+  },
+  "striped-sweater-fedora": {
+    "alt": "Snappy in the battered hat and striped sweater, hands empty — it knows what apps you want to run next.",
+    "nsfw": false
+  },
+  "remember-remember": {
+    "alt": "Snappy behind the grinning mask, no blade in sight — the fifth of November is always a good day to launch.",
+    "nsfw": false
+  },
+  "hockey-mask-slasher": {
+    "alt": "Snappy in the hockey mask, unarmed — ch-ch-ch... the launcher is already running.",
+    "nsfw": false
+  },
+  "gunslinger-trench-coat": {
+    "alt": "Snappy in a black trench coat with an ammo belt and sunglasses — loaded for bear, ready to launch.",
+    "nsfw": false
+  },
+  "dreadlock-hunter-2-nsfw": {
+    "alt": "Snappy in alien hunter armor, shoulder cannon primed — the launcher has been tracked, cornered, and deployed.",
+    "nsfw": true
+  },
+  "triangle-ops-nsfw": {
+    "alt": "Snappy in tactical gear with a glowing crystal token — field-tested, torch-lit, and cleared to launch.",
+    "nsfw": true
+  },
+  "triangle-ops-2-nsfw": {
+    "alt": "Snappy in battle-worn tactical gear with a headset and drawn weapon — patch me through, there's an app to launch.",
+    "nsfw": true
+  },
+  "cosmic-surfer-silver-2": {
+    "alt": "Snappy on the silver board, leaning into the cosmos — the board goes where the apps are.",
+    "nsfw": false
+  },
+  "lightning-bolt-scarlet-2": {
+    "alt": "Snappy in the scarlet suit, mid-stride — still the fastest launcher alive.",
+    "nsfw": false
+  }
 }
