@@ -9,12 +9,9 @@
  * interfering with higher-priority resources.
  *
  * The mascot URL scheme is:
- *   /images/mascot/snappy-{variant}-{size}.{png,webp}
+ *   /images/mascot/snappy-{variant}-{size}.webp
  *
- * Valid logical sizes: 96, 128, 192, 256, 384, 512.
- * The `Mascot` component renders a `<picture>` with WebP and PNG sources; the
- * preloader fetches the WebP variant since all supported browsers handle it.
- * The `<picture>` fallback to PNG covers any edge case the preloader misses.
+ * Currently used logical sizes: 96, 192, 384.
  */
 
 const MASCOT_BASE = `${import.meta.env.BASE_URL}images/mascot/snappy`;
