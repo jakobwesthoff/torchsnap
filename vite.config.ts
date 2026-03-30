@@ -29,6 +29,26 @@ export default defineConfig(async () => ({
         main: resolve(__dirname, "launcher.html"),
         settings: resolve(__dirname, "settings.html"),
       },
+      output: {
+        manualChunks(id: string) {
+          // Keep entry chunks free of shared exports. Rolldown may
+          // otherwise inline shared modules into an entry chunk and
+          // re-export them. When the other entry's lazy chunks import
+          // from that chunk, the entry's bootstrap side effects
+          // (mounting React, calling Tauri IPC) run in the wrong
+          // window context. Extracting everything except the entry
+          // points and lazy-loaded plugin components into a shared
+          // chunk avoids this entirely.
+          if (
+            id.includes("/src/") &&
+            !id.endsWith("/src/launcher/main.tsx") &&
+            !id.endsWith("/src/settings/main.tsx") &&
+            !id.includes("/src/plugins/")
+          ) {
+            return "shared";
+          }
+        },
+      },
     },
   },
 
