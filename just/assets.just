@@ -11,7 +11,8 @@
 # Generate all assets (mascots, mascot data, app icons, tray icon)
 assets: asset-mascots asset-mascot-data asset-app-icons asset-tray-icon
 
-# Resize mascot PNGs to multiple sizes with WebP variants (incremental)
+# Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental).
+# All Tauri targets (WebKit, WebView2) support WebP natively — no PNG output needed.
 asset-mascots:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -23,17 +24,17 @@ asset-mascots:
         [ -e "$file" ] || continue
         name=$(basename "$file" -1024.png)
         needed=false
-        for size in 512 384 256 192 128 96; do
-            png="$dst/${name}-${size}.png"
+        # Currently used sizes: 96 (sidekick 1x), 192 (center 1x /
+        # sidekick 2x), 384 (center 2x). Re-enable 128, 256, 512 here
+        # if new components need them.
+        for size in 384 192 96; do
             webp="$dst/${name}-${size}.webp"
-            if [ ! -f "$png" ] || [ "$file" -nt "$png" ]; then
+            if [ ! -f "$webp" ] || [ "$file" -nt "$webp" ]; then
                 needed=true
-                magick "$file" -filter Lanczos -resize ${size}x${size} "$png"
-                oxipng -o max --strip safe --alpha "$png"
-            fi
-            if [ ! -f "$webp" ] || [ "$png" -nt "$webp" ]; then
-                needed=true
-                cwebp -q 90 -m 6 -alpha_q 100 -sharp_yuv -metadata none "$png" -o "$webp"
+                tmp=$(mktemp /tmp/mascot-XXXXXX.png)
+                magick "$file" -filter Lanczos -resize ${size}x${size} "$tmp"
+                cwebp -q 90 -m 6 -alpha_q 100 -sharp_yuv -metadata none "$tmp" -o "$webp"
+                rm -f "$tmp"
             fi
         done
         if [ "$needed" = true ]; then
