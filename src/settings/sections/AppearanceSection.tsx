@@ -31,7 +31,7 @@ export function AppearanceSection() {
         />
       </SettingsEntry>
       <SettingsEntry
-        label="Randomize Snappy mascot"
+        label="Let Snappy do Cosplay"
         description="Show a different Snappy each time the launcher opens"
       >
         <Switch
