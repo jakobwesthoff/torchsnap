@@ -15,6 +15,10 @@
     "alt": "Snappy packed for the journey -- always prepared for the next launch.",
     "nsfw": false
   },
+  "torchlight": {
+    "alt": "Snappy cloaked and torch-lit -- every dark path deserves a light and a launcher.",
+    "nsfw": false
+  },
   "explorer-cartographer": {
     "alt": "Snappy charting unknown territory -- no app goes unlaunched.",
     "nsfw": false
@@ -131,8 +135,8 @@
     "alt": "Snappy crossing the streams -- total protonic reversal never stopped a good launch.",
     "nsfw": true
   },
-  "scifi-scavenger-nsfw": {
-    "alt": "Snappy on a bug hunt -- game over, man. Unless the launcher works.",
+  "proton-pack-buster-4-nsfw": {
+    "alt": "Snappy geared for heavy spectral ops -- when someone asks if you're a launcher, you say yes.",
     "nsfw": true
   },
   "century-hopper-walkie": {
@@ -224,7 +228,7 @@
     "nsfw": false
   },
   "time-wanderer-waistcoat": {
-    "alt": "Snappy as an ever-changing time traveller -- on cloud nine, and everything about it is fantastic.",
+    "alt": "Snappy as an ever-changing time traveller -- behind the eight ball, but these shoes fit perfectly.",
     "nsfw": false
   },
   "time-wanderer-leather-jacket": {
@@ -355,8 +359,8 @@
     "alt": "Snappy as the daywalker -- some apps only get launched after dark.",
     "nsfw": true
   },
-  "battle-helmet": {
-    "alt": "Snappy under an oversized helmet -- tiny but battle-ready.",
+  "oversized-dark-helmet": {
+    "alt": "Snappy in an absurdly oversized dark helmet -- surrounded by apps, and this launch has gone to plaid.",
     "nsfw": false
   },
   "clues-were-elementary": {
@@ -383,12 +387,12 @@
     "alt": "Snappy surrounded by lightning -- the fastest launcher alive.",
     "nsfw": false
   },
-  "orange-wing-pilot": {
-    "alt": "Snappy as a rebel pilot -- almost there... almost there... launched.",
+  "multipass-cabbie": {
+    "alt": "Snappy flashing a multipass -- negative, this owl is a meat popsicle.",
     "nsfw": false
   },
-  "orange-wing-pilot-nsfw": {
-    "alt": "Snappy in the cockpit -- stay on target. Stay on target.",
+  "multipass-cabbie-nsfw": {
+    "alt": "Snappy with a multipass and a blaster -- anyone else want to negotiate?",
     "nsfw": true
   },
   "time-wanderer-bowtie-duster": {
@@ -439,20 +443,20 @@
     "alt": "Snappy gone jade and furious -- you wouldn't like this owl when it's angry.",
     "nsfw": false
   },
-  "mission-control": {
-    "alt": "Snappy at the console -- T-minus five seconds to launch.",
+  "temporal-bureau": {
+    "alt": "Snappy at the temporal bureau -- for all time, always launching.",
     "nsfw": false
   },
-  "mission-control-torch": {
-    "alt": "Snappy at mission control, torch in hand -- all systems nominal.",
+  "temporal-bureau-torch": {
+    "alt": "Snappy on temporal patrol, torch in hand -- variant apps will be pruned.",
     "nsfw": false
   },
-  "mech-assault": {
-    "alt": "Snappy piloting heavy metal -- the suit does the launching now.",
+  "chrome-centurion": {
+    "alt": "Snappy as a chrome centurion with a sweeping red eye -- by your command, the app will launch.",
     "nsfw": false
   },
-  "mech-assault-nsfw": {
-    "alt": "Snappy in full battle mech -- heavy ordnance, even heavier app library.",
+  "chrome-centurion-nsfw": {
+    "alt": "Snappy as a red-eyed toaster packing heat -- all of this has launched before, and all of it will launch again.",
     "nsfw": true
   },
   "scarlet-merc": {
@@ -491,8 +495,8 @@
     "alt": "Snappy behind the hockey mask -- ch-ch-ch... the launcher is already running.",
     "nsfw": false
   },
-  "gunslinger-trench-coat": {
-    "alt": "Snappy as a lone gunslinger -- loaded for bear, ready to launch.",
+  "daywalker-shades": {
+    "alt": "Snappy as the daywalker, shades on -- some apps are always trying to ice-skate uphill.",
     "nsfw": false
   },
   "dreadlock-hunter-2-nsfw": {
