@@ -399,6 +399,8 @@ pub fn run() {
             settings::SettingsInit::from_store(&store, "")
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
+                .ensure("randomMascots", true)
+                .ensure("showNsfwMascots", true)
                 .ensure("controlChannel.enabled", false)
                 .ensure("frecency.enabled", true)
                 .apply(&store, "");
