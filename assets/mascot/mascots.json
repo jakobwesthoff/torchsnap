@@ -1,6 +1,10 @@
 {
   "original": {
-    "alt": "Snappy -- torch raised, ready to light the way.",
+    "alt": "Snappy -- just Snappy.",
+    "nsfw": false
+  },
+  "torch-raised": {
+    "alt": "Snappy with torch raised -- ready to light the way.",
     "nsfw": false
   },
   "cloak-and-torch": {

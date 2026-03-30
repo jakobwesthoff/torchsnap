@@ -100,6 +100,7 @@ export const Variants = {
   // =========================================================
 
   TorchBearers: [
+    "torch-raised",
     "torchlight",
     "cloak-and-torch",
     "cloak-and-lantern",
