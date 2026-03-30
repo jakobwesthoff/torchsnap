@@ -10,6 +10,8 @@ import { ThemeToggle } from "../../components/ThemeToggle";
 
 export function AppearanceSection() {
   const [mascotMode, setMascotMode] = useSetting<string>("mascotMode");
+  const [randomMascots, setRandomMascots] = useSetting<boolean>("randomMascots");
+  const [showNsfwMascots, setShowNsfwMascots] = useSetting<boolean>("showNsfwMascots");
 
   const mascotEnabled = mascotMode !== "off";
 
@@ -26,6 +28,26 @@ export function AppearanceSection() {
           checked={mascotMode === "sidekick"}
           onChange={(on) => setMascotMode(on ? "sidekick" : "center")}
           disabled={!mascotEnabled}
+        />
+      </SettingsEntry>
+      <SettingsEntry
+        label="Randomize Snappy mascot"
+        description="Show a different Snappy each time the launcher opens"
+      >
+        <Switch
+          checked={randomMascots}
+          onChange={(on) => setRandomMascots(on)}
+          disabled={!mascotEnabled}
+        />
+      </SettingsEntry>
+      <SettingsEntry
+        label="Enable non family-friendly mascots"
+        description="Some Snappy variants carry swords, daggers, or similar."
+      >
+        <Switch
+          checked={showNsfwMascots}
+          onChange={(on) => setShowNsfwMascots(on)}
+          disabled={!mascotEnabled || !randomMascots}
         />
       </SettingsEntry>
     </SettingsSection>
