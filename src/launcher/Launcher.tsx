@@ -5,28 +5,26 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
-import { Mascot } from "../components/Mascot";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
+import { MascotInfoOverlay } from "../components/MascotInfoOverlay";
+import { useMascotVariant } from "../hooks/useMascotVariant";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
-import { selectMascotVariant } from "../hooks/useRandomMascot";
-import { SnappyHeroSets, isNsfwVariant } from "../mascotVariants";
 import { getPluginView, getPluginInlineView } from "../plugins/registry";
 import type { PluginViewProps, InlineViewProps } from "../plugins/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
+import { useMascotInfo } from "./hooks/useMascotInfo";
 import { useSearch } from "./hooks/useSearch";
+import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
 import type { Action, ActionId, FooterState, PluginViewRef, ScoredEntry } from "./types";
-
-const appWindow = getCurrentWebviewWindow();
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -460,49 +458,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const emacsBindings = useEmacsBindings(inputRef, setQuery);
 
   const [mascotMode] = useSetting<string>("mascotMode");
-  const [randomMascots] = useSetting<boolean>("randomMascots");
-  const [showNsfwMascots] = useSetting<boolean>("showNsfwMascots");
-
-  // Build a filter predicate from the current NSFW setting. `undefined`
-  // when NSFW is allowed (no filtering needed — avoids the array scan).
-  const nsfwFilter = showNsfwMascots ? undefined : (v: string) => !isNsfwVariant(v);
-
-  // Initial mascot variant — rolled once on mount respecting both settings.
-  const [mascotVariant, setMascotVariant] = useState(() =>
-    randomMascots ? selectMascotVariant(SnappyHeroSets, nsfwFilter) : "original",
-  );
-
-  // Re-roll the mascot on every launcher dismiss so the next variant is
-  // already rendered (and its image cached by the browser) before the
-  // launcher appears again. The launcher stays mounted between shows, so
-  // React renders the new <Mascot> into the hidden DOM and the browser
-  // fetches the image while the window is invisible.
-  useEffect(() => {
-    const unlisten = appWindow.listen("tauri://blur", () => {
-      const filter = showNsfwMascots ? undefined : (v: string) => !isNsfwVariant(v);
-      setMascotVariant(randomMascots ? selectMascotVariant(SnappyHeroSets, filter) : "original");
-    });
-    return () => {
-      unlisten.then((f) => f());
-    };
-  }, [randomMascots, showNsfwMascots]);
-
-  // Keep the displayed variant in sync when settings change while the
-  // launcher is visible (e.g. user toggles a setting in the settings window).
-  const mascotVariantRef = useRef(mascotVariant);
-  // eslint-disable-next-line react-hooks/refs
-  mascotVariantRef.current = mascotVariant;
-  useEffect(() => {
-    if (!randomMascots) {
-      setMascotVariant("original");
-      return;
-    }
-    // If NSFW was just disabled and the current mascot is NSFW, swap it
-    // immediately rather than waiting for the next dismiss.
-    if (!showNsfwMascots && isNsfwVariant(mascotVariantRef.current)) {
-      setMascotVariant(selectMascotVariant(SnappyHeroSets, (v) => !isNsfwVariant(v)));
-    }
-  }, [randomMascots, showNsfwMascots]);
+  const { variant: mascotVariant } = useMascotVariant();
+  const mascotInfo = useMascotInfo();
 
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
@@ -600,19 +557,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
-        {/* Mascot — decorative, positioned relative to the launcher card */}
-        {mascotMode === "sidekick" && (
-          <Mascot
+        {mascotMode !== "off" && (
+          <LauncherMascot
+            mode={mascotMode as "center" | "sidekick"}
             variant={mascotVariant}
-            size={96}
-            className="absolute -top-[72px] -right-2.5 z-10 pointer-events-none -scale-x-100"
-          />
-        )}
-        {mascotMode === "center" && (
-          <Mascot
-            variant={mascotVariant}
-            size={192}
-            className="absolute -top-[156px] left-1/2 -translate-x-1/2 z-10 pointer-events-none"
+            onInfoClick={mascotInfo.show}
           />
         )}
         {/* Launcher card */}
@@ -628,6 +577,12 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             ].join(", "),
           }}
         >
+          <MascotInfoOverlay
+            variant={mascotVariant}
+            visible={mascotInfo.visible}
+            onDismiss={mascotInfo.hide}
+          />
+
           {/* Search input */}
           <div className="flex items-center gap-3 px-5 py-4">
             <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-accent" />
