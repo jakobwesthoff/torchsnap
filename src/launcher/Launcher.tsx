@@ -18,6 +18,7 @@ import type { PluginViewProps, InlineViewProps } from "../plugins/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
+import { useLauncherMascotPlacement } from "./hooks/useLauncherMascotPlacement";
 import { useMascotInfo } from "./hooks/useMascotInfo";
 import { useSearch } from "./hooks/useSearch";
 import { LauncherMascot } from "./LauncherMascot";
@@ -460,6 +461,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const [mascotMode] = useSetting<string>("mascotMode");
   const { variant: mascotVariant } = useMascotVariant();
   const mascotInfo = useMascotInfo();
+  const mascotPlacement = useLauncherMascotPlacement(
+    mascotVariant,
+    mascotMode as "center" | "sidekick" | "off",
+  );
 
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
@@ -557,10 +562,12 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       onClick={dismiss}
     >
       <div className="relative" onClick={(e) => e.stopPropagation()}>
-        {mascotMode !== "off" && (
+        {mascotPlacement && mascotMode !== "off" && (
           <LauncherMascot
             mode={mascotMode as "center" | "sidekick"}
             variant={mascotVariant}
+            top={mascotPlacement.top}
+            right={mascotPlacement.right}
             onInfoClick={mascotInfo.show}
           />
         )}
@@ -598,7 +605,19 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
               // reach the input while the launcher is visible.
               onBlur={() => inputRef.current?.focus()}
             />
-            <KeyBindingPill modifiers={[]} keyName="Escape" />
+            {/* In sidekick mode, align the pill's center with the mascot's
+                horizontal center. The offset accounts for half the pill's
+                rendered width (~15.2px) plus the search bar's horizontal
+                padding (px-5 = 20px). */}
+            <KeyBindingPill
+              modifiers={[]}
+              keyName="Escape"
+              style={
+                mascotPlacement?.centerX != null
+                  ? { marginRight: mascotPlacement.centerX - 35.2 }
+                  : undefined
+              }
+            />
           </div>
 
           {contentSection}
