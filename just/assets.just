@@ -89,11 +89,11 @@ asset-mascot-data:
         variant=$(basename "$png" -1024.png)
         variant="${variant#snappy-}"
 
-        # Threshold alpha at 20% before computing the bounding box. This
+        # Threshold alpha at 40% before computing the bounding box. This
         # discards faint glows, sparkles, and soft shadows that ImageMagick
         # would otherwise include — they're invisible after downscaling to
         # 96/192px but would skew the trim values significantly.
-        geom=$(magick identify -format "%@" <(magick "$png" -channel A -threshold 20% +channel PNG:-) 2>/dev/null || echo "1024x1024+0+0")
+        geom=$(magick identify -format "%@" <(magick "$png" -channel A -threshold 40% +channel PNG:-) 2>/dev/null || echo "1024x1024+0+0")
         IFS='x+' read -r w h x y <<< "$geom"
 
         top=$(awk "BEGIN { printf \"%.1f\", ($y / 1024) * 100 }")
