@@ -28,11 +28,25 @@ import mascotData from "./mascots.json";
 // Mascot Metadata
 // =========================================================
 
+interface MascotTrim {
+  /** Percentage of transparent space from the top edge. */
+  top: number;
+  /** Percentage of transparent space from the right edge. */
+  right: number;
+  /** Percentage of transparent space from the bottom edge. */
+  bottom: number;
+  /** Percentage of transparent space from the left edge. */
+  left: number;
+}
+
 interface MascotInfo {
   alt: string;
   /** When true, the mascot depicts content some users may find inappropriate
    *  (e.g. a visible weapon). Controlled by the `showNsfwMascots` setting. */
   nsfw?: boolean;
+  /** Percentage of transparent space on each edge of the source image.
+   *  Injected by `just asset-mascot-data` from ImageMagick trim detection. */
+  trim?: MascotTrim;
 }
 
 // TypeScript infers a precise type from the JSON literal, so we widen it
@@ -53,6 +67,17 @@ export function getMascotAlt(variant: string): string {
  */
 export function isNsfwVariant(variant: string): boolean {
   return mascots[variant]?.nsfw === true;
+}
+
+const DEFAULT_TRIM: MascotTrim = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Returns the trim data for a given variant — the percentage of
+ * transparent space on each edge of the source image. Falls back to
+ * zero trim when no data is available.
+ */
+export function getMascotTrim(variant: string): MascotTrim {
+  return mascots[variant]?.trim ?? DEFAULT_TRIM;
 }
 
 // =========================================================

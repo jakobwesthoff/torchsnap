@@ -46,18 +46,76 @@ asset-mascots:
     done
     echo "Mascots: ${processed} processed, ${skipped} up to date."
 
-# Copy mascots.json from assets source to src/ where Vite can import it (incremental)
+# Enrich hand-authored mascots.json with per-variant trim data computed
+# from the source PNGs, then write the result to src/ where Vite can
+# import it. Trim values are the percentage of transparent space on each
+# edge of the 1024×1024 source image — used at runtime to align mascot
+# variants so their feet land at the same position regardless of pose.
 asset-mascot-data:
     #!/usr/bin/env bash
     set -euo pipefail
     src="assets/mascot/mascots.json"
     dst="src/mascots.json"
-    if [ -f "$dst" ] && [ ! "$src" -nt "$dst" ]; then
+
+    # Regenerate when the source JSON or any source PNG is newer than
+    # the output.
+    needs_update=false
+    if [ ! -f "$dst" ] || [ "$src" -nt "$dst" ]; then
+        needs_update=true
+    fi
+    if [ "$needs_update" = false ]; then
+        for png in assets/mascot/*-1024.png; do
+            [ -e "$png" ] || continue
+            if [ "$png" -nt "$dst" ]; then
+                needs_update=true
+                break
+            fi
+        done
+    fi
+    if [ "$needs_update" = false ]; then
         echo "Mascot data: up to date."
         exit 0
     fi
-    echo "Copying mascots.json..."
-    cp "$src" "$dst"
+
+    echo "Enriching mascots.json with trim data..."
+
+    # Step 1: Build a JSON object mapping variant name → trim percentages.
+    # Uses magick identify to find the bounding box of non-transparent
+    # pixels in each source PNG.
+    trim_json="{"
+    first=true
+    for png in assets/mascot/*-1024.png; do
+        [ -e "$png" ] || continue
+        variant=$(basename "$png" -1024.png)
+        variant="${variant#snappy-}"
+
+        # Threshold alpha at 20% before computing the bounding box. This
+        # discards faint glows, sparkles, and soft shadows that ImageMagick
+        # would otherwise include — they're invisible after downscaling to
+        # 96/192px but would skew the trim values significantly.
+        geom=$(magick identify -format "%@" <(magick "$png" -channel A -threshold 20% +channel PNG:-) 2>/dev/null || echo "1024x1024+0+0")
+        IFS='x+' read -r w h x y <<< "$geom"
+
+        top=$(awk "BEGIN { printf \"%.1f\", ($y / 1024) * 100 }")
+        right=$(awk "BEGIN { printf \"%.1f\", ((1024 - ($x + $w)) / 1024) * 100 }")
+        bottom=$(awk "BEGIN { printf \"%.1f\", ((1024 - ($y + $h)) / 1024) * 100 }")
+        left=$(awk "BEGIN { printf \"%.1f\", ($x / 1024) * 100 }")
+
+        [ "$first" = true ] && first=false || trim_json+=","
+        trim_json+="\"${variant}\":{\"top\":${top},\"right\":${right},\"bottom\":${bottom},\"left\":${left}}"
+    done
+    trim_json+="}"
+
+    # Step 2: Merge trim data into the hand-authored JSON. Only entries
+    # present in both the source JSON and the trim map receive a trim
+    # object — variants without a source PNG are left untouched.
+    jq --argjson trims "$trim_json" '
+        reduce keys[] as $k (.;
+            if $trims[$k] then .[$k].trim = $trims[$k] else . end
+        )
+    ' "$src" > "$dst"
+
+    echo "Mascot data: done."
 
 # Composite mascot onto brand gradient and generate all app icon formats via `tauri icon` (incremental)
 asset-app-icons:
