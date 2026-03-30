@@ -8,8 +8,8 @@
 # creation. All recipes are incremental — they skip outputs that are
 # already up to date relative to their sources.
 
-# Generate all assets (mascots, app icons, tray icon)
-assets: asset-mascots asset-app-icons asset-tray-icon
+# Generate all assets (mascots, mascot data, app icons, tray icon)
+assets: asset-mascots asset-mascot-data asset-app-icons asset-tray-icon
 
 # Resize mascot PNGs to multiple sizes with WebP variants (incremental)
 asset-mascots:
@@ -44,6 +44,19 @@ asset-mascots:
         fi
     done
     echo "Mascots: ${processed} processed, ${skipped} up to date."
+
+# Copy mascots.json from assets source to src/ where Vite can import it (incremental)
+asset-mascot-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="assets/mascot/mascots.json"
+    dst="src/mascots.json"
+    if [ -f "$dst" ] && [ ! "$src" -nt "$dst" ]; then
+        echo "Mascot data: up to date."
+        exit 0
+    fi
+    echo "Copying mascots.json..."
+    cp "$src" "$dst"
 
 # Composite mascot onto brand gradient and generate all app icon formats via `tauri icon` (incremental)
 asset-app-icons:
