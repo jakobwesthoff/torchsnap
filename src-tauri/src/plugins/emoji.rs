@@ -24,7 +24,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Deserialize;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-use super::{PluginContext, QueryPlugin};
+use super::{Plugin, PluginContext};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
     Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, QueryResult,
@@ -251,12 +251,12 @@ impl EmojiPickerPlugin {
     }
 }
 
-impl QueryPlugin for EmojiPickerPlugin {
+impl Plugin for EmojiPickerPlugin {
     fn id(&self) -> &str {
         "emoji-picker"
     }
 
-    fn prefixes(&self) -> &[&str] {
+    fn search_prefixes(&self) -> &[&str] {
         &[":"]
     }
 

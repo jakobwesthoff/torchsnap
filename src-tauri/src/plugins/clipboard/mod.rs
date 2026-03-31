@@ -51,7 +51,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::{CatalogPlugin, PluginContext};
+use super::{Plugin, PluginContext};
 
 /// How often the retention cleanup thread wakes to delete expired
 /// entries. Chosen to be infrequent enough to be negligible, but
@@ -252,10 +252,10 @@ fn retention_cleanup_loop(
 }
 
 // =========================================================
-// CatalogPlugin Implementation
+// Plugin Implementation
 // =========================================================
 
-impl CatalogPlugin for ClipboardPlugin {
+impl Plugin for ClipboardPlugin {
     fn id(&self) -> &str {
         PLUGIN_ID
     }

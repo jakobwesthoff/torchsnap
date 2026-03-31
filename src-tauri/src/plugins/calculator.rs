@@ -28,7 +28,7 @@ use regex::Regex;
 use serde_json::json;
 use tauri::Manager;
 
-use super::{PluginContext, QueryPlugin};
+use super::{Plugin, PluginContext};
 use crate::search::types::{
     Action, ActionId, CancellationToken, EntryIcon, PostAction, QueryResult, ResultChannel,
 };
@@ -433,7 +433,7 @@ impl CalculatorPlugin {
     }
 }
 
-impl QueryPlugin for CalculatorPlugin {
+impl Plugin for CalculatorPlugin {
     fn id(&self) -> &str {
         PLUGIN_ID
     }
@@ -446,7 +446,7 @@ impl QueryPlugin for CalculatorPlugin {
         Some("enabled")
     }
 
-    fn prefixes(&self) -> &[&str] {
+    fn search_prefixes(&self) -> &[&str] {
         &["="]
     }
 
@@ -494,7 +494,7 @@ impl QueryPlugin for CalculatorPlugin {
                 // SAFETY: Reconstructing an `&AtomicBool` from a raw pointer
                 // that was cast through `usize` to make it `Send`. This is safe
                 // because the `CalculatorPlugin` struct (which owns the AtomicBool)
-                // is held alive inside an `Arc<dyn QueryPlugin>` in `PluginHost`
+                // is held alive inside an `Arc<dyn Plugin>` in `PluginHost`
                 // for the entire lifetime of the application. The watch thread
                 // terminates when the notifier's sender is dropped (at app exit),
                 // which happens before the plugin is dropped.

@@ -36,7 +36,7 @@ use crate::search::types::{
 };
 use crate::storage::StorageKey;
 
-use super::{CatalogPlugin, PluginContext};
+use super::{Plugin, PluginContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
@@ -139,7 +139,7 @@ fn extract_icons(
     valid_keys
 }
 
-impl CatalogPlugin for AppLauncherPlugin {
+impl Plugin for AppLauncherPlugin {
     fn id(&self) -> &str {
         "app-launcher"
     }

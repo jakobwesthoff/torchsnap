@@ -127,7 +127,7 @@ impl SettingsInit {
 /// (`plugins.<id>.`) so plugins can read their own settings
 /// without knowing the full key path.
 ///
-/// Injected into `CatalogPlugin::setup()` / `QueryPlugin::setup()`
+/// Injected into `Plugin::setup()`
 /// after defaults have been initialized via `SettingsInit`.
 pub struct PluginSettings<R: tauri::Runtime = tauri::Wry> {
     store: Arc<Store<R>>,

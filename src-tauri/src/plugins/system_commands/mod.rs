@@ -12,7 +12,7 @@
 // platform-specific factory function.
 // =========================================================
 
-use crate::plugins::CatalogPlugin;
+use crate::plugins::Plugin;
 use crate::search::types::{ActionId, CatalogEntry, PostAction};
 
 // =========================================================
@@ -81,7 +81,7 @@ impl SystemCommandsPlugin {
     }
 }
 
-impl CatalogPlugin for SystemCommandsPlugin {
+impl Plugin for SystemCommandsPlugin {
     fn id(&self) -> &str {
         "system-commands"
     }
