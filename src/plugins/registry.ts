@@ -14,15 +14,14 @@
  * are designed (see dynamic-plugin-component-registration todo).
  */
 
-import { lazy, type ComponentType, type SVGProps } from "react";
+import { type ComponentType, type SVGProps } from "react";
 import { CalculatorIcon, ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
+import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
 import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
 
 // =========================================================
 // Registry shape
 // =========================================================
-
-type LazyComponent<P> = ComponentType<P>;
 
 interface PluginRegistryEntry {
   /** Human-readable name shown in the settings sidebar. */
@@ -30,19 +29,18 @@ interface PluginRegistryEntry {
   /** Icon shown next to the label in the settings sidebar. */
   settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
   /** Named view components for the launcher result area (CustomUI). */
-  views?: Record<string, LazyComponent<PluginViewProps>>;
+  views?: Record<string, ComponentType<PluginViewProps>>;
   /** Named inline view components rendered above the result list (InlineUI). */
-  inlineViews?: Record<string, LazyComponent<InlineViewProps>>;
+  inlineViews?: Record<string, ComponentType<InlineViewProps>>;
   /** Settings component rendered in the settings sidebar. */
-  settings?: LazyComponent<PluginSettingsProps>;
+  settings?: ComponentType<PluginSettingsProps>;
 }
 
-// Lazy-load plugin components so they don't bloat the initial bundle.
 const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
   "emoji-picker": {
     label: "Emoji Picker",
     views: {
-      picker: lazy(() => import("./emoji/EmojiGrid")),
+      picker: launcherComponent(() => import("./emoji/EmojiGrid")),
     },
   },
   "clipboard-manager": {
@@ -54,20 +52,20 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
       // The frontend activates it via `executePluginView` with just
       // the plugin ID. We register it under "default" and resolve
       // with a fallback in `getPluginView`.
-      default: lazy(() => import("./clipboard/ClipboardView")),
+      default: launcherComponent(() => import("./clipboard/ClipboardView")),
     },
-    settings: lazy(() => import("./clipboard/ClipboardSettings")),
+    settings: settingsComponent(() => import("./clipboard/ClipboardSettings")),
   },
   calculator: {
     label: "Calculator",
     settingsIcon: CalculatorIcon,
     views: {
-      history: lazy(() => import("./calculator/CalculatorView")),
+      history: launcherComponent(() => import("./calculator/CalculatorView")),
     },
     inlineViews: {
-      result: lazy(() => import("./calculator/CalculatorInline")),
+      result: launcherComponent(() => import("./calculator/CalculatorInline")),
     },
-    settings: lazy(() => import("./calculator/CalculatorSettings")),
+    settings: settingsComponent(() => import("./calculator/CalculatorSettings")),
   },
 };
 
@@ -83,7 +81,7 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
 export function getPluginView(
   pluginId: string,
   viewName?: string,
-): LazyComponent<PluginViewProps> | undefined {
+): ComponentType<PluginViewProps> | undefined {
   const views = PLUGIN_REGISTRY[pluginId]?.views;
   if (!views) return undefined;
   return views[viewName ?? "default"] ?? views["default"];
@@ -95,7 +93,7 @@ export function getPluginView(
 export function getPluginInlineView(
   pluginId: string,
   viewName: string,
-): LazyComponent<InlineViewProps> | undefined {
+): ComponentType<InlineViewProps> | undefined {
   return PLUGIN_REGISTRY[pluginId]?.inlineViews?.[viewName];
 }
 
@@ -104,7 +102,7 @@ export function getPluginInlineView(
  */
 export function getPluginSettingsComponent(
   pluginId: string,
-): LazyComponent<PluginSettingsProps> | undefined {
+): ComponentType<PluginSettingsProps> | undefined {
   return PLUGIN_REGISTRY[pluginId]?.settings;
 }
 
