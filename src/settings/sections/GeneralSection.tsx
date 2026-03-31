@@ -3,10 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useState } from "react";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useSetting } from "../../hooks/useSetting";
-import { SettingsSection } from "../../components/SettingsSection";
-import { SettingsEntry } from "../../components/SettingsEntry";
+import { SectionHeader } from "../SectionHeader";
+import { Section } from "../Section";
+import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
 
@@ -36,23 +38,29 @@ export function GeneralSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SettingsSection title="Startup">
-        <SettingsEntry label="Launch at login">
+      <SectionHeader
+        icon={Cog6ToothIcon}
+        title="General"
+        description="Core settings for Torchsnap — configure startup behavior, global keyboard shortcuts, and advanced features like the Control API."
+      />
+
+      <Section title="Startup">
+        <Entry label="Launch at login">
           <Switch
             checked={launchAtLogin}
             onChange={handleLaunchAtLoginChange}
             disabled={autoStartLoading}
           />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       <ShortcutSection globalShortcut={globalShortcut} setGlobalShortcut={setGlobalShortcut} />
 
-      <SettingsSection title="Advanced">
-        <SettingsEntry label="Control API">
+      <Section title="Advanced">
+        <Entry label="Control API">
           <Switch checked={controlApiEnabled} onChange={setControlApiEnabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
     </div>
   );
 }

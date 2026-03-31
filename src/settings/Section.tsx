@@ -6,19 +6,19 @@
  * A visually grouped section in the settings panel.
  *
  * Renders a bordered card with an optional title and stacked
- * children (typically `SettingsEntry` rows).
+ * children (typically `Entry` rows).
  */
 
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 
-interface SettingsSectionProps {
+interface SectionProps {
   title?: string;
   children: ReactNode;
   className?: string;
 }
 
-export function SettingsSection({ title, children, className }: SettingsSectionProps) {
+export function Section({ title, children, className }: SectionProps) {
   return (
     <div className={cn("rounded-xl border border-border p-4", className)}>
       {title && <h3 className="text-sm font-medium text-text-secondary mb-3">{title}</h3>}

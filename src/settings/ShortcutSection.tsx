@@ -13,8 +13,8 @@
 
 import { useCallback, useState } from "react";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
-import { SettingsSection } from "../components/SettingsSection";
-import { SettingsEntry } from "../components/SettingsEntry";
+import { Section } from "./Section";
+import { Entry } from "./Entry";
 
 interface ShortcutSectionProps {
   globalShortcut: string;
@@ -37,11 +37,11 @@ export function ShortcutSection({ globalShortcut, setGlobalShortcut }: ShortcutS
   );
 
   return (
-    <SettingsSection>
-      <SettingsEntry label="Global Shortcut">
+    <Section>
+      <Entry label="Global Shortcut">
         <ShortcutRecorder value={globalShortcut} onChange={handleChange} />
-      </SettingsEntry>
+      </Entry>
       {error && <p className="text-sm text-red-500">{error}</p>}
-    </SettingsSection>
+    </Section>
   );
 }

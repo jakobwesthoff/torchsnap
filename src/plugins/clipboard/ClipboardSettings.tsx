@@ -14,10 +14,12 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
-import { SettingsSection } from "../../components/SettingsSection";
-import { SettingsEntry } from "../../components/SettingsEntry";
+import { SectionHeader } from "../../settings/SectionHeader";
+import { Section } from "../../settings/Section";
+import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
 import { Slider } from "../../components/Slider";
 import { ShortcutRecorder } from "../../components/ShortcutRecorder";
@@ -108,23 +110,29 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
 
   return (
     <div className="flex flex-col gap-4">
+      <SectionHeader
+        icon={ClipboardDocumentListIcon}
+        title="Clipboard"
+        description="Keep a searchable history of everything you copy. Quickly recall and paste previous clipboard entries directly from the launcher."
+      />
+
       {/* ---- Plugin toggle ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Enable clipboard history">
+      <Section>
+        <Entry label="Enable clipboard history">
           <Switch checked={enabled} onChange={setEnabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Shortcut ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Open Clipboard History">
+      <Section>
+        <Entry label="Open Clipboard History">
           <ShortcutRecorder value={shortcut} onChange={setShortcut} disabled={!enabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Behaviour ---- */}
-      <SettingsSection>
-        <SettingsEntry
+      <Section>
+        <Entry
           label="Bring to front on paste"
           description="Move pasted entries to the top of the history list"
         >
@@ -133,11 +141,11 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
             onChange={setBringToFrontOnPaste}
             disabled={!enabled}
           />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Retention ---- */}
-      <SettingsSection title="Retention">
+      <Section title="Retention">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <span className="text-sm text-text-primary">Keep entries for</span>
@@ -152,10 +160,10 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
             disabled={!enabled}
           />
         </div>
-      </SettingsSection>
+      </Section>
 
       {/* ---- Statistics ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between -mt-0.5 mb-1">
           <h3 className="text-sm font-medium text-text-secondary">Statistics</h3>
           <button
@@ -178,10 +186,10 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
         ) : (
           <span className="text-sm text-text-muted">Loading...</span>
         )}
-      </SettingsSection>
+      </Section>
 
       {/* ---- Clear History ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-sm text-text-primary">Clear history</span>
@@ -215,7 +223,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
             </button>
           )}
         </div>
-      </SettingsSection>
+      </Section>
     </div>
   );
 }
