@@ -10,12 +10,12 @@
 // from other plugins.
 // =========================================================
 
-use super::CatalogPlugin;
+use super::Plugin;
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 pub struct BuiltInCommandsPlugin;
 
-impl CatalogPlugin for BuiltInCommandsPlugin {
+impl Plugin for BuiltInCommandsPlugin {
     fn id(&self) -> &str {
         "builtin-commands"
     }

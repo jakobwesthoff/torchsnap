@@ -21,7 +21,7 @@ use crate::frecency::FrecencyTarget;
 
 /// What the launcher should do after executing a plugin action.
 ///
-/// Returned by `CatalogPlugin::execute()` and `QueryPlugin::execute()`
+/// Returned by `Plugin::execute()`
 /// to let the plugin control whether the launcher stays open.
 /// Serialized to the frontend so it can act on the decision.
 #[derive(Debug, Clone, Serialize)]
@@ -106,7 +106,7 @@ pub enum EntryIcon {
     Emoji(String),
 }
 
-/// A pre-scored result returned by a `QueryPlugin`.
+/// A pre-scored result returned by a `Plugin`'s `search()` method.
 ///
 /// Same shape as `ScoredEntry` but without `source` — the registry
 /// fills that from `plugin.id()` when converting to `ScoredEntry`.

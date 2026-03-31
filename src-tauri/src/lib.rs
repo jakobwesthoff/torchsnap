@@ -454,8 +454,8 @@ pub fn run() {
             host.register(Box::new(plugins::clipboard::ClipboardPlugin::new(
                 platform::PlatformClipboard,
             )));
-            host.register_query(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            host.register_query(Box::new(plugins::calculator::CalculatorPlugin::new()));
+            host.register(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
+            host.register(Box::new(plugins::calculator::CalculatorPlugin::new()));
 
             // Settings init + shortcut registration + parallel setup.
             host.initialize_and_start(app.handle());

@@ -32,7 +32,7 @@ use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::StorageKey;
 
-use super::{CatalogPlugin, PluginContext};
+use super::{Plugin, PluginContext};
 
 pub struct SystemPreferencesPlugin {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
@@ -77,7 +77,7 @@ fn cache_pane_icons(
     valid_keys
 }
 
-impl CatalogPlugin for SystemPreferencesPlugin {
+impl Plugin for SystemPreferencesPlugin {
     fn id(&self) -> &str {
         "system-preferences"
     }

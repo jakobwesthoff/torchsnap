@@ -8,7 +8,7 @@
 // Central authority for the plugin lifecycle. Owns all plugin
 // Arc references and is the single entry point for:
 //
-// - Registration (register / register_query)
+// - Registration (register)
 // - Settings initialization (Phase 1: synchronous defaults)
 // - Parallel plugin setup (Phase 2: rayon background pool)
 // - Global shortcut registration and reactive re-registration
@@ -16,7 +16,6 @@
 // - Action execution and message routing
 // - Teardown
 //
-// Replaces the former CatalogRegistry + ShortcutManager split.
 // Managed as `Arc<PluginHost>` in Tauri state — no Mutex needed
 // since all fields are either immutable after init or use
 // interior mutability (AtomicBool, watch channels).
@@ -36,7 +35,7 @@ use tokio::sync::mpsc;
 
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
-use crate::plugins::{CatalogPlugin, PluginContext, PluginShortcut, QueryPlugin};
+use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
     ActionId, CancellationToken, PluginViewRef, PostAction, PluginResponse, ResultChannel,
     ScoredEntry, SearchMessage,
@@ -60,16 +59,11 @@ enum ViewKind {
 
 /// A registered shortcut with enough context to route the
 /// activation back to the owning plugin.
-enum ShortcutOwner {
-    Catalog(Arc<dyn CatalogPlugin>),
-    Query(Arc<dyn QueryPlugin>),
-}
-
 struct RegisteredShortcut {
     shortcut: Shortcut,
     plugin_id: String,
     shortcut_id: String,
-    owner: ShortcutOwner,
+    owner: Arc<dyn Plugin>,
 }
 
 /// Payload emitted with the `activate-plugin-custom-ui` event.
@@ -84,8 +78,7 @@ struct ActivatePluginPayload {
 // =========================================================
 
 pub struct PluginHost {
-    catalog_plugins: Vec<Arc<dyn CatalogPlugin>>,
-    query_plugins: Vec<Arc<dyn QueryPlugin>>,
+    plugins: Vec<Arc<dyn Plugin>>,
     store: Arc<Store<tauri::Wry>>,
     notifier: Arc<SettingsNotifier>,
     frecency: Arc<FrecencyStore>,
@@ -111,8 +104,7 @@ impl PluginHost {
     ) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
-            catalog_plugins: Vec::new(),
-            query_plugins: Vec::new(),
+            plugins: Vec::new(),
             store,
             notifier,
             frecency,
@@ -122,12 +114,8 @@ impl PluginHost {
         }
     }
 
-    pub fn register(&mut self, plugin: Box<dyn CatalogPlugin>) {
-        self.catalog_plugins.push(Arc::from(plugin));
-    }
-
-    pub fn register_query(&mut self, plugin: Box<dyn QueryPlugin>) {
-        self.query_plugins.push(Arc::from(plugin));
+    pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+        self.plugins.push(Arc::from(plugin));
     }
 
     // =========================================================
@@ -143,13 +131,7 @@ impl PluginHost {
         // -------------------------------------------------------
         // Phase 1: Initialize plugin settings defaults (synchronous)
         // -------------------------------------------------------
-        for p in &self.catalog_plugins {
-            let prefix = format!("plugins.{}.", p.id());
-            let current = SettingsInit::from_store(&self.store, &prefix);
-            let initialized = p.initialize_settings(current);
-            initialized.apply(&self.store, &prefix);
-        }
-        for p in &self.query_plugins {
+        for p in &self.plugins {
             let prefix = format!("plugins.{}.", p.id());
             let current = SettingsInit::from_store(&self.store, &prefix);
             let initialized = p.initialize_settings(current);
@@ -164,15 +146,7 @@ impl PluginHost {
         // Collect keys into a temp vec to avoid borrowing &self and
         // &mut self.watched_keys simultaneously.
         let mut keys_to_watch = Vec::new();
-        for p in &self.catalog_plugins {
-            collect_watched_keys_into(
-                p.id(),
-                p.enabled_settings_key(),
-                &p.shortcuts(),
-                &mut keys_to_watch,
-            );
-        }
-        for p in &self.query_plugins {
+        for p in &self.plugins {
             collect_watched_keys_into(
                 p.id(),
                 p.enabled_settings_key(),
@@ -193,21 +167,7 @@ impl PluginHost {
         let mut setup_fns: Vec<Box<dyn FnOnce() + Send>> = Vec::new();
 
         let handle = app.clone();
-        for p in &self.catalog_plugins {
-            let p = Arc::clone(p);
-            let h = handle.clone();
-            let ctx = PluginContext {
-                settings: PluginSettings::new(Arc::clone(&self.store), p.id()),
-                notifier: PluginSettingsNotifier::new(
-                    Arc::clone(&self.notifier),
-                    Arc::clone(&self.store),
-                    p.id(),
-                ),
-                frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
-            };
-            setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
-        }
-        for p in &self.query_plugins {
+        for p in &self.plugins {
             let p = Arc::clone(p);
             let h = handle.clone();
             let ctx = PluginContext {
@@ -288,8 +248,8 @@ impl PluginHost {
 
         let mut registered: Vec<RegisteredShortcut> = Vec::new();
 
-        // Collect shortcuts from enabled catalog plugins.
-        for plugin in &self.catalog_plugins {
+        // Collect shortcuts from all enabled plugins.
+        for plugin in &self.plugins {
             if !plugin.is_enabled() {
                 continue;
             }
@@ -298,24 +258,7 @@ impl PluginHost {
                 if let Some(r) = self.resolve_shortcut(
                     &plugin_id,
                     &decl,
-                    ShortcutOwner::Catalog(Arc::clone(plugin)),
-                ) {
-                    registered.push(r);
-                }
-            }
-        }
-
-        // Collect shortcuts from enabled query plugins.
-        for plugin in &self.query_plugins {
-            if !plugin.is_enabled() {
-                continue;
-            }
-            let plugin_id = plugin.id().to_string();
-            for decl in plugin.shortcuts() {
-                if let Some(r) = self.resolve_shortcut(
-                    &plugin_id,
-                    &decl,
-                    ShortcutOwner::Query(Arc::clone(plugin)),
+                    Arc::clone(plugin),
                 ) {
                     registered.push(r);
                 }
@@ -364,10 +307,7 @@ impl PluginHost {
                         return;
                     };
 
-                    let result = match &r.owner {
-                        ShortcutOwner::Catalog(p) => p.handle_shortcut(&r.shortcut_id, &handle),
-                        ShortcutOwner::Query(p) => p.handle_shortcut(&r.shortcut_id, &handle),
-                    };
+                    let result = r.owner.handle_shortcut(&r.shortcut_id, &handle);
 
                     match result {
                         Ok(PostAction::ShowCustomUI) => {
@@ -391,7 +331,7 @@ impl PluginHost {
         &self,
         plugin_id: &str,
         decl: &PluginShortcut,
-        owner: ShortcutOwner,
+        owner: Arc<dyn Plugin>,
     ) -> Option<RegisteredShortcut> {
         let full_key = format!("plugins.{plugin_id}.{}", decl.settings_key);
 
@@ -502,14 +442,14 @@ impl PluginHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let catalog_plugins = self.catalog_plugins.clone();
+        let plugins = self.plugins.clone();
         let frecency = self.frecency.clone();
         let query_owned = query.to_string();
 
         let catalog_results = tokio::task::spawn_blocking({
             let query = query_owned.clone();
             let frecency = frecency.clone();
-            move || Self::search_catalogs_static(&catalog_plugins, &frecency, &query)
+            move || Self::search_catalogs_static(&plugins, &frecency, &query)
         })
         .await
         .expect("catalog search task not panicked");
@@ -524,10 +464,14 @@ impl PluginHost {
         }
 
         // Phase 2: query plugins — spawn concurrently, stream
-        // results as each completes.
+        // results as each completes. Only plugins that implement
+        // search() (i.e., have search_prefixes or override search)
+        // are dispatched here. The default no-op search returns
+        // immediately, so catalog-only plugins are harmless but
+        // we skip them to avoid unnecessary task overhead.
         let mut receivers: Vec<(String, mpsc::Receiver<PluginResponse>)> = Vec::new();
 
-        for plugin in &self.query_plugins {
+        for plugin in &self.plugins {
             if !plugin.is_enabled() {
                 continue;
             }
@@ -662,15 +606,15 @@ impl PluginHost {
         (view_ref, entries)
     }
 
-    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn QueryPlugin>, &'a str)> {
-        let mut best: Option<(&Arc<dyn QueryPlugin>, &str)> = None;
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
+        let mut best: Option<(&Arc<dyn Plugin>, &str)> = None;
         let mut best_len = 0;
 
-        for plugin in &self.query_plugins {
+        for plugin in &self.plugins {
             if !plugin.is_enabled() {
                 continue;
             }
-            for &prefix in plugin.prefixes() {
+            for &prefix in plugin.search_prefixes() {
                 if prefix.len() > best_len && query.starts_with(prefix) {
                     best = Some((plugin, prefix));
                     best_len = prefix.len();
@@ -683,8 +627,12 @@ impl PluginHost {
 
     /// Catalog search as a static method so it can run on
     /// `spawn_blocking` without borrowing `&self`.
+    ///
+    /// Calls `entries()` on every plugin — catalog-only plugins
+    /// return their entry list, query-only plugins return the
+    /// default empty vec (zero cost).
     fn search_catalogs_static(
-        catalog_plugins: &[Arc<dyn CatalogPlugin>],
+        plugins: &[Arc<dyn Plugin>],
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<ScoredEntry> {
@@ -695,7 +643,7 @@ impl PluginHost {
         let mut char_buf = Vec::new();
         let mut title_indices = Vec::new();
 
-        for plugin in catalog_plugins {
+        for plugin in plugins {
             // Skip disabled plugins — the host gates search results.
             if !plugin.is_enabled() {
                 continue;
@@ -771,10 +719,7 @@ impl PluginHost {
         // regardless of whether the action succeeds.
         self.frecency.record(source, entry_id);
 
-        if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
-            return plugin.execute(entry_id, action_id, app);
-        }
-        if let Some(plugin) = self.query_plugins.iter().find(|p| p.id() == source) {
+        if let Some(plugin) = self.plugins.iter().find(|p| p.id() == source) {
             return plugin.execute(entry_id, action_id, app);
         }
         anyhow::bail!("unknown plugin source: {source}");
@@ -787,10 +732,7 @@ impl PluginHost {
         payload: serde_json::Value,
         channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        if let Some(plugin) = self.catalog_plugins.iter().find(|p| p.id() == source) {
-            return plugin.handle_message(method, payload, channel);
-        }
-        if let Some(plugin) = self.query_plugins.iter().find(|p| p.id() == source) {
+        if let Some(plugin) = self.plugins.iter().find(|p| p.id() == source) {
             return plugin.handle_message(method, payload, channel);
         }
         anyhow::bail!("unknown plugin source: {source}");
@@ -801,10 +743,7 @@ impl PluginHost {
     // =========================================================
 
     pub fn teardown_all(&self) {
-        for p in &self.catalog_plugins {
-            p.teardown();
-        }
-        for p in &self.query_plugins {
+        for p in &self.plugins {
             p.teardown();
         }
     }

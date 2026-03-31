@@ -5,16 +5,18 @@
 // =========================================================
 // Plugin System
 //
-// Two plugin traits serve different search modes (ADR 0012):
+// A single `Plugin` trait covers both search modes (ADR 0012):
 //
-// - CatalogPlugin: provides a finite entry list. The host
-//   filters it with nucleo. Never sees the query.
-// - QueryPlugin: receives the raw query and returns pre-scored
-//   results. Optionally registers prefixes for exclusive
-//   routing (e.g., ":" for emoji).
+// - Catalog plugins override `entries()` to provide a finite
+//   entry list that the host filters with nucleo.
+// - Query plugins override `search()` (and optionally
+//   `search_prefixes()`) to receive the raw query and return
+//   pre-scored results.
+// - Hybrid plugins override both — the host calls both paths
+//   unconditionally.
 //
-// Both traits are structured so they can later become the
-// boundary for a WASM plugin interface.
+// The trait is structured so it can later become the boundary
+// for a WASM plugin interface.
 // =========================================================
 
 pub mod app_launcher;
@@ -73,22 +75,36 @@ pub struct PluginContext {
 }
 
 // =========================================================
-// CatalogPlugin
+// Plugin Trait
 // =========================================================
 
-/// A plugin that provides a static catalog of entries.
+/// Unified plugin trait for both catalog and query plugins.
 ///
-/// The host calls `entries()` to get the full list and filters
-/// it using nucleo. When the user executes an action, the host
-/// calls `execute()` to route back to the originating plugin.
+/// Catalog-only plugins override `entries()` to provide a finite
+/// list of entries that the host filters with nucleo. Query-only
+/// plugins override `search()` (and optionally `search_prefixes()`)
+/// to receive the raw query and return pre-scored results. Hybrid
+/// plugins override both.
+///
+/// ## Prefix routing (ADR 0012)
+///
+/// Plugins may register one or more prefixes via `search_prefixes()`.
+/// When the user's query starts with a registered prefix:
+///
+/// - Only the owning plugin is called (exclusive routing).
+/// - Other plugins are skipped entirely.
+/// - The prefix is stripped before passing the query.
+/// - `matched_prefix` tells the plugin which prefix triggered.
 ///
 /// ## Lifecycle
 ///
-/// 1. Plugin is constructed and registered via `CatalogRegistry::register`
-/// 2. `setup()` is called once after all plugins are registered
-/// 3. `entries()` is called on every search keystroke
-/// 4. `execute()` is called when the user triggers an action
-pub trait CatalogPlugin: Send + Sync {
+/// 1. Plugin is constructed and registered via `PluginHost::register`
+/// 2. `initialize_settings()` is called synchronously at startup
+/// 3. `setup()` is called once on a background thread
+/// 4. `entries()` / `search()` are called on every search keystroke
+/// 5. `execute()` is called when the user triggers an action
+/// 6. `teardown()` is called once during `RunEvent::Exit`
+pub trait Plugin: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
     /// field in `ScoredEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
@@ -158,13 +174,6 @@ pub trait CatalogPlugin: Send + Sync {
     /// resources, flush pending writes, and stop background threads.
     fn teardown(&self) {}
 
-    /// Return all catalog entries this plugin provides.
-    ///
-    /// Called on every search. For small static catalogs this is
-    /// trivially cheap. Plugins with dynamic content (e.g. if
-    /// settings change) can rebuild the list on each call.
-    fn entries(&self) -> Vec<CatalogEntry>;
-
     /// Execute an action on an entry owned by this plugin.
     fn execute(
         &self,
@@ -215,71 +224,30 @@ pub trait CatalogPlugin: Send + Sync {
     ) -> anyhow::Result<serde_json::Value> {
         anyhow::bail!("plugin does not handle custom messages")
     }
-}
 
-// =========================================================
-// QueryPlugin
-// =========================================================
-
-/// A plugin that handles its own search logic.
-///
-/// Unlike `CatalogPlugin`, a query plugin receives the raw query
-/// string and returns pre-scored results. This is useful for
-/// plugins that need custom matching (e.g., two-pass shortcode +
-/// keyword search for emoji) or that generate results dynamically.
-///
-/// ## Prefix routing (ADR 0012)
-///
-/// Plugins may register one or more prefixes via `prefixes()`.
-/// When the user's query starts with a registered prefix:
-///
-/// - Only the owning plugin is called (exclusive routing).
-/// - Catalog plugins and prefix-less query plugins are skipped.
-/// - The prefix is stripped before passing the query.
-/// - `matched_prefix` tells the plugin which prefix triggered.
-///
-/// Plugins with no prefixes run on every query alongside catalog
-/// plugins.
-///
-/// ## Lifecycle
-///
-/// Same as `CatalogPlugin`: construct → register → `setup()` →
-/// `search()` on every keystroke → `execute()` on action.
-pub trait QueryPlugin: Send + Sync {
-    /// Unique identifier for this plugin.
-    fn id(&self) -> &str;
-
-    /// Whether the plugin is currently active. See `CatalogPlugin::is_enabled()`.
-    fn is_enabled(&self) -> bool {
-        true
-    }
-
-    /// Enabled settings key. See `CatalogPlugin::enabled_settings_key()`.
-    fn enabled_settings_key(&self) -> Option<&'static str> {
-        None
-    }
-
-    /// Prefixes that activate exclusive routing for this plugin.
+    /// Prefixes that activate exclusive search routing for this plugin.
     ///
-    /// Return an empty slice to receive every query (always-on).
-    /// Prefixes can be multi-character (e.g., `":"`, `"g "`,
-    /// `"http://"`). Longest prefix wins when multiple match.
-    fn prefixes(&self) -> &[&str] {
+    /// Return an empty slice (the default) if this plugin does not
+    /// use prefix routing. Prefixes can be multi-character (e.g.,
+    /// `":"`, `"g "`, `"http://"`). Longest prefix wins when
+    /// multiple match.
+    fn search_prefixes(&self) -> &[&str] {
         &[]
     }
 
-    /// Declare default settings. See `CatalogPlugin::initialize_settings()`.
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
-        settings
+    /// Return catalog entries for host-side nucleo matching.
+    ///
+    /// Called on every search. For small static catalogs this is
+    /// trivially cheap. Plugins with dynamic content (e.g. if
+    /// settings change) can rebuild the list on each call.
+    ///
+    /// The default returns an empty list (query-only plugins).
+    fn entries(&self) -> Vec<CatalogEntry> {
+        vec![]
     }
 
-    /// One-time initialization. See `CatalogPlugin::setup()`.
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
-
-    /// Cleanup before application exit. See `CatalogPlugin::teardown()`.
-    fn teardown(&self) {}
-
-    /// Search for results matching the given query.
+    /// Plugin-driven search. Called on every query for plugins
+    /// that handle their own matching logic.
     ///
     /// `matched_prefix` is `Some(prefix)` when a registered prefix
     /// triggered this call (query is already stripped), or `None`
@@ -292,49 +260,14 @@ pub trait QueryPlugin: Send + Sync {
     /// `cancel` can be polled via `cancel.is_cancelled()` to detect
     /// early termination (e.g., the user typed a new query). Fast
     /// plugins can ignore it.
+    ///
+    /// The default is a no-op (catalog-only plugins).
     fn search(
         &self,
-        query: &str,
-        matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        cancel: &CancellationToken,
-    );
-
-    /// Execute an action on an entry owned by this plugin.
-    fn execute(
-        &self,
-        entry_id: &str,
-        action_id: &ActionId,
-        app: &tauri::AppHandle,
-    ) -> anyhow::Result<PostAction>;
-
-    /// Declare global shortcuts. See `CatalogPlugin::shortcuts()`.
-    fn shortcuts(&self) -> Vec<PluginShortcut> {
-        vec![]
-    }
-
-    /// Handle a shortcut activation. See `CatalogPlugin::handle_shortcut()`.
-    fn handle_shortcut(
-        &self,
-        _shortcut_id: &str,
-        _app: &tauri::AppHandle,
-    ) -> anyhow::Result<PostAction> {
-        Ok(PostAction::Nothing)
-    }
-
-    /// Handle a custom message from the plugin's frontend component.
-    ///
-    /// This is the plugin-side handler for the `sendMessage` prop
-    /// in the plugin UI (ADR 0016). The `channel` can be used to
-    /// stream live updates back to the frontend. The default
-    /// returns an error — override only when the plugin needs
-    /// custom frontend ↔ backend communication.
-    fn handle_message(
-        &self,
-        _method: &str,
-        _payload: serde_json::Value,
-        _channel: tauri::ipc::Channel<serde_json::Value>,
-    ) -> anyhow::Result<serde_json::Value> {
-        anyhow::bail!("plugin does not handle custom messages")
+        _query: &str,
+        _matched_prefix: Option<&str>,
+        _results: &ResultChannel,
+        _cancel: &CancellationToken,
+    ) {
     }
 }
