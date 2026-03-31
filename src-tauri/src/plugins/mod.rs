@@ -106,7 +106,7 @@ pub struct PluginContext {
 /// 6. `teardown()` is called once during `RunEvent::Exit`
 pub trait Plugin: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
-    /// field in `ScoredEntry` and for routing `execute_action`.
+    /// field in `SourcedEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
 
     /// Whether the plugin is currently active.

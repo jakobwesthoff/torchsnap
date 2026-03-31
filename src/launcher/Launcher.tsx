@@ -26,7 +26,7 @@ import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, PluginViewRef, ScoredEntry } from "./types";
+import type { Action, ActionId, FooterState, PluginViewRef, SourcedEntry } from "./types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -424,7 +424,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Stable entry executor — always receives an explicit entry.
   // Used by ResultList (via React.memo, so stability matters).
   const executeEntry = useCallback(
-    async (entry: ScoredEntry, actionIndex = 0) => {
+    async (entry: SourcedEntry, actionIndex = 0) => {
       if (entry.actions.length === 0) return;
 
       const action = entry.actions[actionIndex];

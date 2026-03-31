@@ -16,7 +16,7 @@ import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/key
 import { cn } from "../../lib/cn";
 import { highlightText } from "../../lib/highlightText";
 import type { PluginViewProps } from "../types";
-import type { ScoredEntry } from "@torchsnap/types";
+import type { SourcedEntry } from "@torchsnap/types";
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./constants";
 import { useWindowedGrid } from "./useWindowedGrid";
 import type { RefObject } from "react";
@@ -34,7 +34,7 @@ const FOOTER_HIGHLIGHT = "underline font-bold";
 // =========================================================
 
 interface GridCellProps {
-  entry: ScoredEntry;
+  entry: SourcedEntry;
   selected: boolean;
   onSelect: () => void;
   onExecute: () => void;

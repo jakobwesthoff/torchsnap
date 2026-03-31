@@ -14,7 +14,7 @@ ADR 0008 described two plugin view modes — inline (rendered above the
 result list) and full (replaces the result list) — but the
 implementation only supported full takeover via `SearchResponse::CustomUI`.
 ADR 0013 formalized `CustomUI` as a tuple variant carrying
-`Vec<QueryResult>`.
+`Vec<ScoredEntry>`.
 
 The calculator plugin needs an inline view: a result display rendered
 above the standard result list without replacing it. This requires a new
@@ -46,18 +46,18 @@ pub enum SearchResponse {
     /// Plugin has nothing to contribute for this query.
     Nothing,
     /// Standard result list — host renders entries via `ResultList`.
-    Results(Vec<QueryResult>),
+    Results(Vec<ScoredEntry>),
     /// Plugin requests full custom UI (replaces the result list).
     CustomUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     },
     /// Plugin requests inline UI (rendered above the result list).
     InlineUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     },
 }
 ```
@@ -68,21 +68,21 @@ pub enum SearchResponse {
   has nothing to contribute. The host skips it entirely — no entries, no
   view activation.
 
-- **`Results(Vec<QueryResult>)`**: Standard list entries merged into the
+- **`Results(Vec<ScoredEntry>)`**: Standard list entries merged into the
   host's result list. No custom UI.
 
 - **`CustomUI { view, data, results }`**: The plugin takes over the
   entire result area. The `view` field names a React component registered
   in the frontend plugin registry (see ADR 0022). `data` is optional
-  opaque JSON passed to the component as a prop. `results` are entries
-  the component may use. The host disables its navigation keybindings;
+  opaque JSON passed to the component as a prop. `results` are `ScoredEntry`
+  values the component may use. The host disables its navigation keybindings;
   the component owns all interaction.
 
 - **`InlineUI { view, data, results }`**: The plugin's component renders
   in a slot above the standard result list. The result list remains
   visible below. `view` names the inline React component. `data` is
-  opaque JSON for the component. `results` are merged into the host's
-  result list alongside catalog entries.
+  opaque JSON for the component. `results` are `ScoredEntry` values merged
+  into the host's result list alongside catalog entries.
 
 ### Host handling
 
@@ -97,7 +97,7 @@ pub struct PluginViewRef {
 }
 
 pub struct SearchResult {
-    pub entries: Vec<ScoredEntry>,
+    pub entries: Vec<SourcedEntry>,
     pub custom_plugin_view: Option<PluginViewRef>,
     pub inline_plugin_view: Option<PluginViewRef>,
     pub matched_prefix: Option<String>,

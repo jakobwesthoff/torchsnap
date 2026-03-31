@@ -19,14 +19,14 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { sortedMerge } from "../../lib/sortedMerge";
-import type { PluginViewRef, ScoredEntry, SearchMessage } from "../types";
+import type { PluginViewRef, SourcedEntry, SearchMessage } from "../types";
 
 /**
  * Comparator for the deterministic sort order used across the
  * entire search pipeline: score descending, source ascending,
  * id ascending. Both the backend and this merge use the same key.
  */
-function compareEntries(a: ScoredEntry, b: ScoredEntry): number {
+function compareEntries(a: SourcedEntry, b: SourcedEntry): number {
   if (b.score !== a.score) return b.score - a.score;
   if (a.source < b.source) return -1;
   if (a.source > b.source) return 1;
@@ -36,7 +36,7 @@ function compareEntries(a: ScoredEntry, b: ScoredEntry): number {
 }
 
 interface UseSearchResult {
-  results: ScoredEntry[];
+  results: SourcedEntry[];
   /** View reference when the active plugin requested custom UI. */
   customPluginView: PluginViewRef | null;
   /** View reference when the active plugin requested inline UI. */
@@ -47,7 +47,7 @@ interface UseSearchResult {
 }
 
 export function useSearch(query: string): UseSearchResult {
-  const [results, setResults] = useState<ScoredEntry[]>([]);
+  const [results, setResults] = useState<SourcedEntry[]>([]);
   const [customPluginView, setCustomPluginView] = useState<PluginViewRef | null>(null);
   const [inlinePluginView, setInlinePluginView] = useState<PluginViewRef | null>(null);
   const [matchedPrefix, setMatchedPrefix] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export function useSearch(query: string): UseSearchResult {
 
   // Accumulator ref — holds the current merged result array so
   // the channel callback can merge into it without stale closures.
-  const accumulatorRef = useRef<ScoredEntry[]>([]);
+  const accumulatorRef = useRef<SourcedEntry[]>([]);
 
   // =========================================================
   // View ref generation tracking

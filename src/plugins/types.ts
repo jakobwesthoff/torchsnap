@@ -12,13 +12,13 @@
  */
 
 import type { RefObject } from "react";
-import type { ActionId, FooterState, ScoredEntry } from "@torchsnap/types";
+import type { ActionId, FooterState, SourcedEntry } from "@torchsnap/types";
 import type { createPluginSettingHook } from "../hooks/usePluginSetting";
 
 export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
    *  decides whether to use them or ignore them. */
-  results: ScoredEntry[];
+  results: SourcedEntry[];
   /** Opaque data from the backend's PluginViewRef.data field.
    *  Only present when the plugin returned CustomUI or InlineUI
    *  with a data payload. */

@@ -44,7 +44,7 @@ export type EntryIcon =
   | { type: "assetIcon"; value: string }
   | { type: "emoji"; value: string };
 
-export interface ScoredEntry {
+export interface SourcedEntry {
   id: string;
   title: string;
   subtitle: string | null;
@@ -88,7 +88,7 @@ export interface PluginViewRef {
 export type SearchMessage =
   | {
       type: "searchResults";
-      entries: ScoredEntry[];
+      entries: SourcedEntry[];
       /** View reference when the plugin requested custom UI. */
       customPluginView: PluginViewRef | null;
       /** View reference when the plugin requested inline UI. */
