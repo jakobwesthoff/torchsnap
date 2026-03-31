@@ -5,6 +5,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { binarySearch } from "../lib/binarySearch";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
@@ -243,14 +244,37 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // position via binary search (handled in useWindowedList / the
   // selection stability logic).
   const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
+  const [prevResults, setPrevResults] = useState(results);
   if (prevSearchQuery !== searchQuery) {
+    // New query — reset selection to top.
     setPrevSearchQuery(searchQuery);
+    setPrevResults(results);
     setSelectedIndex(0);
     // ESLINT: mouseActiveRef is only read from mouse event handlers,
     // which cannot fire during render. Writing it here is safe and
     // ensures the flag is current before any post-render event.
     // eslint-disable-next-line react-hooks/refs
     mouseActiveRef.current = false;
+  } else if (prevResults !== results) {
+    // Same query, but results changed (incremental plugin merge).
+    // Find the previously selected entry in the new sorted array
+    // so the selection stays on the same item.
+    setPrevResults(results);
+
+    const oldEntry = prevResults[selectedIndex];
+    if (oldEntry != null && selectedIndex > 0) {
+      const newIndex = binarySearch(results, oldEntry, (element, target) => {
+        if (target.score !== element.score) return target.score - element.score;
+        if (element.source < target.source) return -1;
+        if (element.source > target.source) return 1;
+        if (element.id < target.id) return -1;
+        if (element.id > target.id) return 1;
+        return 0;
+      });
+      if (newIndex !== -1) {
+        setSelectedIndex(newIndex);
+      }
+    }
   }
 
   // =========================================================
