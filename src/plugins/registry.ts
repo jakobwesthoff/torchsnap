@@ -47,12 +47,7 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
     label: "Clipboard",
     settingsIcon: ClipboardDocumentListIcon,
     views: {
-      // The clipboard plugin uses execute-triggered custom UI
-      // (ShowCustomUI), so the view name is not sent by the backend.
-      // The frontend activates it via `executePluginView` with just
-      // the plugin ID. We register it under "default" and resolve
-      // with a fallback in `getPluginView`.
-      default: launcherComponent(() => import("./clipboard/ClipboardView")),
+      history: launcherComponent(() => import("./clipboard/ClipboardView")),
     },
     settings: settingsComponent(() => import("./clipboard/ClipboardSettings")),
   },
@@ -75,16 +70,13 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
 
 /**
  * Look up a named view component for a plugin's CustomUI response.
- * Falls back to "default" when no view name is specified (for
- * execute-triggered plugins that don't send a view name).
+ * The view name is always provided — if missing, it's a bug.
  */
 export function getPluginView(
   pluginId: string,
-  viewName?: string,
+  viewName: string,
 ): ComponentType<PluginViewProps> | undefined {
-  const views = PLUGIN_REGISTRY[pluginId]?.views;
-  if (!views) return undefined;
-  return views[viewName ?? "default"] ?? views["default"];
+  return PLUGIN_REGISTRY[pluginId]?.views?.[viewName];
 }
 
 /**

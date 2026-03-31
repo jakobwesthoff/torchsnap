@@ -36,8 +36,14 @@ pub enum PostAction {
     KeepOpen,
     /// Switch to the plugin's custom UI component. The frontend
     /// mounts the component registered for the executing plugin's
-    /// ID, replacing the standard result list.
-    ShowCustomUI,
+    /// ID and view name, replacing the standard result list.
+    ShowCustomUI {
+        /// Named view to mount (must match a key in the plugin's
+        /// `views` registry on the frontend).
+        view: String,
+        /// Optional data payload forwarded to the view component.
+        data: Option<serde_json::Value>,
+    },
 }
 
 // =========================================================
