@@ -12,16 +12,16 @@
  */
 
 import { memo, type RefObject } from "react";
-import type { ScoredEntry } from "./types";
+import type { SourcedEntry } from "./types";
 import { ResultRow } from "./ResultRow";
 import { PAGE_SIZE } from "./constants";
 import { useWindowedList } from "./hooks/useWindowedList";
 
 interface ResultListProps {
-  results: ScoredEntry[];
+  results: SourcedEntry[];
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
-  onExecute: (entry: ScoredEntry) => void;
+  onExecute: (entry: SourcedEntry) => void;
   mouseActiveRef: RefObject<boolean>;
 }
 

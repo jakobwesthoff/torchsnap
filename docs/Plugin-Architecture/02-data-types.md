@@ -7,8 +7,8 @@ plugin output to frontend consumption:
 
 ```
 CatalogEntry ──┐
-               ├─→ PluginResponse ──→ ScoredEntry ──→ SearchMessage
-QueryResult ───┘
+               ├─→ PluginResponse ──→ SourcedEntry ──→ SearchMessage
+ScoredEntry ───┘
 ```
 
 ### CatalogEntry (`search/types.rs`)
@@ -30,13 +30,13 @@ The `keywords` field is unique to this type — it enables fallback matching
 where the host scores against `title + keywords` if the title alone doesn't
 match. This feature has no counterpart for query plugins.
 
-### QueryResult (`search/types.rs`)
+### ScoredEntry (`search/types.rs`)
 
 What `QueryPlugin` implementations produce. Structurally identical to
 `CatalogEntry` minus `keywords`, plus pre-computed scoring fields:
 
 ```rust
-pub struct QueryResult {
+pub struct ScoredEntry {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -55,9 +55,9 @@ async task. Three variants:
 
 ```rust
 pub enum PluginResponse {
-    Results(Vec<QueryResult>),
-    CustomUI { view: String, data: Option<Value>, results: Vec<QueryResult> },
-    InlineUI { view: String, data: Option<Value>, results: Vec<QueryResult> },
+    Results(Vec<ScoredEntry>),
+    CustomUI { view: String, data: Option<Value>, results: Vec<ScoredEntry> },
+    InlineUI { view: String, data: Option<Value>, results: Vec<ScoredEntry> },
 }
 ```
 
@@ -65,23 +65,18 @@ Only `QueryPlugin` can produce `CustomUI` or `InlineUI` responses.
 `CatalogPlugin` can only trigger custom UI via `PostAction::ShowCustomUI` from
 `execute()`, which follows a completely different path.
 
-### ScoredEntry (`search/types.rs`)
+### SourcedEntry (`search/types.rs`)
 
-The bridge type — serialized to the frontend. Identical to `QueryResult` plus
-`source: String` (the plugin ID). The conversion via
-`QueryResult::into_scored_entry()` copies all fields verbatim and adds `source`.
+The bridge type — serialized to the frontend. Wraps `ScoredEntry` with a
+`source: String` (the plugin ID) added via `#[serde(flatten)]`. Constructed
+with `SourcedEntry::new(source, scored_entry)` by the registry, preventing
+plugins from spoofing another plugin's source.
 
 ```rust
-pub struct ScoredEntry {
-    pub id: String,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub icon: Option<EntryIcon>,
-    pub score: u32,
-    pub title_positions: Vec<u32>,
-    pub subtitle_positions: Vec<u32>,
+pub struct SourcedEntry {
     pub source: String,
-    pub actions: Vec<Action>,
+    #[serde(flatten)]
+    pub entry: ScoredEntry,
 }
 ```
 
@@ -92,7 +87,7 @@ The wire format sent over the Tauri IPC channel:
 ```rust
 pub enum SearchMessage {
     SearchResults {
-        entries: Vec<ScoredEntry>,
+        entries: Vec<SourcedEntry>,
         custom_plugin_view: Option<PluginViewRef>,
         inline_plugin_view: Option<PluginViewRef>,
         matched_prefix: Option<String>,
@@ -141,7 +136,5 @@ Tagged enum for action identification, bidirectional across the bridge:
 
 - `title_positions` are nucleo grapheme indices, not JS string indices. Emoji
   and CJK character highlighting is broken (documented TODO in `types.rs`).
-- `QueryResult` and `ScoredEntry` are structurally identical minus `source`,
-  creating mechanical field-copying boilerplate.
 - Types are manually mirrored between Rust (`search/types.rs`) and TypeScript
   (`launcher/types.ts`) with no code generation ensuring sync.

@@ -108,10 +108,12 @@ pub enum EntryIcon {
 
 /// A pre-scored result returned by a `Plugin`'s `search()` method.
 ///
-/// Same shape as `ScoredEntry` but without `source` — the registry
-/// fills that from `plugin.id()` when converting to `ScoredEntry`.
-#[derive(Debug, Clone)]
-pub struct QueryResult {
+/// Intentionally omits `source` — plugin authors should not set or
+/// even think about this field. The host attaches it when wrapping
+/// into `SourcedEntry` via `SourcedEntry::new`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoredEntry {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -122,24 +124,7 @@ pub struct QueryResult {
     pub actions: Vec<Action>,
 }
 
-impl QueryResult {
-    /// Convert to a `ScoredEntry` by attaching the plugin's source ID.
-    pub fn into_scored_entry(self, source: String) -> ScoredEntry {
-        ScoredEntry {
-            id: self.id,
-            title: self.title,
-            subtitle: self.subtitle,
-            icon: self.icon,
-            score: self.score,
-            title_positions: self.title_positions,
-            subtitle_positions: self.subtitle_positions,
-            source,
-            actions: self.actions,
-        }
-    }
-}
-
-impl FrecencyTarget for QueryResult {
+impl FrecencyTarget for ScoredEntry {
     fn item_id(&self) -> &str {
         &self.id
     }
@@ -150,7 +135,7 @@ impl FrecencyTarget for QueryResult {
 
 /// A raw catalog entry before scoring. Internal to the Rust side —
 /// plugins produce these, the catalog registry scores them, and
-/// `ScoredEntry` is what crosses the bridge to the frontend.
+/// `SourcedEntry` is what crosses the bridge to the frontend.
 #[derive(Debug, Clone)]
 pub struct CatalogEntry {
     pub id: String,
@@ -165,34 +150,37 @@ pub struct CatalogEntry {
     pub actions: Vec<Action>,
 }
 
-/// A scored entry ready for the frontend. Contains the entry data
-/// plus match metadata (score and highlight positions).
+/// A `ScoredEntry` attributed to its originating plugin, ready
+/// for the frontend.
+///
+/// Uses `#[serde(flatten)]` so the serialized form is a flat
+/// object (no nesting). This is fine because `SourcedEntry` is
+/// serialize-only. If `Deserialize` is ever needed, note that
+/// `flatten` degrades deserialization error messages and uses a
+/// slower `Map`-based collection path — at that point consider
+/// whether manual field copying is preferable.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScoredEntry {
-    pub id: String,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub icon: Option<EntryIcon>,
-    pub score: u32,
-    /// Character positions in `title` that matched the query.
-    /// Used by the frontend to highlight matched characters.
-    // TODO: These are nucleo grapheme indices (1:1 with JS string
-    // indices for ASCII, but need conversion for emoji/CJK).
-    pub title_positions: Vec<u32>,
-    /// Character positions in `subtitle` that matched.
-    pub subtitle_positions: Vec<u32>,
+pub struct SourcedEntry {
     /// Which plugin produced this entry (plugin ID).
     pub source: String,
-    pub actions: Vec<Action>,
+    #[serde(flatten)]
+    pub inner: ScoredEntry,
 }
 
-impl FrecencyTarget for ScoredEntry {
+impl SourcedEntry {
+    /// Wrap a `ScoredEntry` with its originating plugin ID.
+    pub fn new(source: String, inner: ScoredEntry) -> Self {
+        Self { source, inner }
+    }
+}
+
+impl FrecencyTarget for SourcedEntry {
     fn item_id(&self) -> &str {
-        &self.id
+        &self.inner.id
     }
     fn boost_score(&mut self, bonus: u32) {
-        self.score = self.score.saturating_add(bonus);
+        self.inner.score = self.inner.score.saturating_add(bonus);
     }
 }
 
@@ -212,18 +200,18 @@ impl FrecencyTarget for ScoredEntry {
 #[derive(Debug)]
 pub enum PluginResponse {
     /// Standard result list entries.
-    Results(Vec<QueryResult>),
+    Results(Vec<ScoredEntry>),
     /// Plugin requests full custom UI (replaces the result list).
     CustomUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     },
     /// Plugin requests inline UI (rendered above the result list).
     InlineUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     },
 }
 
@@ -247,7 +235,7 @@ impl ResultChannel {
 
     /// Send standard result entries. Returns `false` if the
     /// receiver has been dropped (search cancelled).
-    pub fn send_results(&self, results: Vec<QueryResult>) -> bool {
+    pub fn send_results(&self, results: Vec<ScoredEntry>) -> bool {
         self.tx
             .blocking_send(PluginResponse::Results(results))
             .is_ok()
@@ -259,7 +247,7 @@ impl ResultChannel {
         &self,
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     ) -> bool {
         self.tx
             .blocking_send(PluginResponse::CustomUI {
@@ -276,7 +264,7 @@ impl ResultChannel {
         &self,
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
+        results: Vec<ScoredEntry>,
     ) -> bool {
         self.tx
             .blocking_send(PluginResponse::InlineUI {
@@ -334,7 +322,7 @@ pub enum SearchMessage {
     /// fields within variants. Fields need explicit renaming.
     #[serde(rename_all = "camelCase")]
     SearchResults {
-        entries: Vec<ScoredEntry>,
+        entries: Vec<SourcedEntry>,
         /// When a query plugin requested custom UI, this contains
         /// a view reference so the frontend can mount the plugin's
         /// React component. `None` for standard list rendering.

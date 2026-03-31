@@ -27,7 +27,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use super::{Plugin, PluginContext};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, QueryResult,
+    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ScoredEntry,
     ResultChannel,
 };
 
@@ -216,7 +216,7 @@ impl EmojiPickerPlugin {
     /// returns those items ordered by frecency score. Otherwise falls
     /// back to the full emojibase browse order so the grid isn't
     /// awkwardly sparse for new users.
-    fn empty_query_results(&self, entries: &[EmojiData]) -> Vec<QueryResult> {
+    fn empty_scored_entries(&self, entries: &[EmojiData]) -> Vec<ScoredEntry> {
         let frecency = self.frecency.read().expect("emoji frecency read lock");
 
         if let Some(ref frec) = *frecency {
@@ -235,7 +235,7 @@ impl EmojiPickerPlugin {
                         if entry.shortcodes.is_empty() {
                             return None;
                         }
-                        Some(emoji_to_query_result(entry, item.score, vec![]))
+                        Some(emoji_to_scored_entry(entry, item.score, vec![]))
                     })
                     .collect();
             }
@@ -246,7 +246,7 @@ impl EmojiPickerPlugin {
             .iter()
             .filter(|e| !e.shortcodes.is_empty())
             .take(EMPTY_QUERY_LIMIT)
-            .map(|e| emoji_to_query_result(e, 0, vec![]))
+            .map(|e| emoji_to_scored_entry(e, 0, vec![]))
             .collect()
     }
 }
@@ -300,7 +300,7 @@ impl Plugin for EmojiPickerPlugin {
             results.send_custom_ui(
                 "picker".into(),
                 None,
-                self.empty_query_results(&entries),
+                self.empty_scored_entries(&entries),
             );
             return;
         }
@@ -402,7 +402,7 @@ impl Plugin for EmojiPickerPlugin {
         // -------------------------------------------------------
         // Build results, sort by score descending.
         // -------------------------------------------------------
-        let mut scored_results: Vec<QueryResult> = matched
+        let mut scored_results: Vec<ScoredEntry> = matched
             .into_iter()
             .filter_map(|(idx, m)| {
                 let entry = &entries[idx];
@@ -422,7 +422,7 @@ impl Plugin for EmojiPickerPlugin {
                 let adjusted_title_pos: Vec<u32> =
                     m.title_positions.iter().map(|p| p + 1).collect();
 
-                Some(QueryResult {
+                Some(ScoredEntry {
                     id: entry.emoji.clone(),
                     title: format!(":{display_shortcode}:"),
                     subtitle: Some(entry.label.clone()),
@@ -466,11 +466,11 @@ impl Plugin for EmojiPickerPlugin {
     }
 }
 
-/// Convert an `EmojiData` entry to a `QueryResult` for display.
-fn emoji_to_query_result(entry: &EmojiData, score: u32, title_positions: Vec<u32>) -> QueryResult {
+/// Convert an `EmojiData` entry to a `ScoredEntry` for display.
+fn emoji_to_scored_entry(entry: &EmojiData, score: u32, title_positions: Vec<u32>) -> ScoredEntry {
     let display_shortcode = entry.shortcodes.first().map(|s| s.as_str()).unwrap_or("");
 
-    QueryResult {
+    ScoredEntry {
         id: entry.emoji.clone(),
         title: format!(":{display_shortcode}:"),
         subtitle: Some(entry.label.clone()),

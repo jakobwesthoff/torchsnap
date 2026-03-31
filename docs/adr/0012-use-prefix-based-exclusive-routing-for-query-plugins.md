@@ -89,10 +89,11 @@ When no prefix matches:
 
 ### Return type
 
-`QueryPlugin::search()` returns `Vec<QueryResult>`, a type identical
-to `ScoredEntry` but without the `source` field. The registry fills
-`source` from `plugin.id()` when converting to `ScoredEntry`. This
-prevents plugins from spoofing another plugin's source.
+`QueryPlugin::search()` returns a `SearchResponse` whose result vectors
+carry `ScoredEntry` values — the plugin-facing type without a `source`
+field. The registry wraps each entry in a `SourcedEntry` via
+`SourcedEntry::new(plugin.id(), scored_entry)` before forwarding to the
+host. This prevents plugins from spoofing another plugin's source.
 
 ## Consequences
 

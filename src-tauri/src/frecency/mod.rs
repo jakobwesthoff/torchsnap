@@ -16,7 +16,7 @@
 // - PluginFrecency: plugin-scoped wrapper that binds the
 //   plugin_id, following the PluginSettings pattern.
 // - FrecencyTarget: trait for types that can receive a score
-//   bonus (ScoredEntry, QueryResult).
+//   bonus (SourcedEntry, ScoredEntry).
 // =========================================================
 
 mod plugin_frecency;
@@ -81,7 +81,7 @@ fn bucket_weight(age_ms: i64) -> u32 {
 
 /// Types that can receive a frecency score bonus.
 ///
-/// Implemented by `ScoredEntry` and `QueryResult` so that
+/// Implemented by `SourcedEntry` and `ScoredEntry` so that
 /// `FrecencyStore::apply_scores` works generically over both.
 pub trait FrecencyTarget {
     /// The item ID used to look up the frecency score.

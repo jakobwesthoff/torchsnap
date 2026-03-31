@@ -30,7 +30,7 @@ use tauri::Manager;
 
 use super::{Plugin, PluginContext};
 use crate::search::types::{
-    Action, ActionId, CancellationToken, EntryIcon, PostAction, QueryResult, ResultChannel,
+    Action, ActionId, CancellationToken, EntryIcon, PostAction, ScoredEntry, ResultChannel,
 };
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
@@ -321,7 +321,7 @@ fn save_to_history(db: &SqlStorage, expression: &str, result: &EvalResult) {
 
 /// Query history entries, optionally filtered by a search term.
 /// Returns entries ordered by most recent first.
-fn query_history(db: &SqlStorage, filter: &str) -> Vec<QueryResult> {
+fn query_history(db: &SqlStorage, filter: &str) -> Vec<ScoredEntry> {
     let (sql, params): (&str, Vec<SqlValue>) = if filter.is_empty() {
         (
             "SELECT id, expression, result, result_type FROM calc_history \
@@ -345,7 +345,7 @@ fn query_history(db: &SqlStorage, filter: &str) -> Vec<QueryResult> {
         let expression: String = row.get(1)?;
         let result: String = row.get(2)?;
 
-        Ok(QueryResult {
+        Ok(ScoredEntry {
             id,
             title: expression,
             subtitle: Some(result),

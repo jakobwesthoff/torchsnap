@@ -38,7 +38,7 @@ use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
     ActionId, CancellationToken, PluginViewRef, PostAction, PluginResponse, ResultChannel,
-    ScoredEntry, SearchMessage,
+    SourcedEntry, ScoredEntry, SearchMessage,
 };
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
@@ -513,9 +513,9 @@ impl PluginHost {
 
                         self.frecency.apply_scores(source, &mut entries);
                         entries.sort_by(|a, b| {
-                            b.score.cmp(&a.score)
+                            b.inner.score.cmp(&a.inner.score)
                                 .then_with(|| a.source.cmp(&b.source))
-                                .then_with(|| a.id.cmp(&b.id))
+                                .then_with(|| a.inner.id.cmp(&b.inner.id))
                         });
 
                         let inline_plugin_view = match view_ref {
@@ -570,7 +570,7 @@ impl PluginHost {
         response: PluginResponse,
         source: &str,
         allow_custom_ui: bool,
-    ) -> (Option<(ViewKind, PluginViewRef)>, Vec<ScoredEntry>) {
+    ) -> (Option<(ViewKind, PluginViewRef)>, Vec<SourcedEntry>) {
         let mut view_ref = None;
 
         match &response {
@@ -594,13 +594,13 @@ impl PluginHost {
             PluginResponse::Results(_) => {}
         }
 
-        let entries: Vec<ScoredEntry> = match response {
+        let entries: Vec<SourcedEntry> = match response {
             PluginResponse::Results(results) => results,
             PluginResponse::CustomUI { results, .. }
             | PluginResponse::InlineUI { results, .. } => results,
         }
         .into_iter()
-        .map(|r| r.into_scored_entry(source.to_string()))
+        .map(|r| SourcedEntry::new(source.to_string(), r))
         .collect();
 
         (view_ref, entries)
@@ -635,7 +635,7 @@ impl PluginHost {
         plugins: &[Arc<dyn Plugin>],
         frecency: &FrecencyStore,
         query: &str,
-    ) -> Vec<ScoredEntry> {
+    ) -> Vec<SourcedEntry> {
         let mut matcher = Matcher::new(Config::DEFAULT);
         let pattern = Pattern::parse(query, CaseMatching::Smart, Normalization::Smart);
 
@@ -674,17 +674,19 @@ impl PluginHost {
                     title_indices.sort_unstable();
                     title_indices.dedup();
 
-                    results.push(ScoredEntry {
-                        id: entry.id,
-                        title: entry.title,
-                        subtitle: entry.subtitle,
-                        icon: entry.icon,
-                        score,
-                        title_positions: title_indices.clone(),
-                        subtitle_positions: vec![],
-                        source: source.clone(),
-                        actions: entry.actions,
-                    });
+                    results.push(SourcedEntry::new(
+                        source.clone(),
+                        ScoredEntry {
+                            id: entry.id,
+                            title: entry.title,
+                            subtitle: entry.subtitle,
+                            icon: entry.icon,
+                            score,
+                            title_positions: title_indices.clone(),
+                            subtitle_positions: vec![],
+                            actions: entry.actions,
+                        },
+                    ));
                 }
             }
 
@@ -695,10 +697,10 @@ impl PluginHost {
         // Sort catalog results by the deterministic composite key
         // before sending to the frontend.
         results.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
+            b.inner.score
+                .cmp(&a.inner.score)
                 .then_with(|| a.source.cmp(&b.source))
-                .then_with(|| a.id.cmp(&b.id))
+                .then_with(|| a.inner.id.cmp(&b.inner.id))
         });
 
         results

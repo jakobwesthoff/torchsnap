@@ -393,7 +393,7 @@ fn search(&self, query: &str, _prefix: Option<&str>) -> SearchResponse {
         let top = self.frecency.read().unwrap().top_items(20);
         let results = top.into_iter()
             .filter_map(|item| self.find_entry(&item.item_id))
-            .map(|entry| entry.into_query_result(/* ... */))
+            .map(|entry| ScoredEntry { /* fields from entry */ })
             .collect();
         return SearchResponse::Results(results);
     }
@@ -571,7 +571,7 @@ Ongoing updates go through the `channel`.
 ### `CatalogEntry`
 
 Raw entry produced by `CatalogPlugin::entries()`. The host scores and converts
-it to `ScoredEntry` before sending to the frontend.
+it to `SourcedEntry` before sending to the frontend.
 
 | Field | Type | Description |
 |---|---|---|
@@ -582,7 +582,7 @@ it to `ScoredEntry` before sending to the frontend.
 | `keywords` | `Vec<String>` | Extra match targets (not highlighted) |
 | `actions` | `Vec<Action>` | Ordered actions; first is primary (Enter) |
 
-### `QueryResult`
+### `ScoredEntry`
 
 Pre-scored result returned by `QueryPlugin::search()`.
 
@@ -657,8 +657,10 @@ Returned from `QueryPlugin::search()`.
 
 | Variant | Effect |
 |---|---|
-| `Results(Vec<QueryResult>)` | Standard list rendering by the host |
-| `CustomUI(Vec<QueryResult>)` | Mount plugin's custom React component; results passed as props |
+| `Nothing` | Plugin has nothing to contribute; host skips it entirely |
+| `Results(Vec<ScoredEntry>)` | Standard list rendering by the host |
+| `CustomUI { view, data, results }` | Mount plugin's custom React component; results passed as props |
+| `InlineUI { view, data, results }` | Render plugin component above the result list; results merged into host list |
 
 ### `PluginContext`
 
@@ -782,7 +784,7 @@ A `QueryPlugin` that activates exclusively when the user types `>`:
 use std::sync::RwLock;
 
 use crate::plugins::{CatalogPlugin, PluginContext, QueryPlugin};
-use crate::search::types::{Action, ActionId, PostAction, QueryResult, SearchResponse};
+use crate::search::types::{Action, ActionId, PostAction, ScoredEntry, SearchResponse};
 
 pub struct ScriptRunnerPlugin {
     scripts: RwLock<Vec<Script>>,
@@ -814,7 +816,7 @@ impl QueryPlugin for ScriptRunnerPlugin {
         let scripts = self.scripts.read().expect("scripts not poisoned");
         let results = scripts.iter()
             .filter(|s| s.name.to_lowercase().contains(&query.to_lowercase()))
-            .map(|s| QueryResult {
+            .map(|s| ScoredEntry {
                 id: s.id.clone(),
                 title: s.name.clone(),
                 subtitle: Some(s.description.clone()),

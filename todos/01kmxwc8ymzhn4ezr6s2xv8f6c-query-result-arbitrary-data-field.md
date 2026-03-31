@@ -1,8 +1,8 @@
-# Add arbitrary data field to QueryResult for custom UIs
+# Add arbitrary data field to ScoredEntry for custom UIs
 
 ## Problem
 
-`QueryResult` has a fixed set of fields (`id`, `title`, `subtitle`, `icon`,
+`ScoredEntry` has a fixed set of fields (`id`, `title`, `subtitle`, `icon`,
 `score`, etc.). Plugins that render their own custom UI via `CustomUI` or
 `InlineUI` sometimes need to pass per-entry metadata that doesn't map to any
 existing field (e.g., timestamps, result types, raw values).
@@ -13,10 +13,10 @@ display concerns with data transport.
 
 ## Proposed solution
 
-Add an optional opaque data field to `QueryResult`:
+Add an optional opaque data field to `ScoredEntry`:
 
 ```rust
-pub struct QueryResult {
+pub struct ScoredEntry {
     // ... existing fields ...
     /// Plugin-specific metadata passed through to the frontend.
     /// Only meaningful when the plugin renders its own UI component.
@@ -24,7 +24,7 @@ pub struct QueryResult {
 }
 ```
 
-This would serialize through `ScoredEntry` to the frontend, where custom UI
+This would serialize through `SourcedEntry` to the frontend, where custom UI
 components can read it from each entry without parsing conventions out of
 display fields.
 
