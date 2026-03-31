@@ -58,6 +58,46 @@ export function useSearch(query: string): UseSearchResult {
   // the channel callback can merge into it without stale closures.
   const accumulatorRef = useRef<ScoredEntry[]>([]);
 
+  // =========================================================
+  // View ref generation tracking
+  //
+  // View refs (customPluginView, inlinePluginView, matchedPrefix)
+  // need different handling than entries:
+  //
+  // WITHIN a generation (multiple messages for one query):
+  //   First non-null wins. Catalog results arrive first with null
+  //   views, then a query plugin may arrive with an inline view.
+  //   We don't want the catalog's null to overwrite a pending
+  //   inline view that hasn't arrived yet.
+  //
+  // ACROSS generations (new keystroke / query change):
+  //   The old view refs are stale and must be replaced. But we
+  //   must NOT eagerly reset to null — that would cause a visible
+  //   flash (plugin view unmounts for one frame, then remounts
+  //   when the new message arrives).
+  //
+  // Solution: track the generation that last wrote each view ref.
+  // On the first message of a new generation, unconditionally
+  // overwrite (even with null — handles transitions like prefix
+  // mode → non-prefix mode). On subsequent messages within the
+  // same generation, only overwrite if the current value is null
+  // (first-non-null-wins).
+  //
+  // This gives us:
+  // - Prefix mode: first (and only) message carries the updated
+  //   custom view → overwrites immediately, no null gap, no flash.
+  // - Non-prefix mode: catalog message is first → clears stale
+  //   custom view. Query plugin message arrives later → first-
+  //   non-null sets inline view.
+  // - Transition from prefix to non-prefix: catalog message is
+  //   first → correctly clears the stale custom view (different
+  //   generation, unconditional overwrite).
+  // - Query cleared: the synchronous !query reset below handles
+  //   this case before any effect runs — no stale views persist.
+  // =========================================================
+
+  const viewRefGenerationRef = useRef(0);
+
   // Signal loading=true as soon as the query changes, during the same
   // render that receives the new query. This is separated from the
   // effect below because setting state inside a useEffect would cause
@@ -70,10 +110,16 @@ export function useSearch(query: string): UseSearchResult {
     setLoading(true);
 
     // When the query is cleared (e.g. goBack / Escape), synchronously
-    // reset plugin state so plugin views unmount on the same render.
+    // reset ALL state so plugin views unmount on the same render.
     // Without this, stale plugin views remain mounted until the async
     // search result arrives, and their effects can re-inject partial
     // state (like a matched prefix) into the display query.
+    //
+    // This is the only place where we eagerly null out view refs.
+    // For non-empty query changes (typing within prefix mode), we
+    // intentionally do NOT reset view refs here — the generation-
+    // aware logic in the channel handler takes care of replacing
+    // stale refs without a null gap.
     if (!query) {
       accumulatorRef.current = [];
       setResults([]);
@@ -86,14 +132,18 @@ export function useSearch(query: string): UseSearchResult {
   useEffect(() => {
     const generation = ++generationRef.current;
 
-    // Reset accumulator and view state for the new query. This
-    // ensures stale view refs from the previous generation don't
-    // block incoming updates (the "first non-null wins" logic
-    // below only applies within a single generation).
+    // Reset the entry accumulator for the new query. We do NOT
+    // reset view refs here — see the generation tracking comment
+    // above for why. Resetting them here would cause a null gap
+    // (effect runs → view refs null → plugin unmounts → message
+    // arrives → view refs set → plugin remounts = visible flash).
     accumulatorRef.current = [];
-    setCustomPluginView(null);
-    setInlinePluginView(null);
-    setMatchedPrefix(null);
+
+    // Track whether this generation has delivered its first
+    // message yet. Used to decide between "unconditional
+    // overwrite" (first message) and "first-non-null wins"
+    // (subsequent messages).
+    let isFirstMessageOfGeneration = true;
 
     const channel = new Channel<SearchMessage>();
 
@@ -112,15 +162,51 @@ export function useSearch(query: string): UseSearchResult {
           accumulatorRef.current = merged;
           setResults(merged);
 
-          // First non-null view refs win within this generation.
-          if (message.customPluginView != null) {
-            setCustomPluginView((prev) => prev ?? message.customPluginView);
-          }
-          if (message.inlinePluginView != null) {
-            setInlinePluginView((prev) => prev ?? message.inlinePluginView);
-          }
-          if (message.matchedPrefix != null) {
-            setMatchedPrefix((prev) => prev ?? message.matchedPrefix);
+          // -------------------------------------------------
+          // View ref update logic
+          //
+          // On the first message of a new generation: always
+          // overwrite, even with null. This handles:
+          //   - Prefix mode: replaces stale data from the
+          //     previous keystroke with fresh data.
+          //   - Transition to non-prefix: catalog message has
+          //     null views, correctly clearing the old prefix
+          //     view.
+          //
+          // On subsequent messages within the same generation:
+          // only set if currently null (first-non-null wins).
+          // This handles:
+          //   - Non-prefix mode: catalog (null views) arrives
+          //     first, then query plugin (inline view) arrives
+          //     second. The plugin's view is not clobbered by
+          //     the catalog's null.
+          // -------------------------------------------------
+
+          if (isFirstMessageOfGeneration) {
+            // Unconditional overwrite — replace whatever the
+            // previous generation left behind.
+            setCustomPluginView(message.customPluginView);
+            setInlinePluginView(message.inlinePluginView);
+            setMatchedPrefix(message.matchedPrefix);
+
+            // Record that this generation has now written its
+            // view refs so the viewRefGenerationRef stays
+            // accurate for external consumers if needed.
+            viewRefGenerationRef.current = generation;
+            isFirstMessageOfGeneration = false;
+          } else {
+            // Within-generation accumulation: first non-null
+            // wins. Only overwrite if the current value is
+            // null (hasn't been set yet this generation).
+            if (message.customPluginView != null) {
+              setCustomPluginView((prev) => prev ?? message.customPluginView);
+            }
+            if (message.inlinePluginView != null) {
+              setInlinePluginView((prev) => prev ?? message.inlinePluginView);
+            }
+            if (message.matchedPrefix != null) {
+              setMatchedPrefix((prev) => prev ?? message.matchedPrefix);
+            }
           }
           break;
         }
