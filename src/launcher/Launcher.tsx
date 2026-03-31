@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { binarySearch } from "../lib/binarySearch";
@@ -75,7 +75,7 @@ function PluginViewContainer({
   pluginId,
   viewName,
   ...props
-}: PluginViewProps & { pluginId: string; viewName?: string }) {
+}: PluginViewProps & { pluginId: string; viewName: string }) {
   const View = getPluginView(pluginId, viewName);
   if (!View) return null;
   return <View {...props} />;
@@ -154,9 +154,9 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // Local override for when execute_action returns ShowCustomUI.
   // Takes precedence over the search-driven customPluginView.
-  // Stored as a plugin ID string (no view name — execute-triggered
-  // plugins resolve to the "default" view).
-  const [executePluginView, setExecutePluginView] = useState<string | null>(null);
+  // Stored as a full PluginViewRef since ShowCustomUI now carries
+  // an explicit view name and optional data.
+  const [executePluginView, setExecutePluginView] = useState<PluginViewRef | null>(null);
 
   const resetState = useCallback(() => {
     setDisplayQueryState("");
@@ -185,12 +185,19 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // =========================================================
 
   useEffect(() => {
-    const unlisten = listen<{ pluginId: string }>("activate-plugin-custom-ui", (event) => {
-      setQuery("");
-      setSelectedIndex(0);
-      setExecutePluginView(event.payload.pluginId);
-      inputRef.current?.focus();
-    });
+    const unlisten = listen<{ pluginId: string; view: string; data?: unknown }>(
+      "activate-plugin-custom-ui",
+      (event) => {
+        setQuery("");
+        setSelectedIndex(0);
+        setExecutePluginView({
+          pluginId: event.payload.pluginId,
+          view: event.payload.view,
+          data: event.payload.data,
+        });
+        inputRef.current?.focus();
+      },
+    );
 
     return () => {
       unlisten.then((fn) => fn());
@@ -208,13 +215,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     matchedPrefix,
   } = useSearch(searchQuery);
 
-  // Resolve the active custom plugin view. Execute-triggered
-  // views use just a plugin ID (resolves to "default" view).
-  // Search-triggered views use a full PluginViewRef.
-  const customPluginView: PluginViewRef | null = useMemo(
-    () => (executePluginView ? { pluginId: executePluginView, view: "default" } : searchPluginView),
-    [executePluginView, searchPluginView],
-  );
+  // Resolve the active custom plugin view. Both execute-triggered
+  // and search-triggered views are full PluginViewRef objects with
+  // explicit view names — no fallback needed.
+  const customPluginView: PluginViewRef | null = executePluginView ?? searchPluginView;
 
   // The inline view is only active when there is no custom view
   // taking over the entire result area.
@@ -321,17 +325,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         actionId,
       });
 
-      switch (postAction) {
-        case "Dismiss":
-          dismiss();
-          break;
-        case "Nothing":
-        case "KeepOpen":
-        case "ShowCustomUI":
-          // ShowCustomUI is not meaningful from within a plugin view;
-          // Nothing and KeepOpen require no action.
-          break;
+      if (postAction === "Dismiss") {
+        dismiss();
       }
+      // ShowCustomUI is not meaningful from within a plugin view;
+      // Nothing and KeepOpen require no action.
     },
     [dismiss],
   );
@@ -349,17 +347,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         actionId,
       });
 
-      switch (postAction) {
-        case "Dismiss":
-          dismiss();
-          break;
-        case "Nothing":
-        case "KeepOpen":
-        case "ShowCustomUI":
-          // ShowCustomUI is not meaningful from an inline view;
-          // Nothing and KeepOpen require no action.
-          break;
+      if (postAction === "Dismiss") {
+        dismiss();
       }
+      // ShowCustomUI is not meaningful from an inline view;
+      // Nothing and KeepOpen require no action.
     },
     [dismiss],
   );
@@ -446,17 +438,17 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         actionId: action.id,
       });
 
-      switch (postAction) {
-        case "Dismiss":
-          dismiss();
-          break;
-        case "ShowCustomUI":
-          setExecutePluginView(entry.source);
-          setQuery("");
-          break;
-        case "Nothing":
-        case "KeepOpen":
-          break;
+      if (postAction === "Dismiss") {
+        dismiss();
+      } else if (postAction === "Nothing" || postAction === "KeepOpen") {
+        // No launcher state change needed.
+      } else if (typeof postAction === "object" && "ShowCustomUI" in postAction) {
+        setExecutePluginView({
+          pluginId: entry.source,
+          view: postAction.ShowCustomUI.view,
+          data: postAction.ShowCustomUI.data,
+        });
+        setQuery("");
       }
     },
     [dismiss, setQuery],

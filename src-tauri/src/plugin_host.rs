@@ -71,6 +71,8 @@ struct RegisteredShortcut {
 #[serde(rename_all = "camelCase")]
 struct ActivatePluginPayload {
     plugin_id: String,
+    view: String,
+    data: Option<serde_json::Value>,
 }
 
 // =========================================================
@@ -310,8 +312,8 @@ impl PluginHost {
                     let result = r.owner.handle_shortcut(&r.shortcut_id, &handle);
 
                     match result {
-                        Ok(PostAction::ShowCustomUI) => {
-                            show_launcher_with_plugin(&handle, &r.plugin_id);
+                        Ok(PostAction::ShowCustomUI { view, data }) => {
+                            show_launcher_with_plugin(&handle, &r.plugin_id, &view, data);
                         }
                         Ok(_) => {}
                         Err(e) => {
@@ -741,7 +743,12 @@ fn collect_watched_keys_into(
 
 /// Show the launcher and emit `activate-plugin-custom-ui` so the
 /// frontend switches to the plugin's view.
-fn show_launcher_with_plugin(app: &tauri::AppHandle, plugin_id: &str) {
+fn show_launcher_with_plugin(
+    app: &tauri::AppHandle,
+    plugin_id: &str,
+    view: &str,
+    data: Option<serde_json::Value>,
+) {
     let Some(layout) = app.state::<crate::LauncherLayoutState>().get().copied() else {
         eprintln!("shortcut: launcher layout not yet received, ignoring");
         return;
@@ -757,6 +764,8 @@ fn show_launcher_with_plugin(app: &tauri::AppHandle, plugin_id: &str) {
         "activate-plugin-custom-ui",
         ActivatePluginPayload {
             plugin_id: plugin_id.to_string(),
+            view: view.to_string(),
+            data,
         },
     ) {
         eprintln!("shortcut: failed to emit activate-plugin-custom-ui: {e:#}");

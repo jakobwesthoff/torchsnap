@@ -44,7 +44,11 @@ export interface Action {
  * Returned by the `search_execute` Tauri command to tell the frontend
  * what to do after a plugin handles an action.
  */
-export type PostAction = "Nothing" | "Dismiss" | "KeepOpen" | "ShowCustomUI";
+export type PostAction =
+  | "Nothing"
+  | "Dismiss"
+  | "KeepOpen"
+  | { ShowCustomUI: { view: string; data?: unknown } };
 
 // =========================================================
 // Entry Types

@@ -290,7 +290,10 @@ impl Plugin for ClipboardPlugin {
         _shortcut_id: &str,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        Ok(PostAction::ShowCustomUI)
+        Ok(PostAction::ShowCustomUI {
+            view: "history".into(),
+            data: None,
+        })
     }
 
     fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
@@ -414,7 +417,10 @@ impl Plugin for ClipboardPlugin {
         _app: &tauri::AppHandle,
     ) -> Result<PostAction> {
         match action_id {
-            ActionId::Open => Ok(PostAction::ShowCustomUI),
+            ActionId::Open => Ok(PostAction::ShowCustomUI {
+                view: "history".into(),
+                data: None,
+            }),
             other => anyhow::bail!("unsupported action {other:?} for clipboard-manager"),
         }
     }
