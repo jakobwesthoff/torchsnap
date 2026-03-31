@@ -35,6 +35,18 @@ export interface Action {
 }
 
 // =========================================================
+// Post-Action Types
+// =========================================================
+
+/**
+ * Mirrors `PostAction` in `src-tauri/src/search/types.rs`.
+ *
+ * Returned by the `search_execute` Tauri command to tell the frontend
+ * what to do after a plugin handles an action.
+ */
+export type PostAction = "Nothing" | "Dismiss" | "KeepOpen" | "ShowCustomUI";
+
+// =========================================================
 // Entry Types
 // =========================================================
 
