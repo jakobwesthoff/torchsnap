@@ -14,10 +14,12 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { CalculatorIcon } from "@heroicons/react/24/outline";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
-import { SettingsSection } from "../../components/SettingsSection";
-import { SettingsEntry } from "../../components/SettingsEntry";
+import { SectionHeader } from "../../settings/SectionHeader";
+import { Section } from "../../settings/Section";
+import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
 import { Slider } from "../../components/Slider";
 
@@ -93,29 +95,35 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
 
   return (
     <div className="flex flex-col gap-4">
+      <SectionHeader
+        icon={CalculatorIcon}
+        title="Calculator"
+        description="Evaluate math expressions directly from the launcher. Type calculations inline or use the = prefix for explicit mode."
+      />
+
       {/* ---- Plugin toggle ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Enable calculator">
+      <Section>
+        <Entry label="Enable calculator">
           <Switch checked={enabled} onChange={setEnabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Heuristic toggle ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Detect math expressions without prefix">
+      <Section>
+        <Entry label="Detect math expressions without prefix">
           <Switch checked={heuristicEnabled} onChange={setHeuristicEnabled} disabled={!enabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- History toggle ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Save calculation history">
+      <Section>
+        <Entry label="Save calculation history">
           <Switch checked={historyEnabled} onChange={setHistoryEnabled} disabled={!enabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Retention ---- */}
-      <SettingsSection title="Retention">
+      <Section title="Retention">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <span className="text-sm text-text-primary">Keep entries for</span>
@@ -130,10 +138,10 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
             disabled={!enabled || !historyEnabled}
           />
         </div>
-      </SettingsSection>
+      </Section>
 
       {/* ---- Statistics ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between -mt-0.5 mb-1">
           <h3 className="text-sm font-medium text-text-secondary">Statistics</h3>
           <button
@@ -153,10 +161,10 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
         ) : (
           <span className="text-sm text-text-muted">Loading...</span>
         )}
-      </SettingsSection>
+      </Section>
 
       {/* ---- Clear History ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-sm text-text-primary">Clear history</span>
@@ -190,7 +198,7 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
             </button>
           )}
         </div>
-      </SettingsSection>
+      </Section>
     </div>
   );
 }

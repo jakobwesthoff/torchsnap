@@ -12,13 +12,13 @@
 
 import type { ReactNode } from "react";
 
-interface SettingsEntryProps {
+interface EntryProps {
   label: string;
   description?: string;
   children: ReactNode;
 }
 
-export function SettingsEntry({ label, description, children }: SettingsEntryProps) {
+export function Entry({ label, description, children }: EntryProps) {
   return (
     <label className="flex items-center justify-between cursor-pointer">
       <div className="flex flex-col">

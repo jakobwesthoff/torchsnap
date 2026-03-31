@@ -3,10 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useCallback, useEffect, useState } from "react";
+import { ChartBarIcon } from "@heroicons/react/24/outline";
 import { invoke } from "@tauri-apps/api/core";
 import { useSetting } from "../../hooks/useSetting";
-import { SettingsSection } from "../../components/SettingsSection";
-import { SettingsEntry } from "../../components/SettingsEntry";
+import { SectionHeader } from "../SectionHeader";
+import { Section } from "../Section";
+import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
 
 // =========================================================
@@ -82,15 +84,21 @@ export function FrecencySection() {
 
   return (
     <div className="flex flex-col gap-4">
+      <SectionHeader
+        icon={ChartBarIcon}
+        title="Frecency"
+        description="Frecency combines frequency and recency to learn which results you use most, automatically ranking them higher over time."
+      />
+
       {/* ---- Enable/disable toggle ---- */}
-      <SettingsSection>
-        <SettingsEntry label="Enable frecency tracking">
+      <Section>
+        <Entry label="Enable frecency tracking">
           <Switch checked={enabled} onChange={setEnabled} />
-        </SettingsEntry>
-      </SettingsSection>
+        </Entry>
+      </Section>
 
       {/* ---- Statistics ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between -mt-0.5 mb-1">
           <h3 className="text-sm font-medium text-text-secondary">Statistics</h3>
           <button
@@ -116,10 +124,10 @@ export function FrecencySection() {
         ) : (
           <span className="text-sm text-text-muted">Loading...</span>
         )}
-      </SettingsSection>
+      </Section>
 
       {/* ---- Clear history ---- */}
-      <SettingsSection>
+      <Section>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-sm text-text-primary">Clear history</span>
@@ -150,7 +158,7 @@ export function FrecencySection() {
             </button>
           )}
         </div>
-      </SettingsSection>
+      </Section>
     </div>
   );
 }
