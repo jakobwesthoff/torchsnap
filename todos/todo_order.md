@@ -34,6 +34,7 @@ Core systems that support everything else.
 - [app-discovery-direct-api](01kmjpbr2saehjhhgkh3jdsgna-app-discovery-direct-api.md) `[discuss]`
 - [frontend-memory-leak-cleanup](01kmtfq0erkn5vxqnzka4jz2ce-frontend-memory-leak-cleanup.md)
 - [frontend-memleak-audit-followup](01kmtn27vgjzndwwgan03pwzyp-frontend-memleak-audit-followup.md)
+- [plugin-escape-handling](01kn263f5khqa9czphpa19stzg-plugin-escape-handling.md) `[discuss]`
 - [investigate-double-hide-on-dismiss](01kmpjrsretm2sdvm71yknd2k3-investigate-double-hide-on-dismiss.md)
 - [frontend-backend-error-handling](01kmpk3scmw3h8vpptdfjnp2bv-frontend-backend-error-handling.md)
 - [onboarding-first-run](01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md)
