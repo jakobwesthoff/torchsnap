@@ -86,8 +86,14 @@ export function useSearch(query: string): UseSearchResult {
   useEffect(() => {
     const generation = ++generationRef.current;
 
-    // Reset accumulator for new query.
+    // Reset accumulator and view state for the new query. This
+    // ensures stale view refs from the previous generation don't
+    // block incoming updates (the "first non-null wins" logic
+    // below only applies within a single generation).
     accumulatorRef.current = [];
+    setCustomPluginView(null);
+    setInlinePluginView(null);
+    setMatchedPrefix(null);
 
     const channel = new Channel<SearchMessage>();
 
@@ -106,7 +112,7 @@ export function useSearch(query: string): UseSearchResult {
           accumulatorRef.current = merged;
           setResults(merged);
 
-          // First non-null view refs win for this generation.
+          // First non-null view refs win within this generation.
           if (message.customPluginView != null) {
             setCustomPluginView((prev) => prev ?? message.customPluginView);
           }
