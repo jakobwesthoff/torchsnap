@@ -38,10 +38,21 @@ use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{CatalogPlugin, PluginContext, PluginShortcut, QueryPlugin};
 use crate::search::types::{
-    ActionId, PluginViewRef, PostAction, ScoredEntry, SearchResponse, SearchResult,
+    ActionId, CancellationToken, PluginViewRef, PostAction, PluginResponse, ResultChannel,
+    ScoredEntry, SearchMessage,
 };
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
+
+// =========================================================
+// Internal Helpers
+// =========================================================
+
+/// Distinguishes CustomUI from InlineUI in `process_plugin_response`.
+enum ViewKind {
+    Custom,
+    Inline,
+}
 
 // =========================================================
 // Shortcut Types
@@ -413,102 +424,242 @@ impl PluginHost {
     // Search
     // =========================================================
 
-    /// Search all plugins against the given query.
-    pub fn search(&self, query: &str) -> SearchResult {
+    /// Search all plugins against the given query, streaming
+    /// results to the frontend as they become available.
+    ///
+    /// Catalog results are sent first (sync, fast). Query plugins
+    /// are dispatched concurrently on the blocking thread pool and
+    /// their results stream to the frontend as each plugin
+    /// completes.
+    pub async fn search(
+        &self,
+        query: &str,
+        on_results: &tauri::ipc::Channel<SearchMessage>,
+    ) {
         if query.is_empty() {
-            return SearchResult::empty();
+            let _ = on_results.send(SearchMessage::Done);
+            return;
         }
 
-        // Prefix routing: longest match wins.
-        if let Some((plugin, prefix)) = self.find_prefix_match(query) {
-            let stripped = &query[prefix.len()..];
-            let source = plugin.id().to_string();
-            let response = plugin.search(stripped, Some(prefix));
+        let cancel = CancellationToken::new();
 
+        // =======================================================
+        // Prefix routing: longest match wins. Exclusive — only
+        // the matched plugin runs, no catalogs, no streaming.
+        // =======================================================
+
+        if let Some((plugin, prefix)) = self.find_prefix_match(query) {
+            let stripped = query[prefix.len()..].to_string();
+            let source = plugin.id().to_string();
+            let prefix_owned = prefix.to_string();
+            let plugin = Arc::clone(plugin);
+            let cancel = cancel.clone();
+
+            let (tx, mut rx) = mpsc::channel::<PluginResponse>(4);
+            let rc = ResultChannel::new(tx);
+
+            let prefix_for_search = prefix_owned.clone();
+            tokio::task::spawn_blocking(move || {
+                plugin.search(&stripped, Some(&prefix_for_search), &rc, &cancel);
+            });
+
+            // The prefix path produces at most one response.
+            // Translate it into a single SearchResults message.
             let mut custom_plugin_view = None;
             let mut inline_plugin_view = None;
+            let mut entries = Vec::new();
 
-            match &response {
-                SearchResponse::CustomUI { view, data, .. } => {
-                    custom_plugin_view = Some(PluginViewRef {
-                        plugin_id: source.clone(),
-                        view: view.clone(),
-                        data: data.clone(),
-                    });
+            while let Some(response) = rx.recv().await {
+                let (view_ref, results) = self.process_plugin_response(
+                    response,
+                    &source,
+                    true, // prefix mode — CustomUI allowed
+                );
+
+                if let Some((kind, vr)) = view_ref {
+                    match kind {
+                        ViewKind::Custom => custom_plugin_view = Some(vr),
+                        ViewKind::Inline => inline_plugin_view = Some(vr),
+                    }
                 }
-                SearchResponse::InlineUI { view, data, .. } => {
-                    inline_plugin_view = Some(PluginViewRef {
-                        plugin_id: source.clone(),
-                        view: view.clone(),
-                        data: data.clone(),
-                    });
-                }
-                _ => {}
+
+                entries.extend(results);
             }
 
-            let entries = response
-                .into_results()
-                .into_iter()
-                .map(|r| r.into_scored_entry(source.clone()))
-                .collect();
-
-            return SearchResult {
+            let _ = on_results.send(SearchMessage::SearchResults {
                 entries,
                 custom_plugin_view,
                 inline_plugin_view,
-                matched_prefix: Some(prefix.to_string()),
-            };
+                matched_prefix: Some(prefix_owned),
+            });
+            let _ = on_results.send(SearchMessage::Done);
+            return;
         }
 
-        // No prefix: nucleo over catalog entries + all enabled query plugins.
-        let mut results = self.search_catalogs(query);
-        let mut inline_plugin_view = None;
+        // =======================================================
+        // No prefix: catalog search + concurrent query plugins.
+        // =======================================================
+
+        // Phase 1: catalog search (sync, CPU-bound). Send results
+        // to the frontend immediately.
+        let catalog_plugins = self.catalog_plugins.clone();
+        let frecency = self.frecency.clone();
+        let query_owned = query.to_string();
+
+        let catalog_results = tokio::task::spawn_blocking({
+            let query = query_owned.clone();
+            let frecency = frecency.clone();
+            move || Self::search_catalogs_static(&catalog_plugins, &frecency, &query)
+        })
+        .await
+        .expect("catalog search task not panicked");
+
+        if !catalog_results.is_empty() {
+            let _ = on_results.send(SearchMessage::SearchResults {
+                entries: catalog_results,
+                custom_plugin_view: None,
+                inline_plugin_view: None,
+                matched_prefix: None,
+            });
+        }
+
+        // Phase 2: query plugins — spawn concurrently, stream
+        // results as each completes.
+        let mut receivers: Vec<(String, mpsc::Receiver<PluginResponse>)> = Vec::new();
 
         for plugin in &self.query_plugins {
             if !plugin.is_enabled() {
                 continue;
             }
-            let source = plugin.id().to_string();
-            let response = plugin.search(query, None);
 
-            match &response {
-                SearchResponse::InlineUI { view, data, .. } => {
-                    if inline_plugin_view.is_none() {
-                        inline_plugin_view = Some(PluginViewRef {
-                            plugin_id: source.clone(),
-                            view: view.clone(),
-                            data: data.clone(),
-                        });
-                    } else {
-                        eprintln!(
-                            "search: dropping InlineUI from plugin '{}' — \
-                             another plugin already claimed the inline slot",
-                            source
+            let source = plugin.id().to_string();
+            let plugin = Arc::clone(plugin);
+            let query = query_owned.clone();
+            let cancel = cancel.clone();
+
+            let (tx, rx) = mpsc::channel::<PluginResponse>(4);
+            let rc = ResultChannel::new(tx);
+
+            tokio::task::spawn_blocking(move || {
+                plugin.search(&query, None, &rc, &cancel);
+            });
+
+            receivers.push((source, rx));
+        }
+
+        // Stream results as each plugin completes. We use
+        // tokio::select! across all receivers. Since we have a
+        // dynamic number of receivers, we poll them in a loop:
+        // drain whichever receiver has data, remove it when closed.
+        let mut inline_claimed = false;
+
+        while !receivers.is_empty() {
+            // Find the first receiver that has a message or is
+            // closed. In practice with few plugins this is fine.
+            let mut closed_idx = None;
+
+            for (i, (source, rx)) in receivers.iter_mut().enumerate() {
+                match rx.try_recv() {
+                    Ok(response) => {
+                        let (view_ref, mut entries) = self.process_plugin_response(
+                            response,
+                            source,
+                            false, // non-prefix — CustomUI downgraded
                         );
+
+                        self.frecency.apply_scores(source, &mut entries);
+                        entries.sort_by(|a, b| {
+                            b.score.cmp(&a.score)
+                                .then_with(|| a.source.cmp(&b.source))
+                                .then_with(|| a.id.cmp(&b.id))
+                        });
+
+                        let inline_plugin_view = match view_ref {
+                            Some((ViewKind::Inline, vr)) if !inline_claimed => {
+                                inline_claimed = true;
+                                Some(vr)
+                            }
+                            Some((ViewKind::Inline, _)) => {
+                                eprintln!(
+                                    "search: dropping InlineUI from plugin '{}' — \
+                                     another plugin already claimed the inline slot",
+                                    source
+                                );
+                                None
+                            }
+                            _ => None,
+                        };
+
+                        if !entries.is_empty() || inline_plugin_view.is_some() {
+                            let _ = on_results.send(SearchMessage::SearchResults {
+                                entries,
+                                custom_plugin_view: None,
+                                inline_plugin_view,
+                                matched_prefix: None,
+                            });
+                        }
                     }
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        closed_idx = Some(i);
+                        break;
+                    }
+                    Err(mpsc::error::TryRecvError::Empty) => {}
                 }
-                // Safety: full UI takeover not permitted without prefix match.
-                // Downgrade to Results (extract entries only, ignore view/data).
-                SearchResponse::CustomUI { .. } => {}
-                _ => {}
             }
 
-            let mut plugin_results: Vec<ScoredEntry> = response
-                .into_results()
-                .into_iter()
-                .map(|r| r.into_scored_entry(source.clone()))
-                .collect();
-            self.frecency.apply_scores(&source, &mut plugin_results);
-            results.extend(plugin_results);
+            if let Some(idx) = closed_idx {
+                receivers.swap_remove(idx);
+            } else {
+                // No receiver had data — yield to avoid busy-spinning.
+                tokio::task::yield_now().await;
+            }
         }
 
-        results.sort_by(|a, b| b.score.cmp(&a.score));
-        SearchResult {
-            entries: results,
-            custom_plugin_view: None,
-            inline_plugin_view,
-            matched_prefix: None,
+        let _ = on_results.send(SearchMessage::Done);
+    }
+
+    /// Process a `PluginResponse` into scored entries and an
+    /// optional view reference. Factored out to avoid duplication
+    /// between prefix and non-prefix paths.
+    fn process_plugin_response(
+        &self,
+        response: PluginResponse,
+        source: &str,
+        allow_custom_ui: bool,
+    ) -> (Option<(ViewKind, PluginViewRef)>, Vec<ScoredEntry>) {
+        let mut view_ref = None;
+
+        match &response {
+            PluginResponse::CustomUI { view, data, .. } if allow_custom_ui => {
+                view_ref = Some((ViewKind::Custom, PluginViewRef {
+                    plugin_id: source.to_string(),
+                    view: view.clone(),
+                    data: data.clone(),
+                }));
+            }
+            PluginResponse::CustomUI { .. } => {
+                // Non-prefix mode: downgrade CustomUI silently.
+            }
+            PluginResponse::InlineUI { view, data, .. } => {
+                view_ref = Some((ViewKind::Inline, PluginViewRef {
+                    plugin_id: source.to_string(),
+                    view: view.clone(),
+                    data: data.clone(),
+                }));
+            }
+            PluginResponse::Results(_) => {}
         }
+
+        let entries: Vec<ScoredEntry> = match response {
+            PluginResponse::Results(results) => results,
+            PluginResponse::CustomUI { results, .. }
+            | PluginResponse::InlineUI { results, .. } => results,
+        }
+        .into_iter()
+        .map(|r| r.into_scored_entry(source.to_string()))
+        .collect();
+
+        (view_ref, entries)
     }
 
     fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn QueryPlugin>, &'a str)> {
@@ -530,7 +681,13 @@ impl PluginHost {
         best
     }
 
-    fn search_catalogs(&self, query: &str) -> Vec<ScoredEntry> {
+    /// Catalog search as a static method so it can run on
+    /// `spawn_blocking` without borrowing `&self`.
+    fn search_catalogs_static(
+        catalog_plugins: &[Arc<dyn CatalogPlugin>],
+        frecency: &FrecencyStore,
+        query: &str,
+    ) -> Vec<ScoredEntry> {
         let mut matcher = Matcher::new(Config::DEFAULT);
         let pattern = Pattern::parse(query, CaseMatching::Smart, Normalization::Smart);
 
@@ -538,7 +695,7 @@ impl PluginHost {
         let mut char_buf = Vec::new();
         let mut title_indices = Vec::new();
 
-        for plugin in &self.catalog_plugins {
+        for plugin in catalog_plugins {
             // Skip disabled plugins — the host gates search results.
             if !plugin.is_enabled() {
                 continue;
@@ -584,9 +741,17 @@ impl PluginHost {
             }
 
             // Apply frecency bonuses to this plugin's results.
-            self.frecency
-                .apply_scores(&source, &mut results[plugin_start..]);
+            frecency.apply_scores(&source, &mut results[plugin_start..]);
         }
+
+        // Sort catalog results by the deterministic composite key
+        // before sending to the frontend.
+        results.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.source.cmp(&b.source))
+                .then_with(|| a.id.cmp(&b.id))
+        });
 
         results
     }

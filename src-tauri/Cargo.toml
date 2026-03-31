@@ -40,6 +40,7 @@ tokio = { version = "1.50.0", default-features = false, features = ["sync", "tim
 tauri-plugin-autostart = "2.5.1"
 evalexpr = "13.1.0"
 regex = "1.12.3"
+tokio-util = "0.7.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

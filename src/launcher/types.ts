@@ -87,7 +87,7 @@ export interface PluginViewRef {
 
 export type SearchMessage =
   | {
-      type: "catalogResults";
+      type: "searchResults";
       entries: ScoredEntry[];
       /** View reference when the plugin requested custom UI. */
       customPluginView: PluginViewRef | null;

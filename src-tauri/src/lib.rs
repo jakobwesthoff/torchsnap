@@ -365,7 +365,7 @@ fn control_subscribe(channel: Channel<control::ControlCommand>, app: tauri::AppH
 pub fn run() {
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            search::search_query,
+            search::search,
             search::search_execute,
             search::plugin_message,
             control_subscribe,

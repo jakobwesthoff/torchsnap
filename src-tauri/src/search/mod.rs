@@ -21,22 +21,16 @@ use crate::plugin_host::PluginHost;
 use serde_json::Value;
 use types::{ActionId, PostAction, SearchMessage};
 
-/// Search all registered catalogs and stream results to the frontend.
+/// Search all registered plugins and stream results to the
+/// frontend as they become available.
 #[tauri::command]
-pub fn search_query(
+pub async fn search(
     query: String,
     on_results: Channel<SearchMessage>,
     state: State<'_, Arc<PluginHost>>,
-) {
-    let result = state.search(&query);
-
-    let _ = on_results.send(SearchMessage::CatalogResults {
-        entries: result.entries,
-        custom_plugin_view: result.custom_plugin_view,
-        inline_plugin_view: result.inline_plugin_view,
-        matched_prefix: result.matched_prefix,
-    });
-    let _ = on_results.send(SearchMessage::Done);
+) -> Result<(), String> {
+    state.search(&query, &on_results).await;
+    Ok(())
 }
 
 /// Execute an action on a specific entry, routing to the plugin

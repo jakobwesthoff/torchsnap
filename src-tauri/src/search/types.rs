@@ -11,6 +11,7 @@
 // =========================================================
 
 use serde::{Deserialize, Serialize};
+pub use tokio_util::sync::CancellationToken;
 
 use crate::frecency::FrecencyTarget;
 
@@ -105,69 +106,6 @@ pub enum EntryIcon {
     Emoji(String),
 }
 
-/// What a `QueryPlugin::search()` returns. Four variants control how
-/// the host renders the plugin's contribution:
-///
-/// - `Nothing` — plugin has nothing to show for this query.
-/// - `Results` — standard list entries merged into the result list.
-/// - `CustomUI` — plugin takes over the entire result area with a
-///   named React component.
-/// - `InlineUI` — plugin renders a component above the standard
-///   result list (e.g., calculator inline result).
-#[derive(Debug, Clone)]
-pub enum SearchResponse {
-    /// Plugin has nothing to contribute for this query.
-    Nothing,
-    /// Standard result list — host renders via `ResultList`.
-    Results(Vec<QueryResult>),
-    /// Plugin requests full custom UI (replaces the result list entirely).
-    /// The `view` field selects which registered React component to render.
-    CustomUI {
-        view: String,
-        data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
-    },
-    /// Plugin requests inline UI (rendered above the result list).
-    /// The `view` field selects which registered React component to render.
-    InlineUI {
-        view: String,
-        data: Option<serde_json::Value>,
-        results: Vec<QueryResult>,
-    },
-}
-
-impl SearchResponse {
-    /// Extract the results regardless of variant.
-    pub fn into_results(self) -> Vec<QueryResult> {
-        match self {
-            SearchResponse::Nothing => Vec::new(),
-            SearchResponse::Results(r) => r,
-            SearchResponse::CustomUI { results, .. } | SearchResponse::InlineUI { results, .. } => {
-                results
-            }
-        }
-    }
-
-    /// Whether the plugin requested full custom UI.
-    pub fn is_custom_ui(&self) -> bool {
-        matches!(self, SearchResponse::CustomUI { .. })
-    }
-
-    /// Whether the plugin requested inline UI.
-    pub fn is_inline_ui(&self) -> bool {
-        matches!(self, SearchResponse::InlineUI { .. })
-    }
-
-    /// Extract the view name and data from `CustomUI` or `InlineUI`.
-    pub fn view_ref(&self) -> Option<(&str, Option<&serde_json::Value>)> {
-        match self {
-            SearchResponse::CustomUI { view, data, .. }
-            | SearchResponse::InlineUI { view, data, .. } => Some((view, data.as_ref())),
-            _ => None,
-        }
-    }
-}
-
 /// A pre-scored result returned by a `QueryPlugin`.
 ///
 /// Same shape as `ScoredEntry` but without `source` — the registry
@@ -259,6 +197,99 @@ impl FrecencyTarget for ScoredEntry {
 }
 
 // =========================================================
+// Plugin-to-Host Channel
+//
+// Plugins push results into a `ResultChannel` during search.
+// The host reads `PluginResponse` values from the receiving end
+// and translates them into `SearchMessage`s for the frontend.
+// =========================================================
+
+/// Internal message sent by plugins through the `ResultChannel`.
+///
+/// Mirrors the variants of `SearchResponse` but lives on the
+/// channel rather than being returned. Not serialized — only
+/// used between plugin and host within the same process.
+#[derive(Debug)]
+pub enum PluginResponse {
+    /// Standard result list entries.
+    Results(Vec<QueryResult>),
+    /// Plugin requests full custom UI (replaces the result list).
+    CustomUI {
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    },
+    /// Plugin requests inline UI (rendered above the result list).
+    InlineUI {
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    },
+}
+
+/// Channel wrapper for plugins to send results back to the host.
+///
+/// Hides the `mpsc` internals and provides typed convenience
+/// methods. Plugins call these from a synchronous context
+/// (`spawn_blocking`), so all sends use `blocking_send`.
+///
+/// When the host drops the receiving end (e.g., search
+/// cancelled), sends silently fail — the plugin can detect this
+/// via the return value or by checking the `CancellationToken`.
+pub struct ResultChannel {
+    tx: tokio::sync::mpsc::Sender<PluginResponse>,
+}
+
+impl ResultChannel {
+    pub fn new(tx: tokio::sync::mpsc::Sender<PluginResponse>) -> Self {
+        Self { tx }
+    }
+
+    /// Send standard result entries. Returns `false` if the
+    /// receiver has been dropped (search cancelled).
+    pub fn send_results(&self, results: Vec<QueryResult>) -> bool {
+        self.tx
+            .blocking_send(PluginResponse::Results(results))
+            .is_ok()
+    }
+
+    /// Send a custom UI response. Returns `false` if the
+    /// receiver has been dropped.
+    pub fn send_custom_ui(
+        &self,
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    ) -> bool {
+        self.tx
+            .blocking_send(PluginResponse::CustomUI {
+                view,
+                data,
+                results,
+            })
+            .is_ok()
+    }
+
+    /// Send an inline UI response. Returns `false` if the
+    /// receiver has been dropped.
+    pub fn send_inline_ui(
+        &self,
+        view: String,
+        data: Option<serde_json::Value>,
+        results: Vec<QueryResult>,
+    ) -> bool {
+        self.tx
+            .blocking_send(PluginResponse::InlineUI {
+                view,
+                data,
+                results,
+            })
+            .is_ok()
+    }
+}
+
+
+// =========================================================
 // Channel Messages
 // =========================================================
 
@@ -275,56 +306,42 @@ pub struct PluginViewRef {
     pub data: Option<serde_json::Value>,
 }
 
-/// Result of a registry search — entries plus routing metadata.
-pub struct SearchResult {
-    pub entries: Vec<ScoredEntry>,
-    /// Set when a query plugin returned `SearchResponse::CustomUI`.
-    pub custom_plugin_view: Option<PluginViewRef>,
-    /// Set when a query plugin returned `SearchResponse::InlineUI`.
-    pub inline_plugin_view: Option<PluginViewRef>,
-    /// The prefix that triggered exclusive routing (e.g., `":"`).
-    pub matched_prefix: Option<String>,
-}
-
-impl SearchResult {
-    pub fn empty() -> Self {
-        Self {
-            entries: Vec::new(),
-            custom_plugin_view: None,
-            inline_plugin_view: None,
-            matched_prefix: None,
-        }
-    }
-}
 
 /// Messages streamed over a Tauri channel during a search.
 ///
-/// The frontend receives these progressively: `CatalogResults`
-/// arrives first (sub-millisecond for static catalogs), then
-/// `Done` signals completion.
-// The size gap between `CatalogResults` and `Done` is large, but
+/// The frontend receives these progressively: catalog results
+/// arrive first (sub-millisecond for static catalogs), then
+/// query plugin results stream in as each plugin completes, and
+/// `Done` signals that all plugins have finished.
+///
+/// There is a single `SearchResults` variant for all result
+/// sources (catalogs and query plugins alike). The frontend
+/// merges each message into its accumulated sorted array using
+/// the same algorithm — no special-casing needed.
+// The size gap between `SearchResults` and `Done` is large, but
 // these values are transient — created, serialized over a Tauri
 // channel, and dropped immediately. They are never stored in
 // collections or passed around by value in hot paths, so the
-// extra stack space of `Done` matching `CatalogResults` is not
+// extra stack space of `Done` matching `SearchResults` is not
 // a practical concern.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SearchMessage {
+    /// A batch of search results from a catalog or query plugin.
+    ///
     /// The `rename_all` on the enum only renames variant tags, not
     /// fields within variants. Fields need explicit renaming.
     #[serde(rename_all = "camelCase")]
-    CatalogResults {
+    SearchResults {
         entries: Vec<ScoredEntry>,
-        /// When a query plugin returned `SearchResponse::CustomUI`,
-        /// this contains a view reference so the frontend can mount
-        /// the plugin's React component. `None` for standard list
-        /// rendering.
+        /// When a query plugin requested custom UI, this contains
+        /// a view reference so the frontend can mount the plugin's
+        /// React component. `None` for standard list rendering.
         custom_plugin_view: Option<PluginViewRef>,
-        /// When a query plugin returned `SearchResponse::InlineUI`,
-        /// this contains a view reference for the inline component
-        /// rendered above the result list.
+        /// When a query plugin requested inline UI, this contains
+        /// a view reference for the inline component rendered above
+        /// the result list.
         inline_plugin_view: Option<PluginViewRef>,
         /// The prefix that triggered exclusive routing. Sent to the
         /// frontend so the plugin component knows which prefix was

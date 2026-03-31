@@ -27,7 +27,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use super::{PluginContext, QueryPlugin};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, EntryIcon, PostAction, QueryResult, SearchResponse,
+    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, QueryResult,
+    ResultChannel,
 };
 
 // =========================================================
@@ -269,22 +270,25 @@ impl QueryPlugin for EmojiPickerPlugin {
         *frecency = Some(ctx.frecency.clone());
     }
 
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse {
+    fn search(
+        &self,
+        query: &str,
+        matched_prefix: Option<&str>,
+        results: &ResultChannel,
+        _cancel: &CancellationToken,
+    ) {
         // The emoji picker only operates in prefix mode. When called
         // without a prefix (no-prefix fan-out), contribute nothing.
         if matched_prefix.is_none() {
-            return SearchResponse::Nothing;
+            return;
         }
 
         let entries = self.entries.read().expect("emoji entries read lock");
 
         if entries.is_empty() {
             // setup() hasn't completed yet.
-            return SearchResponse::CustomUI {
-                view: "picker".into(),
-                data: None,
-                results: Vec::new(),
-            };
+            results.send_custom_ui("picker".into(), None, Vec::new());
+            return;
         }
 
         // -------------------------------------------------------
@@ -293,11 +297,12 @@ impl QueryPlugin for EmojiPickerPlugin {
         // to the default emojibase browse order.
         // -------------------------------------------------------
         if query.is_empty() {
-            return SearchResponse::CustomUI {
-                view: "picker".into(),
-                data: None,
-                results: self.empty_query_results(&entries),
-            };
+            results.send_custom_ui(
+                "picker".into(),
+                None,
+                self.empty_query_results(&entries),
+            );
+            return;
         }
 
         // -------------------------------------------------------
@@ -397,7 +402,7 @@ impl QueryPlugin for EmojiPickerPlugin {
         // -------------------------------------------------------
         // Build results, sort by score descending.
         // -------------------------------------------------------
-        let mut results: Vec<QueryResult> = matched
+        let mut scored_results: Vec<QueryResult> = matched
             .into_iter()
             .filter_map(|(idx, m)| {
                 let entry = &entries[idx];
@@ -440,15 +445,11 @@ impl QueryPlugin for EmojiPickerPlugin {
         // Apply frecency bonuses so frequently-used emoji float up.
         let frecency = self.frecency.read().expect("emoji frecency read lock");
         if let Some(ref frec) = *frecency {
-            frec.apply_scores(&mut results);
+            frec.apply_scores(&mut scored_results);
         }
 
-        results.sort_by(|a, b| b.score.cmp(&a.score));
-        SearchResponse::CustomUI {
-            view: "picker".into(),
-            data: None,
-            results,
-        }
+        scored_results.sort_by(|a, b| b.score.cmp(&a.score));
+        results.send_custom_ui("picker".into(), None, scored_results);
     }
 
     fn execute(
