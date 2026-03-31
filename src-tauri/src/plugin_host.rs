@@ -504,11 +504,7 @@ impl PluginHost {
             );
 
             self.frecency.apply_scores(&source, &mut entries);
-            entries.sort_by(|a, b| {
-                b.inner.score.cmp(&a.inner.score)
-                    .then_with(|| a.source.cmp(&b.source))
-                    .then_with(|| a.inner.id.cmp(&b.inner.id))
-            });
+            entries.sort_by(|a, b| a.cmp_sort_key(b));
 
             let inline_plugin_view = match view_ref {
                 Some((ViewKind::Inline, vr)) if !inline_claimed => {
@@ -673,12 +669,7 @@ impl PluginHost {
 
         // Sort catalog results by the deterministic composite key
         // before sending to the frontend.
-        results.sort_by(|a, b| {
-            b.inner.score
-                .cmp(&a.inner.score)
-                .then_with(|| a.source.cmp(&b.source))
-                .then_with(|| a.inner.id.cmp(&b.inner.id))
-        });
+        results.sort_by(|a, b| a.cmp_sort_key(b));
 
         results
     }
