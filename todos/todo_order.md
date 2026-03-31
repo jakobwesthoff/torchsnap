@@ -11,7 +11,7 @@ but phases should be tackled roughly in order. Items marked with
 Build 2–3 plugins as internal features to discover the real API
 surface. These inform all later plugin architecture decisions.
 
-- [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
+- [plugin-open-url](01kn1yv2d03fjccpdpn3t6rjs2-plugin-open-url.md) *(requires async search architecture)*
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
 
