@@ -27,7 +27,7 @@ import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, PluginViewRef, SourcedEntry } from "./types";
+import type { Action, ActionId, FooterState, PluginViewRef, PostAction, SourcedEntry } from "./types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -315,14 +315,22 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const view = customPluginViewRef.current;
       if (!view) return;
 
-      const postAction = await invoke<string>("search_execute", {
+      const postAction = await invoke<PostAction>("search_execute", {
         source: view.pluginId,
         entryId,
         actionId,
       });
 
-      if (postAction === "Dismiss") {
-        dismiss();
+      switch (postAction) {
+        case "Dismiss":
+          dismiss();
+          break;
+        case "Nothing":
+        case "KeepOpen":
+        case "ShowCustomUI":
+          // ShowCustomUI is not meaningful from within a plugin view;
+          // Nothing and KeepOpen require no action.
+          break;
       }
     },
     [dismiss],
@@ -335,14 +343,22 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const view = activeInlineViewRef.current;
       if (!view) return;
 
-      const postAction = await invoke<string>("search_execute", {
+      const postAction = await invoke<PostAction>("search_execute", {
         source: view.pluginId,
         entryId,
         actionId,
       });
 
-      if (postAction === "Dismiss") {
-        dismiss();
+      switch (postAction) {
+        case "Dismiss":
+          dismiss();
+          break;
+        case "Nothing":
+        case "KeepOpen":
+        case "ShowCustomUI":
+          // ShowCustomUI is not meaningful from an inline view;
+          // Nothing and KeepOpen require no action.
+          break;
       }
     },
     [dismiss],
@@ -424,17 +440,23 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const action = entry.actions[actionIndex];
       if (!action) return;
 
-      const postAction = await invoke<string>("search_execute", {
+      const postAction = await invoke<PostAction>("search_execute", {
         source: entry.source,
         entryId: entry.id,
         actionId: action.id,
       });
 
-      if (postAction === "Dismiss") {
-        dismiss();
-      } else if (postAction === "ShowCustomUI") {
-        setExecutePluginView(entry.source);
-        setQuery("");
+      switch (postAction) {
+        case "Dismiss":
+          dismiss();
+          break;
+        case "ShowCustomUI":
+          setExecutePluginView(entry.source);
+          setQuery("");
+          break;
+        case "Nothing":
+        case "KeepOpen":
+          break;
       }
     },
     [dismiss, setQuery],
