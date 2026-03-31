@@ -6,9 +6,10 @@
  * Search hook — calls the Rust search command on every query change
  * and streams results via a Tauri channel.
  *
- * Returns the current result list and a loading flag. Results update
- * progressively as channel messages arrive (currently only catalog
- * results, but query plugin results will stream in later).
+ * Results arrive progressively: catalog results first, then query
+ * plugin results as each plugin completes. Each `searchResults`
+ * message is merged into the accumulated sorted array using a
+ * sorted merge (entries arrive pre-sorted from the backend).
  *
  * A generation counter guards against stale results: if the query
  * changes before the previous search completes, the old results are
@@ -17,7 +18,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { sortedMerge } from "../../lib/sortedMerge";
 import type { PluginViewRef, ScoredEntry, SearchMessage } from "../types";
+
+/**
+ * Comparator for the deterministic sort order used across the
+ * entire search pipeline: score descending, source ascending,
+ * id ascending. Both the backend and this merge use the same key.
+ */
+function compareEntries(a: ScoredEntry, b: ScoredEntry): number {
+  if (b.score !== a.score) return b.score - a.score;
+  if (a.source < b.source) return -1;
+  if (a.source > b.source) return 1;
+  if (a.id < b.id) return -1;
+  if (a.id > b.id) return 1;
+  return 0;
+}
 
 interface UseSearchResult {
   results: ScoredEntry[];
@@ -38,6 +54,10 @@ export function useSearch(query: string): UseSearchResult {
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
+  // Accumulator ref — holds the current merged result array so
+  // the channel callback can merge into it without stale closures.
+  const accumulatorRef = useRef<ScoredEntry[]>([]);
+
   // Signal loading=true as soon as the query changes, during the same
   // render that receives the new query. This is separated from the
   // effect below because setting state inside a useEffect would cause
@@ -55,6 +75,7 @@ export function useSearch(query: string): UseSearchResult {
     // search result arrives, and their effects can re-inject partial
     // state (like a matched prefix) into the display query.
     if (!query) {
+      accumulatorRef.current = [];
       setResults([]);
       setCustomPluginView(null);
       setInlinePluginView(null);
@@ -65,6 +86,9 @@ export function useSearch(query: string): UseSearchResult {
   useEffect(() => {
     const generation = ++generationRef.current;
 
+    // Reset accumulator for new query.
+    accumulatorRef.current = [];
+
     const channel = new Channel<SearchMessage>();
 
     channel.onmessage = (message) => {
@@ -72,19 +96,35 @@ export function useSearch(query: string): UseSearchResult {
       if (generationRef.current !== generation) return;
 
       switch (message.type) {
-        case "catalogResults":
-          setResults(message.entries);
-          setCustomPluginView(message.customPluginView);
-          setInlinePluginView(message.inlinePluginView);
-          setMatchedPrefix(message.matchedPrefix);
+        case "searchResults": {
+          // Merge incoming pre-sorted entries into the accumulator.
+          const merged = sortedMerge(
+            accumulatorRef.current,
+            message.entries,
+            compareEntries,
+          );
+          accumulatorRef.current = merged;
+          setResults(merged);
+
+          // First non-null view refs win for this generation.
+          if (message.customPluginView != null) {
+            setCustomPluginView((prev) => prev ?? message.customPluginView);
+          }
+          if (message.inlinePluginView != null) {
+            setInlinePluginView((prev) => prev ?? message.inlinePluginView);
+          }
+          if (message.matchedPrefix != null) {
+            setMatchedPrefix((prev) => prev ?? message.matchedPrefix);
+          }
           break;
+        }
         case "done":
           setLoading(false);
           break;
       }
     };
 
-    invoke("search_query", { query, onResults: channel });
+    invoke("search", { query, onResults: channel });
 
     // When the query changes, silence the old channel so its closure
     // (and the state setters it captures) can be garbage-collected

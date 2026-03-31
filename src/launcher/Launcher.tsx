@@ -234,12 +234,17 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // eslint-disable-next-line react-hooks/refs
   activeInlineViewRef.current = activeInlineView;
 
-  // Reset selection when results change (new query, different
-  // result set). Done during render (prev-vs-current pattern) to
-  // avoid an extra render cycle from a useEffect.
-  const [prevResults, setPrevResults] = useState(results);
-  if (prevResults !== results) {
-    setPrevResults(results);
+  // Reset selection when the search query changes (new search
+  // cycle). Done during render (prev-vs-current pattern) to avoid
+  // an extra render cycle from a useEffect.
+  //
+  // Incremental plugin results within the same query do NOT reset
+  // selection — the selected entry is preserved at its new sorted
+  // position via binary search (handled in useWindowedList / the
+  // selection stability logic).
+  const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
+  if (prevSearchQuery !== searchQuery) {
+    setPrevSearchQuery(searchQuery);
     setSelectedIndex(0);
     // ESLINT: mouseActiveRef is only read from mouse event handlers,
     // which cannot fire during render. Writing it here is safe and

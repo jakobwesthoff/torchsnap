@@ -26,7 +26,9 @@ pub mod system_commands;
 pub mod system_preferences;
 
 use crate::frecency::PluginFrecency;
-use crate::search::types::{ActionId, CatalogEntry, PostAction, SearchResponse};
+use crate::search::types::{
+    ActionId, CancellationToken, CatalogEntry, PostAction, ResultChannel,
+};
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::PluginSettingsNotifier;
 
@@ -283,10 +285,20 @@ pub trait QueryPlugin: Send + Sync {
     /// triggered this call (query is already stripped), or `None`
     /// when running as an always-on plugin.
     ///
-    /// Returns `SearchResponse::Results` for standard list rendering,
-    /// or `SearchResponse::CustomUI` to request the plugin's frontend
-    /// component take over the result area (ADR 0013).
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse;
+    /// Results are pushed into `results` via its typed send methods.
+    /// The plugin may send zero or more responses. Dropping `results`
+    /// (or returning) signals completion.
+    ///
+    /// `cancel` can be polled via `cancel.is_cancelled()` to detect
+    /// early termination (e.g., the user typed a new query). Fast
+    /// plugins can ignore it.
+    fn search(
+        &self,
+        query: &str,
+        matched_prefix: Option<&str>,
+        results: &ResultChannel,
+        cancel: &CancellationToken,
+    );
 
     /// Execute an action on an entry owned by this plugin.
     fn execute(

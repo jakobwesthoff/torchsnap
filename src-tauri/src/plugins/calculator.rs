@@ -29,7 +29,9 @@ use serde_json::json;
 use tauri::Manager;
 
 use super::{PluginContext, QueryPlugin};
-use crate::search::types::{Action, ActionId, EntryIcon, PostAction, QueryResult, SearchResponse};
+use crate::search::types::{
+    Action, ActionId, CancellationToken, EntryIcon, PostAction, QueryResult, ResultChannel,
+};
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
 use crate::storage::{SqlStorage, SqlValue};
@@ -555,10 +557,16 @@ impl QueryPlugin for CalculatorPlugin {
         self.retention_condvar.notify_all();
     }
 
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse {
+    fn search(
+        &self,
+        query: &str,
+        matched_prefix: Option<&str>,
+        results: &ResultChannel,
+        _cancel: &CancellationToken,
+    ) {
         match matched_prefix {
             Some("=") => {
-                // Prefix mode: evaluate expression, return CustomUI
+                // Prefix mode: evaluate expression, send CustomUI
                 // with inline result data + history entries.
                 let eval_result = evaluate(query);
 
@@ -583,39 +591,35 @@ impl QueryPlugin for CalculatorPlugin {
                     vec![]
                 };
 
-                SearchResponse::CustomUI {
-                    view: "history".into(),
-                    data,
-                    results: history,
-                }
+                results.send_custom_ui("history".into(), data, history);
             }
             None => {
                 // Heuristic mode: detect math expression.
                 if !self.heuristic_enabled.load(Ordering::Relaxed) {
-                    return SearchResponse::Nothing;
+                    return;
                 }
 
                 let expr = match try_extract_math(query) {
                     Some(e) => e,
-                    None => return SearchResponse::Nothing,
+                    None => return,
                 };
 
                 let result = match evaluate(expr) {
                     Ok(r) => r,
-                    Err(_) => return SearchResponse::Nothing,
+                    Err(_) => return,
                 };
 
-                SearchResponse::InlineUI {
-                    view: "result".into(),
-                    data: Some(json!({
+                results.send_inline_ui(
+                    "result".into(),
+                    Some(json!({
                         "expression": expr,
                         "result": result.value,
                         "resultType": result.result_type,
                     })),
-                    results: vec![],
-                }
+                    vec![],
+                );
             }
-            _ => SearchResponse::Nothing,
+            _ => {}
         }
     }
 

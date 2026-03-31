@@ -49,22 +49,21 @@ export function useWindowedList({
 
   const windowStartRef = useRef(0);
 
-  // ESLINT: windowStartRef and prevResultCountRef are read and written
-  // during render intentionally — the windowing position is a
-  // deterministic function of selectedIndex, resultCount, and pageSize,
-  // computed synchronously to avoid an extra render cycle. Using state
+  // ESLINT: windowStartRef is read and written during render
+  // intentionally — the windowing position is a deterministic
+  // function of selectedIndex, resultCount, and pageSize, computed
+  // synchronously to avoid an extra render cycle. Using state
   // would cause a double render on every keystroke. The concurrent
-  // rendering concern (abandoned renders writing to refs) is harmless
-  // here because the computation is pure: any re-execution with the
-  // same inputs produces the same result.
+  // rendering concern (abandoned renders writing to refs) is
+  // harmless here because the computation is pure: any
+  // re-execution with the same inputs produces the same result.
   /* eslint-disable react-hooks/refs */
 
-  // Reset window position when the result set changes (new query).
-  const prevResultCountRef = useRef(resultCount);
-  if (prevResultCountRef.current !== resultCount) {
-    prevResultCountRef.current = resultCount;
-    windowStartRef.current = 0;
-  }
+  // Window position is NOT reset on resultCount changes — with
+  // incremental search results merging in, the window should stay
+  // stable. The selection reset (triggered by query change in
+  // Launcher.tsx) will naturally bring windowStart back to 0 for
+  // new queries via the keyboard-follow logic below.
 
   // =========================================================
   // Keyboard Follow
