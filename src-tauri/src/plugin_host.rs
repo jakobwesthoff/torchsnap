@@ -395,8 +395,8 @@ impl PluginHost {
             let plugin = Arc::clone(plugin);
             let cancel = cancel.clone();
 
-            let (tx, mut rx) = mpsc::channel::<PluginResponse>(4);
-            let rc = ResultChannel::new(tx);
+            let (tx, mut rx) = mpsc::channel::<(String, PluginResponse)>(4);
+            let rc = ResultChannel::new(source.clone(), tx);
 
             let prefix_for_search = prefix_owned.clone();
             tokio::task::spawn_blocking(move || {
@@ -409,7 +409,7 @@ impl PluginHost {
             let mut inline_plugin_view = None;
             let mut entries = Vec::new();
 
-            while let Some(response) = rx.recv().await {
+            while let Some((source, response)) = rx.recv().await {
                 let (view_ref, results) = self.process_plugin_response(
                     response,
                     &source,
@@ -464,12 +464,11 @@ impl PluginHost {
         }
 
         // Phase 2: query plugins — spawn concurrently, stream
-        // results as each completes. Only plugins that implement
-        // search() (i.e., have search_prefixes or override search)
-        // are dispatched here. The default no-op search returns
-        // immediately, so catalog-only plugins are harmless but
-        // we skip them to avoid unnecessary task overhead.
-        let mut receivers: Vec<(String, mpsc::Receiver<PluginResponse>)> = Vec::new();
+        // results as they arrive through a single shared channel.
+        // Each plugin gets a `ResultChannel` bound to its source ID
+        // that sends into a shared `mpsc` sender. The host awaits
+        // on the single receiver — no spin-polling needed.
+        let (tx, mut rx) = mpsc::channel::<(String, PluginResponse)>(4);
 
         for plugin in &self.plugins {
             if !plugin.is_enabled() {
@@ -481,81 +480,59 @@ impl PluginHost {
             let query = query_owned.clone();
             let cancel = cancel.clone();
 
-            let (tx, rx) = mpsc::channel::<PluginResponse>(4);
-            let rc = ResultChannel::new(tx);
+            let rc = ResultChannel::new(source, tx.clone());
 
             tokio::task::spawn_blocking(move || {
                 plugin.search(&query, None, &rc, &cancel);
             });
-
-            receivers.push((source, rx));
         }
 
-        // Stream results as each plugin completes. We use
-        // tokio::select! across all receivers. Since we have a
-        // dynamic number of receivers, we poll them in a loop:
-        // drain whichever receiver has data, remove it when closed.
+        // Drop the original sender so `rx` closes once all plugin
+        // tasks (each holding a cloned sender via ResultChannel)
+        // have finished and dropped their senders.
+        drop(tx);
+
+        // Receive results as they arrive from any plugin. The
+        // channel closes naturally when all senders are dropped.
         let mut inline_claimed = false;
 
-        while !receivers.is_empty() {
-            // Find the first receiver that has a message or is
-            // closed. In practice with few plugins this is fine.
-            let mut closed_idx = None;
+        while let Some((source, response)) = rx.recv().await {
+            let (view_ref, mut entries) = self.process_plugin_response(
+                response,
+                &source,
+                false, // non-prefix — CustomUI downgraded
+            );
 
-            for (i, (source, rx)) in receivers.iter_mut().enumerate() {
-                match rx.try_recv() {
-                    Ok(response) => {
-                        let (view_ref, mut entries) = self.process_plugin_response(
-                            response,
-                            source,
-                            false, // non-prefix — CustomUI downgraded
-                        );
+            self.frecency.apply_scores(&source, &mut entries);
+            entries.sort_by(|a, b| {
+                b.inner.score.cmp(&a.inner.score)
+                    .then_with(|| a.source.cmp(&b.source))
+                    .then_with(|| a.inner.id.cmp(&b.inner.id))
+            });
 
-                        self.frecency.apply_scores(source, &mut entries);
-                        entries.sort_by(|a, b| {
-                            b.inner.score.cmp(&a.inner.score)
-                                .then_with(|| a.source.cmp(&b.source))
-                                .then_with(|| a.inner.id.cmp(&b.inner.id))
-                        });
-
-                        let inline_plugin_view = match view_ref {
-                            Some((ViewKind::Inline, vr)) if !inline_claimed => {
-                                inline_claimed = true;
-                                Some(vr)
-                            }
-                            Some((ViewKind::Inline, _)) => {
-                                eprintln!(
-                                    "search: dropping InlineUI from plugin '{}' — \
-                                     another plugin already claimed the inline slot",
-                                    source
-                                );
-                                None
-                            }
-                            _ => None,
-                        };
-
-                        if !entries.is_empty() || inline_plugin_view.is_some() {
-                            let _ = on_results.send(SearchMessage::SearchResults {
-                                entries,
-                                custom_plugin_view: None,
-                                inline_plugin_view,
-                                matched_prefix: None,
-                            });
-                        }
-                    }
-                    Err(mpsc::error::TryRecvError::Disconnected) => {
-                        closed_idx = Some(i);
-                        break;
-                    }
-                    Err(mpsc::error::TryRecvError::Empty) => {}
+            let inline_plugin_view = match view_ref {
+                Some((ViewKind::Inline, vr)) if !inline_claimed => {
+                    inline_claimed = true;
+                    Some(vr)
                 }
-            }
+                Some((ViewKind::Inline, _)) => {
+                    eprintln!(
+                        "search: dropping InlineUI from plugin '{}' — \
+                         another plugin already claimed the inline slot",
+                        source
+                    );
+                    None
+                }
+                _ => None,
+            };
 
-            if let Some(idx) = closed_idx {
-                receivers.swap_remove(idx);
-            } else {
-                // No receiver had data — yield to avoid busy-spinning.
-                tokio::task::yield_now().await;
+            if !entries.is_empty() || inline_plugin_view.is_some() {
+                let _ = on_results.send(SearchMessage::SearchResults {
+                    entries,
+                    custom_plugin_view: None,
+                    inline_plugin_view,
+                    matched_prefix: None,
+                });
             }
         }
 

@@ -221,23 +221,30 @@ pub enum PluginResponse {
 /// methods. Plugins call these from a synchronous context
 /// (`spawn_blocking`), so all sends use `blocking_send`.
 ///
+/// Each `ResultChannel` is bound to a specific plugin source ID
+/// at construction. All messages sent through it are automatically
+/// tagged with that source, so plugins never see or control the
+/// source field. The host receives `(String, PluginResponse)`
+/// tuples from the shared receiver end.
+///
 /// When the host drops the receiving end (e.g., search
 /// cancelled), sends silently fail — the plugin can detect this
 /// via the return value or by checking the `CancellationToken`.
 pub struct ResultChannel {
-    tx: tokio::sync::mpsc::Sender<PluginResponse>,
+    source: String,
+    tx: tokio::sync::mpsc::Sender<(String, PluginResponse)>,
 }
 
 impl ResultChannel {
-    pub fn new(tx: tokio::sync::mpsc::Sender<PluginResponse>) -> Self {
-        Self { tx }
+    pub fn new(source: String, tx: tokio::sync::mpsc::Sender<(String, PluginResponse)>) -> Self {
+        Self { source, tx }
     }
 
     /// Send standard result entries. Returns `false` if the
     /// receiver has been dropped (search cancelled).
     pub fn send_results(&self, results: Vec<ScoredEntry>) -> bool {
         self.tx
-            .blocking_send(PluginResponse::Results(results))
+            .blocking_send((self.source.clone(), PluginResponse::Results(results)))
             .is_ok()
     }
 
@@ -250,11 +257,14 @@ impl ResultChannel {
         results: Vec<ScoredEntry>,
     ) -> bool {
         self.tx
-            .blocking_send(PluginResponse::CustomUI {
-                view,
-                data,
-                results,
-            })
+            .blocking_send((
+                self.source.clone(),
+                PluginResponse::CustomUI {
+                    view,
+                    data,
+                    results,
+                },
+            ))
             .is_ok()
     }
 
@@ -267,11 +277,14 @@ impl ResultChannel {
         results: Vec<ScoredEntry>,
     ) -> bool {
         self.tx
-            .blocking_send(PluginResponse::InlineUI {
-                view,
-                data,
-                results,
-            })
+            .blocking_send((
+                self.source.clone(),
+                PluginResponse::InlineUI {
+                    view,
+                    data,
+                    results,
+                },
+            ))
             .is_ok()
     }
 }
