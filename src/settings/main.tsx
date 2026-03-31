@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { initStore } from "../settingsStore";
+import { preloadSettingsComponents } from "../lib/pluginComponent";
 import { SettingsPanel } from "./SettingsPanel";
 import "../index.css";
 
@@ -15,6 +16,7 @@ import "../index.css";
 // See settingsStore.ts for the full explanation.
 async function main() {
   await initStore();
+  preloadSettingsComponents();
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
