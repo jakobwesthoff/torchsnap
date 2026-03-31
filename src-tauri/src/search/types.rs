@@ -173,6 +173,22 @@ impl SourcedEntry {
     pub fn new(source: String, inner: ScoredEntry) -> Self {
         Self { source, inner }
     }
+
+    /// Deterministic composite sort key: score DESC, source ASC, id ASC.
+    ///
+    /// This ordering is the single source of truth on the Rust side.
+    /// The TypeScript frontend has an equivalent comparator in
+    /// `src/launcher/compareEntries.ts` that MUST stay in sync with
+    /// this implementation. Any change here requires a matching change
+    /// there (and vice versa).
+    pub fn cmp_sort_key(&self, other: &Self) -> std::cmp::Ordering {
+        other
+            .inner
+            .score
+            .cmp(&self.inner.score)
+            .then_with(|| self.source.cmp(&other.source))
+            .then_with(|| self.inner.id.cmp(&other.inner.id))
+    }
 }
 
 impl FrecencyTarget for SourcedEntry {

@@ -19,21 +19,8 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { sortedMerge } from "../../lib/sortedMerge";
+import { compareEntries } from "../compareEntries";
 import type { PluginViewRef, SourcedEntry, SearchMessage } from "../types";
-
-/**
- * Comparator for the deterministic sort order used across the
- * entire search pipeline: score descending, source ascending,
- * id ascending. Both the backend and this merge use the same key.
- */
-function compareEntries(a: SourcedEntry, b: SourcedEntry): number {
-  if (b.score !== a.score) return b.score - a.score;
-  if (a.source < b.source) return -1;
-  if (a.source > b.source) return 1;
-  if (a.id < b.id) return -1;
-  if (a.id > b.id) return 1;
-  return 0;
-}
 
 interface UseSearchResult {
   results: SourcedEntry[];

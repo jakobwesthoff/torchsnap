@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { binarySearch } from "../lib/binarySearch";
+import { compareEntries } from "./compareEntries";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
@@ -263,14 +264,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
     const oldEntry = prevResults[selectedIndex];
     if (oldEntry != null && selectedIndex > 0) {
-      const newIndex = binarySearch(results, oldEntry, (element, target) => {
-        if (target.score !== element.score) return target.score - element.score;
-        if (element.source < target.source) return -1;
-        if (element.source > target.source) return 1;
-        if (element.id < target.id) return -1;
-        if (element.id > target.id) return 1;
-        return 0;
-      });
+      const newIndex = binarySearch(results, oldEntry, compareEntries);
       if (newIndex !== -1) {
         setSelectedIndex(newIndex);
       }
