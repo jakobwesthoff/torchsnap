@@ -6,16 +6,11 @@ but phases should be tackled roughly in order. Items marked with
 
 ---
 
-## Priority: Architecture fixes
-
-- [clipboard-subscribe-channel-architecture](01kmtn6msqqjpnc9aeb3rh8gnw-clipboard-subscribe-channel-architecture.md) `[discuss]`
-
 ## Phase 1: First internal plugins (build before abstracting)
 
 Build 2–3 plugins as internal features to discover the real API
 surface. These inform all later plugin architecture decisions.
 
-- [plugin-calculator](01kmh0dspar1gga0ahh1pyp350-plugin-calculator.md)
 - [plugin-open-url](01kmh0dspar1gga0ahh1pyp353-plugin-open-url.md)
 - [plugin-web-search](01kmh0dspar1gga0ahh1pyp354-plugin-web-search.md)
 - [accessibility](01kmh2c7pem81px3twgqhsz4tj-accessibility.md) *(incremental — add ARIA roles as result list is built)*
