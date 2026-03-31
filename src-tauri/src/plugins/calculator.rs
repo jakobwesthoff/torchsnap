@@ -568,19 +568,25 @@ impl QueryPlugin for CalculatorPlugin {
             Some("=") => {
                 // Prefix mode: evaluate expression, send CustomUI
                 // with inline result data + history entries.
-                let eval_result = evaluate(query);
-
-                let data = Some(match &eval_result {
-                    Ok(r) => json!({
-                        "expression": query,
-                        "result": r.value,
-                        "resultType": r.result_type,
-                    }),
-                    Err(error) => json!({
-                        "expression": query,
-                        "error": error,
-                    }),
-                });
+                //
+                // Empty/whitespace queries are not evaluated — the
+                // frontend shows a help screen when data has no
+                // result and no error.
+                let data = if query.trim().is_empty() {
+                    Some(json!({ "expression": query }))
+                } else {
+                    Some(match evaluate(query) {
+                        Ok(r) => json!({
+                            "expression": query,
+                            "result": r.value,
+                            "resultType": r.result_type,
+                        }),
+                        Err(error) => json!({
+                            "expression": query,
+                            "error": error,
+                        }),
+                    })
+                };
 
                 // Query history (filtered by expression if non-empty).
                 let history = if self.history_enabled.load(Ordering::Relaxed) {
