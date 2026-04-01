@@ -8,8 +8,8 @@
 # creation. All recipes are incremental — they skip outputs that are
 # already up to date relative to their sources.
 
-# Generate all assets (mascots, mascot data, app icons, tray icon)
-assets: asset-mascots asset-mascot-data asset-app-icons asset-tray-icon
+# Generate all assets (mascots, mascot data, timezone data, app icons, tray icon)
+assets: asset-mascots asset-mascot-data asset-timezone-data asset-app-icons asset-tray-icon
 
 # Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental).
 # All Tauri targets (WebKit, WebView2) support WebP natively — no PNG output needed.
@@ -157,3 +157,26 @@ asset-tray-icon:
     magick "$src" -filter Lanczos -resize 44x44 "$tmp"
     tools/png-to-alpha-mask "$tmp" "$tray"
     rm -f "$tmp"
+
+# Parse the system IANA zone.tab into a JSON lookup table mapping timezone
+# names to [latitude, longitude] pairs. Used by the nighttime detection
+# code to compute sunset/sunrise times for the user's timezone.
+asset-timezone-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="/usr/share/zoneinfo/zone.tab"
+    dst="src/derived/timezone-coordinates.json"
+
+    if [ ! -f "$src" ]; then
+        echo "Error: $src not found. This recipe requires the system timezone database."
+        exit 1
+    fi
+
+    if [ -f "$dst" ] && [ "$dst" -nt "$src" ]; then
+        echo "Timezone data: up to date."
+        exit 0
+    fi
+
+    echo "Generating timezone coordinate data..."
+    tools/generate-timezone-coords "$src" > "$dst"
+    echo "Timezone data: done."
