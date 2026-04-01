@@ -5,6 +5,7 @@
 mod control;
 mod frecency;
 mod icons;
+mod network;
 mod platform;
 mod plugin_host;
 mod plugins;
