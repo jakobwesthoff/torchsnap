@@ -32,6 +32,7 @@ use super::{Plugin, PluginContext};
 use crate::search::types::{
     Action, ActionId, CancellationToken, EntryIcon, PostAction, ScoredEntry, ResultChannel,
 };
+use crate::unicode::Utf16Positions;
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
 use crate::storage::{SqlStorage, SqlValue};
@@ -351,8 +352,8 @@ fn query_history(db: &SqlStorage, filter: &str) -> Vec<ScoredEntry> {
             subtitle: Some(result),
             icon: Some(EntryIcon::HeroIcon("clock".into())),
             score: 0,
-            title_positions: vec![],
-            subtitle_positions: vec![],
+            title_positions: Utf16Positions::empty(),
+            subtitle_positions: Utf16Positions::empty(),
             actions: vec![Action {
                 id: ActionId::Copy,
                 label: "Copy to Clipboard".to_string(),

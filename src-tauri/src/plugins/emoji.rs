@@ -30,6 +30,7 @@ use crate::search::types::{
     Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ScoredEntry,
     ResultChannel,
 };
+use crate::unicode::{GraphemePositions, Utf16Positions};
 
 // =========================================================
 // Emojibase Data Deserialization
@@ -235,7 +236,7 @@ impl EmojiPickerPlugin {
                         if entry.shortcodes.is_empty() {
                             return None;
                         }
-                        Some(emoji_to_scored_entry(entry, item.score, vec![]))
+                        Some(emoji_to_scored_entry(entry, item.score, GraphemePositions::empty()))
                     })
                     .collect();
             }
@@ -246,7 +247,7 @@ impl EmojiPickerPlugin {
             .iter()
             .filter(|e| !e.shortcodes.is_empty())
             .take(EMPTY_QUERY_LIMIT)
-            .map(|e| emoji_to_scored_entry(e, 0, vec![]))
+            .map(|e| emoji_to_scored_entry(e, 0, GraphemePositions::empty()))
             .collect()
     }
 }
@@ -317,8 +318,8 @@ impl Plugin for EmojiPickerPlugin {
 
         struct EmojiMatch {
             score: u32,
-            title_positions: Vec<u32>,
-            subtitle_positions: Vec<u32>,
+            title_positions: GraphemePositions,
+            subtitle_positions: GraphemePositions,
             /// Index into `EmojiData::shortcodes` for the best-matching
             /// shortcode (pass 1) or 0 for keyword matches (pass 2).
             shortcode_idx: usize,
@@ -352,8 +353,8 @@ impl Plugin for EmojiPickerPlugin {
                     idx,
                     EmojiMatch {
                         score,
-                        title_positions: best_positions,
-                        subtitle_positions: vec![],
+                        title_positions: GraphemePositions(best_positions),
+                        subtitle_positions: GraphemePositions::empty(),
                         shortcode_idx: best_shortcode_idx,
                     },
                 );
@@ -391,8 +392,8 @@ impl Plugin for EmojiPickerPlugin {
                     idx,
                     EmojiMatch {
                         score,
-                        title_positions: vec![],
-                        subtitle_positions,
+                        title_positions: GraphemePositions::empty(),
+                        subtitle_positions: GraphemePositions(subtitle_positions),
                         shortcode_idx: 0,
                     },
                 );
@@ -419,17 +420,21 @@ impl Plugin for EmojiPickerPlugin {
 
                 // Adjust title positions to account for the ":" prefix
                 // we add to the displayed shortcode.
-                let adjusted_title_pos: Vec<u32> =
-                    m.title_positions.iter().map(|p| p + 1).collect();
+                let adjusted_title_pos = GraphemePositions(
+                    m.title_positions.0.iter().map(|p| p + 1).collect(),
+                );
+
+                let title = format!(":{display_shortcode}:");
+                let subtitle = entry.label.clone();
 
                 Some(ScoredEntry {
                     id: entry.emoji.clone(),
-                    title: format!(":{display_shortcode}:"),
-                    subtitle: Some(entry.label.clone()),
+                    title_positions: adjusted_title_pos.to_utf16(&title),
+                    subtitle_positions: m.subtitle_positions.to_utf16(&subtitle),
+                    title,
+                    subtitle: Some(subtitle),
                     icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
                     score: m.score,
-                    title_positions: adjusted_title_pos,
-                    subtitle_positions: m.subtitle_positions,
                     actions: vec![Action {
                         id: ActionId::Copy,
                         label: "Copy to Clipboard".into(),
@@ -467,17 +472,22 @@ impl Plugin for EmojiPickerPlugin {
 }
 
 /// Convert an `EmojiData` entry to a `ScoredEntry` for display.
-fn emoji_to_scored_entry(entry: &EmojiData, score: u32, title_positions: Vec<u32>) -> ScoredEntry {
+fn emoji_to_scored_entry(
+    entry: &EmojiData,
+    score: u32,
+    title_positions: GraphemePositions,
+) -> ScoredEntry {
     let display_shortcode = entry.shortcodes.first().map(|s| s.as_str()).unwrap_or("");
+    let title = format!(":{display_shortcode}:");
 
     ScoredEntry {
         id: entry.emoji.clone(),
-        title: format!(":{display_shortcode}:"),
+        title_positions: title_positions.to_utf16(&title),
+        subtitle_positions: Utf16Positions::empty(),
+        title,
         subtitle: Some(entry.label.clone()),
         icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
         score,
-        title_positions,
-        subtitle_positions: vec![],
         actions: vec![Action {
             id: ActionId::Copy,
             label: "Copy to Clipboard".into(),

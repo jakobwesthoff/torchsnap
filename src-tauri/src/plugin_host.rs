@@ -40,6 +40,7 @@ use crate::search::types::{
     ActionId, CancellationToken, PluginViewRef, PostAction, PluginResponse, ResultChannel,
     SourcedEntry, ScoredEntry, SearchMessage,
 };
+use crate::unicode::Utf16Positions;
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
 
@@ -656,6 +657,11 @@ impl PluginHost {
                     title_indices.sort_unstable();
                     title_indices.dedup();
 
+                    let title_positions = Utf16Positions::from_graphemes(
+                        title_indices.clone(),
+                        &entry.title,
+                    );
+
                     results.push(SourcedEntry::new(
                         source.clone(),
                         ScoredEntry {
@@ -664,8 +670,8 @@ impl PluginHost {
                             subtitle: entry.subtitle,
                             icon: entry.icon,
                             score,
-                            title_positions: title_indices.clone(),
-                            subtitle_positions: vec![],
+                            title_positions,
+                            subtitle_positions: Utf16Positions::empty(),
                             actions: entry.actions,
                         },
                     ));

@@ -4906,6 +4906,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "ulid",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -6,12 +6,11 @@
  * Split text at matched character boundaries and wrap matched
  * runs in a highlighted span.
  *
- * Positions are character indices from nucleo. For ASCII text
- * these map 1:1 to JS string indices.
+ * Positions are UTF-16 code unit offsets, matching JavaScript's
+ * string indexing. The Rust backend converts nucleo's grapheme-
+ * cluster indices to UTF-16 before serialization (see
+ * `src-tauri/src/unicode.rs`).
  */
-// TODO: For non-ASCII (emoji, CJK), nucleo returns grapheme
-// indices that may differ from JS string indices. Add a
-// conversion layer when needed.
 
 import type { ReactNode } from "react";
 
