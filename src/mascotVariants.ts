@@ -22,6 +22,7 @@
 import type { MascotEntry } from "./hooks/useRandomMascot";
 import { getFullMoonDistance } from "./hooks/useFullMoonDistance";
 import { isHalloween, isChristmas, isEaster, isNewYear } from "./hooks/useHolidays";
+import { isNighttime } from "./hooks/useNighttime";
 import mascotData from "./mascots.json";
 
 // =========================================================
@@ -373,11 +374,12 @@ export const SnappyHeroSets: MascotEntry[] = [
     conditionalWeight: 1000,
   },
 
-  // Full moon — very high boost when within one day of a full moon.
+  // Full moon — very high boost when within one day of a full moon,
+  // but only after dark so the werewolf doesn't show up at noon.
   {
     variants: [...Variants.FullMoon],
     weight: 0,
-    condition: () => getFullMoonDistance() <= 1,
+    condition: () => getFullMoonDistance() <= 1 && isNighttime(),
     conditionalWeight: 1000,
   },
 ];
