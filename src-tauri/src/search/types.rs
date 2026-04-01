@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub use tokio_util::sync::CancellationToken;
 
 use crate::frecency::FrecencyTarget;
+use crate::unicode::Utf16Positions;
 
 // =========================================================
 // Post-Action Behavior
@@ -125,8 +126,8 @@ pub struct ScoredEntry {
     pub subtitle: Option<String>,
     pub icon: Option<EntryIcon>,
     pub score: u32,
-    pub title_positions: Vec<u32>,
-    pub subtitle_positions: Vec<u32>,
+    pub title_positions: Utf16Positions,
+    pub subtitle_positions: Utf16Positions,
     pub actions: Vec<Action>,
 }
 

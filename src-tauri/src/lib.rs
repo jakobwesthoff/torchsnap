@@ -12,6 +12,7 @@ mod search;
 mod settings;
 mod settings_notifier;
 mod storage;
+mod unicode;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
