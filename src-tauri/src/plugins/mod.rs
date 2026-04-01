@@ -251,7 +251,9 @@ pub trait Plugin: Send + Sync {
     ///
     /// `matched_prefix` is `Some(prefix)` when a registered prefix
     /// triggered this call (query is already stripped), or `None`
-    /// when running as an always-on plugin.
+    /// when running as an always-on plugin. Note:
+    /// [`PluginResponse::CustomUI`] is only honoured in prefix mode;
+    /// in always-on mode it is downgraded to plain results.
     ///
     /// Results are pushed into `results` via its typed send methods.
     /// The plugin may send zero or more responses. Dropping `results`

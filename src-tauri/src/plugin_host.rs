@@ -557,7 +557,14 @@ impl PluginHost {
                 }));
             }
             PluginResponse::CustomUI { .. } => {
-                // Non-prefix mode: downgrade CustomUI silently.
+                // CustomUI is only honoured in prefix mode. In non-prefix
+                // (always-on) mode we downgrade to plain results so the
+                // plugin's entries still appear but without the custom view.
+                eprintln!(
+                    "search: dropping CustomUI from plugin '{}' — \
+                     CustomUI is only supported in prefix mode",
+                    source
+                );
             }
             PluginResponse::InlineUI { view, data, .. } => {
                 view_ref = Some((ViewKind::Inline, PluginViewRef {
