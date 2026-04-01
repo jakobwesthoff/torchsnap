@@ -23,7 +23,7 @@ import type { MascotEntry } from "./hooks/useRandomMascot";
 import { getFullMoonDistance } from "./hooks/useFullMoonDistance";
 import { isHalloween, isChristmas, isEaster, isNewYear } from "./hooks/useHolidays";
 import { isNighttime } from "./hooks/useNighttime";
-import mascotData from "./mascots.json";
+import mascotData from "./derived/mascots.json";
 
 // =========================================================
 // Mascot Metadata
