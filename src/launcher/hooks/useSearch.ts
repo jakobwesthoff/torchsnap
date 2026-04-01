@@ -84,8 +84,6 @@ export function useSearch(query: string): UseSearchResult {
   //   this case before any effect runs — no stale views persist.
   // =========================================================
 
-  const viewRefGenerationRef = useRef(0);
-
   // Signal loading=true as soon as the query changes, during the same
   // render that receives the new query. This is separated from the
   // effect below because setting state inside a useEffect would cause
@@ -177,10 +175,6 @@ export function useSearch(query: string): UseSearchResult {
             setInlinePluginView(message.inlinePluginView);
             setMatchedPrefix(message.matchedPrefix);
 
-            // Record that this generation has now written its
-            // view refs so the viewRefGenerationRef stays
-            // accurate for external consumers if needed.
-            viewRefGenerationRef.current = generation;
             isFirstMessageOfGeneration = false;
           } else {
             // Within-generation accumulation: first non-null
