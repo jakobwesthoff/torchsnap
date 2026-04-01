@@ -399,9 +399,9 @@ fn retention_cleanup_loop(
 // =========================================================
 
 pub struct CalculatorPlugin {
-    enabled: AtomicBool,
-    heuristic_enabled: AtomicBool,
-    history_enabled: AtomicBool,
+    enabled: Arc<AtomicBool>,
+    heuristic_enabled: Arc<AtomicBool>,
+    history_enabled: Arc<AtomicBool>,
 
     /// SQLite database for history. Initialized in `setup()`.
     db: Mutex<Option<Arc<SqlStorage>>>,
@@ -416,9 +416,9 @@ pub struct CalculatorPlugin {
 impl CalculatorPlugin {
     pub fn new() -> Self {
         Self {
-            enabled: AtomicBool::new(true),
-            heuristic_enabled: AtomicBool::new(true),
-            history_enabled: AtomicBool::new(true),
+            enabled: Arc::new(AtomicBool::new(true)),
+            heuristic_enabled: Arc::new(AtomicBool::new(true)),
+            history_enabled: Arc::new(AtomicBool::new(true)),
             db: Mutex::new(None),
             retention_condvar: Arc::new(Condvar::new()),
             retention_shutdown: Arc::new(Mutex::new(false)),
@@ -486,49 +486,13 @@ impl Plugin for CalculatorPlugin {
             .store(initial_history, Ordering::Relaxed);
 
         // ----- Settings watch threads -----
-        {
-            let mut watch = ctx.notifier.watch::<bool>("enabled");
-            let flag = &self.enabled as *const AtomicBool as usize;
-
+        for (key, flag) in [
+            ("enabled", Arc::clone(&self.enabled)),
+            ("heuristicEnabled", Arc::clone(&self.heuristic_enabled)),
+            ("historyEnabled", Arc::clone(&self.history_enabled)),
+        ] {
+            let mut watch = ctx.notifier.watch::<bool>(key);
             std::thread::spawn(move || {
-                // SAFETY: Reconstructing an `&AtomicBool` from a raw pointer
-                // that was cast through `usize` to make it `Send`. This is safe
-                // because the `CalculatorPlugin` struct (which owns the AtomicBool)
-                // is held alive inside an `Arc<dyn Plugin>` in `PluginHost`
-                // for the entire lifetime of the application. The watch thread
-                // terminates when the notifier's sender is dropped (at app exit),
-                // which happens before the plugin is dropped.
-                let flag = unsafe { &*(flag as *const AtomicBool) };
-                while let Some(val) = watch.blocking_changed() {
-                    flag.store(val, Ordering::Relaxed);
-                }
-            });
-        }
-        {
-            let mut watch = ctx.notifier.watch::<bool>("heuristicEnabled");
-            let flag = &self.heuristic_enabled as *const AtomicBool as usize;
-
-            std::thread::spawn(move || {
-                // SAFETY: Same pattern as the `enabled` watch above. The
-                // `heuristic_enabled` AtomicBool lives inside the Arc'd plugin
-                // and outlives this thread. See the comment on the `enabled`
-                // watch thread for the full safety argument.
-                let flag = unsafe { &*(flag as *const AtomicBool) };
-                while let Some(val) = watch.blocking_changed() {
-                    flag.store(val, Ordering::Relaxed);
-                }
-            });
-        }
-        {
-            let mut watch = ctx.notifier.watch::<bool>("historyEnabled");
-            let flag = &self.history_enabled as *const AtomicBool as usize;
-
-            std::thread::spawn(move || {
-                // SAFETY: Same pattern as the `enabled` watch above. The
-                // `history_enabled` AtomicBool lives inside the Arc'd plugin
-                // and outlives this thread. See the comment on the `enabled`
-                // watch thread for the full safety argument.
-                let flag = unsafe { &*(flag as *const AtomicBool) };
                 while let Some(val) = watch.blocking_changed() {
                     flag.store(val, Ordering::Relaxed);
                 }
