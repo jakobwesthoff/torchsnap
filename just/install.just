@@ -7,7 +7,7 @@
 # JS/TS packages and the Rust crates in src-tauri/.
 
 # Install all project dependencies
-install: install-packages install-crates
+install: assets install-packages install-crates
 
 # Install JS dependencies
 install-packages:
