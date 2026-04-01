@@ -11,56 +11,15 @@
  * — more than enough for mascot selection purposes.
  */
 
+import {
+  RAD,
+  declination,
+  rightAscension,
+  sunCoords,
+  toDays,
+} from "../lib/astronomy";
+
 const { sin, cos, acos, atan2, round, abs, PI } = Math;
-const RAD = PI / 180;
-
-// =========================================================
-// Julian Date Helpers
-// =========================================================
-
-const MS_PER_DAY = 86_400_000;
-const J1970 = 2_440_588;
-const J2000 = 2_451_545;
-
-/** Convert a JS Date to days since J2000.0. */
-function toDays(date: Date): number {
-  return date.valueOf() / MS_PER_DAY - 0.5 + J1970 - J2000;
-}
-
-// =========================================================
-// Coordinate Helpers
-// =========================================================
-
-/** Obliquity of the ecliptic (radians). */
-const OBLIQUITY = RAD * 23.4397;
-
-function declination(l: number, b: number): number {
-  return Math.asin(sin(b) * cos(OBLIQUITY) + cos(b) * sin(OBLIQUITY) * sin(l));
-}
-
-function rightAscension(l: number, b: number): number {
-  return atan2(sin(l) * cos(OBLIQUITY) - Math.tan(b) * sin(OBLIQUITY), cos(l));
-}
-
-// =========================================================
-// Sun Position (low precision)
-// =========================================================
-
-function solarMeanAnomaly(d: number): number {
-  return RAD * (357.5291 + 0.98560028 * d);
-}
-
-function eclipticLongitude(M: number): number {
-  const C = RAD * (1.9148 * sin(M) + 0.02 * sin(2 * M) + 0.0003 * sin(3 * M));
-  const P = RAD * 102.9372;
-  return M + C + P + PI;
-}
-
-function sunCoords(d: number) {
-  const M = solarMeanAnomaly(d);
-  const L = eclipticLongitude(M);
-  return { dec: declination(L, 0), ra: rightAscension(L, 0) };
-}
 
 // =========================================================
 // Moon Position (low precision)
