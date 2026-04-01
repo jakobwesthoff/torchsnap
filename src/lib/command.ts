@@ -1,0 +1,94 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+/**
+ * Typesafe wrapper around Tauri's `invoke()`.
+ *
+ * All frontend → backend calls go through `command()` instead of
+ * raw `invoke()`. The command registry maps each Tauri command name
+ * to its parameter and return types, enforced at compile time.
+ *
+ * Error handling: every rejection is logged via `console.warn` and
+ * then re-thrown, so callers can add their own handling when needed
+ * while unhandled failures are still visible during development.
+ *
+ * The `CommandMap` must stay in sync with the `generate_handler!`
+ * registration and `#[tauri::command]` signatures in
+ * `src-tauri/src/lib.rs` and `src-tauri/src/search/mod.rs`.
+ *
+ * TODO: Replace `string` error payloads with structured error types
+ * once the Rust side is migrated (see structured-rust-error-types
+ * todo).
+ */
+
+import { invoke, type Channel } from "@tauri-apps/api/core";
+import type {
+  ActionId,
+  ControlCommand,
+  FrecencyStats,
+  PostAction,
+  SearchMessage,
+} from "../types";
+
+// =========================================================
+// Command Registry
+// =========================================================
+
+interface CommandMap {
+  launcher_hide: { params: void; result: void };
+  launcher_set_layout: {
+    params: {
+      windowWidth: number;
+      windowHeight: number;
+      cardTopOffset: number;
+    };
+    result: void;
+  };
+  search: {
+    params: { query: string; onResults: Channel<SearchMessage> };
+    result: void;
+  };
+  search_execute: {
+    params: { source: string; entryId: string; actionId: ActionId };
+    result: PostAction;
+  };
+  control_subscribe: {
+    params: { channel: Channel<ControlCommand> };
+    result: void;
+  };
+  plugin_message: {
+    params: {
+      source: string;
+      method: string;
+      payload: unknown;
+      channel: Channel<unknown>;
+    };
+    result: unknown;
+  };
+  frecency_stats: { params: void; result: FrecencyStats };
+  frecency_clear: { params: void; result: void };
+}
+
+type CommandName = keyof CommandMap;
+
+// =========================================================
+// Typed command wrapper
+// =========================================================
+
+export async function command<C extends CommandName>(
+  cmd: C,
+  ...args: CommandMap[C]["params"] extends void
+    ? []
+    : [CommandMap[C]["params"]]
+): Promise<CommandMap[C]["result"]> {
+  try {
+    return await invoke<CommandMap[C]["result"]>(
+      cmd,
+      args[0] ?? undefined,
+    );
+  } catch (error) {
+    console.warn(`command("${cmd}") failed:`, error);
+    throw error;
+  }
+}

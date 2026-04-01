@@ -31,7 +31,7 @@
     "paths": {
       "@torchsnap/keybindings": ["./src/keybindings"],
       "@torchsnap/components": ["./src/components"],
-      "@torchsnap/types": ["./src/launcher/types"]
+      "@torchsnap/types": ["./src/types"]
     }
   },
   "include": ["src"],

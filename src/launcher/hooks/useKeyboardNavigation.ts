@@ -35,7 +35,7 @@ import {
   type KeyBindingDefinition,
   type ModifierKey,
 } from "../../keybindings";
-import type { Action } from "../types";
+import type { Action } from "../../types";
 import { PAGE_SIZE } from "../constants";
 
 interface UseKeyboardNavigationParams {

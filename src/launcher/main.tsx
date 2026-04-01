@@ -4,7 +4,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "../lib/command";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { KeyBindingProvider } from "../keybindings";
 import { initStore } from "../settingsStore";
@@ -41,7 +41,7 @@ async function main() {
             <Launcher
               measureDummy
               onMeasure={async (cardWidth, cardHeight) => {
-                await invoke("launcher_set_layout", {
+                await command("launcher_set_layout", {
                   windowWidth: cardWidth + 2 * SHADOW_PADDING,
                   windowHeight: SHADOW_PADDING + MASCOT_HEADROOM + cardHeight + SHADOW_PADDING,
                   cardTopOffset: CARD_TOP_OFFSET,

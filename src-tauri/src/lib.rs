@@ -364,6 +364,10 @@ fn control_subscribe(channel: Channel<control::ControlCommand>, app: tauri::AppH
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        // The command registry must stay in sync with the frontend's
+        // typed `command()` wrapper in `src/lib/command.ts`. When
+        // adding, removing, or changing a command signature here,
+        // update the `CommandMap` interface on the frontend as well.
         .invoke_handler(tauri::generate_handler![
             search::search,
             search::search_execute,

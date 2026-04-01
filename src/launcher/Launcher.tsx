@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "../lib/command";
 import { listen } from "@tauri-apps/api/event";
 import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
@@ -27,7 +27,7 @@ import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, PluginViewRef, PostAction, SourcedEntry } from "./types";
+import type { Action, ActionId, FooterState, PluginViewRef, SourcedEntry } from "../types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -319,7 +319,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const view = customPluginViewRef.current;
       if (!view) return;
 
-      const postAction = await invoke<PostAction>("search_execute", {
+      const postAction = await command("search_execute", {
         source: view.pluginId,
         entryId,
         actionId,
@@ -341,7 +341,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const view = activeInlineViewRef.current;
       if (!view) return;
 
-      const postAction = await invoke<PostAction>("search_execute", {
+      const postAction = await command("search_execute", {
         source: view.pluginId,
         entryId,
         actionId,
@@ -432,7 +432,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       const action = entry.actions[actionIndex];
       if (!action) return;
 
-      const postAction = await invoke<PostAction>("search_execute", {
+      const postAction = await command("search_execute", {
         source: entry.source,
         entryId: entry.id,
         actionId: action.id,

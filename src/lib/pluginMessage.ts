@@ -11,7 +11,8 @@
  * receives its required parameter.
  */
 
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { command } from "./command";
 
 export function sendPluginMessage<TPayload = unknown, TResult = unknown, TStream = never>(
   source: string,
@@ -24,10 +25,13 @@ export function sendPluginMessage<TPayload = unknown, TResult = unknown, TStream
     channel.onmessage = onMessage;
   }
 
-  return invoke<TResult>("plugin_message", {
+  // The command registry types `plugin_message` as returning `unknown`
+  // because the actual return type varies per plugin. The caller's
+  // generic `TResult` narrows it at each call site.
+  return command("plugin_message", {
     source,
     method,
     payload,
-    channel,
-  });
+    channel: channel as Channel<unknown>,
+  }) as Promise<TResult>;
 }

@@ -2,17 +2,22 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import type { ReactNode } from "react";
-
 /**
- * TypeScript mirrors of the Rust search types.
+ * Shared frontend types.
  *
- * These must stay in sync with `src-tauri/src/search/types.rs`.
- * Field names use camelCase (Rust types use `#[serde(rename_all = "camelCase")]`).
+ * Types that mirror Rust structs/enums must stay in sync with their
+ * backend counterparts. Each section notes the corresponding Rust
+ * source file.
  */
+
+import type { ReactNode } from "react";
 
 // =========================================================
 // Action Types
+//
+// Mirrors `src-tauri/src/search/types.rs`.
+// Field names use camelCase (Rust types use
+// `#[serde(rename_all = "camelCase")]`).
 // =========================================================
 
 export type ActionId =
@@ -36,14 +41,13 @@ export interface Action {
 
 // =========================================================
 // Post-Action Types
+//
+// Mirrors `PostAction` in `src-tauri/src/search/types.rs`.
+//
+// Returned by the `search_execute` Tauri command to tell the
+// frontend what to do after a plugin handles an action.
 // =========================================================
 
-/**
- * Mirrors `PostAction` in `src-tauri/src/search/types.rs`.
- *
- * Returned by the `search_execute` Tauri command to tell the frontend
- * what to do after a plugin handles an action.
- */
 export type PostAction =
   | "Nothing"
   | "Dismiss"
@@ -52,6 +56,8 @@ export type PostAction =
 
 // =========================================================
 // Entry Types
+//
+// Mirrors `src-tauri/src/search/types.rs`.
 // =========================================================
 
 export type EntryIcon =
@@ -73,7 +79,7 @@ export interface SourcedEntry {
 }
 
 // =========================================================
-// Footer Types
+// Footer Types (frontend-only)
 // =========================================================
 
 export interface FooterHint {
@@ -88,6 +94,8 @@ export interface FooterState {
 
 // =========================================================
 // Plugin View Reference
+//
+// Mirrors `src-tauri/src/search/types.rs`.
 // =========================================================
 
 /** Reference to a plugin view component, sent from the backend. */
@@ -99,6 +107,8 @@ export interface PluginViewRef {
 
 // =========================================================
 // Channel Messages
+//
+// Mirrors `SearchMessage` in `src-tauri/src/search/mod.rs`.
 // =========================================================
 
 export type SearchMessage =
@@ -113,3 +123,26 @@ export type SearchMessage =
       matchedPrefix: string | null;
     }
   | { type: "done" };
+
+// =========================================================
+// Control Channel
+//
+// Mirrors `ControlCommand` in `src-tauri/src/control/mod.rs`.
+// =========================================================
+
+export type ControlCommand =
+  | { type: "dismiss" }
+  | { type: "setQuery"; text: string };
+
+// =========================================================
+// Frecency
+//
+// Mirrors `FrecencyStats` in `src-tauri/src/frecency/mod.rs`.
+// =========================================================
+
+export interface FrecencyStats {
+  totalEvents: number;
+  uniqueItems: number;
+  eventsByPlugin: Record<string, number>;
+  oldestEvent: number | null;
+}

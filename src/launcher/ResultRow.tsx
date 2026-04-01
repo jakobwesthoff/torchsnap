@@ -14,7 +14,7 @@ import * as HeroIcons from "@heroicons/react/24/outline";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "../lib/cn";
 import { highlightText } from "../lib/highlightText";
-import type { SourcedEntry, EntryIcon } from "./types";
+import type { SourcedEntry, EntryIcon } from "../types";
 
 // =========================================================
 // Icon Rendering

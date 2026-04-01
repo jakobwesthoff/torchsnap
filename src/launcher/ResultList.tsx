@@ -12,7 +12,7 @@
  */
 
 import { memo, type RefObject } from "react";
-import type { SourcedEntry } from "./types";
+import type { SourcedEntry } from "../types";
 import { ResultRow } from "./ResultRow";
 import { PAGE_SIZE } from "./constants";
 import { useWindowedList } from "./hooks/useWindowedList";

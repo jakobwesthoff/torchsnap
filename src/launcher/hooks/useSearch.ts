@@ -17,10 +17,11 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { command } from "../../lib/command";
 import { sortedMerge } from "../../lib/sortedMerge";
 import { compareEntries } from "../compareEntries";
-import type { PluginViewRef, SourcedEntry, SearchMessage } from "../types";
+import type { PluginViewRef, SourcedEntry, SearchMessage } from "../../types";
 
 interface UseSearchResult {
   results: SourcedEntry[];
@@ -203,7 +204,7 @@ export function useSearch(query: string): UseSearchResult {
       }
     };
 
-    invoke("search", { query, onResults: channel });
+    command("search", { query, onResults: channel });
 
     // When the query changes, silence the old channel so its closure
     // (and the state setters it captures) can be garbage-collected

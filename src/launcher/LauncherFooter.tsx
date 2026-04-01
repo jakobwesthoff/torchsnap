@@ -12,7 +12,7 @@
  */
 
 import { KeyBindingPill } from "../components/KeyBindingPill";
-import type { FooterState } from "./types";
+import type { FooterState } from "../types";
 
 interface LauncherFooterProps {
   footer: FooterState;

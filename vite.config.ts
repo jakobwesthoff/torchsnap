@@ -19,7 +19,7 @@ export default defineConfig(async () => ({
     alias: {
       "@torchsnap/keybindings": resolve(__dirname, "src/keybindings"),
       "@torchsnap/components": resolve(__dirname, "src/components"),
-      "@torchsnap/types": resolve(__dirname, "src/launcher/types"),
+      "@torchsnap/types": resolve(__dirname, "src/types"),
     },
   },
 
