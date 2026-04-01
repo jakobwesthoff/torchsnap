@@ -22,7 +22,7 @@
 import type { MascotEntry } from "./hooks/useRandomMascot";
 import { getFullMoonDistance } from "./hooks/useFullMoonDistance";
 import { isHalloween, isChristmas, isEaster, isNewYear } from "./hooks/useHolidays";
-import { isNighttime } from "./hooks/useNighttime";
+import { isNighttime, isTwilight } from "./hooks/useNighttime";
 import mascotData from "./derived/mascots.json";
 
 // =========================================================
@@ -379,7 +379,7 @@ export const SnappyHeroSets: MascotEntry[] = [
   {
     variants: [...Variants.FullMoon],
     weight: 0,
-    condition: () => getFullMoonDistance() <= 1 && isNighttime(),
+    condition: () => getFullMoonDistance() <= 1 && (isNighttime() || isTwilight()),
     conditionalWeight: 1000,
   },
 ];
