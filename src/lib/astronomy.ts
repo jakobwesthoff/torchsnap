@@ -85,34 +85,41 @@ export function sunCoords(d: number): { dec: number; ra: number } {
 // Twilight / Sunrise / Sunset
 // =========================================================
 
-/** Sun altitude at civil twilight (6° below horizon), in radians. */
-const CIVIL_TWILIGHT_ALTITUDE = RAD * -6;
+/** Apparent sun altitude at the horizon, accounting for atmospheric refraction. */
+export const SUNSET_ALTITUDE = RAD * -0.833;
+
+/** Sun altitude at civil twilight (6° below horizon). */
+export const CIVIL_TWILIGHT_ALTITUDE = RAD * -6;
 
 /**
- * Hour angle of the sun at civil twilight for a given date and
- * latitude, returned in **hours** (not radians).
+ * Hour angle (in **hours**) at which the sun crosses a given altitude
+ * threshold for a given date and observer latitude.
  *
- * The hour angle is the time offset from solar noon to the moment
- * the sun crosses the civil twilight threshold (−6°). Sunset
- * twilight = solar noon + H, sunrise twilight = solar noon − H.
+ * The hour angle is the time offset from solar noon. For example,
+ * sunset = solar noon + H, sunrise = solar noon − H.
  *
- * Returns `null` when the sun never reaches the threshold:
- * - Midnight sun (polar summer) — never gets dark enough.
- * - Polar night (polar winter) — never gets bright enough.
+ * Returns `null` when the sun never crosses the threshold:
+ * - `cosH > 1`: sun is always below (polar night at this altitude).
+ * - `cosH < -1`: sun is always above (midnight sun at this altitude).
  *
- * The caller can distinguish the two cases by checking solar
- * declination against the observer's latitude.
+ * Common altitudes:
+ * - {@link SUNSET_ALTITUDE} (−0.833°) — sunrise / sunset
+ * - {@link CIVIL_TWILIGHT_ALTITUDE} (−6°) — civil twilight boundary
  */
-export function civilTwilightHourAngle(date: Date, latDeg: number): number | null {
+export function sunAltitudeHourAngle(
+  date: Date,
+  latDeg: number,
+  altitude: number,
+): number | null {
   const d = toDays(date);
   const { dec } = sunCoords(d);
   const lat = latDeg * RAD;
 
   const cosH =
-    (sin(CIVIL_TWILIGHT_ALTITUDE) - sin(lat) * sin(dec)) /
+    (sin(altitude) - sin(lat) * sin(dec)) /
     (cos(lat) * cos(dec));
 
-  // Sun never crosses the threshold at this latitude/date.
+  // Sun never crosses this altitude at this latitude/date.
   if (cosH < -1 || cosH > 1) return null;
 
   // Convert hour angle from radians to hours (π rad = 12 h).
@@ -120,20 +127,23 @@ export function civilTwilightHourAngle(date: Date, latDeg: number): number | nul
 }
 
 /**
- * Returns `true` when the sun never drops below the civil twilight
- * threshold on the given date at the given latitude (midnight sun /
- * polar summer). Used to distinguish the two `null` cases from
- * {@link civilTwilightHourAngle}.
+ * Returns `true` when the sun is always above the given altitude on
+ * the given date at the given latitude. Useful to distinguish the
+ * two `null` cases from {@link sunAltitudeHourAngle}.
  */
-export function isMidnightSun(date: Date, latDeg: number): boolean {
+export function isSunAlwaysAbove(
+  date: Date,
+  latDeg: number,
+  altitude: number,
+): boolean {
   const d = toDays(date);
   const { dec } = sunCoords(d);
   const lat = latDeg * RAD;
 
   const cosH =
-    (sin(CIVIL_TWILIGHT_ALTITUDE) - sin(lat) * sin(dec)) /
+    (sin(altitude) - sin(lat) * sin(dec)) /
     (cos(lat) * cos(dec));
 
-  // cosH > 1 means the sun is always above the threshold.
-  return cosH > 1;
+  // cosH < -1 means the sun is always above this altitude.
+  return cosH < -1;
 }
