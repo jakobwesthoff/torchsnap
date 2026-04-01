@@ -24,8 +24,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Generated asset data (source lives in assets/, copied by `just asset-mascot-data`)
-src/mascots.json
+# Generated asset data lives in src/derived/ and IS checked in.
+# See src/derived/README.md for regeneration instructions.
 
 # Memory benchmark output
 memsnap-*.json

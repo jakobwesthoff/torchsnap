@@ -55,7 +55,7 @@ asset-mascot-data:
     #!/usr/bin/env bash
     set -euo pipefail
     src="assets/mascot/mascots.json"
-    dst="src/mascots.json"
+    dst="src/derived/mascots.json"
 
     # Regenerate when the source JSON or any source PNG is newer than
     # the output.
