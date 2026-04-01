@@ -1,0 +1,107 @@
+#!/usr/bin/env bun
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//
+// Parse the IANA zone.tab file and emit a JSON mapping of timezone
+// names to [latitude, longitude] coordinate pairs.
+//
+// Coordinates in zone.tab use the ISO 6709 format:
+//
+//   ±DDMM±DDDMM        (degrees and minutes)
+//   ±DDMMSS±DDDMMSS     (degrees, minutes, and seconds)
+//
+// Latitude has 2-digit degrees, longitude has 3-digit degrees.
+// The sign prefix indicates N/S and E/W respectively.
+//
+// Usage:
+//   tools/generate-timezone-coords /usr/share/zoneinfo/zone.tab > output.json
+//
+
+import { readFileSync } from "fs";
+
+const src = process.argv[2];
+if (!src) {
+  console.error("Usage: generate-timezone-coords <zone.tab path>");
+  process.exit(1);
+}
+
+// =========================================================
+// ISO 6709 Coordinate Parsing
+// =========================================================
+
+/**
+ * Parse a signed degree/minute(/second) string into decimal degrees.
+ *
+ * The `degWidth` parameter distinguishes latitude (2-digit degrees)
+ * from longitude (3-digit degrees).
+ */
+function parseDMS(raw: string, degWidth: 2 | 3): number {
+  const sign = raw[0] === "-" ? -1 : 1;
+  const digits = raw.slice(1);
+
+  const deg = parseInt(digits.slice(0, degWidth), 10);
+  const min = parseInt(digits.slice(degWidth, degWidth + 2), 10);
+  const sec =
+    digits.length > degWidth + 2
+      ? parseInt(digits.slice(degWidth + 2), 10)
+      : 0;
+
+  return sign * (deg + min / 60 + sec / 3600);
+}
+
+/**
+ * Split an ISO 6709 coordinate string into its latitude and longitude
+ * parts. The longitude always starts at the second sign character.
+ */
+function parseISO6709(coords: string): [lat: number, lon: number] {
+  // Find the start of the longitude part — the second +/- sign.
+  const lonStart = coords.indexOf("+", 1);
+  const lonStartNeg = coords.indexOf("-", 1);
+  const lonIdx =
+    lonStart === -1
+      ? lonStartNeg
+      : lonStartNeg === -1
+        ? lonStart
+        : Math.min(lonStart, lonStartNeg);
+
+  const latRaw = coords.slice(0, lonIdx);
+  const lonRaw = coords.slice(lonIdx);
+
+  return [parseDMS(latRaw, 2), parseDMS(lonRaw, 3)];
+}
+
+// =========================================================
+// Parse zone.tab
+// =========================================================
+
+const lines = readFileSync(src, "utf8").split("\n");
+const result: Record<string, [number, number]> = {};
+
+for (const line of lines) {
+  if (line.startsWith("#") || !line.trim()) continue;
+
+  const fields = line.split("\t");
+  const coords = fields[1];
+  const tz = fields[2];
+
+  if (!coords || !tz) continue;
+
+  const [lat, lon] = parseISO6709(coords);
+
+  // Round to 3 decimal places (~111 m precision) — far more than
+  // needed for sunset/sunrise calculations.
+  result[tz] = [
+    Math.round(lat * 1000) / 1000,
+    Math.round(lon * 1000) / 1000,
+  ];
+}
+
+// Sort by timezone name for stable, reviewable diffs.
+const sorted: Record<string, [number, number]> = {};
+for (const key of Object.keys(result).sort()) {
+  sorted[key] = result[key];
+}
+
+console.log(JSON.stringify(sorted, null, 2));
