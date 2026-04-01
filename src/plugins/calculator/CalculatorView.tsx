@@ -20,7 +20,7 @@
 
 import { memo, useEffect, useState } from "react";
 import type { PluginViewProps } from "../types";
-import type { FooterState } from "../../launcher/types";
+import type { FooterState } from "../../types";
 import { CalculatorResult } from "./CalculatorResult";
 import { CalculatorHelp, CalculatorError } from "./CalculatorHelp";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";

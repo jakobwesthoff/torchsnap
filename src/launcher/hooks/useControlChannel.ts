@@ -17,14 +17,15 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { command } from "../../lib/command";
 
 interface UseControlChannelParams {
   resetState: () => void;
   setQuery: (text: string) => void;
 }
 
-type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: string };
+import type { ControlCommand } from "../../types";
 
 export function useControlChannel({ resetState, setQuery }: UseControlChannelParams) {
   // Keep stable refs to the callbacks so the effect can run exactly
@@ -57,7 +58,7 @@ export function useControlChannel({ resetState, setQuery }: UseControlChannelPar
       }
     };
 
-    invoke("control_subscribe", { channel });
+    command("control_subscribe", { channel });
 
     // The backend replaces the old channel on re-subscribe, so there
     // is no explicit unsubscribe needed. Silencing the handler is

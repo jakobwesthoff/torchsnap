@@ -4,23 +4,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChartBarIcon } from "@heroicons/react/24/outline";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "../../lib/command";
 import { useSetting } from "../../hooks/useSetting";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
-
-// =========================================================
-// Types
-// =========================================================
-
-interface FrecencyStats {
-  totalEvents: number;
-  uniqueItems: number;
-  eventsByPlugin: Record<string, number>;
-  oldestEvent: number | null;
-}
+import type { FrecencyStats } from "../../types";
 
 // =========================================================
 // Helpers
@@ -50,9 +40,9 @@ export function FrecencySection() {
   const [clearing, setClearing] = useState(false);
 
   const refreshStats = useCallback(() => {
-    invoke<FrecencyStats>("frecency_stats")
+    command("frecency_stats")
       .then(setStats)
-      .catch((e) => console.error("frecency: fetch stats failed:", e));
+      .catch((e: unknown) => console.error("frecency: fetch stats failed:", e));
   }, []);
 
   // Fetch stats on mount.
@@ -68,7 +58,7 @@ export function FrecencySection() {
 
     setClearing(true);
     try {
-      await invoke("frecency_clear");
+      await command("frecency_clear");
       refreshStats();
     } catch (e) {
       console.error("frecency: clear failed:", e);
