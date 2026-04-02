@@ -479,8 +479,14 @@ mod tests {
             .header("X-Custom", "value");
 
         assert_eq!(req.headers.len(), 2);
-        assert_eq!(req.headers[0], ("Accept".to_string(), "text/html".to_string()));
-        assert_eq!(req.headers[1], ("X-Custom".to_string(), "value".to_string()));
+        assert_eq!(
+            req.headers[0],
+            ("Accept".to_string(), "text/html".to_string())
+        );
+        assert_eq!(
+            req.headers[1],
+            ("X-Custom".to_string(), "value".to_string())
+        );
     }
 
     #[test]
@@ -492,10 +498,11 @@ mod tests {
             .expect("serialize json");
 
         assert!(req.body.is_some());
-        assert!(req
-            .headers
-            .iter()
-            .any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert!(
+            req.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "application/json")
+        );
     }
 
     #[test]

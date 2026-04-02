@@ -130,9 +130,7 @@ export type SearchMessage =
 // Mirrors `ControlCommand` in `src-tauri/src/control/mod.rs`.
 // =========================================================
 
-export type ControlCommand =
-  | { type: "dismiss" }
-  | { type: "setQuery"; text: string };
+export type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: string };
 
 // =========================================================
 // Frecency

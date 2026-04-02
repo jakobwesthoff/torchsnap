@@ -30,12 +30,12 @@ use tauri::Manager;
 
 use super::{Plugin, PluginContext};
 use crate::search::types::{
-    Action, ActionId, CancellationToken, EntryIcon, PostAction, ScoredEntry, ResultChannel,
+    Action, ActionId, CancellationToken, EntryIcon, PostAction, ResultChannel, ScoredEntry,
 };
-use crate::unicode::Utf16Positions;
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
 use crate::storage::{SqlStorage, SqlValue};
+use crate::unicode::Utf16Positions;
 
 // =========================================================
 // Constants

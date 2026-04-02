@@ -11,13 +11,7 @@
  * — more than enough for mascot selection purposes.
  */
 
-import {
-  RAD,
-  declination,
-  rightAscension,
-  sunCoords,
-  toDays,
-} from "../lib/astronomy";
+import { RAD, declination, rightAscension, sunCoords, toDays } from "../lib/astronomy";
 
 const { sin, cos, acos, atan2, round, abs, PI } = Math;
 

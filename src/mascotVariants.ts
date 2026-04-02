@@ -190,11 +190,7 @@ export const Variants = {
   // Century Hoppers — inspired by a certain flux capacitor.
   // =========================================================
 
-  CenturyHoppers: [
-    "century-hopper-red-vest",
-    "century-hopper-walkie",
-    "century-hopper-walkman",
-  ],
+  CenturyHoppers: ["century-hopper-red-vest", "century-hopper-walkie", "century-hopper-walkman"],
 
   // =========================================================
   // Sci-Fi — starships, robots, cyborgs, and the far future.

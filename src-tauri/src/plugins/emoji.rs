@@ -27,8 +27,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use super::{Plugin, PluginContext};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ScoredEntry,
-    ResultChannel,
+    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ResultChannel,
+    ScoredEntry,
 };
 use crate::unicode::{GraphemePositions, Utf16Positions};
 
@@ -236,7 +236,11 @@ impl EmojiPickerPlugin {
                         if entry.shortcodes.is_empty() {
                             return None;
                         }
-                        Some(emoji_to_scored_entry(entry, item.score, GraphemePositions::empty()))
+                        Some(emoji_to_scored_entry(
+                            entry,
+                            item.score,
+                            GraphemePositions::empty(),
+                        ))
                     })
                     .collect();
             }
@@ -298,11 +302,7 @@ impl Plugin for EmojiPickerPlugin {
         // to the default emojibase browse order.
         // -------------------------------------------------------
         if query.is_empty() {
-            results.send_custom_ui(
-                "picker".into(),
-                None,
-                self.empty_scored_entries(&entries),
-            );
+            results.send_custom_ui("picker".into(), None, self.empty_scored_entries(&entries));
             return;
         }
 
@@ -420,9 +420,8 @@ impl Plugin for EmojiPickerPlugin {
 
                 // Adjust title positions to account for the ":" prefix
                 // we add to the displayed shortcode.
-                let adjusted_title_pos = GraphemePositions(
-                    m.title_positions.0.iter().map(|p| p + 1).collect(),
-                );
+                let adjusted_title_pos =
+                    GraphemePositions(m.title_positions.0.iter().map(|p| p + 1).collect());
 
                 let title = format!(":{display_shortcode}:");
                 let subtitle = entry.label.clone();

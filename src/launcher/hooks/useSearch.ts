@@ -140,11 +140,7 @@ export function useSearch(query: string): UseSearchResult {
       switch (message.type) {
         case "searchResults": {
           // Merge incoming pre-sorted entries into the accumulator.
-          const merged = sortedMerge(
-            accumulatorRef.current,
-            message.entries,
-            compareEntries,
-          );
+          const merged = sortedMerge(accumulatorRef.current, message.entries, compareEntries);
           accumulatorRef.current = merged;
           setResults(merged);
 

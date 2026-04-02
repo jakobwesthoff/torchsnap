@@ -23,13 +23,7 @@
  */
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
-import type {
-  ActionId,
-  ControlCommand,
-  FrecencyStats,
-  PostAction,
-  SearchMessage,
-} from "../types";
+import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
 
 // =========================================================
 // Command Registry
@@ -78,15 +72,10 @@ type CommandName = keyof CommandMap;
 
 export async function command<C extends CommandName>(
   cmd: C,
-  ...args: CommandMap[C]["params"] extends void
-    ? []
-    : [CommandMap[C]["params"]]
+  ...args: CommandMap[C]["params"] extends void ? [] : [CommandMap[C]["params"]]
 ): Promise<CommandMap[C]["result"]> {
   try {
-    return await invoke<CommandMap[C]["result"]>(
-      cmd,
-      args[0] ?? undefined,
-    );
+    return await invoke<CommandMap[C]["result"]>(cmd, args[0] ?? undefined);
   } catch (error) {
     console.warn(`command("${cmd}") failed:`, error);
     throw error;

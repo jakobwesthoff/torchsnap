@@ -312,7 +312,6 @@ impl ResultChannel {
     }
 }
 
-
 // =========================================================
 // Channel Messages
 // =========================================================
@@ -329,7 +328,6 @@ pub struct PluginViewRef {
     pub view: String,
     pub data: Option<serde_json::Value>,
 }
-
 
 /// Messages streamed over a Tauri channel during a search.
 ///

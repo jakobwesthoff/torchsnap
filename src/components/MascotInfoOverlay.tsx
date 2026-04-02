@@ -38,9 +38,7 @@ export function MascotInfoOverlay({ variant, visible, onDismiss }: MascotInfoOve
       )}
       onClick={onDismiss}
     >
-      <p className="px-8 text-center text-sm italic text-text-secondary">
-        {getMascotAlt(variant)}
-      </p>
+      <p className="px-8 text-center text-sm italic text-text-secondary">{getMascotAlt(variant)}</p>
     </div>
   );
 }
