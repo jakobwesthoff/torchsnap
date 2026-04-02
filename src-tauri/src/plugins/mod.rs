@@ -20,18 +20,16 @@
 // =========================================================
 
 pub mod app_launcher;
+pub mod bangs;
 pub mod calculator;
 pub mod clipboard;
 pub mod commands;
-pub mod bangs;
 pub mod emoji;
 pub mod system_commands;
 pub mod system_preferences;
 
 use crate::frecency::PluginFrecency;
-use crate::search::types::{
-    ActionId, CancellationToken, CatalogEntry, PostAction, ResultChannel,
-};
+use crate::search::types::{ActionId, CancellationToken, CatalogEntry, PostAction, ResultChannel};
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::PluginSettingsNotifier;
 

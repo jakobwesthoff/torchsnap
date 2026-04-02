@@ -73,9 +73,7 @@ function pluginComponent<P extends object>(
  * Create a dynamically loaded component for use in the launcher window.
  * Its loader is registered for `preloadLauncherComponents()`.
  */
-export function launcherComponent<P extends object>(
-  factory: ImportFactory<P>,
-): ComponentType<P> {
+export function launcherComponent<P extends object>(factory: ImportFactory<P>): ComponentType<P> {
   const { component, load } = pluginComponent(factory);
   launcherLoaders.push(load);
   return component;
@@ -85,9 +83,7 @@ export function launcherComponent<P extends object>(
  * Create a dynamically loaded component for use in the settings window.
  * Its loader is registered for `preloadSettingsComponents()`.
  */
-export function settingsComponent<P extends object>(
-  factory: ImportFactory<P>,
-): ComponentType<P> {
+export function settingsComponent<P extends object>(factory: ImportFactory<P>): ComponentType<P> {
   const { component, load } = pluginComponent(factory);
   settingsLoaders.push(load);
   return component;

@@ -17,8 +17,8 @@
 // =========================================================
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -775,8 +775,8 @@ mod tests {
                     "INSERT INTO items (name) VALUES (?)",
                     &[SqlValue::from("b")],
                 )?;
-                let rows: Vec<String> = storage
-                    .query_map("SELECT name FROM items", &[], |row| row.get(0))?;
+                let rows: Vec<String> =
+                    storage.query_map("SELECT name FROM items", &[], |row| row.get(0))?;
                 Ok(rows.len())
             })
             .expect("transaction with return value");
@@ -810,11 +810,9 @@ mod tests {
         }
 
         let names: Vec<String> = storage
-            .query_map(
-                "SELECT name FROM items ORDER BY name",
-                &[],
-                |row| row.get(0),
-            )
+            .query_map("SELECT name FROM items ORDER BY name", &[], |row| {
+                row.get(0)
+            })
             .expect("query");
         assert_eq!(
             names,

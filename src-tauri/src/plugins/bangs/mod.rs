@@ -133,11 +133,13 @@ impl Plugin for BangsPlugin {
 
         let mut enabled_watch = ctx.notifier.watch::<bool>("enabled");
         let enabled_flag = Arc::clone(&self.enabled);
-        thread::spawn(move || loop {
-            let Some(new_enabled) = enabled_watch.blocking_changed() else {
-                break;
-            };
-            enabled_flag.store(new_enabled, Ordering::Relaxed);
+        thread::spawn(move || {
+            loop {
+                let Some(new_enabled) = enabled_watch.blocking_changed() else {
+                    break;
+                };
+                enabled_flag.store(new_enabled, Ordering::Relaxed);
+            }
         });
 
         let data_dir = app
@@ -148,8 +150,7 @@ impl Plugin for BangsPlugin {
             .join(PLUGIN_ID);
 
         let db_path = data_dir.join("bangs.db");
-        let sql = SqlStorage::open(db_path, &[MIGRATION_001])
-            .expect("open bang database");
+        let sql = SqlStorage::open(db_path, &[MIGRATION_001]).expect("open bang database");
 
         let http = Http::new();
         let state = Arc::new(BangState { sql, http });
@@ -222,8 +223,10 @@ impl Plugin for BangsPlugin {
         };
 
         // Store the URL for execute() to retrieve.
-        *self.pending_url.lock().expect("pending_url lock not poisoned") =
-            Some(resolved_url.clone());
+        *self
+            .pending_url
+            .lock()
+            .expect("pending_url lock not poisoned") = Some(resolved_url.clone());
 
         // Build the result entry.
         let title = if clean_query.is_empty() {
@@ -295,18 +298,14 @@ impl Plugin for BangsPlugin {
         match method {
             "stats" => {
                 let state = self.state.lock().expect("state lock not poisoned");
-                let state = state
-                    .as_ref()
-                    .context("plugin not yet initialized")?;
+                let state = state.as_ref().context("plugin not yet initialized")?;
 
                 let stats = query_stats(&state.sql)?;
                 Ok(serde_json::to_value(stats).context("serialize stats")?)
             }
             "refresh" => {
                 let state = self.state.lock().expect("state lock not poisoned");
-                let state = state
-                    .as_ref()
-                    .context("plugin not yet initialized")?;
+                let state = state.as_ref().context("plugin not yet initialized")?;
 
                 // Attempt a fresh download. On failure, return the error
                 // as a message rather than bailing — the existing data
@@ -370,13 +369,13 @@ fn lookup_bang(sql: &SqlStorage, trigger: &str) -> Option<BangRecord> {
 /// the original query string.
 fn find_bang_token(query: &str) -> Option<(&str, usize)> {
     for (idx, token) in query.split_whitespace().enumerate() {
-        if let Some(trigger) = token.strip_prefix('!') {
-            if !trigger.is_empty() {
-                // Compute the byte offset of this token in the
-                // original query string.
-                let byte_offset = byte_offset_of_token(query, idx);
-                return Some((trigger, byte_offset));
-            }
+        if let Some(trigger) = token.strip_prefix('!')
+            && !trigger.is_empty()
+        {
+            // Compute the byte offset of this token in the
+            // original query string.
+            let byte_offset = byte_offset_of_token(query, idx);
+            return Some((trigger, byte_offset));
         }
     }
     None
@@ -468,11 +467,9 @@ fn try_import_from_network(state: &BangState) -> anyhow::Result<()> {
 
 /// Import the baked-in bang database (compile-time fallback).
 fn import_from_builtin(sql: &SqlStorage) {
-    let entries = import::parse_bang_json(BAKED_IN_BANGS)
-        .expect("baked-in bang.json is valid");
+    let entries = import::parse_bang_json(BAKED_IN_BANGS).expect("baked-in bang.json is valid");
 
-    import::import_bangs(sql, &entries, "builtin")
-        .expect("import baked-in bang data");
+    import::import_bangs(sql, &entries, "builtin").expect("import baked-in bang data");
 }
 
 // =========================================================

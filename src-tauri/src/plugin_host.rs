@@ -37,12 +37,12 @@ use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
-    ActionId, CancellationToken, PluginViewRef, PostAction, PluginResponse, ResultChannel,
-    SourcedEntry, ScoredEntry, SearchMessage,
+    ActionId, CancellationToken, PluginResponse, PluginViewRef, PostAction, ResultChannel,
+    ScoredEntry, SearchMessage, SourcedEntry,
 };
-use crate::unicode::Utf16Positions;
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
+use crate::unicode::Utf16Positions;
 
 // =========================================================
 // Internal Helpers
@@ -258,11 +258,7 @@ impl PluginHost {
             }
             let plugin_id = plugin.id().to_string();
             for decl in plugin.shortcuts() {
-                if let Some(r) = self.resolve_shortcut(
-                    &plugin_id,
-                    &decl,
-                    Arc::clone(plugin),
-                ) {
+                if let Some(r) = self.resolve_shortcut(&plugin_id, &decl, Arc::clone(plugin)) {
                     registered.push(r);
                 }
             }
@@ -374,11 +370,7 @@ impl PluginHost {
     /// are dispatched concurrently on the blocking thread pool and
     /// their results stream to the frontend as each plugin
     /// completes.
-    pub async fn search(
-        &self,
-        query: &str,
-        on_results: &tauri::ipc::Channel<SearchMessage>,
-    ) {
+    pub async fn search(&self, query: &str, on_results: &tauri::ipc::Channel<SearchMessage>) {
         if query.is_empty() {
             let _ = on_results.send(SearchMessage::Done);
             return;
@@ -414,9 +406,7 @@ impl PluginHost {
 
             while let Some((source, response)) = rx.recv().await {
                 let (view_ref, results) = self.process_plugin_response(
-                    response,
-                    &source,
-                    true, // prefix mode — CustomUI allowed
+                    response, &source, true, // prefix mode — CustomUI allowed
                 );
 
                 if let Some((kind, vr)) = view_ref {
@@ -501,9 +491,7 @@ impl PluginHost {
 
         while let Some((source, response)) = rx.recv().await {
             let (view_ref, mut entries) = self.process_plugin_response(
-                response,
-                &source,
-                false, // non-prefix — CustomUI downgraded
+                response, &source, false, // non-prefix — CustomUI downgraded
             );
 
             self.frecency.apply_scores(&source, &mut entries);
@@ -551,11 +539,14 @@ impl PluginHost {
 
         match &response {
             PluginResponse::CustomUI { view, data, .. } if allow_custom_ui => {
-                view_ref = Some((ViewKind::Custom, PluginViewRef {
-                    plugin_id: source.to_string(),
-                    view: view.clone(),
-                    data: data.clone(),
-                }));
+                view_ref = Some((
+                    ViewKind::Custom,
+                    PluginViewRef {
+                        plugin_id: source.to_string(),
+                        view: view.clone(),
+                        data: data.clone(),
+                    },
+                ));
             }
             PluginResponse::CustomUI { .. } => {
                 // CustomUI is only honoured in prefix mode. In non-prefix
@@ -568,19 +559,23 @@ impl PluginHost {
                 );
             }
             PluginResponse::InlineUI { view, data, .. } => {
-                view_ref = Some((ViewKind::Inline, PluginViewRef {
-                    plugin_id: source.to_string(),
-                    view: view.clone(),
-                    data: data.clone(),
-                }));
+                view_ref = Some((
+                    ViewKind::Inline,
+                    PluginViewRef {
+                        plugin_id: source.to_string(),
+                        view: view.clone(),
+                        data: data.clone(),
+                    },
+                ));
             }
             PluginResponse::Results(_) => {}
         }
 
         let entries: Vec<SourcedEntry> = match response {
             PluginResponse::Results(results) => results,
-            PluginResponse::CustomUI { results, .. }
-            | PluginResponse::InlineUI { results, .. } => results,
+            PluginResponse::CustomUI { results, .. } | PluginResponse::InlineUI { results, .. } => {
+                results
+            }
         }
         .into_iter()
         .map(|r| SourcedEntry::new(source.to_string(), r))
@@ -657,10 +652,8 @@ impl PluginHost {
                     title_indices.sort_unstable();
                     title_indices.dedup();
 
-                    let title_positions = Utf16Positions::from_graphemes(
-                        title_indices.clone(),
-                        &entry.title,
-                    );
+                    let title_positions =
+                        Utf16Positions::from_graphemes(title_indices.clone(), &entry.title);
 
                     results.push(SourcedEntry::new(
                         source.clone(),

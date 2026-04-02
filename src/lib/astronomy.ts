@@ -106,18 +106,12 @@ export const CIVIL_TWILIGHT_ALTITUDE = RAD * -6;
  * - {@link SUNSET_ALTITUDE} (−0.833°) — sunrise / sunset
  * - {@link CIVIL_TWILIGHT_ALTITUDE} (−6°) — civil twilight boundary
  */
-export function sunAltitudeHourAngle(
-  date: Date,
-  latDeg: number,
-  altitude: number,
-): number | null {
+export function sunAltitudeHourAngle(date: Date, latDeg: number, altitude: number): number | null {
   const d = toDays(date);
   const { dec } = sunCoords(d);
   const lat = latDeg * RAD;
 
-  const cosH =
-    (sin(altitude) - sin(lat) * sin(dec)) /
-    (cos(lat) * cos(dec));
+  const cosH = (sin(altitude) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec));
 
   // Sun never crosses this altitude at this latitude/date.
   if (cosH < -1 || cosH > 1) return null;
@@ -131,18 +125,12 @@ export function sunAltitudeHourAngle(
  * the given date at the given latitude. Useful to distinguish the
  * two `null` cases from {@link sunAltitudeHourAngle}.
  */
-export function isSunAlwaysAbove(
-  date: Date,
-  latDeg: number,
-  altitude: number,
-): boolean {
+export function isSunAlwaysAbove(date: Date, latDeg: number, altitude: number): boolean {
   const d = toDays(date);
   const { dec } = sunCoords(d);
   const lat = latDeg * RAD;
 
-  const cosH =
-    (sin(altitude) - sin(lat) * sin(dec)) /
-    (cos(lat) * cos(dec));
+  const cosH = (sin(altitude) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec));
 
   // cosH < -1 means the sun is always above this altitude.
   return cosH < -1;
