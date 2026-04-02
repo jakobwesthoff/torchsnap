@@ -10,7 +10,7 @@
 //
 // - Registration (register)
 // - Settings initialization (Phase 1: synchronous defaults)
-// - Parallel plugin setup (Phase 2: rayon background pool)
+// - Parallel plugin setup (Phase 2: tokio spawn_blocking)
 // - Global shortcut registration and reactive re-registration
 // - Search routing (nucleo + prefix matching)
 // - Action execution and message routing
@@ -23,11 +23,9 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::thread;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use rayon::prelude::*;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_store::Store;
@@ -166,9 +164,12 @@ impl PluginHost {
 
         // -------------------------------------------------------
         // Phase 2: Parallel plugin setup (background)
+        //
+        // Each plugin's setup() runs on a Tokio spawn_blocking
+        // thread. This gives plugins access to the Tokio runtime
+        // (e.g. for Http requests via block_on) while keeping
+        // setup parallelism.
         // -------------------------------------------------------
-        let mut setup_fns: Vec<Box<dyn FnOnce() + Send>> = Vec::new();
-
         let handle = app.clone();
         for p in &self.plugins {
             let p = Arc::clone(p);
@@ -182,24 +183,8 @@ impl PluginHost {
                 ),
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
-            setup_fns.push(Box::new(move || p.setup(&h, &ctx)));
+            tokio::task::spawn_blocking(move || p.setup(&h, &ctx));
         }
-
-        thread::spawn(move || {
-            let cores = thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4);
-            let num_threads = (cores * 7 / 10).max(1);
-
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(num_threads)
-                .build()
-                .expect("rayon setup thread pool");
-
-            pool.install(|| {
-                setup_fns.into_par_iter().for_each(|f| f());
-            });
-        });
     }
 
     /// Spawn the shortcut reactor task. Called once after the host
