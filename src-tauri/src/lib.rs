@@ -462,6 +462,7 @@ pub fn run() {
             )));
             host.register(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             host.register(Box::new(plugins::calculator::CalculatorPlugin::new()));
+            host.register(Box::new(plugins::bangs::BangsPlugin::new()));
 
             // Settings init + shortcut registration + parallel setup.
             host.initialize_and_start(app.handle());

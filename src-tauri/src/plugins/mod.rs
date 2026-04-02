@@ -23,6 +23,7 @@ pub mod app_launcher;
 pub mod calculator;
 pub mod clipboard;
 pub mod commands;
+pub mod bangs;
 pub mod emoji;
 pub mod system_commands;
 pub mod system_preferences;

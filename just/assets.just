@@ -9,7 +9,7 @@
 # already up to date relative to their sources.
 
 # Generate all assets (mascots, mascot data, timezone data, app icons, tray icon)
-assets: asset-mascots asset-mascot-data asset-timezone-data asset-app-icons asset-tray-icon
+assets: asset-mascots asset-mascot-data asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
 
 # Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental).
 # All Tauri targets (WebKit, WebView2) support WebP natively — no PNG output needed.
