@@ -8,7 +8,7 @@
 // Driver-hiding wrapper around reqwest. The public API is
 // entirely synchronous — internally it uses an async
 // reqwest::Client and bridges to sync via
-// `tokio::runtime::Handle::current().block_on()`.
+// `tauri::async_runtime::handle().block_on()`.
 //
 // reqwest::blocking::Client is deliberately avoided because
 // it panics when used inside a tokio runtime, which is where
@@ -252,10 +252,12 @@ impl RequestBuilder {
             request = request.body(body);
         }
 
-        // Bridge sync→async: execute the request on the current
-        // tokio runtime. This is safe from `spawn_blocking` and
-        // future WASM host function contexts.
-        let handle = tokio::runtime::Handle::current();
+        // Bridge sync→async: execute the request on the Tauri-managed
+        // tokio runtime. Using the explicit handle rather than
+        // `Handle::current()` so this works from any thread (Rayon
+        // pool, plain `thread::spawn`, etc.), not just from contexts
+        // where a Tokio runtime guard is active.
+        let handle = tauri::async_runtime::handle();
         let response = handle
             .block_on(request.send())
             .context("send HTTP request")?;
@@ -365,7 +367,7 @@ impl HttpResponse {
         };
 
         // Bridge sync→async for the chunk read.
-        let handle = tokio::runtime::Handle::current();
+        let handle = tauri::async_runtime::handle();
 
         // We need a mutable reference to the response for chunk(),
         // but self.inner is an Option — take it out temporarily.
