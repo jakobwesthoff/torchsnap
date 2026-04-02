@@ -167,7 +167,6 @@ impl Plugin for BangsPlugin {
         }
 
         self.ready.store(true, Ordering::Relaxed);
-        eprintln!("bangs: plugin ready");
     }
 
     fn teardown(&self) {}
@@ -440,9 +439,7 @@ fn check_has_data(sql: &SqlStorage) -> bool {
 /// baked-in data if the network fails.
 fn import_from_best_source(state: &BangState) {
     match try_import_from_network(state) {
-        Ok(()) => {
-            eprintln!("bangs: imported bang database from network");
-        }
+        Ok(()) => {}
         Err(e) => {
             eprintln!("bangs: network fetch failed, using baked-in data: {e:#}");
             import_from_builtin(&state.sql);
