@@ -252,8 +252,11 @@ impl RequestBuilder {
             request = request.body(body);
         }
 
-        // Bridge sync→async: execute the request on the Tauri-managed
-        // tokio runtime. Using the explicit handle rather than
+        // FIXME: Once plugin setup() runs on Tokio spawn_blocking
+        // (see todo 01kn803dhqt6tsnzgjs50tkm70), this can revert to
+        // `Handle::current()` since a Tokio guard will be in scope.
+        //
+        // Using the explicit Tauri runtime handle rather than
         // `Handle::current()` so this works from any thread (Rayon
         // pool, plain `thread::spawn`, etc.), not just from contexts
         // where a Tokio runtime guard is active.
