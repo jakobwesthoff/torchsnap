@@ -228,12 +228,14 @@ impl Plugin for BangsPlugin {
             .lock()
             .expect("pending_url lock not poisoned") = Some(resolved_url.clone());
 
-        // Build the result entry.
+        // Build the result entry with the service name highlighted.
         let title = if clean_query.is_empty() {
             format!("Open {}", bang.service_name)
         } else {
             format!("Open '{}' in {}", clean_query, bang.service_name)
         };
+        let title_positions =
+            Utf16Positions::from_substring(&title, &bang.service_name, false);
 
         let entry = ScoredEntry {
             id: format!("!{}", bang_trigger),
@@ -241,7 +243,7 @@ impl Plugin for BangsPlugin {
             subtitle: Some(resolved_url),
             icon: Some(EntryIcon::HeroIcon("arrow-top-right-on-square".to_string())),
             score: BANG_SCORE,
-            title_positions: Utf16Positions(vec![]),
+            title_positions,
             subtitle_positions: Utf16Positions(vec![]),
             actions: vec![Action {
                 id: ActionId::Open,
