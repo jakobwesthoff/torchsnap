@@ -167,9 +167,15 @@ impl PluginHost {
         //
         // Each plugin's setup() runs on a Tokio spawn_blocking
         // thread. This gives plugins access to the Tokio runtime
-        // (e.g. for Http requests via block_on) while keeping
-        // setup parallelism.
+        // (e.g. for Http requests via Handle::current()) while
+        // keeping setup parallelism.
+        //
+        // We obtain the runtime handle explicitly because this
+        // method is called from Tauri's synchronous setup()
+        // callback, where no Tokio guard is active on the current
+        // thread.
         // -------------------------------------------------------
+        let runtime = tauri::async_runtime::handle();
         let handle = app.clone();
         for p in &self.plugins {
             let p = Arc::clone(p);
@@ -183,7 +189,7 @@ impl PluginHost {
                 ),
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
-            tokio::task::spawn_blocking(move || p.setup(&h, &ctx));
+            runtime.spawn_blocking(move || p.setup(&h, &ctx));
         }
     }
 

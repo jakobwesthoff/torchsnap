@@ -51,15 +51,26 @@ pub fn search_execute(
 
 /// Send a custom message to a plugin and optionally receive
 /// streamed updates over the channel.
+///
+/// This command is async so that the blocking plugin handler runs
+/// on a Tokio `spawn_blocking` thread rather than the main thread.
+/// This is necessary because plugin handlers may perform HTTP
+/// requests (e.g. the bangs plugin's "refresh"), which require a
+/// Tokio runtime context (`Handle::current()`) for reqwest's
+/// internal async machinery.
 #[tauri::command]
-pub fn plugin_message(
+pub async fn plugin_message(
     source: String,
     method: String,
     payload: Value,
     channel: Channel<Value>,
     state: State<'_, Arc<PluginHost>>,
 ) -> Result<Value, String> {
-    state
-        .handle_message(&source, &method, payload, channel)
-        .map_err(|e| format!("{e:#}"))
+    let host = Arc::clone(&state);
+    tokio::task::spawn_blocking(move || {
+        host.handle_message(&source, &method, payload, channel)
+            .map_err(|e| format!("{e:#}"))
+    })
+    .await
+    .expect("plugin message task must not panic")
 }
