@@ -82,6 +82,63 @@ impl Utf16Positions {
     pub fn from_graphemes(positions: Vec<u32>, text: &str) -> Self {
         GraphemePositions(positions).to_utf16(text)
     }
+
+    /// Compute UTF-16 highlight positions for occurrences of a
+    /// substring within a text.
+    ///
+    /// When `all` is `false`, only the first occurrence is
+    /// highlighted. When `true`, every non-overlapping occurrence
+    /// is highlighted.
+    ///
+    /// Returns an empty `Utf16Positions` if the substring is not
+    /// found.
+    pub fn from_substring(text: &str, substring: &str, all: bool) -> Self {
+        if substring.is_empty() {
+            return Self::empty();
+        }
+
+        // Pre-compute the UTF-16 offset of every byte position that
+        // falls on a char boundary. This lets us map any byte-based
+        // match index to its UTF-16 offset with a single lookup.
+        let byte_to_utf16: Vec<u32> = {
+            let mut table = Vec::with_capacity(text.len() + 1);
+            let mut utf16_offset = 0u32;
+            for ch in text.chars() {
+                // Every byte of this char maps to the same UTF-16 start.
+                for _ in 0..ch.len_utf8() {
+                    table.push(utf16_offset);
+                }
+                utf16_offset += ch.len_utf16() as u32;
+            }
+            // Sentinel for end-of-string.
+            table.push(utf16_offset);
+            table
+        };
+
+        let mut positions = Vec::new();
+        let mut search_start = 0;
+
+        loop {
+            let Some(byte_start) = text[search_start..].find(substring) else {
+                break;
+            };
+            let byte_start = search_start + byte_start;
+            let byte_end = byte_start + substring.len();
+
+            let utf16_start = byte_to_utf16[byte_start];
+            let utf16_end = byte_to_utf16[byte_end];
+            for pos in utf16_start..utf16_end {
+                positions.push(pos);
+            }
+
+            if !all {
+                break;
+            }
+            search_start = byte_end;
+        }
+
+        Self(positions)
+    }
 }
 
 #[cfg(test)]
@@ -122,6 +179,52 @@ mod tests {
         let positions = GraphemePositions(vec![]);
         let result = positions.to_utf16("🎨 test");
         assert_eq!(result.0, Vec::<u32>::new());
+    }
+
+    #[test]
+    fn substring_first_occurrence() {
+        let text = "Open 'rust async' in Google";
+        let positions = Utf16Positions::from_substring(text, "Google", false);
+        // "Google" starts at char/UTF-16 index 21
+        assert_eq!(positions.0, vec![21, 22, 23, 24, 25, 26]);
+    }
+
+    #[test]
+    fn substring_all_occurrences() {
+        let text = "foo bar foo baz foo";
+        let positions = Utf16Positions::from_substring(text, "foo", true);
+        // "foo" at positions 0-2, 8-10, 16-18
+        assert_eq!(positions.0, vec![0, 1, 2, 8, 9, 10, 16, 17, 18]);
+    }
+
+    #[test]
+    fn substring_not_found() {
+        let text = "Open Google";
+        let positions = Utf16Positions::from_substring(text, "Yahoo", false);
+        assert!(positions.0.is_empty());
+    }
+
+    #[test]
+    fn substring_empty_needle() {
+        let text = "Open Google";
+        let positions = Utf16Positions::from_substring(text, "", false);
+        assert!(positions.0.is_empty());
+    }
+
+    #[test]
+    fn substring_with_emoji() {
+        // 🎨 is 1 grapheme, 2 UTF-16 code units
+        let text = "Open 🎨 Google";
+        let positions = Utf16Positions::from_substring(text, "Google", false);
+        // "Open " = 5 UTF-16 units, "🎨" = 2, " " = 1 → "Google" at 8
+        assert_eq!(positions.0, vec![8, 9, 10, 11, 12, 13]);
+    }
+
+    #[test]
+    fn substring_first_only_with_multiple() {
+        let text = "foo bar foo";
+        let positions = Utf16Positions::from_substring(text, "foo", false);
+        assert_eq!(positions.0, vec![0, 1, 2]);
     }
 
     #[test]
