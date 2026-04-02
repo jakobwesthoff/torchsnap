@@ -17,6 +17,7 @@
 // =========================================================
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
@@ -245,6 +246,11 @@ impl<T: FromSqlValue> FromSqlValue for Option<T> {
 /// `anyhow::Context`.
 pub struct SqlStorage {
     conn: Mutex<Connection>,
+    /// Monotonically increasing counter for generating unique savepoint
+    /// names. Each `transaction()` call gets `sp_{n}` where `n` is the
+    /// value before incrementing. Wraps on overflow (safe — a prior
+    /// `sp_0` from 2^64 calls ago is long gone).
+    savepoint_counter: AtomicU64,
 }
 
 impl SqlStorage {
@@ -274,6 +280,7 @@ impl SqlStorage {
 
         Ok(Self {
             conn: Mutex::new(conn),
+            savepoint_counter: AtomicU64::new(0),
         })
     }
 
@@ -326,6 +333,63 @@ impl SqlStorage {
             result.push(f(&sql_row)?);
         }
         Ok(result)
+    }
+
+    // =========================================================
+    // Transactions (Savepoint-based)
+    //
+    // Uses SQLite SAVEPOINT/RELEASE/ROLLBACK TO uniformly at all
+    // nesting depths. SQLite supports top-level SAVEPOINTs without
+    // an enclosing BEGIN, so no special-casing is needed. Each
+    // call gets a unique savepoint name via an atomic counter.
+    // =========================================================
+
+    /// Execute a closure inside a savepoint-based transaction.
+    ///
+    /// On success the savepoint is released (committed). On error
+    /// it is rolled back and the error propagated. Nesting is
+    /// fully supported — inner `transaction()` calls create nested
+    /// savepoints that can be independently rolled back.
+    ///
+    /// ```ignore
+    /// storage.transaction(|| {
+    ///     storage.execute("INSERT INTO t (v) VALUES (?)", &[val("a")])?;
+    ///     storage.execute("INSERT INTO t (v) VALUES (?)", &[val("b")])?;
+    ///     Ok(())
+    /// })?;
+    /// ```
+    pub fn transaction<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let id = self.savepoint_counter.fetch_add(1, Ordering::Relaxed);
+        let name = format!("sp_{id}");
+
+        // SAVEPOINT opens the transaction (or nested savepoint).
+        self.execute_raw(&format!("SAVEPOINT {name}"))
+            .with_context(|| format!("create savepoint {name}"))?;
+
+        match f() {
+            Ok(value) => {
+                // RELEASE commits the savepoint.
+                self.execute_raw(&format!("RELEASE {name}"))
+                    .with_context(|| format!("release savepoint {name}"))?;
+                Ok(value)
+            }
+            Err(err) => {
+                // ROLLBACK TO restores state but keeps the savepoint
+                // active. The subsequent RELEASE removes it cleanly.
+                let _ = self.execute_raw(&format!("ROLLBACK TO {name}"));
+                let _ = self.execute_raw(&format!("RELEASE {name}"));
+                Err(err)
+            }
+        }
+    }
+
+    /// Execute a raw SQL statement with no parameters. Used
+    /// internally for savepoint control statements that cannot
+    /// go through the parameterized path.
+    fn execute_raw(&self, sql: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sql connection not poisoned");
+        conn.execute_batch(sql).context("execute raw SQL")?;
+        Ok(())
     }
 }
 
@@ -580,5 +644,181 @@ mod tests {
             .expect("query with list");
 
         assert_eq!(names, vec!["alpha", "gamma"]);
+    }
+
+    #[test]
+    fn transaction_commit() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        storage
+            .transaction(|| {
+                storage.execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from("one")],
+                )?;
+                storage.execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from("two")],
+                )?;
+                Ok(())
+            })
+            .expect("transaction commit");
+
+        let names: Vec<String> = storage
+            .query_map("SELECT name FROM items ORDER BY name", &[], |row| {
+                row.get(0)
+            })
+            .expect("query");
+        assert_eq!(names, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn transaction_rollback() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        // Insert one row outside the transaction so we can verify
+        // it survives the rollback.
+        storage
+            .execute(
+                "INSERT INTO items (name) VALUES (?)",
+                &[SqlValue::from("before")],
+            )
+            .expect("insert before");
+
+        let result: anyhow::Result<()> = storage.transaction(|| {
+            storage.execute(
+                "INSERT INTO items (name) VALUES (?)",
+                &[SqlValue::from("inside")],
+            )?;
+            anyhow::bail!("intentional failure");
+        });
+        assert!(result.is_err());
+
+        // Only the row inserted before the transaction should remain.
+        let names: Vec<String> = storage
+            .query_map("SELECT name FROM items", &[], |row| row.get(0))
+            .expect("query");
+        assert_eq!(names, vec!["before"]);
+    }
+
+    #[test]
+    fn transaction_nested() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        storage
+            .transaction(|| {
+                storage.execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from("outer")],
+                )?;
+
+                // Inner transaction that fails — should only roll back
+                // its own work, leaving the outer insert intact.
+                let inner_result: anyhow::Result<()> = storage.transaction(|| {
+                    storage.execute(
+                        "INSERT INTO items (name) VALUES (?)",
+                        &[SqlValue::from("inner")],
+                    )?;
+                    anyhow::bail!("inner failure");
+                });
+                assert!(inner_result.is_err());
+
+                Ok(())
+            })
+            .expect("outer transaction commit");
+
+        let names: Vec<String> = storage
+            .query_map("SELECT name FROM items", &[], |row| row.get(0))
+            .expect("query");
+        assert_eq!(names, vec!["outer"]);
+    }
+
+    #[test]
+    fn transaction_returns_value() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        let count = storage
+            .transaction(|| {
+                storage.execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from("a")],
+                )?;
+                storage.execute(
+                    "INSERT INTO items (name) VALUES (?)",
+                    &[SqlValue::from("b")],
+                )?;
+                let rows: Vec<String> = storage
+                    .query_map("SELECT name FROM items", &[], |row| row.get(0))?;
+                Ok(rows.len())
+            })
+            .expect("transaction with return value");
+
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn transaction_unique_savepoint_names() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let db_path = dir.path().join("test.db");
+
+        let storage = SqlStorage::open(
+            db_path,
+            &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+        )
+        .expect("open database");
+
+        // Run multiple sequential transactions to verify the counter
+        // increments and savepoint names don't collide.
+        for i in 0..5 {
+            storage
+                .transaction(|| {
+                    storage.execute(
+                        "INSERT INTO items (name) VALUES (?)",
+                        &[SqlValue::from(format!("item_{i}"))],
+                    )?;
+                    Ok(())
+                })
+                .expect("sequential transaction");
+        }
+
+        let names: Vec<String> = storage
+            .query_map(
+                "SELECT name FROM items ORDER BY name",
+                &[],
+                |row| row.get(0),
+            )
+            .expect("query");
+        assert_eq!(
+            names,
+            vec!["item_0", "item_1", "item_2", "item_3", "item_4"]
+        );
     }
 }
