@@ -15,7 +15,11 @@
  */
 
 import { type ComponentType, type SVGProps } from "react";
-import { CalculatorIcon, ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  CalculatorIcon,
+  ClipboardDocumentListIcon,
+} from "@heroicons/react/24/outline";
 import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
 import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
 
@@ -50,6 +54,11 @@ const PLUGIN_REGISTRY: Record<string, PluginRegistryEntry> = {
       history: launcherComponent(() => import("./clipboard/ClipboardView")),
     },
     settings: settingsComponent(() => import("./clipboard/ClipboardSettings")),
+  },
+  bangs: {
+    label: "Bangs",
+    settingsIcon: ArrowTopRightOnSquareIcon,
+    settings: settingsComponent(() => import("./bangs/BangsSettings")),
   },
   calculator: {
     label: "Calculator",
