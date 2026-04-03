@@ -153,7 +153,7 @@ export const LogEntryRow = memo(function LogEntryRow({
       )}
     >
       {/* Timestamp */}
-      <span className="shrink-0 w-[70px] tabular-nums text-text-muted font-mono text-[11px] leading-5 select-text">
+      <span className="shrink-0 w-[85px] tabular-nums text-text-muted font-mono text-[11px] leading-5 select-text">
         {formatTimestamp(entry.timestamp)}
       </span>
 
