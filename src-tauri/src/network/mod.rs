@@ -9,8 +9,13 @@
 // (reqwest) behind a simple, WASM-boundary-compatible API.
 // Plugins construct their own `Http` instance in `setup()`,
 // similar to how `SqlStorage` is used for per-plugin databases.
+//
+// The `website_metadata` submodule builds on the HTTP layer
+// to provide a shared, cached website metadata service
+// (title, description, favicon) for plugins.
 // =========================================================
 
 mod http;
+pub mod website_metadata;
 
 pub use http::{Http, HttpBuilder, HttpResponse};

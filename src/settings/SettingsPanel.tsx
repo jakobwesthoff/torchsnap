@@ -3,13 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { Suspense, useMemo, useState } from "react";
-import { ChartBarIcon, Cog6ToothIcon, SwatchIcon } from "@heroicons/react/24/outline";
+import { ChartBarIcon, Cog6ToothIcon, GlobeAltIcon, SwatchIcon } from "@heroicons/react/24/outline";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { FrecencySection } from "./sections/FrecencySection";
+import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
 
 // =========================================================
 // Built-in sidebar sections
@@ -19,6 +20,7 @@ const BUILT_IN_SECTIONS: SidebarItem[] = [
   { id: "general", label: "General", settingsIcon: Cog6ToothIcon },
   { id: "appearance", label: "Appearance", settingsIcon: SwatchIcon },
   { id: "frecency", label: "Frecency", settingsIcon: ChartBarIcon },
+  { id: "website-metadata", label: "Website Metadata", settingsIcon: GlobeAltIcon },
 ];
 
 // =========================================================
@@ -76,6 +78,9 @@ function SectionContent({
   }
   if (activeSection === "frecency") {
     return <FrecencySection />;
+  }
+  if (activeSection === "website-metadata") {
+    return <WebsiteMetadataSection />;
   }
 
   // Plugin sections — look up the settings component and inject
