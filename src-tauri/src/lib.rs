@@ -14,6 +14,7 @@ mod settings;
 mod settings_notifier;
 mod storage;
 mod unicode;
+mod wasm_plugin;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
