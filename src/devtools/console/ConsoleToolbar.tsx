@@ -5,13 +5,13 @@
 // =========================================================
 // Console Toolbar
 //
-// Filter bar with level pills, span pill, source chips,
+// Filter bar with level pills, span pill, source dropdown,
 // search input, and action buttons. Groups are separated by
 // thin vertical dividers.
 // =========================================================
 
-import { useRef } from "react";
-import { TrashIcon } from "@heroicons/react/24/outline";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDownIcon, FunnelIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
@@ -58,7 +58,133 @@ const levelStyles: Record<LogLevel, LevelStyle> = {
 const LEVEL_ORDER: LogLevel[] = ["error", "warn", "info", "debug", "trace"];
 
 // =========================================================
-// Component
+// Source Filter Dropdown
+// =========================================================
+
+interface SourceDropdownProps {
+  filters: LogFilters;
+  knownSources: string[];
+  onToggleSource: (source: string) => void;
+  onSetAllSources: () => void;
+}
+
+function SourceDropdown({
+  filters,
+  knownSources,
+  onToggleSource,
+  onSetAllSources,
+}: SourceDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const isAllSources = filters.sources === "all";
+  const selectedCount =
+    filters.sources === "all" ? knownSources.length : filters.sources.size;
+
+  let label: string;
+  if (isAllSources) {
+    label = "All sources";
+  } else if (selectedCount === 1) {
+    const selected = filters.sources as Set<string>;
+    label = Array.from(selected)[0];
+  } else {
+    label = `${selectedCount} sources`;
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors",
+          "bg-surface border border-border-input rounded-md hover:border-border-hover",
+          !isAllSources ? "text-text-primary" : "text-text-secondary",
+        )}
+      >
+        <FunnelIcon className="w-3.5 h-3.5" />
+        <span className="max-w-[120px] truncate">{label}</span>
+        <ChevronDownIcon className={cn("w-3 h-3 text-text-muted transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] py-1 bg-surface border border-border rounded-lg shadow-lg">
+          {/* All sources option */}
+          <button
+            onClick={() => { onSetAllSources(); setOpen(false); }}
+            className={cn(
+              "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-surface-hover transition-colors",
+              isAllSources && "text-text-primary font-medium",
+              !isAllSources && "text-text-secondary",
+            )}
+          >
+            <span className={cn(
+              "w-3.5 h-3.5 flex items-center justify-center rounded border",
+              isAllSources ? "bg-accent border-accent" : "border-border-input",
+            )}>
+              {isAllSources && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              )}
+            </span>
+            All sources
+          </button>
+
+          <div className="mx-2 my-1 border-t border-border-divider" />
+
+          {/* Individual sources */}
+          {knownSources.map((source) => {
+            const checked = isAllSources || (filters.sources !== "all" && filters.sources.has(source));
+            const isPlugin = source !== "host";
+
+            return (
+              <button
+                key={source}
+                onClick={() => onToggleSource(source)}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <span className={cn(
+                  "w-3.5 h-3.5 flex items-center justify-center rounded border",
+                  checked ? "bg-accent border-accent" : "border-border-input",
+                )}>
+                  {checked && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  )}
+                </span>
+                {isPlugin && (
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    PLUGIN_COLORS[pluginColorIndex(source)],
+                  )} />
+                )}
+                <span className={cn(!isPlugin && "italic text-text-secondary")}>
+                  {source}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// ConsoleToolbar
 // =========================================================
 
 interface ConsoleToolbarProps {
@@ -94,8 +220,6 @@ export function ConsoleToolbar({
 }: ConsoleToolbarProps) {
   const localSearchRef = useRef<HTMLInputElement>(null);
   const inputRef = searchInputRef ?? localSearchRef;
-
-  const isAllSources = filters.sources === "all";
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-inset/30 shrink-0">
@@ -151,57 +275,16 @@ export function ConsoleToolbar({
       {/* Divider */}
       <div className="w-px h-4 bg-border-divider" />
 
-      {/* Source filter chips */}
-      {knownSources.length > 0 && (
-        <>
-          <div className="flex items-center gap-1">
-            {/* "All" chip */}
-            <button
-              onClick={onSetAllSources}
-              className={cn(
-                "px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border",
-                isAllSources
-                  ? "bg-surface-active border-border-hover text-text-primary"
-                  : "bg-transparent border-border text-text-muted opacity-50",
-              )}
-            >
-              All
-            </button>
+      {/* Source filter dropdown */}
+      <SourceDropdown
+        filters={filters}
+        knownSources={knownSources}
+        onToggleSource={onToggleSource}
+        onSetAllSources={onSetAllSources}
+      />
 
-            {/* Per-source chips */}
-            {knownSources.map((source) => {
-              const selected = isAllSources || (filters.sources !== "all" && filters.sources.has(source));
-              const isPlugin = source !== "host";
-
-              return (
-                <button
-                  key={source}
-                  onClick={() => onToggleSource(source)}
-                  className={cn(
-                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border",
-                    selected
-                      ? "bg-surface-active border-border-hover text-text-primary"
-                      : "bg-transparent border-border text-text-muted opacity-50",
-                  )}
-                >
-                  {isPlugin && (
-                    <span
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full shrink-0",
-                        PLUGIN_COLORS[pluginColorIndex(source)],
-                      )}
-                    />
-                  )}
-                  {source}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Divider */}
-          <div className="w-px h-4 bg-border-divider" />
-        </>
-      )}
+      {/* Divider */}
+      <div className="w-px h-4 bg-border-divider" />
 
       {/* Entry count */}
       <span className="text-[10px] text-text-muted tabular-nums shrink-0">
@@ -230,7 +313,6 @@ export function ConsoleToolbar({
 
       {/* Actions */}
       <div className="flex items-center gap-1">
-        {/* Clear */}
         <button
           className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors"
           onClick={onClear}
