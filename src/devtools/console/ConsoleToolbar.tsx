@@ -1,0 +1,162 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// =========================================================
+// Console Toolbar
+//
+// Filter bar with level pills, source filter, search input,
+// and action buttons (pause/clear). Groups are separated by
+// thin vertical dividers.
+// =========================================================
+
+import { useRef } from "react";
+import { cn } from "../../lib/cn";
+import type { LogLevel } from "../types";
+import type { LogFilters } from "./useLogFilters";
+
+// =========================================================
+// Level Pill Configuration
+// =========================================================
+
+interface LevelStyle {
+  active: string;
+  dot: string;
+  text: string;
+}
+
+const levelStyles: Record<LogLevel, LevelStyle> = {
+  error: {
+    active: "bg-red-500/15 border-red-500/30",
+    dot: "bg-red-500",
+    text: "text-red-400",
+  },
+  warn: {
+    active: "bg-amber-500/15 border-amber-500/30",
+    dot: "bg-amber-500",
+    text: "text-amber-400",
+  },
+  info: {
+    active: "bg-blue-500/15 border-blue-500/30",
+    dot: "bg-blue-500",
+    text: "text-blue-400",
+  },
+  debug: {
+    active: "bg-gray-500/15 border-gray-500/30",
+    dot: "bg-gray-400",
+    text: "text-text-tertiary",
+  },
+  trace: {
+    active: "bg-gray-500/10 border-gray-500/20",
+    dot: "bg-gray-300",
+    text: "text-text-muted",
+  },
+};
+
+const LEVEL_ORDER: LogLevel[] = ["error", "warn", "info", "debug", "trace"];
+
+// =========================================================
+// Component
+// =========================================================
+
+interface ConsoleToolbarProps {
+  filters: LogFilters;
+  onToggleLevel: (level: LogLevel) => void;
+  onSetSearchText: (text: string) => void;
+  onClear: () => void;
+  levelCounts: Record<LogLevel, number>;
+  totalCount: number;
+  filteredCount: number;
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
+}
+
+export function ConsoleToolbar({
+  filters,
+  onToggleLevel,
+  onSetSearchText,
+  onClear,
+  levelCounts,
+  totalCount,
+  filteredCount,
+  searchInputRef,
+}: ConsoleToolbarProps) {
+  const localSearchRef = useRef<HTMLInputElement>(null);
+  const inputRef = searchInputRef ?? localSearchRef;
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-inset/30 shrink-0">
+      {/* Level filter pills */}
+      <div className="flex items-center gap-1">
+        {LEVEL_ORDER.map((level) => {
+          const enabled = filters.levels.has(level);
+          const style = levelStyles[level];
+          const count = levelCounts[level];
+
+          return (
+            <button
+              key={level}
+              onClick={() => onToggleLevel(level)}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-all",
+                "border",
+                enabled
+                  ? cn(style.active, style.text)
+                  : "bg-transparent border-border text-text-muted opacity-50",
+              )}
+            >
+              <span
+                className={cn("w-1.5 h-1.5 rounded-full", style.dot)}
+              />
+              {level}
+              {count > 0 && (
+                <span className="ml-0.5 tabular-nums">{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-4 bg-border-divider" />
+
+      {/* Entry count */}
+      <span className="text-[10px] text-text-muted tabular-nums shrink-0">
+        {filteredCount === totalCount
+          ? `${totalCount}`
+          : `${filteredCount}/${totalCount}`}
+      </span>
+
+      {/* Divider */}
+      <div className="w-px h-4 bg-border-divider" />
+
+      {/* Search input */}
+      <div className="flex-1 max-w-xs">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Filter..."
+          value={filters.searchText}
+          onChange={(e) => onSetSearchText(e.target.value)}
+          className="w-full h-7 px-2.5 text-xs bg-surface border border-border-input rounded-md placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+        />
+      </div>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Actions */}
+      <div className="flex items-center gap-1">
+        {/* Clear */}
+        <button
+          className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors"
+          onClick={onClear}
+          title="Clear log (⌘K)"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
