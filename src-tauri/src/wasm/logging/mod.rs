@@ -25,6 +25,7 @@
 //        └── SpanGuard (RAII span lifecycle)
 // =========================================================
 
+pub mod channel;
 pub mod storage;
 
 use std::time::SystemTime;

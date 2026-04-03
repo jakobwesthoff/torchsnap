@@ -16,7 +16,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "macos-private-api"] }
+tauri = { version = "2", features = [
+    "protocol-asset",
+    "tray-icon",
+    "image-png",
+    "macos-private-api",
+] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-global-shortcut = "2"
@@ -28,20 +33,32 @@ plist = "1.8.0"
 blake3 = "1.8.3"
 tauri-plugin-clipboard-manager = "2.3.2"
 serde_json = "1.0.149"
-image = { version = "0.25.10", features = ["webp", "ico", "png"], default-features = false }
+image = { version = "0.25.10", features = [
+    "webp",
+    "ico",
+    "png",
+], default-features = false }
 tauri-plugin-os = "2"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 rusqlite_migration = "2.5.0"
 clipboard-rs = "0.3.3"
 objc2-app-kit = { version = "0.3.2", features = ["NSPasteboard"] }
 ulid = "1.2.1"
-tokio = { version = "1.50.0", default-features = false, features = ["sync", "time", "net", "io-util"] }
+tokio = { version = "1.50.0", default-features = false, features = [
+    "sync",
+    "time",
+    "net",
+    "io-util",
+] }
 tauri-plugin-autostart = "2.5.1"
 evalexpr = "13.1.0"
 regex = "1.12.3"
 tokio-util = "0.7.18"
 unicode-segmentation = "1.13"
-reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"] }
+reqwest = { version = "0.13.2", default-features = false, features = [
+    "rustls",
+    "json",
+] }
 urlencoding = "2.1.3"
 scraper = "0.22"
 infer = "0.16"
@@ -56,10 +73,30 @@ wasmtime-wasi = "43.0.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-objc2-app-kit = { version = "0.3.2", features = ["NSWindow", "NSWorkspace", "NSImage", "NSGraphicsContext", "NSImageRep", "objc2-core-graphics"] }
-objc2-core-graphics = { version = "0.3.2", features = ["CGImage", "CGColorSpace", "CGContext", "CGBitmapContext"], default-features = false }
+objc2-app-kit = { version = "0.3.2", features = [
+    "NSWindow",
+    "NSWorkspace",
+    "NSImage",
+    "NSGraphicsContext",
+    "NSImageRep",
+    "objc2-core-graphics",
+] }
+objc2-core-graphics = { version = "0.3.2", features = [
+    "CGImage",
+    "CGColorSpace",
+    "CGContext",
+    "CGBitmapContext",
+], default-features = false }
 objc2-core-foundation = { version = "0.3.2", default-features = false }
-objc2-foundation = { version = "0.3.2", features = ["NSString", "NSData", "NSGeometry"] }
+objc2-foundation = { version = "0.3.2", features = [
+    "NSString",
+    "NSData",
+    "NSGeometry",
+] }
+
+[profile.release]
+strip = true
+#lto = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
