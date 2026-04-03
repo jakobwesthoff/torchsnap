@@ -28,6 +28,7 @@ export default defineConfig(async () => ({
       input: {
         main: resolve(__dirname, "launcher.html"),
         settings: resolve(__dirname, "settings.html"),
+        devtools: resolve(__dirname, "devtools.html"),
       },
       output: {
         manualChunks(id: string) {
@@ -43,6 +44,7 @@ export default defineConfig(async () => ({
             id.includes("/src/") &&
             !id.endsWith("/src/launcher/main.tsx") &&
             !id.endsWith("/src/settings/main.tsx") &&
+            !id.endsWith("/src/devtools/main.tsx") &&
             !id.includes("/src/plugins/")
           ) {
             return "shared";
