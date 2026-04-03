@@ -20,26 +20,29 @@
 // =========================================================
 
 use std::sync::Mutex;
+use std::time::{Instant, SystemTime};
 
-use anyhow::Context as _;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::bindings;
+use super::logging::channel::LogSender;
+use super::logging::{LogEntry, LogLevel, LogSource};
 
 // =========================================================
 // Per-Plugin Store State
 //
 // This is the `T` in `Store<T>`. It holds the WASI context
 // and any per-plugin state the host imports need access to
-// (e.g., the plugin ID for log tagging).
+// (e.g., the plugin ID for log tagging, the log sender).
 // =========================================================
 
 pub struct PluginState {
     plugin_id: String,
     wasi: WasiCtx,
     wasi_table: ResourceTable,
+    log_sender: LogSender,
 }
 
 // The WasiView trait is required by wasmtime-wasi to locate
@@ -69,14 +72,24 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
         level: bindings::torchsnap::plugin::logging::LogLevel,
         message: String,
     ) {
-        use bindings::torchsnap::plugin::logging::LogLevel;
-        match level {
-            LogLevel::Error => eprintln!("[plugin:{}] ERROR: {message}", self.plugin_id),
-            LogLevel::Warn => eprintln!("[plugin:{}] WARN: {message}", self.plugin_id),
-            LogLevel::Info => eprintln!("[plugin:{}] INFO: {message}", self.plugin_id),
-            LogLevel::Debug => eprintln!("[plugin:{}] DEBUG: {message}", self.plugin_id),
-            LogLevel::Trace => eprintln!("[plugin:{}] TRACE: {message}", self.plugin_id),
-        }
+        let log_level = match level {
+            bindings::torchsnap::plugin::logging::LogLevel::Trace => LogLevel::Trace,
+            bindings::torchsnap::plugin::logging::LogLevel::Debug => LogLevel::Debug,
+            bindings::torchsnap::plugin::logging::LogLevel::Info => LogLevel::Info,
+            bindings::torchsnap::plugin::logging::LogLevel::Warn => LogLevel::Warn,
+            bindings::torchsnap::plugin::logging::LogLevel::Error => LogLevel::Error,
+        };
+
+        self.log_sender.send(LogEntry {
+            seq: 0,
+            timestamp: SystemTime::now(),
+            level: log_level,
+            source: LogSource::Plugin(self.plugin_id.clone()),
+            message,
+            metadata: vec![],
+            span_id: None,
+            span: None,
+        });
     }
 }
 
@@ -97,17 +110,33 @@ impl bindings::torchsnap::plugin::types::Host for PluginState {}
 /// from a single Engine.
 pub struct WasmRuntime {
     engine: Engine,
+    log_sender: LogSender,
 }
 
 impl WasmRuntime {
     /// Create a new runtime with default configuration.
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(log_sender: LogSender) -> anyhow::Result<Self> {
         let mut config = Config::new();
         config.wasm_component_model(true);
 
         let engine =
             Engine::new(&config).map_err(|e| anyhow::anyhow!("creating wasmtime engine: {e}"))?;
-        Ok(Self { engine })
+        Ok(Self { engine, log_sender })
+    }
+
+    /// Emit a host-level log entry for WASM runtime operations
+    /// (compilation, instantiation, loading).
+    fn log(&self, level: LogLevel, plugin_id: &str, message: String) {
+        self.log_sender.send(LogEntry {
+            seq: 0,
+            timestamp: SystemTime::now(),
+            level,
+            source: LogSource::Plugin(plugin_id.to_string()),
+            message,
+            metadata: vec![],
+            span_id: None,
+            span: None,
+        });
     }
 
     /// Instantiate a WASM plugin from raw component bytes.
@@ -120,15 +149,19 @@ impl WasmRuntime {
         plugin_id: &str,
         wasm_bytes: &[u8],
     ) -> anyhow::Result<WasmPluginInstance> {
-        let total_start = std::time::Instant::now();
+        let total_start = Instant::now();
 
         // Compile the WASM component.
-        let compile_start = std::time::Instant::now();
+        let compile_start = Instant::now();
         let component = Component::new(&self.engine, wasm_bytes)
             .map_err(|e| anyhow::anyhow!("compiling WASM component: {e}"))?;
-        eprintln!(
-            "[wasm:{plugin_id}] compile took {:.2}ms",
-            compile_start.elapsed().as_secs_f64() * 1000.0
+        self.log(
+            LogLevel::Debug,
+            plugin_id,
+            format!(
+                "compile took {:.2}ms",
+                compile_start.elapsed().as_secs_f64() * 1000.0
+            ),
         );
 
         // Set up the linker with all host imports.
@@ -154,21 +187,30 @@ impl WasmRuntime {
             plugin_id: plugin_id.to_string(),
             wasi,
             wasi_table: ResourceTable::new(),
+            log_sender: self.log_sender.clone(),
         };
 
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component and get the typed bindings.
-        let instantiate_start = std::time::Instant::now();
+        let instantiate_start = Instant::now();
         let plugin = bindings::Plugin::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
-        eprintln!(
-            "[wasm:{plugin_id}] instantiate took {:.2}ms",
-            instantiate_start.elapsed().as_secs_f64() * 1000.0
+        self.log(
+            LogLevel::Debug,
+            plugin_id,
+            format!(
+                "instantiate took {:.2}ms",
+                instantiate_start.elapsed().as_secs_f64() * 1000.0
+            ),
         );
-        eprintln!(
-            "[wasm:{plugin_id}] total load took {:.2}ms",
-            total_start.elapsed().as_secs_f64() * 1000.0
+        self.log(
+            LogLevel::Debug,
+            plugin_id,
+            format!(
+                "total load took {:.2}ms",
+                total_start.elapsed().as_secs_f64() * 1000.0
+            ),
         );
 
         Ok(WasmPluginInstance {
@@ -193,63 +235,66 @@ pub struct WasmPluginInstance {
 }
 
 impl WasmPluginInstance {
-    /// Log how long a WASM guest call took.
-    fn log_timing(plugin_id: &str, method: &str, start: std::time::Instant) {
-        let elapsed = start.elapsed();
-        eprintln!(
-            "[wasm:{plugin_id}] {method}() took {:.2}ms",
-            elapsed.as_secs_f64() * 1000.0
-        );
-    }
-
-    fn plugin_id(&self) -> String {
-        self.store
-            .lock()
-            .expect("store not poisoned")
-            .data()
-            .plugin_id
-            .clone()
+    /// Emit a debug-level timing log entry for a guest call.
+    fn log_timing(store: &Store<PluginState>, method: &str, start: Instant) {
+        let state = store.data();
+        state.log_sender.send(LogEntry {
+            seq: 0,
+            timestamp: SystemTime::now(),
+            level: LogLevel::Debug,
+            source: LogSource::Plugin(state.plugin_id.clone()),
+            message: format!(
+                "{method}() took {:.2}ms",
+                start.elapsed().as_secs_f64() * 1000.0
+            ),
+            metadata: vec![
+                ("method".to_string(), method.to_string()),
+                (
+                    "duration_ms".to_string(),
+                    format!("{:.2}", start.elapsed().as_secs_f64() * 1000.0),
+                ),
+            ],
+            span_id: None,
+            span: None,
+        });
     }
 
     /// Call the guest's `enable` export.
     pub fn enable(&self) -> anyhow::Result<()> {
         let mut store = self.store.lock().expect("store not poisoned");
-        let id = store.data().plugin_id.clone();
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let result = self
             .plugin
             .torchsnap_plugin_lifecycle()
             .call_enable(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"));
-        Self::log_timing(&id, "enable", start);
+        Self::log_timing(&store, "enable", start);
         result
     }
 
     /// Call the guest's `disable` export.
     pub fn disable(&self) -> anyhow::Result<()> {
         let mut store = self.store.lock().expect("store not poisoned");
-        let id = store.data().plugin_id.clone();
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let result = self
             .plugin
             .torchsnap_plugin_lifecycle()
             .call_disable(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin disable(): {e}"));
-        Self::log_timing(&id, "disable", start);
+        Self::log_timing(&store, "disable", start);
         result
     }
 
     /// Call the guest's `entries` export and convert to native types.
     pub fn entries(&self) -> anyhow::Result<Vec<crate::search::types::CatalogEntry>> {
         let mut store = self.store.lock().expect("store not poisoned");
-        let id = store.data().plugin_id.clone();
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let wit_entries = self
             .plugin
             .torchsnap_plugin_search()
             .call_entries(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin entries(): {e}"))?;
-        Self::log_timing(&id, "entries", start);
+        Self::log_timing(&store, "entries", start);
 
         Ok(wit_entries.into_iter().map(Into::into).collect())
     }
@@ -261,14 +306,13 @@ impl WasmPluginInstance {
         matched_prefix: Option<&str>,
     ) -> anyhow::Result<crate::search::types::PluginResponse> {
         let mut store = self.store.lock().expect("store not poisoned");
-        let id = store.data().plugin_id.clone();
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let response = self
             .plugin
             .torchsnap_plugin_search()
             .call_search(&mut *store, query, matched_prefix)
             .map_err(|e| anyhow::anyhow!("calling plugin search(): {e}"))?;
-        Self::log_timing(&id, "search", start);
+        Self::log_timing(&store, "search", start);
 
         Ok(response.into())
     }
@@ -280,8 +324,7 @@ impl WasmPluginInstance {
         action_id: &crate::search::types::ActionId,
     ) -> anyhow::Result<crate::search::types::PostAction> {
         let mut store = self.store.lock().expect("store not poisoned");
-        let id = store.data().plugin_id.clone();
-        let start = std::time::Instant::now();
+        let start = Instant::now();
 
         let wit_action_id: bindings::torchsnap::plugin::types::ActionId =
             action_id.clone().into();
@@ -291,7 +334,7 @@ impl WasmPluginInstance {
             .torchsnap_plugin_search()
             .call_execute(&mut *store, entry_id, &wit_action_id)
             .map_err(|e| anyhow::anyhow!("calling plugin execute(): {e}"))?;
-        Self::log_timing(&id, "execute", start);
+        Self::log_timing(&store, "execute", start);
 
         match result {
             Ok(post_action) => Ok(post_action.into()),

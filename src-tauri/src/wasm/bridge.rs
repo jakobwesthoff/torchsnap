@@ -16,11 +16,15 @@
 // the typed WASM guest exports.
 // =========================================================
 
+use std::time::SystemTime;
+
 use crate::plugins::Plugin;
 use crate::search::types::{
     ActionId, CancellationToken, CatalogEntry, PostAction, PluginResponse, ResultChannel,
 };
 
+use super::logging::channel::LogSender;
+use super::logging::{LogEntry, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::runtime::WasmPluginInstance;
 
@@ -38,6 +42,7 @@ use super::runtime::WasmPluginInstance;
 pub struct WasmPluginBridge {
     manifest: Manifest,
     instance: WasmPluginInstance,
+    log_sender: LogSender,
 
     // The Plugin trait's `search_prefixes()` returns `&[&str]`,
     // which requires a stable backing store. We keep the owned
@@ -51,7 +56,7 @@ pub struct WasmPluginBridge {
 impl WasmPluginBridge {
     /// Create a bridge from a parsed manifest and a live
     /// WASM plugin instance.
-    pub fn new(manifest: Manifest, instance: WasmPluginInstance) -> Self {
+    pub fn new(manifest: Manifest, instance: WasmPluginInstance, log_sender: LogSender) -> Self {
         let prefix_storage = manifest.plugin.prefixes.clone();
 
         // Deliberately leak the prefix strings. Plugins live
@@ -65,9 +70,25 @@ impl WasmPluginBridge {
         Self {
             manifest,
             instance,
+            log_sender,
             _prefix_storage: prefix_storage,
             prefix_ptrs,
         }
+    }
+
+    /// Emit a log entry for bridge-level events (errors from
+    /// guest calls that are caught and handled here).
+    fn log(&self, level: LogLevel, message: String) {
+        self.log_sender.send(LogEntry {
+            seq: 0,
+            timestamp: SystemTime::now(),
+            level,
+            source: LogSource::Plugin(self.manifest.plugin.id.to_string()),
+            message,
+            metadata: vec![],
+            span_id: None,
+            span: None,
+        });
     }
 }
 
@@ -80,19 +101,13 @@ impl Plugin for WasmPluginBridge {
         // WASM plugins don't use AppHandle or PluginContext —
         // they get capabilities through WIT host imports.
         if let Err(e) = self.instance.enable() {
-            eprintln!(
-                "[wasm:{}] enable() failed: {e:#}",
-                self.manifest.plugin.id
-            );
+            self.log(LogLevel::Error, format!("enable() failed: {e:#}"));
         }
     }
 
     fn teardown(&self) {
         if let Err(e) = self.instance.disable() {
-            eprintln!(
-                "[wasm:{}] disable() failed: {e:#}",
-                self.manifest.plugin.id
-            );
+            self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }
     }
 
@@ -100,10 +115,7 @@ impl Plugin for WasmPluginBridge {
         match self.instance.entries() {
             Ok(entries) => entries,
             Err(e) => {
-                eprintln!(
-                    "[wasm:{}] entries() failed: {e:#}",
-                    self.manifest.plugin.id
-                );
+                self.log(LogLevel::Error, format!("entries() failed: {e:#}"));
                 vec![]
             }
         }
@@ -133,10 +145,7 @@ impl Plugin for WasmPluginBridge {
                 _ => {}
             },
             Err(e) => {
-                eprintln!(
-                    "[wasm:{}] search() failed: {e:#}",
-                    self.manifest.plugin.id
-                );
+                self.log(LogLevel::Error, format!("search() failed: {e:#}"));
             }
         }
     }
