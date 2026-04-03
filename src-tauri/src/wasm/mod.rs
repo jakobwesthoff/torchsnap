@@ -15,5 +15,7 @@
 // - `source`   — abstraction over how plugin files are read
 // =========================================================
 
+mod bindings;
 pub mod manifest;
+pub mod runtime;
 pub mod source;
