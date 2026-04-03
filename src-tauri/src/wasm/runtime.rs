@@ -117,13 +117,12 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
 
     fn span_end(&mut self, span_id: u64, metadata: Vec<(String, String)>) {
         if let Some((span_info, source)) = self.span_registry.end(span_id, metadata) {
-            let duration_ms = span_info.duration_us as f64 / 1000.0;
             self.log_sender.send(LogEntry {
                 seq: 0,
                 timestamp: SystemTime::now(),
                 level: LogLevel::Debug,
                 source,
-                message: format!("{} completed in {duration_ms:.2}ms", span_info.name),
+                message: span_info.name.clone(),
                 metadata: vec![],
                 span_id: None,
                 span: Some(span_info),
