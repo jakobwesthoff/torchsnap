@@ -26,6 +26,7 @@
 // =========================================================
 
 pub mod channel;
+pub mod commands;
 pub mod spans;
 pub mod storage;
 

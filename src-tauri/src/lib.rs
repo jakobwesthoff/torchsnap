@@ -400,6 +400,10 @@ pub fn run() {
             frecency_clear,
             website_metadata_stats,
             website_metadata_clear_cache,
+            wasm::logging::commands::devtools_log_history,
+            wasm::logging::commands::devtools_log_subscribe,
+            wasm::logging::commands::devtools_log_clear,
+            wasm::logging::commands::devtools_log_stats,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
