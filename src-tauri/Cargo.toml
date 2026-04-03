@@ -51,6 +51,8 @@ percent-encoding = "2"
 url = "2"
 addr = "0.15"
 toml = "1.1.2"
+wasmtime = { version = "43.0.0", features = ["component-model"] }
+wasmtime-wasi = "43.0.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
