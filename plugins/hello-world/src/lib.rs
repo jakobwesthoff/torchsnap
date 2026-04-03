@@ -18,7 +18,7 @@ wit_bindgen::generate!({
 use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
 use exports::torchsnap::plugin::search::Guest as SearchGuest;
 use torchsnap::plugin::logging;
-use torchsnap::plugin::types::{Action, CatalogEntry, EntryIcon, PostAction};
+use torchsnap::plugin::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 struct HelloWorld;
 
@@ -43,13 +43,13 @@ impl SearchGuest for HelloWorld {
             icon: Some(EntryIcon::HeroIcon("hand-raised".into())),
             keywords: vec!["hello".into(), "greet".into(), "test".into()],
             actions: vec![Action {
-                id: "open".into(),
+                id: ActionId::Open,
                 label: "Run".into(),
             }],
         }]
     }
 
-    fn execute(entry_id: String, _action_id: String) -> Result<PostAction, String> {
+    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
         logging::log(
             logging::LogLevel::Info,
             &format!("Executed entry: {entry_id}"),

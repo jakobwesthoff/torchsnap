@@ -19,7 +19,7 @@ interface logging {
     log: func(level: log-level, message: string);
 }
 
-// ─── Shared types ────────────────────────────────��──────
+// ─── Shared types ───────────────────────────────────────
 
 interface types {
     variant entry-icon {
@@ -29,8 +29,20 @@ interface types {
         emoji(string),
     }
 
+    /// Well-known action identifiers. Plugins use these for
+    /// standard actions so the host can assign default keybindings
+    /// and icons. Use `custom` for plugin-specific actions.
+    variant action-id {
+        open,
+        copy,
+        reveal,
+        open-with,
+        delete,
+        custom(string),
+    }
+
     record action {
-        id: string,
+        id: action-id,
         label: string,
     }
 
@@ -58,10 +70,10 @@ interface lifecycle {
 }
 
 interface search {
-    use types.{catalog-entry, post-action};
+    use types.{catalog-entry, action-id, post-action};
 
     entries: func() -> list<catalog-entry>;
-    execute: func(entry-id: string, action-id: string) -> result<post-action, string>;
+    execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
 }
 
 // ─── The plugin world ───────────────────────────────────
