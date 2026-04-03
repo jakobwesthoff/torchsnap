@@ -6,8 +6,8 @@
 # linting, eslint, formatting, and build verification. The `fullcycle`
 # recipe runs them all in sequence as a pre-push validation step.
 
-# Check compilation (Rust) and types (TypeScript)
-check: check-crates check-types
+# Check compilation (Rust + WASM plugins) and types (TypeScript)
+check: check-crates check-plugins check-types
 
 # Check the Rust crate compiles
 check-crates:

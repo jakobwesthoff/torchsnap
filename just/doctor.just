@@ -43,6 +43,10 @@ doctor:
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
 
     echo ""
+    echo "WASM plugin toolchain:"
+    check cargo-component "build WASM component plugins"  "cargo install cargo-component"
+
+    echo ""
     echo "Asset pipeline:"
     check magick      "image resizing (ImageMagick 7)" "brew install imagemagick"
     check oxipng      "PNG optimisation"               "cargo install oxipng"
