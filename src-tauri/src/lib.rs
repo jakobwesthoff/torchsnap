@@ -95,79 +95,22 @@ impl LauncherLayoutState {
 }
 
 // =========================================================
-// Settings Window
+// Auxiliary Windows (Settings, Developer Tools)
+//
+// Both are created on demand, destroyed when closed, and
+// use the same present/center/focus logic. The shared
+// `present_auxiliary_window` handles macOS-specific behavior
+// (MoveToActiveSpace) and cursor-relative centering.
 // =========================================================
 
-/// Create, show, and focus the settings window.
-///
-/// The settings window is created on demand and destroyed when closed
-/// to keep memory usage low while it is not visible. On first creation
-/// the window stays hidden until the frontend emits `"react-ready"`,
-/// preventing a flash of empty content. If the window already exists
-/// (e.g. the user triggered "Settings..." twice quickly) it is simply
-/// focused.
-pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-        let _ = app.show();
-    }
-
-    // If the window is already alive just bring it to front.
-    if let Some(existing) = app.get_webview_window("settings") {
-        present_settings_window(&existing, app);
-        return;
-    }
-
-    // Build the window hidden — the frontend will signal readiness.
-    let mut builder =
-        WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-            .title("Torchsnap Settings")
-            .inner_size(720.0, 520.0)
-            .min_inner_size(600.0, 400.0)
-            .resizable(true)
-            .visible(false)
-            .focused(false)
-            .center();
-
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder
-            .title_bar_style(TitleBarStyle::Overlay)
-            .hidden_title(true);
-    }
-
-    let win = match builder.build() {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("failed to create settings window: {e:#}");
-            return;
-        }
-    };
-
-    // Wait for the React frontend to finish its first render before
-    // making the window visible. The event listener runs on a
-    // background thread, so we dispatch to the main thread since
-    // `present_settings_window` accesses the NSWindow handle.
-    let handle = app.clone();
-    win.once("react-ready", move |_| {
-        let inner_handle = handle.clone();
-        let _ = handle.run_on_main_thread(move || {
-            if let Some(win) = inner_handle.get_webview_window("settings") {
-                present_settings_window(&win, &inner_handle);
-            }
-        });
-    });
-}
-
-/// Position, show, and focus the settings window on the monitor under
-/// the cursor.
-fn present_settings_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) {
+/// Position, show, and focus an auxiliary window on the
+/// monitor under the cursor.
+fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
 
-        let ns_window = win.ns_window().expect("settings NSWindow handle");
+        let ns_window = win.ns_window().expect("auxiliary NSWindow handle");
         // SAFETY: Tauri's `ns_window()` returns a valid `*mut c_void`
         // pointing to the underlying NSWindow. The pointer is valid for
         // the lifetime of the WebviewWindow and we only borrow it
@@ -193,6 +136,100 @@ fn present_settings_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) {
 
     let _ = win.show();
     let _ = win.set_focus();
+}
+
+/// Build an on-demand auxiliary window that stays hidden until the
+/// frontend emits `"react-ready"`. If the window already exists it
+/// is simply brought to front.
+fn show_auxiliary_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    url: &str,
+    title: &str,
+    width: f64,
+    height: f64,
+    min_width: f64,
+    min_height: f64,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        let _ = app.show();
+    }
+
+    // If the window is already alive just bring it to front.
+    if let Some(existing) = app.get_webview_window(label) {
+        present_auxiliary_window(&existing, app);
+        return;
+    }
+
+    // Build the window hidden — the frontend will signal readiness.
+    let mut builder =
+        WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+            .title(title)
+            .inner_size(width, height)
+            .min_inner_size(min_width, min_height)
+            .resizable(true)
+            .visible(false)
+            .focused(false)
+            .center();
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    let win = match builder.build() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("failed to create {label} window: {e:#}");
+            return;
+        }
+    };
+
+    let handle = app.clone();
+    let window_label = label.to_string();
+    win.once("react-ready", move |_| {
+        let inner_handle = handle.clone();
+        let label = window_label;
+        let _ = handle.run_on_main_thread(move || {
+            if let Some(win) = inner_handle.get_webview_window(&label) {
+                present_auxiliary_window(&win, &inner_handle);
+            }
+        });
+    });
+}
+
+// =========================================================
+// Settings Window
+// =========================================================
+
+pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(
+        app,
+        "settings",
+        "settings.html",
+        "Torchsnap Settings",
+        720.0, 520.0,
+        600.0, 400.0,
+    );
+}
+
+// =========================================================
+// Developer Tools Window
+// =========================================================
+
+pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(
+        app,
+        "devtools",
+        "devtools.html",
+        "Torchsnap Developer Tools",
+        900.0, 600.0,
+        700.0, 400.0,
+    );
 }
 
 // =========================================================
@@ -636,7 +673,7 @@ pub fn run() {
             // =========================================================
             // Tray icon with context menu
             // =========================================================
-            PlatformTray::build(app, toggle_launcher_window, show_settings_window)
+            PlatformTray::build(app, toggle_launcher_window, show_settings_window, show_devtools_window)
                 .context("build platform tray")?;
 
             // =========================================================

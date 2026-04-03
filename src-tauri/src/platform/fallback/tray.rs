@@ -28,14 +28,21 @@ impl Tray for FallbackTray {
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
+        on_devtools: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()> {
         let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
             .context("create Settings menu item")?;
+        let devtools_item =
+            MenuItem::with_id(app, "devtools", "Developer Tools...", true, None::<&str>)
+                .context("create Developer Tools menu item")?;
         let separator = PredefinedMenuItem::separator(app).context("create menu separator")?;
         let quit_item = MenuItem::with_id(app, "quit", "Quit Torchsnap", true, None::<&str>)
             .context("create Quit menu item")?;
-        let menu = Menu::with_items(app, &[&settings_item, &separator, &quit_item])
-            .context("build tray menu")?;
+        let menu = Menu::with_items(
+            app,
+            &[&settings_item, &devtools_item, &separator, &quit_item],
+        )
+        .context("build tray menu")?;
 
         // Full-color icon — no template tinting on non-macOS.
         // TODO: Use a dedicated tray icon optimized for small sizes
@@ -50,6 +57,7 @@ impl Tray for FallbackTray {
             .show_menu_on_left_click(false)
             .on_menu_event(move |app, event| match event.id.as_ref() {
                 "settings" => on_settings(app),
+                "devtools" => on_devtools(app),
                 "quit" => app.exit(0),
                 _ => {}
             })
