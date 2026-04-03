@@ -40,6 +40,9 @@ export function LogList({ entries, droppedCount }: LogListProps) {
     getScrollElement: () => parentRef.current,
     estimateSize: () => 28,
     overscan: 20,
+    // Measure actual row heights so expanded metadata pushes
+    // subsequent rows down instead of overlapping.
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   // Track whether we're at the bottom.
@@ -111,6 +114,8 @@ export function LogList({ entries, droppedCount }: LogListProps) {
           {virtualizer.getVirtualItems().map((virtualItem) => (
             <div
               key={virtualItem.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualItem.index}
               style={{
                 position: "absolute",
                 top: 0,
