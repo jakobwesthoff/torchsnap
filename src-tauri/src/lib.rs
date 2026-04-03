@@ -519,6 +519,17 @@ pub fn run() {
             )));
 
             // =========================================================
+            // Logging system
+            //
+            // Structured logging for WASM plugins. Started before
+            // plugin loading so that compilation and instantiation
+            // timing is captured from the very first plugin.
+            // =========================================================
+            let logging_system = wasm::logging::channel::LoggingSystem::start();
+            let log_sender = logging_system.sender();
+            let logging_system = Arc::new(logging_system);
+
+            // =========================================================
             // WASM plugins
             //
             // Load plugins from the `plugins/` development directory.
@@ -529,13 +540,33 @@ pub fn run() {
             // TODO: Replace hardcoded dev path with proper plugin
             // discovery from $APPDATA/torchsnap/plugins/.
             // =========================================================
-            match load_wasm_plugins(&mut host) {
+            match load_wasm_plugins(&mut host, &log_sender) {
                 Ok(count) => {
                     if count > 0 {
-                        eprintln!("[wasm] Loaded {count} plugin(s)");
+                        log_sender.send(wasm::logging::LogEntry {
+                            seq: 0,
+                            timestamp: std::time::SystemTime::now(),
+                            level: wasm::logging::LogLevel::Info,
+                            source: wasm::logging::LogSource::Host,
+                            message: format!("Loaded {count} WASM plugin(s)"),
+                            metadata: vec![],
+                            span_id: None,
+                            span: None,
+                        });
                     }
                 }
-                Err(e) => eprintln!("[wasm] Failed to initialize: {e:#}"),
+                Err(e) => {
+                    log_sender.send(wasm::logging::LogEntry {
+                        seq: 0,
+                        timestamp: std::time::SystemTime::now(),
+                        level: wasm::logging::LogLevel::Error,
+                        source: wasm::logging::LogSource::Host,
+                        message: format!("Failed to initialize WASM plugins: {e:#}"),
+                        metadata: vec![],
+                        span_id: None,
+                        span: None,
+                    });
+                }
             }
 
             // Settings init + shortcut registration + parallel setup.
@@ -550,6 +581,7 @@ pub fn run() {
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
             app.manage(Arc::clone(&metadata_service));
+            app.manage(Arc::clone(&logging_system));
 
             // =========================================================
             // Settings-changed listener
@@ -671,8 +703,11 @@ pub fn run() {
 // for .torchsnap archive files via ArchiveSource.
 // =========================================================
 
-fn load_wasm_plugins(host: &mut plugin_host::PluginHost) -> anyhow::Result<usize> {
-    let runtime = wasm::runtime::WasmRuntime::new()?;
+fn load_wasm_plugins(
+    host: &mut plugin_host::PluginHost,
+    log_sender: &wasm::logging::channel::LogSender,
+) -> anyhow::Result<usize> {
+    let runtime = wasm::runtime::WasmRuntime::new(log_sender.clone())?;
 
     let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
     let entries = match std::fs::read_dir(&plugin_dir) {
@@ -689,14 +724,32 @@ fn load_wasm_plugins(host: &mut plugin_host::PluginHost) -> anyhow::Result<usize
             continue;
         }
 
-        let loaded = load_single_wasm_plugin(&runtime, &path, host);
+        let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender);
         match loaded {
             Ok(plugin_id) => {
-                eprintln!("[wasm] Loaded plugin: {plugin_id}");
+                log_sender.send(wasm::logging::LogEntry {
+                    seq: 0,
+                    timestamp: std::time::SystemTime::now(),
+                    level: wasm::logging::LogLevel::Info,
+                    source: wasm::logging::LogSource::Host,
+                    message: format!("Loaded plugin: {plugin_id}"),
+                    metadata: vec![("plugin_id".to_string(), plugin_id)],
+                    span_id: None,
+                    span: None,
+                });
                 count += 1;
             }
             Err(e) => {
-                eprintln!("[wasm] Failed to load {}: {e:#}", path.display());
+                log_sender.send(wasm::logging::LogEntry {
+                    seq: 0,
+                    timestamp: std::time::SystemTime::now(),
+                    level: wasm::logging::LogLevel::Error,
+                    source: wasm::logging::LogSource::Host,
+                    message: format!("Failed to load {}: {e:#}", path.display()),
+                    metadata: vec![],
+                    span_id: None,
+                    span: None,
+                });
             }
         }
     }
@@ -708,6 +761,7 @@ fn load_single_wasm_plugin(
     runtime: &wasm::runtime::WasmRuntime,
     path: &std::path::Path,
     host: &mut plugin_host::PluginHost,
+    log_sender: &wasm::logging::channel::LogSender,
 ) -> anyhow::Result<String> {
     use wasm::source::PluginSource as _;
 
@@ -716,7 +770,7 @@ fn load_single_wasm_plugin(
     let wasm_bytes = source.read_wasm()?;
     let instance = runtime.instantiate(&plugin_id, &wasm_bytes)?;
     let manifest = source.into_manifest();
-    let bridge = wasm::bridge::WasmPluginBridge::new(manifest, instance);
+    let bridge = wasm::bridge::WasmPluginBridge::new(manifest, instance, log_sender.clone());
     host.register(Box::new(bridge));
     Ok(plugin_id)
 }
