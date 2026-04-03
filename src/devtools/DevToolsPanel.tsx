@@ -16,6 +16,7 @@
 
 import { useState } from "react";
 import { DevToolsTabBar, type DevToolsTab } from "./DevToolsTabBar";
+import { ConsoleTab } from "./console/ConsoleTab";
 
 export function DevToolsPanel() {
   const [activeTab, setActiveTab] = useState<DevToolsTab>("console");
@@ -33,11 +34,7 @@ export function DevToolsPanel() {
 
       {/* Tab content — fills remaining vertical space */}
       <div className="flex-1 min-h-0">
-        {activeTab === "console" && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-text-muted">Console placeholder</p>
-          </div>
-        )}
+        {activeTab === "console" && <ConsoleTab />}
       </div>
     </div>
   );

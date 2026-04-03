@@ -24,6 +24,7 @@
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
+import type { DevToolsMessage, LogEntry, LogStats } from "../devtools/types";
 
 // =========================================================
 // Command Registry
@@ -64,6 +65,16 @@ interface CommandMap {
   frecency_clear: { params: void; result: void };
   website_metadata_stats: { params: void; result: { entryCount: number; faviconBytes: number } };
   website_metadata_clear_cache: { params: void; result: void };
+  devtools_log_history: {
+    params: { afterSeq: number; limit: number };
+    result: LogEntry[];
+  };
+  devtools_log_subscribe: {
+    params: { channel: Channel<DevToolsMessage> };
+    result: void;
+  };
+  devtools_log_clear: { params: void; result: void };
+  devtools_log_stats: { params: void; result: LogStats };
 }
 
 type CommandName = keyof CommandMap;
