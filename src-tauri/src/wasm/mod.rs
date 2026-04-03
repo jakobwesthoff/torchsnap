@@ -16,6 +16,7 @@
 // =========================================================
 
 mod bindings;
+pub mod bridge;
 pub mod manifest;
 pub mod runtime;
 pub mod source;
