@@ -58,14 +58,23 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -d|--description) DESCRIPTION="$2"; shift 2 ;;
-        --skip-build)     SKIP_BUILD=true; shift ;;
-        -h|--help)        usage; exit 0 ;;
-        *)
-            echo "Unknown option: $1" >&2
-            usage >&2
-            exit 1
-            ;;
+    -d | --description)
+        DESCRIPTION="$2"
+        shift 2
+        ;;
+    --skip-build)
+        SKIP_BUILD=true
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 1
+        ;;
     esac
 done
 
@@ -171,12 +180,12 @@ if [[ -f "$SETTINGS_FILE" ]]; then
     CURRENT=$(jq -r '.["controlChannel.enabled"] // false' "$SETTINGS_FILE")
     if [[ "$CURRENT" != "true" ]]; then
         echo "Enabling Control API in settings..."
-        jq '.["controlChannel.enabled"] = true' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp"
+        jq '.["controlChannel.enabled"] = true' "$SETTINGS_FILE" >"${SETTINGS_FILE}.tmp"
         mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
     fi
 else
     echo "Creating settings with Control API enabled..."
-    echo '{"controlChannel.enabled": true}' > "$SETTINGS_FILE"
+    echo '{"controlChannel.enabled": true}' >"$SETTINGS_FILE"
 fi
 
 # =========================================================
@@ -217,8 +226,8 @@ echo "Waiting for control socket..."
 CONTROL_READY=false
 for _ in $(seq 1 50); do
     if [[ -S "$SOCK" ]]; then
-        if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' \
-            | socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
+        if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' |
+            socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
             CONTROL_READY=true
             break
         fi
@@ -304,6 +313,19 @@ send "dismiss"
 sleep 2
 snap "after emoji dismiss"
 
+# --- HelloWorld WASM search ---
+send "show"
+sleep 1
+send "query" '{"text":"uni"}'
+sleep 2
+snap "query: uni"
+send "query" '{"text":"able"}'
+sleep 2
+snap "query: able"
+send "dismiss"
+sleep 2
+snap "after hello-world-wasm search dismiss"
+
 # --- Rapid show/dismiss cycles ---
 for _ in 1 2 3 4 5; do
     send "show"
@@ -358,7 +380,7 @@ fi
 
 REPORT=$("$SCRIPT_DIR/memsnap-report" "${REPORT_ARGS[@]}")
 echo "$REPORT"
-echo "$REPORT" >> "$LOG_FILE"
+echo "$REPORT" >>"$LOG_FILE"
 
 echo
 echo "Report appended to: $LOG_FILE"
