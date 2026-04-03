@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { initStore } from "../settingsStore";
+import { DevToolsPanel } from "./DevToolsPanel";
 import "../index.css";
 
 async function main() {
@@ -15,9 +16,7 @@ async function main() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ThemeProvider>
-        <div className="flex items-center justify-center h-screen font-sans antialiased bg-surface text-text-primary">
-          <p className="text-sm text-text-secondary">Developer Tools</p>
-        </div>
+        <DevToolsPanel />
       </ThemeProvider>
     </StrictMode>,
   );
