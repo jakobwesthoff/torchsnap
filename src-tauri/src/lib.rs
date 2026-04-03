@@ -347,6 +347,24 @@ fn frecency_clear(frecency: tauri::State<'_, Arc<frecency::FrecencyStore>>) -> R
     frecency.clear_all().map_err(|e| format!("{e:#}"))
 }
 
+#[tauri::command]
+fn website_metadata_stats(
+    service: tauri::State<'_, Arc<network::website_metadata::WebsiteMetadataService>>,
+) -> Result<serde_json::Value, String> {
+    let stats = service.stats();
+    Ok(serde_json::json!({
+        "entryCount": stats.entry_count,
+        "faviconBytes": stats.favicon_bytes,
+    }))
+}
+
+#[tauri::command]
+fn website_metadata_clear_cache(
+    service: tauri::State<'_, Arc<network::website_metadata::WebsiteMetadataService>>,
+) -> Result<(), String> {
+    service.clear_cache().map_err(|e| format!("{e:#}"))
+}
+
 // =========================================================
 // Control API — frontend channel subscription
 // =========================================================
@@ -379,6 +397,8 @@ pub fn run() {
             launcher_set_layout,
             frecency_stats,
             frecency_clear,
+            website_metadata_stats,
+            website_metadata_clear_cache,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -409,6 +429,7 @@ pub fn run() {
                 .ensure("showNsfwMascots", true)
                 .ensure("controlChannel.enabled", false)
                 .ensure("frecency.enabled", true)
+                .ensure("websiteMetadata.cacheTtlDays", 30)
                 .apply(&store, "");
 
             // =========================================================
@@ -462,7 +483,37 @@ pub fn run() {
             )));
             host.register(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
             host.register(Box::new(plugins::calculator::CalculatorPlugin::new()));
-            host.register(Box::new(plugins::bangs::BangsPlugin::new()));
+
+            // =========================================================
+            // Website metadata service
+            //
+            // Shared service for fetching and caching website metadata
+            // (title, description, favicon). Plugins that need domain
+            // favicons receive an Arc to this service at construction.
+            // =========================================================
+            let metadata_cache_dir = app
+                .path()
+                .app_cache_dir()
+                .context("resolve app cache dir")?
+                .join("website-metadata");
+            let initial_ttl: u32 = store
+                .get("websiteMetadata.cacheTtlDays")
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or(30);
+            let metadata_service = Arc::new(
+                network::website_metadata::WebsiteMetadataService::new(
+                    metadata_cache_dir,
+                    Arc::clone(&icon_cache),
+                    &notifier,
+                    initial_ttl,
+                )
+                .context("initialize website metadata service")?,
+            );
+            metadata_service.start_retention();
+
+            host.register(Box::new(plugins::bangs::BangsPlugin::new(
+                Arc::clone(&metadata_service),
+            )));
 
             // Settings init + shortcut registration + parallel setup.
             host.initialize_and_start(app.handle());
@@ -475,6 +526,7 @@ pub fn run() {
 
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
+            app.manage(Arc::clone(&metadata_service));
 
             // =========================================================
             // Settings-changed listener
@@ -567,6 +619,9 @@ pub fn run() {
             }
         }
         RunEvent::Exit => {
+            let metadata = app.state::<Arc<network::website_metadata::WebsiteMetadataService>>();
+            metadata.teardown();
+
             let host = app.state::<Arc<plugin_host::PluginHost>>();
             host.teardown_all();
 

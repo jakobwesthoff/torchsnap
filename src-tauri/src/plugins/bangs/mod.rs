@@ -29,6 +29,7 @@ use serde::Serialize;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
+use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::network::Http;
 use crate::search::types::{
     Action, ActionId, CancellationToken, EntryIcon, PostAction, ResultChannel, ScoredEntry,
@@ -84,15 +85,21 @@ pub struct BangsPlugin {
 
     /// Tracks whether the plugin is currently enabled.
     enabled: Arc<AtomicBool>,
+
+    /// Shared website metadata service for favicon lookups.
+    metadata_service: Arc<WebsiteMetadataService>,
 }
 
 impl BangsPlugin {
-    pub fn new() -> Self {
+    pub fn new(
+        metadata_service: Arc<WebsiteMetadataService>,
+    ) -> Self {
         Self {
             ready: AtomicBool::new(false),
             state: Mutex::new(None),
             pending_url: Mutex::new(None),
             enabled: Arc::new(AtomicBool::new(true)),
+            metadata_service,
         }
     }
 }
@@ -240,7 +247,12 @@ impl Plugin for BangsPlugin {
             id: format!("!{}", bang_trigger),
             title,
             subtitle: Some(resolved_url),
-            icon: Some(EntryIcon::HeroIcon("arrow-top-right-on-square".to_string())),
+            icon: Some(
+                match self.metadata_service.try_cached(&bang.domain) {
+                    MetadataResult::Found(meta) => meta.favicon,
+                    _ => EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
+                },
+            ),
             score: BANG_SCORE,
             title_positions,
             subtitle_positions: Utf16Positions(vec![]),

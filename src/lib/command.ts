@@ -62,6 +62,8 @@ interface CommandMap {
   };
   frecency_stats: { params: void; result: FrecencyStats };
   frecency_clear: { params: void; result: void };
+  website_metadata_stats: { params: void; result: { entryCount: number; faviconBytes: number } };
+  website_metadata_clear_cache: { params: void; result: void };
 }
 
 type CommandName = keyof CommandMap;
