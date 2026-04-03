@@ -377,13 +377,12 @@ impl SpanGuard {
         self.ended = true;
 
         if let Some((span_info, source)) = self.logger.registry.end(self.span_id, metadata) {
-            let duration_ms = span_info.duration_us as f64 / 1000.0;
             self.logger.sender.send(LogEntry {
                 seq: 0,
                 timestamp: SystemTime::now(),
                 level: LogLevel::Debug,
                 source,
-                message: format!("{} completed in {duration_ms:.2}ms", span_info.name),
+                message: span_info.name.clone(),
                 metadata: vec![],
                 span_id: None,
                 span: Some(span_info),
