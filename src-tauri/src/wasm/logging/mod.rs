@@ -26,6 +26,7 @@
 // =========================================================
 
 pub mod channel;
+pub mod spans;
 pub mod storage;
 
 use std::time::SystemTime;
