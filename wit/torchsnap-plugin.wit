@@ -1,87 +1,84 @@
-// Torchsnap Plugin Interface
-//
-// Minimal initial definition covering lifecycle, catalog search,
-// and execution. Expanded as real plugins are converted.
-
+/// Torchsnap Plugin Interface
+///
+/// Minimal initial definition covering lifecycle, catalog search,
+/// and execution. Expanded as real plugins are converted.
 package torchsnap:plugin@0.1.0;
 
-// ─── Host imports (provided by the host to plugins) ─────
-
+/// ─── Host imports (provided by the host to plugins) ─────
 interface logging {
-    enum log-level {
-        trace,
-        debug,
-        info,
-        warn,
-        error,
-    }
+  enum log-level {
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+  }
 
-    log: func(level: log-level, message: string);
+  log: func(level: log-level, message: string);
 }
 
-// ─── Shared types ───────────────────────────────────────
-
+/// ─── Shared types ───────────────────────────────────────
 interface types {
-    variant entry-icon {
-        hero-icon(string),
-        data-url(string),
-        asset-icon(string),
-        emoji(string),
-    }
+  variant entry-icon {
+    hero-icon(string),
+    data-url(string),
+    asset-icon(string),
+    emoji(string),
+  }
 
-    /// Well-known action identifiers. Plugins use these for
-    /// standard actions so the host can assign default keybindings
-    /// and icons. Use `custom` for plugin-specific actions.
-    variant action-id {
-        open,
-        copy,
-        reveal,
-        open-with,
-        delete,
-        custom(string),
-    }
+  /// Well-known action identifiers. Plugins use these for
+  /// standard actions so the host can assign default keybindings
+  /// and icons. Use `custom` for plugin-specific actions.
+  variant action-id {
+    open,
+    copy,
+    reveal,
+    open-with,
+    delete,
+    custom(string),
+  }
 
-    record action {
-        id: action-id,
-        label: string,
-    }
+  record action {
+    id: action-id,
+    label: string,
+  }
 
-    record catalog-entry {
-        id: string,
-        title: string,
-        subtitle: option<string>,
-        icon: option<entry-icon>,
-        keywords: list<string>,
-        actions: list<action>,
-    }
+  record catalog-entry {
+    id: string,
+    title: string,
+    subtitle: option<string>,
+    icon: option<entry-icon>,
+    keywords: list<string>,
+    actions: list<action>,
+  }
 
-    enum post-action {
-        nothing,
-        dismiss,
-        keep-open,
-    }
+  enum post-action {
+    nothing,
+    dismiss,
+    keep-open,
+  }
 }
 
-// ─── Guest exports (implemented by plugins) ─────────────
-
+/// ─── Guest exports (implemented by plugins) ─────────────
 interface lifecycle {
-    enable: func();
-    disable: func();
+  enable: func();
+
+  disable: func();
 }
 
 interface search {
-    use types.{catalog-entry, action-id, post-action};
+  use types.{catalog-entry, action-id, post-action};
 
-    entries: func() -> list<catalog-entry>;
-    execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
+  entries: func() -> list<catalog-entry>;
+
+  execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
 }
 
-// ─── The plugin world ───────────────────────────────────
-
+/// ─── The plugin world ───────────────────────────────────
 world plugin {
-    import logging;
-    import types;
+  import logging;
+  import types;
 
-    export lifecycle;
-    export search;
+  export lifecycle;
+  export search;
 }
