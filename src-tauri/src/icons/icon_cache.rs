@@ -115,41 +115,6 @@ impl IconCache {
         }
     }
 
-    /// Store raw image bytes (e.g. SVG) without WebP processing.
-    ///
-    /// Used for image formats that cannot be converted to `DynamicImage`
-    /// (most notably SVG). The file is stored under the plugin scope
-    /// with the given extension. Returns the absolute path string on
-    /// success, or `None` on I/O failure.
-    pub fn store_raw(
-        &self,
-        plugin_id: &str,
-        key: &StorageKey,
-        data: &[u8],
-        ext: &str,
-    ) -> Option<String> {
-        let plugin_storage = self.storage.scoped(plugin_id);
-
-        // If a valid file already exists for this key (any extension),
-        // return its path. This avoids re-writing identical content.
-        // We check the requested extension specifically.
-        if plugin_storage.metadata(key, ext).is_some() {
-            let path = plugin_storage.resolve(key, ext);
-            return Some(path.to_string_lossy().into_owned());
-        }
-
-        match plugin_storage.store(key, data, ext) {
-            Ok(()) => {
-                let path = plugin_storage.resolve(key, ext);
-                Some(path.to_string_lossy().into_owned())
-            }
-            Err(e) => {
-                eprintln!("write raw icon cache: {e:#}");
-                None
-            }
-        }
-    }
-
     /// Collect all cached entries for a given plugin scope.
     ///
     /// Returns `(StorageKey, extension, EntryMetadata)` triples —

@@ -526,8 +526,14 @@ impl WebsiteMetadataService {
             "bin"
         };
 
-        if let Some(path) = self.icon_cache.store_raw(SERVICE_ID, &key, &image_data.image_data, ext) {
-            return Some((key.to_string(), EntryIcon::AssetIcon(path)));
+        match self.raw_storage.store(&key, &image_data.image_data, ext) {
+            Ok(()) => {
+                let path = self.raw_storage.resolve(&key, ext);
+                return Some((key.to_string(), EntryIcon::AssetIcon(path.to_string_lossy().into_owned())));
+            }
+            Err(e) => {
+                eprintln!("write raw favicon for {}: {e:#}", &*key);
+            }
         }
 
         None
