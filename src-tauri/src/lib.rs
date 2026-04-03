@@ -503,7 +503,6 @@ pub fn run() {
             let metadata_service = Arc::new(
                 network::website_metadata::WebsiteMetadataService::new(
                     metadata_cache_dir,
-                    Arc::clone(&icon_cache),
                     &notifier,
                     initial_ttl,
                 )

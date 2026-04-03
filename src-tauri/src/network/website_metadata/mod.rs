@@ -17,14 +17,15 @@
 //   triggers a background fetch. Used by plugins where blocking
 //   is unacceptable (bangs, catalog entries).
 //
-// Favicon images are stored as files via `IconCache` and returned
-// as `EntryIcon::AssetIcon(path)`. Page metadata is cached in
-// SQLite under $APPCACHE with configurable TTL. Failed fetches
+// Favicon images are stored as files via `FaviconStore` (rasters
+// converted to WebP, SVGs stored as-is). Page metadata is cached
+// in SQLite under $APPCACHE with configurable TTL. Failed fetches
 // (unreachable domains) are held in an in-memory negative cache
 // for 30 minutes to avoid repeated network attempts.
 // =========================================================
 
 mod cache;
+mod favicon_store;
 mod fetch;
 mod html_fields;
 mod metadata;
@@ -36,24 +37,19 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use image::ImageReader;
 use serde_json::Value;
 
-use crate::icons::IconCache;
 use crate::network::Http;
 use crate::search::types::EntryIcon;
 use crate::settings_notifier::SettingsNotifier;
-use crate::storage::{FileStorage, SqlStorage, StorageKey};
+use crate::storage::SqlStorage;
 
+use self::favicon_store::FaviconStore;
 use self::fetch::FetchError;
 
 // =========================================================
 // Constants
 // =========================================================
-
-/// Scope identifier for `IconCache` — favicon files live under
-/// `$APPCACHE/icons/website-metadata/<shard>/<hash>.<ext>`.
-const SERVICE_ID: &str = "website-metadata";
 
 /// How long failed fetch attempts are suppressed before retrying.
 const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
@@ -99,11 +95,7 @@ pub use cache::CacheStats;
 
 pub struct WebsiteMetadataService {
     db: SqlStorage,
-    icon_cache: Arc<IconCache>,
-    /// Dedicated `FileStorage` for raw (non-WebP) favicons like SVGs.
-    /// Lives under `$APPCACHE/website-metadata/raw-favicons/` to
-    /// avoid collisions with the IconCache-managed WebP files.
-    raw_storage: FileStorage,
+    favicons: FaviconStore,
     http: Http,
 
     /// Domains that recently failed — avoids repeated network
@@ -127,7 +119,6 @@ impl WebsiteMetadataService {
     /// Call `start_retention()` after wrapping in `Arc`.
     pub fn new(
         cache_dir: PathBuf,
-        icon_cache: Arc<IconCache>,
         notifier: &SettingsNotifier,
         initial_ttl_days: u32,
     ) -> anyhow::Result<Self> {
@@ -137,9 +128,7 @@ impl WebsiteMetadataService {
         )
         .context("open website metadata cache database")?;
 
-        // The raw_storage handles SVG and other non-raster favicons
-        // that can't go through the WebP conversion pipeline.
-        let raw_storage = FileStorage::new(cache_dir.join("raw-favicons"));
+        let favicons = FaviconStore::new(cache_dir.join("favicons"));
 
         let http = Http::builder()
             .default_timeout(Duration::from_secs(10))
@@ -165,8 +154,7 @@ impl WebsiteMetadataService {
 
         Ok(Self {
             db,
-            icon_cache,
-            raw_storage,
+            favicons,
             http,
             negative_cache: Mutex::new(HashMap::new()),
             in_flight: Mutex::new(HashSet::new()),
@@ -193,14 +181,8 @@ impl WebsiteMetadataService {
 
                 // Evict expired metadata rows and collect remaining
                 // favicon keys for orphan cleanup.
-                let valid_keys_hex = cache::evict_expired(&service.db, ttl_days);
-
-                let valid_keys: HashSet<StorageKey> = valid_keys_hex
-                    .into_iter()
-                    .map(StorageKey::from_raw)
-                    .collect();
-
-                service.icon_cache.cleanup(SERVICE_ID, &valid_keys);
+                let valid_keys = cache::evict_expired(&service.db, ttl_days);
+                service.favicons.cleanup(&valid_keys);
 
                 // Wait for the cleanup interval or a shutdown signal.
                 let guard = shutdown.lock().expect("shutdown mutex not poisoned");
@@ -275,29 +257,14 @@ impl WebsiteMetadataService {
     /// Gather cache statistics for the settings UI.
     pub fn stats(&self) -> cache::CacheStats {
         let mut stats = cache::stats(&self.db);
-
-        // Sum favicon file sizes from both storage locations:
-        // 1. WebP files in IconCache (raster favicons)
-        let webp_bytes: u64 = self
-            .icon_cache
-            .scoped_entries(SERVICE_ID)
-            .iter()
-            .map(|(_, _, meta)| meta.size)
-            .sum();
-
-        // 2. Raw files (SVG, BIN) in raw_storage
-        let raw_bytes: u64 = self.raw_storage.entries().map(|(_, _, meta)| meta.size).sum();
-
-        stats.favicon_bytes = webp_bytes + raw_bytes;
+        stats.favicon_bytes = self.favicons.disk_usage();
         stats
     }
 
     /// Clear all cached metadata and favicon files.
     pub fn clear_cache(&self) -> anyhow::Result<()> {
         cache::clear_all(&self.db)?;
-
-        // Remove all favicon files by passing an empty valid set.
-        self.icon_cache.cleanup(SERVICE_ID, &HashSet::new());
+        self.favicons.clear();
 
         // Also clear the negative cache so domains can be retried.
         self.negative_cache
@@ -333,9 +300,6 @@ impl WebsiteMetadataService {
     /// Convert a cached DB entry into a `MetadataResult`.
     fn cached_entry_to_result(&self, entry: cache::CachedEntry) -> MetadataResult {
         if !entry.reachable {
-            // This shouldn't normally happen — unreachable domains go
-            // to the in-memory negative cache, not SQLite. But handle
-            // it defensively.
             return MetadataResult::Unreachable;
         }
 
@@ -348,11 +312,14 @@ impl WebsiteMetadataService {
             return MetadataResult::ReachableNoData;
         }
 
-        let favicon = entry
-            .favicon_key
-            .and_then(|key| self.resolve_favicon_path(&key))
-            .map(EntryIcon::AssetIcon)
-            .unwrap_or_else(|| EntryIcon::HeroIcon("globe-alt".to_string()));
+        let favicon = match (&entry.favicon_key, &entry.favicon_ext) {
+            (Some(key), Some(ext)) => self
+                .favicons
+                .resolve(key, ext)
+                .map(EntryIcon::AssetIcon)
+                .unwrap_or_else(|| EntryIcon::HeroIcon("globe-alt".to_string())),
+            _ => EntryIcon::HeroIcon("globe-alt".to_string()),
+        };
 
         MetadataResult::Found(WebsiteMetadata {
             title: entry.title,
@@ -361,40 +328,15 @@ impl WebsiteMetadataService {
         })
     }
 
-    /// Resolve a favicon storage key to its filesystem path.
-    ///
-    /// Checks multiple storage locations in priority order:
-    /// 1. WebP (raster favicons processed by IconCache)
-    /// 2. SVG (raw stored, not processable by the image crate)
-    /// 3. BIN (raw stored, exotic formats the image crate can't decode)
-    fn resolve_favicon_path(&self, key_hex: &str) -> Option<String> {
-        let key = StorageKey::from_raw(key_hex.to_string());
-
-        // Check WebP first (raster favicons processed by IconCache).
-        let webp_path = self
-            .icon_cache
-            .ensure_icon(SERVICE_ID, &key, None, || Ok(None));
-        if webp_path.is_some() {
-            return webp_path;
-        }
-
-        // Check raw storage for formats that bypass WebP conversion.
-        for ext in &["svg", "bin"] {
-            let path = self.raw_storage.resolve(&key, ext);
-            if path.exists() {
-                return Some(path.to_string_lossy().into_owned());
-            }
-        }
-
-        None
-    }
-
     /// Try well-known favicon paths as a last resort.
     ///
     /// Many SPAs and API-first sites don't serve HTML metadata at the
     /// root URL, but still have a valid favicon at a conventional path.
     /// We try paths in quality order: SVG > PNG > ICO.
-    fn try_fallback_favicon(&self, domain: &str) -> (Option<String>, Option<String>, EntryIcon) {
+    fn try_fallback_favicon(
+        &self,
+        domain: &str,
+    ) -> (Option<String>, Option<String>, Option<String>, EntryIcon) {
         let candidates = [
             format!("https://{domain}/favicon.svg"),
             format!("https://{domain}/favicon.png"),
@@ -402,12 +344,17 @@ impl WebsiteMetadataService {
         ];
 
         for favicon_url in &candidates {
-            if let Some((key, icon)) = self.fetch_and_store_favicon(favicon_url) {
-                return (Some(favicon_url.clone()), Some(key), icon);
+            if let Some(stored) = self.fetch_and_store_favicon(favicon_url) {
+                return (
+                    Some(favicon_url.clone()),
+                    Some(stored.key),
+                    Some(stored.ext),
+                    EntryIcon::AssetIcon(stored.path),
+                );
             }
         }
 
-        (None, None, EntryIcon::HeroIcon("globe-alt".to_string()))
+        (None, None, None, EntryIcon::HeroIcon("globe-alt".to_string()))
     }
 
     /// Fetch metadata and favicon from the network, store in cache,
@@ -418,12 +365,14 @@ impl WebsiteMetadataService {
             Ok(meta) => meta,
             Err(FetchError::NotHtml { .. }) => {
                 // Domain is reachable but returned non-HTML content (e.g.,
-                // SPA backends, API-first sites). Still try /favicon.ico
-                // as a fallback before recording as no-data.
-                let (favicon_url, favicon_key, favicon) = self.try_fallback_favicon(domain);
+                // SPA backends, API-first sites). Still try well-known
+                // favicon paths as a fallback.
+                let (favicon_url, favicon_key, favicon_ext, favicon) =
+                    self.try_fallback_favicon(domain);
                 cache::store(
                     &self.db, domain, None, None,
-                    favicon_url.as_deref(), favicon_key.as_deref(), true,
+                    favicon_url.as_deref(), favicon_key.as_deref(),
+                    favicon_ext.as_deref(), true,
                 );
                 return if favicon_key.is_some() {
                     MetadataResult::Found(WebsiteMetadata {
@@ -441,16 +390,18 @@ impl WebsiteMetadataService {
             }
         };
 
-        // If HTML extraction yielded nothing useful, try the
-        // /favicon.ico fallback before giving up.
+        // If HTML extraction yielded nothing useful, try well-known
+        // favicon paths before giving up.
         if page_metadata.title.is_none()
             && page_metadata.description.is_none()
             && page_metadata.favicon_url.is_none()
         {
-            let (favicon_url, favicon_key, favicon) = self.try_fallback_favicon(domain);
+            let (favicon_url, favicon_key, favicon_ext, favicon) =
+                self.try_fallback_favicon(domain);
             cache::store(
                 &self.db, domain, None, None,
-                favicon_url.as_deref(), favicon_key.as_deref(), true,
+                favicon_url.as_deref(), favicon_key.as_deref(),
+                favicon_ext.as_deref(), true,
             );
             return if favicon_key.is_some() {
                 MetadataResult::Found(WebsiteMetadata {
@@ -464,14 +415,19 @@ impl WebsiteMetadataService {
         }
 
         // Attempt to fetch and store the favicon image.
-        let (favicon_key, favicon) = if let Some(ref favicon_url) = page_metadata.favicon_url {
-            match self.fetch_and_store_favicon(favicon_url) {
-                Some((key, icon)) => (Some(key), icon),
-                None => (None, EntryIcon::HeroIcon("globe-alt".to_string())),
-            }
-        } else {
-            (None, EntryIcon::HeroIcon("globe-alt".to_string()))
-        };
+        let (favicon_key, favicon_ext, favicon) =
+            if let Some(ref favicon_url) = page_metadata.favicon_url {
+                match self.fetch_and_store_favicon(favicon_url) {
+                    Some(stored) => (
+                        Some(stored.key),
+                        Some(stored.ext),
+                        EntryIcon::AssetIcon(stored.path),
+                    ),
+                    None => (None, None, EntryIcon::HeroIcon("globe-alt".to_string())),
+                }
+            } else {
+                (None, None, EntryIcon::HeroIcon("globe-alt".to_string()))
+            };
 
         // Store in SQLite.
         cache::store(
@@ -481,6 +437,7 @@ impl WebsiteMetadataService {
             page_metadata.description.as_deref(),
             page_metadata.favicon_url.as_deref(),
             favicon_key.as_deref(),
+            favicon_ext.as_deref(),
             true,
         );
 
@@ -491,52 +448,14 @@ impl WebsiteMetadataService {
         })
     }
 
-    /// Fetch a favicon image and store it in the icon cache.
-    ///
-    /// Returns the `StorageKey` hex string and the `EntryIcon` on
-    /// success, or `None` if the fetch or processing failed.
-    fn fetch_and_store_favicon(&self, favicon_url: &str) -> Option<(String, EntryIcon)> {
+    /// Fetch a favicon image and store it via the `FaviconStore`.
+    fn fetch_and_store_favicon(
+        &self,
+        favicon_url: &str,
+    ) -> Option<favicon_store::StoredFavicon> {
         let image_data = fetch::fetch_favicon_image(&self.http, favicon_url).ok()?;
-        let key = StorageKey::new(favicon_url);
-
-        // Try to decode as a raster image first (PNG, JPEG, ICO, WebP, etc.).
-        // If successful, process through IconCache for WebP conversion.
-        if let Ok(reader) = ImageReader::new(std::io::Cursor::new(&image_data.image_data))
-            .with_guessed_format()
-        {
-            if let Ok(img) = reader.decode() {
-                let key_clone = key.clone();
-                if let Some(path) = self.icon_cache.ensure_icon(
-                    SERVICE_ID,
-                    &key,
-                    None,
-                    move || Ok(Some(img)),
-                ) {
-                    return Some((key_clone.to_string(), EntryIcon::AssetIcon(path)));
-                }
-            }
-        }
-
-        // Raster decoding failed — store as raw file. This handles
-        // SVG and other formats the `image` crate can't decode.
-        let ext = if image_data.content_type.contains("svg") {
-            "svg"
-        } else {
-            // For unknown formats, use a generic extension.
-            "bin"
-        };
-
-        match self.raw_storage.store(&key, &image_data.image_data, ext) {
-            Ok(()) => {
-                let path = self.raw_storage.resolve(&key, ext);
-                return Some((key.to_string(), EntryIcon::AssetIcon(path.to_string_lossy().into_owned())));
-            }
-            Err(e) => {
-                eprintln!("write raw favicon for {}: {e:#}", &*key);
-            }
-        }
-
-        None
+        self.favicons
+            .store(favicon_url, &image_data.image_data, &image_data.content_type)
     }
 
     /// Spawn a background thread to fetch metadata for a domain.
