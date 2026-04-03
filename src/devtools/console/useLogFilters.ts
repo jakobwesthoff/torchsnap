@@ -17,6 +17,7 @@ const ALL_LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error"];
 
 export interface LogFilters {
   levels: Set<LogLevel>;
+  showSpans: boolean;
   sources: Set<string> | "all";
   searchText: string;
 }
@@ -25,11 +26,14 @@ export interface UseLogFiltersReturn {
   filters: LogFilters;
   filteredEntries: LogEntry[];
   toggleLevel: (level: LogLevel) => void;
+  toggleSpans: () => void;
   toggleSource: (source: string) => void;
   setAllSources: () => void;
   setSearchText: (text: string) => void;
-  /** Count of entries per level (unfiltered). */
+  /** Count of entries per level (unfiltered, excludes spans). */
   levelCounts: Record<LogLevel, number>;
+  /** Count of span entries (unfiltered). */
+  spanCount: number;
   /** Set of all known plugin sources. */
   knownSources: string[];
 }
@@ -38,6 +42,7 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
   const [levels, setLevels] = useState<Set<LogLevel>>(
     () => new Set(ALL_LEVELS),
   );
+  const [showSpans, setShowSpans] = useState(true);
   const [sources, setSources] = useState<Set<string> | "all">("all");
   const [searchText, setSearchText] = useState("");
 
@@ -53,14 +58,13 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
     });
   }, []);
 
+  const toggleSpans = useCallback(() => {
+    setShowSpans((prev) => !prev);
+  }, []);
+
   const toggleSource = useCallback((source: string) => {
     setSources((prev) => {
       if (prev === "all") {
-        // Switching from "all" to a specific exclusion: include
-        // all known sources except the toggled one. We'll need
-        // the known sources list, but for simplicity we just
-        // create a set with the single source removed.
-        // Actually, toggling from "all" should select only this one.
         return new Set([source]);
       }
       const next = new Set(prev);
@@ -91,8 +95,8 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
     return Array.from(seen).sort();
   }, [entries]);
 
-  // Count entries per level (unfiltered).
-  const levelCounts = useMemo(() => {
+  // Count entries per level and spans (unfiltered).
+  const { levelCounts, spanCount } = useMemo(() => {
     const counts: Record<LogLevel, number> = {
       trace: 0,
       debug: 0,
@@ -100,10 +104,15 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
       warn: 0,
       error: 0,
     };
+    let spans = 0;
     for (const entry of entries) {
-      counts[entry.level]++;
+      if (entry.span != null) {
+        spans++;
+      } else {
+        counts[entry.level]++;
+      }
     }
-    return counts;
+    return { levelCounts: counts, spanCount: spans };
   }, [entries]);
 
   // Apply filters.
@@ -111,8 +120,13 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
     const lowerSearch = searchText.toLowerCase();
 
     return entries.filter((entry) => {
-      // Level filter.
-      if (!levels.has(entry.level)) return false;
+      // Span filter — span entries are a separate category.
+      if (entry.span != null) {
+        if (!showSpans) return false;
+      } else {
+        // Level filter (only for non-span entries).
+        if (!levels.has(entry.level)) return false;
+      }
 
       // Source filter.
       if (sources !== "all") {
@@ -128,16 +142,18 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
 
       return true;
     });
-  }, [entries, levels, sources, searchText]);
+  }, [entries, levels, showSpans, sources, searchText]);
 
   return {
-    filters: { levels, sources, searchText },
+    filters: { levels, showSpans, sources, searchText },
     filteredEntries,
     toggleLevel,
+    toggleSpans,
     toggleSource,
     setAllSources,
     setSearchText,
     levelCounts,
+    spanCount,
     knownSources,
   };
 }

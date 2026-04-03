@@ -6,20 +6,22 @@
 // Log Entry Row
 //
 // Renders a single log entry as a horizontal line with:
-// - Colored left border (level indicator)
+// - Colored left border (level indicator, cyan for spans)
 // - Timestamp in monospace
-// - Level badge (colored text)
+// - Level badge ("SPAN" for span-end entries)
 // - Plugin source with colored dot
 // - Message in monospace
-// - Duration badge for span-end entries
-// - Expandable metadata
+// - Duration badge (fixed position, always allocated)
+// - Chevron (always allocated, invisible when no metadata)
+// - Copy button on hover
+//
+// The entire row is clickable to toggle metadata expansion.
 // =========================================================
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback } from "react";
 import {
   ChevronRightIcon,
   ClipboardDocumentIcon,
-  ClockIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogEntry, LogLevel } from "../types";
@@ -30,7 +32,7 @@ import type { LogEntry, LogLevel } from "../types";
 
 function formatEntryForClipboard(entry: LogEntry): string {
   const time = formatTimestamp(entry.timestamp);
-  const level = entry.level.toUpperCase();
+  const label = entry.span ? "SPAN" : entry.level.toUpperCase();
   const source =
     entry.source.type === "plugin" ? entry.source.value : "host";
   const meta =
@@ -40,7 +42,7 @@ function formatEntryForClipboard(entry: LogEntry): string {
   const span = entry.span
     ? ` [${entry.span.name} ${formatDuration(entry.span.durationUs)}]`
     : "";
-  return `[${time}] [${level}] [${source}] ${entry.message}${meta}${span}`;
+  return `[${time}] [${label}] [${source}] ${entry.message}${meta}${span}`;
 }
 
 // =========================================================
@@ -125,17 +127,17 @@ function formatTimestamp(timestamp: number): string {
 interface LogEntryRowProps {
   entry: LogEntry;
   index: number;
+  expanded: boolean;
+  onToggleExpand: () => void;
 }
 
 export const LogEntryRow = memo(function LogEntryRow({
   entry,
   index,
+  expanded,
+  onToggleExpand,
 }: LogEntryRowProps) {
-  const [metadataExpanded, setMetadataExpanded] = useState(false);
-
-  const copyToClipboard = useCallback(() => {
-    navigator.clipboard.writeText(formatEntryForClipboard(entry));
-  }, [entry]);
+  const isSpan = entry.span != null;
   const hasMetadata =
     entry.metadata.length > 0 ||
     (entry.span?.metadata && entry.span.metadata.length > 0);
@@ -143,14 +145,21 @@ export const LogEntryRow = memo(function LogEntryRow({
   const pluginId =
     entry.source.type === "plugin" ? entry.source.value : null;
 
+  const copyToClipboard = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(formatEntryForClipboard(entry));
+  }, [entry]);
+
   return (
     <div
+      onClick={hasMetadata ? onToggleExpand : undefined}
       className={cn(
         "group flex items-start gap-2 px-3 py-1 text-xs border-b border-border-divider/50",
         "hover:bg-surface-hover/50 transition-colors",
         "border-l-2",
-        levelBorderColor[entry.level],
+        isSpan ? "border-l-cyan-500" : levelBorderColor[entry.level],
         index % 2 === 0 && "bg-surface-inset/20",
+        hasMetadata && "cursor-pointer",
       )}
     >
       {/* Timestamp */}
@@ -158,14 +167,14 @@ export const LogEntryRow = memo(function LogEntryRow({
         {formatTimestamp(entry.timestamp)}
       </span>
 
-      {/* Level badge */}
+      {/* Level badge — shows "SPAN" in cyan for span-end entries */}
       <span
         className={cn(
           "shrink-0 w-[42px] text-center text-[10px] font-semibold uppercase tracking-wider leading-5",
-          levelTextColor[entry.level],
+          isSpan ? "text-cyan-400" : levelTextColor[entry.level],
         )}
       >
-        {entry.level}
+        {isSpan ? "span" : entry.level}
       </span>
 
       {/* Source */}
@@ -187,21 +196,17 @@ export const LogEntryRow = memo(function LogEntryRow({
         )}
       </span>
 
-      {/* Message + span info */}
+      {/* Message + trailing controls */}
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-1">
-          {/* Span indicator — distinguishes span-end timing entries from regular log messages */}
-          {entry.span && (
-            <ClockIcon className="w-3.5 h-3.5 shrink-0 mt-[3px] text-text-muted" />
-          )}
-
+          {/* Message */}
           <span className="flex-1 min-w-0 font-mono text-[11px] leading-5 text-text-primary break-words select-text">
             {entry.message}
           </span>
 
-          {/* Duration badge for span-end entries */}
-          {entry.span && (
-            <span className="inline-flex items-center gap-1 ml-2 shrink-0">
+          {/* Duration badge — fixed-width slot, empty for non-span entries */}
+          <span className="shrink-0 w-[70px] text-right">
+            {entry.span && (
               <span
                 className={cn(
                   "text-[10px] font-mono tabular-nums",
@@ -210,23 +215,20 @@ export const LogEntryRow = memo(function LogEntryRow({
               >
                 {formatDuration(entry.span.durationUs)}
               </span>
-            </span>
-          )}
+            )}
+          </span>
 
-          {/* Metadata toggle */}
-          {hasMetadata && (
-            <button
-              className="shrink-0 p-0.5 text-text-muted hover:text-text-secondary transition-colors"
-              onClick={() => setMetadataExpanded(!metadataExpanded)}
-            >
+          {/* Chevron — always occupies space, invisible when no metadata */}
+          <span className="shrink-0 w-4 flex items-center justify-center">
+            {hasMetadata && (
               <ChevronRightIcon
                 className={cn(
-                  "w-3 h-3 transition-transform",
-                  metadataExpanded && "rotate-90",
+                  "w-3 h-3 transition-transform text-text-muted",
+                  expanded && "rotate-90",
                 )}
               />
-            </button>
-          )}
+            )}
+          </span>
 
           {/* Copy button (visible on hover) */}
           <button
@@ -239,7 +241,7 @@ export const LogEntryRow = memo(function LogEntryRow({
         </div>
 
         {/* Expanded metadata */}
-        {metadataExpanded && hasMetadata && (
+        {expanded && hasMetadata && (
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
             {entry.metadata.map(([key, value]) => (
               <span key={key} className="text-[10px] font-mono">
