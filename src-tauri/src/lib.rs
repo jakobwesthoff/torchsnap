@@ -510,6 +510,9 @@ pub fn run() {
             );
             metadata_service.start_retention();
 
+            host.register(Box::new(plugins::open_url::OpenUrlPlugin::new(
+                Arc::clone(&metadata_service),
+            )));
             host.register(Box::new(plugins::bangs::BangsPlugin::new(
                 Arc::clone(&metadata_service),
             )));

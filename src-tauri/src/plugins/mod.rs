@@ -25,6 +25,7 @@ pub mod calculator;
 pub mod clipboard;
 pub mod commands;
 pub mod emoji;
+pub mod open_url;
 pub mod system_commands;
 pub mod system_preferences;
 
