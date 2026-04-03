@@ -5,13 +5,10 @@
 // =========================================================
 // Developer Tools Panel
 //
-// Top-level layout for the Developer Tools window. Uses the
-// macOS overlay titlebar pattern (48px drag region) with a
-// tab bar for switching between tool panels.
-//
-// Currently only the Console tab is implemented. The tab bar
-// structure allows future tabs (Network, State, etc.) without
-// layout changes.
+// Top-level layout for the Developer Tools window. The drag
+// region is a separate visual strip at the top (housing the
+// macOS traffic lights), with the tab bar below it left-
+// aligned to the window edge.
 // =========================================================
 
 import { useState } from "react";
@@ -23,13 +20,13 @@ export function DevToolsPanel() {
 
   return (
     <div className="flex flex-col h-screen font-sans antialiased bg-surface text-text-primary">
-      {/* macOS overlay titlebar drag region */}
+      {/* Drag region — separate strip for traffic lights */}
       <div
         data-tauri-drag-region
-        className="absolute inset-x-0 top-0 h-12 select-none z-10"
+        className="shrink-0 h-[30px] bg-surface-inset/50 border-b border-border-divider"
       />
 
-      {/* Tab bar — sits within the drag region height */}
+      {/* Tab bar — below drag region, left-aligned */}
       <DevToolsTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Tab content — fills remaining vertical space */}
