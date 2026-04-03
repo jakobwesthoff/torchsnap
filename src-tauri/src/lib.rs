@@ -518,6 +518,26 @@ pub fn run() {
                 Arc::clone(&metadata_service),
             )));
 
+            // =========================================================
+            // WASM plugins
+            //
+            // Load plugins from the `plugins/` development directory.
+            // Each subdirectory with a manifest.toml is loaded as a
+            // DirectorySource, instantiated via wasmtime, and bridged
+            // to the native Plugin trait.
+            //
+            // TODO: Replace hardcoded dev path with proper plugin
+            // discovery from $APPDATA/torchsnap/plugins/.
+            // =========================================================
+            match load_wasm_plugins(&mut host) {
+                Ok(count) => {
+                    if count > 0 {
+                        eprintln!("[wasm] Loaded {count} plugin(s)");
+                    }
+                }
+                Err(e) => eprintln!("[wasm] Failed to initialize: {e:#}"),
+            }
+
             // Settings init + shortcut registration + parallel setup.
             host.initialize_and_start(app.handle());
 
@@ -637,4 +657,66 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+// =========================================================
+// WASM Plugin Loader
+//
+// Scans the `plugins/` development directory for WASM plugin
+// directories, instantiates each one, and registers them
+// with the PluginHost.
+//
+// TODO: Replace hardcoded dev path with proper plugin
+// discovery from $APPDATA/torchsnap/plugins/ and support
+// for .torchsnap archive files via ArchiveSource.
+// =========================================================
+
+fn load_wasm_plugins(host: &mut plugin_host::PluginHost) -> anyhow::Result<usize> {
+    let runtime = wasm::runtime::WasmRuntime::new()?;
+
+    let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+    let entries = match std::fs::read_dir(&plugin_dir) {
+        Ok(entries) => entries,
+        // No plugins directory — not an error, just nothing to load.
+        Err(_) => return Ok(0),
+    };
+
+    let mut count = 0;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.join("manifest.toml").exists() {
+            continue;
+        }
+
+        let loaded = load_single_wasm_plugin(&runtime, &path, host);
+        match loaded {
+            Ok(plugin_id) => {
+                eprintln!("[wasm] Loaded plugin: {plugin_id}");
+                count += 1;
+            }
+            Err(e) => {
+                eprintln!("[wasm] Failed to load {}: {e:#}", path.display());
+            }
+        }
+    }
+
+    Ok(count)
+}
+
+fn load_single_wasm_plugin(
+    runtime: &wasm::runtime::WasmRuntime,
+    path: &std::path::Path,
+    host: &mut plugin_host::PluginHost,
+) -> anyhow::Result<String> {
+    use wasm::source::PluginSource as _;
+
+    let source = wasm::source::DirectorySource::open(path)?;
+    let plugin_id = source.manifest().plugin.id.as_str().to_string();
+    let wasm_bytes = source.read_wasm()?;
+    let instance = runtime.instantiate(&plugin_id, &wasm_bytes)?;
+    let manifest = source.into_manifest();
+    let bridge = wasm::bridge::WasmPluginBridge::new(manifest, instance);
+    host.register(Box::new(bridge));
+    Ok(plugin_id)
 }
