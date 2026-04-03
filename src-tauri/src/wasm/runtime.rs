@@ -120,9 +120,16 @@ impl WasmRuntime {
         plugin_id: &str,
         wasm_bytes: &[u8],
     ) -> anyhow::Result<WasmPluginInstance> {
+        let total_start = std::time::Instant::now();
+
         // Compile the WASM component.
+        let compile_start = std::time::Instant::now();
         let component = Component::new(&self.engine, wasm_bytes)
             .map_err(|e| anyhow::anyhow!("compiling WASM component: {e}"))?;
+        eprintln!(
+            "[wasm:{plugin_id}] compile took {:.2}ms",
+            compile_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         // Set up the linker with all host imports.
         let mut linker = Linker::<PluginState>::new(&self.engine);
@@ -152,8 +159,17 @@ impl WasmRuntime {
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component and get the typed bindings.
+        let instantiate_start = std::time::Instant::now();
         let plugin = bindings::Plugin::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
+        eprintln!(
+            "[wasm:{plugin_id}] instantiate took {:.2}ms",
+            instantiate_start.elapsed().as_secs_f64() * 1000.0
+        );
+        eprintln!(
+            "[wasm:{plugin_id}] total load took {:.2}ms",
+            total_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         Ok(WasmPluginInstance {
             store: Mutex::new(store),
@@ -177,32 +193,63 @@ pub struct WasmPluginInstance {
 }
 
 impl WasmPluginInstance {
+    /// Log how long a WASM guest call took.
+    fn log_timing(plugin_id: &str, method: &str, start: std::time::Instant) {
+        let elapsed = start.elapsed();
+        eprintln!(
+            "[wasm:{plugin_id}] {method}() took {:.2}ms",
+            elapsed.as_secs_f64() * 1000.0
+        );
+    }
+
+    fn plugin_id(&self) -> String {
+        self.store
+            .lock()
+            .expect("store not poisoned")
+            .data()
+            .plugin_id
+            .clone()
+    }
+
     /// Call the guest's `enable` export.
     pub fn enable(&self) -> anyhow::Result<()> {
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        let id = store.data().plugin_id.clone();
+        let start = std::time::Instant::now();
+        let result = self
+            .plugin
             .torchsnap_plugin_lifecycle()
             .call_enable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"));
+        Self::log_timing(&id, "enable", start);
+        result
     }
 
     /// Call the guest's `disable` export.
     pub fn disable(&self) -> anyhow::Result<()> {
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        let id = store.data().plugin_id.clone();
+        let start = std::time::Instant::now();
+        let result = self
+            .plugin
             .torchsnap_plugin_lifecycle()
             .call_disable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling plugin disable(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling plugin disable(): {e}"));
+        Self::log_timing(&id, "disable", start);
+        result
     }
 
     /// Call the guest's `entries` export and convert to native types.
     pub fn entries(&self) -> anyhow::Result<Vec<crate::search::types::CatalogEntry>> {
         let mut store = self.store.lock().expect("store not poisoned");
+        let id = store.data().plugin_id.clone();
+        let start = std::time::Instant::now();
         let wit_entries = self
             .plugin
             .torchsnap_plugin_search()
             .call_entries(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin entries(): {e}"))?;
+        Self::log_timing(&id, "entries", start);
 
         Ok(wit_entries.into_iter().map(Into::into).collect())
     }
@@ -214,11 +261,14 @@ impl WasmPluginInstance {
         matched_prefix: Option<&str>,
     ) -> anyhow::Result<crate::search::types::PluginResponse> {
         let mut store = self.store.lock().expect("store not poisoned");
+        let id = store.data().plugin_id.clone();
+        let start = std::time::Instant::now();
         let response = self
             .plugin
             .torchsnap_plugin_search()
             .call_search(&mut *store, query, matched_prefix)
             .map_err(|e| anyhow::anyhow!("calling plugin search(): {e}"))?;
+        Self::log_timing(&id, "search", start);
 
         Ok(response.into())
     }
@@ -230,6 +280,8 @@ impl WasmPluginInstance {
         action_id: &crate::search::types::ActionId,
     ) -> anyhow::Result<crate::search::types::PostAction> {
         let mut store = self.store.lock().expect("store not poisoned");
+        let id = store.data().plugin_id.clone();
+        let start = std::time::Instant::now();
 
         let wit_action_id: bindings::torchsnap::plugin::types::ActionId =
             action_id.clone().into();
@@ -239,6 +291,7 @@ impl WasmPluginInstance {
             .torchsnap_plugin_search()
             .call_execute(&mut *store, entry_id, &wit_action_id)
             .map_err(|e| anyhow::anyhow!("calling plugin execute(): {e}"))?;
+        Self::log_timing(&id, "execute", start);
 
         match result {
             Ok(post_action) => Ok(post_action.into()),

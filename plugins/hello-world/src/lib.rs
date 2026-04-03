@@ -46,7 +46,7 @@ thread_local! {
 
 impl LifecycleGuest for HelloWorld {
     fn enable() {
-        let names = petnames::generate_petnames(5000);
+        let names = petnames::generate_petnames(50_000);
         logging::log(
             logging::LogLevel::Info,
             &format!("Hello World plugin enabled with {} petnames", names.len()),
