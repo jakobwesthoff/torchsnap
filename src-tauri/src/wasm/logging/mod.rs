@@ -32,7 +32,20 @@ pub mod storage;
 
 use std::time::SystemTime;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
+
+/// Serialize `SystemTime` as milliseconds since Unix epoch
+/// so the frontend can use `new Date(ms)` directly.
+fn serialize_timestamp_ms<S: Serializer>(
+    time: &SystemTime,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let duration = time
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let ms = duration.as_millis() as u64;
+    serializer.serialize_u64(ms)
+}
 
 // =========================================================
 // Constants
@@ -117,7 +130,10 @@ pub struct LogEntry {
     /// Set to 0 by producers; the logging task assigns the
     /// real value before storing.
     pub seq: u64,
-    /// Wall-clock timestamp for display.
+    /// Wall-clock timestamp as milliseconds since Unix epoch.
+    /// Serialized as a number for direct use with `new Date(ms)`
+    /// on the frontend.
+    #[serde(serialize_with = "serialize_timestamp_ms")]
     pub timestamp: SystemTime,
     /// Severity level.
     pub level: LogLevel,

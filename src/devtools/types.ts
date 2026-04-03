@@ -26,7 +26,8 @@ export interface SpanInfo {
 
 export interface LogEntry {
   seq: number;
-  timestamp: string;
+  /** Milliseconds since Unix epoch. */
+  timestamp: number;
   level: LogLevel;
   source: LogSource;
   message: string;

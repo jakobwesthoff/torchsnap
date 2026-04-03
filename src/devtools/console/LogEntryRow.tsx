@@ -104,7 +104,7 @@ function durationColor(durationUs: number): string {
 // Timestamp Formatting
 // =========================================================
 
-function formatTimestamp(timestamp: string): string {
+function formatTimestamp(timestamp: number): string {
   try {
     const date = new Date(timestamp);
     const h = date.getHours().toString().padStart(2, "0");
