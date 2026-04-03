@@ -32,7 +32,8 @@ use tauri_plugin_opener::OpenerExt;
 use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::network::Http;
 use crate::search::types::{
-    Action, ActionId, CancellationToken, EntryIcon, PostAction, ResultChannel, ScoredEntry,
+    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ResultChannel,
+    ScoredEntry,
 };
 use crate::settings::SettingsInit;
 use crate::storage::SqlStorage;
@@ -256,11 +257,21 @@ impl Plugin for BangsPlugin {
             score: BANG_SCORE,
             title_positions,
             subtitle_positions: Utf16Positions(vec![]),
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Open in Browser".to_string(),
-                keybinding: None,
-            }],
+            actions: vec![
+                Action {
+                    id: ActionId::Open,
+                    label: "Open in Browser".to_string(),
+                    keybinding: None,
+                },
+                Action {
+                    id: ActionId::Copy,
+                    label: "Copy URL".to_string(),
+                    keybinding: Some(ActionKeybinding {
+                        modifiers: vec!["Meta".into()],
+                        key: "c".into(),
+                    }),
+                },
+            ],
         };
 
         let _ = results.send_results(vec![entry]);
@@ -291,6 +302,21 @@ impl Plugin for BangsPlugin {
                 app.opener()
                     .open_url(&url, None::<&str>)
                     .context("open bang URL in browser")?;
+
+                Ok(PostAction::Dismiss)
+            }
+            ActionId::Copy => {
+                let url = self
+                    .pending_url
+                    .lock()
+                    .expect("pending_url lock not poisoned")
+                    .take()
+                    .context("no pending URL to copy")?;
+
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                app.clipboard()
+                    .write_text(&url)
+                    .map_err(|e| anyhow::anyhow!("copy URL to clipboard: {e}"))?;
 
                 Ok(PostAction::Dismiss)
             }
