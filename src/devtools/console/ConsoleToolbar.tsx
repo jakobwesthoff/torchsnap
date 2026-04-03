@@ -5,7 +5,7 @@
 // =========================================================
 // Console Toolbar
 //
-// Filter bar with level pills, span pill, source filter,
+// Filter bar with level pills, span pill, source chips,
 // search input, and action buttons. Groups are separated by
 // thin vertical dividers.
 // =========================================================
@@ -15,6 +15,7 @@ import { TrashIcon } from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
+import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
 
 // =========================================================
 // Level Pill Configuration
@@ -64,10 +65,13 @@ interface ConsoleToolbarProps {
   filters: LogFilters;
   onToggleLevel: (level: LogLevel) => void;
   onToggleSpans: () => void;
+  onToggleSource: (source: string) => void;
+  onSetAllSources: () => void;
   onSetSearchText: (text: string) => void;
   onClear: () => void;
   levelCounts: Record<LogLevel, number>;
   spanCount: number;
+  knownSources: string[];
   totalCount: number;
   filteredCount: number;
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
@@ -77,16 +81,21 @@ export function ConsoleToolbar({
   filters,
   onToggleLevel,
   onToggleSpans,
+  onToggleSource,
+  onSetAllSources,
   onSetSearchText,
   onClear,
   levelCounts,
   spanCount,
+  knownSources,
   totalCount,
   filteredCount,
   searchInputRef,
 }: ConsoleToolbarProps) {
   const localSearchRef = useRef<HTMLInputElement>(null);
   const inputRef = searchInputRef ?? localSearchRef;
+
+  const isAllSources = filters.sources === "all";
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-inset/30 shrink-0">
@@ -141,6 +150,58 @@ export function ConsoleToolbar({
 
       {/* Divider */}
       <div className="w-px h-4 bg-border-divider" />
+
+      {/* Source filter chips */}
+      {knownSources.length > 0 && (
+        <>
+          <div className="flex items-center gap-1">
+            {/* "All" chip */}
+            <button
+              onClick={onSetAllSources}
+              className={cn(
+                "px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border",
+                isAllSources
+                  ? "bg-surface-active border-border-hover text-text-primary"
+                  : "bg-transparent border-border text-text-muted opacity-50",
+              )}
+            >
+              All
+            </button>
+
+            {/* Per-source chips */}
+            {knownSources.map((source) => {
+              const selected = isAllSources || (filters.sources !== "all" && filters.sources.has(source));
+              const isPlugin = source !== "host";
+
+              return (
+                <button
+                  key={source}
+                  onClick={() => onToggleSource(source)}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border",
+                    selected
+                      ? "bg-surface-active border-border-hover text-text-primary"
+                      : "bg-transparent border-border text-text-muted opacity-50",
+                  )}
+                >
+                  {isPlugin && (
+                    <span
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full shrink-0",
+                        PLUGIN_COLORS[pluginColorIndex(source)],
+                      )}
+                    />
+                  )}
+                  {source}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-border-divider" />
+        </>
+      )}
 
       {/* Entry count */}
       <span className="text-[10px] text-text-muted tabular-nums shrink-0">

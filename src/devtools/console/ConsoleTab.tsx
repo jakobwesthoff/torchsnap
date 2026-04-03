@@ -23,9 +23,12 @@ export function ConsoleTab() {
     filteredEntries,
     toggleLevel,
     toggleSpans,
+    toggleSource,
+    setAllSources,
     setSearchText,
     levelCounts,
     spanCount,
+    knownSources,
   } = useLogFilters(entries);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -55,10 +58,13 @@ export function ConsoleTab() {
         filters={filters}
         onToggleLevel={toggleLevel}
         onToggleSpans={toggleSpans}
+        onToggleSource={toggleSource}
+        onSetAllSources={setAllSources}
         onSetSearchText={setSearchText}
         onClear={clear}
         levelCounts={levelCounts}
         spanCount={spanCount}
+        knownSources={knownSources}
         totalCount={entries.length}
         filteredCount={filteredEntries.length}
         searchInputRef={searchInputRef}
