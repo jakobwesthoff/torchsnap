@@ -1,0 +1,7 @@
+[plugin]
+id = "hello-world"
+name = "Hello World"
+description = "Minimal test plugin for validating the WASM plugin pipeline"
+version = "0.1.0"
+wasm = "hello_world_plugin.wasm"
+icon = "heroicons:hand-raised"
