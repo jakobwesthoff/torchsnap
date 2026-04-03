@@ -19,6 +19,7 @@ import { memo, useCallback, useState } from "react";
 import {
   ChevronRightIcon,
   ClipboardDocumentIcon,
+  ClockIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogEntry, LogLevel } from "../types";
@@ -189,6 +190,11 @@ export const LogEntryRow = memo(function LogEntryRow({
       {/* Message + span info */}
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-1">
+          {/* Span indicator — distinguishes span-end timing entries from regular log messages */}
+          {entry.span && (
+            <ClockIcon className="w-3.5 h-3.5 shrink-0 mt-[3px] text-text-muted" />
+          )}
+
           <span className="flex-1 min-w-0 font-mono text-[11px] leading-5 text-text-primary break-words select-text">
             {entry.message}
           </span>
