@@ -90,7 +90,7 @@ pub fn devtools_log_subscribe(
     let mut rx = state.subscribe();
     let storage = Arc::clone(state.storage());
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             // Wait for the first entry.
             let entry = match rx.recv().await {
