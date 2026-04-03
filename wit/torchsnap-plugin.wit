@@ -1,0 +1,75 @@
+// Torchsnap Plugin Interface
+//
+// Minimal initial definition covering lifecycle, catalog search,
+// and execution. Expanded as real plugins are converted.
+
+package torchsnap:plugin@0.1.0;
+
+// ─── Host imports (provided by the host to plugins) ─────
+
+interface logging {
+    enum log-level {
+        trace,
+        debug,
+        info,
+        warn,
+        error,
+    }
+
+    log: func(level: log-level, message: string);
+}
+
+// ─── Shared types ────────────────────────────────��──────
+
+interface types {
+    variant entry-icon {
+        hero-icon(string),
+        data-url(string),
+        asset-icon(string),
+        emoji(string),
+    }
+
+    record action {
+        id: string,
+        label: string,
+    }
+
+    record catalog-entry {
+        id: string,
+        title: string,
+        subtitle: option<string>,
+        icon: option<entry-icon>,
+        keywords: list<string>,
+        actions: list<action>,
+    }
+
+    enum post-action {
+        nothing,
+        dismiss,
+        keep-open,
+    }
+}
+
+// ─── Guest exports (implemented by plugins) ─────────────
+
+interface lifecycle {
+    enable: func();
+    disable: func();
+}
+
+interface search {
+    use types.{catalog-entry, post-action};
+
+    entries: func() -> list<catalog-entry>;
+    execute: func(entry-id: string, action-id: string) -> result<post-action, string>;
+}
+
+// ─── The plugin world ───────────────────────────────────
+
+world plugin {
+    import logging;
+    import types;
+
+    export lifecycle;
+    export search;
+}
