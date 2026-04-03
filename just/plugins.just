@@ -3,8 +3,8 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # This file handles building WASM plugin crates. Each plugin in
-# plugins/ is a standalone cargo-component project that compiles
-# to a .wasm component targeting wasm32-wasip2.
+# plugins/ is a standalone Rust project that compiles to a .wasm
+# component targeting wasm32-wasip2.
 
 # Build all WASM plugins
 build-plugins:
@@ -14,13 +14,13 @@ build-plugins:
         if [ -f "$dir/Cargo.toml" ]; then
             name=$(basename "$dir")
             echo "Building plugin: $name"
-            cargo component build --manifest-path "$dir/Cargo.toml" --release
+            cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
         fi
     done
 
 # Build a single WASM plugin by name
 build-plugin name:
-    cargo component build --manifest-path "plugins/{{ name }}/Cargo.toml" --release
+    cargo build --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2 --release
 
 # Check all WASM plugins compile
 check-plugins:
@@ -30,10 +30,10 @@ check-plugins:
         if [ -f "$dir/Cargo.toml" ]; then
             name=$(basename "$dir")
             echo "Checking plugin: $name"
-            cargo component check --manifest-path "$dir/Cargo.toml"
+            cargo check --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2
         fi
     done
 
 # Check a single WASM plugin compiles
 check-plugin name:
-    cargo component check --manifest-path "plugins/{{ name }}/Cargo.toml"
+    cargo check --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2

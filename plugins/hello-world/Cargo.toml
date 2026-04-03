@@ -4,17 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 # This crate targets wasm32-wasip2 and is built with
-# `cargo component build`, not the default `cargo build`.
+# `cargo build --target wasm32-wasip2`, not the host target.
 
 [dependencies]
-wit-bindgen = "0.41"
+wit-bindgen = "0.54"
 
 [lib]
 crate-type = ["cdylib"]
-
-[package.metadata.component]
-package = "torchsnap:hello-world"
-
-[package.metadata.component.target]
-path = "../../wit"
-world = "plugin"

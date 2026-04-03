@@ -44,7 +44,17 @@ doctor:
 
     echo ""
     echo "WASM plugin toolchain:"
-    check cargo-component "build WASM component plugins"  "cargo install cargo-component"
+    check wasm-tools      "inspect/validate WASM components"  "cargo install wasm-tools"
+
+    # Check that the wasm32-wasip2 target is installed.
+    if rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2; then
+        printf "  ${green}✓${reset}  %-14s installed\n" "wasm32-wasip2"
+        ok=$((ok + 1))
+    else
+        printf "  ${red}✗${reset}  %-14s missing — Rust compilation target for WASM plugins\n" "wasm32-wasip2"
+        printf "     %-14s install: %s\n" "" "rustup target add wasm32-wasip2"
+        missing=$((missing + 1))
+    fi
 
     echo ""
     echo "Asset pipeline:"
