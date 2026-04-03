@@ -15,3 +15,4 @@ mod icon_cache;
 mod icon_processing;
 
 pub use icon_cache::IconCache;
+pub use icon_processing::process_icon;

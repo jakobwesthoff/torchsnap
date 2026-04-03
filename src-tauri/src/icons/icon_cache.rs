@@ -115,17 +115,6 @@ impl IconCache {
         }
     }
 
-    /// Collect all cached entries for a given plugin scope.
-    ///
-    /// Returns `(StorageKey, extension, EntryMetadata)` triples —
-    /// useful for computing disk usage statistics.
-    pub fn scoped_entries(
-        &self,
-        plugin_id: &str,
-    ) -> Vec<(StorageKey, String, crate::storage::EntryMetadata)> {
-        self.storage.scoped(plugin_id).entries().collect()
-    }
-
     /// Remove cached icons not referenced by any active entry.
     ///
     /// Only touches the subtree for `plugin_id`. Walks all shard

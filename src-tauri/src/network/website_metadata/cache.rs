@@ -6,8 +6,8 @@
 //!
 //! Stores domain-keyed metadata (title, description, favicon reference)
 //! with time-based expiration. Favicon image files are stored separately
-//! by the `IconCache`; this module only tracks the `favicon_key` that
-//! links a domain to its cached icon file.
+//! by the `FaviconStore`; this module tracks the `favicon_key` and
+//! `favicon_ext` that link a domain to its cached icon file.
 
 use crate::storage::{SqlStorage, SqlValue};
 
@@ -22,6 +22,7 @@ CREATE TABLE website_metadata (
     description  TEXT,
     favicon_url  TEXT,
     favicon_key  TEXT,
+    favicon_ext  TEXT,
     reachable    INTEGER NOT NULL DEFAULT 1,
     fetched_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );\
@@ -35,8 +36,8 @@ CREATE TABLE website_metadata (
 pub struct CachedEntry {
     pub title: Option<String>,
     pub description: Option<String>,
-    pub favicon_url: Option<String>,
     pub favicon_key: Option<String>,
+    pub favicon_ext: Option<String>,
     pub reachable: bool,
 }
 
@@ -56,7 +57,7 @@ pub struct CacheStats {
 /// Returns `None` if no row exists or the row has expired.
 pub fn lookup(db: &SqlStorage, domain: &str, ttl_days: u32) -> Option<CachedEntry> {
     db.query_map(
-        "SELECT title, description, favicon_url, favicon_key, reachable \
+        "SELECT title, description, favicon_key, favicon_ext, reachable \
          FROM website_metadata \
          WHERE domain = ? \
            AND fetched_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
@@ -68,8 +69,8 @@ pub fn lookup(db: &SqlStorage, domain: &str, ttl_days: u32) -> Option<CachedEntr
             Ok(CachedEntry {
                 title: row.get(0).ok(),
                 description: row.get(1).ok(),
-                favicon_url: row.get(2).ok(),
-                favicon_key: row.get(3).ok(),
+                favicon_key: row.get(2).ok(),
+                favicon_ext: row.get(3).ok(),
                 reachable: row.get::<i64>(4).map(|v| v != 0).unwrap_or(true),
             })
         },
@@ -86,25 +87,27 @@ pub fn store(
     description: Option<&str>,
     favicon_url: Option<&str>,
     favicon_key: Option<&str>,
+    favicon_ext: Option<&str>,
     reachable: bool,
 ) {
     let _ = db.execute(
         "INSERT OR REPLACE INTO website_metadata \
-             (domain, title, description, favicon_url, favicon_key, reachable, fetched_at) \
-         VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+             (domain, title, description, favicon_url, favicon_key, favicon_ext, reachable, fetched_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         &[
             SqlValue::from(domain.to_string()),
             title.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
             description.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
             favicon_url.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
             favicon_key.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            favicon_ext.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
             SqlValue::from(if reachable { 1i64 } else { 0i64 }),
         ],
     );
 }
 
 /// Delete expired entries and return the favicon keys of remaining
-/// (non-expired) rows. Callers use this set for `IconCache::cleanup`.
+/// (non-expired) rows. Callers use this set for `FaviconStore::cleanup`.
 pub fn evict_expired(db: &SqlStorage, ttl_days: u32) -> Vec<String> {
     // Delete expired rows.
     let _ = db.execute(
@@ -143,7 +146,7 @@ pub fn stats(db: &SqlStorage) -> CacheStats {
     CacheStats {
         entry_count,
         // Favicon disk usage is computed by the service layer,
-        // which has access to the file storage.
+        // which has access to the favicon store.
         favicon_bytes: 0,
     }
 }
