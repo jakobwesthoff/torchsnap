@@ -37,3 +37,27 @@ check-plugins:
 # Check a single WASM plugin compiles
 check-plugin name:
     cargo check --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2
+
+# Validate WIT definitions parse correctly
+check-wit:
+    wasm-tools component wit wit/ > /dev/null
+
+# Format WIT definitions to canonical form
+fmt-wit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in wit/*.wit; do
+        wasm-tools component wit "$f" -o "$f"
+    done
+
+# Check WIT formatting without writing
+fmt-check-wit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in wit/*.wit; do
+        if ! diff -q <(wasm-tools component wit "$f") "$f" > /dev/null 2>&1; then
+            echo "WIT not formatted: $f"
+            echo "Run 'just fmt-wit' to fix"
+            exit 1
+        fi
+    done

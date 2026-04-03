@@ -6,8 +6,8 @@
 # linting, eslint, formatting, and build verification. The `fullcycle`
 # recipe runs them all in sequence as a pre-push validation step.
 
-# Check compilation (Rust + WASM plugins) and types (TypeScript)
-check: check-crates check-plugins check-types
+# Check compilation (Rust + WIT + WASM plugins) and types (TypeScript)
+check: check-crates check-wit check-plugins check-types
 
 # Check the Rust crate compiles
 check-crates:
@@ -28,8 +28,8 @@ lint-crates:
 lint-frontend:
     bun run lint
 
-# Format everything (Rust + frontend)
-fmt: fmt-crates fmt-frontend
+# Format everything (Rust + WIT + frontend)
+fmt: fmt-crates fmt-wit fmt-frontend
 
 # Format Rust (cargo fmt)
 fmt-crates:
@@ -39,8 +39,8 @@ fmt-crates:
 fmt-frontend:
     bun run fmt
 
-# Check formatting without writing (Rust + frontend)
-fmt-check: fmt-check-crates fmt-check-frontend
+# Check formatting without writing (Rust + WIT + frontend)
+fmt-check: fmt-check-crates fmt-check-wit fmt-check-frontend
 
 # Check Rust formatting
 fmt-check-crates:
