@@ -5,8 +5,8 @@
 // =========================================================
 // Console Toolbar
 //
-// Filter bar with level pills, source filter, search input,
-// and action buttons (pause/clear). Groups are separated by
+// Filter bar with level pills, span pill, source filter,
+// search input, and action buttons. Groups are separated by
 // thin vertical dividers.
 // =========================================================
 
@@ -63,9 +63,11 @@ const LEVEL_ORDER: LogLevel[] = ["error", "warn", "info", "debug", "trace"];
 interface ConsoleToolbarProps {
   filters: LogFilters;
   onToggleLevel: (level: LogLevel) => void;
+  onToggleSpans: () => void;
   onSetSearchText: (text: string) => void;
   onClear: () => void;
   levelCounts: Record<LogLevel, number>;
+  spanCount: number;
   totalCount: number;
   filteredCount: number;
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
@@ -74,9 +76,11 @@ interface ConsoleToolbarProps {
 export function ConsoleToolbar({
   filters,
   onToggleLevel,
+  onToggleSpans,
   onSetSearchText,
   onClear,
   levelCounts,
+  spanCount,
   totalCount,
   filteredCount,
   searchInputRef,
@@ -115,6 +119,24 @@ export function ConsoleToolbar({
             </button>
           );
         })}
+
+        {/* Span filter pill */}
+        <button
+          onClick={onToggleSpans}
+          className={cn(
+            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-all",
+            "border",
+            filters.showSpans
+              ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-400"
+              : "bg-transparent border-border text-text-muted opacity-50",
+          )}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+          span
+          {spanCount > 0 && (
+            <span className="ml-0.5 tabular-nums">{spanCount}</span>
+          )}
+        </button>
       </div>
 
       {/* Divider */}

@@ -31,6 +31,7 @@ interface LogListProps {
 
 export function LogList({ entries, droppedCount }: LogListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [expandedSeqs, setExpandedSeqs] = useState<Set<number>>(() => new Set());
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(0);
   const prevLengthRef = useRef(entries.length);
@@ -127,6 +128,16 @@ export function LogList({ entries, droppedCount }: LogListProps) {
               <LogEntryRow
                 entry={entries[virtualItem.index]}
                 index={virtualItem.index}
+                expanded={expandedSeqs.has(entries[virtualItem.index].seq)}
+                onToggleExpand={() => {
+                  const seq = entries[virtualItem.index].seq;
+                  setExpandedSeqs((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(seq)) next.delete(seq);
+                    else next.add(seq);
+                    return next;
+                  });
+                }}
               />
             </div>
           ))}
