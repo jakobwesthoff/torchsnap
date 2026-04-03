@@ -105,7 +105,10 @@ impl LoggingSystem {
         let task_storage = Arc::clone(&storage);
         let task_broadcast = broadcast_tx.clone();
 
-        tokio::spawn(logging_task(rx, task_storage, task_broadcast));
+        // Use Tauri's async runtime spawn instead of tokio::spawn
+        // directly, because setup() runs before the tokio runtime
+        // context is available on the current thread.
+        tauri::async_runtime::spawn(logging_task(rx, task_storage, task_broadcast));
 
         Self {
             sender: LogSender { tx, dropped },
