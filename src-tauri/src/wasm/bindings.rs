@@ -101,3 +101,31 @@ impl From<wit::PostAction> for native::PostAction {
         }
     }
 }
+
+impl From<wit::ScoredEntry> for native::ScoredEntry {
+    fn from(entry: wit::ScoredEntry) -> Self {
+        native::ScoredEntry {
+            id: entry.id,
+            title: entry.title,
+            subtitle: entry.subtitle,
+            icon: entry.icon.map(Into::into),
+            score: entry.score,
+            title_positions: crate::unicode::Utf16Positions(entry.title_highlight_positions),
+            subtitle_positions: crate::unicode::Utf16Positions(
+                entry.subtitle_highlight_positions,
+            ),
+            actions: entry.actions.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<wit::SearchResponse> for native::PluginResponse {
+    fn from(response: wit::SearchResponse) -> Self {
+        match response {
+            wit::SearchResponse::Nothing => native::PluginResponse::Results(vec![]),
+            wit::SearchResponse::Results(entries) => {
+                native::PluginResponse::Results(entries.into_iter().map(Into::into).collect())
+            }
+        }
+    }
+}

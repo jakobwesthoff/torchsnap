@@ -8,6 +8,7 @@ edition = "2024"
 
 [dependencies]
 wit-bindgen = "0.54"
+nucleo-matcher = "0.3"
 
 [lib]
 crate-type = ["cdylib"]

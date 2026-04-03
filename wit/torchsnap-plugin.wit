@@ -1,7 +1,7 @@
 /// Torchsnap Plugin Interface
 ///
 /// Minimal initial definition covering lifecycle, catalog search,
-/// and execution. Expanded as real plugins are converted.
+/// query search, and execution. Expanded as real plugins are converted.
 package torchsnap:plugin@0.1.0;
 
 /// ─── Host imports (provided by the host to plugins) ─────
@@ -52,6 +52,30 @@ interface types {
     actions: list<action>,
   }
 
+  /// A pre-scored search result returned by query plugins.
+  /// The plugin is responsible for scoring and highlight
+  /// position calculation.
+  record scored-entry {
+    id: string,
+    title: string,
+    subtitle: option<string>,
+    icon: option<entry-icon>,
+    score: u32,
+    /// UTF-16 code unit offsets to highlight in the title.
+    title-highlight-positions: list<u32>,
+    /// UTF-16 code unit offsets to highlight in the subtitle.
+    subtitle-highlight-positions: list<u32>,
+    actions: list<action>,
+  }
+
+  /// What a query plugin returns from `search()`.
+  variant search-response {
+    /// Plugin has nothing to contribute for this query.
+    nothing,
+    /// Standard scored results merged into the host's list.
+    results(list<scored-entry>),
+  }
+
   enum post-action {
     nothing,
     dismiss,
@@ -67,9 +91,14 @@ interface lifecycle {
 }
 
 interface search {
-  use types.{catalog-entry, action-id, post-action};
+  use types.{catalog-entry, action-id, post-action, search-response};
 
+  /// Return catalog entries for host-side fuzzy matching.
   entries: func() -> list<catalog-entry>;
+
+  /// Plugin-driven search. Called on every query keystroke.
+  /// Returns scored results directly (call-return, no streaming).
+  search: func(query: string, matched-prefix: option<string>) -> search-response;
 
   execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
 }

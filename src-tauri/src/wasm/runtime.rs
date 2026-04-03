@@ -207,6 +207,22 @@ impl WasmPluginInstance {
         Ok(wit_entries.into_iter().map(Into::into).collect())
     }
 
+    /// Call the guest's `search` export and convert to native types.
+    pub fn search(
+        &self,
+        query: &str,
+        matched_prefix: Option<&str>,
+    ) -> anyhow::Result<crate::search::types::PluginResponse> {
+        let mut store = self.store.lock().expect("store not poisoned");
+        let response = self
+            .plugin
+            .torchsnap_plugin_search()
+            .call_search(&mut *store, query, matched_prefix)
+            .map_err(|e| anyhow::anyhow!("calling plugin search(): {e}"))?;
+
+        Ok(response.into())
+    }
+
     /// Call the guest's `execute` export and convert to native types.
     pub fn execute(
         &self,
