@@ -90,6 +90,11 @@ impl DirectorySource {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// Consume this source and return the owned manifest.
+    pub fn into_manifest(self) -> Manifest {
+        self.manifest
+    }
 }
 
 impl PluginSource for DirectorySource {

@@ -13,14 +13,33 @@ build-plugins:
     for dir in plugins/*/; do
         if [ -f "$dir/Cargo.toml" ]; then
             name=$(basename "$dir")
-            echo "Building plugin: $name"
-            cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
+            just build-plugin "$name"
         fi
     done
 
-# Build a single WASM plugin by name
+# Build a single WASM plugin by name.
+# After compilation, copies the .wasm artifact to the plugin
+# root so DirectorySource can find it via the manifest's `wasm`
+# path during development.
 build-plugin name:
-    cargo build --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2 --release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="plugins/{{ name }}"
+    cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
+
+    # Read the wasm filename from the manifest and copy the
+    # built artifact to the plugin root directory.
+    wasm_file=$(grep '^wasm' "$dir/manifest.toml" | sed 's/.*= *"//' | sed 's/".*//')
+    # Cargo names the artifact after the crate name with
+    # hyphens replaced by underscores.
+    crate_name=$(grep '^name' "$dir/Cargo.toml" | head -1 | sed 's/.*= *"//' | sed 's/".*//' | tr '-' '_')
+    src="$dir/target/wasm32-wasip2/release/${crate_name}.wasm"
+    if [ -f "$src" ]; then
+        cp "$src" "$dir/$wasm_file"
+        echo "Copied $src → $dir/$wasm_file"
+    else
+        echo "Warning: expected artifact not found: $src"
+    fi
 
 # Check all WASM plugins compile
 check-plugins:
