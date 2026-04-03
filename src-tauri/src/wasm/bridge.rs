@@ -17,7 +17,9 @@
 // =========================================================
 
 use crate::plugins::Plugin;
-use crate::search::types::{ActionId, CatalogEntry, PostAction};
+use crate::search::types::{
+    ActionId, CancellationToken, CatalogEntry, PostAction, PluginResponse, ResultChannel,
+};
 
 use super::manifest::Manifest;
 use super::runtime::WasmPluginInstance;
@@ -114,6 +116,29 @@ impl Plugin for WasmPluginBridge {
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         self.instance.execute(entry_id, action_id)
+    }
+
+    fn search(
+        &self,
+        query: &str,
+        matched_prefix: Option<&str>,
+        results: &ResultChannel,
+        _cancel: &CancellationToken,
+    ) {
+        match self.instance.search(query, matched_prefix) {
+            Ok(response) => match response {
+                PluginResponse::Results(entries) if !entries.is_empty() => {
+                    results.send_results(entries);
+                }
+                _ => {}
+            },
+            Err(e) => {
+                eprintln!(
+                    "[wasm:{}] search() failed: {e:#}",
+                    self.manifest.plugin.id
+                );
+            }
+        }
     }
 
     fn search_prefixes(&self) -> &[&str] {
