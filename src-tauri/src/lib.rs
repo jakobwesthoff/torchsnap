@@ -527,6 +527,7 @@ pub fn run() {
             // =========================================================
             let logging_system = wasm::logging::channel::LoggingSystem::start();
             let log_sender = logging_system.sender();
+            let span_registry = Arc::new(wasm::logging::spans::SpanRegistry::new());
             let logging_system = Arc::new(logging_system);
 
             // =========================================================
@@ -540,7 +541,7 @@ pub fn run() {
             // TODO: Replace hardcoded dev path with proper plugin
             // discovery from $APPDATA/torchsnap/plugins/.
             // =========================================================
-            match load_wasm_plugins(&mut host, &log_sender) {
+            match load_wasm_plugins(&mut host, &log_sender, &span_registry) {
                 Ok(count) => {
                     if count > 0 {
                         log_sender.send(wasm::logging::LogEntry {
@@ -706,8 +707,12 @@ pub fn run() {
 fn load_wasm_plugins(
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
+    span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
 ) -> anyhow::Result<usize> {
-    let runtime = wasm::runtime::WasmRuntime::new(log_sender.clone())?;
+    let runtime = wasm::runtime::WasmRuntime::new(
+        log_sender.clone(),
+        Arc::clone(span_registry),
+    )?;
 
     let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
     let entries = match std::fs::read_dir(&plugin_dir) {

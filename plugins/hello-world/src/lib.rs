@@ -9,8 +9,8 @@
 // catalog and query search modes:
 //
 // - Catalog: returns a single "Say Hello" entry
-// - Query:   generates 5000 petname entries on enable() and
-//            fuzzy-matches them using nucleo-matcher
+// - Query:   generates 50,000 petname entries on enable()
+//            and fuzzy-matches them using nucleo-matcher
 // =========================================================
 
 wit_bindgen::generate!({
@@ -46,17 +46,24 @@ thread_local! {
 
 impl LifecycleGuest for HelloWorld {
     fn enable() {
+        let span = logging::span_start("enable", None, &[]);
         let names = petnames::generate_petnames(50_000);
         logging::log(
             logging::LogLevel::Info,
             &format!("Hello World plugin enabled with {} petnames", names.len()),
+            &[],
+            Some(span),
         );
         PETNAMES.with(|cell| *cell.borrow_mut() = names);
+        logging::span_end(
+            span,
+            &[("petname_count".into(), "50000".into())],
+        );
     }
 
     fn disable() {
         PETNAMES.with(|cell| cell.borrow_mut().clear());
-        logging::log(logging::LogLevel::Info, "Hello World plugin disabled");
+        logging::log(logging::LogLevel::Info, "Hello World plugin disabled", &[], None);
     }
 }
 
@@ -80,10 +87,24 @@ impl SearchGuest for HelloWorld {
             return SearchResponse::Nothing;
         }
 
+        // Use a span to time the fuzzy search so it appears
+        // as a nested timing entry in the developer console.
+        let span = logging::span_start(
+            "fuzzy-search",
+            None,
+            &[("query".into(), query.clone())],
+        );
+
         let results = PETNAMES.with(|cell| {
             let names = cell.borrow();
             petnames::fuzzy_search(&query, &names)
         });
+
+        let result_count = results.len();
+        logging::span_end(
+            span,
+            &[("result_count".into(), result_count.to_string())],
+        );
 
         if results.is_empty() {
             SearchResponse::Nothing
@@ -96,6 +117,8 @@ impl SearchGuest for HelloWorld {
         logging::log(
             logging::LogLevel::Info,
             &format!("Executed entry: {entry_id}"),
+            &[("entry_id".into(), entry_id.clone())],
+            None,
         );
         Ok(PostAction::Dismiss)
     }

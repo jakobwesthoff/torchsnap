@@ -14,7 +14,21 @@ interface logging {
     error,
   }
 
-  log: func(level: log-level, message: string);
+  /// Structured key-value metadata pair.
+  type metadata-entry = tuple<string, string>;
+
+  /// Log a message with optional structured metadata.
+  /// The optional span associates this entry with an active span.
+  log: func(level: log-level, message: string, metadata: list<metadata-entry>, span: option<u64>);
+
+  /// Start a named timing span. Returns an opaque handle.
+  /// Parent allows explicit nesting — pass the parent span's handle.
+  /// Metadata attached at start is merged with end-metadata on completion.
+  span-start: func(name: string, parent: option<u64>, metadata: list<metadata-entry>) -> u64;
+
+  /// End a timing span. The host computes duration and emits a timing entry.
+  /// End-metadata is merged with start-metadata (end wins on key collision).
+  span-end: func(span-id: u64, metadata: list<metadata-entry>);
 }
 
 /// ─── Shared types ───────────────────────────────────────
