@@ -17,7 +17,7 @@ const tabs: { id: DevToolsTab; label: string }[] = [
 
 export function DevToolsTabBar({ activeTab, onTabChange }: DevToolsTabBarProps) {
   return (
-    <div className="flex items-end h-12 pl-[80px] pr-4 border-b border-border">
+    <div className="flex items-end h-12 pl-[90px] pr-4 border-b border-border pt-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
