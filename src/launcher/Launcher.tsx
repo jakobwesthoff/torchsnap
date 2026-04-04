@@ -2,12 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { command } from "../lib/command";
 import { listen } from "@tauri-apps/api/event";
 import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
 import { sendPluginMessage } from "../lib/pluginMessage";
+import { createLogger } from "../lib/logger";
+import { LoggerProvider } from "../lib/LoggerContext";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
@@ -78,7 +80,11 @@ function PluginViewContainer({
 }: PluginViewProps & { pluginId: string; viewName: string }) {
   const View = getPluginView(pluginId, viewName);
   if (!View) return null;
-  return <View {...props} />;
+  return (
+    <LoggerProvider source={pluginId}>
+      <View {...props} />
+    </LoggerProvider>
+  );
 }
 
 function InlineViewContainer({
@@ -88,7 +94,11 @@ function InlineViewContainer({
 }: InlineViewProps & { pluginId: string; viewName: string }) {
   const View = getPluginInlineView(pluginId, viewName);
   if (!View) return null;
-  return <View {...props} />;
+  return (
+    <LoggerProvider source={pluginId}>
+      <View {...props} />
+    </LoggerProvider>
+  );
 }
 /* eslint-enable react-hooks/static-components */
 
@@ -419,6 +429,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [],
   );
 
+  // Plugin logger — bound to the active plugin view's ID.
+  // Recreated when the active plugin changes.
+  const pluginLoggerId = customPluginView?.pluginId ?? "host";
+  const pluginLogger = useMemo(() => createLogger(pluginLoggerId), [pluginLoggerId]);
+
+  const inlineLoggerId = activeInlineView?.pluginId ?? "host";
+  const inlineLogger = useMemo(() => createLogger(inlineLoggerId), [inlineLoggerId]);
+
   // =========================================================
   // Action Execution (list mode)
   // =========================================================
@@ -545,6 +563,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
           onFooterChange={setPluginFooter}
           setDisplayQuery={setDisplayQuery}
           sendMessage={sendMessage}
+          logger={pluginLogger}
         />
       </Suspense>
     );
@@ -567,6 +586,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
               onFooterChange={setInlineFooter}
               dismiss={dismiss}
               sendMessage={sendInlineMessage}
+              logger={inlineLogger}
             />
           </Suspense>
         )}

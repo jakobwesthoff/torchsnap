@@ -14,6 +14,7 @@
 import type { RefObject } from "react";
 import type { ActionId, FooterState, SourcedEntry } from "@torchsnap/types";
 import type { createPluginSettingHook } from "../hooks/usePluginSetting";
+import type { Logger } from "../lib/logger";
 
 export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
@@ -55,6 +56,9 @@ export interface PluginViewProps {
     payload: TPayload,
     onMessage?: (msg: TStream) => void,
   ) => Promise<TResult>;
+  /** Pre-bound logger for this plugin. Writes to the Developer
+   *  Tools console log stream. */
+  logger: Logger;
 }
 
 // =========================================================
@@ -105,6 +109,8 @@ export interface InlineViewProps {
     payload: TPayload,
     onMessage?: (msg: TStream) => void,
   ) => Promise<TResult>;
+  /** Pre-bound logger for this plugin. */
+  logger: Logger;
 }
 
 // =========================================================
@@ -120,4 +126,6 @@ export interface InlineViewProps {
 export interface PluginSettingsProps {
   pluginId: string;
   usePluginSetting: ReturnType<typeof createPluginSettingHook>;
+  /** Pre-bound logger for this plugin. */
+  logger: Logger;
 }

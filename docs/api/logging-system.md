@@ -1,15 +1,18 @@
 # Logging System
 
 The Torchsnap logging system provides structured, non-blocking logging and
-timing spans for WASM plugins and host-side code. All log items flow into an
-in-memory ring buffer and stream live to the Developer Tools console window.
-The console supports both a flat chronological view and a tree view that
-groups log messages under their parent spans.
+timing spans for WASM plugins, host-side Rust code, and frontend React
+components. All log items flow into an in-memory ring buffer and stream live
+to the Developer Tools console window. The console supports both a flat
+chronological view and a tree view that groups log messages under their parent
+spans.
 
-This guide covers both perspectives:
+This guide covers three perspectives:
 
 - **Plugin authors** who want to emit logs and measure performance from WASM
   guest code via the WIT logging interface.
+- **Frontend developers** who want to log from plugin React views or app
+  components using the `Logger` class.
 - **Host developers** who work on the Rust backend and need to instrument
   runtime operations, add new subsystems, or extend the logging infrastructure.
 
@@ -22,6 +25,12 @@ This guide covers both perspectives:
   - [Timing with Spans](#timing-with-spans)
   - [Nested Spans](#nested-spans)
   - [Complete Plugin Example](#complete-plugin-example)
+- [For Frontend Developers](#for-frontend-developers)
+  - [Getting a Logger (Frontend)](#getting-a-logger-frontend)
+  - [Logging Messages (Frontend)](#logging-messages-frontend)
+  - [Spans (Frontend)](#spans-frontend)
+  - [Using the React Hook](#using-the-react-hook)
+  - [How the Log Worker Works](#how-the-log-worker-works)
 - [For Host Developers](#for-host-developers)
   - [Getting a Logger](#getting-a-logger)
   - [Logging Messages (Host)](#logging-messages-host)
@@ -44,27 +53,29 @@ This guide covers both perspectives:
 ## Overview
 
 ```
-WASM Plugin (guest)                Host Code (Rust)
-  │                                  │
-  │ logging::log(...)                │ logger.log(...)       → LogItemKind::Message
-  │ logging::span_start(...)         │ logger.span().start() → LogItemKind::SpanStart
-  │ logging::span_end(...)           │   // SpanGuard drop   → LogItemKind::SpanEnd
-  │                                  │
-  └──────────────┬───────────────────┘
-                 │
-                 ▼
-           LogSender::send(LogItem)   ◄── non-blocking, never panics
-                 │
-                 ▼ bounded mpsc channel (1024 items)
-                 │
-           Logging Task (async, background)
-                 ├── assigns monotonic seq numbers
-                 ├── stores in RingBufferStorage (10k items)
-                 └── broadcasts to live subscribers
-                          │
-                          ▼
-                 Developer Tools Console
-                 (flat view or tree view)
+WASM Plugin (guest)     Host Code (Rust)      Frontend (React)
+  │                       │                     │
+  │ logging::log(...)     │ logger.log(...)     │ logger.info(...)
+  │ logging::span_start() │ logger.span().start()│ logger.spanStart()
+  │ logging::span_end()   │   // SpanGuard drop │ logger.spanEnd()
+  │                       │                     │
+  └───────────┬───────────┘                     │
+              │                                 │ log worker queue
+              ▼                                 │ (async, sequential)
+        LogSender::send(LogItem)                │
+              │                 logger_emit ◄────┘
+              │                 logger_span_start
+              │                 logger_span_end
+              ▼ bounded mpsc channel (1024 items)
+              │
+        Logging Task (async, background)
+              ├── assigns monotonic seq numbers
+              ├── stores in RingBufferStorage (10k items)
+              └── broadcasts to live subscribers
+                       │
+                       ▼
+              Developer Tools Console
+              (flat view or tree view)
 ```
 
 Every log item — whether from a plugin or the host — follows the same path:
@@ -279,6 +290,140 @@ fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String>
 
 ---
 
+## For Frontend Developers
+
+Frontend code (plugin React views, settings components, app UI) uses a
+`Logger` class that writes into the same log stream as the backend. Every
+logger method is fire-and-forget — calls return synchronously while a
+background worker handles the Tauri IPC asynchronously.
+
+### Getting a Logger (Frontend)
+
+Plugin views receive a pre-bound `logger` via props:
+
+```typescript
+function ClipboardView({ logger, sendMessage, ...props }: PluginViewProps) {
+  logger.info("Clipboard view mounted");
+}
+```
+
+For deep component trees, the logger is also available via React context:
+
+```typescript
+import { useLogger } from "../lib/LoggerContext";
+
+function DeepChild() {
+  const logger = useLogger();
+  logger.debug("Rendering deep child");
+}
+```
+
+Non-plugin code creates its own logger:
+
+```typescript
+import { createLogger } from "../lib/logger";
+
+const logger = createLogger("host");
+logger.info("App initialized");
+```
+
+### Logging Messages (Frontend)
+
+Level methods match the backend's log levels:
+
+```typescript
+logger.trace("Very fine-grained diagnostic output");
+logger.debug("Internal state useful during development");
+logger.info("Normal operational events");
+logger.warn("Unexpected conditions");
+logger.error("Failures that affect functionality");
+```
+
+Attach structured metadata as key-value pairs:
+
+```typescript
+logger.info("Search completed", [
+  ["query", query],
+  ["resultCount", results.length.toString()],
+]);
+```
+
+### Spans (Frontend)
+
+Spans measure wall-clock duration. `spanStart()` returns a local span ID
+immediately — no `await` needed. The backend allocates the real span ID
+asynchronously:
+
+```typescript
+const span = logger.spanStart("fuzzy-search", undefined, [
+  ["query", query],
+]);
+
+const results = await doSearch(query);
+
+logger.spanEnd(span, [["resultCount", results.length.toString()]]);
+```
+
+Nested spans use the parent ID:
+
+```typescript
+const outer = logger.spanStart("search");
+const inner = logger.spanStart("score-candidates", outer);
+// ... scoring work ...
+logger.spanEnd(inner);
+logger.spanEnd(outer);
+```
+
+Associate log messages with an active span:
+
+```typescript
+const span = logger.spanStart("enable");
+logger.info("Loading data into memory", [], span);
+// ... work ...
+logger.spanEnd(span);
+```
+
+### Using the React Hook
+
+The `useLogger()` hook reads from a `LoggerProvider` context. Plugin views
+are automatically wrapped in a `LoggerProvider` by the host — no setup
+needed:
+
+```typescript
+import { useLogger } from "../lib/LoggerContext";
+
+function SettingsPanel() {
+  const logger = useLogger();
+
+  const handleSave = () => {
+    logger.info("Settings saved", [["theme", selectedTheme]]);
+  };
+
+  return <button onClick={handleSave}>Save</button>;
+}
+```
+
+### How the Log Worker Works
+
+All `Logger` instances share a singleton async worker (`src/lib/logWorker.ts`)
+that processes commands sequentially:
+
+1. Logger methods enqueue commands into a shared queue.
+2. The worker drains the queue one at a time, calling the appropriate Tauri
+   command (`logger_emit`, `logger_span_start`, `logger_span_end`).
+3. For spans, the worker maintains a `localId → backendId` mapping:
+   - `spanStart()` allocates a local ID (incrementing counter) and returns it.
+   - The worker calls `logger_span_start` (async) and stores the returned
+     backend ID.
+   - Subsequent `log()` and `spanEnd()` calls referencing the local ID are
+     resolved to the backend ID before sending.
+
+This design ensures all calls are fire-and-forget from the caller's
+perspective while preserving correct ordering and using the backend's
+canonical span IDs.
+
+---
+
 ## For Host Developers
 
 Host-side code uses the `Logger` struct, which provides an ergonomic Rust API
@@ -434,8 +579,9 @@ This is what the WIT host import implementations do internally. Prefer
 
 ### Data Flow
 
-1. **Producers** (plugins via WIT imports, host code via `Logger`) create
-   `LogItem` values and hand them to a `LogSender`.
+1. **Producers** (WASM plugins via WIT imports, host Rust code via `Logger`,
+   frontend React code via `logger_emit`/`logger_span_start`/`logger_span_end`
+   Tauri commands) create `LogItem` values and hand them to a `LogSender`.
 
 2. **LogSender** uses `try_send` on a bounded mpsc channel. If the channel is
    full, the item is silently dropped and a counter is incremented. This
@@ -526,7 +672,9 @@ two view modes:
 
 ### Tauri Commands
 
-Four commands expose the logging system to the frontend:
+Seven commands expose the logging system to the frontend. The first four
+are for the Developer Tools console; the last three are for frontend code
+to emit logs and spans:
 
 | Command | Parameters | Returns | Purpose |
 |---------|-----------|---------|---------|
@@ -534,6 +682,13 @@ Four commands expose the logging system to the frontend:
 | `devtools_log_subscribe` | `channel: Channel<DevToolsMessage>` | — | Start live streaming |
 | `devtools_log_clear` | — | — | Clear the ring buffer |
 | `devtools_log_stats` | — | `LogStats` | Item count, dropped count, total pushed |
+| `logger_emit` | `source, level, message, metadata, span_id` | — | Emit a log message from frontend code |
+| `logger_span_start` | `source, name, parent_id, metadata` | `u64` | Start a span, returns backend span ID |
+| `logger_span_end` | `span_id, metadata` | — | End a span with optional end-metadata |
+
+> **Note:** Frontend code should not call `logger_*` commands directly.
+> Use the `Logger` class (`src/lib/logger.ts`) which handles the async
+> worker, span ID mapping, and source binding automatically.
 
 ### Live Streaming Protocol
 

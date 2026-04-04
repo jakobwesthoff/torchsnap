@@ -6,6 +6,8 @@ import { Suspense, useMemo, useState } from "react";
 import { ChartBarIcon, Cog6ToothIcon, GlobeAltIcon, SwatchIcon } from "@heroicons/react/24/outline";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
+import { createLogger } from "../lib/logger";
+import { LoggerProvider } from "../lib/LoggerContext";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
@@ -114,12 +116,14 @@ function PluginSectionWrapper({
   Component,
 }: {
   pluginId: string;
-  Component: React.ComponentType<{
-    pluginId: string;
-    usePluginSetting: ReturnType<typeof createPluginSettingHook>;
-  }>;
+  Component: React.ComponentType<import("../plugins/types").PluginSettingsProps>;
 }) {
   const usePluginSetting = useMemo(() => createPluginSettingHook(pluginId), [pluginId]);
+  const logger = useMemo(() => createLogger(pluginId), [pluginId]);
 
-  return <Component pluginId={pluginId} usePluginSetting={usePluginSetting} />;
+  return (
+    <LoggerProvider source={pluginId}>
+      <Component pluginId={pluginId} usePluginSetting={usePluginSetting} logger={logger} />
+    </LoggerProvider>
+  );
 }
