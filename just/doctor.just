@@ -44,6 +44,7 @@ doctor:
 
     echo ""
     echo "WASM plugin toolchain:"
+    check zip             "create .torchsnap plugin archives" "brew install zip"
     check wasm-tools      "inspect/validate WASM components"  "cargo install wasm-tools"
 
     # Check that the wasm32-wasip2 target is installed.

@@ -768,10 +768,18 @@ fn load_wasm_plugins(
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.join("manifest.toml").exists() {
+
+        // Load .torchsnap archives or plugin directories
+        // (whichever is found). Archives take precedence — if
+        // both exist we skip the directory.
+        let is_archive = path.extension().is_some_and(|ext| ext == "torchsnap");
+        let is_directory = path.is_dir() && path.join("manifest.toml").exists();
+
+        if !is_archive && !is_directory {
             continue;
         }
 
+        let source_kind = if is_archive { "archive" } else { "directory" };
         let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender);
         match loaded {
             Ok(plugin_id) => {
@@ -781,8 +789,11 @@ fn load_wasm_plugins(
                     source: wasm::logging::LogSource::Host,
                     kind: wasm::logging::LogItemKind::Message {
                         level: wasm::logging::LogLevel::Info,
-                        message: format!("Loaded plugin: {plugin_id}"),
-                        metadata: vec![("plugin_id".to_string(), plugin_id)],
+                        message: format!("Loaded plugin: {plugin_id} ({source_kind})"),
+                        metadata: vec![
+                            ("plugin_id".to_string(), plugin_id),
+                            ("source".to_string(), source_kind.to_string()),
+                        ],
                         span_id: None,
                     },
                 });
@@ -815,7 +826,15 @@ fn load_single_wasm_plugin(
 ) -> anyhow::Result<String> {
     use wasm::source::PluginSource as _;
 
-    let source = wasm::source::DirectorySource::open(path)?;
+    // Open the appropriate source based on path type:
+    // .torchsnap files are zip archives, directories use
+    // the filesystem directly.
+    let source: Box<dyn wasm::source::PluginSource> = if path.is_dir() {
+        Box::new(wasm::source::DirectorySource::open(path)?)
+    } else {
+        Box::new(wasm::source::ArchiveSource::open(path)?)
+    };
+
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
     let wasm_bytes = source.read_wasm()?;
     let instance = runtime.instantiate(&plugin_id, &wasm_bytes)?;
