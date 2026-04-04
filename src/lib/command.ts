@@ -24,7 +24,7 @@
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
-import type { DevToolsMessage, LogEntry, LogStats } from "../devtools/types";
+import type { DevToolsMessage, LogItem, LogStats } from "../devtools/types";
 
 // =========================================================
 // Command Registry
@@ -67,7 +67,7 @@ interface CommandMap {
   website_metadata_clear_cache: { params: void; result: void };
   devtools_log_history: {
     params: { afterSeq: number; limit: number };
-    result: LogEntry[];
+    result: LogItem[];
   };
   devtools_log_subscribe: {
     params: { channel: Channel<DevToolsMessage> };

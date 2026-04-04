@@ -6,12 +6,12 @@
 // Log Filter Hook
 //
 // Manages filter state and provides a filtered view of log
-// entries. Filtering is done entirely on the frontend — the
-// backend always sends all entries.
+// items. Filtering is done entirely on the frontend — the
+// backend always sends all items.
 // =========================================================
 
 import { useCallback, useMemo, useState } from "react";
-import type { LogEntry, LogLevel } from "../types";
+import type { LogItem, LogLevel } from "../types";
 
 const ALL_LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error"];
 
@@ -24,21 +24,21 @@ export interface LogFilters {
 
 export interface UseLogFiltersReturn {
   filters: LogFilters;
-  filteredEntries: LogEntry[];
+  filteredItems: LogItem[];
   toggleLevel: (level: LogLevel) => void;
   toggleSpans: () => void;
   toggleSource: (source: string) => void;
   setAllSources: () => void;
   setSearchText: (text: string) => void;
-  /** Count of entries per level (unfiltered, excludes spans). */
+  /** Count of items per level (unfiltered, excludes spans). */
   levelCounts: Record<LogLevel, number>;
-  /** Count of span entries (unfiltered). */
+  /** Count of completed spans (unfiltered, spanEnd only). */
   spanCount: number;
   /** Set of all known plugin sources. */
   knownSources: string[];
 }
 
-export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
+export function useLogFilters(items: LogItem[]): UseLogFiltersReturn {
   const [levels, setLevels] = useState<Set<LogLevel>>(
     () => new Set(ALL_LEVELS),
   );
@@ -82,20 +82,22 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
     setSources("all");
   }, []);
 
-  // Compute known sources from entries.
+  // Compute known sources from items.
   const knownSources = useMemo(() => {
     const seen = new Set<string>();
-    for (const entry of entries) {
-      if (entry.source.type === "plugin") {
-        seen.add(entry.source.value);
+    for (const item of items) {
+      if (item.source.type === "plugin") {
+        seen.add(item.source.value);
       } else {
         seen.add("host");
       }
     }
     return Array.from(seen).sort();
-  }, [entries]);
+  }, [items]);
 
-  // Count entries per level and spans (unfiltered).
+  // Count items per level and spans (unfiltered).
+  // Only spanEnd entries count toward spanCount (represents
+  // completed spans, not individual span entries).
   const { levelCounts, spanCount } = useMemo(() => {
     const counts: Record<LogLevel, number> = {
       trace: 0,
@@ -105,48 +107,57 @@ export function useLogFilters(entries: LogEntry[]): UseLogFiltersReturn {
       error: 0,
     };
     let spans = 0;
-    for (const entry of entries) {
-      if (entry.span != null) {
+    for (const item of items) {
+      if (item.kind.type === "message") {
+        counts[item.kind.level]++;
+      } else if (item.kind.type === "spanEnd") {
         spans++;
-      } else {
-        counts[entry.level]++;
       }
+      // spanStart entries are not counted — they don't
+      // represent a completed span.
     }
     return { levelCounts: counts, spanCount: spans };
-  }, [entries]);
+  }, [items]);
 
   // Apply filters.
-  const filteredEntries = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const lowerSearch = searchText.toLowerCase();
 
-    return entries.filter((entry) => {
+    return items.filter((item) => {
+      const { kind } = item;
+
       // Span filter — span entries are a separate category.
-      if (entry.span != null) {
+      if (kind.type === "spanStart" || kind.type === "spanEnd") {
         if (!showSpans) return false;
       } else {
-        // Level filter (only for non-span entries).
-        if (!levels.has(entry.level)) return false;
+        // Level filter (only for message items).
+        if (!levels.has(kind.level)) return false;
       }
 
       // Source filter.
       if (sources !== "all") {
         const sourceKey =
-          entry.source.type === "plugin" ? entry.source.value : "host";
+          item.source.type === "plugin" ? item.source.value : "host";
         if (!sources.has(sourceKey)) return false;
       }
 
-      // Text search.
-      if (lowerSearch && !entry.message.toLowerCase().includes(lowerSearch)) {
-        return false;
+      // Text search — match against message for messages,
+      // name for span entries.
+      if (lowerSearch) {
+        const text =
+          kind.type === "message" ? kind.message : kind.name;
+        if (!text.toLowerCase().includes(lowerSearch)) {
+          return false;
+        }
       }
 
       return true;
     });
-  }, [entries, levels, showSpans, sources, searchText]);
+  }, [items, levels, showSpans, sources, searchText]);
 
   return {
     filters: { levels, showSpans, sources, searchText },
-    filteredEntries,
+    filteredItems,
     toggleLevel,
     toggleSpans,
     toggleSource,

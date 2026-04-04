@@ -29,7 +29,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use super::bindings;
 use super::logging::channel::LogSender;
 use super::logging::spans::{Logger, SpanRegistry};
-use super::logging::{LogEntry, LogLevel, LogSource};
+use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 
 // =========================================================
 // Per-Plugin Store State
@@ -84,15 +84,16 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
             bindings::torchsnap::plugin::logging::LogLevel::Error => LogLevel::Error,
         };
 
-        self.log_sender.send(LogEntry {
+        self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level: log_level,
             source: LogSource::Plugin(self.plugin_id.clone()),
-            message,
-            metadata,
-            span_id: span,
-            span: None,
+            kind: LogItemKind::Message {
+                level: log_level,
+                message,
+                metadata,
+                span_id: span,
+            },
         });
     }
 
@@ -102,30 +103,46 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
         parent: Option<u64>,
         metadata: Vec<(String, String)>,
     ) -> u64 {
-        self.span_registry
-            .start(
-                name,
-                parent,
-                LogSource::Plugin(self.plugin_id.clone()),
-                metadata,
-            )
+        let name_for_item = name.clone();
+        let meta_for_item = metadata.clone();
+
+        match self.span_registry.start(
+            name,
+            parent,
+            LogSource::Plugin(self.plugin_id.clone()),
+            metadata,
+        ) {
+            Some((id, depth)) => {
+                // Emit span-start log item so the frontend can
+                // track open spans in real time.
+                self.log_sender.send(LogItem {
+                    seq: 0,
+                    timestamp: SystemTime::now(),
+                    source: LogSource::Plugin(self.plugin_id.clone()),
+                    kind: LogItemKind::SpanStart {
+                        span_id: id,
+                        name: name_for_item,
+                        parent_id: parent,
+                        depth,
+                        metadata: meta_for_item,
+                    },
+                });
+                id
+            }
             // If nesting depth exceeded, return 0 as a sentinel.
             // The guest can still pass this to span_end, which
             // will be a no-op (ID not found in registry).
-            .unwrap_or(0)
+            None => 0,
+        }
     }
 
     fn span_end(&mut self, span_id: u64, metadata: Vec<(String, String)>) {
-        if let Some((span_info, source)) = self.span_registry.end(span_id, metadata) {
-            self.log_sender.send(LogEntry {
+        if let Some(completed) = self.span_registry.end(span_id, metadata) {
+            self.log_sender.send(LogItem {
                 seq: 0,
                 timestamp: SystemTime::now(),
-                level: LogLevel::Debug,
-                source,
-                message: span_info.name.clone(),
-                metadata: vec![],
-                span_id: None,
-                span: Some(span_info),
+                source: completed.source.clone(),
+                kind: completed.into(),
             });
         }
     }

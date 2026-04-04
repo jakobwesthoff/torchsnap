@@ -1,8 +1,10 @@
 # Logging System
 
 The Torchsnap logging system provides structured, non-blocking logging and
-timing spans for WASM plugins and host-side code. All log entries flow into an
+timing spans for WASM plugins and host-side code. All log items flow into an
 in-memory ring buffer and stream live to the Developer Tools console window.
+The console supports both a flat chronological view and a tree view that
+groups log messages under their parent spans.
 
 This guide covers both perspectives:
 
@@ -44,29 +46,31 @@ This guide covers both perspectives:
 ```
 WASM Plugin (guest)                Host Code (Rust)
   │                                  │
-  │ logging::log(...)                │ logger.log(...)
-  │ logging::span_start(...)         │ logger.span("name").start()
-  │ logging::span_end(...)           │   // SpanGuard auto-ends on drop
+  │ logging::log(...)                │ logger.log(...)       → LogItemKind::Message
+  │ logging::span_start(...)         │ logger.span().start() → LogItemKind::SpanStart
+  │ logging::span_end(...)           │   // SpanGuard drop   → LogItemKind::SpanEnd
   │                                  │
   └──────────────┬───────────────────┘
                  │
                  ▼
-           LogSender::send()          ◄── non-blocking, never panics
+           LogSender::send(LogItem)   ◄── non-blocking, never panics
                  │
-                 ▼ bounded mpsc channel (1024 entries)
+                 ▼ bounded mpsc channel (1024 items)
                  │
            Logging Task (async, background)
                  ├── assigns monotonic seq numbers
-                 ├── stores in RingBufferStorage (10k entries)
+                 ├── stores in RingBufferStorage (10k items)
                  └── broadcasts to live subscribers
                           │
                           ▼
                  Developer Tools Console
+                 (flat view or tree view)
 ```
 
-Every log entry — whether from a plugin or the host — follows the same path:
+Every log item — whether from a plugin or the host — follows the same path:
 into a `LogSender`, through a bounded channel, into the ring buffer, and out
-to any connected Developer Tools windows.
+to any connected Developer Tools windows. Items are one of three kinds:
+messages, span-starts, or span-ends.
 
 ---
 
@@ -141,8 +145,12 @@ let span = logging::span_start("fuzzy-search", None, &[]);
 logging::span_end(span, &[]);
 ```
 
-In the console, span entries appear with a "SPAN" label and a color-coded
-duration badge (green for fast, amber for medium, red for slow).
+Both `span_start` and `span_end` emit log items to the console. The span-start
+item appears immediately with an in-progress indicator, and the span-end item
+carries the computed duration. In the console, span entries appear with a
+"SPAN" label. Span-end entries include a color-coded duration badge (green for
+fast, amber for medium, red for slow). In tree view, spans are collapsible
+nodes that group their child log messages and nested spans.
 
 #### Attaching Metadata to Spans
 
@@ -274,7 +282,7 @@ fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String>
 ## For Host Developers
 
 Host-side code uses the `Logger` struct, which provides an ergonomic Rust API
-with RAII-based span management. You never construct `LogEntry` values
+with RAII-based span management. You never construct `LogItem` values
 directly — `Logger` handles that.
 
 ### Getting a Logger
@@ -320,11 +328,15 @@ logger.log_in_span(LogLevel::Debug, "Scoring candidates", span_id);
 ### Spans with RAII Guards
 
 The `SpanGuard` pattern ensures spans are always properly ended, even when
-the code returns early or panics:
+the code returns early or panics. When `start()` is called, a `SpanStart`
+item is emitted immediately so the frontend can track the span in real time.
+When the guard is dropped (or `end_with_meta()` is called), a `SpanEnd` item
+is emitted with the computed duration:
 
 ```rust
 // Start a span — returns Option<SpanGuard>.
 // Returns None only if nesting depth exceeds 32 (very unlikely).
+// Emits a SpanStart log item immediately.
 let _span = logger.span("search")
     .meta("query", &query)
     .start();
@@ -332,7 +344,7 @@ let _span = logger.span("search")
 // ... do work ...
 
 // The span ends automatically when `_span` is dropped.
-// Duration is measured from start() to drop.
+// Emits a SpanEnd log item with the duration.
 ```
 
 To attach end-metadata, consume the guard explicitly:
@@ -397,18 +409,19 @@ span.log(LogLevel::Debug, "Scoring complete");
 ### Using LogSender Directly
 
 For low-level use cases (e.g., inside a `PluginState` host import where you
-don't have a `Logger`), you can send raw `LogEntry` values:
+don't have a `Logger`), you can send raw `LogItem` values:
 
 ```rust
-log_sender.send(LogEntry {
+log_sender.send(LogItem {
     seq: 0,  // always 0 — the logging task assigns the real value
     timestamp: SystemTime::now(),
-    level: LogLevel::Info,
     source: LogSource::Plugin(plugin_id.clone()),
-    message: "Something happened".into(),
-    metadata: vec![],
-    span_id: None,
-    span: None,
+    kind: LogItemKind::Message {
+        level: LogLevel::Info,
+        message: "Something happened".into(),
+        metadata: vec![],
+        span_id: None,
+    },
 });
 ```
 
@@ -422,20 +435,20 @@ This is what the WIT host import implementations do internally. Prefer
 ### Data Flow
 
 1. **Producers** (plugins via WIT imports, host code via `Logger`) create
-   `LogEntry` values and hand them to a `LogSender`.
+   `LogItem` values and hand them to a `LogSender`.
 
 2. **LogSender** uses `try_send` on a bounded mpsc channel. If the channel is
-   full, the entry is silently dropped and a counter is incremented. This
+   full, the item is silently dropped and a counter is incremented. This
    guarantees that logging never blocks plugin execution.
 
 3. **The logging task** (a single async task spawned at startup) receives
-   entries, assigns monotonically increasing sequence numbers, stores them in
+   items, assigns monotonically increasing sequence numbers, stores them in
    the ring buffer, and broadcasts them to any live subscribers.
 
-4. **The ring buffer** (`RingBufferStorage`) holds up to 10,000 entries. When
-   full, the oldest entry is evicted on each push.
+4. **The ring buffer** (`RingBufferStorage`) holds up to 10,000 items. When
+   full, the oldest item is evicted on each push.
 
-5. **Subscribers** (Developer Tools windows) receive entries via a
+5. **Subscribers** (Developer Tools windows) receive items via a
    `tokio::sync::broadcast` channel. If a subscriber falls behind, it receives
    a `Lagged(n)` error and can catch up via the `entries_after` query on the
    storage.
@@ -444,15 +457,16 @@ This is what the WIT host import implementations do internally. Prefer
 
 | Type | Purpose |
 |------|---------|
-| `LogEntry` | Universal container for all log data — messages and span-end timing entries |
+| `LogItem` | Universal log stream element — envelope (seq, timestamp, source) + `LogItemKind` payload |
+| `LogItemKind` | Discriminated payload: `Message`, `SpanStart`, or `SpanEnd` |
 | `LogLevel` | Severity: Trace, Debug, Info, Warn, Error |
 | `LogSource` | Origin: `Plugin("name")` or `Host` |
-| `SpanInfo` | Completed span data: ID, parent, name, duration, merged metadata |
-| `LogSender` | Cloneable, non-blocking entry producer |
+| `CompletedSpan` | Internal (non-serialized) return from `SpanRegistry::end()` — converts to `LogItemKind::SpanEnd` via `From` |
+| `LogSender` | Cloneable, non-blocking item producer |
 | `LoggingSystem` | Central coordinator: owns storage, broadcast, sender |
-| `SpanRegistry` | Thread-safe open-span tracker: start → ID, end → SpanInfo |
+| `SpanRegistry` | Thread-safe open-span tracker: start → (ID, depth), end → `CompletedSpan` |
 | `Logger` | Per-subsystem handle bundling sender + registry + source |
-| `SpanGuard` | RAII span lifecycle — ends the span on drop |
+| `SpanGuard` | RAII span lifecycle — emits `SpanStart` on creation, `SpanEnd` on drop |
 
 ### Non-Blocking Guarantees
 
@@ -460,8 +474,8 @@ The logging system is designed to never impact plugin latency:
 
 - `LogSender::send()` uses `try_send()` — it returns immediately whether or
   not the channel has capacity. No mutex, no allocation on the hot path
-  (beyond the `LogEntry` construction itself).
-- If the channel is full, the entry is dropped and `dropped_count` is
+  (beyond the `LogItem` construction itself).
+- If the channel is full, the item is dropped and `dropped_count` is
   incremented. The Developer Tools console displays a warning when drops occur.
 - The `SpanRegistry` uses a `Mutex<HashMap>`, but contention is minimal:
   plugins run serialized per-instance (the wasmtime `Store` mutex), and
@@ -470,26 +484,27 @@ The logging system is designed to never impact plugin latency:
 ### Ring Buffer and Eviction
 
 The `RingBufferStorage` uses a `VecDeque` with a fixed capacity (default
-10,000 entries). When full, `push` evicts the oldest entry via `pop_front`.
+10,000 items). When full, `push` evicts the oldest item via `pop_front`.
 
 The `entries_after(after_seq, limit)` method uses binary search on the
 monotonically increasing `seq` field for O(log n) seek time. This is the
 primary query used by the frontend when reconnecting after a lag.
 
 `total_pushed` is a lifetime counter that is not reset by `clear()`. It
-enables the frontend to detect and report evicted entries.
+enables the frontend to detect and report evicted items.
 
 ### Span Registry
 
 The `SpanRegistry` is a thread-safe `HashMap<u64, OpenSpan>` behind a mutex,
 with an `AtomicU64` for ID generation.
 
-- **Start**: generates a unique ID, validates nesting depth by walking the
+- **Start**: generates a unique ID, computes nesting depth by walking the
   parent chain (capped at 32), records `Instant::now()` for duration
-  measurement.
+  measurement. Returns `(span_id, depth)`. The caller (SpanBuilder or
+  runtime host import) then emits a `SpanStart` log item.
 - **End**: removes the open span, computes `duration_us` from the elapsed
   `Instant`, merges start and end metadata (end wins on key collision),
-  returns the completed `SpanInfo`.
+  returns a `CompletedSpan` (which converts to `LogItemKind::SpanEnd` via `From`).
 
 The registry is shared between all plugins and host code via `Arc`. Plugin
 spans and host spans coexist in the same registry, enabling the Developer
@@ -500,7 +515,14 @@ Tools console to show a unified view.
 ## Developer Tools Console
 
 The Developer Tools window is opened from the system tray menu ("Developer
-Tools..."). It displays a live, filterable, virtualized log of all entries.
+Tools..."). It displays a live, filterable, virtualized log of all items in
+two view modes:
+
+- **Flat view**: chronological stream with depth-based indentation for nested
+  spans and their associated log messages.
+- **Tree view**: spans are collapsible nodes that group their children. Each
+  span header shows the span name, duration (or in-progress indicator), and a
+  child count badge when collapsed.
 
 ### Tauri Commands
 
@@ -508,24 +530,24 @@ Four commands expose the logging system to the frontend:
 
 | Command | Parameters | Returns | Purpose |
 |---------|-----------|---------|---------|
-| `devtools_log_history` | `after_seq: u64, limit: usize` | `Vec<LogEntry>` | Fetch entries for initial load |
+| `devtools_log_history` | `after_seq: u64, limit: usize` | `Vec<LogItem>` | Fetch items for initial load |
 | `devtools_log_subscribe` | `channel: Channel<DevToolsMessage>` | — | Start live streaming |
 | `devtools_log_clear` | — | — | Clear the ring buffer |
-| `devtools_log_stats` | — | `LogStats` | Entry count, dropped count, total pushed |
+| `devtools_log_stats` | — | `LogStats` | Item count, dropped count, total pushed |
 
 ### Live Streaming Protocol
 
 1. The frontend calls `devtools_log_history(0, 10000)` on mount to load
-   existing entries.
+   existing items.
 2. It then calls `devtools_log_subscribe(channel)` to start receiving live
    updates.
 3. The backend spawns a task that reads from the broadcast channel, batches
-   entries over a 16ms window (one frame), and sends them as
+   items over a 16ms window (one frame), and sends them as
    `DevToolsMessage::Entries { entries }`.
 4. If the subscriber falls behind, it receives
    `DevToolsMessage::Dropped { count }` and the frontend displays a warning
    banner.
-5. Batches are capped at 500 entries to prevent oversized IPC messages.
+5. Batches are capped at 500 items to prevent oversized IPC messages.
 6. When the frontend disconnects (window closed), the channel send fails and
    the task exits.
 
@@ -538,7 +560,7 @@ adjusted as needed:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `DEFAULT_RING_BUFFER_CAPACITY` | 10,000 | Max entries before eviction |
+| `DEFAULT_RING_BUFFER_CAPACITY` | 10,000 | Max items before eviction |
 | `MAX_SPAN_NESTING` | 32 | Max parent-chain depth |
 | `CHANNEL_CAPACITY` | 1,024 | Bounded mpsc between producers and logging task |
 | `BROADCAST_CAPACITY` | 256 | Broadcast channel for live subscribers |
@@ -546,5 +568,5 @@ adjusted as needed:
 The current defaults are sized for interactive debugging. If profiling shows
 that the channel is frequently full (high `dropped_count`), increase
 `CHANNEL_CAPACITY`. If the console needs more scrollback history, increase
-`DEFAULT_RING_BUFFER_CAPACITY` (each entry is roughly 200–500 bytes in
+`DEFAULT_RING_BUFFER_CAPACITY` (each item is roughly 200–500 bytes in
 memory).

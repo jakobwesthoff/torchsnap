@@ -585,28 +585,30 @@ pub fn run() {
             match load_wasm_plugins(&mut host, &log_sender, &span_registry) {
                 Ok(count) => {
                     if count > 0 {
-                        log_sender.send(wasm::logging::LogEntry {
+                        log_sender.send(wasm::logging::LogItem {
                             seq: 0,
                             timestamp: std::time::SystemTime::now(),
-                            level: wasm::logging::LogLevel::Info,
                             source: wasm::logging::LogSource::Host,
-                            message: format!("Loaded {count} WASM plugin(s)"),
-                            metadata: vec![],
-                            span_id: None,
-                            span: None,
+                            kind: wasm::logging::LogItemKind::Message {
+                                level: wasm::logging::LogLevel::Info,
+                                message: format!("Loaded {count} WASM plugin(s)"),
+                                metadata: vec![],
+                                span_id: None,
+                            },
                         });
                     }
                 }
                 Err(e) => {
-                    log_sender.send(wasm::logging::LogEntry {
+                    log_sender.send(wasm::logging::LogItem {
                         seq: 0,
                         timestamp: std::time::SystemTime::now(),
-                        level: wasm::logging::LogLevel::Error,
                         source: wasm::logging::LogSource::Host,
-                        message: format!("Failed to initialize WASM plugins: {e:#}"),
-                        metadata: vec![],
-                        span_id: None,
-                        span: None,
+                        kind: wasm::logging::LogItemKind::Message {
+                            level: wasm::logging::LogLevel::Error,
+                            message: format!("Failed to initialize WASM plugins: {e:#}"),
+                            metadata: vec![],
+                            span_id: None,
+                        },
                     });
                 }
             }
@@ -773,28 +775,30 @@ fn load_wasm_plugins(
         let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender);
         match loaded {
             Ok(plugin_id) => {
-                log_sender.send(wasm::logging::LogEntry {
+                log_sender.send(wasm::logging::LogItem {
                     seq: 0,
                     timestamp: std::time::SystemTime::now(),
-                    level: wasm::logging::LogLevel::Info,
                     source: wasm::logging::LogSource::Host,
-                    message: format!("Loaded plugin: {plugin_id}"),
-                    metadata: vec![("plugin_id".to_string(), plugin_id)],
-                    span_id: None,
-                    span: None,
+                    kind: wasm::logging::LogItemKind::Message {
+                        level: wasm::logging::LogLevel::Info,
+                        message: format!("Loaded plugin: {plugin_id}"),
+                        metadata: vec![("plugin_id".to_string(), plugin_id)],
+                        span_id: None,
+                    },
                 });
                 count += 1;
             }
             Err(e) => {
-                log_sender.send(wasm::logging::LogEntry {
+                log_sender.send(wasm::logging::LogItem {
                     seq: 0,
                     timestamp: std::time::SystemTime::now(),
-                    level: wasm::logging::LogLevel::Error,
                     source: wasm::logging::LogSource::Host,
-                    message: format!("Failed to load {}: {e:#}", path.display()),
-                    metadata: vec![],
-                    span_id: None,
-                    span: None,
+                    kind: wasm::logging::LogItemKind::Message {
+                        level: wasm::logging::LogLevel::Error,
+                        message: format!("Failed to load {}: {e:#}", path.display()),
+                        metadata: vec![],
+                        span_id: None,
+                    },
                 });
             }
         }

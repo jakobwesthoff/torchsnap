@@ -11,7 +11,7 @@
 // =========================================================
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon, FunnelIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, ChevronDownIcon, FunnelIcon, QueueListIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
@@ -187,6 +187,8 @@ function SourceDropdown({
 // ConsoleToolbar
 // =========================================================
 
+export type ViewMode = "flat" | "tree";
+
 interface ConsoleToolbarProps {
   filters: LogFilters;
   onToggleLevel: (level: LogLevel) => void;
@@ -201,6 +203,8 @@ interface ConsoleToolbarProps {
   totalCount: number;
   filteredCount: number;
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
+  viewMode: ViewMode;
+  onSetViewMode: (mode: ViewMode) => void;
 }
 
 export function ConsoleToolbar({
@@ -217,14 +221,16 @@ export function ConsoleToolbar({
   totalCount,
   filteredCount,
   searchInputRef,
+  viewMode,
+  onSetViewMode,
 }: ConsoleToolbarProps) {
   const localSearchRef = useRef<HTMLInputElement>(null);
   const inputRef = searchInputRef ?? localSearchRef;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-inset/30 shrink-0">
-      {/* Level filter pills */}
-      <div className="flex items-center gap-1">
+    <div className="shrink-0 border-b border-border bg-surface-inset/30">
+      {/* Row 1: Level + span filter pills, clear action right-aligned */}
+      <div className="flex items-center gap-1 px-3 pt-2 pb-1.5">
         {LEVEL_ORDER.map((level) => {
           const enabled = filters.levels.has(level);
           const style = levelStyles[level];
@@ -270,49 +276,11 @@ export function ConsoleToolbar({
             <span className="ml-0.5 tabular-nums">{spanCount}</span>
           )}
         </button>
-      </div>
 
-      {/* Divider */}
-      <div className="w-px h-4 bg-border-divider" />
+        {/* Spacer pushes clear to the right */}
+        <div className="flex-1" />
 
-      {/* Source filter dropdown */}
-      <SourceDropdown
-        filters={filters}
-        knownSources={knownSources}
-        onToggleSource={onToggleSource}
-        onSetAllSources={onSetAllSources}
-      />
-
-      {/* Divider */}
-      <div className="w-px h-4 bg-border-divider" />
-
-      {/* Entry count */}
-      <span className="text-[10px] text-text-muted tabular-nums shrink-0">
-        {filteredCount === totalCount
-          ? `${totalCount}`
-          : `${filteredCount}/${totalCount}`}
-      </span>
-
-      {/* Divider */}
-      <div className="w-px h-4 bg-border-divider" />
-
-      {/* Search input */}
-      <div className="flex-1 max-w-xs">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Filter..."
-          value={filters.searchText}
-          onChange={(e) => onSetSearchText(e.target.value)}
-          className="w-full h-7 px-2.5 text-xs bg-surface border border-border-input rounded-md placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-        />
-      </div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Actions */}
-      <div className="flex items-center gap-1">
+        {/* Clear action */}
         <button
           className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors"
           onClick={onClear}
@@ -320,6 +288,73 @@ export function ConsoleToolbar({
         >
           <TrashIcon className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Row 2: Source filter, count, view mode, search, actions */}
+      <div className="flex items-center gap-2 px-3 pb-2">
+        {/* Source filter dropdown */}
+        <SourceDropdown
+          filters={filters}
+          knownSources={knownSources}
+          onToggleSource={onToggleSource}
+          onSetAllSources={onSetAllSources}
+        />
+
+        {/* Divider */}
+        <div className="w-px h-4 bg-border-divider" />
+
+        {/* Entry count */}
+        <span className="text-[10px] text-text-muted tabular-nums shrink-0">
+          {filteredCount === totalCount
+            ? `${totalCount}`
+            : `${filteredCount}/${totalCount}`}
+        </span>
+
+        {/* Divider */}
+        <div className="w-px h-4 bg-border-divider" />
+
+        {/* Search input — fills remaining space */}
+        <div className="flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Filter..."
+            value={filters.searchText}
+            onChange={(e) => onSetSearchText(e.target.value)}
+            className="w-full h-7 px-2.5 text-xs bg-surface border border-border-input rounded-md placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+          />
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-4 bg-border-divider" />
+
+        {/* View mode toggle */}
+        <div className="flex items-center rounded-md border border-border-input overflow-hidden">
+          <button
+            onClick={() => onSetViewMode("flat")}
+            className={cn(
+              "px-1.5 py-1 transition-colors",
+              viewMode === "flat"
+                ? "bg-accent/15 text-accent"
+                : "text-text-muted hover:text-text-secondary",
+            )}
+            title="Flat view"
+          >
+            <Bars3Icon className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onSetViewMode("tree")}
+            className={cn(
+              "px-1.5 py-1 transition-colors",
+              viewMode === "tree"
+                ? "bg-accent/15 text-accent"
+                : "text-text-muted hover:text-text-secondary",
+            )}
+            title="Tree view"
+          >
+            <QueueListIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );

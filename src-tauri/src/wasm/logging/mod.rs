@@ -51,7 +51,7 @@ fn serialize_timestamp_ms<S: Serializer>(
 // Constants
 // =========================================================
 
-/// Maximum number of log entries retained in the ring buffer.
+/// Maximum number of log items retained in the ring buffer.
 pub const DEFAULT_RING_BUFFER_CAPACITY: usize = 10_000;
 
 /// Maximum span nesting depth. `span_start` rejects spans
@@ -60,7 +60,7 @@ pub const MAX_SPAN_NESTING: usize = 32;
 
 /// Bounded channel capacity between log producers and the
 /// logging task. Sized for burst absorption without excessive
-/// memory use (~200–500 bytes per entry).
+/// memory use (~200–500 bytes per item).
 pub const CHANNEL_CAPACITY: usize = 1024;
 
 /// Broadcast channel capacity for live subscribers (e.g., the
@@ -84,7 +84,7 @@ pub enum LogLevel {
     Error,
 }
 
-/// Where a log entry originated.
+/// Where a log item originated.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub enum LogSource {
@@ -94,35 +94,21 @@ pub enum LogSource {
     Host,
 }
 
-/// Completed span record, emitted when `span_end` is called.
-///
-/// Metadata is the merge of start-metadata and end-metadata,
-/// with end-metadata winning on key collisions.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SpanInfo {
-    /// Unique span identifier.
-    pub span_id: u64,
-    /// Parent span, if this span was nested inside another.
-    pub parent_id: Option<u64>,
-    /// Human-readable span name (e.g., "search", "execute").
-    pub name: String,
-    /// Wall-clock duration in microseconds.
-    pub duration_us: u64,
-    /// Merged key-value metadata from span start and end.
-    pub metadata: Vec<(String, String)>,
-}
+// =========================================================
+// LogItem — the universal log stream element
+// =========================================================
 
-/// A single log entry in the ring buffer.
+/// A single item in the log stream. Shared envelope fields
+/// plus a discriminated payload.
 ///
-/// There are two kinds of entries:
-/// - **Regular log messages**: `span` is `None`, `span_id` may
-///   optionally associate the message with an active span.
-/// - **Span-end timing entries**: `span` carries the completed
-///   `SpanInfo` with duration and merged metadata.
+/// There are three kinds of items:
+/// - **Messages**: regular log entries with level and text.
+/// - **Span-start**: marks the beginning of a timed region.
+/// - **Span-end**: marks the completion with duration and
+///   merged metadata.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LogEntry {
+pub struct LogItem {
     /// Monotonically increasing sequence number assigned by
     /// the logging task. Used for deduplication on reconnect
     /// and as stable keys in the frontend virtualizer.
@@ -130,22 +116,62 @@ pub struct LogEntry {
     /// Set to 0 by producers; the logging task assigns the
     /// real value before storing.
     pub seq: u64,
+
     /// Wall-clock timestamp as milliseconds since Unix epoch.
     /// Serialized as a number for direct use with `new Date(ms)`
     /// on the frontend.
     #[serde(serialize_with = "serialize_timestamp_ms")]
     pub timestamp: SystemTime,
-    /// Severity level.
-    pub level: LogLevel,
-    /// Who produced this entry.
+
+    /// Who produced this item.
     pub source: LogSource,
-    /// Human-readable log message.
-    pub message: String,
-    /// Structured key-value metadata attached to this entry.
-    pub metadata: Vec<(String, String)>,
-    /// If set, associates this log message with an active span.
-    pub span_id: Option<u64>,
-    /// Populated only on span-end entries: carries completed
-    /// timing and merged metadata.
-    pub span: Option<SpanInfo>,
+
+    /// The payload — message, span-start, or span-end.
+    pub kind: LogItemKind,
+}
+
+/// Discriminated payload for log items.
+///
+/// Uses `serde(tag = "type")` so the frontend sees a nested
+/// object with a `type` discriminator:
+/// `{ type: "message" | "spanStart" | "spanEnd", ... }`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum LogItemKind {
+    /// A regular log message.
+    #[serde(rename_all = "camelCase")]
+    Message {
+        level: LogLevel,
+        message: String,
+        metadata: Vec<(String, String)>,
+        /// Associates this message with an active span.
+        span_id: Option<u64>,
+    },
+
+    /// A span has started. Emitted when `span_start` is called
+    /// so the frontend can track open spans in real time.
+    #[serde(rename_all = "camelCase")]
+    SpanStart {
+        span_id: u64,
+        name: String,
+        parent_id: Option<u64>,
+        /// Nesting depth: 0 for root spans, 1 for children of
+        /// root, etc. Provided so the frontend doesn't need to
+        /// walk parent chains.
+        depth: u32,
+        metadata: Vec<(String, String)>,
+    },
+
+    /// A span has ended. Carries the wall-clock duration and
+    /// merged metadata (start + end, end wins on key collision).
+    #[serde(rename_all = "camelCase")]
+    SpanEnd {
+        span_id: u64,
+        name: String,
+        parent_id: Option<u64>,
+        depth: u32,
+        duration_us: u64,
+        /// Merged start + end metadata (end wins on key collision).
+        metadata: Vec<(String, String)>,
+    },
 }
