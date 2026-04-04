@@ -30,7 +30,7 @@ pub mod system_commands;
 pub mod system_preferences;
 
 use crate::frecency::PluginFrecency;
-use crate::search::types::{ActionId, CancellationToken, CatalogEntry, PostAction, ResultChannel};
+use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::settings_notifier::PluginSettingsNotifier;
 
@@ -231,7 +231,7 @@ pub trait Plugin: Send + Sync {
     /// use prefix routing. Prefixes can be multi-character (e.g.,
     /// `":"`, `"g "`, `"http://"`). Longest prefix wins when
     /// multiple match.
-    fn search_prefixes(&self) -> &[&str] {
+    fn search_prefixes(&self) -> &[String] {
         &[]
     }
 
@@ -255,21 +255,15 @@ pub trait Plugin: Send + Sync {
     /// [`PluginResponse::CustomUI`] is only honoured in prefix mode;
     /// in always-on mode it is downgraded to plain results.
     ///
-    /// Results are pushed into `results` via its typed send methods.
-    /// The plugin may send zero or more responses. Dropping `results`
-    /// (or returning) signals completion.
+    /// Returns `None` when the plugin has no results for this query,
+    /// or `Some(PluginResponse)` with the results/UI payload.
     ///
-    /// `cancel` can be polled via `cancel.is_cancelled()` to detect
-    /// early termination (e.g., the user typed a new query). Fast
-    /// plugins can ignore it.
-    ///
-    /// The default is a no-op (catalog-only plugins).
+    /// The default is a no-op returning `None` (catalog-only plugins).
     fn search(
         &self,
         _query: &str,
         _matched_prefix: Option<&str>,
-        _results: &ResultChannel,
-        _cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
+        None
     }
 }

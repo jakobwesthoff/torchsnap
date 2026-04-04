@@ -19,9 +19,7 @@
 use std::time::SystemTime;
 
 use crate::plugins::Plugin;
-use crate::search::types::{
-    ActionId, CancellationToken, CatalogEntry, PostAction, PluginResponse, ResultChannel,
-};
+use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
 
 use super::logging::channel::LogSender;
 use super::logging::{LogEntry, LogLevel, LogSource};
@@ -43,36 +41,16 @@ pub struct WasmPluginBridge {
     manifest: Manifest,
     instance: WasmPluginInstance,
     log_sender: LogSender,
-
-    // The Plugin trait's `search_prefixes()` returns `&[&str]`,
-    // which requires a stable backing store. We keep the owned
-    // strings and a parallel vec of pointers that borrow from
-    // them. This is safe because both vecs are immutable after
-    // construction and live together in the same struct.
-    _prefix_storage: Vec<String>,
-    prefix_ptrs: Vec<&'static str>,
 }
 
 impl WasmPluginBridge {
     /// Create a bridge from a parsed manifest and a live
     /// WASM plugin instance.
     pub fn new(manifest: Manifest, instance: WasmPluginInstance, log_sender: LogSender) -> Self {
-        let prefix_storage = manifest.plugin.prefixes.clone();
-
-        // Deliberately leak the prefix strings. Plugins live
-        // for the entire application lifetime, so this memory
-        // is never reclaimed but also never dangling.
-        let prefix_ptrs: Vec<&'static str> = prefix_storage
-            .iter()
-            .map(|s| &*Box::leak(s.clone().into_boxed_str()))
-            .collect();
-
         Self {
             manifest,
             instance,
             log_sender,
-            _prefix_storage: prefix_storage,
-            prefix_ptrs,
         }
     }
 
@@ -134,23 +112,20 @@ impl Plugin for WasmPluginBridge {
         &self,
         query: &str,
         matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        _cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
         match self.instance.search(query, matched_prefix) {
             Ok(response) => match response {
-                PluginResponse::Results(entries) if !entries.is_empty() => {
-                    results.send_results(entries);
-                }
-                _ => {}
+                PluginResponse::Results(ref entries) if entries.is_empty() => None,
+                _ => Some(response),
             },
             Err(e) => {
                 self.log(LogLevel::Error, format!("search() failed: {e:#}"));
+                None
             }
         }
     }
 
-    fn search_prefixes(&self) -> &[&str] {
-        &self.prefix_ptrs
+    fn search_prefixes(&self) -> &[String] {
+        &self.manifest.plugin.prefixes
     }
 }
