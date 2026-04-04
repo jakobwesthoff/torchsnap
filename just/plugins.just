@@ -39,7 +39,42 @@ build-plugin name:
         echo "Copied $src → $dir/$wasm_file"
     else
         echo "Warning: expected artifact not found: $src"
+        exit 1
     fi
+
+    just package-plugin "{{ name }}"
+
+# Package a plugin directory into a .torchsnap zip archive.
+# Includes manifest.toml and any files referenced by the manifest
+# (WASM binary, frontend assets). Build artifacts and source code
+# are excluded.
+package-plugin name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="plugins/{{ name }}"
+
+    # Determine which files to include. Always start with the
+    # manifest and the WASM binary it references.
+    wasm_file=$(grep '^wasm' "$dir/manifest.toml" | sed 's/.*= *"//' | sed 's/".*//')
+
+    if [ ! -f "$dir/$wasm_file" ]; then
+        echo "Error: WASM binary not found: $dir/$wasm_file"
+        echo "Run 'just build-plugin {{ name }}' first"
+        exit 1
+    fi
+
+    archive="{{ name }}.torchsnap"
+
+    # Build the archive from the plugin directory. Use -j to
+    # store paths relative to the plugin root (no directory prefix).
+    cd "$dir"
+    zip -j "$archive" "manifest.toml" "$wasm_file"
+
+    # TODO: Include frontend assets when plugins have them.
+    # Future plugins with frontend bundles will need their
+    # launcher-bundle and settings-bundle paths included here.
+
+    echo "Packaged → $dir/$archive"
 
 # Check all WASM plugins compile
 check-plugins:
