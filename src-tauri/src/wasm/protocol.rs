@@ -112,7 +112,7 @@ struct ErrorResponse {
 fn serve_plugin_asset(
     registry: &PluginSourceRegistry,
     request: &http::Request<Vec<u8>>,
-) -> Result<(Vec<u8>, &'static str), ErrorResponse> {
+) -> Result<(Vec<u8>, String), ErrorResponse> {
     let path = request.uri().path();
 
     // Strip leading slash and split into plugin-id / file-path.
@@ -161,21 +161,10 @@ fn serve_plugin_asset(
 /// `infer` crate for binary formats (images, wasm, etc.)
 /// and falls back to extension-based detection for text
 /// formats that `infer` can't identify by magic bytes.
-fn detect_content_type(path: &str, data: &[u8]) -> &'static str {
+fn detect_content_type(path: &str, data: &[u8]) -> String {
     // Try magic-byte detection first (works for images, wasm, etc.).
     if let Some(kind) = infer::get(data) {
-        return match kind.mime_type() {
-            // infer returns "application/wasm" for wasm files,
-            // but its other MIME types are generally correct.
-            mime => {
-                // Leak a &'static str from the infer result.
-                // This is fine — the set of MIME types is bounded
-                // and small.
-                // TODO: avoid the leak by matching known types
-                // explicitly if the set grows.
-                mime.to_string().leak()
-            }
-        };
+        return kind.mime_type().to_string();
     }
 
     // Fall back to file extension for text-based formats that
@@ -193,6 +182,7 @@ fn detect_content_type(path: &str, data: &[u8]) -> &'static str {
         Some("txt") => "text/plain",
         _ => "application/octet-stream",
     }
+    .to_string()
 }
 
 // =========================================================
