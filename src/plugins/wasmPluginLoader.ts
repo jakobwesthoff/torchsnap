@@ -17,6 +17,7 @@
 
 import type { ComponentType } from "react";
 import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
+import { injectPluginCss } from "../lib/pluginCss";
 import { registerPlugin, type PluginRegistryEntry } from "./registry";
 import type { WasmFrontendInfo } from "../lib/command";
 import type { PluginViewProps, InlineViewProps } from "./types";
@@ -84,6 +85,13 @@ export function registerWasmPlugin(info: WasmFrontendInfo): void {
   }
 
   registerPlugin(info.pluginId, entry);
+
+  // Inject scoped CSS if the plugin declares a launcher CSS file.
+  // This is fire-and-forget — CSS loading should not block plugin
+  // registration.
+  if (info.launcherCss) {
+    injectPluginCss(info.pluginId, info.launcherCss);
+  }
 }
 
 /**
