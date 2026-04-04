@@ -92,9 +92,10 @@ impl SearchGuest for HelloWorld {
         // that echoes the query. This demonstrates the full
         // frontend dynamic loading pipeline.
         if matched_prefix.is_some() {
+            let data = serde_json::json!({ "query": query });
             return SearchResponse::CustomUi(ViewResponse {
                 view: "echo".into(),
-                data: Some(format!(r#"{{"query":"{}"}}"#, query.replace('"', "\\\""))),
+                data: Some(data.to_string()),
                 results: vec![],
             });
         }
