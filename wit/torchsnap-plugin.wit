@@ -82,12 +82,29 @@ interface types {
     actions: list<action>,
   }
 
+  /// Payload for custom-ui and inline-ui search responses.
+  /// The `data` field carries an optional JSON-encoded string
+  /// (WIT has no opaque JSON type) forwarded to the frontend
+  /// view component as-is.
+  record view-response {
+    view: string,
+    data: option<string>,
+    results: list<scored-entry>,
+  }
+
   /// What a query plugin returns from `search()`.
   variant search-response {
     /// Plugin has nothing to contribute for this query.
     nothing,
     /// Standard scored results merged into the host's list.
     results(list<scored-entry>),
+    /// Plugin requests full custom UI (replaces the result list).
+    /// The host mounts the named view component registered in
+    /// the plugin's frontend manifest.
+    custom-ui(view-response),
+    /// Plugin requests inline UI (rendered above the result list).
+    /// Only one plugin can claim the inline slot per search.
+    inline-ui(view-response),
   }
 
   enum post-action {
