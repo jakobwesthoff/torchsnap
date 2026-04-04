@@ -81,9 +81,11 @@ function PluginViewContainer({
   const View = getPluginView(pluginId, viewName);
   if (!View) return null;
   return (
-    <LoggerProvider source={pluginId}>
-      <View {...props} />
-    </LoggerProvider>
+    <div data-plugin={pluginId}>
+      <LoggerProvider source={pluginId}>
+        <View {...props} />
+      </LoggerProvider>
+    </div>
   );
 }
 
@@ -95,9 +97,11 @@ function InlineViewContainer({
   const View = getPluginInlineView(pluginId, viewName);
   if (!View) return null;
   return (
-    <LoggerProvider source={pluginId}>
-      <View {...props} />
-    </LoggerProvider>
+    <div data-plugin={pluginId}>
+      <LoggerProvider source={pluginId}>
+        <View {...props} />
+      </LoggerProvider>
+    </div>
   );
 }
 /* eslint-enable react-hooks/static-components */

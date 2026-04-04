@@ -9,6 +9,7 @@ import { ThemeProvider } from "../contexts/ThemeProvider";
 import { command } from "../lib/command";
 import { initStore } from "../settingsStore";
 import { preloadSettingsComponents } from "../lib/pluginComponent";
+import { initPluginSdk } from "../lib/sdk";
 import { registerAllWasmPlugins } from "../plugins/wasmPluginLoader";
 import { SettingsPanel } from "./SettingsPanel";
 import "../index.css";
@@ -18,6 +19,7 @@ import "../index.css";
 // See settingsStore.ts for the full explanation.
 async function main() {
   await initStore();
+  initPluginSdk();
 
   const wasmPlugins = await command("wasm_frontend_plugins");
   registerAllWasmPlugins(wasmPlugins);
