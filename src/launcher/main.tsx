@@ -9,6 +9,7 @@ import { ThemeProvider } from "../contexts/ThemeProvider";
 import { KeyBindingProvider } from "../keybindings";
 import { initStore } from "../settingsStore";
 import { preloadLauncherComponents } from "../lib/pluginComponent";
+import { registerAllWasmPlugins } from "../plugins/wasmPluginLoader";
 import { Launcher } from "./Launcher";
 import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
 import "../index.css";
@@ -20,6 +21,13 @@ import "../index.css";
 // on the frontend.
 async function main() {
   await initStore();
+
+  // Register WASM plugin frontend components before preloading.
+  // This ensures dynamic import() factories for WASM plugins are
+  // set up and included in the preload batch.
+  const wasmPlugins = await command("wasm_frontend_plugins");
+  registerAllWasmPlugins(wasmPlugins);
+
   preloadLauncherComponents();
 
   const root = createRoot(document.getElementById("root")!);

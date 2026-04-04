@@ -404,6 +404,62 @@ fn website_metadata_clear_cache(
 }
 
 // =========================================================
+// WASM Plugin Frontend Manifests
+// =========================================================
+
+/// Serializable frontend manifest data sent to the frontend
+/// at startup so it can register dynamic plugin components.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmFrontendInfo {
+    plugin_id: String,
+    name: String,
+    launcher_bundle: Option<String>,
+    launcher_css: Option<String>,
+    settings_bundle: Option<String>,
+    settings_css: Option<String>,
+    views: std::collections::HashMap<String, String>,
+    inline_views: std::collections::HashMap<String, String>,
+    settings_component: Option<String>,
+}
+
+/// Returns frontend manifest data for all loaded WASM plugins
+/// that have a `[frontend]` section. Called once per webview
+/// at startup to register dynamic plugin components.
+#[tauri::command]
+fn wasm_frontend_plugins(
+    registry: tauri::State<'_, wasm::protocol::PluginSourceRegistry>,
+) -> Vec<WasmFrontendInfo> {
+    let sources = registry.read().expect("source registry not poisoned");
+    sources
+        .iter()
+        .filter_map(|(_, source)| {
+            let manifest = source.manifest();
+            let frontend = manifest.frontend.as_ref()?;
+
+            // Only include plugins that have at least one frontend component.
+            let has_frontend = frontend.launcher_bundle.is_some()
+                || frontend.settings_bundle.is_some();
+            if !has_frontend {
+                return None;
+            }
+
+            Some(WasmFrontendInfo {
+                plugin_id: manifest.plugin.id.to_string(),
+                name: manifest.plugin.name.clone(),
+                launcher_bundle: frontend.launcher_bundle.clone(),
+                launcher_css: frontend.launcher_css.clone(),
+                settings_bundle: frontend.settings_bundle.clone(),
+                settings_css: frontend.settings_css.clone(),
+                views: frontend.views.clone(),
+                inline_views: frontend.inline_views.clone(),
+                settings_component: frontend.settings.as_ref().map(|s| s.component.clone()),
+            })
+        })
+        .collect()
+}
+
+// =========================================================
 // Control API — frontend channel subscription
 // =========================================================
 
@@ -444,6 +500,7 @@ pub fn run() {
             wasm::logging::commands::logger_emit,
             wasm::logging::commands::logger_span_start,
             wasm::logging::commands::logger_span_end,
+            wasm_frontend_plugins,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -639,6 +696,7 @@ pub fn run() {
             app.manage(Arc::clone(&metadata_service));
             app.manage(Arc::clone(&logging_system));
             app.manage(Arc::clone(&span_registry));
+            app.manage(plugin_source_registry);
 
             // =========================================================
             // Settings-changed listener
