@@ -65,14 +65,21 @@ package-plugin name:
 
     archive="plugins/{{ name }}.torchsnap"
 
-    # Build the archive from the plugin directory. Use -j to
-    # store paths relative to the plugin root (no directory prefix).
+    # Build the archive from the plugin directory. Paths inside
+    # the zip are relative to the plugin root.
     cd "$dir"
     zip -j "../../$archive" "manifest.toml" "$wasm_file"
 
-    # TODO: Include frontend assets when plugins have them.
-    # Future plugins with frontend bundles will need their
-    # launcher-bundle and settings-bundle paths included here.
+    # Include frontend assets referenced in the manifest.
+    # Each bundle and CSS path is optional — only include files
+    # that exist.
+    for key in launcher-bundle launcher-css settings-bundle settings-css; do
+        path=$(grep "^$key" manifest.toml 2>/dev/null | sed 's/.*= *"//' | sed 's/".*//' || true)
+        if [ -n "$path" ] && [ -f "$path" ]; then
+            zip "../../$archive" "$path"
+            echo "  + $path"
+        fi
+    done
 
     echo "Packaged → $archive"
 
