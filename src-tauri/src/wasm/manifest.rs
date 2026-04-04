@@ -224,6 +224,17 @@ pub struct FrontendDef {
     #[serde(default, rename = "inline-views")]
     pub inline_views: HashMap<String, String>,
 
+    /// Path to the CSS file loaded alongside the launcher
+    /// bundle. Served via `torchsnap-plugin://` and scoped to
+    /// the plugin's container with `@scope`.
+    #[serde(default, rename = "launcher-css")]
+    pub launcher_css: Option<String>,
+
+    /// Path to the CSS file loaded alongside the settings
+    /// bundle.
+    #[serde(default, rename = "settings-css")]
+    pub settings_css: Option<String>,
+
     /// Settings panel component declaration.
     pub settings: Option<FrontendSettingsDef>,
 }
@@ -256,9 +267,21 @@ impl Manifest {
                 );
             }
 
+            if frontend.launcher_css.is_some() && frontend.launcher_bundle.is_none() {
+                anyhow::bail!(
+                    "manifest declares launcher-css but no launcher-bundle"
+                );
+            }
+
             if frontend.settings.is_some() && frontend.settings_bundle.is_none() {
                 anyhow::bail!(
                     "manifest declares a settings component but no settings-bundle"
+                );
+            }
+
+            if frontend.settings_css.is_some() && frontend.settings_bundle.is_none() {
+                anyhow::bail!(
+                    "manifest declares settings-css but no settings-bundle"
                 );
             }
         }
@@ -965,5 +988,157 @@ mod tests {
         // this ensures forward compatibility when new manifest
         // fields are added in later versions.
         Manifest::parse(toml).expect("should parse despite unknown fields");
+    }
+
+    // =====================================================
+    // Frontend: CSS fields
+    // =====================================================
+
+    #[test]
+    fn frontend_with_launcher_css() {
+        let toml = r#"
+            [plugin]
+            id = "test"
+            name = "Test"
+            description = "Test"
+            version = "0.1.0"
+            wasm = "test.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            launcher-bundle = "frontend/launcher.js"
+            launcher-css = "frontend/launcher.css"
+
+            [frontend.views]
+            echo = "Echo"
+        "#;
+
+        let m = Manifest::parse(toml).expect("should parse");
+        let fe = m.frontend.as_ref().expect("frontend");
+        assert_eq!(fe.launcher_css.as_deref(), Some("frontend/launcher.css"));
+    }
+
+    #[test]
+    fn frontend_with_settings_css() {
+        let toml = r#"
+            [plugin]
+            id = "test"
+            name = "Test"
+            description = "Test"
+            version = "0.1.0"
+            wasm = "test.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            settings-bundle = "frontend/settings.js"
+            settings-css = "frontend/settings.css"
+
+            [frontend.settings]
+            component = "TestSettings"
+        "#;
+
+        let m = Manifest::parse(toml).expect("should parse");
+        let fe = m.frontend.as_ref().expect("frontend");
+        assert_eq!(fe.settings_css.as_deref(), Some("frontend/settings.css"));
+    }
+
+    #[test]
+    fn frontend_with_both_css_fields() {
+        let toml = r#"
+            [plugin]
+            id = "test"
+            name = "Test"
+            description = "Test"
+            version = "0.1.0"
+            wasm = "test.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            launcher-bundle = "frontend/launcher.js"
+            launcher-css = "frontend/launcher.css"
+            settings-bundle = "frontend/settings.js"
+            settings-css = "frontend/settings.css"
+
+            [frontend.views]
+            echo = "Echo"
+
+            [frontend.settings]
+            component = "TestSettings"
+        "#;
+
+        let m = Manifest::parse(toml).expect("should parse");
+        let fe = m.frontend.as_ref().expect("frontend");
+        assert_eq!(fe.launcher_css.as_deref(), Some("frontend/launcher.css"));
+        assert_eq!(fe.settings_css.as_deref(), Some("frontend/settings.css"));
+    }
+
+    #[test]
+    fn frontend_css_fields_default_to_none() {
+        let toml = r#"
+            [plugin]
+            id = "test"
+            name = "Test"
+            description = "Test"
+            version = "0.1.0"
+            wasm = "test.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            launcher-bundle = "frontend/launcher.js"
+
+            [frontend.views]
+            echo = "Echo"
+        "#;
+
+        let m = Manifest::parse(toml).expect("should parse");
+        let fe = m.frontend.as_ref().expect("frontend");
+        assert!(fe.launcher_css.is_none());
+        assert!(fe.settings_css.is_none());
+    }
+
+    #[test]
+    fn reject_launcher_css_without_launcher_bundle() {
+        let toml = r#"
+            [plugin]
+            id = "bad"
+            name = "Bad"
+            description = "CSS without bundle"
+            version = "0.1.0"
+            wasm = "bad.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            launcher-css = "frontend/launcher.css"
+        "#;
+
+        let err = Manifest::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("launcher-css")
+                && err.to_string().contains("launcher-bundle"),
+            "error should mention both fields: {err}"
+        );
+    }
+
+    #[test]
+    fn reject_settings_css_without_settings_bundle() {
+        let toml = r#"
+            [plugin]
+            id = "bad"
+            name = "Bad"
+            description = "CSS without bundle"
+            version = "0.1.0"
+            wasm = "bad.wasm"
+            icon = "heroicons:beaker"
+
+            [frontend]
+            settings-css = "frontend/settings.css"
+        "#;
+
+        let err = Manifest::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("settings-css")
+                && err.to_string().contains("settings-bundle"),
+            "error should mention both fields: {err}"
+        );
     }
 }
