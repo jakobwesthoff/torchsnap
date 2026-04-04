@@ -20,7 +20,7 @@ use serde::Deserialize;
 // Top-Level Manifest
 // =========================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
     pub plugin: PluginMeta,
 
@@ -46,7 +46,7 @@ pub struct Manifest {
 // Plugin Identity & Core Properties
 // =========================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PluginMeta {
     /// Stable identifier. Lowercase alphanumeric and hyphens
     /// only (e.g., `"clipboard-manager"`). Used as the key
@@ -182,7 +182,7 @@ impl<'de> Deserialize<'de> for PluginIcon {
 // =========================================================
 
 /// Declaration of a single global keyboard shortcut.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ShortcutDef {
     /// Human-readable label (e.g., "Open Clipboard History").
     pub label: String,
@@ -200,7 +200,7 @@ pub struct ShortcutDef {
 /// Frontend component declarations. The host extracts bundled
 /// JS files and loads them via dynamic `import()` in the
 /// appropriate webview.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FrontendDef {
     /// Path to the ES module bundle loaded in the launcher
     /// webview. Contains view and inline-view components as
@@ -229,7 +229,7 @@ pub struct FrontendDef {
 }
 
 /// Settings component reference.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FrontendSettingsDef {
     /// Named export from `settings_bundle` that provides
     /// the settings React component.
