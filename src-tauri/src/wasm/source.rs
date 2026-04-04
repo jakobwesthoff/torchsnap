@@ -18,7 +18,9 @@
 // which source loaded the plugin.
 // =========================================================
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::Context as _;
 
@@ -160,6 +162,120 @@ fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     result
+}
+
+// =========================================================
+// ArchiveSource
+// =========================================================
+
+/// Loads a plugin from a `.torchsnap` zip archive.
+///
+/// The archive is held open for the lifetime of the source so
+/// that files (WASM binary, frontend assets, images) can be
+/// read on demand without eagerly loading everything into
+/// memory.
+///
+/// The manifest is parsed during `open()` and cached — reading
+/// it does not require locking the archive.
+pub struct ArchiveSource {
+    /// The zip archive handle, behind a Mutex because
+    /// `ZipArchive::by_name` requires `&mut self` (it seeks
+    /// the underlying file).
+    archive: Mutex<zip::ZipArchive<std::fs::File>>,
+    manifest: Manifest,
+}
+
+impl ArchiveSource {
+    /// Open a `.torchsnap` zip archive and parse its manifest.
+    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let file = std::fs::File::open(path)
+            .with_context(|| format!("opening archive at {}", path.display()))?;
+
+        let mut archive = zip::ZipArchive::new(file)
+            .with_context(|| format!("reading zip archive at {}", path.display()))?;
+
+        // Read and parse manifest.toml from the archive.
+        let manifest = {
+            let mut entry = archive
+                .by_name("manifest.toml")
+                .with_context(|| {
+                    format!(
+                        "archive at {} does not contain manifest.toml",
+                        path.display()
+                    )
+                })?;
+
+            let mut toml_source = String::new();
+            entry
+                .read_to_string(&mut toml_source)
+                .context("reading manifest.toml from archive")?;
+
+            Manifest::parse(&toml_source).with_context(|| {
+                format!(
+                    "parsing manifest.toml in archive at {}",
+                    path.display()
+                )
+            })?
+        };
+
+        Ok(Self {
+            archive: Mutex::new(archive),
+            manifest,
+        })
+    }
+}
+
+impl PluginSource for ArchiveSource {
+    fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
+        // Reject paths that attempt to escape the archive root.
+        // Zip entry names are relative strings — we can't use
+        // filesystem canonicalization, so we track directory
+        // depth during normalization. If it ever goes negative,
+        // the path escapes the root.
+        anyhow::ensure!(
+            !path.starts_with('/'),
+            "plugin file path `{path}` must be relative"
+        );
+
+        let normalized = normalize_path(Path::new(path));
+        let normalized_str = normalized.to_string_lossy();
+
+        // Walk components and track depth. A `..` that would
+        // go above the root (depth < 0) is a traversal attempt.
+        let mut depth: i32 = 0;
+        for component in Path::new(path).components() {
+            match component {
+                std::path::Component::ParentDir => depth -= 1,
+                std::path::Component::Normal(_) => depth += 1,
+                _ => {}
+            }
+            anyhow::ensure!(
+                depth >= 0,
+                "plugin file path `{path}` escapes the archive root"
+            );
+        }
+
+        let mut archive = self
+            .archive
+            .lock()
+            .expect("archive mutex not poisoned");
+
+        let mut entry = archive
+            .by_name(&normalized_str)
+            .with_context(|| format!("reading plugin file `{path}` from archive"))?;
+
+        let mut buf = Vec::with_capacity(entry.size() as usize);
+        entry
+            .read_to_end(&mut buf)
+            .with_context(|| format!("decompressing plugin file `{path}`"))?;
+
+        Ok(buf)
+    }
 }
 
 // =========================================================
@@ -422,5 +538,274 @@ mod tests {
         let input = Path::new("/a/b/c");
         let normalized = normalize_path(input);
         assert_eq!(normalized, PathBuf::from("/a/b/c"));
+    }
+
+    // =====================================================
+    // ArchiveSource tests
+    //
+    // Each test builds an in-memory zip archive via
+    // ZipWriter, writes it to a temp file, then opens it
+    // with ArchiveSource.
+    // =====================================================
+
+    /// Helper: build a `.torchsnap` zip file in a temp directory.
+    /// Returns the temp dir (for lifetime) and the archive path.
+    fn make_archive(
+        manifest_toml: &str,
+        files: &[(&str, &[u8])],
+    ) -> (tempfile::TempDir, PathBuf) {
+        use std::io::{Cursor, Write as _};
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut buf);
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+
+            writer
+                .start_file("manifest.toml", options)
+                .expect("start manifest entry");
+            writer
+                .write_all(manifest_toml.as_bytes())
+                .expect("write manifest");
+
+            for (path, contents) in files {
+                writer.start_file(*path, options).expect("start file entry");
+                writer.write_all(contents).expect("write file");
+            }
+
+            writer.finish().expect("finalize zip");
+        }
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let archive_path = dir.path().join("plugin.torchsnap");
+        std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
+
+        (dir, archive_path)
+    }
+
+    /// Helper: build a zip without a manifest.toml.
+    fn make_archive_without_manifest(
+        files: &[(&str, &[u8])],
+    ) -> (tempfile::TempDir, PathBuf) {
+        use std::io::{Cursor, Write as _};
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut buf);
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+
+            for (path, contents) in files {
+                writer.start_file(*path, options).expect("start file entry");
+                writer.write_all(contents).expect("write file");
+            }
+
+            writer.finish().expect("finalize zip");
+        }
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let archive_path = dir.path().join("plugin.torchsnap");
+        std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
+
+        (dir, archive_path)
+    }
+
+    #[test]
+    fn archive_open_valid() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"fake wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        assert_eq!(source.manifest().plugin.id.as_str(), "test-plugin");
+    }
+
+    #[test]
+    fn archive_read_wasm() {
+        let wasm_bytes = b"\x00asm fake component";
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", wasm_bytes)],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let bytes = source.read_wasm().expect("should read wasm");
+        assert_eq!(bytes, wasm_bytes);
+    }
+
+    #[test]
+    fn archive_read_nested_file() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[
+                ("plugin.wasm", b"wasm"),
+                ("frontend/launcher.js", b"export function View() {}"),
+            ],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let js = source.read_file("frontend/launcher.js").expect("should read");
+        assert_eq!(js, b"export function View() {}");
+    }
+
+    #[test]
+    fn archive_read_binary_preserves_bytes() {
+        let binary: Vec<u8> = (0..=255).collect();
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[
+                ("plugin.wasm", b"wasm"),
+                ("data.bin", &binary),
+            ],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let content = source.read_file("data.bin").expect("should read");
+        assert_eq!(content, binary);
+    }
+
+    #[test]
+    fn archive_manifest_accessible() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let manifest = source.manifest();
+        assert_eq!(manifest.plugin.id.as_str(), "test-plugin");
+        assert_eq!(manifest.plugin.name, "Test Plugin");
+        assert_eq!(manifest.plugin.description, "A test plugin");
+        assert_eq!(manifest.plugin.version, "0.1.0");
+        assert_eq!(manifest.plugin.wasm, "plugin.wasm");
+    }
+
+    #[test]
+    fn archive_reject_missing_manifest() {
+        let (_dir, path) = make_archive_without_manifest(
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let result = ArchiveSource::open(&path);
+        assert!(result.is_err(), "should fail without manifest.toml");
+    }
+
+    #[test]
+    fn archive_reject_invalid_manifest() {
+        let (_dir, path) = make_archive(
+            "not valid toml [[[",
+            &[],
+        );
+
+        let result = ArchiveSource::open(&path);
+        assert!(result.is_err(), "should fail with invalid toml");
+    }
+
+    #[test]
+    fn archive_reject_nonexistent_file() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let result = source.read_file("does-not-exist.txt");
+        assert!(result.is_err(), "should fail for missing file");
+    }
+
+    #[test]
+    fn archive_reject_path_traversal() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let result = source.read_file("../../../etc/passwd");
+        assert!(result.is_err(), "should reject path traversal");
+        assert!(
+            result.unwrap_err().to_string().contains("escapes"),
+            "error should mention escaping"
+        );
+    }
+
+    #[test]
+    fn archive_reject_dot_segment_escape() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let result = source.read_file("frontend/../../secret");
+        assert!(result.is_err(), "should reject escape via dot segments");
+    }
+
+    #[test]
+    fn archive_reject_absolute_path() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm")],
+        );
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let result = source.read_file("/etc/passwd");
+        assert!(result.is_err(), "should reject absolute path");
+        assert!(
+            result.unwrap_err().to_string().contains("relative"),
+            "error should mention relative"
+        );
+    }
+
+    #[test]
+    fn archive_read_wasm_missing() {
+        // Manifest references plugin.wasm but archive doesn't contain it.
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[]);
+
+        let source = ArchiveSource::open(&path).expect("should open");
+        let result = source.read_wasm();
+        assert!(result.is_err(), "should fail when wasm file is missing");
+    }
+
+    #[test]
+    fn archive_not_a_zip() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("not-a-zip.torchsnap");
+        std::fs::write(&path, b"this is not a zip file").expect("write");
+
+        let result = ArchiveSource::open(&path);
+        assert!(result.is_err(), "should fail for non-zip file");
+    }
+
+    #[test]
+    fn archive_empty_zip() {
+        use std::io::Cursor;
+        use zip::ZipWriter;
+
+        // Create a valid but empty zip (no entries at all).
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let writer = ZipWriter::new(&mut buf);
+            writer.finish().expect("finalize empty zip");
+        }
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("empty.torchsnap");
+        std::fs::write(&path, buf.into_inner()).expect("write");
+
+        let result = ArchiveSource::open(&path);
+        assert!(result.is_err(), "should fail for empty zip (no manifest)");
+    }
+
+    #[test]
+    fn archive_nonexistent_path() {
+        let result = ArchiveSource::open("/nonexistent/path/to/plugin.torchsnap");
+        assert!(result.is_err(), "should fail for nonexistent archive");
     }
 }
