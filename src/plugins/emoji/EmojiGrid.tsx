@@ -11,7 +11,7 @@
  * cell.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/keybindings";
 import { cn } from "../../lib/cn";
 import { highlightText } from "../../lib/highlightText";
@@ -70,6 +70,7 @@ export default function EmojiGrid({
   mouseActiveRef,
   onExecute,
   onFooterChange,
+  logger,
 }: PluginViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Reset selection when results change (new query).
@@ -78,6 +79,37 @@ export default function EmojiGrid({
     setPrevResults(results);
     setSelectedIndex(0);
   }
+
+  // -------------------------------------------------------
+  // Logging — demonstrates the frontend Logger API with
+  // spans, messages, metadata, and nesting.
+  // -------------------------------------------------------
+
+  // Log once on mount.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      logger.info("Emoji grid mounted");
+    }
+  }, [logger]);
+
+  // Log result count changes with a span.
+  const prevResultCount = useRef(results.length);
+  useEffect(() => {
+    if (results.length !== prevResultCount.current) {
+      const span = logger.spanStart("results-update", undefined, [
+        ["previousCount", prevResultCount.current.toString()],
+      ]);
+      logger.debug("Emoji results updated", [
+        ["count", results.length.toString()],
+      ], span);
+      logger.spanEnd(span, [
+        ["newCount", results.length.toString()],
+      ]);
+      prevResultCount.current = results.length;
+    }
+  }, [results.length, logger]);
 
   // -------------------------------------------------------
   // Windowing
@@ -147,9 +179,13 @@ export default function EmojiGrid({
   const handleEnter = useCallback(() => {
     const entry = results[selectedIndex];
     if (entry) {
+      logger.info("Emoji selected", [
+        ["emoji", entry.icon?.value ?? ""],
+        ["shortcode", entry.title],
+      ]);
       onExecute(entry.id, { type: "copy" });
     }
-  }, [results, selectedIndex, onExecute]);
+  }, [results, selectedIndex, onExecute, logger]);
 
   const gridBindings: KeyBindingDefinition[] = useMemo(
     () => [
