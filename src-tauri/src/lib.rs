@@ -459,8 +459,17 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
 
+    // Shared registry mapping plugin IDs to their sources.
+    // The protocol handler reads from these to serve frontend
+    // assets; plugin loading populates the registry.
+    let plugin_source_registry = wasm::protocol::new_registry();
+    let builder = wasm::protocol::register_plugin_protocol(
+        builder,
+        Arc::clone(&plugin_source_registry),
+    );
+
     let app = builder
-        .setup(|app| {
+        .setup(move |app| {
             // =========================================================
             // Global settings defaults
             // =========================================================
@@ -585,7 +594,7 @@ pub fn run() {
             // TODO: Replace hardcoded dev path with proper plugin
             // discovery from $APPDATA/torchsnap/plugins/.
             // =========================================================
-            match load_wasm_plugins(&mut host, &log_sender, &span_registry) {
+            match load_wasm_plugins(&mut host, &log_sender, &span_registry, &plugin_source_registry) {
                 Ok(count) => {
                     if count > 0 {
                         log_sender.send(wasm::logging::LogItem {
@@ -755,6 +764,7 @@ fn load_wasm_plugins(
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
+    source_registry: &wasm::protocol::PluginSourceRegistry,
 ) -> anyhow::Result<usize> {
     let runtime = wasm::runtime::WasmRuntime::new(
         log_sender.clone(),
@@ -795,7 +805,7 @@ fn load_wasm_plugins(
         }
 
         let source_kind = if is_archive { "archive" } else { "directory" };
-        let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender);
+        let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender, source_registry);
         match loaded {
             Ok(plugin_id) => {
                 log_sender.send(wasm::logging::LogItem {
@@ -838,16 +848,17 @@ fn load_single_wasm_plugin(
     path: &std::path::Path,
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
+    source_registry: &wasm::protocol::PluginSourceRegistry,
 ) -> anyhow::Result<String> {
     use wasm::source::PluginSource as _;
 
     // Open the appropriate source based on path type:
     // .torchsnap files are zip archives, directories use
     // the filesystem directly.
-    let source: Box<dyn wasm::source::PluginSource> = if path.is_dir() {
-        Box::new(wasm::source::DirectorySource::open(path)?)
+    let source: Arc<dyn wasm::source::PluginSource> = if path.is_dir() {
+        Arc::new(wasm::source::DirectorySource::open(path)?)
     } else {
-        Box::new(wasm::source::ArchiveSource::open(path)?)
+        Arc::new(wasm::source::ArchiveSource::open(path)?)
     };
 
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
@@ -856,5 +867,13 @@ fn load_single_wasm_plugin(
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmPluginBridge::new(manifest, instance, log_sender.clone());
     host.register(Box::new(bridge));
+
+    // Retain the source in the registry so the protocol
+    // handler can serve frontend assets from it.
+    source_registry
+        .write()
+        .expect("source registry not poisoned")
+        .insert(plugin_id.clone(), source);
+
     Ok(plugin_id)
 }
