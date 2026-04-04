@@ -769,14 +769,25 @@ fn load_wasm_plugins(
     for entry in entries.flatten() {
         let path = entry.path();
 
-        // Load .torchsnap archives or plugin directories
-        // (whichever is found). Archives take precedence — if
-        // both exist we skip the directory.
+        // Load .torchsnap archives or plugin directories.
+        // When both exist (e.g., hello-world/ alongside
+        // hello-world.torchsnap), the archive takes precedence
+        // and the directory is skipped.
         let is_archive = path.extension().is_some_and(|ext| ext == "torchsnap");
         let is_directory = path.is_dir() && path.join("manifest.toml").exists();
 
         if !is_archive && !is_directory {
             continue;
+        }
+
+        if is_directory {
+            // Check if a .torchsnap archive exists alongside
+            // the directory. If so, skip the directory — the
+            // archive will be loaded when the iterator reaches it.
+            let archive_path = path.with_extension("torchsnap");
+            if archive_path.exists() {
+                continue;
+            }
         }
 
         let source_kind = if is_archive { "archive" } else { "directory" };

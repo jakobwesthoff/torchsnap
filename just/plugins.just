@@ -63,18 +63,18 @@ package-plugin name:
         exit 1
     fi
 
-    archive="{{ name }}.torchsnap"
+    archive="plugins/{{ name }}.torchsnap"
 
     # Build the archive from the plugin directory. Use -j to
     # store paths relative to the plugin root (no directory prefix).
     cd "$dir"
-    zip -j "$archive" "manifest.toml" "$wasm_file"
+    zip -j "../../$archive" "manifest.toml" "$wasm_file"
 
     # TODO: Include frontend assets when plugins have them.
     # Future plugins with frontend bundles will need their
     # launcher-bundle and settings-bundle paths included here.
 
-    echo "Packaged → $dir/$archive"
+    echo "Packaged → $archive"
 
 # Check all WASM plugins compile
 check-plugins:
