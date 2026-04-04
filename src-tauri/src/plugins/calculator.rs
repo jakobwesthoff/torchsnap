@@ -30,7 +30,7 @@ use tauri::Manager;
 
 use super::{Plugin, PluginContext};
 use crate::search::types::{
-    Action, ActionId, CancellationToken, EntryIcon, PostAction, ResultChannel, ScoredEntry,
+    Action, ActionId, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
 use crate::settings::SettingsInit;
 use crate::settings_notifier::SettingsWatch;
@@ -412,6 +412,10 @@ pub struct CalculatorPlugin {
 
     /// Shared shutdown flag for the retention thread.
     retention_shutdown: Arc<Mutex<bool>>,
+
+    /// Stored prefix strings for `search_prefixes()` to return
+    /// a borrowed slice.
+    prefixes: Vec<String>,
 }
 
 impl CalculatorPlugin {
@@ -423,6 +427,7 @@ impl CalculatorPlugin {
             db: Mutex::new(None),
             retention_condvar: Arc::new(Condvar::new()),
             retention_shutdown: Arc::new(Mutex::new(false)),
+            prefixes: vec!["=".into()],
         }
     }
 
@@ -447,8 +452,8 @@ impl Plugin for CalculatorPlugin {
         Some("enabled")
     }
 
-    fn search_prefixes(&self) -> &[&str] {
-        &["="]
+    fn search_prefixes(&self) -> &[String] {
+        &self.prefixes
     }
 
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
@@ -526,12 +531,10 @@ impl Plugin for CalculatorPlugin {
         &self,
         query: &str,
         matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        _cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
         match matched_prefix {
             Some("=") => {
-                // Prefix mode: evaluate expression, send CustomUI
+                // Prefix mode: evaluate expression, return CustomUI
                 // with inline result data + history entries.
                 //
                 // Empty/whitespace queries are not evaluated — the
@@ -562,35 +565,39 @@ impl Plugin for CalculatorPlugin {
                     vec![]
                 };
 
-                results.send_custom_ui("history".into(), data, history);
+                Some(PluginResponse::CustomUI {
+                    view: "history".into(),
+                    data,
+                    results: history,
+                })
             }
             None => {
                 // Heuristic mode: detect math expression.
                 if !self.heuristic_enabled.load(Ordering::Relaxed) {
-                    return;
+                    return None;
                 }
 
                 let expr = match try_extract_math(query) {
                     Some(e) => e,
-                    None => return,
+                    None => return None,
                 };
 
                 let result = match evaluate(expr) {
                     Ok(r) => r,
-                    Err(_) => return,
+                    Err(_) => return None,
                 };
 
-                results.send_inline_ui(
-                    "result".into(),
-                    Some(json!({
+                Some(PluginResponse::InlineUI {
+                    view: "result".into(),
+                    data: Some(json!({
                         "expression": expr,
                         "result": result.value,
                         "resultType": result.result_type,
                     })),
-                    vec![],
-                );
+                    results: vec![],
+                })
             }
-            _ => {}
+            _ => None,
         }
     }
 

@@ -11,7 +11,6 @@
 // =========================================================
 
 use serde::{Deserialize, Serialize};
-pub use tokio_util::sync::CancellationToken;
 
 use crate::frecency::FrecencyTarget;
 use crate::unicode::Utf16Positions;
@@ -215,12 +214,9 @@ impl FrecencyTarget for SourcedEntry {
 // and translates them into `SearchMessage`s for the frontend.
 // =========================================================
 
-/// Internal message sent by plugins through the `ResultChannel`.
-///
-/// Mirrors the variants of `SearchResponse` but lives on the
-/// channel rather than being returned. Not serialized — only
+/// Return type for `Plugin::search()`. Not serialized — only
 /// used between plugin and host within the same process.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PluginResponse {
     /// Standard result list entries.
     Results(Vec<ScoredEntry>),
@@ -236,80 +232,6 @@ pub enum PluginResponse {
         data: Option<serde_json::Value>,
         results: Vec<ScoredEntry>,
     },
-}
-
-/// Channel wrapper for plugins to send results back to the host.
-///
-/// Hides the `mpsc` internals and provides typed convenience
-/// methods. Plugins call these from a synchronous context
-/// (`spawn_blocking`), so all sends use `blocking_send`.
-///
-/// Each `ResultChannel` is bound to a specific plugin source ID
-/// at construction. All messages sent through it are automatically
-/// tagged with that source, so plugins never see or control the
-/// source field. The host receives `(String, PluginResponse)`
-/// tuples from the shared receiver end.
-///
-/// When the host drops the receiving end (e.g., search
-/// cancelled), sends silently fail — the plugin can detect this
-/// via the return value or by checking the `CancellationToken`.
-pub struct ResultChannel {
-    source: String,
-    tx: tokio::sync::mpsc::Sender<(String, PluginResponse)>,
-}
-
-impl ResultChannel {
-    pub fn new(source: String, tx: tokio::sync::mpsc::Sender<(String, PluginResponse)>) -> Self {
-        Self { source, tx }
-    }
-
-    /// Send standard result entries. Returns `false` if the
-    /// receiver has been dropped (search cancelled).
-    pub fn send_results(&self, results: Vec<ScoredEntry>) -> bool {
-        self.tx
-            .blocking_send((self.source.clone(), PluginResponse::Results(results)))
-            .is_ok()
-    }
-
-    /// Send a custom UI response. Returns `false` if the
-    /// receiver has been dropped.
-    pub fn send_custom_ui(
-        &self,
-        view: String,
-        data: Option<serde_json::Value>,
-        results: Vec<ScoredEntry>,
-    ) -> bool {
-        self.tx
-            .blocking_send((
-                self.source.clone(),
-                PluginResponse::CustomUI {
-                    view,
-                    data,
-                    results,
-                },
-            ))
-            .is_ok()
-    }
-
-    /// Send an inline UI response. Returns `false` if the
-    /// receiver has been dropped.
-    pub fn send_inline_ui(
-        &self,
-        view: String,
-        data: Option<serde_json::Value>,
-        results: Vec<ScoredEntry>,
-    ) -> bool {
-        self.tx
-            .blocking_send((
-                self.source.clone(),
-                PluginResponse::InlineUI {
-                    view,
-                    data,
-                    results,
-                },
-            ))
-            .is_ok()
-    }
 }
 
 // =========================================================

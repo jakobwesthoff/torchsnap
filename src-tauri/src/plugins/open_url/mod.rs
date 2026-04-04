@@ -29,7 +29,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ResultChannel,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
     ScoredEntry,
 };
 use crate::unicode::Utf16Positions;
@@ -200,25 +200,15 @@ impl Plugin for OpenUrlPlugin {
         &self,
         query: &str,
         _matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
         let detected = match detect_url(query) {
             Some(d) => d,
-            None => return,
+            None => return None,
         };
-
-        if cancel.is_cancelled() {
-            return;
-        }
 
         // Blocking metadata lookup — the service handles caching,
         // negative caching, and network fetches internally.
         let metadata_result = self.metadata_service.get(&detected.domain);
-
-        if cancel.is_cancelled() {
-            return;
-        }
 
         // Decide whether to show a result and how to present it.
         // Title shows the page title when available, domain otherwise.
@@ -247,7 +237,7 @@ impl Plugin for OpenUrlPlugin {
                     // Bare domain that's unreachable — suppress the
                     // result to avoid cluttering results with entries
                     // that lead nowhere.
-                    return;
+                    return None;
                 }
             }
         };
@@ -283,7 +273,7 @@ impl Plugin for OpenUrlPlugin {
             ],
         };
 
-        let _ = results.send_results(vec![entry]);
+        Some(PluginResponse::Results(vec![entry]))
     }
 }
 

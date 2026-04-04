@@ -30,12 +30,13 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
-    ActionId, CancellationToken, PluginResponse, PluginViewRef, PostAction, ResultChannel,
+    ActionId, PluginResponse, PluginViewRef, PostAction,
     ScoredEntry, SearchMessage, SourcedEntry,
 };
 use crate::settings::{PluginSettings, SettingsInit};
@@ -367,11 +368,9 @@ impl PluginHost {
             return;
         }
 
-        let cancel = CancellationToken::new();
-
         // =======================================================
         // Prefix routing: longest match wins. Exclusive — only
-        // the matched plugin runs, no catalogs, no streaming.
+        // the matched plugin runs, no catalogs, no fan-out.
         // =======================================================
 
         if let Some((plugin, prefix)) = self.find_prefix_match(query) {
@@ -379,23 +378,19 @@ impl PluginHost {
             let source = plugin.id().to_string();
             let prefix_owned = prefix.to_string();
             let plugin = Arc::clone(plugin);
-            let cancel = cancel.clone();
-
-            let (tx, mut rx) = mpsc::channel::<(String, PluginResponse)>(4);
-            let rc = ResultChannel::new(source.clone(), tx);
 
             let prefix_for_search = prefix_owned.clone();
-            tokio::task::spawn_blocking(move || {
-                plugin.search(&stripped, Some(&prefix_for_search), &rc, &cancel);
-            });
+            let response = tokio::task::spawn_blocking(move || {
+                plugin.search(&stripped, Some(&prefix_for_search))
+            })
+            .await
+            .expect("prefix search task not panicked");
 
-            // The prefix path produces at most one response.
-            // Translate it into a single SearchResults message.
             let mut custom_plugin_view = None;
             let mut inline_plugin_view = None;
             let mut entries = Vec::new();
 
-            while let Some((source, response)) = rx.recv().await {
+            if let Some(response) = response {
                 let (view_ref, results) = self.process_plugin_response(
                     response, &source, true, // prefix mode — CustomUI allowed
                 );
@@ -447,12 +442,9 @@ impl PluginHost {
             });
         }
 
-        // Phase 2: query plugins — spawn concurrently, stream
-        // results as they arrive through a single shared channel.
-        // Each plugin gets a `ResultChannel` bound to its source ID
-        // that sends into a shared `mpsc` sender. The host awaits
-        // on the single receiver — no spin-polling needed.
-        let (tx, mut rx) = mpsc::channel::<(String, PluginResponse)>(4);
+        // Phase 2: query plugins — spawn concurrently, deliver
+        // results to the frontend as each plugin completes.
+        let mut join_set = JoinSet::new();
 
         for plugin in &self.plugins {
             if !plugin.is_enabled() {
@@ -462,25 +454,24 @@ impl PluginHost {
             let source = plugin.id().to_string();
             let plugin = Arc::clone(plugin);
             let query = query_owned.clone();
-            let cancel = cancel.clone();
 
-            let rc = ResultChannel::new(source, tx.clone());
-
-            tokio::task::spawn_blocking(move || {
-                plugin.search(&query, None, &rc, &cancel);
+            join_set.spawn_blocking(move || {
+                (source, plugin.search(&query, None))
             });
         }
 
-        // Drop the original sender so `rx` closes once all plugin
-        // tasks (each holding a cloned sender via ResultChannel)
-        // have finished and dropped their senders.
-        drop(tx);
-
-        // Receive results as they arrive from any plugin. The
-        // channel closes naturally when all senders are dropped.
+        // Drain the JoinSet — each completed task yields one
+        // plugin's results, preserving incremental delivery.
         let mut inline_claimed = false;
 
-        while let Some((source, response)) = rx.recv().await {
+        while let Some(result) = join_set.join_next().await {
+            let (source, response) = result.expect("query search task not panicked");
+
+            let response = match response {
+                Some(r) => r,
+                None => continue,
+            };
+
             let (view_ref, mut entries) = self.process_plugin_response(
                 response, &source, false, // non-prefix — CustomUI downgraded
             );
@@ -517,81 +508,19 @@ impl PluginHost {
         let _ = on_results.send(SearchMessage::Done);
     }
 
-    /// Process a `PluginResponse` into scored entries and an
-    /// optional view reference. Factored out to avoid duplication
-    /// between prefix and non-prefix paths.
+    /// Delegate to the standalone function for testability.
     fn process_plugin_response(
         &self,
         response: PluginResponse,
         source: &str,
         allow_custom_ui: bool,
     ) -> (Option<(ViewKind, PluginViewRef)>, Vec<SourcedEntry>) {
-        let mut view_ref = None;
-
-        match &response {
-            PluginResponse::CustomUI { view, data, .. } if allow_custom_ui => {
-                view_ref = Some((
-                    ViewKind::Custom,
-                    PluginViewRef {
-                        plugin_id: source.to_string(),
-                        view: view.clone(),
-                        data: data.clone(),
-                    },
-                ));
-            }
-            PluginResponse::CustomUI { .. } => {
-                // CustomUI is only honoured in prefix mode. In non-prefix
-                // (always-on) mode we downgrade to plain results so the
-                // plugin's entries still appear but without the custom view.
-                eprintln!(
-                    "search: dropping CustomUI from plugin '{}' — \
-                     CustomUI is only supported in prefix mode",
-                    source
-                );
-            }
-            PluginResponse::InlineUI { view, data, .. } => {
-                view_ref = Some((
-                    ViewKind::Inline,
-                    PluginViewRef {
-                        plugin_id: source.to_string(),
-                        view: view.clone(),
-                        data: data.clone(),
-                    },
-                ));
-            }
-            PluginResponse::Results(_) => {}
-        }
-
-        let entries: Vec<SourcedEntry> = match response {
-            PluginResponse::Results(results) => results,
-            PluginResponse::CustomUI { results, .. } | PluginResponse::InlineUI { results, .. } => {
-                results
-            }
-        }
-        .into_iter()
-        .map(|r| SourcedEntry::new(source.to_string(), r))
-        .collect();
-
-        (view_ref, entries)
+        process_plugin_response(response, source, allow_custom_ui)
     }
 
+    /// Delegate to the standalone function for testability.
     fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
-        let mut best: Option<(&Arc<dyn Plugin>, &str)> = None;
-        let mut best_len = 0;
-
-        for plugin in &self.plugins {
-            if !plugin.is_enabled() {
-                continue;
-            }
-            for &prefix in plugin.search_prefixes() {
-                if prefix.len() > best_len && query.starts_with(prefix) {
-                    best = Some((plugin, prefix));
-                    best_len = prefix.len();
-                }
-            }
-        }
-
-        best
+        find_prefix_match(&self.plugins, query)
     }
 
     /// Catalog search as a static method so it can run on
@@ -719,6 +648,96 @@ impl PluginHost {
 }
 
 // =========================================================
+// Search Helpers (standalone for testability)
+// =========================================================
+
+/// Process a `PluginResponse` into scored entries and an
+/// optional view reference.
+///
+/// `allow_custom_ui` controls whether `CustomUI` responses
+/// produce a view reference. In non-prefix (always-on) mode,
+/// `CustomUI` is downgraded to plain results — entries are
+/// still extracted but the custom view is dropped.
+fn process_plugin_response(
+    response: PluginResponse,
+    source: &str,
+    allow_custom_ui: bool,
+) -> (Option<(ViewKind, PluginViewRef)>, Vec<SourcedEntry>) {
+    let mut view_ref = None;
+
+    match &response {
+        PluginResponse::CustomUI { view, data, .. } if allow_custom_ui => {
+            view_ref = Some((
+                ViewKind::Custom,
+                PluginViewRef {
+                    plugin_id: source.to_string(),
+                    view: view.clone(),
+                    data: data.clone(),
+                },
+            ));
+        }
+        PluginResponse::CustomUI { .. } => {
+            // CustomUI is only honoured in prefix mode. In non-prefix
+            // (always-on) mode we downgrade to plain results so the
+            // plugin's entries still appear but without the custom view.
+            eprintln!(
+                "search: dropping CustomUI from plugin '{}' — \
+                 CustomUI is only supported in prefix mode",
+                source
+            );
+        }
+        PluginResponse::InlineUI { view, data, .. } => {
+            view_ref = Some((
+                ViewKind::Inline,
+                PluginViewRef {
+                    plugin_id: source.to_string(),
+                    view: view.clone(),
+                    data: data.clone(),
+                },
+            ));
+        }
+        PluginResponse::Results(_) => {}
+    }
+
+    let entries: Vec<SourcedEntry> = match response {
+        PluginResponse::Results(results) => results,
+        PluginResponse::CustomUI { results, .. } | PluginResponse::InlineUI { results, .. } => {
+            results
+        }
+    }
+    .into_iter()
+    .map(|r| SourcedEntry::new(source.to_string(), r))
+    .collect();
+
+    (view_ref, entries)
+}
+
+/// Find the plugin whose registered prefix is the longest
+/// match for `query`. Returns `None` when no prefix matches.
+/// Disabled plugins are skipped.
+fn find_prefix_match<'a>(
+    plugins: &'a [Arc<dyn Plugin>],
+    query: &str,
+) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
+    let mut best: Option<(&Arc<dyn Plugin>, &str)> = None;
+    let mut best_len = 0;
+
+    for plugin in plugins {
+        if !plugin.is_enabled() {
+            continue;
+        }
+        for prefix in plugin.search_prefixes() {
+            if prefix.len() > best_len && query.starts_with(prefix.as_str()) {
+                best = Some((plugin, prefix.as_str()));
+                best_len = prefix.len();
+            }
+        }
+    }
+
+    best
+}
+
+// =========================================================
 // Helpers
 // =========================================================
 
@@ -766,5 +785,421 @@ fn show_launcher_with_plugin(
         },
     ) {
         eprintln!("shortcut: failed to emit activate-plugin-custom-ui: {e:#}");
+    }
+}
+
+// =========================================================
+// Tests
+// =========================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::search::types::CatalogEntry;
+
+    // -------------------------------------------------------
+    // Mock Plugin
+    //
+    // Configurable stub implementing `Plugin` for unit tests.
+    // Each field controls a specific trait method's return
+    // value. Defaults produce an empty, enabled, prefix-free
+    // plugin.
+    // -------------------------------------------------------
+
+    struct MockPlugin {
+        id: String,
+        enabled: bool,
+        prefixes: Vec<String>,
+        catalog_entries: Vec<CatalogEntry>,
+        search_response: Option<PluginResponse>,
+    }
+
+    impl MockPlugin {
+        fn new(id: &str) -> Self {
+            Self {
+                id: id.to_string(),
+                enabled: true,
+                prefixes: vec![],
+                catalog_entries: vec![],
+                search_response: None,
+            }
+        }
+
+        fn with_prefixes(mut self, prefixes: &[&str]) -> Self {
+            self.prefixes = prefixes.iter().map(|s| s.to_string()).collect();
+            self
+        }
+
+        fn with_enabled(mut self, enabled: bool) -> Self {
+            self.enabled = enabled;
+            self
+        }
+
+        fn with_search_response(mut self, response: PluginResponse) -> Self {
+            self.search_response = Some(response);
+            self
+        }
+
+        fn with_catalog_entries(mut self, entries: Vec<CatalogEntry>) -> Self {
+            self.catalog_entries = entries;
+            self
+        }
+    }
+
+    impl Plugin for MockPlugin {
+        fn id(&self) -> &str {
+            &self.id
+        }
+
+        fn is_enabled(&self) -> bool {
+            self.enabled
+        }
+
+        fn search_prefixes(&self) -> &[String] {
+            &self.prefixes
+        }
+
+        fn entries(&self) -> Vec<CatalogEntry> {
+            self.catalog_entries.clone()
+        }
+
+        fn search(
+            &self,
+            _query: &str,
+            _matched_prefix: Option<&str>,
+        ) -> Option<PluginResponse> {
+            self.search_response.clone()
+        }
+
+        fn execute(
+            &self,
+            _entry_id: &str,
+            _action_id: &ActionId,
+            _app: &tauri::AppHandle,
+        ) -> anyhow::Result<PostAction> {
+            Ok(PostAction::Nothing)
+        }
+    }
+
+    /// Helper to build a `ScoredEntry` with minimal boilerplate.
+    fn scored_entry(id: &str, score: u32) -> ScoredEntry {
+        ScoredEntry {
+            id: id.to_string(),
+            title: id.to_string(),
+            subtitle: None,
+            icon: None,
+            score,
+            title_positions: Utf16Positions::empty(),
+            subtitle_positions: Utf16Positions::empty(),
+            actions: vec![],
+        }
+    }
+
+    /// Helper to wrap mock plugins in `Arc<dyn Plugin>`.
+    fn arc_plugins(plugins: Vec<MockPlugin>) -> Vec<Arc<dyn Plugin>> {
+        plugins
+            .into_iter()
+            .map(|p| Arc::new(p) as Arc<dyn Plugin>)
+            .collect()
+    }
+
+    // =======================================================
+    // Plugin::search() contract tests
+    // =======================================================
+
+    #[test]
+    fn default_search_returns_none() {
+        let plugin = MockPlugin::new("empty");
+        assert!(plugin.search("anything", None).is_none());
+    }
+
+    #[test]
+    fn search_returns_configured_response() {
+        let plugin = MockPlugin::new("test")
+            .with_search_response(PluginResponse::Results(vec![scored_entry("r1", 100)]));
+
+        let result = plugin.search("query", None);
+        assert!(result.is_some());
+
+        match result.unwrap() {
+            PluginResponse::Results(entries) => {
+                assert_eq!(entries.len(), 1);
+                assert_eq!(entries[0].id, "r1");
+            }
+            _ => panic!("expected Results variant"),
+        }
+    }
+
+    #[test]
+    fn search_returns_custom_ui() {
+        let plugin = MockPlugin::new("test").with_search_response(PluginResponse::CustomUI {
+            view: "history".into(),
+            data: Some(serde_json::json!({"key": "value"})),
+            results: vec![scored_entry("h1", 50)],
+        });
+
+        let result = plugin.search("=2+2", Some("="));
+        match result.unwrap() {
+            PluginResponse::CustomUI { view, data, results } => {
+                assert_eq!(view, "history");
+                assert!(data.is_some());
+                assert_eq!(results.len(), 1);
+            }
+            _ => panic!("expected CustomUI variant"),
+        }
+    }
+
+    #[test]
+    fn search_returns_inline_ui() {
+        let plugin = MockPlugin::new("test").with_search_response(PluginResponse::InlineUI {
+            view: "result".into(),
+            data: None,
+            results: vec![],
+        });
+
+        let result = plugin.search("42", None);
+        match result.unwrap() {
+            PluginResponse::InlineUI { view, .. } => {
+                assert_eq!(view, "result");
+            }
+            _ => panic!("expected InlineUI variant"),
+        }
+    }
+
+    // =======================================================
+    // search_prefixes() contract tests
+    // =======================================================
+
+    #[test]
+    fn default_prefixes_are_empty() {
+        let plugin = MockPlugin::new("no-prefix");
+        assert!(plugin.search_prefixes().is_empty());
+    }
+
+    #[test]
+    fn configured_prefixes_returned() {
+        let plugin = MockPlugin::new("calc").with_prefixes(&["=", "calc "]);
+        let prefixes = plugin.search_prefixes();
+        assert_eq!(prefixes.len(), 2);
+        assert_eq!(prefixes[0], "=");
+        assert_eq!(prefixes[1], "calc ");
+    }
+
+    // =======================================================
+    // find_prefix_match() tests
+    // =======================================================
+
+    #[test]
+    fn no_plugins_no_match() {
+        let plugins = arc_plugins(vec![]);
+        assert!(find_prefix_match(&plugins, "=2+2").is_none());
+    }
+
+    #[test]
+    fn no_prefix_plugins_no_match() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("a"),
+            MockPlugin::new("b"),
+        ]);
+        assert!(find_prefix_match(&plugins, "hello").is_none());
+    }
+
+    #[test]
+    fn single_prefix_match() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("calc").with_prefixes(&["="]),
+        ]);
+        let (plugin, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
+        assert_eq!(plugin.id(), "calc");
+        assert_eq!(prefix, "=");
+    }
+
+    #[test]
+    fn longest_prefix_wins() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("short").with_prefixes(&["!"]),
+            MockPlugin::new("long").with_prefixes(&["!g"]),
+        ]);
+
+        // "!google" matches both "!" and "!g" — longest wins.
+        let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        assert_eq!(plugin.id(), "long");
+        assert_eq!(prefix, "!g");
+    }
+
+    #[test]
+    fn prefix_must_be_at_start() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("calc").with_prefixes(&["="]),
+        ]);
+        // "hello =" doesn't start with "=".
+        assert!(find_prefix_match(&plugins, "hello =").is_none());
+    }
+
+    #[test]
+    fn disabled_plugin_prefix_skipped() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("calc")
+                .with_prefixes(&["="])
+                .with_enabled(false),
+        ]);
+        assert!(find_prefix_match(&plugins, "=2+2").is_none());
+    }
+
+    #[test]
+    fn disabled_plugin_skipped_fallback_to_shorter() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("disabled-long")
+                .with_prefixes(&["!g"])
+                .with_enabled(false),
+            MockPlugin::new("enabled-short")
+                .with_prefixes(&["!"]),
+        ]);
+
+        let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        assert_eq!(plugin.id(), "enabled-short");
+        assert_eq!(prefix, "!");
+    }
+
+    #[test]
+    fn multi_char_prefix() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("emoji").with_prefixes(&[":"]),
+            MockPlugin::new("http").with_prefixes(&["http://", "https://"]),
+        ]);
+
+        let (plugin, prefix) = find_prefix_match(&plugins, "https://example.com").unwrap();
+        assert_eq!(plugin.id(), "http");
+        assert_eq!(prefix, "https://");
+    }
+
+    #[test]
+    fn exact_prefix_query() {
+        // Query is exactly the prefix with nothing after it.
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("emoji").with_prefixes(&[":"]),
+        ]);
+        let (plugin, prefix) = find_prefix_match(&plugins, ":").unwrap();
+        assert_eq!(plugin.id(), "emoji");
+        assert_eq!(prefix, ":");
+    }
+
+    #[test]
+    fn multiple_prefixes_same_plugin() {
+        let plugins = arc_plugins(vec![
+            MockPlugin::new("multi").with_prefixes(&["http://", "https://"]),
+        ]);
+
+        let (_, prefix) = find_prefix_match(&plugins, "http://foo.com").unwrap();
+        assert_eq!(prefix, "http://");
+
+        let (_, prefix) = find_prefix_match(&plugins, "https://foo.com").unwrap();
+        assert_eq!(prefix, "https://");
+    }
+
+    // =======================================================
+    // process_plugin_response() tests
+    // =======================================================
+
+    #[test]
+    fn results_response_extracts_entries() {
+        let response = PluginResponse::Results(vec![
+            scored_entry("a", 100),
+            scored_entry("b", 50),
+        ]);
+        let (view, entries) = process_plugin_response(response, "test-plugin", false);
+        assert!(view.is_none());
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].inner.id, "a");
+        assert_eq!(entries[1].inner.id, "b");
+        assert_eq!(entries[0].source, "test-plugin");
+    }
+
+    #[test]
+    fn empty_results_yields_empty_entries() {
+        let response = PluginResponse::Results(vec![]);
+        let (view, entries) = process_plugin_response(response, "p", false);
+        assert!(view.is_none());
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn custom_ui_allowed_in_prefix_mode() {
+        let response = PluginResponse::CustomUI {
+            view: "history".into(),
+            data: Some(serde_json::json!({"x": 1})),
+            results: vec![scored_entry("h1", 10)],
+        };
+        let (view, entries) = process_plugin_response(response, "calc", true);
+        let (kind, vr) = view.unwrap();
+        assert!(matches!(kind, ViewKind::Custom));
+        assert_eq!(vr.plugin_id, "calc");
+        assert_eq!(vr.view, "history");
+        assert!(vr.data.is_some());
+        // Entries are still extracted alongside the view.
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn custom_ui_downgraded_outside_prefix_mode() {
+        let response = PluginResponse::CustomUI {
+            view: "picker".into(),
+            data: None,
+            results: vec![scored_entry("e1", 20), scored_entry("e2", 10)],
+        };
+        let (view, entries) = process_plugin_response(response, "emoji", false);
+        // View is dropped (not allowed outside prefix mode).
+        assert!(view.is_none());
+        // Entries are still extracted from the CustomUI response.
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn inline_ui_produces_view_ref() {
+        let response = PluginResponse::InlineUI {
+            view: "result".into(),
+            data: Some(serde_json::json!({"result": "42"})),
+            results: vec![],
+        };
+        let (view, entries) = process_plugin_response(response, "calc", false);
+        let (kind, vr) = view.unwrap();
+        assert!(matches!(kind, ViewKind::Inline));
+        assert_eq!(vr.view, "result");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn inline_ui_allowed_in_both_modes() {
+        // InlineUI should work regardless of prefix/non-prefix mode.
+        for allow_custom in [true, false] {
+            let response = PluginResponse::InlineUI {
+                view: "v".into(),
+                data: None,
+                results: vec![],
+            };
+            let (view, _) = process_plugin_response(response, "p", allow_custom);
+            assert!(view.is_some(), "InlineUI should produce view ref with allow_custom={allow_custom}");
+        }
+    }
+
+    #[test]
+    fn custom_ui_with_no_results_prefix_mode() {
+        let response = PluginResponse::CustomUI {
+            view: "picker".into(),
+            data: None,
+            results: vec![],
+        };
+        let (view, entries) = process_plugin_response(response, "emoji", true);
+        assert!(view.is_some());
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn source_id_propagated_to_entries() {
+        let response = PluginResponse::Results(vec![
+            scored_entry("x", 1),
+        ]);
+        let (_, entries) = process_plugin_response(response, "my-plugin", false);
+        assert_eq!(entries[0].source, "my-plugin");
     }
 }

@@ -27,7 +27,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use super::{Plugin, PluginContext};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ResultChannel,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
     ScoredEntry,
 };
 use crate::unicode::{GraphemePositions, Utf16Positions};
@@ -121,6 +121,10 @@ const SHORTCODE_SCORE_BONUS: u32 = 100;
 pub struct EmojiPickerPlugin {
     entries: RwLock<Vec<EmojiData>>,
     frecency: RwLock<Option<PluginFrecency>>,
+
+    /// Stored prefix strings for `search_prefixes()` to return
+    /// a borrowed slice.
+    prefixes: Vec<String>,
 }
 
 impl EmojiPickerPlugin {
@@ -128,6 +132,7 @@ impl EmojiPickerPlugin {
         Self {
             entries: RwLock::new(Vec::new()),
             frecency: RwLock::new(None),
+            prefixes: vec![":".into()],
         }
     }
 
@@ -261,8 +266,8 @@ impl Plugin for EmojiPickerPlugin {
         "emoji-picker"
     }
 
-    fn search_prefixes(&self) -> &[&str] {
-        &[":"]
+    fn search_prefixes(&self) -> &[String] {
+        &self.prefixes
     }
 
     fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
@@ -279,21 +284,22 @@ impl Plugin for EmojiPickerPlugin {
         &self,
         query: &str,
         matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        _cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
         // The emoji picker only operates in prefix mode. When called
         // without a prefix (no-prefix fan-out), contribute nothing.
         if matched_prefix.is_none() {
-            return;
+            return None;
         }
 
         let entries = self.entries.read().expect("emoji entries read lock");
 
         if entries.is_empty() {
             // setup() hasn't completed yet.
-            results.send_custom_ui("picker".into(), None, Vec::new());
-            return;
+            return Some(PluginResponse::CustomUI {
+                view: "picker".into(),
+                data: None,
+                results: Vec::new(),
+            });
         }
 
         // -------------------------------------------------------
@@ -302,8 +308,11 @@ impl Plugin for EmojiPickerPlugin {
         // to the default emojibase browse order.
         // -------------------------------------------------------
         if query.is_empty() {
-            results.send_custom_ui("picker".into(), None, self.empty_scored_entries(&entries));
-            return;
+            return Some(PluginResponse::CustomUI {
+                view: "picker".into(),
+                data: None,
+                results: self.empty_scored_entries(&entries),
+            });
         }
 
         // -------------------------------------------------------
@@ -453,7 +462,11 @@ impl Plugin for EmojiPickerPlugin {
         }
 
         scored_results.sort_by(|a, b| b.score.cmp(&a.score));
-        results.send_custom_ui("picker".into(), None, scored_results);
+        Some(PluginResponse::CustomUI {
+            view: "picker".into(),
+            data: None,
+            results: scored_results,
+        })
     }
 
     fn execute(

@@ -32,7 +32,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::network::Http;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, CancellationToken, EntryIcon, PostAction, ResultChannel,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
     ScoredEntry,
 };
 use crate::settings::SettingsInit;
@@ -192,29 +192,27 @@ impl Plugin for BangsPlugin {
         &self,
         query: &str,
         _matched_prefix: Option<&str>,
-        results: &ResultChannel,
-        _cancel: &CancellationToken,
-    ) {
+    ) -> Option<PluginResponse> {
         if !self.ready.load(Ordering::Relaxed) {
-            return;
+            return None;
         }
 
         // Find the first token that looks like a bang (`!<word>`).
         let (bang_trigger, bang_token_idx) = match find_bang_token(query) {
             Some(found) => found,
-            None => return,
+            None => return None,
         };
 
         let state = self.state.lock().expect("state lock not poisoned");
         let state = match state.as_ref() {
             Some(s) => s,
-            None => return,
+            None => return None,
         };
 
         // Look up the bang in the database (case-insensitive).
         let bang = match lookup_bang(&state.sql, bang_trigger) {
             Some(b) => b,
-            None => return,
+            None => return None,
         };
 
         // Remove the bang token from the query and clean up whitespace.
@@ -274,7 +272,7 @@ impl Plugin for BangsPlugin {
             ],
         };
 
-        let _ = results.send_results(vec![entry]);
+        Some(PluginResponse::Results(vec![entry]))
     }
 
     // =========================================================
