@@ -24,7 +24,7 @@
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
-import type { DevToolsMessage, LogItem, LogStats } from "../devtools/types";
+import type { DevToolsMessage, LogItem, LogLevel, LogStats } from "../devtools/types";
 
 // =========================================================
 // Command Registry
@@ -75,6 +75,32 @@ interface CommandMap {
   };
   devtools_log_clear: { params: void; result: void };
   devtools_log_stats: { params: void; result: LogStats };
+  logger_emit: {
+    params: {
+      source: string;
+      level: LogLevel;
+      message: string;
+      metadata: [string, string][];
+      spanId: number | null;
+    };
+    result: void;
+  };
+  logger_span_start: {
+    params: {
+      source: string;
+      name: string;
+      parentId: number | null;
+      metadata: [string, string][];
+    };
+    result: number;
+  };
+  logger_span_end: {
+    params: {
+      spanId: number;
+      metadata: [string, string][];
+    };
+    result: void;
+  };
 }
 
 type CommandName = keyof CommandMap;

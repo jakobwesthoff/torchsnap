@@ -441,6 +441,9 @@ pub fn run() {
             wasm::logging::commands::devtools_log_subscribe,
             wasm::logging::commands::devtools_log_clear,
             wasm::logging::commands::devtools_log_stats,
+            wasm::logging::commands::logger_emit,
+            wasm::logging::commands::logger_span_start,
+            wasm::logging::commands::logger_span_end,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -626,6 +629,7 @@ pub fn run() {
             app.manage(Arc::clone(&frecency_store));
             app.manage(Arc::clone(&metadata_service));
             app.manage(Arc::clone(&logging_system));
+            app.manage(Arc::clone(&span_registry));
 
             // =========================================================
             // Settings-changed listener
