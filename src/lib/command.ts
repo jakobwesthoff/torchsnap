@@ -101,6 +101,24 @@ interface CommandMap {
     };
     result: void;
   };
+  wasm_frontend_plugins: { params: void; result: WasmFrontendInfo[] };
+}
+
+// =========================================================
+// WASM Plugin Frontend Manifest
+// =========================================================
+
+/** Frontend manifest data for a loaded WASM plugin. */
+export interface WasmFrontendInfo {
+  pluginId: string;
+  name: string;
+  launcherBundle: string | null;
+  launcherCss: string | null;
+  settingsBundle: string | null;
+  settingsCss: string | null;
+  views: Record<string, string>;
+  inlineViews: Record<string, string>;
+  settingsComponent: string | null;
 }
 
 type CommandName = keyof CommandMap;
