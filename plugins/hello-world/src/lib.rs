@@ -25,6 +25,7 @@ use exports::torchsnap::plugin::search::Guest as SearchGuest;
 use torchsnap::plugin::logging;
 use torchsnap::plugin::types::{
     Action, ActionId, CatalogEntry, EntryIcon, PostAction, SearchResponse,
+    ViewResponse,
 };
 
 mod petnames;
@@ -82,13 +83,23 @@ impl SearchGuest for HelloWorld {
         }]
     }
 
-    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse {
+    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
         if query.is_empty() {
             return SearchResponse::Nothing;
         }
 
-        // Use a span to time the fuzzy search so it appears
-        // as a nested timing entry in the developer console.
+        // When triggered via the "!" prefix, show a custom UI
+        // that echoes the query. This demonstrates the full
+        // frontend dynamic loading pipeline.
+        if matched_prefix.is_some() {
+            return SearchResponse::CustomUi(ViewResponse {
+                view: "echo".into(),
+                data: Some(format!(r#"{{"query":"{}"}}"#, query.replace('"', "\\\""))),
+                results: vec![],
+            });
+        }
+
+        // Without a prefix, fuzzy-search the petname corpus.
         let span = logging::span_start(
             "fuzzy-search",
             None,

@@ -5,3 +5,11 @@ description = "Minimal test plugin for validating the WASM plugin pipeline"
 version = "0.1.0"
 wasm = "hello_world_plugin.wasm"
 icon = "heroicons:hand-raised"
+prefixes = ["!"]
+
+[frontend]
+launcher-bundle = "frontend/launcher.js"
+launcher-css = "frontend/launcher.css"
+
+[frontend.views]
+echo = "Echo"
