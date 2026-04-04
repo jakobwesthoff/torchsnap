@@ -7,14 +7,14 @@
 //
 // These commands expose the logging system to the devtools
 // frontend. The frontend fetches history on mount, then
-// subscribes to a live stream of new entries via a Tauri
+// subscribes to a live stream of new items via a Tauri
 // channel.
 //
 // Commands:
-//   devtools_log_history   — fetch entries after a given seq
-//   devtools_log_subscribe — start streaming live entries
+//   devtools_log_history   — fetch items after a given seq
+//   devtools_log_subscribe — start streaming live items
 //   devtools_log_clear     — clear the ring buffer
-//   devtools_log_stats     — current entry count + dropped
+//   devtools_log_stats     — current item count + dropped
 // =========================================================
 
 use std::sync::Arc;
@@ -24,21 +24,21 @@ use tauri::ipc::Channel;
 use tauri::State;
 
 use super::channel::LoggingSystem;
-use super::LogEntry;
+use super::LogItem;
 
 // =========================================================
 // Response Types
 // =========================================================
 
 /// Messages streamed to the devtools frontend over a Tauri
-/// channel. Entries are batched to reduce IPC overhead during
+/// channel. Items are batched to reduce IPC overhead during
 /// burst logging.
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DevToolsMessage {
-    /// A batch of new log entries.
-    Entries { entries: Vec<LogEntry> },
-    /// Notification that entries were dropped due to channel
+    /// A batch of new log items.
+    Entries { entries: Vec<LogItem> },
+    /// Notification that items were dropped due to channel
     /// backpressure. The frontend can display a warning.
     Dropped { count: u64 },
 }
@@ -47,12 +47,12 @@ pub enum DevToolsMessage {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogStats {
-    /// Number of entries currently in the ring buffer.
+    /// Number of items currently in the ring buffer.
     pub count: usize,
-    /// Total entries dropped due to channel backpressure
+    /// Total items dropped due to channel backpressure
     /// since the logging system started.
     pub dropped: u64,
-    /// Total entries ever pushed (including evicted ones).
+    /// Total items ever pushed (including evicted ones).
     pub total_pushed: u64,
 }
 
@@ -60,24 +60,24 @@ pub struct LogStats {
 // Commands
 // =========================================================
 
-/// Fetch log entries with `seq > after_seq`, up to `limit`.
+/// Fetch log items with `seq > after_seq`, up to `limit`.
 ///
 /// Used by the frontend on initial mount to load existing
-/// entries before subscribing to live updates.
+/// items before subscribing to live updates.
 #[tauri::command]
 pub fn devtools_log_history(
     after_seq: u64,
     limit: usize,
     state: State<'_, Arc<LoggingSystem>>,
-) -> Vec<LogEntry> {
+) -> Vec<LogItem> {
     let storage = state.storage().lock().expect("logging storage not poisoned");
     storage.entries_after(after_seq, limit)
 }
 
-/// Subscribe to live log entries via a Tauri channel.
+/// Subscribe to live log items via a Tauri channel.
 ///
 /// Spawns a background task that reads from the broadcast
-/// channel, batches entries over a 16ms window, and sends
+/// channel, batches items over a 16ms window, and sends
 /// them to the frontend. Returns immediately.
 ///
 /// The task runs until the Tauri channel is closed (e.g.,
@@ -92,13 +92,13 @@ pub fn devtools_log_subscribe(
 
     tauri::async_runtime::spawn(async move {
         loop {
-            // Wait for the first entry.
-            let entry = match rx.recv().await {
-                Ok(entry) => entry,
+            // Wait for the first item.
+            let item = match rx.recv().await {
+                Ok(item) => item,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     // We fell behind — notify the frontend and
                     // continue. The frontend can fetch missed
-                    // entries via devtools_log_history if needed.
+                    // items via devtools_log_history if needed.
                     if channel.send(DevToolsMessage::Dropped { count: n }).is_err() {
                         break;
                     }
@@ -107,13 +107,13 @@ pub fn devtools_log_subscribe(
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             };
 
-            // Batch additional entries that arrived during the
+            // Batch additional items that arrived during the
             // 16ms window to reduce IPC overhead.
-            let mut batch = vec![entry];
+            let mut batch = vec![item];
             tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 
-            while let Ok(entry) = rx.try_recv() {
-                batch.push(entry);
+            while let Ok(item) = rx.try_recv() {
+                batch.push(item);
                 // Cap batch size to avoid huge IPC messages.
                 if batch.len() >= 500 {
                     break;
@@ -135,7 +135,7 @@ pub fn devtools_log_subscribe(
     });
 }
 
-/// Clear all entries from the ring buffer.
+/// Clear all items from the ring buffer.
 #[tauri::command]
 pub fn devtools_log_clear(state: State<'_, Arc<LoggingSystem>>) {
     let mut storage = state.storage().lock().expect("logging storage not poisoned");

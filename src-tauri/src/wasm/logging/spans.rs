@@ -23,7 +23,7 @@ use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 
 use super::channel::LogSender;
-use super::{LogEntry, LogLevel, LogSource, SpanInfo, MAX_SPAN_NESTING};
+use super::{LogItem, LogItemKind, LogLevel, LogSource, MAX_SPAN_NESTING};
 
 // =========================================================
 // Open Span State
@@ -36,6 +36,41 @@ struct OpenSpan {
     source: LogSource,
     start: Instant,
     start_metadata: Vec<(String, String)>,
+    /// Nesting depth: 0 for root spans, 1 for children of root, etc.
+    depth: u32,
+}
+
+// =========================================================
+// CompletedSpan
+// =========================================================
+
+/// Returned by `SpanRegistry::end()`. Contains everything
+/// needed to construct a `LogItemKind::SpanEnd`.
+///
+/// This is an internal type — not serialized. The caller
+/// converts it into `LogItemKind` via the `From` impl.
+pub struct CompletedSpan {
+    pub span_id: u64,
+    pub name: String,
+    pub parent_id: Option<u64>,
+    pub depth: u32,
+    pub duration_us: u64,
+    /// Merged start + end metadata (end wins on key collision).
+    pub metadata: Vec<(String, String)>,
+    pub source: LogSource,
+}
+
+impl From<CompletedSpan> for LogItemKind {
+    fn from(span: CompletedSpan) -> Self {
+        LogItemKind::SpanEnd {
+            span_id: span.span_id,
+            name: span.name,
+            parent_id: span.parent_id,
+            depth: span.depth,
+            duration_us: span.duration_us,
+            metadata: span.metadata,
+        }
+    }
 }
 
 // =========================================================
@@ -61,23 +96,26 @@ impl SpanRegistry {
         }
     }
 
-    /// Start a new span. Returns the span ID, or `None` if
-    /// the nesting depth would exceed `MAX_SPAN_NESTING`.
+    /// Start a new span. Returns `(span_id, depth)`, or `None`
+    /// if the nesting depth would exceed `MAX_SPAN_NESTING`.
     pub fn start(
         &self,
         name: String,
         parent_id: Option<u64>,
         source: LogSource,
         metadata: Vec<(String, String)>,
-    ) -> Option<u64> {
-        // Check nesting depth by walking the parent chain.
-        if let Some(pid) = parent_id {
+    ) -> Option<(u64, u32)> {
+        // Compute depth by walking the parent chain.
+        let depth: u32 = if let Some(pid) = parent_id {
             let spans = self.open_spans.lock().expect("span registry not poisoned");
-            let depth = self.depth_of(pid, &spans);
-            if depth >= MAX_SPAN_NESTING {
+            let parent_depth = self.depth_of(pid, &spans);
+            if parent_depth >= MAX_SPAN_NESTING {
                 return None;
             }
-        }
+            parent_depth as u32
+        } else {
+            0
+        };
 
         let id = self.id_gen.fetch_add(1, Ordering::Relaxed);
 
@@ -87,6 +125,7 @@ impl SpanRegistry {
             source,
             start: Instant::now(),
             start_metadata: metadata,
+            depth,
         };
 
         self.open_spans
@@ -94,12 +133,12 @@ impl SpanRegistry {
             .expect("span registry not poisoned")
             .insert(id, span);
 
-        Some(id)
+        Some((id, depth))
     }
 
-    /// End a span and return the completed `SpanInfo` with
-    /// duration and merged metadata. Returns `None` if the
-    /// span ID is not found (e.g., already ended or invalid).
+    /// End a span and return a `CompletedSpan` with duration
+    /// and merged metadata. Returns `None` if the span ID is
+    /// not found (e.g., already ended or invalid).
     ///
     /// End-metadata is merged with start-metadata. On key
     /// collision, end-metadata wins.
@@ -107,7 +146,7 @@ impl SpanRegistry {
         &self,
         span_id: u64,
         end_metadata: Vec<(String, String)>,
-    ) -> Option<(SpanInfo, LogSource)> {
+    ) -> Option<CompletedSpan> {
         let span = self
             .open_spans
             .lock()
@@ -119,15 +158,15 @@ impl SpanRegistry {
         // Merge metadata: start first, then end overwrites.
         let metadata = merge_metadata(span.start_metadata, end_metadata);
 
-        let info = SpanInfo {
+        Some(CompletedSpan {
             span_id,
-            parent_id: span.parent_id,
             name: span.name,
+            parent_id: span.parent_id,
+            depth: span.depth,
             duration_us,
             metadata,
-        };
-
-        Some((info, span.source))
+            source: span.source,
+        })
     }
 
     /// Walk the parent chain to compute nesting depth.
@@ -208,55 +247,58 @@ impl Logger {
         }
     }
 
-    /// Emit a log entry.
+    /// Emit a log message.
     pub fn log(&self, level: LogLevel, message: impl Into<String>) {
-        self.sender.send(LogEntry {
+        self.sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level,
             source: self.source.clone(),
-            message: message.into(),
-            metadata: vec![],
-            span_id: None,
-            span: None,
+            kind: LogItemKind::Message {
+                level,
+                message: message.into(),
+                metadata: vec![],
+                span_id: None,
+            },
         });
     }
 
-    /// Emit a log entry with metadata.
+    /// Emit a log message with metadata.
     pub fn log_with_meta(
         &self,
         level: LogLevel,
         message: impl Into<String>,
         metadata: Vec<(String, String)>,
     ) {
-        self.sender.send(LogEntry {
+        self.sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level,
             source: self.source.clone(),
-            message: message.into(),
-            metadata,
-            span_id: None,
-            span: None,
+            kind: LogItemKind::Message {
+                level,
+                message: message.into(),
+                metadata,
+                span_id: None,
+            },
         });
     }
 
-    /// Emit a log entry associated with a span.
+    /// Emit a log message associated with a span.
     pub fn log_in_span(
         &self,
         level: LogLevel,
         message: impl Into<String>,
         span_id: u64,
     ) {
-        self.sender.send(LogEntry {
+        self.sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level,
             source: self.source.clone(),
-            message: message.into(),
-            metadata: vec![],
-            span_id: Some(span_id),
-            span: None,
+            kind: LogItemKind::Message {
+                level,
+                message: message.into(),
+                metadata: vec![],
+                span_id: Some(span_id),
+            },
         });
     }
 
@@ -302,13 +344,36 @@ impl SpanBuilder {
     /// Returns `None` if the nesting depth would exceed the
     /// limit. In practice this means the span is silently
     /// skipped, which is acceptable for a diagnostic system.
+    ///
+    /// Emits a `SpanStart` log item so the frontend can track
+    /// open spans in real time.
     pub fn start(self) -> Option<SpanGuard> {
-        let span_id = self.logger.registry.start(
+        // Clone name and metadata before passing ownership to
+        // the registry — we need them for the span-start item.
+        let name = self.name.clone();
+        let metadata = self.metadata.clone();
+        let parent_id = self.parent_id;
+
+        let (span_id, depth) = self.logger.registry.start(
             self.name,
             self.parent_id,
             self.logger.source.clone(),
             self.metadata,
         )?;
+
+        // Emit span-start log item.
+        self.logger.sender.send(LogItem {
+            seq: 0,
+            timestamp: SystemTime::now(),
+            source: self.logger.source.clone(),
+            kind: LogItemKind::SpanStart {
+                span_id,
+                name,
+                parent_id,
+                depth,
+                metadata,
+            },
+        });
 
         Some(SpanGuard {
             span_id,
@@ -335,22 +400,23 @@ pub struct SpanGuard {
 
 impl SpanGuard {
     /// The span ID for this guard. Useful for creating child
-    /// spans or associating log entries.
+    /// spans or associating log messages.
     pub fn id(&self) -> u64 {
         self.span_id
     }
 
-    /// Emit a log entry associated with this span.
+    /// Emit a log message associated with this span.
     pub fn log(&self, level: LogLevel, message: impl Into<String>) {
-        self.logger.sender.send(LogEntry {
+        self.logger.sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level,
             source: self.logger.source.clone(),
-            message: message.into(),
-            metadata: vec![],
-            span_id: Some(self.span_id),
-            span: None,
+            kind: LogItemKind::Message {
+                level,
+                message: message.into(),
+                metadata: vec![],
+                span_id: Some(self.span_id),
+            },
         });
     }
 
@@ -376,16 +442,12 @@ impl SpanGuard {
         }
         self.ended = true;
 
-        if let Some((span_info, source)) = self.logger.registry.end(self.span_id, metadata) {
-            self.logger.sender.send(LogEntry {
+        if let Some(completed) = self.logger.registry.end(self.span_id, metadata) {
+            self.logger.sender.send(LogItem {
                 seq: 0,
                 timestamp: SystemTime::now(),
-                level: LogLevel::Debug,
-                source,
-                message: span_info.name.clone(),
-                metadata: vec![],
-                span_id: None,
-                span: Some(span_info),
+                source: completed.source.clone(),
+                kind: completed.into(),
             });
         }
     }
@@ -422,23 +484,55 @@ mod tests {
         (logger, registry, system)
     }
 
+    /// Helper: receive the next item from the broadcast channel
+    /// with a 100ms timeout.
+    async fn recv(sub: &mut tokio::sync::broadcast::Receiver<LogItem>) -> LogItem {
+        tokio::time::timeout(std::time::Duration::from_millis(100), sub.recv())
+            .await
+            .expect("timeout waiting for log item")
+            .expect("broadcast recv error")
+    }
+
     // ----- SpanRegistry tests -----
 
     #[test]
-    fn start_and_end_span() {
+    fn start_returns_id_and_depth() {
         let registry = SpanRegistry::new();
-        let id = registry
+
+        let (root_id, root_depth) = registry
+            .start("root".into(), None, LogSource::Host, vec![])
+            .expect("root span should start");
+        assert_eq!(root_depth, 0);
+
+        let (child_id, child_depth) = registry
+            .start("child".into(), Some(root_id), LogSource::Host, vec![])
+            .expect("child span should start");
+        assert_eq!(child_depth, 1);
+        assert_ne!(root_id, child_id);
+
+        let (_grandchild_id, grandchild_depth) = registry
+            .start("grandchild".into(), Some(child_id), LogSource::Host, vec![])
+            .expect("grandchild should start");
+        assert_eq!(grandchild_depth, 2);
+
+        assert_eq!(registry.open_count(), 3);
+    }
+
+    #[test]
+    fn end_returns_completed_span() {
+        let registry = SpanRegistry::new();
+        let (id, _) = registry
             .start("test".into(), None, LogSource::Host, vec![])
             .expect("span should start");
 
         assert_eq!(registry.open_count(), 1);
 
-        let (info, source) = registry.end(id, vec![]).expect("span should end");
-        assert_eq!(info.span_id, id);
-        assert_eq!(info.name, "test");
-        assert!(info.duration_us > 0 || info.duration_us == 0); // can be 0 if very fast
-        assert_eq!(info.parent_id, None);
-        assert_eq!(source, LogSource::Host);
+        let completed = registry.end(id, vec![]).expect("span should end");
+        assert_eq!(completed.span_id, id);
+        assert_eq!(completed.name, "test");
+        assert_eq!(completed.parent_id, None);
+        assert_eq!(completed.depth, 0);
+        assert_eq!(completed.source, LogSource::Host);
         assert_eq!(registry.open_count(), 0);
     }
 
@@ -451,7 +545,7 @@ mod tests {
     #[test]
     fn double_end_returns_none_second_time() {
         let registry = SpanRegistry::new();
-        let id = registry
+        let (id, _) = registry
             .start("test".into(), None, LogSource::Host, vec![])
             .expect("span should start");
 
@@ -462,21 +556,24 @@ mod tests {
     #[test]
     fn nested_spans_with_parent() {
         let registry = SpanRegistry::new();
-        let parent = registry
+        let (parent, _) = registry
             .start("parent".into(), None, LogSource::Host, vec![])
             .expect("parent should start");
 
-        let child = registry
+        let (child, child_depth) = registry
             .start("child".into(), Some(parent), LogSource::Host, vec![])
             .expect("child should start");
+        assert_eq!(child_depth, 1);
 
         assert_eq!(registry.open_count(), 2);
 
-        let (child_info, _) = registry.end(child, vec![]).expect("child should end");
-        assert_eq!(child_info.parent_id, Some(parent));
+        let child_completed = registry.end(child, vec![]).expect("child should end");
+        assert_eq!(child_completed.parent_id, Some(parent));
+        assert_eq!(child_completed.depth, 1);
 
-        let (parent_info, _) = registry.end(parent, vec![]).expect("parent should end");
-        assert_eq!(parent_info.parent_id, None);
+        let parent_completed = registry.end(parent, vec![]).expect("parent should end");
+        assert_eq!(parent_completed.parent_id, None);
+        assert_eq!(parent_completed.depth, 0);
     }
 
     #[test]
@@ -486,7 +583,7 @@ mod tests {
 
         // Build a chain up to MAX_SPAN_NESTING.
         for i in 0..MAX_SPAN_NESTING {
-            let id = registry
+            let (id, _) = registry
                 .start(format!("span-{i}"), current_id, LogSource::Host, vec![])
                 .expect("span within limit should start");
             current_id = Some(id);
@@ -510,9 +607,10 @@ mod tests {
 
         // Root spans (no parent) have depth 0, always accepted.
         for _ in 0..100 {
-            let id = registry
+            let (id, depth) = registry
                 .start("root".into(), None, LogSource::Host, vec![])
                 .expect("root span should start");
+            assert_eq!(depth, 0);
             registry.end(id, vec![]);
         }
     }
@@ -520,7 +618,7 @@ mod tests {
     #[test]
     fn metadata_merge_end_wins() {
         let registry = SpanRegistry::new();
-        let id = registry
+        let (id, _) = registry
             .start(
                 "test".into(),
                 None,
@@ -532,7 +630,7 @@ mod tests {
             )
             .expect("span should start");
 
-        let (info, _) = registry
+        let completed = registry
             .end(
                 id,
                 vec![
@@ -542,7 +640,7 @@ mod tests {
             )
             .expect("span should end");
 
-        let meta: HashMap<String, String> = info.metadata.into_iter().collect();
+        let meta: HashMap<String, String> = completed.metadata.into_iter().collect();
         assert_eq!(meta.get("key1").unwrap(), "end-val", "end should win");
         assert_eq!(meta.get("key2").unwrap(), "only-start");
         assert_eq!(meta.get("key3").unwrap(), "only-end");
@@ -562,10 +660,10 @@ mod tests {
     #[test]
     fn span_ids_are_unique() {
         let registry = SpanRegistry::new();
-        let id1 = registry
+        let (id1, _) = registry
             .start("a".into(), None, LogSource::Host, vec![])
             .unwrap();
-        let id2 = registry
+        let (id2, _) = registry
             .start("b".into(), None, LogSource::Host, vec![])
             .unwrap();
         assert_ne!(id1, id2);
@@ -574,7 +672,7 @@ mod tests {
     #[test]
     fn plugin_source_preserved() {
         let registry = SpanRegistry::new();
-        let id = registry
+        let (id, _) = registry
             .start(
                 "test".into(),
                 None,
@@ -583,30 +681,61 @@ mod tests {
             )
             .unwrap();
 
-        let (_, source) = registry.end(id, vec![]).unwrap();
-        assert_eq!(source, LogSource::Plugin("hello-world".into()));
+        let completed = registry.end(id, vec![]).unwrap();
+        assert_eq!(completed.source, LogSource::Plugin("hello-world".into()));
+    }
+
+    #[test]
+    fn completed_span_into_log_item_kind() {
+        let completed = CompletedSpan {
+            span_id: 42,
+            name: "search".into(),
+            parent_id: Some(1),
+            depth: 1,
+            duration_us: 12345,
+            metadata: vec![("k".into(), "v".into())],
+            source: LogSource::Host,
+        };
+
+        let kind: LogItemKind = completed.into();
+        match kind {
+            LogItemKind::SpanEnd {
+                span_id,
+                name,
+                parent_id,
+                depth,
+                duration_us,
+                metadata,
+            } => {
+                assert_eq!(span_id, 42);
+                assert_eq!(name, "search");
+                assert_eq!(parent_id, Some(1));
+                assert_eq!(depth, 1);
+                assert_eq!(duration_us, 12345);
+                assert_eq!(metadata, vec![("k".to_string(), "v".to_string())]);
+            }
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
     }
 
     // ----- Logger tests -----
 
     #[tokio::test]
-    async fn logger_log_sends_entry() {
+    async fn logger_log_sends_message() {
         let (logger, system) = test_logger();
         let mut sub = system.subscribe();
 
         logger.log(LogLevel::Info, "hello");
 
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        assert_eq!(entry.level, LogLevel::Info);
-        assert_eq!(entry.message, "hello");
-        assert_eq!(entry.source, LogSource::Host);
+        let item = recv(&mut sub).await;
+        assert_eq!(item.source, LogSource::Host);
+        match &item.kind {
+            LogItemKind::Message { level, message, .. } => {
+                assert_eq!(*level, LogLevel::Info);
+                assert_eq!(message, "hello");
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -620,15 +749,14 @@ mod tests {
             vec![("key".into(), "val".into())],
         );
 
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        assert_eq!(entry.metadata, vec![("key".to_string(), "val".to_string())]);
+        let item = recv(&mut sub).await;
+        match &item.kind {
+            LogItemKind::Message { level, metadata, .. } => {
+                assert_eq!(*level, LogLevel::Warn);
+                assert_eq!(*metadata, vec![("key".to_string(), "val".to_string())]);
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -638,43 +766,73 @@ mod tests {
 
         logger.log_in_span(LogLevel::Debug, "inside span", 42);
 
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        assert_eq!(entry.span_id, Some(42));
+        let item = recv(&mut sub).await;
+        match &item.kind {
+            LogItemKind::Message { span_id, message, .. } => {
+                assert_eq!(*span_id, Some(42));
+                assert_eq!(message, "inside span");
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
     }
 
     // ----- SpanGuard tests -----
 
     #[tokio::test]
-    async fn span_guard_emits_on_drop() {
+    async fn span_emits_start_and_end() {
         let (logger, registry, system) = test_logger_with_registry();
         let mut sub = system.subscribe();
 
         {
             let _guard = logger.span("test-span").start().expect("span should start");
             assert_eq!(registry.open_count(), 1);
+
+            // First item: span-start.
+            let start_item = recv(&mut sub).await;
+            match &start_item.kind {
+                LogItemKind::SpanStart { name, depth, parent_id, .. } => {
+                    assert_eq!(name, "test-span");
+                    assert_eq!(*depth, 0);
+                    assert_eq!(*parent_id, None);
+                }
+                other => panic!("expected SpanStart, got {other:?}"),
+            }
         }
         // Guard dropped — span should be ended.
 
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        assert!(entry.span.is_some());
-        let span_info = entry.span.unwrap();
-        assert_eq!(span_info.name, "test-span");
-        assert_eq!(span_info.parent_id, None);
+        // Second item: span-end.
+        let end_item = recv(&mut sub).await;
+        match &end_item.kind {
+            LogItemKind::SpanEnd { name, depth, parent_id, .. } => {
+                assert_eq!(name, "test-span");
+                assert_eq!(*depth, 0);
+                assert_eq!(*parent_id, None);
+            }
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
         assert_eq!(registry.open_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn span_start_carries_metadata() {
+        let (logger, _, system) = test_logger_with_registry();
+        let mut sub = system.subscribe();
+
+        let guard = logger
+            .span("test")
+            .meta("input", "42")
+            .start()
+            .expect("span should start");
+
+        let start_item = recv(&mut sub).await;
+        match &start_item.kind {
+            LogItemKind::SpanStart { metadata, .. } => {
+                assert_eq!(*metadata, vec![("input".to_string(), "42".to_string())]);
+            }
+            other => panic!("expected SpanStart, got {other:?}"),
+        }
+
+        drop(guard);
     }
 
     #[tokio::test]
@@ -688,20 +846,20 @@ mod tests {
             .start()
             .expect("span should start");
 
+        // Skip the span-start item.
+        let _start = recv(&mut sub).await;
+
         guard.end_with_meta(vec![("output".into(), "84".into())]);
 
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        let span = entry.span.unwrap();
-        let meta: HashMap<String, String> = span.metadata.into_iter().collect();
-        assert_eq!(meta.get("input").unwrap(), "42");
-        assert_eq!(meta.get("output").unwrap(), "84");
+        let end_item = recv(&mut sub).await;
+        match &end_item.kind {
+            LogItemKind::SpanEnd { metadata, .. } => {
+                let meta: HashMap<String, String> = metadata.clone().into_iter().collect();
+                assert_eq!(meta.get("input").unwrap(), "42");
+                assert_eq!(meta.get("output").unwrap(), "84");
+            }
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -712,22 +870,34 @@ mod tests {
         let parent = logger.span("parent").start().expect("parent");
         let parent_id = parent.id();
 
+        // Skip parent span-start.
+        let _parent_start = recv(&mut sub).await;
+
         {
             let _child = parent.child("child").start().expect("child");
+
+            // Child span-start should reference parent.
+            let child_start = recv(&mut sub).await;
+            match &child_start.kind {
+                LogItemKind::SpanStart { parent_id: pid, depth, name, .. } => {
+                    assert_eq!(*pid, Some(parent_id));
+                    assert_eq!(*depth, 1);
+                    assert_eq!(name, "child");
+                }
+                other => panic!("expected SpanStart, got {other:?}"),
+            }
         }
 
-        // First entry should be the child's span-end.
-        let entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
-
-        let child_span = entry.span.unwrap();
-        assert_eq!(child_span.name, "child");
-        assert_eq!(child_span.parent_id, Some(parent_id));
+        // Child span-end should reference parent.
+        let child_end = recv(&mut sub).await;
+        match &child_end.kind {
+            LogItemKind::SpanEnd { parent_id: pid, name, depth, .. } => {
+                assert_eq!(*pid, Some(parent_id));
+                assert_eq!(name, "child");
+                assert_eq!(*depth, 1);
+            }
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
 
         drop(parent);
     }
@@ -738,21 +908,78 @@ mod tests {
         let mut sub = system.subscribe();
 
         let guard = logger.span("test").start().expect("span");
-        guard.log(LogLevel::Info, "inside");
         let span_id = guard.id();
+
+        // Skip span-start.
+        let _start = recv(&mut sub).await;
+
+        guard.log(LogLevel::Info, "inside");
+
+        let log_item = recv(&mut sub).await;
+        match &log_item.kind {
+            LogItemKind::Message { message, span_id: sid, .. } => {
+                assert_eq!(message, "inside");
+                assert_eq!(*sid, Some(span_id));
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
+
         drop(guard);
+    }
 
-        // First message should be the log entry.
-        let log_entry = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            sub.recv(),
-        )
-        .await
-        .expect("timeout")
-        .expect("recv error");
+    #[tokio::test]
+    async fn nested_span_depths_in_items() {
+        let (logger, _, system) = test_logger_with_registry();
+        let mut sub = system.subscribe();
 
-        assert_eq!(log_entry.message, "inside");
-        assert_eq!(log_entry.span_id, Some(span_id));
-        assert!(log_entry.span.is_none()); // not a span-end entry
+        let outer = logger.span("outer").start().expect("outer");
+
+        let outer_start = recv(&mut sub).await;
+        match &outer_start.kind {
+            LogItemKind::SpanStart { depth, .. } => assert_eq!(*depth, 0),
+            other => panic!("expected SpanStart, got {other:?}"),
+        }
+
+        {
+            let inner = outer.child("inner").start().expect("inner");
+
+            let inner_start = recv(&mut sub).await;
+            match &inner_start.kind {
+                LogItemKind::SpanStart { depth, .. } => assert_eq!(*depth, 1),
+                other => panic!("expected SpanStart, got {other:?}"),
+            }
+
+            {
+                let _deep = inner.child("deep").start().expect("deep");
+
+                let deep_start = recv(&mut sub).await;
+                match &deep_start.kind {
+                    LogItemKind::SpanStart { depth, .. } => assert_eq!(*depth, 2),
+                    other => panic!("expected SpanStart, got {other:?}"),
+                }
+            }
+            // deep dropped → end emitted
+            let deep_end = recv(&mut sub).await;
+            match &deep_end.kind {
+                LogItemKind::SpanEnd { depth, .. } => assert_eq!(*depth, 2),
+                other => panic!("expected SpanEnd, got {other:?}"),
+            }
+
+            drop(inner);
+        }
+
+        let inner_end = recv(&mut sub).await;
+        match &inner_end.kind {
+            LogItemKind::SpanEnd { depth, .. } => assert_eq!(*depth, 1),
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
+
+        drop(outer);
+
+        let outer_end = recv(&mut sub).await;
+        match &outer_end.kind {
+            LogItemKind::SpanEnd { depth, .. } => assert_eq!(*depth, 0),
+            other => panic!("expected SpanEnd, got {other:?}"),
+        }
     }
 }

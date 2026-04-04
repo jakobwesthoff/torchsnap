@@ -3,15 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Log Entry Row
+// Log Item Row
 //
-// Renders a single log entry as a horizontal line with:
+// Renders a single log item as a horizontal line with:
 // - Colored left border (level indicator, cyan for spans)
+// - Depth-based indentation for nested spans
 // - Timestamp in monospace
-// - Level badge ("SPAN" for span-end entries)
+// - Level badge ("SPAN" for span entries)
 // - Plugin source with colored dot
-// - Message in monospace
-// - Duration badge (fixed position, always allocated)
+// - Message / span name in monospace
+// - Duration badge (span-end) or "..." (span-start)
 // - Chevron (always allocated, invisible when no metadata)
 // - Copy button on hover
 //
@@ -23,28 +24,16 @@ import {
   ChevronRightIcon,
   ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
+import { PlayIcon, StopIcon } from "@heroicons/react/16/solid";
 import { cn } from "../../lib/cn";
-import type { LogEntry, LogLevel } from "../types";
+import type { LogItem, LogLevel } from "../types";
 import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
-
-// =========================================================
-// Copy to Clipboard
-// =========================================================
-
-function formatEntryForClipboard(entry: LogEntry): string {
-  const time = formatTimestamp(entry.timestamp);
-  const label = entry.span ? "SPAN" : entry.level.toUpperCase();
-  const source =
-    entry.source.type === "plugin" ? entry.source.value : "host";
-  const meta =
-    entry.metadata.length > 0
-      ? ` {${entry.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}`
-      : "";
-  const span = entry.span
-    ? ` [${entry.span.name} ${formatDuration(entry.span.durationUs)}]`
-    : "";
-  return `[${time}] [${label}] [${source}] ${entry.message}${meta}${span}`;
-}
+import {
+  formatTimestamp,
+  formatDuration,
+  durationColor,
+  formatItemForClipboard,
+} from "./formatters";
 
 // =========================================================
 // Level Colors
@@ -67,70 +56,42 @@ const levelTextColor: Record<LogLevel, string> = {
 };
 
 // =========================================================
-// Duration Formatting
-// =========================================================
-
-function formatDuration(durationUs: number): string {
-  const ms = durationUs / 1000;
-  if (ms < 1) return `${(ms).toFixed(2)}ms`;
-  if (ms < 1000) return `${ms.toFixed(1)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
-function durationColor(durationUs: number): string {
-  const ms = durationUs / 1000;
-  if (ms < 1) return "text-emerald-400";
-  if (ms < 10) return "text-text-tertiary";
-  if (ms < 100) return "text-amber-400";
-  return "text-red-400";
-}
-
-// =========================================================
-// Timestamp Formatting
-// =========================================================
-
-function formatTimestamp(timestamp: number): string {
-  try {
-    const date = new Date(timestamp);
-    const h = date.getHours().toString().padStart(2, "0");
-    const m = date.getMinutes().toString().padStart(2, "0");
-    const s = date.getSeconds().toString().padStart(2, "0");
-    const ms = date.getMilliseconds().toString().padStart(3, "0");
-    return `${h}:${m}:${s}.${ms}`;
-  } catch {
-    return "??:??:??.???";
-  }
-}
-
-// =========================================================
 // Component
 // =========================================================
 
-interface LogEntryRowProps {
-  entry: LogEntry;
+interface LogItemRowProps {
+  item: LogItem;
   index: number;
   expanded: boolean;
   onToggleExpand: () => void;
+  depth: number;
+  /** Span IDs that have completed — used to hide the "running" pill once a span ends. */
+  completedSpanIds?: Set<number>;
 }
 
-export const LogEntryRow = memo(function LogEntryRow({
-  entry,
+export const LogItemRow = memo(function LogItemRow({
+  item,
   index,
   expanded,
   onToggleExpand,
-}: LogEntryRowProps) {
-  const isSpan = entry.span != null;
-  const hasMetadata =
-    entry.metadata.length > 0 ||
-    (entry.span?.metadata && entry.span.metadata.length > 0);
+  depth,
+  completedSpanIds,
+}: LogItemRowProps) {
+  const { kind } = item;
+  const isSpan = kind.type !== "message";
+  const metadata = kind.metadata;
+  const hasMetadata = metadata.length > 0;
 
   const pluginId =
-    entry.source.type === "plugin" ? entry.source.value : null;
+    item.source.type === "plugin" ? item.source.value : null;
 
   const copyToClipboard = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(formatEntryForClipboard(entry));
-  }, [entry]);
+    navigator.clipboard.writeText(formatItemForClipboard(item));
+  }, [item]);
+
+  // Determine display text and level badge.
+  const messageText = kind.type === "message" ? kind.message : kind.name;
 
   return (
     <div
@@ -139,24 +100,30 @@ export const LogEntryRow = memo(function LogEntryRow({
         "group flex items-start gap-2 px-3 py-1 text-xs border-b border-border-divider/50",
         "hover:bg-surface-hover/50 transition-colors",
         "border-l-2",
-        isSpan ? "border-l-cyan-500" : levelBorderColor[entry.level],
+        isSpan
+          ? "border-l-cyan-500"
+          : levelBorderColor[kind.level],
         index % 2 === 0 && "bg-surface-inset/20",
         hasMetadata && "cursor-pointer",
       )}
     >
       {/* Timestamp */}
       <span className="shrink-0 w-[85px] tabular-nums text-text-muted font-mono text-[11px] leading-5 select-text">
-        {formatTimestamp(entry.timestamp)}
+        {formatTimestamp(item.timestamp)}
       </span>
 
-      {/* Level badge — shows "SPAN" in cyan for span-end entries */}
+      {/* Level badge — shows "SPAN" + direction icon for span entries */}
       <span
         className={cn(
-          "shrink-0 w-[42px] text-center text-[10px] font-semibold uppercase tracking-wider leading-5",
-          isSpan ? "text-cyan-400" : levelTextColor[entry.level],
+          "shrink-0 w-[52px] text-left text-[10px] font-semibold uppercase tracking-wider leading-5 inline-flex items-center gap-0.5",
+          isSpan ? "text-cyan-400" : levelTextColor[kind.level],
         )}
       >
-        {isSpan ? "span" : entry.level}
+        {isSpan
+          ? <>span{kind.type === "spanStart"
+              ? <PlayIcon className="w-2.5 h-2.5" />
+              : <StopIcon className="w-2.5 h-2.5" />}</>
+          : kind.level}
       </span>
 
       {/* Source */}
@@ -181,21 +148,34 @@ export const LogEntryRow = memo(function LogEntryRow({
       {/* Message + trailing controls */}
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-1">
+          {/* Depth indentation */}
+          {depth > 0 && (
+            <span
+              style={{ width: `${depth * 16}px` }}
+              className="shrink-0"
+            />
+          )}
+
           {/* Message */}
           <span className="flex-1 min-w-0 font-mono text-[11px] leading-5 text-text-primary break-words select-text">
-            {entry.message}
+            {messageText}
           </span>
 
-          {/* Duration badge — fixed-width slot, empty for non-span entries */}
+          {/* Duration badge — fixed-width slot */}
           <span className="shrink-0 w-[70px] text-right">
-            {entry.span && (
+            {kind.type === "spanEnd" && (
               <span
                 className={cn(
                   "text-[10px] font-mono tabular-nums",
-                  durationColor(entry.span.durationUs),
+                  durationColor(kind.durationUs),
                 )}
               >
-                {formatDuration(entry.span.durationUs)}
+                {formatDuration(kind.durationUs)}
+              </span>
+            )}
+            {kind.type === "spanStart" && !(completedSpanIds?.has(kind.spanId)) && (
+              <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                running
               </span>
             )}
           </span>
@@ -225,15 +205,8 @@ export const LogEntryRow = memo(function LogEntryRow({
         {/* Expanded metadata */}
         {expanded && hasMetadata && (
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-            {entry.metadata.map(([key, value]) => (
+            {metadata.map(([key, value]) => (
               <span key={key} className="text-[10px] font-mono">
-                <span className="text-violet-400">{key}</span>
-                <span className="text-text-muted">=</span>
-                <span className="text-text-secondary select-text">{value}</span>
-              </span>
-            ))}
-            {entry.span?.metadata.map(([key, value]) => (
-              <span key={`span-${key}`} className="text-[10px] font-mono">
                 <span className="text-violet-400">{key}</span>
                 <span className="text-text-muted">=</span>
                 <span className="text-text-secondary select-text">{value}</span>

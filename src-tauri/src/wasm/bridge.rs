@@ -22,7 +22,7 @@ use crate::plugins::Plugin;
 use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
 
 use super::logging::channel::LogSender;
-use super::logging::{LogEntry, LogLevel, LogSource};
+use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::runtime::WasmPluginInstance;
 
@@ -57,15 +57,16 @@ impl WasmPluginBridge {
     /// Emit a log entry for bridge-level events (errors from
     /// guest calls that are caught and handled here).
     fn log(&self, level: LogLevel, message: String) {
-        self.log_sender.send(LogEntry {
+        self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            level,
             source: LogSource::Plugin(self.manifest.plugin.id.to_string()),
-            message,
-            metadata: vec![],
-            span_id: None,
-            span: None,
+            kind: LogItemKind::Message {
+                level,
+                message,
+                metadata: vec![],
+                span_id: None,
+            },
         });
     }
 }

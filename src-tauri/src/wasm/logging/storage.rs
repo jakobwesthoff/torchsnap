@@ -7,40 +7,40 @@
 //
 // Trait-based log storage with a ring buffer implementation.
 // The ring buffer uses a VecDeque with a fixed capacity —
-// oldest entries are evicted when full.
+// oldest items are evicted when full.
 //
-// The `seq` field on each LogEntry is monotonically increasing,
+// The `seq` field on each LogItem is monotonically increasing,
 // which enables O(log n) binary search in `entries_after`.
 // =========================================================
 
 use std::collections::VecDeque;
 
-use super::{LogEntry, DEFAULT_RING_BUFFER_CAPACITY};
+use super::{LogItem, DEFAULT_RING_BUFFER_CAPACITY};
 
 // =========================================================
 // LogStorage Trait
 // =========================================================
 
-/// Abstraction over log entry storage backends.
+/// Abstraction over log item storage backends.
 ///
-/// Implementations must maintain entries in `seq` order
+/// Implementations must maintain items in `seq` order
 /// (ascending). The `seq` field is assigned before `push`
 /// is called.
 pub trait LogStorage: Send + Sync {
-    /// Append an entry. If at capacity, the oldest entry is
+    /// Append an item. If at capacity, the oldest item is
     /// evicted.
-    fn push(&mut self, entry: LogEntry);
+    fn push(&mut self, item: LogItem);
 
-    /// Return entries with `seq > after_seq`, up to `limit`.
-    fn entries_after(&self, after_seq: u64, limit: usize) -> Vec<LogEntry>;
+    /// Return items with `seq > after_seq`, up to `limit`.
+    fn entries_after(&self, after_seq: u64, limit: usize) -> Vec<LogItem>;
 
-    /// Return the most recent `count` entries.
-    fn tail(&self, count: usize) -> Vec<LogEntry>;
+    /// Return the most recent `count` items.
+    fn tail(&self, count: usize) -> Vec<LogItem>;
 
-    /// Remove all stored entries.
+    /// Remove all stored items.
     fn clear(&mut self);
 
-    /// Number of entries currently stored.
+    /// Number of items currently stored.
     fn len(&self) -> usize;
 
     /// Whether the storage is empty.
@@ -48,7 +48,7 @@ pub trait LogStorage: Send + Sync {
         self.len() == 0
     }
 
-    /// Total number of entries ever pushed, including those
+    /// Total number of items ever pushed, including those
     /// that have been evicted.
     fn total_pushed(&self) -> u64;
 }
@@ -59,11 +59,11 @@ pub trait LogStorage: Send + Sync {
 
 /// Fixed-capacity circular buffer backed by `VecDeque`.
 ///
-/// When the buffer is full, the oldest entry is evicted on
-/// each push. All entries are kept in `seq` order, enabling
+/// When the buffer is full, the oldest item is evicted on
+/// each push. All items are kept in `seq` order, enabling
 /// binary search for `entries_after`.
 pub struct RingBufferStorage {
-    buffer: VecDeque<LogEntry>,
+    buffer: VecDeque<LogItem>,
     capacity: usize,
     total_pushed: u64,
 }
@@ -78,14 +78,14 @@ impl RingBufferStorage {
         }
     }
 
-    /// Binary search for the position of the first entry with
+    /// Binary search for the position of the first item with
     /// `seq > target_seq`. Returns the index to start reading
-    /// from, or `buffer.len()` if no such entry exists.
+    /// from, or `buffer.len()` if no such item exists.
     fn search_after(&self, target_seq: u64) -> usize {
         // The seq values are monotonically increasing, so we
         // can use partition_point (binary search) to find the
-        // first entry exceeding the target.
-        self.buffer.partition_point(|entry| entry.seq <= target_seq)
+        // first item exceeding the target.
+        self.buffer.partition_point(|item| item.seq <= target_seq)
     }
 }
 
@@ -96,15 +96,15 @@ impl Default for RingBufferStorage {
 }
 
 impl LogStorage for RingBufferStorage {
-    fn push(&mut self, entry: LogEntry) {
+    fn push(&mut self, item: LogItem) {
         if self.buffer.len() >= self.capacity {
             self.buffer.pop_front();
         }
-        self.buffer.push_back(entry);
+        self.buffer.push_back(item);
         self.total_pushed += 1;
     }
 
-    fn entries_after(&self, after_seq: u64, limit: usize) -> Vec<LogEntry> {
+    fn entries_after(&self, after_seq: u64, limit: usize) -> Vec<LogItem> {
         let start = self.search_after(after_seq);
         self.buffer
             .iter()
@@ -114,7 +114,7 @@ impl LogStorage for RingBufferStorage {
             .collect()
     }
 
-    fn tail(&self, count: usize) -> Vec<LogEntry> {
+    fn tail(&self, count: usize) -> Vec<LogItem> {
         let skip = self.buffer.len().saturating_sub(count);
         self.buffer.iter().skip(skip).cloned().collect()
     }
@@ -141,19 +141,20 @@ mod tests {
     use std::time::SystemTime;
 
     use super::*;
-    use crate::wasm::logging::{LogLevel, LogSource};
+    use crate::wasm::logging::{LogItemKind, LogLevel, LogSource};
 
-    /// Helper to create a log entry with a given seq number.
-    fn entry(seq: u64) -> LogEntry {
-        LogEntry {
+    /// Helper to create a log item with a given seq number.
+    fn item(seq: u64) -> LogItem {
+        LogItem {
             seq,
             timestamp: SystemTime::now(),
-            level: LogLevel::Info,
             source: LogSource::Host,
-            message: format!("msg-{seq}"),
-            metadata: vec![],
-            span_id: None,
-            span: None,
+            kind: LogItemKind::Message {
+                level: LogLevel::Info,
+                message: format!("msg-{seq}"),
+                metadata: vec![],
+                span_id: None,
+            },
         }
     }
 
@@ -162,8 +163,8 @@ mod tests {
         let mut storage = RingBufferStorage::new(5);
         assert!(storage.is_empty());
 
-        storage.push(entry(1));
-        storage.push(entry(2));
+        storage.push(item(1));
+        storage.push(item(2));
         assert_eq!(storage.len(), 2);
         assert_eq!(storage.total_pushed(), 2);
     }
@@ -172,13 +173,13 @@ mod tests {
     fn eviction_at_capacity() {
         let mut storage = RingBufferStorage::new(3);
 
-        storage.push(entry(1));
-        storage.push(entry(2));
-        storage.push(entry(3));
+        storage.push(item(1));
+        storage.push(item(2));
+        storage.push(item(3));
         assert_eq!(storage.len(), 3);
 
-        // Pushing a 4th entry evicts the oldest (seq=1).
-        storage.push(entry(4));
+        // Pushing a 4th item evicts the oldest (seq=1).
+        storage.push(item(4));
         assert_eq!(storage.len(), 3);
         assert_eq!(storage.total_pushed(), 4);
 
@@ -191,10 +192,10 @@ mod tests {
     fn entries_after_basic() {
         let mut storage = RingBufferStorage::new(10);
         for i in 1..=5 {
-            storage.push(entry(i));
+            storage.push(item(i));
         }
 
-        // Everything after seq 0 — should return all entries.
+        // Everything after seq 0 — should return all items.
         let result = storage.entries_after(0, 100);
         assert_eq!(result.len(), 5);
 
@@ -212,7 +213,7 @@ mod tests {
     fn entries_after_with_limit() {
         let mut storage = RingBufferStorage::new(10);
         for i in 1..=5 {
-            storage.push(entry(i));
+            storage.push(item(i));
         }
 
         let result = storage.entries_after(0, 2);
@@ -224,17 +225,17 @@ mod tests {
     fn entries_after_with_eviction() {
         let mut storage = RingBufferStorage::new(3);
         for i in 1..=5 {
-            storage.push(entry(i));
+            storage.push(item(i));
         }
 
-        // Buffer contains [3, 4, 5]. Asking for entries after
+        // Buffer contains [3, 4, 5]. Asking for items after
         // seq 1 (which was evicted) should return everything
         // still in the buffer.
         let result = storage.entries_after(1, 100);
         let seqs: Vec<u64> = result.iter().map(|e| e.seq).collect();
         assert_eq!(seqs, vec![3, 4, 5]);
 
-        // Asking for entries after seq 3 should return [4, 5].
+        // Asking for items after seq 3 should return [4, 5].
         let result = storage.entries_after(3, 100);
         let seqs: Vec<u64> = result.iter().map(|e| e.seq).collect();
         assert_eq!(seqs, vec![4, 5]);
@@ -244,7 +245,7 @@ mod tests {
     fn tail_returns_most_recent() {
         let mut storage = RingBufferStorage::new(10);
         for i in 1..=5 {
-            storage.push(entry(i));
+            storage.push(item(i));
         }
 
         let result = storage.tail(3);
@@ -255,8 +256,8 @@ mod tests {
     #[test]
     fn tail_more_than_available() {
         let mut storage = RingBufferStorage::new(10);
-        storage.push(entry(1));
-        storage.push(entry(2));
+        storage.push(item(1));
+        storage.push(item(2));
 
         let result = storage.tail(100);
         assert_eq!(result.len(), 2);
@@ -266,7 +267,7 @@ mod tests {
     fn clear_empties_buffer() {
         let mut storage = RingBufferStorage::new(10);
         for i in 1..=5 {
-            storage.push(entry(i));
+            storage.push(item(i));
         }
 
         storage.clear();

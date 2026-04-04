@@ -3,11 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Virtualized Log List
+// Virtualized Log List (Flat View)
 //
 // Uses @tanstack/react-virtual for efficient rendering of
-// up to 10k log entries. Supports auto-scroll to bottom
+// up to 10k log items. Supports auto-scroll to bottom
 // with a "scroll to bottom" button when the user scrolls up.
+//
+// Each item receives a depth value from the spanDepthMap for
+// indentation of nested spans and their log messages.
 // =========================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,27 +20,41 @@ import {
   ExclamationTriangleIcon,
   ArrowDownIcon,
 } from "@heroicons/react/24/outline";
-import { LogEntryRow } from "./LogEntryRow";
-import type { LogEntry } from "../types";
+import { LogItemRow } from "./LogItemRow";
+import type { LogItem } from "../types";
 
 // Distance from bottom (in px) within which auto-scroll
 // remains active.
 const AUTO_SCROLL_THRESHOLD = 50;
 
 interface LogListProps {
-  entries: LogEntry[];
+  items: LogItem[];
   droppedCount: number;
+  spanDepthMap: Map<number, number>;
+  completedSpanIds: Set<number>;
 }
 
-export function LogList({ entries, droppedCount }: LogListProps) {
+/** Compute the nesting depth for a log item using the span depth map. */
+function getItemDepth(item: LogItem, depthMap: Map<number, number>): number {
+  const { kind } = item;
+  if (kind.type === "spanStart" || kind.type === "spanEnd") {
+    return depthMap.get(kind.spanId) ?? 0;
+  }
+  if (kind.type === "message" && kind.spanId != null) {
+    return depthMap.get(kind.spanId) ?? 0;
+  }
+  return 0;
+}
+
+export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }: LogListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [expandedSeqs, setExpandedSeqs] = useState<Set<number>>(() => new Set());
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(0);
-  const prevLengthRef = useRef(entries.length);
+  const prevLengthRef = useRef(items.length);
 
   const virtualizer = useVirtualizer({
-    count: entries.length,
+    count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 28,
     overscan: 20,
@@ -56,28 +73,28 @@ export function LogList({ entries, droppedCount }: LogListProps) {
     if (atBottom) setNewSinceScroll(0);
   }, []);
 
-  // Auto-scroll when new entries arrive and we're at the bottom.
+  // Auto-scroll when new items arrive and we're at the bottom.
   useEffect(() => {
-    const newCount = entries.length - prevLengthRef.current;
-    prevLengthRef.current = entries.length;
+    const newCount = items.length - prevLengthRef.current;
+    prevLengthRef.current = items.length;
 
     if (newCount <= 0) return;
 
     if (isAtBottom) {
-      virtualizer.scrollToIndex(entries.length - 1, { align: "end" });
+      virtualizer.scrollToIndex(items.length - 1, { align: "end" });
     } else {
       setNewSinceScroll((c) => c + newCount);
     }
-  }, [entries.length, isAtBottom, virtualizer]);
+  }, [items.length, isAtBottom, virtualizer]);
 
   const scrollToBottom = useCallback(() => {
-    virtualizer.scrollToIndex(entries.length - 1, { align: "end" });
+    virtualizer.scrollToIndex(items.length - 1, { align: "end" });
     setIsAtBottom(true);
     setNewSinceScroll(0);
-  }, [entries.length, virtualizer]);
+  }, [items.length, virtualizer]);
 
   // Empty state.
-  if (entries.length === 0 && droppedCount === 0) {
+  if (items.length === 0 && droppedCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
         <CommandLineIcon className="w-10 h-10 text-text-muted/50" />
@@ -112,35 +129,40 @@ export function LogList({ entries, droppedCount }: LogListProps) {
             position: "relative",
           }}
         >
-          {virtualizer.getVirtualItems().map((virtualItem) => (
-            <div
-              key={virtualItem.key}
-              ref={virtualizer.measureElement}
-              data-index={virtualItem.index}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-            >
-              <LogEntryRow
-                entry={entries[virtualItem.index]}
-                index={virtualItem.index}
-                expanded={expandedSeqs.has(entries[virtualItem.index].seq)}
-                onToggleExpand={() => {
-                  const seq = entries[virtualItem.index].seq;
-                  setExpandedSeqs((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(seq)) next.delete(seq);
-                    else next.add(seq);
-                    return next;
-                  });
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const logItem = items[virtualItem.index];
+            return (
+              <div
+                key={virtualItem.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualItem.start}px)`,
                 }}
-              />
-            </div>
-          ))}
+              >
+                <LogItemRow
+                  item={logItem}
+                  index={virtualItem.index}
+                  expanded={expandedSeqs.has(logItem.seq)}
+                  onToggleExpand={() => {
+                    const seq = logItem.seq;
+                    setExpandedSeqs((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(seq)) next.delete(seq);
+                      else next.add(seq);
+                      return next;
+                    });
+                  }}
+                  depth={getItemDepth(logItem, spanDepthMap)}
+                  completedSpanIds={completedSpanIds}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

@@ -6,7 +6,7 @@
 // Plugin Color Palette
 //
 // 16 deterministic colors assigned by hashing the plugin ID.
-// Shared between LogEntryRow (source dot) and ConsoleToolbar
+// Shared between LogItemRow (source dot) and ConsoleToolbar
 // (source filter chips).
 // =========================================================
 
