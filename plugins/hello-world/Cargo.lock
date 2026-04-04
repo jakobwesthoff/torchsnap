@@ -46,6 +46,7 @@ name = "hello-world-plugin"
 version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
+ "serde_json",
  "wit-bindgen",
 ]
 

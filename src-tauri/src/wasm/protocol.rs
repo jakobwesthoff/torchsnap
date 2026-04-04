@@ -584,4 +584,174 @@ mod tests {
             "application/octet-stream"
         );
     }
+
+    // =====================================================
+    // Integration tests with real DirectorySource
+    // =====================================================
+
+    use crate::wasm::source::DirectorySource;
+
+    const FRONTEND_MANIFEST: &str = r#"
+        [plugin]
+        id = "frontend-test"
+        name = "Frontend Test"
+        description = "Test plugin with frontend assets"
+        version = "0.1.0"
+        wasm = "test.wasm"
+        icon = "heroicons:beaker"
+        prefixes = ["!"]
+
+        [frontend]
+        launcher-bundle = "frontend/launcher.js"
+        launcher-css = "frontend/launcher.css"
+
+        [frontend.views]
+        echo = "Echo"
+    "#;
+
+    /// Create a temporary plugin directory with manifest and
+    /// frontend assets, register it via DirectorySource.
+    fn directory_registry(
+        manifest: &str,
+        files: &[(&str, &[u8])],
+    ) -> (tempfile::TempDir, PluginSourceRegistry) {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let root = dir.path();
+
+        std::fs::write(root.join("manifest.toml"), manifest)
+            .expect("write manifest");
+
+        for (path, contents) in files {
+            let full = root.join(path);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            std::fs::write(&full, contents).expect("write file");
+        }
+
+        let source = Arc::new(
+            DirectorySource::open(root).expect("open directory source"),
+        );
+        let plugin_id = source.manifest().plugin.id.to_string();
+
+        let registry = new_registry();
+        registry
+            .write()
+            .expect("lock")
+            .insert(plugin_id, source);
+
+        (dir, registry)
+    }
+
+    #[test]
+    fn directory_source_serves_js() {
+        let js = b"export function Echo() { return null; }";
+        let (_dir, registry) = directory_registry(
+            FRONTEND_MANIFEST,
+            &[
+                ("test.wasm", b"\0asm"),
+                ("frontend/launcher.js", js),
+                ("frontend/launcher.css", b".echo {}"),
+            ],
+        );
+
+        let request = make_request("/frontend-test/frontend/launcher.js");
+        let response = handle_request(&registry, &request);
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "text/javascript",
+        );
+        assert_eq!(response.body(), js);
+    }
+
+    #[test]
+    fn directory_source_serves_css() {
+        let css = b".echo-view { padding: 1rem; }";
+        let (_dir, registry) = directory_registry(
+            FRONTEND_MANIFEST,
+            &[
+                ("test.wasm", b"\0asm"),
+                ("frontend/launcher.js", b"//js"),
+                ("frontend/launcher.css", css),
+            ],
+        );
+
+        let request = make_request("/frontend-test/frontend/launcher.css");
+        let response = handle_request(&registry, &request);
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "text/css",
+        );
+        assert_eq!(response.body(), css);
+    }
+
+    #[test]
+    fn directory_source_rejects_traversal() {
+        let (_dir, registry) = directory_registry(
+            FRONTEND_MANIFEST,
+            &[
+                ("test.wasm", b"\0asm"),
+                ("frontend/launcher.js", b"//js"),
+                ("frontend/launcher.css", b"/*css*/"),
+            ],
+        );
+
+        let request = make_request("/frontend-test/../../../etc/passwd");
+        let response = handle_request(&registry, &request);
+
+        assert!(
+            response.status() == 400 || response.status() == 404,
+            "expected 4xx, got {}",
+            response.status()
+        );
+    }
+
+    #[test]
+    fn directory_source_missing_file_404() {
+        let (_dir, registry) = directory_registry(
+            FRONTEND_MANIFEST,
+            &[
+                ("test.wasm", b"\0asm"),
+                ("frontend/launcher.js", b"//js"),
+                ("frontend/launcher.css", b"/*css*/"),
+            ],
+        );
+
+        let request = make_request("/frontend-test/frontend/nonexistent.js");
+        let response = handle_request(&registry, &request);
+        assert_eq!(response.status(), 404);
+    }
+
+    #[test]
+    fn hello_world_manifest_with_frontend_parses() {
+        let toml = r#"
+            [plugin]
+            id = "hello-world"
+            name = "Hello World"
+            description = "Test plugin"
+            version = "0.1.0"
+            wasm = "hello_world_plugin.wasm"
+            icon = "heroicons:hand-raised"
+            prefixes = ["!"]
+
+            [frontend]
+            launcher-bundle = "frontend/launcher.js"
+            launcher-css = "frontend/launcher.css"
+
+            [frontend.views]
+            echo = "Echo"
+        "#;
+
+        let m = Manifest::parse(toml).expect("should parse");
+        assert_eq!(m.plugin.prefixes, vec!["!"]);
+
+        let fe = m.frontend.as_ref().expect("frontend");
+        assert_eq!(fe.launcher_bundle.as_deref(), Some("frontend/launcher.js"));
+        assert_eq!(fe.launcher_css.as_deref(), Some("frontend/launcher.css"));
+        assert_eq!(fe.views.get("echo").map(String::as_str), Some("Echo"));
+    }
 }
