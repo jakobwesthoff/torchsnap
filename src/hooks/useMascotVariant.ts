@@ -52,8 +52,10 @@ export function useMascotVariant(): { variant: string } {
     };
   }, [randomMascots, showNsfwMascots]);
 
-  // Keep the displayed variant in sync when settings change while the
-  // launcher is visible (e.g. user toggles a setting in the settings window).
+  // ESLINT: Keep the displayed variant in sync when settings change while
+  // the launcher is visible (e.g. user toggles a setting in the settings
+  // window). Writing during render is safe — the only reader is the
+  // useEffect below, which runs after commit.
   const variantRef = useRef(variant);
   // eslint-disable-next-line react-hooks/refs
   variantRef.current = variant;
