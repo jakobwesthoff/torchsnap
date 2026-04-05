@@ -19,7 +19,7 @@
 // via AST rewriting prevents integer division truncation.
 // =========================================================
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -33,7 +33,6 @@ use crate::search::types::{
     Action, ActionId, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
 use crate::settings::SettingsInit;
-use crate::settings_notifier::SettingsWatch;
 use crate::storage::{SqlStorage, SqlValue};
 use crate::unicode::Utf16Positions;
 
@@ -366,16 +365,16 @@ fn query_history(db: &SqlStorage, filter: &str) -> Vec<ScoredEntry> {
 
 /// Run the retention cleanup loop. Deletes history entries
 /// older than `retentionDays`. Wakes on condvar signal (for
-/// shutdown) or after the cleanup interval.
+/// shutdown or settings change) or after the cleanup interval.
 fn retention_cleanup_loop(
     db: Arc<SqlStorage>,
-    retention_days_watch: SettingsWatch<u32>,
+    retention_days: Arc<AtomicU32>,
     condvar: Arc<Condvar>,
     shutdown: Arc<Mutex<bool>>,
 ) {
     loop {
-        // Read the current retention setting.
-        let days = retention_days_watch.get().max(1);
+        // Read the current retention setting from the shared atomic.
+        let days = retention_days.load(Ordering::Relaxed).max(1);
 
         let _ = db.execute(
             "DELETE FROM calc_history \
@@ -400,14 +399,23 @@ fn retention_cleanup_loop(
 // =========================================================
 
 pub struct CalculatorPlugin {
-    enabled: Arc<AtomicBool>,
-    heuristic_enabled: Arc<AtomicBool>,
-    history_enabled: Arc<AtomicBool>,
+    /// Whether heuristic (non-prefix) math detection is active.
+    /// Updated by the host via `setting_changed("heuristicEnabled", ...)`.
+    heuristic_enabled: AtomicBool,
 
-    /// SQLite database for history. Initialized in `setup()`.
+    /// Whether calculation history tracking is active.
+    /// Updated by the host via `setting_changed("historyEnabled", ...)`.
+    history_enabled: AtomicBool,
+
+    /// Current retention days for history cleanup. Updated by the
+    /// host via `setting_changed("retentionDays", ...)`.
+    retention_days: Arc<AtomicU32>,
+
+    /// SQLite database for history. Initialized in `enable()`.
     db: Mutex<Option<Arc<SqlStorage>>>,
 
-    /// Condvar for waking the retention cleanup thread on shutdown.
+    /// Condvar for waking the retention cleanup thread on shutdown
+    /// or settings changes.
     retention_condvar: Arc<Condvar>,
 
     /// Shared shutdown flag for the retention thread.
@@ -421,9 +429,9 @@ pub struct CalculatorPlugin {
 impl CalculatorPlugin {
     pub fn new() -> Self {
         Self {
-            enabled: Arc::new(AtomicBool::new(true)),
-            heuristic_enabled: Arc::new(AtomicBool::new(true)),
-            history_enabled: Arc::new(AtomicBool::new(true)),
+            heuristic_enabled: AtomicBool::new(true),
+            history_enabled: AtomicBool::new(true),
+            retention_days: Arc::new(AtomicU32::new(30)),
             db: Mutex::new(None),
             retention_condvar: Arc::new(Condvar::new()),
             retention_shutdown: Arc::new(Mutex::new(false)),
@@ -444,27 +452,18 @@ impl Plugin for CalculatorPlugin {
         PLUGIN_ID
     }
 
-    fn is_enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
-    }
-
-    fn enabled_settings_key(&self) -> Option<&'static str> {
-        Some("enabled")
-    }
-
     fn search_prefixes(&self) -> &[String] {
         &self.prefixes
     }
 
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
-            .ensure("enabled", true)
             .ensure("heuristicEnabled", true)
             .ensure("historyEnabled", true)
             .ensure("retentionDays", 30)
     }
 
-    fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
+    fn enable(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
         // ----- Initialize history database -----
         let data_dir = app
             .path()
@@ -480,9 +479,6 @@ impl Plugin for CalculatorPlugin {
         *self.db.lock().expect("calculator db mutex not poisoned") = Some(Arc::clone(&db));
 
         // ----- Read initial settings -----
-        let initial_enabled: bool = ctx.settings.get("enabled").unwrap_or(true);
-        self.enabled.store(initial_enabled, Ordering::Relaxed);
-
         let initial_heuristic: bool = ctx.settings.get("heuristicEnabled").unwrap_or(true);
         self.heuristic_enabled
             .store(initial_heuristic, Ordering::Relaxed);
@@ -491,40 +487,62 @@ impl Plugin for CalculatorPlugin {
         self.history_enabled
             .store(initial_history, Ordering::Relaxed);
 
-        // ----- Settings watch threads -----
-        for (key, flag) in [
-            ("enabled", Arc::clone(&self.enabled)),
-            ("heuristicEnabled", Arc::clone(&self.heuristic_enabled)),
-            ("historyEnabled", Arc::clone(&self.history_enabled)),
-        ] {
-            let mut watch = ctx.notifier.watch::<bool>(key);
-            std::thread::spawn(move || {
-                while let Some(val) = watch.blocking_changed() {
-                    flag.store(val, Ordering::Relaxed);
-                }
-            });
-        }
+        let initial_retention: u32 = ctx.settings.get("retentionDays").unwrap_or(30);
+        self.retention_days
+            .store(initial_retention, Ordering::Relaxed);
+
+        // Reset the shutdown flag in case this is a re-enable.
+        *self
+            .retention_shutdown
+            .lock()
+            .expect("shutdown mutex not poisoned") = false;
 
         // ----- Retention cleanup thread -----
         {
-            let retention_days_watch = ctx.notifier.watch::<u32>("retentionDays");
+            let retention_days = Arc::clone(&self.retention_days);
             let condvar = Arc::clone(&self.retention_condvar);
             let shutdown = Arc::clone(&self.retention_shutdown);
             let db = Arc::clone(&db);
 
             std::thread::spawn(move || {
-                retention_cleanup_loop(db, retention_days_watch, condvar, shutdown);
+                retention_cleanup_loop(db, retention_days, condvar, shutdown);
             });
         }
     }
 
-    fn teardown(&self) {
+    fn disable(&self) {
         // Signal the retention thread to exit.
         *self
             .retention_shutdown
             .lock()
             .expect("shutdown mutex not poisoned") = true;
         self.retention_condvar.notify_all();
+
+        // Drop the database handle.
+        *self.db.lock().expect("calculator db mutex not poisoned") = None;
+    }
+
+    fn setting_changed(&self, key: &str, value: serde_json::Value) {
+        match key {
+            "heuristicEnabled" => {
+                if let Some(v) = value.as_bool() {
+                    self.heuristic_enabled.store(v, Ordering::Relaxed);
+                }
+            }
+            "historyEnabled" => {
+                if let Some(v) = value.as_bool() {
+                    self.history_enabled.store(v, Ordering::Relaxed);
+                }
+            }
+            "retentionDays" => {
+                if let Some(days) = value.as_u64() {
+                    self.retention_days.store(days as u32, Ordering::Relaxed);
+                    // Wake the retention thread so it picks up the new value.
+                    self.retention_condvar.notify_all();
+                }
+            }
+            _ => {}
+        }
     }
 
     fn search(
