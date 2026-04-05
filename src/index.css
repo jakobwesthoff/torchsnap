@@ -4,18 +4,6 @@
 
 @import "tailwindcss";
 
-/* =========================================================
- * Theme Tokens
- *
- * Semantic CSS custom properties for consistent theming
- * across the launcher and settings windows. The dark variant
- * is driven by the `data-theme` attribute on <html>.
- *
- * Components reference these tokens (e.g. `bg-surface`,
- * `text-text-primary`) instead of raw palette colors,
- * enabling theme-wide changes from a single location.
- * ========================================================= */
-
 /* Inter Variable Font — © The Inter Project Authors
  * Licensed under the SIL Open Font License 1.1
  * https://github.com/rsms/inter */
@@ -27,80 +15,7 @@
   font-display: swap;
 }
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
-@theme {
-  --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-
-  /* --- Text ------------------------------------------------ */
-  --color-text-primary: var(--color-gray-800);
-  --color-text-secondary: var(--color-gray-600);
-  --color-text-tertiary: var(--color-gray-500);
-  --color-text-muted: var(--color-gray-400);
-  --color-text-label: var(--color-gray-700);
-
-  /* --- Surfaces -------------------------------------------- */
-  --color-surface: var(--color-white);
-  --color-surface-inset: var(--color-gray-50);
-  --color-surface-hover: var(--color-gray-50);
-  --color-surface-active: var(--color-gray-100);
-
-  /* --- Borders --------------------------------------------- */
-  --color-border: var(--color-gray-200);
-  --color-border-input: var(--color-gray-300);
-  --color-border-divider: var(--color-gray-100);
-  --color-border-hover: var(--color-gray-300);
-
-  /* --- Accent ---------------------------------------------- */
-  --color-accent: var(--color-orange-500);
-  --color-accent-hover: var(--color-orange-600);
-  --color-accent-muted: var(--color-orange-400);
-
-  /* --- Selection ------------------------------------------- */
-  --color-selection: color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-
-/* =========================================================
- * Dark Mode Token Overrides
- *
- * Near-black background with white-at-opacity text and
- * translucent white-overlay surfaces.
- * ========================================================= */
-[data-theme="dark"] {
-  color-scheme: dark;
-
-  /* --- Text ---------------------------------------------- */
-  --color-text-primary: rgb(255 255 255);
-  --color-text-secondary: rgb(255 255 255 / 0.7);
-  --color-text-label: rgb(255 255 255 / 0.8);
-  --color-text-tertiary: rgb(255 255 255 / 0.5);
-  --color-text-muted: rgb(255 255 255 / 0.4);
-
-  /* --- Surfaces ------------------------------------------ */
-  --color-surface: #1c1c1e;
-  --color-surface-inset: #2c2c2e;
-  --color-surface-hover: #2a2a2c;
-  --color-surface-active: #3a3a3c;
-
-  /* --- Borders ------------------------------------------- */
-  --color-border: #3a3a3c;
-  --color-border-input: #48484a;
-  --color-border-divider: #2c2c2e;
-  --color-border-hover: #545456;
-
-  /* --- Accent tints -------------------------------------- */
-  --color-accent-muted: var(--color-orange-400);
-
-  /* --- Selection ---------------------------------------- */
-  --color-selection: #2a2a2c;
-
-  /* --- Placeholder fix ----------------------------------- */
-  & ::placeholder {
-    color: #6a6c75;
-  }
-}
+@import "../plugin-sdk/theme.css";
 
 /* =========================================================
  * Base Styles

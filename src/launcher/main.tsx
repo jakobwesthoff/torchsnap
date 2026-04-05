@@ -30,7 +30,7 @@ async function main() {
   // This ensures dynamic import() factories for WASM plugins are
   // set up and included in the preload batch.
   const wasmPlugins = await command("wasm_plugins");
-  registerAllWasmPlugins(wasmPlugins);
+  registerAllWasmPlugins(wasmPlugins, "launcher");
 
   preloadLauncherComponents();
 

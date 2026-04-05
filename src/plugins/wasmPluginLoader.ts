@@ -28,10 +28,14 @@ import type { PluginViewProps, InlineViewProps } from "./types";
 // WASM Plugin Registration
 // =========================================================
 
+export type WebviewContext = "launcher" | "settings";
+
 /**
  * Register a single WASM plugin based on its manifest data.
+ * The `webview` parameter controls which CSS bundle is injected —
+ * only the CSS relevant to the current webview is loaded.
  */
-export function registerWasmPlugin(manifest: WasmPluginManifest): void {
+export function registerWasmPlugin(manifest: WasmPluginManifest, webview: WebviewContext): void {
   const pluginId = manifest.plugin.id;
   const baseUrl = `torchsnap-plugin://localhost/${pluginId}`;
 
@@ -94,10 +98,13 @@ export function registerWasmPlugin(manifest: WasmPluginManifest): void {
       );
     }
 
-    // Inject scoped CSS if the plugin declares a launcher CSS file.
+    // Inject scoped CSS for the current webview only.
     // Fire-and-forget — CSS loading should not block registration.
-    if (frontend.launcherCss) {
+    if (webview === "launcher" && frontend.launcherCss) {
       injectPluginCss(pluginId, frontend.launcherCss);
+    }
+    if (webview === "settings" && frontend.settingsCss) {
+      injectPluginCss(pluginId, frontend.settingsCss);
     }
   }
 
@@ -108,8 +115,11 @@ export function registerWasmPlugin(manifest: WasmPluginManifest): void {
  * Register all WASM plugins from the backend's manifest data.
  * Called once per webview at startup.
  */
-export function registerAllWasmPlugins(manifests: WasmPluginManifest[]): void {
+export function registerAllWasmPlugins(
+  manifests: WasmPluginManifest[],
+  webview: WebviewContext,
+): void {
   for (const manifest of manifests) {
-    registerWasmPlugin(manifest);
+    registerWasmPlugin(manifest, webview);
   }
 }
