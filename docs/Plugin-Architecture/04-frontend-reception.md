@@ -99,17 +99,19 @@ does the right thing (nothing) but is not type-checked.
 
 `src/plugins/registry.ts`
 
-Static `PLUGIN_REGISTRY` maps plugin IDs to their component bundles:
+Dynamic `registry` map associates plugin IDs with their component bundles:
 
 ```typescript
 interface PluginRegistryEntry {
   label: string;
-  settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
-  views?: Record<string, LazyComponent<PluginViewProps>>;
-  inlineViews?: Record<string, LazyComponent<InlineViewProps>>;
-  settings?: LazyComponent<PluginSettingsProps>;
+  description?: string;
+  icon?: string;   // e.g. "heroicons:clipboard-document-list"
+  views?: Record<string, ComponentType<PluginViewProps>>;
+  inlineViews?: Record<string, ComponentType<InlineViewProps>>;
+  settings?: ComponentType<PluginSettingsProps>;
 }
 ```
 
-All view components are `React.lazy()`. The `PluginViewRef.view` field from the
+View and settings components are lazy-loaded via `launcherComponent()` /
+`settingsComponent()` wrappers. The `PluginViewRef.view` field from the
 backend is the key into `views` / `inlineViews`.

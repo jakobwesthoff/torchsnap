@@ -65,7 +65,7 @@ pub struct BangsPlugin {
     /// `false`.
     ready: AtomicBool,
 
-    /// Shared plugin state, initialized in `setup()`.
+    /// Shared plugin state, initialized in `enable()`.
     state: Mutex<Option<Arc<BangState>>>,
 
     // HACK/FIXME: Stores the resolved URL from the most recent search()

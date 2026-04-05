@@ -32,7 +32,6 @@ pub mod system_preferences;
 use crate::frecency::PluginFrecency;
 use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
 use crate::settings::{PluginSettings, SettingsInit};
-use crate::settings_notifier::PluginSettingsNotifier;
 
 // =========================================================
 // PluginShortcut — global shortcut declaration
@@ -61,16 +60,15 @@ pub struct PluginShortcut {
 }
 
 // =========================================================
-// PluginContext — bundled runtime context for plugin setup
+// PluginContext — bundled runtime context for plugin activation
 // =========================================================
 
-/// Runtime context passed to plugins during `setup()`.
+/// Runtime context passed to plugins during `enable()`.
 ///
-/// Bundles scoped settings access and change notification so
-/// plugins don't need an ever-growing parameter list.
+/// Bundles scoped settings access so plugins don't need an
+/// ever-growing parameter list.
 pub struct PluginContext {
     pub settings: PluginSettings,
-    pub notifier: PluginSettingsNotifier,
     pub frecency: PluginFrecency,
 }
 

@@ -294,7 +294,7 @@ impl Plugin for EmojiPickerPlugin {
         let entries = self.entries.read().expect("emoji entries read lock");
 
         if entries.is_empty() {
-            // setup() hasn't completed yet.
+            // enable() hasn't completed yet.
             return Some(PluginResponse::CustomUI {
                 view: "picker".into(),
                 data: None,

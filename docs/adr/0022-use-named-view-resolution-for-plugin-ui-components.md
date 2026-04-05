@@ -44,10 +44,11 @@ with maps keyed by view name:
 ```ts
 interface PluginRegistryEntry {
     label: string;
-    settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
-    views?: Record<string, LazyComponent<PluginViewProps>>;
-    inlineViews?: Record<string, LazyComponent<InlineViewProps>>;
-    settings?: LazyComponent<PluginSettingsProps>;
+    description?: string;
+    icon?: string;   // e.g. "heroicons:clipboard-document-list"
+    views?: Record<string, ComponentType<PluginViewProps>>;
+    inlineViews?: Record<string, ComponentType<InlineViewProps>>;
+    settings?: ComponentType<PluginSettingsProps>;
 }
 ```
 

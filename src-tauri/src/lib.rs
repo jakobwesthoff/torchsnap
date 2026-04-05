@@ -520,8 +520,8 @@ pub fn run() {
             // Plugin host
             //
             // Central authority for plugin lifecycle: registration,
-            // settings init, parallel setup, shortcut management,
-            // search routing, and teardown.
+            // settings init, parallel enable, shortcut management,
+            // search routing, and shutdown.
             // =========================================================
             let mut host = plugin_host::PluginHost::new(
                 Arc::clone(&store),
@@ -662,8 +662,8 @@ pub fn run() {
             // Settings-changed listener
             //
             // Propagates store changes to:
-            // 1. Watch channels (SettingsNotifier) for legacy per-plugin
-            //    SettingsWatch subscribers
+            // 1. Watch channels (SettingsNotifier) for non-plugin
+            //    SettingsWatch subscribers (FrecencyStore, control, etc.)
             // 2. Host-managed plugin lifecycle (enable/disable) and
             //    settings dispatch (setting_changed) via
             //    CoalescingDispatcher
@@ -752,7 +752,7 @@ pub fn run() {
     // so the menubar app keeps running. The settings window is allowed to
     // close normally — it will be recreated on demand next time the user
     // opens it, keeping RAM usage low while it is not visible.
-    // On exit, teardown all plugins.
+    // On exit, disable all plugins.
     app.run(|app, event| match &event {
         RunEvent::WindowEvent {
             label,

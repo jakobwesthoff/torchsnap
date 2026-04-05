@@ -19,10 +19,10 @@ import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 // =========================================================
 
 const BUILT_IN_SECTIONS: SidebarItem[] = [
-  { id: "general", label: "General", settingsIcon: "heroicons:cog-6-tooth" },
-  { id: "appearance", label: "Appearance", settingsIcon: "heroicons:swatch" },
-  { id: "frecency", label: "Frecency", settingsIcon: "heroicons:chart-bar" },
-  { id: "website-metadata", label: "Website Metadata", settingsIcon: "heroicons:globe-alt" },
+  { id: "general", label: "General", icon: "heroicons:cog-6-tooth" },
+  { id: "appearance", label: "Appearance", icon: "heroicons:swatch" },
+  { id: "frecency", label: "Frecency", icon: "heroicons:chart-bar" },
+  { id: "website-metadata", label: "Website Metadata", icon: "heroicons:globe-alt" },
 ];
 
 // =========================================================

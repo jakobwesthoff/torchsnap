@@ -44,7 +44,7 @@ use crate::search::types::{
     ScoredEntry, SearchMessage, SourcedEntry,
 };
 use crate::settings::{PluginSettings, SettingsInit};
-use crate::settings_notifier::{PluginSettingsNotifier, SettingsNotifier};
+use crate::settings_notifier::SettingsNotifier;
 use crate::unicode::Utf16Positions;
 
 // =========================================================
@@ -253,11 +253,6 @@ impl PluginHost {
             let h = handle.clone();
             let ctx = PluginContext {
                 settings: PluginSettings::new(Arc::clone(&self.store), p.id()),
-                notifier: PluginSettingsNotifier::new(
-                    Arc::clone(&self.notifier),
-                    Arc::clone(&self.store),
-                    p.id(),
-                ),
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             runtime.spawn_blocking(move || {
@@ -749,7 +744,6 @@ impl PluginHost {
 
             let plugin = Arc::clone(&slot.plugin);
             let store = Arc::clone(&self.store);
-            let notifier = Arc::clone(&self.notifier);
             let frecency = Arc::clone(&self.frecency);
             let enabled_flag = &slot.enabled;
             let app = app.clone();
@@ -766,11 +760,6 @@ impl PluginHost {
                 if new_enabled && !was_enabled {
                     let ctx = PluginContext {
                         settings: PluginSettings::new(Arc::clone(&store), id),
-                        notifier: PluginSettingsNotifier::new(
-                            Arc::clone(&notifier),
-                            Arc::clone(&store),
-                            id,
-                        ),
                         frecency: PluginFrecency::new(Arc::clone(&frecency), id),
                     };
                     plugin.enable(&app, &ctx);

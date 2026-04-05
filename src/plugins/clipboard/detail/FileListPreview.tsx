@@ -4,7 +4,7 @@
 
 import type { RefObject } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { DocumentDuplicateIcon } from "@heroicons/react/24/outline";
+import { Icon } from "../../../components/Icon";
 import type { ClipboardHistoryEntry } from "../types";
 
 /**
@@ -68,7 +68,7 @@ export function FileListPreview({
             draggable={false}
           />
         ) : (
-          <DocumentDuplicateIcon className="h-16 w-16 text-text-muted" />
+          <Icon icon="heroicons:document-duplicate" className="h-16 w-16 text-text-muted" />
         )}
       </div>
 

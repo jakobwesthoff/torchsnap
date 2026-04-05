@@ -28,10 +28,9 @@ export interface PluginRegistryEntry {
   label: string;
   /** Short description shown in the settings section header. */
   description?: string;
-  /** String icon identifier (e.g. "heroicons:clipboard-document-list"). */
+  /** String icon identifier (e.g. "heroicons:clipboard-document-list").
+   * Used for both the settings section header and the sidebar. */
   icon?: string;
-  /** Icon shown next to the label in the settings sidebar. */
-  settingsIcon?: string;
   /** Named view components for the launcher result area (CustomUI). */
   views?: Record<string, ComponentType<PluginViewProps>>;
   /** Named inline view components rendered above the result list (InlineUI). */
@@ -75,21 +74,18 @@ registerPlugin("app-launcher", {
   label: "App Launcher",
   description: "Search and launch installed applications",
   icon: "heroicons:magnifying-glass",
-  settingsIcon: "heroicons:magnifying-glass",
 });
 
 registerPlugin("system-preferences", {
   label: "System Settings",
   description: "Search and open macOS System Settings panes",
   icon: "heroicons:cog-8-tooth",
-  settingsIcon: "heroicons:cog-8-tooth",
 });
 
 registerPlugin("emoji-picker", {
   label: "Emoji Picker",
   description: "Search and insert emoji characters",
   icon: "heroicons:face-smile",
-  settingsIcon: "heroicons:face-smile",
   views: {
     picker: launcherComponent(() => import("./emoji/EmojiGrid")),
   },
@@ -99,7 +95,6 @@ registerPlugin("clipboard-manager", {
   label: "Clipboard",
   description: "Clipboard history with search and paste",
   icon: "heroicons:clipboard-document-list",
-  settingsIcon: "heroicons:clipboard-document-list",
   views: {
     history: launcherComponent(() => import("./clipboard/ClipboardView")),
   },
@@ -110,7 +105,6 @@ registerPlugin("bangs", {
   label: "Bangs",
   description: "DuckDuckGo bang shortcuts for quick web searches",
   icon: "heroicons:arrow-top-right-on-square",
-  settingsIcon: "heroicons:arrow-top-right-on-square",
   settings: settingsComponent(() => import("./bangs/BangsSettings")),
 });
 
@@ -118,7 +112,6 @@ registerPlugin("calculator", {
   label: "Calculator",
   description: "Evaluate math expressions with history tracking",
   icon: "heroicons:calculator",
-  settingsIcon: "heroicons:calculator",
   views: {
     history: launcherComponent(() => import("./calculator/CalculatorView")),
   },
@@ -132,7 +125,6 @@ registerPlugin("open-url", {
   label: "Open URL",
   description: "Detect and open URLs typed in the search bar",
   icon: "heroicons:globe-alt",
-  settingsIcon: "heroicons:globe-alt",
 });
 
 // =========================================================
@@ -180,14 +172,12 @@ export function getPluginsWithSettings(): Array<{
   label: string;
   description?: string;
   icon?: string;
-  settingsIcon?: string;
 }> {
   const result: Array<{
     id: string;
     label: string;
     description?: string;
     icon?: string;
-    settingsIcon?: string;
   }> = [];
 
   for (const [id, entry] of registry) {
@@ -200,7 +190,6 @@ export function getPluginsWithSettings(): Array<{
         label: entry.label,
         description: entry.description,
         icon: entry.icon,
-        settingsIcon: entry.settingsIcon,
       });
     }
   }
