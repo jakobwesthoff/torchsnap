@@ -110,12 +110,10 @@ impl PluginSlot {
         }
     }
 
-    /// Whether this plugin is currently active. During the
-    /// migration period, this checks both the host-managed
-    /// `AtomicBool` AND the plugin's own `is_enabled()` — both
-    /// must agree for the plugin to be considered enabled.
+    /// Whether this plugin is currently active. The host owns
+    /// this flag — plugins never manage their own enabled state.
     fn is_active(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed) && self.plugin.is_enabled()
+        self.enabled.load(Ordering::Relaxed)
     }
 }
 
@@ -221,14 +219,11 @@ impl PluginHost {
             // Watch the host-managed enabled key for shortcut reactor.
             keys_to_watch.push(format!("enabled.{id}"));
 
-            // Legacy: also collect old-style watched keys from plugins
-            // that haven't migrated yet.
-            collect_watched_keys_into(
-                id,
-                slot.plugin.enabled_settings_key(),
-                &slot.plugin.shortcuts(),
-                &mut keys_to_watch,
-            );
+            // Watch shortcut keys so the reactor re-registers when
+            // a user changes a shortcut binding.
+            for s in slot.plugin.shortcuts() {
+                keys_to_watch.push(format!("plugins.{id}.{}", s.settings_key));
+            }
         }
         self.watched_keys.extend(keys_to_watch);
 
@@ -240,10 +235,7 @@ impl PluginHost {
         // -------------------------------------------------------
         // Phase 2: Parallel plugin startup (background)
         //
-        // For each plugin: call both legacy setup() and new
-        // enable() (during migration, both exist as no-ops for
-        // the path not yet used). Only enabled plugins get
-        // started.
+        // Call enable() on each plugin that is initially enabled.
         //
         // We obtain the runtime handle explicitly because this
         // method is called from Tauri's synchronous setup()
@@ -269,10 +261,6 @@ impl PluginHost {
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             runtime.spawn_blocking(move || {
-                // Call both legacy and new lifecycle methods.
-                // Plugins implement one or the other — the unused
-                // one is a default no-op.
-                p.setup(&h, &ctx);
                 p.enable(&h, &ctx);
             });
         }
@@ -725,11 +713,9 @@ impl PluginHost {
     // Shutdown
     // =========================================================
 
-    /// Disable all plugins during app exit. Calls both legacy
-    /// `teardown()` and new `disable()` on each plugin.
+    /// Disable all plugins during app exit.
     pub fn disable_all(&self) {
         for slot in &self.slots {
-            slot.plugin.teardown();
             slot.plugin.disable();
         }
     }
@@ -920,22 +906,6 @@ fn find_prefix_match<'a>(
 // Helpers
 // =========================================================
 
-/// Collect settings keys that the host should watch for a single
-/// plugin (enabled key + shortcut keys).
-fn collect_watched_keys_into(
-    plugin_id: &str,
-    enabled_key: Option<&str>,
-    shortcuts: &[PluginShortcut],
-    out: &mut Vec<String>,
-) {
-    if let Some(key) = enabled_key {
-        out.push(format!("plugins.{plugin_id}.{key}"));
-    }
-    for s in shortcuts {
-        out.push(format!("plugins.{plugin_id}.{}", s.settings_key));
-    }
-}
-
 /// Show the launcher and emit `activate-plugin-custom-ui` so the
 /// frontend switches to the plugin's view.
 fn show_launcher_with_plugin(
@@ -1028,10 +998,6 @@ mod tests {
     impl Plugin for MockPlugin {
         fn id(&self) -> &str {
             &self.id
-        }
-
-        fn is_enabled(&self) -> bool {
-            self.enabled
         }
 
         fn search_prefixes(&self) -> &[String] {

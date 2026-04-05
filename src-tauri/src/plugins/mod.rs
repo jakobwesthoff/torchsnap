@@ -115,43 +115,14 @@ pub struct PluginContext {
 /// Enable/disable may be called multiple times during the app's
 /// lifetime as the user toggles the plugin on and off.
 ///
-/// ## Legacy lifecycle (migration period)
-///
-/// The following methods are deprecated and will be removed once
-/// all plugins have migrated to `enable()`/`disable()`:
-/// - `setup()` — replaced by `enable()`
-/// - `teardown()` — replaced by `disable()`
-/// - `is_enabled()` — host manages this via `AtomicBool` per plugin
-/// - `enabled_settings_key()` — host watches `enabled.<id>` directly
 pub trait Plugin: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
     /// field in `SourcedEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
 
-    /// Whether the plugin is currently active.
-    ///
-    /// Plugins that support an enable/disable toggle override this
-    /// to reflect their current state. The host checks this before
-    /// including entries in search results, registering shortcuts,
-    /// and other gating decisions. The default is always enabled.
-    fn is_enabled(&self) -> bool {
-        true
-    }
-
-    /// Plugin-scoped settings key that controls whether this plugin
-    /// is enabled. Return `None` if the plugin has no user-facing
-    /// toggle and is always active.
-    ///
-    /// The host watches `plugins.<id>.<key>` reactively so it can
-    /// re-register shortcuts and update gating when the value
-    /// changes at runtime.
-    fn enabled_settings_key(&self) -> Option<&'static str> {
-        None
-    }
-
     /// Declare default settings for this plugin.
     ///
-    /// Called synchronously at startup *before* `setup()`. The
+    /// Called synchronously at startup *before* `enable()`. The
     /// `current` parameter contains any previously persisted values
     /// for this plugin. Use `ensure()` to fill in missing defaults:
     ///
@@ -164,38 +135,12 @@ pub trait Plugin: Send + Sync {
     /// ```
     ///
     /// The default implementation is a pass-through (no settings).
+    ///
+    /// Note: The `enabled` key is managed by the host at
+    /// `enabled.<plugin-id>` — plugins should not declare it here.
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
     }
-
-    /// One-time initialization after registration.
-    ///
-    /// Called once during app startup on a dedicated background
-    /// thread — implementations are free to block (e.g., scan the
-    /// filesystem, run subprocesses). The host spawns one thread
-    /// per plugin so all setups run in parallel.
-    ///
-    /// The `AppHandle` gives plugins access to Tauri APIs (path
-    /// resolution, managed state, etc.) during initialization.
-    /// `settings` provides scoped read access to this plugin's
-    /// settings namespace (values guaranteed present after
-    /// `initialize_settings` ran).
-    ///
-    /// `entries()` must handle the case where `setup()` has not
-    /// yet completed (e.g., return an empty list).
-    ///
-    /// The default implementation is a no-op.
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
-
-    /// Cleanup before the application exits.
-    ///
-    /// Called once during `RunEvent::Exit`. Plugins should release
-    /// resources, flush pending writes, and stop background threads.
-    fn teardown(&self) {}
-
-    // =========================================================
-    // New lifecycle methods (migration target)
-    // =========================================================
 
     /// Activate the plugin. Called on startup (if enabled) and on
     /// each re-enable after a user toggle.
