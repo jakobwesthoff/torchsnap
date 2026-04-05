@@ -974,10 +974,6 @@ mod tests {
             self
         }
 
-        fn with_catalog_entries(mut self, entries: Vec<CatalogEntry>) -> Self {
-            self.catalog_entries = entries;
-            self
-        }
     }
 
     impl Plugin for MockPlugin {
@@ -1031,7 +1027,7 @@ mod tests {
             .into_iter()
             .map(|p| {
                 let enabled = p.enabled;
-                let mut slot = PluginSlot::new(Arc::new(p));
+                let slot = PluginSlot::new(Arc::new(p));
                 slot.enabled.store(enabled, Ordering::Relaxed);
                 slot
             })

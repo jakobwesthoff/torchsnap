@@ -507,7 +507,7 @@ mod tests {
         let scores = store.scores("p", &["a", "b", "c"]);
         assert_eq!(scores.get("a"), Some(&100));
         assert_eq!(scores.get("b"), Some(&100));
-        assert!(scores.get("c").is_none());
+        assert!(!scores.contains_key("c"));
     }
 
     #[test]
