@@ -144,8 +144,8 @@ impl Plugin for AppLauncherPlugin {
         "app-launcher"
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
-        // Called on a dedicated background thread by the registry.
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+        // Called on a dedicated background thread by the host.
         //
         // Phase 1: Discover apps and publish immediately so search
         // results appear without waiting for icon extraction.

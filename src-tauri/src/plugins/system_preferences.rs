@@ -82,7 +82,7 @@ impl Plugin for SystemPreferencesPlugin {
         "system-preferences"
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.
