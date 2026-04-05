@@ -6,6 +6,10 @@ Date: 2026-03-25
 
 Accepted
 
+Amended by [23. Call all query plugins regardless of prefix registration](0023-call-all-query-plugins-regardless-of-prefix-registration.md)
+
+Amended by [24. Unify CatalogPlugin and QueryPlugin into a single Plugin trait](0024-unify-catalogplugin-and-queryplugin-into-single-plugin-trait.md)
+
 ## Context
 
 ADR 0011 established two plugin modes — catalog (host-filtered) and

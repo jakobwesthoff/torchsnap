@@ -6,6 +6,10 @@ Date: 2026-03-26
 
 In Progress
 
+Amended by [21. Extend SearchResponse with inline UI and structured variants](0021-extend-search-response-with-inline-ui-and-structured-variants.md)
+
+Amended by [22. Use named view resolution for plugin UI components](0022-use-named-view-resolution-for-plugin-ui-components.md)
+
 ## Context
 
 The standard result list (vertical rows of icon + title + subtitle) works

@@ -6,6 +6,8 @@ Date: 2026-04-05
 
 Accepted
 
+Amends [12. Use prefix-based exclusive routing for query plugins](0012-use-prefix-based-exclusive-routing-for-query-plugins.md)
+
 ## Context
 
 The system previously had two separate traits: `CatalogPlugin` (for plugins
