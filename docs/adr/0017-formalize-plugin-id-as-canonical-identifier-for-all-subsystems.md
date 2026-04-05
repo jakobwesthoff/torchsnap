@@ -8,8 +8,8 @@ Accepted
 
 ## Context
 
-Every plugin already has an `id()` method on both `CatalogPlugin` and
-`QueryPlugin` traits. It is used for search result routing and
+Every plugin already has an `id()` method on the `Plugin` trait (formerly
+split across `CatalogPlugin` and `QueryPlugin` — see ADR 0024). It is used for search result routing and
 `execute_action` dispatch. However, several other subsystems that
 operate per-plugin use their own ad-hoc identifiers:
 

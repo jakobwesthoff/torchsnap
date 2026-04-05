@@ -13,7 +13,7 @@ ScoredEntry ───┘
 
 ### CatalogEntry (`search/types.rs`)
 
-Internal only, never serialized. Produced by `CatalogPlugin::entries()`.
+Internal only, never serialized. Produced by `Plugin::entries()`.
 
 ```rust
 pub struct CatalogEntry {
@@ -32,7 +32,7 @@ match. This feature has no counterpart for query plugins.
 
 ### ScoredEntry (`search/types.rs`)
 
-What `QueryPlugin` implementations produce. Structurally identical to
+What query-mode plugins produce via `Plugin::search()`. Structurally identical to
 `CatalogEntry` minus `keywords`, plus pre-computed scoring fields:
 
 ```rust
@@ -61,9 +61,10 @@ pub enum PluginResponse {
 }
 ```
 
-Only `QueryPlugin` can produce `CustomUI` or `InlineUI` responses.
-`CatalogPlugin` can only trigger custom UI via `PostAction::ShowCustomUI` from
-`execute()`, which follows a completely different path.
+Only `search()` can produce `CustomUI` or `InlineUI` responses.
+Catalog-only plugins can only trigger custom UI via
+`PostAction::ShowCustomUI` from `execute()`, which follows a completely
+different path.
 
 ### SourcedEntry (`search/types.rs`)
 

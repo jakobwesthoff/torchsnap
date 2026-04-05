@@ -30,7 +30,7 @@ Two phases run sequentially:
 
 Runs synchronously via `spawn_blocking` → `search_catalogs_static()`:
 
-1. Collects `entries()` from all enabled `CatalogPlugin`s
+1. Collects `entries()` from all enabled catalog-mode plugins
 2. Uses nucleo (`Matcher`, `Pattern::indices`) to fuzzy-score each entry's
    title
 3. Falls back to scoring `title + keywords` if the title alone doesn't match
@@ -41,7 +41,7 @@ Runs synchronously via `spawn_blocking` → `search_catalogs_static()`:
 
 ### Phase 2: Query Plugin Fan-Out
 
-1. Each enabled `QueryPlugin` gets its own `mpsc::channel<PluginResponse>(4)`
+1. Each enabled query-mode plugin gets its own `mpsc::channel<PluginResponse>(4)`
    and a `spawn_blocking` task
 2. The host polls all receivers in a spin-yield loop:
    - `try_recv()` on each receiver

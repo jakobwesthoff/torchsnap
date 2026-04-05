@@ -11,14 +11,10 @@
 // and calls `notify(key, value)` on the notifier. Subscribers
 // receive the update through `tokio::sync::watch` channels.
 //
-// Two layers:
-//
-// - `SettingsNotifier`: app-wide, manages watch channels per
-//   full key (e.g., `plugins.clipboard-manager.enabled`).
-//
-// - `PluginSettingsNotifier`: scoped wrapper that prepends
-//   the plugin's key prefix, so plugins only access their
-//   own namespace. Mirrors the `PluginSettings` pattern.
+// `SettingsNotifier` is the app-wide layer that manages watch
+// channels per full key (e.g., `frecency.enabled`). Used by
+// non-plugin subsystems like FrecencyStore, control socket,
+// and WebsiteMetadataService.
 // =========================================================
 
 use std::collections::HashMap;
@@ -150,52 +146,6 @@ impl SettingsNotifier {
             // someone watches again.
             let _ = tx.send(value);
         }
-    }
-}
-
-// =========================================================
-// PluginSettingsNotifier — scoped per-plugin wrapper
-// =========================================================
-
-/// Scoped settings notifier for a single plugin.
-///
-/// Prepends the plugin's key prefix (`plugins.<id>.`) to all
-/// watch calls, ensuring plugins only observe their own
-/// settings namespace.
-///
-/// Unlike raw `SettingsNotifier`, this wrapper reads initial
-/// values from the settings store automatically, so plugins
-/// just call `watch::<T>("key")`.
-pub struct PluginSettingsNotifier {
-    notifier: std::sync::Arc<SettingsNotifier>,
-    store: std::sync::Arc<tauri_plugin_store::Store<tauri::Wry>>,
-    prefix: String,
-}
-
-impl PluginSettingsNotifier {
-    pub fn new(
-        notifier: std::sync::Arc<SettingsNotifier>,
-        store: std::sync::Arc<tauri_plugin_store::Store<tauri::Wry>>,
-        plugin_id: &str,
-    ) -> Self {
-        Self {
-            notifier,
-            store,
-            prefix: format!("plugins.{plugin_id}."),
-        }
-    }
-
-    /// Subscribe to changes for a plugin-scoped key.
-    ///
-    /// The key is automatically prefixed with the plugin's
-    /// namespace. The initial value is read from the settings
-    /// store. For example, `watch::<bool>("enabled")` on the
-    /// clipboard plugin watches
-    /// `plugins.clipboard-manager.enabled`.
-    pub fn watch<T: DeserializeOwned>(&self, key: &str) -> SettingsWatch<T> {
-        let full_key = format!("{}{}", self.prefix, key);
-        let initial = self.store.get(&full_key).unwrap_or(Value::Null);
-        self.notifier.watch_with_initial(&full_key, initial)
     }
 }
 

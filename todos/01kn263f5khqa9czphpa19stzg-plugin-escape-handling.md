@@ -13,7 +13,7 @@ entry), ESC does not behave correctly:
 
 ## Activation paths
 
-The clipboard plugin (CatalogPlugin, not QueryPlugin) has two paths
+The clipboard plugin (catalog-mode, not query-mode) has two paths
 that both result in `executePluginView` being set:
 
 1. **Global shortcut** (`CmdOrCtrl+Shift+V`) → `handle_shortcut()`
