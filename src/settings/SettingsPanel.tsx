@@ -12,6 +12,7 @@ import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { FrecencySection } from "./sections/FrecencySection";
 import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
+import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 
 // =========================================================
 // Built-in sidebar sections
@@ -68,7 +69,7 @@ function SectionContent({
   pluginSections,
 }: {
   activeSection: string;
-  pluginSections: Array<{ id: string; label: string }>;
+  pluginSections: ReturnType<typeof getPluginsWithSettings>;
 }) {
   // Built-in sections
   if (activeSection === "general") {
@@ -84,45 +85,55 @@ function SectionContent({
     return <WebsiteMetadataSection />;
   }
 
-  // Plugin sections — look up the settings component and inject
-  // the scoped usePluginSetting hook.
+  // Plugin sections — wrapped in PluginSettingsWrapper for the
+  // standardized header + enable/disable toggle. Custom settings
+  // components (if any) are rendered as children.
   const plugin = pluginSections.find((p) => p.id === activeSection);
   if (!plugin) {
     return null;
   }
 
-  const SettingsComponent = getPluginSettingsComponent(plugin.id);
-  if (!SettingsComponent) {
-    return null;
-  }
-
   return (
     <Suspense fallback={<div className="text-text-muted text-sm">Loading settings…</div>}>
-      <PluginSectionWrapper pluginId={plugin.id} Component={SettingsComponent} />
+      <PluginSectionContent plugin={plugin} />
     </Suspense>
   );
 }
 
 // =========================================================
-// Plugin section wrapper
+// Plugin section content
 //
-// Memoizes the scoped hook factory per plugin ID so it stays
-// referentially stable across re-renders.
+// Renders the PluginSettingsWrapper (header + enable/disable)
+// with an optional custom settings component as children.
+// Memoizes the scoped hook factory per plugin ID.
 // =========================================================
 
-function PluginSectionWrapper({
-  pluginId,
-  Component,
+function PluginSectionContent({
+  plugin,
 }: {
-  pluginId: string;
-  Component: React.ComponentType<import("../plugins/types").PluginSettingsProps>;
+  plugin: ReturnType<typeof getPluginsWithSettings>[number];
 }) {
-  const usePluginSetting = useMemo(() => createPluginSettingHook(pluginId), [pluginId]);
-  const logger = useMemo(() => createLogger(pluginId), [pluginId]);
+  const usePluginSetting = useMemo(() => createPluginSettingHook(plugin.id), [plugin.id]);
+  const logger = useMemo(() => createLogger(plugin.id), [plugin.id]);
+
+  const CustomSettings = getPluginSettingsComponent(plugin.id);
 
   return (
-    <LoggerProvider source={pluginId}>
-      <Component pluginId={pluginId} usePluginSetting={usePluginSetting} logger={logger} />
-    </LoggerProvider>
+    <PluginSettingsWrapper
+      pluginId={plugin.id}
+      icon={plugin.icon ?? "heroicons:puzzle-piece"}
+      name={plugin.label}
+      description={plugin.description ?? ""}
+    >
+      {CustomSettings && (
+        <LoggerProvider source={plugin.id}>
+          <CustomSettings
+            pluginId={plugin.id}
+            usePluginSetting={usePluginSetting}
+            logger={logger}
+          />
+        </LoggerProvider>
+      )}
+    </PluginSettingsWrapper>
   );
 }

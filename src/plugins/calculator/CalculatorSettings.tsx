@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
-import { SectionHeader } from "../../settings/SectionHeader";
+import { useSetting } from "../../hooks/useSetting";
 import { Section } from "../../settings/Section";
 import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
@@ -50,8 +50,9 @@ function formatRetentionDays(days: number): string {
 // Component
 // =========================================================
 
-export default function CalculatorSettings({ usePluginSetting }: PluginSettingsProps) {
-  const [enabled, setEnabled] = usePluginSetting<boolean>("enabled");
+export default function CalculatorSettings({ pluginId, usePluginSetting }: PluginSettingsProps) {
+  // Read the host-managed enabled key for gating controls.
+  const [enabled] = useSetting<boolean>(`enabled.${pluginId}`);
   const [heuristicEnabled, setHeuristicEnabled] = usePluginSetting<boolean>("heuristicEnabled");
   const [historyEnabled, setHistoryEnabled] = usePluginSetting<boolean>("historyEnabled");
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
@@ -93,20 +94,7 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <SectionHeader
-        icon="heroicons:calculator"
-        title="Calculator"
-        description="Evaluate math expressions directly from the launcher. Type calculations inline or use the = prefix for explicit mode."
-      />
-
-      {/* ---- Plugin toggle ---- */}
-      <Section>
-        <Entry label="Enable calculator">
-          <Switch checked={enabled} onChange={setEnabled} />
-        </Entry>
-      </Section>
-
+    <>
       {/* ---- Heuristic toggle ---- */}
       <Section>
         <Entry label="Detect math expressions without prefix">
@@ -198,6 +186,6 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
           )}
         </div>
       </Section>
-    </div>
+    </>
   );
 }

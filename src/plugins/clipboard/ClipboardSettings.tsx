@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
-import { SectionHeader } from "../../settings/SectionHeader";
+import { useSetting } from "../../hooks/useSetting";
 import { Section } from "../../settings/Section";
 import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
@@ -62,8 +62,9 @@ function formatRetentionDays(days: number): string {
 // Component
 // =========================================================
 
-export default function ClipboardSettings({ usePluginSetting }: PluginSettingsProps) {
-  const [enabled, setEnabled] = usePluginSetting<boolean>("enabled");
+export default function ClipboardSettings({ pluginId, usePluginSetting }: PluginSettingsProps) {
+  // Read the host-managed enabled key for gating controls.
+  const [enabled] = useSetting<boolean>(`enabled.${pluginId}`);
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
   const [bringToFrontOnPaste, setBringToFrontOnPaste] =
     usePluginSetting<boolean>("bringToFrontOnPaste");
@@ -108,20 +109,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <SectionHeader
-        icon="heroicons:clipboard-document-list"
-        title="Clipboard"
-        description="Keep a searchable history of everything you copy. Quickly recall and paste previous clipboard entries directly from the launcher."
-      />
-
-      {/* ---- Plugin toggle ---- */}
-      <Section>
-        <Entry label="Enable clipboard history">
-          <Switch checked={enabled} onChange={setEnabled} />
-        </Entry>
-      </Section>
-
+    <>
       {/* ---- Shortcut ---- */}
       <Section>
         <Entry label="Open Clipboard History">
@@ -223,7 +211,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
           )}
         </div>
       </Section>
-    </div>
+    </>
   );
 }
 

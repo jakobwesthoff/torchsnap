@@ -15,10 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
-import { SectionHeader } from "../../settings/SectionHeader";
 import { Section } from "../../settings/Section";
-import { Entry } from "../../settings/Entry";
-import { Switch } from "../../components/Switch";
 
 // =========================================================
 // Types
@@ -76,9 +73,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 // Component
 // =========================================================
 
-export default function BangsSettings({ usePluginSetting }: PluginSettingsProps) {
-  const [enabled, setEnabled] = usePluginSetting<boolean>("enabled");
-
+export default function BangsSettings(_props: PluginSettingsProps) {
   const [stats, setStats] = useState<BangStats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -111,20 +106,7 @@ export default function BangsSettings({ usePluginSetting }: PluginSettingsProps)
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <SectionHeader
-        icon="heroicons:arrow-top-right-on-square"
-        title="Bangs"
-        description="Use DuckDuckGo bang commands to quickly search services. Type !g for Google, !yt for YouTube, !crates for crates.io, and thousands more."
-      />
-
-      {/* ---- Plugin toggle ---- */}
-      <Section>
-        <Entry label="Enable bangs">
-          <Switch checked={enabled} onChange={setEnabled} />
-        </Entry>
-      </Section>
-
+    <>
       {/* ---- Database Stats ---- */}
       <Section>
         <div className="flex items-center justify-between -mt-0.5 mb-1">
@@ -195,6 +177,6 @@ export default function BangsSettings({ usePluginSetting }: PluginSettingsProps)
           </p>
         </div>
       </Section>
-    </div>
+    </>
   );
 }
