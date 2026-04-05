@@ -9,16 +9,17 @@
  * dynamically loaded plugin bundles can use React without bundling
  * their own copy.
  *
- * Plugin authors access the global at runtime:
+ * Plugin bundles access these via shim files in `plugin-sdk/shims/`
+ * that re-export from the global. At build time, Vite aliases
+ * `"react"` and `"react/jsx-runtime"` to the shims; at runtime,
+ * the shims read from `window.__torchsnap`.
  *
- *   const React = window.__torchsnap.React;
- *
- * Future expansion: `components` and `keybindings` will be added
- * once barrel exports exist for `@torchsnap/components` and
- * `@torchsnap/keybindings`.
+ * Future expansion: `components`, `keybindings`, and `hooks` will
+ * be added once barrel exports exist for those modules.
  */
 
 import React from "react";
+import * as jsxRuntime from "react/jsx-runtime";
 
 // =========================================================
 // Type declaration
@@ -28,6 +29,7 @@ declare global {
   interface Window {
     __torchsnap?: {
       React: typeof React;
+      jsxRuntime: typeof jsxRuntime;
     };
   }
 }
@@ -44,5 +46,6 @@ declare global {
 export function initPluginSdk(): void {
   window.__torchsnap = {
     React,
+    jsxRuntime,
   };
 }

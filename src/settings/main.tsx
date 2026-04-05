@@ -22,7 +22,7 @@ async function main() {
   initPluginSdk();
 
   const wasmPlugins = await command("wasm_plugins");
-  registerAllWasmPlugins(wasmPlugins);
+  registerAllWasmPlugins(wasmPlugins, "settings");
 
   preloadSettingsComponents();
 
