@@ -200,6 +200,22 @@ disable() → drop WASM instance → discovered
 Instantiate WASM → enable() → active (fresh start)
 ```
 
+> **Implementation note (2026-04-05):** The actual implementation diverged
+> here — `enable()` and `disable()` are explicit WIT guest exports in
+> `torchsnap-plugin.wit`, and the WASM instance is currently kept alive
+> across toggles rather than dropped and re-instantiated. This is more
+> flexible: plugins can do expensive one-time setup in `enable()` without
+> paying re-instantiation cost on every toggle. The host side uses
+> `PluginSlot` (with `AtomicBool` + `CoalescingDispatcher`) in
+> `plugin_host.rs` to manage the enabled state and dispatch
+> `setting_changed()` calls.
+>
+> **Open question:** We may still move to destroying WASM instances on
+> disable (matching the original design) for memory savings. The
+> `enable()`/`disable()` guest exports would remain regardless — they
+> serve as lifecycle hooks whether the instance is long-lived or
+> re-created on each toggle.
+
 The `[plugin]` section provides `name`, `description`, and `icon` so the host
 can render the settings sidebar entry without any frontend code from the plugin.
 Every plugin gets a settings entry even if it has no custom settings — the
@@ -953,5 +969,62 @@ WASM debugging is harder than native Rust. Plugin authors will need:
 | 2026-04-03 | One shared `wasmtime::Engine` | All WASM plugins share an engine instance — saves compilation cache and memory |
 | 2026-04-03 | Drop `cargo-component`, use `wit-bindgen` + `cargo build --target wasm32-wasip2` | cargo-component 0.21.1 pins wit-bindgen to 0.41 internally, causing version skew. Direct `wit-bindgen 0.54` + standard cargo is simpler, latest features, no extra subcommand. |
 | 2026-04-03 | Call-return search model, no streaming callbacks | All current plugins send exactly one result batch per search(). Drop ResultChannel/mpsc in favor of direct return values. Simplify native Plugin trait to match. |
-| TBD | Which plugins stay native | Deferred — likely platform-specific ones (system-commands, app-launcher, system-preferences) |
+| 2026-04-05 | Which plugins stay native | `commands`, `system_commands`, `app_launcher`, `system_preferences` — deep platform APIs or host operations |
+| 2026-04-05 | Host capabilities added on-demand | Build WIT imports as each plugin is migrated, not all upfront |
+| 2026-04-05 | Calculator is first migration target | Exercises SQL + clipboard + settings — representative slice of capabilities |
 | TBD | Frontend SDK externalization strategy | Deferred until frontend plugin integration phase |
+
+## 12. Implementation Status
+
+> Last updated: 2026-04-05
+
+### Done
+
+| Component | Location | Notes |
+|---|---|---|
+| WIT contract | `wit/torchsnap-plugin.wit` | `logging` + `types` (host imports), `lifecycle` + `search` (guest exports) |
+| WASM runtime | `src-tauri/src/wasm/runtime.rs` | `WasmRuntime` (shared `Engine`) + `WasmPluginInstance` (`Mutex<Store>`) |
+| WasmPluginBridge | `src-tauri/src/wasm/bridge.rs` | Adapts `WasmPluginInstance` to native `Plugin` trait |
+| Plugin sources | `src-tauri/src/wasm/source.rs` | `DirectorySource` (dev) + `ArchiveSource` (production) |
+| Asset protocol | `src-tauri/src/wasm/protocol.rs` | `torchsnap-plugin://localhost/<id>/<path>` with CORS + content-type |
+| Manifest parsing | `src-tauri/src/wasm/manifest.rs` | Full `manifest.toml` validation with cross-field checks |
+| Structured logging | `src-tauri/src/wasm/logging/` | Channel, spans, ring-buffer storage, DevTools commands |
+| Type conversions | `src-tauri/src/wasm/bindings.rs` | WIT ↔ native type `From` impls |
+| Hello-world plugin | `plugins/hello-world/` | Catalog + query search + custom frontend view + spans |
+| Build tooling | `just/plugins.just` | `build-plugin`, `check-plugin`, `package-plugin`, `check-wit`, `fmt-wit` |
+| Plugin trait refactor | `src-tauri/src/plugins/mod.rs` | `enable()`/`disable()`/`setting_changed()` lifecycle |
+| Host-managed lifecycle | `src-tauri/src/plugin_host.rs` | `PluginSlot` with `AtomicBool` + `CoalescingDispatcher` |
+| Frontend dynamic loading | `src/plugins/wasmPluginLoader.ts` | `initPluginSdk()`, manifest-driven registration, CSS scoping |
+
+### In Progress
+
+- Plugin template directory with frontend build pipeline (Vite + TSX + Tailwind)
+- Plugin SDK shims for host-provided dependencies (`react`, `@torchsnap/*`)
+
+### Not Yet Implemented — Host Capability Imports
+
+| Capability | WIT interface | Needed by |
+|---|---|---|
+| SQL storage | `torchsnap:storage/sql` | calculator, bangs, clipboard |
+| Blob storage | `torchsnap:storage/blob` | clipboard |
+| Clipboard read/write | `torchsnap:platform/clipboard` | calculator, emoji, bangs, open-url, clipboard |
+| Open URL in browser | `torchsnap:platform/opener` | bangs, open-url |
+| HTTP GET/POST | `torchsnap:network/http` | bangs |
+| Website metadata | `torchsnap:network/metadata` | bangs, open-url |
+| Settings read | `torchsnap:settings/read` | all with settings |
+| Settings watch | `torchsnap:settings/watch` | calculator, clipboard, bangs |
+| Frecency scoring | `torchsnap:frecency` | emoji |
+
+These will be added on-demand as each plugin is migrated (decision 2026-04-05).
+
+### What Stays Native
+
+- **`commands`** — calls `app.exit()`, window management (host operations)
+- **`system_commands`** — subprocess execution (platform-specific, security-sensitive)
+- **`app_launcher`** — AppKit app discovery + icon extraction (deep macOS API)
+- **`system_preferences`** — plist parsing, macOS System Settings integration
+
+### Next Milestone
+
+Calculator plugin migration — requires `torchsnap:storage/sql`,
+`torchsnap:platform/clipboard`, and `torchsnap:settings/read` host imports.
