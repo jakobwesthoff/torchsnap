@@ -5,7 +5,8 @@
 // =========================================================
 // Built-in Commands Plugin
 //
-// Provides always-available app commands: Quit and Settings.
+// Provides always-available app commands: Quit, Settings, and
+// Developer Tools.
 // These appear in the launcher's result list alongside results
 // from other plugins.
 // =========================================================
@@ -46,6 +47,18 @@ impl Plugin for BuiltInCommandsPlugin {
                     keybinding: None,
                 }],
             },
+            CatalogEntry {
+                id: "devtools".into(),
+                title: "Developer Tools".into(),
+                subtitle: Some("Open Torchsnap developer tools".into()),
+                icon: Some(EntryIcon::HeroIcon("wrench-screwdriver".into())),
+                keywords: vec!["debug".into(), "console".into(), "logs".into(), "dev".into()],
+                actions: vec![Action {
+                    id: ActionId::Open,
+                    label: "Open".into(),
+                    keybinding: None,
+                }],
+            },
         ]
     }
 
@@ -61,6 +74,9 @@ impl Plugin for BuiltInCommandsPlugin {
             }
             "settings" => {
                 crate::show_settings_window(app);
+            }
+            "devtools" => {
+                crate::show_devtools_window(app);
             }
             other => anyhow::bail!("unknown built-in command entry: {other}"),
         }
