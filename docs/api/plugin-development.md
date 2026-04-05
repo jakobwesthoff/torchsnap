@@ -1,21 +1,22 @@
 # Plugin Development Guide
 
 This guide walks you through building a Torchsnap plugin from scratch. It covers
-both plugin types, the full lifecycle, every API surface available to plugins,
-and progressively more complex examples.
+the unified `Plugin` trait, the full lifecycle, every API surface available to
+plugins, and progressively more complex examples.
 
 ## Contents
 
 - [Concepts](#concepts)
 - [Quick Start: Minimal Catalog Plugin](#quick-start-minimal-catalog-plugin)
 - [Plugin Types](#plugin-types)
-  - [CatalogPlugin](#catalogplugin)
-  - [QueryPlugin](#queryplugin)
+  - [Catalog-only Plugins](#catalog-only-plugins)
+  - [Query-only Plugins](#query-only-plugins)
+  - [Hybrid Plugins](#hybrid-plugins)
 - [Lifecycle](#lifecycle)
 - [Settings](#settings)
   - [Declaring Defaults](#declaring-defaults)
   - [Reading at Runtime](#reading-at-runtime)
-  - [Reactive Notifications](#reactive-notifications)
+  - [Reacting to Changes](#reacting-to-changes)
 - [Frecency](#frecency)
 - [Global Shortcuts](#global-shortcuts)
 - [Custom UI](#custom-ui)
@@ -32,19 +33,29 @@ and progressively more complex examples.
 
 ## Concepts
 
-Torchsnap's search pipeline is built around plugins. Each plugin is a Rust
-struct that implements one of two traits:
+Torchsnap's search pipeline is built around a single unified `Plugin` trait
+(ADR 0024). Every plugin — regardless of whether it contributes a static entry
+catalog, performs its own query matching, or does both — implements the same
+trait. The search mode is determined by which methods you override:
 
-| Trait | Search model | When to use |
+| Search mode | Methods implemented | When to use |
 |---|---|---|
-| `CatalogPlugin` | Returns a static list of entries. The host filters with [nucleo](https://github.com/helix-editor/nucleo). | App launchers, command palettes, static lists |
-| `QueryPlugin` | Receives the raw query and returns pre-scored results. | Custom matching logic, dynamic results, prefix-gated modes |
+| Catalog-only | `entries()` | App launchers, command palettes, static lists |
+| Query-only | `search()` | Custom matching logic, dynamic results, prefix-gated modes |
+| Hybrid | `entries()` + `search()` | Plugins that do both depending on context |
 
-Both trait types share the same lifecycle, shortcut API, and message API.
-The only difference is how they participate in search.
+The host handles filtering for catalog entries (via
+[nucleo](https://github.com/helix-editor/nucleo)) and calls `search()` for
+query results. Results from both paths are merged and sorted by score before
+being sent to the frontend.
 
 All plugins are internal (compiled into the binary). There is no dynamic
 loading at present — each plugin is registered at startup in `lib.rs`.
+
+**Enabled state** is managed entirely by the host, not by the plugin. The host
+persists `enabled.<plugin-id>` in the top-level settings store and calls
+`enable()` / `disable()` as the user toggles plugins. Plugins do not declare
+or own an `enabled` key.
 
 ---
 
@@ -58,12 +69,12 @@ The smallest useful plugin: a hardcoded command list.
 use anyhow::Context as _;
 use tauri::Manager;
 
-use crate::plugins::{CatalogPlugin, PluginContext};
+use crate::plugins::{Plugin, PluginContext};
 use crate::search::types::{Action, ActionId, CatalogEntry, PostAction};
 
 pub struct MyCommandsPlugin;
 
-impl CatalogPlugin for MyCommandsPlugin {
+impl Plugin for MyCommandsPlugin {
     fn id(&self) -> &str {
         "my-commands"
     }
@@ -111,35 +122,19 @@ the list with nucleo, and calls `execute()` when the user activates an action.
 
 ## Plugin Types
 
-### CatalogPlugin
+All three modes implement the same `Plugin` trait. The difference is purely
+which methods you override.
 
-A `CatalogPlugin` owns a set of entries. The host handles all filtering — the
-plugin never sees the query string.
+### Catalog-only Plugins
 
-```rust
-pub trait CatalogPlugin: Send + Sync {
-    fn id(&self) -> &str;
-    fn is_enabled(&self) -> bool { true }
-    fn enabled_settings_key(&self) -> Option<&'static str> { None }
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
-    fn teardown(&self) {}
-    fn entries(&self) -> Vec<CatalogEntry>;
-    fn execute(&self, entry_id: &str, action_id: &ActionId, app: &tauri::AppHandle)
-        -> anyhow::Result<PostAction>;
-    fn shortcuts(&self) -> Vec<PluginShortcut> { vec![] }
-    fn handle_shortcut(&self, _shortcut_id: &str, _app: &tauri::AppHandle)
-        -> anyhow::Result<PostAction> { Ok(PostAction::Nothing) }
-    fn handle_message(&self, _method: &str, _payload: serde_json::Value,
-        _channel: tauri::ipc::Channel<serde_json::Value>)
-        -> anyhow::Result<serde_json::Value> { bail!("...") }
-}
-```
+Override `entries()`. The host handles all matching — the plugin never sees
+the query string. This is the right choice for static or semi-static lists
+where fuzzy matching over titles and keywords is sufficient.
 
 **Key points for `entries()`:**
 
 - Called on every search keystroke — keep it fast.
-- May be called before `setup()` finishes. Return an empty `Vec` in that case.
+- May be called before `enable()` finishes. Return an empty `Vec` in that case.
 - Thread safety: `entries()` takes `&self`, so internal state must use
   `RwLock`, `Mutex`, or atomics.
 
@@ -148,124 +143,124 @@ pub trait CatalogPlugin: Send + Sync {
 The `entry_id` is whatever you put in `CatalogEntry::id`. It is your
 responsibility to make these stable and unique within the plugin.
 
-### QueryPlugin
+### Query-only Plugins
 
-A `QueryPlugin` receives the raw query and scores its own results.
-
-```rust
-pub trait QueryPlugin: Send + Sync {
-    fn id(&self) -> &str;
-    fn is_enabled(&self) -> bool { true }
-    fn enabled_settings_key(&self) -> Option<&'static str> { None }
-    fn prefixes(&self) -> &[&str] { &[] }
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
-    fn teardown(&self) {}
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> SearchResponse;
-    fn execute(&self, entry_id: &str, action_id: &ActionId, app: &tauri::AppHandle)
-        -> anyhow::Result<PostAction>;
-    fn shortcuts(&self) -> Vec<PluginShortcut> { vec![] }
-    fn handle_shortcut(&self, _shortcut_id: &str, _app: &tauri::AppHandle)
-        -> anyhow::Result<PostAction> { Ok(PostAction::Nothing) }
-    fn handle_message(&self, _method: &str, _payload: serde_json::Value,
-        _channel: tauri::ipc::Channel<serde_json::Value>)
-        -> anyhow::Result<serde_json::Value> { bail!("...") }
-}
-```
+Override `search()`. The plugin receives the raw query and scores its own
+results. `entries()` can be left at the default empty implementation.
 
 **Prefix routing (ADR 0012):**
 
-If your plugin registers prefixes via `prefixes()`, it receives exclusive
-routing when the user types a matching prefix. All catalog plugins and
-prefix-less query plugins are bypassed entirely.
+If your plugin registers prefixes via `search_prefixes()`, it receives
+exclusive routing when the user types a matching prefix. All catalog plugins
+and prefix-less query plugins are bypassed entirely.
 
 ```rust
-fn prefixes(&self) -> &[&str] {
-    &[":"]          // Exclusive when query starts with ":"
+fn search_prefixes(&self) -> &[String] {
+    // Exclusive when the user types ">".
+    &[">".to_string()]
 }
 ```
 
 When exclusive routing fires:
 - The prefix is stripped before `search()` is called.
-- `matched_prefix` is `Some(":") ` — useful when a plugin registers multiple
+- `matched_prefix` is `Some(">")` — useful when a plugin registers multiple
   prefixes and needs to know which triggered.
 - Longest prefix wins when multiple prefixes could match.
 
-**Always-on query plugins:**
+**Always-on query plugins (ADR 0023):**
 
-Return an empty `prefixes()` slice (the default) to run on every query
+Return an empty `search_prefixes()` slice (the default) to run on every query
 alongside catalog plugins. Results are merged and sorted by score.
 
-**`search()` return value:**
+**`search()` return value (ADR 0021):**
 
-Return `SearchResponse::Results(vec)` for standard list rendering, or
-`SearchResponse::CustomUI(vec)` to take over the result area with a custom
-frontend component (see [Custom UI](#custom-ui)).
+`search()` returns `Option<PluginResponse>`. Return `None` to indicate the
+plugin has nothing to contribute. Return `Some(PluginResponse::Results(vec))`
+for standard list rendering, or a `CustomUI` / `InlineUI` variant to involve
+a custom frontend component (see [Custom UI](#custom-ui)).
+
+### Hybrid Plugins
+
+Override both `entries()` and `search()`. The host merges catalog results
+(filtered by nucleo) with the pre-scored results from `search()`. Use this
+when a plugin maintains a static catalog but also wants to inject dynamic
+results for certain queries.
 
 ---
 
 ## Lifecycle
 
-Plugin lifecycle has four ordered phases.
+Plugin lifecycle has four ordered phases (ADR 0025).
 
 ### Phase 1 — Settings initialization (synchronous, at registration)
 
 `initialize_settings()` is called synchronously for every plugin before any
-`setup()` call. Use it to ensure defaults exist in the settings store.
+`enable()` call. Use it to ensure defaults exist in the settings store.
 
 ```rust
 fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
     settings
-        .ensure("enabled", true)
         .ensure("maxResults", 20)
+        .ensure("shortcut.open", "CmdOrCtrl+Shift+H")
 }
 ```
 
 Values already in the store are never overwritten — `ensure` only fills gaps.
 See [Settings → Declaring Defaults](#declaring-defaults) for migrations.
 
-### Phase 2 — Parallel setup (background thread pool)
+Note: do **not** declare an `enabled` key here. The host manages
+`enabled.<plugin-id>` at the top level and never looks for it inside a
+plugin's own settings namespace.
 
-`setup()` runs on a rayon background thread pool (sized to ~70 % of available
-cores). All plugins' `setup()` calls run in parallel.
+### Phase 2 — Enable (on startup and when the user re-enables the plugin)
+
+`enable()` is called on a rayon background thread pool (sized to ~70% of
+available cores). All plugins' `enable()` calls run in parallel at startup.
+
+Unlike the old `setup()` method, `enable()` can be called multiple times — once
+at startup and again every time the user enables the plugin after having
+disabled it. Write `enable()` so it is safe to call repeatedly.
 
 ```rust
-fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
+fn enable(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
     // Safe to block — this is a background thread, not the Tokio runtime.
-    let apps = self.discovery.discover();
-    *self.cache.write().expect("cache not poisoned") = apps;
+    let items = discover_items(app);
+    *self.cache.write().expect("cache not poisoned") = items;
 }
 ```
 
-**What you can do in `setup()`:**
+**What you can do in `enable()`:**
 - Block on I/O (filesystem scan, subprocess, HTTP request).
-- Spawn background threads that run for the plugin's lifetime.
+- Spawn background threads that run until `disable()` signals them to stop.
 - Read settings via `ctx.settings`.
-- Subscribe to settings changes via `ctx.notifier` to drive background threads.
 - Clone and stash `ctx.frecency` for later use in `entries()` or `search()`.
 
-**Important:** `entries()` and `search()` may be called before `setup()`
+**Important:** `entries()` and `search()` may be called before `enable()`
 completes. Guard cached state with `RwLock::try_read()` or return an empty
 list.
 
 ### Phase 3 — Shortcut registration
 
-After all `setup()` calls complete, the host registers all plugin shortcuts
+After all `enable()` calls complete, the host registers all plugin shortcuts
 with the OS. A reactor task watches for settings changes that affect shortcut
 key bindings and re-registers when needed.
 
-### Phase 4 — Teardown (on `RunEvent::Exit`)
+### Phase 4 — Disable (on user toggle or application exit)
 
-`teardown()` is called once for every plugin on application exit.
+`disable()` is called when the user disables the plugin, and once for every
+plugin on application exit. Because `enable()` may be called again later,
+`disable()` should only stop active background work — do not drop persistent
+state that `enable()` would need to rebuild from scratch.
 
 ```rust
-fn teardown(&self) {
+fn disable(&self) {
     // Signal the background thread to stop.
     self.stop_signal.store(true, Ordering::SeqCst);
 }
 ```
 
-Teardown must complete quickly. Blocking indefinitely will delay shutdown.
+`disable()` must complete quickly. Blocking indefinitely will delay shutdown
+or freeze the settings toggle.
 
 ---
 
@@ -284,7 +279,6 @@ Override `initialize_settings()` to define your plugin's settings schema:
 ```rust
 fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
     settings
-        .ensure("enabled", true)
         .ensure("maxHistory", 200)
         .ensure("shortcut.open", "CmdOrCtrl+Shift+V")
 }
@@ -308,15 +302,13 @@ fn initialize_settings(&self, mut settings: SettingsInit) -> SettingsInit {
 
 ### Reading at Runtime
 
-`ctx.settings` is a `PluginSettings` handle injected into `setup()`. It
+`ctx.settings` is a `PluginSettings` handle injected into `enable()`. It
 provides scoped read access to `plugins.<id>.*`:
 
 ```rust
-fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
+fn enable(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
     let interval: u64 = ctx.settings.get("pollingIntervalMs")
         .unwrap_or(500);
-    let enabled: bool = ctx.settings.get("enabled")
-        .unwrap_or(true);
 }
 ```
 
@@ -325,53 +317,46 @@ deserialized into `T`. If you initialized defaults correctly, it will always
 succeed.
 
 **Stashing the handle:** Clone and stash `ctx.settings` if you need it beyond
-`setup()`:
+`enable()`:
 
 ```rust
 pub struct MyPlugin {
     settings: std::sync::OnceLock<PluginSettings>,
 }
 
-fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
+fn enable(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
     self.settings.set(ctx.settings.clone()).ok();
 }
 ```
 
-### Reactive Notifications
+### Reacting to Changes
 
-`ctx.notifier` is a `PluginSettingsNotifier` that delivers settings changes
-as typed watch channels. Use this to react to user configuration changes at
-runtime without polling.
+Instead of watch channels, the host delivers settings changes through
+`setting_changed()`. The host uses a `CoalescingDispatcher` internally, so
+rapid changes to the same key are deduplicated — only the most recent value is
+delivered.
 
 ```rust
-fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
-    // Subscribe before spawning the thread so no update is missed.
-    let mut enabled_watch: SettingsWatch<bool> = ctx.notifier.watch("enabled");
-
-    let stop = Arc::clone(&self.stop_signal);
-    thread::spawn(move || {
-        loop {
-            // Block until "enabled" changes, or None if app is shutting down.
-            match enabled_watch.blocking_changed() {
-                Some(true) => { /* start work */ }
-                Some(false) => { /* pause work */ }
-                None => break,  // Notifier dropped — exit cleanly.
+fn setting_changed(&self, key: &str, value: serde_json::Value) {
+    match key {
+        "pollingIntervalMs" => {
+            if let Ok(secs) = serde_json::from_value::<u64>(value) {
+                self.interval_secs.store(secs, Ordering::Relaxed);
             }
         }
-    });
+        "feedUrl" => {
+            if let Ok(url) = serde_json::from_value::<String>(value) {
+                *self.feed_url.write().expect("feed_url not poisoned") = url;
+            }
+        }
+        _ => {}
+    }
 }
 ```
 
-`SettingsWatch<T>` has three methods:
-
-| Method | Use |
-|---|---|
-| `get() -> T` | Read the current value synchronously |
-| `async changed() -> Option<T>` | Await the next change (async context) |
-| `blocking_changed() -> Option<T>` | Wait for next change (blocking thread) |
-
-`watch(key)` reads the initial value from the store automatically, so you do
-not need to call `settings.get()` separately for the initial state.
+`setting_changed()` is called on the host's settings-dispatch thread. Keep it
+non-blocking: store the new value into an atomic or `RwLock` and let your
+background thread pick it up on its next iteration.
 
 ---
 
@@ -388,14 +373,14 @@ You rarely need to interact with frecency directly. The common cases:
 When there is no query, show the user's most-used items first:
 
 ```rust
-fn search(&self, query: &str, _prefix: Option<&str>) -> SearchResponse {
+fn search(&self, query: &str, _prefix: Option<&str>) -> Option<PluginResponse> {
     if query.is_empty() {
         let top = self.frecency.read().unwrap().top_items(20);
         let results = top.into_iter()
             .filter_map(|item| self.find_entry(&item.item_id))
             .map(|entry| ScoredEntry { /* fields from entry */ })
             .collect();
-        return SearchResponse::Results(results);
+        return Some(PluginResponse::Results(results));
     }
     // ... normal search
 }
@@ -404,12 +389,12 @@ fn search(&self, query: &str, _prefix: Option<&str>) -> SearchResponse {
 **Apply frecency bonuses to your own scored results:**
 
 ```rust
-fn search(&self, query: &str, _prefix: Option<&str>) -> SearchResponse {
+fn search(&self, query: &str, _prefix: Option<&str>) -> Option<PluginResponse> {
     let mut results = self.score_results(query);
     if let Some(frecency) = self.frecency.read().ok() {
         frecency.apply_scores(&mut results);
     }
-    SearchResponse::Results(results)
+    Some(PluginResponse::Results(results))
 }
 ```
 
@@ -423,12 +408,12 @@ selecting items without going through `execute()`, record them manually:
 self.frecency.record(&emoji_id);
 ```
 
-**Stashing the handle:** Stash `ctx.frecency` during `setup()` exactly like
+**Stashing the handle:** Stash `ctx.frecency` during `enable()` exactly like
 settings:
 
 ```rust
-fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
-    *self.frecency.write().unwrap() = Some(ctx.frecency.clone());
+fn enable(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
+    *self.frecency.write().expect("frecency not poisoned") = Some(ctx.frecency.clone());
 }
 ```
 
@@ -489,15 +474,20 @@ Two mechanisms let plugins go beyond the standard result list.
 
 ### Taking Over the Result Area
 
-A `QueryPlugin` can return `SearchResponse::CustomUI(results)` to signal that
-its React component should replace the result list. The results are passed as
-props to the component — use them or ignore them.
+A plugin can return `Some(PluginResponse::CustomUI { view, data, results })`
+from `search()` to signal that its React component should replace the result
+list. The `results` are passed as props to the component — use them or ignore
+them.
 
 ```rust
-fn search(&self, query: &str, _prefix: Option<&str>) -> SearchResponse {
+fn search(&self, query: &str, _prefix: Option<&str>) -> Option<PluginResponse> {
     let results = self.build_results(query);
     // Returning CustomUI mounts the plugin's React component.
-    SearchResponse::CustomUI(results)
+    Some(PluginResponse::CustomUI {
+        view: "emoji-picker".to_string(),
+        data: serde_json::json!({ "query": query }),
+        results,
+    })
 }
 ```
 
@@ -570,8 +560,8 @@ Ongoing updates go through the `channel`.
 
 ### `CatalogEntry`
 
-Raw entry produced by `CatalogPlugin::entries()`. The host scores and converts
-it to `SourcedEntry` before sending to the frontend.
+Raw entry produced by `Plugin::entries()`. The host scores and converts it to
+a `SourcedEntry` before sending to the frontend.
 
 | Field | Type | Description |
 |---|---|---|
@@ -584,7 +574,7 @@ it to `SourcedEntry` before sending to the frontend.
 
 ### `ScoredEntry`
 
-Pre-scored result returned by `QueryPlugin::search()`.
+Pre-scored result returned by `Plugin::search()`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -651,25 +641,24 @@ Returned from `execute()`, `handle_shortcut()`.
 | `KeepOpen` | Keep the launcher visible |
 | `ShowCustomUI` | Mount this plugin's custom UI component |
 
-### `SearchResponse`
+### `PluginResponse`
 
-Returned from `QueryPlugin::search()`.
+Returned from `Plugin::search()` as `Option<PluginResponse>`. Return `None`
+to indicate the plugin has nothing to contribute (ADR 0021).
 
 | Variant | Effect |
 |---|---|
-| `Nothing` | Plugin has nothing to contribute; host skips it entirely |
 | `Results(Vec<ScoredEntry>)` | Standard list rendering by the host |
 | `CustomUI { view, data, results }` | Mount plugin's custom React component; results passed as props |
 | `InlineUI { view, data, results }` | Render plugin component above the result list; results merged into host list |
 
 ### `PluginContext`
 
-Injected into `setup()`. All fields are `Clone`.
+Injected into `enable()`. All fields are `Clone`.
 
 | Field | Type | Description |
 |---|---|---|
 | `settings` | `PluginSettings` | Scoped read access to `plugins.<id>.*` |
-| `notifier` | `PluginSettingsNotifier` | Subscribe to settings changes |
 | `frecency` | `PluginFrecency` | Frecency scores and top-item queries |
 
 ---
@@ -680,11 +669,7 @@ All plugins are registered manually in `src-tauri/src/lib.rs` inside the
 `setup` closure, before `host.initialize_and_start()`:
 
 ```rust
-// Catalog plugin
 host.register(Box::new(plugins::my_plugin::MyPlugin::new()));
-
-// Query plugin
-host.register_query(Box::new(plugins::my_query::MyQueryPlugin::new()));
 ```
 
 Add your module to `src-tauri/src/plugins/mod.rs`:
@@ -699,15 +684,15 @@ pub mod my_plugin;
 
 ### Static Command List
 
-A simple `CatalogPlugin` with hardcoded actions and icons.
+A simple catalog plugin with hardcoded actions and icons.
 
 ```rust
-use crate::plugins::{CatalogPlugin, PluginContext};
+use crate::plugins::{Plugin, PluginContext};
 use crate::search::types::{Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction};
 
 pub struct DevToolsPlugin;
 
-impl CatalogPlugin for DevToolsPlugin {
+impl Plugin for DevToolsPlugin {
     fn id(&self) -> &str {
         "dev-tools"
     }
@@ -759,15 +744,15 @@ impl CatalogPlugin for DevToolsPlugin {
     ) -> anyhow::Result<PostAction> {
         match (entry_id, action_id) {
             ("clear-cache", ActionId::Open) => {
-                clear_cache(app)?;
+                clear_cache(app).context("clearing application cache")?;
                 Ok(PostAction::Dismiss)
             }
             ("open-logs", ActionId::Open) => {
-                open_log_dir(app)?;
+                open_log_dir(app).context("opening log directory")?;
                 Ok(PostAction::Dismiss)
             }
             ("open-logs", ActionId::Reveal) => {
-                reveal_log_dir(app)?;
+                reveal_log_dir(app).context("revealing log directory")?;
                 Ok(PostAction::Dismiss)
             }
             _ => anyhow::bail!("unhandled: {entry_id} / {action_id:?}"),
@@ -778,13 +763,15 @@ impl CatalogPlugin for DevToolsPlugin {
 
 ### Prefix-Routed Query Plugin
 
-A `QueryPlugin` that activates exclusively when the user types `>`:
+A query-only plugin that activates exclusively when the user types `>`:
 
 ```rust
 use std::sync::RwLock;
 
-use crate::plugins::{CatalogPlugin, PluginContext, QueryPlugin};
-use crate::search::types::{Action, ActionId, PostAction, ScoredEntry, SearchResponse};
+use anyhow::Context as _;
+
+use crate::plugins::{Plugin, PluginContext};
+use crate::search::types::{Action, ActionId, PostAction, PluginResponse, ScoredEntry};
 
 pub struct ScriptRunnerPlugin {
     scripts: RwLock<Vec<Script>>,
@@ -796,23 +783,23 @@ impl ScriptRunnerPlugin {
     }
 }
 
-impl QueryPlugin for ScriptRunnerPlugin {
+impl Plugin for ScriptRunnerPlugin {
     fn id(&self) -> &str {
         "script-runner"
     }
 
     // Only activated when the user types ">".
-    fn prefixes(&self) -> &[&str] {
-        &[">"]
+    fn search_prefixes(&self) -> &[String] {
+        &[">".to_string()]
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
         // Load scripts from disk on startup.
         let mut scripts = self.scripts.write().expect("scripts not poisoned");
         *scripts = load_scripts_from_disk();
     }
 
-    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> SearchResponse {
+    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
         let scripts = self.scripts.read().expect("scripts not poisoned");
         let results = scripts.iter()
             .filter(|s| s.name.to_lowercase().contains(&query.to_lowercase()))
@@ -832,7 +819,7 @@ impl QueryPlugin for ScriptRunnerPlugin {
             })
             .collect();
 
-        SearchResponse::Results(results)
+        Some(PluginResponse::Results(results))
     }
 
     fn execute(
@@ -841,7 +828,7 @@ impl QueryPlugin for ScriptRunnerPlugin {
         _action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        run_script(entry_id)?;
+        run_script(entry_id).context("running script")?;
         Ok(PostAction::Dismiss)
     }
 }
@@ -849,22 +836,29 @@ impl QueryPlugin for ScriptRunnerPlugin {
 
 ### Reactive Background Plugin
 
-A plugin that polls external data, respects an enable/disable toggle, and
-reacts to a configurable interval — all without blocking the main thread.
+A plugin that polls external data, respects the host-managed enable/disable
+toggle, and reacts to a configurable interval — all without blocking the main
+thread.
 
 ```rust
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::plugins::{CatalogPlugin, PluginContext};
+use anyhow::Context as _;
+
+use crate::plugins::{Plugin, PluginContext};
 use crate::search::types::{Action, ActionId, CatalogEntry, PostAction};
-use crate::settings::{PluginSettings, SettingsInit};
+use crate::settings::SettingsInit;
 
 pub struct FeedPlugin {
     items: Arc<RwLock<Vec<FeedItem>>>,
+    // Shared with the background thread so disable() can signal it to exit.
     stop: Arc<AtomicBool>,
+    // Updated by setting_changed() and read by the background thread.
+    poll_interval_secs: Arc<AtomicU64>,
+    feed_url: Arc<RwLock<String>>,
 }
 
 impl FeedPlugin {
@@ -872,84 +866,86 @@ impl FeedPlugin {
         Self {
             items: Arc::new(RwLock::new(Vec::new())),
             stop: Arc::new(AtomicBool::new(false)),
+            poll_interval_secs: Arc::new(AtomicU64::new(300)),
+            feed_url: Arc::new(RwLock::new(String::new())),
         }
     }
 }
 
-impl CatalogPlugin for FeedPlugin {
+impl Plugin for FeedPlugin {
     fn id(&self) -> &str {
         "rss-feed"
     }
 
-    fn enabled_settings_key(&self) -> Option<&'static str> {
-        // The host watches this key and re-evaluates `is_enabled()` when it changes.
-        Some("enabled")
-    }
-
-    fn is_enabled(&self) -> bool {
-        // Read directly from the store via the stashed settings handle.
-        // `initialize_settings` guarantees "enabled" always exists.
-        self.settings
-            .get()
-            .and_then(|s: &PluginSettings| s.get::<bool>("enabled"))
-            .unwrap_or(true)
-    }
-
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
-            .ensure("enabled", true)
             .ensure("feedUrl", "https://example.com/feed.xml")
             .ensure("pollIntervalSecs", 300u64)
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
-        // Read initial config.
-        let feed_url: String = ctx.settings.get("feedUrl")
-            .unwrap_or_default();
-        let interval_secs: u64 = ctx.settings.get("pollIntervalSecs")
-            .unwrap_or(300);
+    fn enable(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
+        // Load initial config into shared state so the background thread and
+        // setting_changed() both operate on the same data.
+        let feed_url: String = ctx.settings.get("feedUrl").unwrap_or_default();
+        let interval_secs: u64 = ctx.settings.get("pollIntervalSecs").unwrap_or(300);
 
-        // Subscribe to changes that affect the poller.
-        let mut enabled_watch = ctx.notifier.watch::<bool>("enabled");
-        let mut interval_watch = ctx.notifier.watch::<u64>("pollIntervalSecs");
+        *self.feed_url.write().expect("feed_url not poisoned") = feed_url.clone();
+        self.poll_interval_secs.store(interval_secs, Ordering::Relaxed);
+
+        // Reset the stop flag in case this is a re-enable after a disable.
+        self.stop.store(false, Ordering::Relaxed);
 
         let items = Arc::clone(&self.items);
         let stop = Arc::clone(&self.stop);
+        let poll_interval_secs = Arc::clone(&self.poll_interval_secs);
+        let feed_url = Arc::clone(&self.feed_url);
 
         thread::spawn(move || {
-            let mut enabled = enabled_watch.get();
-            let mut interval = Duration::from_secs(interval_secs);
-
             loop {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
 
-                if enabled {
-                    if let Ok(fetched) = fetch_feed(&feed_url) {
-                        *items.write().expect("items not poisoned") = fetched;
-                    }
+                let url = feed_url.read().expect("feed_url not poisoned").clone();
+                if let Ok(fetched) = fetch_feed(&url) {
+                    *items.write().expect("items not poisoned") = fetched;
                 }
 
-                // Sleep in small ticks so we respond to stop/config changes promptly.
-                for _ in 0..interval.as_secs() {
+                // Sleep in small ticks so we respond to stop signals and
+                // interval changes promptly, without holding any locks.
+                let interval = poll_interval_secs.load(Ordering::Relaxed);
+                for _ in 0..interval {
                     thread::sleep(Duration::from_secs(1));
-                    if stop.load(Ordering::Relaxed) { return; }
-
-                    // Check for setting changes without blocking.
-                    if let Ok(new_enabled) = enabled_watch.rx.try_recv() {
-                        enabled = new_enabled;
-                    }
-                    if let Ok(secs) = interval_watch.rx.try_recv() {
-                        interval = Duration::from_secs(secs);
+                    if stop.load(Ordering::Relaxed) {
+                        return;
                     }
                 }
             }
         });
     }
 
-    fn teardown(&self) {
+    fn disable(&self) {
+        // Signal the background thread spawned in enable() to exit.
         self.stop.store(true, Ordering::SeqCst);
+    }
+
+    fn setting_changed(&self, key: &str, value: serde_json::Value) {
+        // The host coalesces rapid changes to the same key, so each call here
+        // carries the latest value. Store it; the background thread picks it
+        // up on its next iteration.
+        match key {
+            "pollIntervalSecs" => {
+                if let Ok(secs) = serde_json::from_value::<u64>(value) {
+                    self.poll_interval_secs.store(secs, Ordering::Relaxed);
+                }
+            }
+            "feedUrl" => {
+                if let Ok(url) = serde_json::from_value::<String>(value) {
+                    *self.feed_url.write().expect("feed_url not poisoned") = url;
+                }
+            }
+            _ => {}
+        }
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {
@@ -974,8 +970,8 @@ impl CatalogPlugin for FeedPlugin {
         _action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        // entry_id is the URL we stored above.
-        open::that(entry_id)?;
+        // entry_id is the URL stored in CatalogEntry::id above.
+        open::that(entry_id).context("opening feed item URL")?;
         Ok(PostAction::Dismiss)
     }
 }
@@ -983,10 +979,12 @@ impl CatalogPlugin for FeedPlugin {
 
 **What this example demonstrates:**
 
-- `enabled_settings_key()` — lets the host gate shortcuts and entries without
-  polling `is_enabled()` from outside.
-- `initialize_settings()` — declares three typed defaults.
-- `setup()` — spawns a long-lived background thread and subscribes to two
-  reactive watch channels.
-- `teardown()` — signals the background thread to exit cleanly.
-- `entries()` — defensively handles a not-yet-initialized `RwLock`.
+- `initialize_settings()` — declares typed defaults without an `enabled` key
+  (the host manages that).
+- `enable()` — loads initial config, resets the stop flag so re-enable works
+  correctly, then spawns a long-lived background thread.
+- `disable()` — signals the background thread to exit cleanly.
+- `setting_changed()` — reacts to user configuration changes dispatched by the
+  host's `CoalescingDispatcher`; stores new values into atomics / `RwLock`s
+  so the background thread picks them up on its next iteration.
+- `entries()` — defensively handles a not-yet-populated `RwLock`.
