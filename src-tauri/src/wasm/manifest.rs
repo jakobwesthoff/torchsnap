@@ -21,11 +21,15 @@ use serde::{Deserialize, Serialize};
 //
 // Serde naming conventions:
 //
-// This struct tree is deserialized from TOML (manifest.toml)
-// and serialized to JSON (for the frontend via Tauri commands).
-// TOML uses kebab-case (`launcher-bundle`), JSON uses camelCase
-// (`launcherBundle`). Fields that need different names in each
-// format use `#[serde(rename(deserialize = "...", serialize = "..."))]`.
+// This struct tree serves two formats:
+// - `deserialize` = TOML input (manifest.toml, kebab-case keys)
+// - `serialize`   = JSON output (Tauri commands → frontend, camelCase keys)
+//
+// Example: `launcher-bundle` in TOML ↔ `launcherBundle` in JSON.
+//
+// Fields that need different names in each direction use dual
+// rename attributes:
+//   `#[serde(rename(deserialize = "kebab-case", serialize = "camelCase"))]`
 //
 // Types with custom serde impls (`PluginId`, `PluginIcon`) handle
 // their own format: `PluginId` serializes as a plain string,
