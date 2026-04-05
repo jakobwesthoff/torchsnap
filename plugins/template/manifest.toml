@@ -1,0 +1,23 @@
+[plugin]
+id = "template"
+name = "Template Plugin"
+description = "Starting point for new Torchsnap plugins"
+version = "0.1.0"
+wasm = "template_plugin.wasm"
+icon = "heroicons:puzzle-piece"
+prefixes = ["tpl:"]
+
+[settings]
+greeting = "Hello from Template!"
+
+[frontend]
+launcher-bundle = "frontend/dist/launcher.js"
+launcher-css = "frontend/dist/launcher.css"
+settings-bundle = "frontend/dist/settings.js"
+settings-css = "frontend/dist/settings.css"
+
+[frontend.views]
+demo = "DemoView"
+
+[frontend.settings]
+component = "DemoSettings"
