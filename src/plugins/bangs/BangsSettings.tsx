@@ -13,7 +13,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
 import { Section } from "../../settings/Section";
 
@@ -73,7 +72,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 // Component
 // =========================================================
 
-export default function BangsSettings(_props: PluginSettingsProps) {
+export default function BangsSettings() {
   const [stats, setStats] = useState<BangStats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);

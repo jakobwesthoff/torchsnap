@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Logger React Context
+// Logger Provider
 //
 // Provides a Logger instance via React context so that deep
 // component trees can access the logger without prop drilling.
@@ -12,10 +12,9 @@
 // by the host. Components call useLogger() to get the logger.
 // =========================================================
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { Logger, createLogger } from "./logger";
-
-const LoggerContext = createContext<Logger | null>(null);
+import { useMemo, type ReactNode } from "react";
+import { createLogger } from "../lib/logger";
+import { LoggerContext } from "./LoggerContext";
 
 export function LoggerProvider({
   source,
@@ -28,18 +27,4 @@ export function LoggerProvider({
   return (
     <LoggerContext.Provider value={logger}>{children}</LoggerContext.Provider>
   );
-}
-
-/**
- * Access the logger from context. Must be used within a
- * LoggerProvider.
- *
- * @throws Error if used outside a LoggerProvider.
- */
-export function useLogger(): Logger {
-  const logger = useContext(LoggerContext);
-  if (!logger) {
-    throw new Error("useLogger must be used within a LoggerProvider");
-  }
-  return logger;
 }

@@ -6,7 +6,7 @@ import { Suspense, useMemo, useState } from "react";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { createLogger } from "../lib/logger";
-import { LoggerProvider } from "../lib/LoggerContext";
+import { LoggerProvider } from "../contexts/LoggerProvider";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";

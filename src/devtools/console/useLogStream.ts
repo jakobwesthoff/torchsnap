@@ -126,7 +126,7 @@ export function useLogStream(): UseLogStreamReturn {
   }, []);
 
   // Trigger re-read of itemsRef when snapshot changes.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   void snapshot;
 
   return {
