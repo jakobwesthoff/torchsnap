@@ -18,13 +18,21 @@ build-plugins:
     done
 
 # Build a single WASM plugin by name.
-# After compilation, copies the .wasm artifact to the plugin
-# root so DirectorySource can find it via the manifest's `wasm`
-# path during development.
+# If the plugin has a frontend (package.json), builds it first
+# with Vite. Then compiles the WASM binary and copies the
+# artifact to the plugin root so DirectorySource can find it
+# via the manifest's `wasm` path during development.
 build-plugin name:
     #!/usr/bin/env bash
     set -euo pipefail
     dir="plugins/{{ name }}"
+
+    # Build frontend if present.
+    if [ -f "$dir/frontend/package.json" ]; then
+        echo "Building frontend for {{ name }}..."
+        (cd "$dir/frontend" && bun install && bun run build)
+    fi
+
     cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
 
     # Read the wasm filename from the manifest and copy the
