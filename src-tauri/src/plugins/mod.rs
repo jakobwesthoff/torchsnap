@@ -98,12 +98,31 @@ pub struct PluginContext {
 ///
 /// ## Lifecycle
 ///
+/// The host manages the plugin lifecycle through these phases:
+///
 /// 1. Plugin is constructed and registered via `PluginHost::register`
 /// 2. `initialize_settings()` is called synchronously at startup
-/// 3. `setup()` is called once on a background thread
+/// 3. `enable()` is called on a background thread if `enabled.<id>`
+///    is `true` in the settings store (default)
 /// 4. `entries()` / `search()` are called on every search keystroke
+///    (only while enabled — the host gates on the enabled flag)
 /// 5. `execute()` is called when the user triggers an action
-/// 6. `teardown()` is called once during `RunEvent::Exit`
+/// 6. `setting_changed()` is called whenever a key in
+///    `plugins.<id>.*` changes at runtime
+/// 7. `disable()` is called when the user toggles the plugin off
+///    or during `RunEvent::Exit`
+///
+/// Enable/disable may be called multiple times during the app's
+/// lifetime as the user toggles the plugin on and off.
+///
+/// ## Legacy lifecycle (migration period)
+///
+/// The following methods are deprecated and will be removed once
+/// all plugins have migrated to `enable()`/`disable()`:
+/// - `setup()` — replaced by `enable()`
+/// - `teardown()` — replaced by `disable()`
+/// - `is_enabled()` — host manages this via `AtomicBool` per plugin
+/// - `enabled_settings_key()` — host watches `enabled.<id>` directly
 pub trait Plugin: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
     /// field in `SourcedEntry` and for routing `execute_action`.
@@ -173,6 +192,49 @@ pub trait Plugin: Send + Sync {
     /// Called once during `RunEvent::Exit`. Plugins should release
     /// resources, flush pending writes, and stop background threads.
     fn teardown(&self) {}
+
+    // =========================================================
+    // New lifecycle methods (migration target)
+    // =========================================================
+
+    /// Activate the plugin. Called on startup (if enabled) and on
+    /// each re-enable after a user toggle.
+    ///
+    /// Implementations should acquire resources, start background
+    /// threads, and prepare for search queries. This may be called
+    /// multiple times during the app's lifetime — each call should
+    /// be idempotent if resources are already initialized.
+    ///
+    /// Runs on a `spawn_blocking` thread — implementations are free
+    /// to block.
+    ///
+    // FIXME: Find a cleaner way to provide context without passing
+    // AppHandle and PluginContext on every enable() call. These are
+    // immutable after construction — ideally the plugin would hold
+    // a reference from registration time.
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
+
+    /// Deactivate the plugin. Called when the user toggles the
+    /// plugin off and during `RunEvent::Exit`.
+    ///
+    /// Implementations should release resources, stop background
+    /// threads, and clean up state. The plugin may be re-enabled
+    /// later — resources acquired in `enable()` should be released
+    /// here.
+    fn disable(&self) {}
+
+    /// React to a settings change in this plugin's namespace.
+    ///
+    /// Called by the host whenever a key in `plugins.<id>.*` changes
+    /// at runtime. The `key` is relative to the plugin namespace
+    /// (e.g., `"retentionDays"`, not `"plugins.calculator.retentionDays"`).
+    ///
+    /// This is dispatched through a `CoalescingDispatcher` — rapid
+    /// changes to the same key are deduplicated to the latest value.
+    /// Different keys preserve chronological order.
+    ///
+    /// The default implementation is a no-op.
+    fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
     /// Execute an action on an entry owned by this plugin.
     fn execute(
