@@ -22,8 +22,6 @@ mod schema;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use std::thread;
-
 use anyhow::Context;
 use serde::Serialize;
 use tauri::Manager;
@@ -84,9 +82,6 @@ pub struct BangsPlugin {
     // URL always matches what's on screen.
     pending_url: Mutex<Option<String>>,
 
-    /// Tracks whether the plugin is currently enabled.
-    enabled: Arc<AtomicBool>,
-
     /// Shared website metadata service for favicon lookups.
     metadata_service: Arc<WebsiteMetadataService>,
 }
@@ -99,7 +94,6 @@ impl BangsPlugin {
             ready: AtomicBool::new(false),
             state: Mutex::new(None),
             pending_url: Mutex::new(None),
-            enabled: Arc::new(AtomicBool::new(true)),
             metadata_service,
         }
     }
@@ -114,42 +108,14 @@ impl Plugin for BangsPlugin {
         PLUGIN_ID
     }
 
-    fn is_enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
-    }
-
-    fn enabled_settings_key(&self) -> Option<&'static str> {
-        Some("enabled")
-    }
-
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
-        settings.ensure("enabled", true)
-    }
-
     // =========================================================
-    // Setup — Background Initialization
+    // Enable — Background Initialization
     //
-    // Runs on a background thread during app startup. Opens the
-    // bang database, populates it if needed (network fetch with
-    // baked-in fallback), and signals readiness.
+    // Opens the bang database, populates it if needed (network
+    // fetch with baked-in fallback), and signals readiness.
     // =========================================================
 
-    fn setup(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
-        // Read initial enabled state and watch for changes.
-        let initial_enabled: bool = ctx.settings.get("enabled").unwrap_or(true);
-        self.enabled.store(initial_enabled, Ordering::Relaxed);
-
-        let mut enabled_watch = ctx.notifier.watch::<bool>("enabled");
-        let enabled_flag = Arc::clone(&self.enabled);
-        thread::spawn(move || {
-            loop {
-                let Some(new_enabled) = enabled_watch.blocking_changed() else {
-                    break;
-                };
-                enabled_flag.store(new_enabled, Ordering::Relaxed);
-            }
-        });
-
+    fn enable(&self, app: &tauri::AppHandle, _ctx: &PluginContext) {
         let data_dir = app
             .path()
             .app_data_dir()
@@ -177,7 +143,10 @@ impl Plugin for BangsPlugin {
         self.ready.store(true, Ordering::Relaxed);
     }
 
-    fn teardown(&self) {}
+    fn disable(&self) {
+        self.ready.store(false, Ordering::Relaxed);
+        *self.state.lock().expect("state lock not poisoned") = None;
+    }
 
     // =========================================================
     // Search
