@@ -81,7 +81,7 @@ DSL.
 fn migrations(&self) -> Vec<Migration>;
 ```
 
-The host runs migrations during `setup()` before handing the
+The host runs migrations during `enable()` before handing the
 `SqlStorage` to the plugin. This keeps migration execution centralized
 and gives the host visibility into schema changes.
 
@@ -93,6 +93,6 @@ and gives the host visibility into schema changes.
   Removing a plugin means deleting its directory.
 - `rusqlite` and `rusqlite_migration` become new dependencies.
 - The host is responsible for creating plugin data directories and
-  opening connections during `setup()`.
+  opening connections during `enable()`.
 - Binary data (images, files) is handled separately by `FileStorage`
   (ADR 0019), referenced by key in `SqlStorage`.

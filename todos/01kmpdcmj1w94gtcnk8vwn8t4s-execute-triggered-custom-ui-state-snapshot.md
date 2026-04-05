@@ -1,6 +1,6 @@
 # Execute-triggered custom UI: state snapshot and restore
 
-When a CatalogPlugin entry's `execute()` returns `PostAction::ShowCustomUI`,
+When a catalog-mode plugin entry's `execute()` returns `PostAction::ShowCustomUI`,
 the host should snapshot its current state (query, results, selected index)
 before mounting the plugin's custom UI. When the user presses Escape /
 `goBack()`, the snapshot is restored so the user returns to exactly where

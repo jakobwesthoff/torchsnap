@@ -5,9 +5,9 @@
 // =========================================================
 // PluginFrecency — plugin-scoped frecency wrapper
 //
-// Same pattern as PluginSettings / PluginSettingsNotifier:
-// binds the plugin_id at construction so plugins cannot
-// access other plugins' frecency data.
+// Same pattern as PluginSettings: binds the plugin_id at
+// construction so plugins cannot access other plugins'
+// frecency data.
 // =========================================================
 
 use std::collections::HashMap;
