@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import type { ComponentType, SVGProps } from "react";
+import { Icon } from "../components/Icon";
 import { cn } from "../lib/cn";
 
 // =========================================================
@@ -12,7 +12,8 @@ import { cn } from "../lib/cn";
 export interface SidebarItem {
   id: string;
   label: string;
-  settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
+  /** String icon identifier (e.g. "heroicons:cog-6-tooth"). */
+  settingsIcon?: string;
 }
 
 interface SettingsSidebarProps {
@@ -77,8 +78,6 @@ function SidebarButton({
   active: boolean;
   onSelect: (id: string) => void;
 }) {
-  const Icon = item.settingsIcon;
-
   return (
     <button
       type="button"
@@ -88,7 +87,7 @@ function SidebarButton({
         active ? "bg-accent text-white font-medium" : "text-text-primary hover:bg-surface-hover",
       )}
     >
-      {Icon && <Icon className="h-4 w-4 shrink-0" />}
+      {item.settingsIcon && <Icon icon={item.settingsIcon} className="h-4 w-4 shrink-0" />}
       {item.label}
     </button>
   );

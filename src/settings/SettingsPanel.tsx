@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { Suspense, useMemo, useState } from "react";
-import { ChartBarIcon, Cog6ToothIcon, GlobeAltIcon, SwatchIcon } from "@heroicons/react/24/outline";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { createLogger } from "../lib/logger";
@@ -19,10 +18,10 @@ import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
 // =========================================================
 
 const BUILT_IN_SECTIONS: SidebarItem[] = [
-  { id: "general", label: "General", settingsIcon: Cog6ToothIcon },
-  { id: "appearance", label: "Appearance", settingsIcon: SwatchIcon },
-  { id: "frecency", label: "Frecency", settingsIcon: ChartBarIcon },
-  { id: "website-metadata", label: "Website Metadata", settingsIcon: GlobeAltIcon },
+  { id: "general", label: "General", settingsIcon: "heroicons:cog-6-tooth" },
+  { id: "appearance", label: "Appearance", settingsIcon: "heroicons:swatch" },
+  { id: "frecency", label: "Frecency", settingsIcon: "heroicons:chart-bar" },
+  { id: "website-metadata", label: "Website Metadata", settingsIcon: "heroicons:globe-alt" },
 ];
 
 // =========================================================

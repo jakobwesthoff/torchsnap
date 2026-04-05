@@ -14,7 +14,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardDocumentListIcon } from "@heroicons/react/24/outline";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
 import { SectionHeader } from "../../settings/SectionHeader";
@@ -111,7 +110,7 @@ export default function ClipboardSettings({ usePluginSetting }: PluginSettingsPr
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={ClipboardDocumentListIcon}
+        icon="heroicons:clipboard-document-list"
         title="Clipboard"
         description="Keep a searchable history of everything you copy. Quickly recall and paste previous clipboard entries directly from the launcher."
       />

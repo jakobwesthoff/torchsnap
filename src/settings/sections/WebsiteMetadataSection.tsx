@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useCallback, useEffect, useState } from "react";
-import { GlobeAltIcon } from "@heroicons/react/24/outline";
 import { command } from "../../lib/command";
 import { useSetting } from "../../hooks/useSetting";
 import { SectionHeader } from "../SectionHeader";
@@ -72,7 +71,7 @@ export function WebsiteMetadataSection() {
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={GlobeAltIcon}
+        icon="heroicons:globe-alt"
         title="Website Metadata"
         description="Caches website favicons and metadata (title, description) so plugins can show enriched results without repeated network requests."
       />
