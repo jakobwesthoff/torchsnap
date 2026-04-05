@@ -702,13 +702,19 @@ pub fn run() {
             // =========================================================
             // Settings-changed listener
             //
-            // Propagates store changes to watch channels AND signals
-            // the shortcut reactor when a relevant key changes.
+            // Propagates store changes to:
+            // 1. Watch channels (SettingsNotifier) for legacy per-plugin
+            //    SettingsWatch subscribers
+            // 2. Host-managed plugin lifecycle (enable/disable) and
+            //    settings dispatch (setting_changed) via
+            //    CoalescingDispatcher
+            // 3. Shortcut reactor for re-registration
             // =========================================================
             {
                 let notifier = Arc::clone(&notifier);
                 let store_for_listener = Arc::clone(&store);
                 let host_for_listener = Arc::clone(&host);
+                let app_for_listener = app.handle().clone();
                 app.listen("settings-changed", move |event: tauri::Event| {
                     #[derive(serde::Deserialize)]
                     struct Payload {
@@ -718,7 +724,17 @@ pub fn run() {
                         let value = store_for_listener
                             .get(&payload.key)
                             .unwrap_or(serde_json::Value::Null);
-                        notifier.notify(&payload.key, value);
+
+                        // Legacy: propagate to watch channels.
+                        notifier.notify(&payload.key, value.clone());
+
+                        // New: route to host-managed lifecycle and
+                        // plugin setting_changed dispatch.
+                        host_for_listener.handle_setting_changed(
+                            &payload.key,
+                            value,
+                            &app_for_listener,
+                        );
 
                         // Signal shortcut re-registration if the changed
                         // key affects shortcuts or plugin enabled state.
@@ -794,7 +810,7 @@ pub fn run() {
             metadata.teardown();
 
             let host = app.state::<Arc<plugin_host::PluginHost>>();
-            host.teardown_all();
+            host.disable_all();
 
             // Belt-and-suspenders cleanup for the control socket.
             // The reactor task also cleans up, but this is synchronous
