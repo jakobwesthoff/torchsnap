@@ -20,6 +20,7 @@ use std::time::SystemTime;
 
 use crate::plugins::Plugin;
 use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
+use crate::settings::SettingsInit;
 
 use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
@@ -74,6 +75,18 @@ impl WasmPluginBridge {
 impl Plugin for WasmPluginBridge {
     fn id(&self) -> &str {
         self.manifest.plugin.id.as_str()
+    }
+
+    /// Write the `[settings]` table defaults from the manifest to
+    /// the settings store. Each entry is an `ensure()` call —
+    /// existing user values are never overwritten.
+    fn initialize_settings(&self, mut settings: SettingsInit) -> SettingsInit {
+        for (key, toml_value) in &self.manifest.settings {
+            if let Ok(json_value) = serde_json::to_value(toml_value) {
+                settings = settings.ensure(key, json_value);
+            }
+        }
+        settings
     }
 
     fn enable(&self, _app: &tauri::AppHandle, _ctx: &crate::plugins::PluginContext) {
