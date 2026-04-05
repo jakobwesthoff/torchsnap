@@ -9,7 +9,7 @@ import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { createLogger } from "../lib/logger";
-import { LoggerProvider } from "../lib/LoggerContext";
+import { LoggerProvider } from "../contexts/LoggerProvider";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
