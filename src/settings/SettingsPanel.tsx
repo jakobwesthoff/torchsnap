@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { Suspense, useMemo, useState } from "react";
+import { type ComponentType, Suspense, useMemo, useState } from "react";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
+import type { PluginSettingsProps } from "../plugins/types";
 import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { createLogger } from "../lib/logger";
 import { LoggerProvider } from "../contexts/LoggerProvider";
@@ -93,9 +94,12 @@ function SectionContent({
     return null;
   }
 
+  // Stable reference — registry returns the same component instance per ID.
+  const CustomSettings = getPluginSettingsComponent(plugin.id);
+
   return (
     <Suspense fallback={<div className="text-text-muted text-sm">Loading settings…</div>}>
-      <PluginSectionContent plugin={plugin} />
+      <PluginSectionContent plugin={plugin} CustomSettings={CustomSettings} />
     </Suspense>
   );
 }
@@ -110,13 +114,13 @@ function SectionContent({
 
 function PluginSectionContent({
   plugin,
+  CustomSettings,
 }: {
   plugin: ReturnType<typeof getPluginsWithSettings>[number];
+  CustomSettings?: ComponentType<PluginSettingsProps>;
 }) {
   const usePluginSetting = useMemo(() => createPluginSettingHook(plugin.id), [plugin.id]);
   const logger = useMemo(() => createLogger(plugin.id), [plugin.id]);
-
-  const CustomSettings = getPluginSettingsComponent(plugin.id);
 
   return (
     <PluginSettingsWrapper
