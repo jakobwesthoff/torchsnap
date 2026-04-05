@@ -95,11 +95,14 @@ export function useSearch(query: string): UseSearchResult {
     setPrevQuery(query);
     setLoading(true);
 
-    // When the query is cleared (e.g. goBack / Escape), synchronously
-    // reset ALL state so plugin views unmount on the same render.
-    // Without this, stale plugin views remain mounted until the async
-    // search result arrives, and their effects can re-inject partial
-    // state (like a matched prefix) into the display query.
+    // ESLINT: When the query is cleared (e.g. goBack / Escape),
+    // synchronously reset ALL state so plugin views unmount on the same
+    // render. Without this, stale plugin views remain mounted until the
+    // async search result arrives, and their effects can re-inject
+    // partial state (like a matched prefix) into the display query.
+    // Moving this ref write to a useEffect would reintroduce that
+    // visual glitch — there would be a render frame where the query is
+    // empty but stale results are still visible.
     //
     // This is the only place where we eagerly null out view refs.
     // For non-empty query changes (typing within prefix mode), we
@@ -107,6 +110,7 @@ export function useSearch(query: string): UseSearchResult {
     // aware logic in the channel handler takes care of replacing
     // stale refs without a null gap.
     if (!query) {
+      // eslint-disable-next-line react-hooks/refs
       accumulatorRef.current = [];
       setResults([]);
       setCustomPluginView(null);
