@@ -6,15 +6,17 @@
 // Plugin Host
 //
 // Central authority for the plugin lifecycle. Owns all plugin
-// Arc references and is the single entry point for:
+// references and is the single entry point for:
 //
 // - Registration (register)
 // - Settings initialization (Phase 1: synchronous defaults)
-// - Parallel plugin setup (Phase 2: tokio spawn_blocking)
+// - Parallel plugin enable (Phase 2: tokio spawn_blocking)
+// - Host-managed enable/disable via `enabled.<id>` keys
+// - Settings change dispatch via CoalescingDispatcher
 // - Global shortcut registration and reactive re-registration
 // - Search routing (nucleo + prefix matching)
 // - Action execution and message routing
-// - Teardown
+// - Shutdown (disable all plugins)
 //
 // Managed as `Arc<PluginHost>` in Tauri state — no Mutex needed
 // since all fields are either immutable after init or use
@@ -22,6 +24,7 @@
 // =========================================================
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
@@ -32,6 +35,7 @@ use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
+use crate::coalescing_dispatcher::CoalescingDispatcher;
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
@@ -76,11 +80,51 @@ struct ActivatePluginPayload {
 }
 
 // =========================================================
+// PluginSlot — per-plugin state managed by the host
+// =========================================================
+
+/// Wraps a plugin with host-managed lifecycle state. The host
+/// owns the enabled flag and the settings dispatcher — plugins
+/// never manage their own enabled state.
+struct PluginSlot {
+    plugin: Arc<dyn Plugin>,
+
+    /// Host-owned enabled flag. Checked before including the
+    /// plugin in search results, shortcut registration, etc.
+    /// Updated by the host when `enabled.<id>` changes in the
+    /// settings store.
+    enabled: AtomicBool,
+
+    /// Serializes and deduplicates settings change dispatch for
+    /// this plugin. Both `enabled.<id>` changes and
+    /// `plugins.<id>.*` changes are funneled through here.
+    dispatcher: CoalescingDispatcher,
+}
+
+impl PluginSlot {
+    fn new(plugin: Arc<dyn Plugin>) -> Self {
+        Self {
+            plugin,
+            enabled: AtomicBool::new(true),
+            dispatcher: CoalescingDispatcher::new(),
+        }
+    }
+
+    /// Whether this plugin is currently active. During the
+    /// migration period, this checks both the host-managed
+    /// `AtomicBool` AND the plugin's own `is_enabled()` — both
+    /// must agree for the plugin to be considered enabled.
+    fn is_active(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed) && self.plugin.is_enabled()
+    }
+}
+
+// =========================================================
 // PluginHost
 // =========================================================
 
 pub struct PluginHost {
-    plugins: Vec<Arc<dyn Plugin>>,
+    slots: Vec<PluginSlot>,
     store: Arc<Store<tauri::Wry>>,
     notifier: Arc<SettingsNotifier>,
     frecency: Arc<FrecencyStore>,
@@ -106,7 +150,7 @@ impl PluginHost {
     ) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
-            plugins: Vec::new(),
+            slots: Vec::new(),
             store,
             notifier,
             frecency,
@@ -117,14 +161,14 @@ impl PluginHost {
     }
 
     pub fn register(&mut self, plugin: Box<dyn Plugin>) {
-        self.plugins.push(Arc::from(plugin));
+        self.slots.push(PluginSlot::new(Arc::from(plugin)));
     }
 
     // =========================================================
     // Initialization
     // =========================================================
 
-    /// Initialize settings, register shortcuts, start plugin setup,
+    /// Initialize settings, register shortcuts, enable plugins,
     /// and spawn the shortcut reactor.
     ///
     /// Must be called exactly once after all plugins are registered
@@ -133,11 +177,36 @@ impl PluginHost {
         // -------------------------------------------------------
         // Phase 1: Initialize plugin settings defaults (synchronous)
         // -------------------------------------------------------
-        for p in &self.plugins {
-            let prefix = format!("plugins.{}.", p.id());
+        for slot in &self.slots {
+            let id = slot.plugin.id();
+            let prefix = format!("plugins.{id}.");
             let current = SettingsInit::from_store(&self.store, &prefix);
-            let initialized = p.initialize_settings(current);
+            let initialized = slot.plugin.initialize_settings(current);
             initialized.apply(&self.store, &prefix);
+
+            // Host-managed enabled key: `enabled.<id>`.
+            // Defaults to true if no value exists.
+            let enabled_key = format!("enabled.{id}");
+            if self.store.get(&enabled_key).is_none() {
+                // Migration: if the plugin previously stored enabled
+                // state at `plugins.<id>.enabled`, copy that value
+                // to the new top-level key.
+                let old_key = format!("plugins.{id}.enabled");
+                let migrated_value = self
+                    .store
+                    .get(&old_key)
+                    .and_then(|v| v.as_bool());
+                let initial = migrated_value.unwrap_or(true);
+                let _ = self.store.set(enabled_key.clone(), serde_json::Value::Bool(initial));
+            }
+
+            // Read the current enabled state and apply to the slot.
+            let enabled = self
+                .store
+                .get(&enabled_key)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            slot.enabled.store(enabled, Ordering::Relaxed);
         }
 
         // -------------------------------------------------------
@@ -145,14 +214,19 @@ impl PluginHost {
         // -------------------------------------------------------
         self.watched_keys.insert("globalShortcut".to_string());
 
-        // Collect keys into a temp vec to avoid borrowing &self and
-        // &mut self.watched_keys simultaneously.
         let mut keys_to_watch = Vec::new();
-        for p in &self.plugins {
+        for slot in &self.slots {
+            let id = slot.plugin.id();
+
+            // Watch the host-managed enabled key for shortcut reactor.
+            keys_to_watch.push(format!("enabled.{id}"));
+
+            // Legacy: also collect old-style watched keys from plugins
+            // that haven't migrated yet.
             collect_watched_keys_into(
-                p.id(),
-                p.enabled_settings_key(),
-                &p.shortcuts(),
+                id,
+                slot.plugin.enabled_settings_key(),
+                &slot.plugin.shortcuts(),
                 &mut keys_to_watch,
             );
         }
@@ -164,12 +238,12 @@ impl PluginHost {
         self.register_all_shortcuts(app);
 
         // -------------------------------------------------------
-        // Phase 2: Parallel plugin setup (background)
+        // Phase 2: Parallel plugin startup (background)
         //
-        // Each plugin's setup() runs on a Tokio spawn_blocking
-        // thread. This gives plugins access to the Tokio runtime
-        // (e.g. for Http requests via Handle::current()) while
-        // keeping setup parallelism.
+        // For each plugin: call both legacy setup() and new
+        // enable() (during migration, both exist as no-ops for
+        // the path not yet used). Only enabled plugins get
+        // started.
         //
         // We obtain the runtime handle explicitly because this
         // method is called from Tauri's synchronous setup()
@@ -178,8 +252,12 @@ impl PluginHost {
         // -------------------------------------------------------
         let runtime = tauri::async_runtime::handle();
         let handle = app.clone();
-        for p in &self.plugins {
-            let p = Arc::clone(p);
+        for slot in &self.slots {
+            if !slot.enabled.load(Ordering::Relaxed) {
+                continue;
+            }
+
+            let p = Arc::clone(&slot.plugin);
             let h = handle.clone();
             let ctx = PluginContext {
                 settings: PluginSettings::new(Arc::clone(&self.store), p.id()),
@@ -190,7 +268,13 @@ impl PluginHost {
                 ),
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
-            runtime.spawn_blocking(move || p.setup(&h, &ctx));
+            runtime.spawn_blocking(move || {
+                // Call both legacy and new lifecycle methods.
+                // Plugins implement one or the other — the unused
+                // one is a default no-op.
+                p.setup(&h, &ctx);
+                p.enable(&h, &ctx);
+            });
         }
     }
 
@@ -244,10 +328,11 @@ impl PluginHost {
         let mut registered: Vec<RegisteredShortcut> = Vec::new();
 
         // Collect shortcuts from all enabled plugins.
-        for plugin in &self.plugins {
-            if !plugin.is_enabled() {
+        for slot in &self.slots {
+            if !slot.is_active() {
                 continue;
             }
+            let plugin = &slot.plugin;
             let plugin_id = plugin.id().to_string();
             for decl in plugin.shortcuts() {
                 if let Some(r) = self.resolve_shortcut(&plugin_id, &decl, Arc::clone(plugin)) {
@@ -374,6 +459,7 @@ impl PluginHost {
         // =======================================================
 
         if let Some((plugin, prefix)) = self.find_prefix_match(query) {
+            // Note: prefix match already checked is_active() internally
             let stripped = query[prefix.len()..].to_string();
             let source = plugin.id().to_string();
             let prefix_owned = prefix.to_string();
@@ -421,7 +507,10 @@ impl PluginHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let plugins = self.plugins.clone();
+        let plugins: Vec<Arc<dyn Plugin>> = self.slots.iter()
+            .filter(|s| s.is_active())
+            .map(|s| Arc::clone(&s.plugin))
+            .collect();
         let frecency = self.frecency.clone();
         let query_owned = query.to_string();
 
@@ -446,13 +535,13 @@ impl PluginHost {
         // results to the frontend as each plugin completes.
         let mut join_set = JoinSet::new();
 
-        for plugin in &self.plugins {
-            if !plugin.is_enabled() {
+        for slot in &self.slots {
+            if !slot.is_active() {
                 continue;
             }
 
-            let source = plugin.id().to_string();
-            let plugin = Arc::clone(plugin);
+            let source = slot.plugin.id().to_string();
+            let plugin = Arc::clone(&slot.plugin);
             let query = query_owned.clone();
 
             join_set.spawn_blocking(move || {
@@ -520,7 +609,7 @@ impl PluginHost {
 
     /// Delegate to the standalone function for testability.
     fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
-        find_prefix_match(&self.plugins, query)
+        find_prefix_match(&self.slots, query)
     }
 
     /// Catalog search as a static method so it can run on
@@ -542,11 +631,7 @@ impl PluginHost {
         let mut title_indices = Vec::new();
 
         for plugin in plugins {
-            // Skip disabled plugins — the host gates search results.
-            if !plugin.is_enabled() {
-                continue;
-            }
-
+            // Disabled plugins are already filtered out by the caller.
             let source = plugin.id().to_string();
 
             // Track where this plugin's results start so we can
@@ -617,8 +702,8 @@ impl PluginHost {
         // regardless of whether the action succeeds.
         self.frecency.record(source, entry_id);
 
-        if let Some(plugin) = self.plugins.iter().find(|p| p.id() == source) {
-            return plugin.execute(entry_id, action_id, app);
+        if let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == source) {
+            return slot.plugin.execute(entry_id, action_id, app);
         }
         anyhow::bail!("unknown plugin source: {source}");
     }
@@ -630,19 +715,113 @@ impl PluginHost {
         payload: serde_json::Value,
         channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        if let Some(plugin) = self.plugins.iter().find(|p| p.id() == source) {
-            return plugin.handle_message(method, payload, channel);
+        if let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == source) {
+            return slot.plugin.handle_message(method, payload, channel);
         }
         anyhow::bail!("unknown plugin source: {source}");
     }
 
     // =========================================================
-    // Teardown
+    // Shutdown
     // =========================================================
 
-    pub fn teardown_all(&self) {
-        for p in &self.plugins {
-            p.teardown();
+    /// Disable all plugins during app exit. Calls both legacy
+    /// `teardown()` and new `disable()` on each plugin.
+    pub fn disable_all(&self) {
+        for slot in &self.slots {
+            slot.plugin.teardown();
+            slot.plugin.disable();
+        }
+    }
+
+    // =========================================================
+    // Settings Change Dispatch
+    // =========================================================
+
+    /// Handle a settings change event from the store. Routes
+    /// `enabled.<id>` changes to the host-managed lifecycle and
+    /// `plugins.<id>.*` changes to the plugin's `setting_changed`.
+    ///
+    /// Called from the `settings-changed` Tauri event listener.
+    /// Both paths go through the plugin's `CoalescingDispatcher`
+    /// for serialization and dedup.
+    pub fn handle_setting_changed(
+        &self,
+        key: &str,
+        value: serde_json::Value,
+        app: &tauri::AppHandle,
+    ) {
+        // -------------------------------------------------------
+        // Path 1: enabled.<plugin-id>
+        // -------------------------------------------------------
+        if let Some(plugin_id) = key.strip_prefix("enabled.") {
+            let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == plugin_id) else {
+                return;
+            };
+
+            slot.dispatcher.enqueue(key.to_string(), value);
+
+            let plugin = Arc::clone(&slot.plugin);
+            let store = Arc::clone(&self.store);
+            let notifier = Arc::clone(&self.notifier);
+            let frecency = Arc::clone(&self.frecency);
+            let enabled_flag = &slot.enabled;
+            let app = app.clone();
+
+            slot.dispatcher.dispatch(|dispatch_key, dispatch_value| {
+                // Only handle enabled keys in this path.
+                let Some(id) = dispatch_key.strip_prefix("enabled.") else {
+                    return;
+                };
+
+                let new_enabled = dispatch_value.as_bool().unwrap_or(true);
+                let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
+
+                if new_enabled && !was_enabled {
+                    let ctx = PluginContext {
+                        settings: PluginSettings::new(Arc::clone(&store), id),
+                        notifier: PluginSettingsNotifier::new(
+                            Arc::clone(&notifier),
+                            Arc::clone(&store),
+                            id,
+                        ),
+                        frecency: PluginFrecency::new(Arc::clone(&frecency), id),
+                    };
+                    plugin.enable(&app, &ctx);
+                } else if !new_enabled && was_enabled {
+                    plugin.disable();
+                }
+                // If same state → no-op (coalesced to identical value)
+            });
+
+            // Always signal shortcut reactor on enabled changes
+            // so shortcuts are re-registered accordingly.
+            self.notify_shortcut_change();
+            return;
+        }
+
+        // -------------------------------------------------------
+        // Path 2: plugins.<plugin-id>.<setting-key>
+        // -------------------------------------------------------
+        if let Some(rest) = key.strip_prefix("plugins.") {
+            // Split "plugin-id.setting-key" at the first dot.
+            let Some(dot_pos) = rest.find('.') else {
+                return;
+            };
+            let plugin_id = &rest[..dot_pos];
+            let setting_key = &rest[dot_pos + 1..];
+
+            let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == plugin_id) else {
+                return;
+            };
+
+            slot.dispatcher
+                .enqueue(setting_key.to_string(), value);
+
+            let plugin = Arc::clone(&slot.plugin);
+            slot.dispatcher.dispatch(|k, v| {
+                plugin.setting_changed(k, v.clone());
+            });
         }
     }
 }
@@ -716,19 +895,19 @@ fn process_plugin_response(
 /// match for `query`. Returns `None` when no prefix matches.
 /// Disabled plugins are skipped.
 fn find_prefix_match<'a>(
-    plugins: &'a [Arc<dyn Plugin>],
+    slots: &'a [PluginSlot],
     query: &str,
 ) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
     let mut best: Option<(&Arc<dyn Plugin>, &str)> = None;
     let mut best_len = 0;
 
-    for plugin in plugins {
-        if !plugin.is_enabled() {
+    for slot in slots {
+        if !slot.is_active() {
             continue;
         }
-        for prefix in plugin.search_prefixes() {
+        for prefix in slot.plugin.search_prefixes() {
             if prefix.len() > best_len && query.starts_with(prefix.as_str()) {
-                best = Some((plugin, prefix.as_str()));
+                best = Some((&slot.plugin, prefix.as_str()));
                 best_len = prefix.len();
             }
         }
@@ -895,11 +1074,16 @@ mod tests {
         }
     }
 
-    /// Helper to wrap mock plugins in `Arc<dyn Plugin>`.
-    fn arc_plugins(plugins: Vec<MockPlugin>) -> Vec<Arc<dyn Plugin>> {
+    /// Helper to wrap mock plugins in `PluginSlot`.
+    fn plugin_slots(plugins: Vec<MockPlugin>) -> Vec<PluginSlot> {
         plugins
             .into_iter()
-            .map(|p| Arc::new(p) as Arc<dyn Plugin>)
+            .map(|p| {
+                let enabled = p.enabled;
+                let mut slot = PluginSlot::new(Arc::new(p));
+                slot.enabled.store(enabled, Ordering::Relaxed);
+                slot
+            })
             .collect()
     }
 
@@ -991,13 +1175,13 @@ mod tests {
 
     #[test]
     fn no_plugins_no_match() {
-        let plugins = arc_plugins(vec![]);
+        let plugins = plugin_slots(vec![]);
         assert!(find_prefix_match(&plugins, "=2+2").is_none());
     }
 
     #[test]
     fn no_prefix_plugins_no_match() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("a"),
             MockPlugin::new("b"),
         ]);
@@ -1006,7 +1190,7 @@ mod tests {
 
     #[test]
     fn single_prefix_match() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("calc").with_prefixes(&["="]),
         ]);
         let (plugin, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
@@ -1016,7 +1200,7 @@ mod tests {
 
     #[test]
     fn longest_prefix_wins() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("short").with_prefixes(&["!"]),
             MockPlugin::new("long").with_prefixes(&["!g"]),
         ]);
@@ -1029,7 +1213,7 @@ mod tests {
 
     #[test]
     fn prefix_must_be_at_start() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("calc").with_prefixes(&["="]),
         ]);
         // "hello =" doesn't start with "=".
@@ -1038,7 +1222,7 @@ mod tests {
 
     #[test]
     fn disabled_plugin_prefix_skipped() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("calc")
                 .with_prefixes(&["="])
                 .with_enabled(false),
@@ -1048,7 +1232,7 @@ mod tests {
 
     #[test]
     fn disabled_plugin_skipped_fallback_to_shorter() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("disabled-long")
                 .with_prefixes(&["!g"])
                 .with_enabled(false),
@@ -1063,7 +1247,7 @@ mod tests {
 
     #[test]
     fn multi_char_prefix() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("emoji").with_prefixes(&[":"]),
             MockPlugin::new("http").with_prefixes(&["http://", "https://"]),
         ]);
@@ -1076,7 +1260,7 @@ mod tests {
     #[test]
     fn exact_prefix_query() {
         // Query is exactly the prefix with nothing after it.
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("emoji").with_prefixes(&[":"]),
         ]);
         let (plugin, prefix) = find_prefix_match(&plugins, ":").unwrap();
@@ -1086,7 +1270,7 @@ mod tests {
 
     #[test]
     fn multiple_prefixes_same_plugin() {
-        let plugins = arc_plugins(vec![
+        let plugins = plugin_slots(vec![
             MockPlugin::new("multi").with_prefixes(&["http://", "https://"]),
         ]);
 
