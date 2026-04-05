@@ -53,6 +53,15 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
   const [newSinceScroll, setNewSinceScroll] = useState(0);
   const prevLengthRef = useRef(items.length);
 
+  // ESLINT: useVirtualizer returns a mutable ref-backed object that the
+  // React Compiler cannot safely memoize. This is a known architectural
+  // limitation of @tanstack/react-virtual — the library is on React's
+  // explicit incompatible-library list (facebook/react#31820). The
+  // compiler already skips memoization for this component automatically;
+  // suppressing the warning just silences the noise. Correctness and
+  // rendering are unaffected.
+  // Track: TanStack/virtual#736, TanStack/virtual#1119
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
