@@ -1,62 +1,112 @@
 # Plugin Architecture Overview
 
-This document describes the plugin communication and update mechanism as of
-2026-03-31. It covers the full data flow from plugin computation through to
-frontend rendering.
+This document describes the plugin system as of 2026-04-05. It covers the
+single unified `Plugin` trait, the three search modes, the lifecycle methods,
+and the `PluginContext` available to each plugin.
 
-## Two Plugin Traits
+## Single Plugin Trait
 
-The system has two plugin traits defined in `src-tauri/src/plugins/mod.rs`:
+All plugins implement one trait defined in `src-tauri/src/plugins/mod.rs`:
 
-### CatalogPlugin
-
-For plugins with a finite, pre-known entry list. The host runs nucleo fuzzy
-matching on whatever `entries()` returns — the plugin never sees the query.
-
-Implementors: `AppLauncherPlugin`, `SystemPreferencesPlugin`,
-`ClipboardPlugin`, `SystemCommandsPlugin`, `BuiltInCommandsPlugin`.
-
-Key search method:
 ```rust
-fn entries(&self) -> Vec<CatalogEntry>;
+pub trait Plugin: Send + Sync {
+    fn id(&self) -> &str;
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
+    fn disable(&self) {}
+    fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
+    fn execute(&self, entry_id: &str, action_id: &ActionId,
+        app: &tauri::AppHandle) -> anyhow::Result<PostAction>;
+    fn shortcuts(&self) -> Vec<PluginShortcut> { vec![] }
+    fn handle_shortcut(&self, _shortcut_id: &str,
+        _app: &tauri::AppHandle) -> anyhow::Result<PostAction> { ... }
+    fn handle_message(&self, _method: &str, _payload: serde_json::Value,
+        _channel: tauri::ipc::Channel<serde_json::Value>)
+        -> anyhow::Result<serde_json::Value> { ... }
+
+    // Search mode — implement one or both:
+    fn search_prefixes(&self) -> &[String] { &[] }
+    fn entries(&self) -> Vec<CatalogEntry> { vec![] }
+    fn search(&self, query: &str, matched_prefix: Option<&str>)
+        -> Option<PluginResponse> { None }
+}
 ```
 
-### QueryPlugin
+## Search Modes
 
-For plugins that run their own matching. Receives the raw query and returns
-pre-scored results. Can register prefixes for exclusive routing (e.g., `":"`,
-`"="`).
+A plugin participates in search by implementing `entries()`, `search()`, or
+both:
 
-Implementors: `EmojiPickerPlugin`, `CalculatorPlugin`.
+**Catalog mode** — the plugin returns a finite, pre-known list via `entries()`.
+The host runs nucleo fuzzy matching on that list; the plugin never sees the
+raw query. Suitable for app launchers, system preferences, clipboard history.
 
-Key search methods:
-```rust
-fn prefixes(&self) -> &[&str];
-fn search(&self, query: &str, matched_prefix: Option<&str>,
-          results: &ResultChannel, cancel: &AtomicBool);
-```
+**Query mode** — the plugin receives the raw query via `search()` and returns
+pre-scored results itself. It can optionally register exclusive-routing prefixes
+via `search_prefixes()` (e.g. `":"` for bangs, `"="` for calculator). When a
+query starts with a registered prefix, only that plugin's `search()` is called.
 
-### Shared Lifecycle
+**Hybrid** — a plugin may implement both `entries()` and `search()`. This is
+uncommon but supported; the host collects results from both paths.
 
-Both traits share ten identical method signatures for lifecycle and
-configuration:
+### Current implementors
 
-- `id()` — unique plugin identifier
-- `is_enabled()` / `enabled_settings_key()` — enable/disable gating
-- `initialize_settings()` — declare defaults at startup (Phase 1)
-- `setup()` — async one-time init (Phase 2)
-- `teardown()` — cleanup on exit
-- `execute()` — handle action selection, returns `PostAction`
-- `shortcuts()` / `handle_shortcut()` — global hotkey system
-- `handle_message()` — bidirectional custom frontend IPC
+| Plugin | Mode |
+|---|---|
+| `AppLauncherPlugin` | Catalog |
+| `SystemPreferencesPlugin` | Catalog |
+| `ClipboardPlugin` | Catalog |
+| `SystemCommandsPlugin` | Catalog |
+| `BuiltInCommandsPlugin` | Catalog |
+| `EmojiPickerPlugin` | Query |
+| `CalculatorPlugin` | Query (prefix `"="`) |
+| `BangsPlugin` | Query |
+| `OpenUrlPlugin` | Query |
+| `WasmPluginBridge` | Query (delegates to WASM guest) |
 
-These are currently duplicated across both trait definitions with no common
-supertrait.
+## Lifecycle
+
+Plugins move through the following phases:
+
+1. **`initialize_settings(settings)`** — called once at startup before any
+   plugin is enabled. Declares default values into the settings store so
+   the frontend can render controls even before the user has changed anything.
+
+2. **`enable(app, ctx)`** — called when the plugin is activated (at startup
+   for enabled plugins, and later if the user toggles the plugin on).
+   Receives an `AppHandle` and a `PluginContext`. This is where background
+   tasks are started and resources are acquired.
+
+3. **`setting_changed(relative_key, value)`** — called whenever a
+   `plugins.<id>.<key>` setting changes. Receives only the relative key (e.g.
+   `"retentionDays"`, not the full path). See
+   [06-settings-reactivity.md](06-settings-reactivity.md) for the full flow.
+
+4. **`disable()`** — called when the user disables the plugin. Background
+   tasks should be stopped here; the plugin may be re-enabled later.
+
+5. **`execute(entry_id, action_id, app)`** — called when the user activates
+   a result from this plugin. Returns a `PostAction` telling the host what
+   to do next (dismiss, keep open, show custom UI, etc.).
+
+## Enable / Disable Gating
+
+The host wraps each plugin in a `PluginSlot` that owns:
+
+- an `AtomicBool` for the enabled state
+- a `CoalescingDispatcher` for serialising `setting_changed` calls
+
+The enabled key lives at `enabled.<plugin-id>` in the top-level settings
+namespace — outside the `plugins.<id>.*` prefix and inaccessible to the
+plugin itself. The host intercepts changes to that key and calls `enable()`
+or `disable()` directly.
 
 ## PluginContext
 
-Bundled at `setup()` time, gives each plugin scoped access to:
+`PluginContext` is handed to a plugin at `enable()` time and provides scoped
+access to two subsystems:
 
-- `PluginSettings` — read access to the plugin's settings namespace
-- `PluginSettingsNotifier` — reactive watch subscriptions for settings changes
-- `PluginFrecency` — scoped frecency scoring handle
+- **`settings: PluginSettings`** — read access to the plugin's settings
+  namespace (`plugins.<id>.*`).
+- **`frecency: PluginFrecency`** — scoped frecency scoring handle for ranking
+  results by past user selection.

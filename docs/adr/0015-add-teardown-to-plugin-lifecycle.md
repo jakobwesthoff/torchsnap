@@ -4,7 +4,7 @@ Date: 2026-03-27
 
 ## Status
 
-Accepted
+Superseded by [25. Host-managed plugin enable/disable lifecycle](0025-host-managed-plugin-enable-disable-lifecycle.md)
 
 ## Context
 

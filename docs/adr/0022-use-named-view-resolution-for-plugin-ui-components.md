@@ -76,7 +76,7 @@ plugin code to the React component.
 },
 "calculator": {
     label: "Calculator",
-    settingsIcon: CalculatorIcon,
+    icon: "heroicons:calculator",
     views: {
         "history": lazy(() => import("./calculator/CalculatorView")),
     },

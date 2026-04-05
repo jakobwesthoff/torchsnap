@@ -60,6 +60,12 @@ if !plugin.is_enabled() || !plugin.prefixes().is_empty() { continue; }
 if !plugin.is_enabled() { continue; }
 ```
 
+> **Note (ADR 0025):** The `plugin.is_enabled()` trait method shown in both
+> examples was later replaced by host-managed enable gating. The host now
+> checks `slot.enabled` on its `PluginSlot` wrapper rather than delegating to
+> a trait method. The structural change described in this ADR — removing the
+> `!plugin.prefixes().is_empty()` guard — is unaffected by that replacement.
+
 ### Plugin responsibility
 
 Plugins that register prefixes and do not want to participate in general
