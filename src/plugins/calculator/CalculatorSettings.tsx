@@ -14,7 +14,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { CalculatorIcon } from "@heroicons/react/24/outline";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
 import { SectionHeader } from "../../settings/SectionHeader";
@@ -96,7 +95,7 @@ export default function CalculatorSettings({ usePluginSetting }: PluginSettingsP
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={CalculatorIcon}
+        icon="heroicons:calculator"
         title="Calculator"
         description="Evaluate math expressions directly from the launcher. Type calculations inline or use the = prefix for explicit mode."
       />

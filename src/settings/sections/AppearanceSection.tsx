@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { SwatchIcon } from "@heroicons/react/24/outline";
 import { useSetting } from "../../hooks/useSetting";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
@@ -20,7 +19,7 @@ export function AppearanceSection() {
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={SwatchIcon}
+        icon="heroicons:swatch"
         title="Appearance"
         description="Customize how Torchsnap looks — choose your preferred theme and configure the Snappy mascot to your liking."
       />

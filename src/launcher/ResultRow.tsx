@@ -10,8 +10,7 @@
  */
 
 import type { RefObject } from "react";
-import * as HeroIcons from "@heroicons/react/24/outline";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { Icon } from "../components/Icon";
 import { cn } from "../lib/cn";
 import { highlightText } from "../lib/highlightText";
 import type { SourcedEntry, EntryIcon } from "../types";
@@ -21,75 +20,57 @@ import type { SourcedEntry, EntryIcon } from "../types";
 // =========================================================
 
 /**
- * Resolve a kebab-case HeroIcon name (e.g. "x-circle") to the
- * corresponding React component from `@heroicons/react/24/outline`.
- *
- * Converts "kebab-case" → "PascalCaseIcon" to match the export
- * names (e.g. "cog-6-tooth" → "Cog6ToothIcon").
+ * Convert the typed `EntryIcon` union (from Rust search results)
+ * to the string identifier format used by the shared `Icon`
+ * component.
  */
-function resolveHeroIcon(
-  name: string,
-): React.ComponentType<React.SVGProps<SVGSVGElement>> | undefined {
-  const pascal =
-    name
-      .split("-")
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-      .join("") + "Icon";
-  return (HeroIcons as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>)[pascal];
+function entryIconToString(icon: EntryIcon): string {
+  switch (icon.type) {
+    case "heroIcon":
+      return `heroicons:${icon.value}`;
+    case "dataUrl":
+      return `data:${icon.value}`;
+    case "assetIcon":
+      return `asset:${icon.value}`;
+    case "emoji":
+      return `emoji:${icon.value}`;
+  }
 }
 
-// ESLINT: `resolveHeroIcon` performs a property lookup on the static
-// `HeroIcons` module — the returned component reference is referentially
-// stable for any given name. The `static-components` rule cannot prove
-// this statically, so the lint fires even though no component is truly
-// "created" during render.
-/* eslint-disable react-hooks/static-components */
-function HeroIconView({ name }: { name: string }) {
-  const Icon = resolveHeroIcon(name) ?? HeroIcons.CommandLineIcon;
-  return (
-    <div className="flex h-9 w-9 items-center justify-center">
-      <Icon className="h-7 w-7 text-text-secondary" />
-    </div>
-  );
-}
-/* eslint-enable react-hooks/static-components */
-
+/**
+ * Renders the icon for a search result entry. Wraps the shared
+ * `Icon` component with the launcher-specific 36×36 container
+ * and sizing classes.
+ */
 function EntryIconView({ icon }: { icon: EntryIcon | null }) {
   if (!icon) {
     return (
       <div className="flex h-9 w-9 items-center justify-center">
-        <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />
+        <Icon icon="heroicons:command-line" className="h-7 w-7 text-text-muted" />
       </div>
     );
   }
 
-  if (icon.type === "heroIcon") {
-    return <HeroIconView name={icon.value} />;
-  }
+  const iconStr = entryIconToString(icon);
 
-  if (icon.type === "dataUrl") {
-    return (
-      <div className="flex h-9 w-9 items-center justify-center">
-        <img src={icon.value} alt="" className="h-7 w-7" draggable={false} />
-      </div>
-    );
-  }
-
+  // Asset icons fill the full container (no inner padding).
   if (icon.type === "assetIcon") {
-    return <img src={convertFileSrc(icon.value)} alt="" className="h-9 w-9" draggable={false} />;
+    return <Icon icon={iconStr} className="h-9 w-9" />;
   }
 
+  // Emoji uses its own text-based sizing.
   if (icon.type === "emoji") {
     return (
       <div className="flex h-9 w-9 items-center justify-center">
-        <span className="text-2xl leading-none">{icon.value}</span>
+        <Icon icon={iconStr} className="text-2xl leading-none" />
       </div>
     );
   }
 
+  // Default: centered 28×28 icon inside 36×36 container.
   return (
     <div className="flex h-9 w-9 items-center justify-center">
-      <HeroIcons.CommandLineIcon className="h-7 w-7 text-text-muted" />
+      <Icon icon={iconStr} className="h-7 w-7 text-text-secondary" />
     </div>
   );
 }

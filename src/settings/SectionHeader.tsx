@@ -11,19 +11,20 @@
  * before they interact with the settings below.
  */
 
-import type { ComponentType, SVGProps } from "react";
+import { Icon } from "../components/Icon";
 
 interface SectionHeaderProps {
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  /** String identifier for the icon (e.g. "heroicons:cog-6-tooth"). */
+  icon: string;
   title: string;
   description: string;
 }
 
-export function SectionHeader({ icon: Icon, title, description }: SectionHeaderProps) {
+export function SectionHeader({ icon, title, description }: SectionHeaderProps) {
   return (
     <div className="flex items-center gap-4 rounded-xl border border-border bg-surface-inset/50 p-4 mb-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-        <Icon className="h-5 w-5 text-accent" />
+        <Icon icon={icon} className="h-5 w-5 text-accent" />
       </div>
       <div className="flex flex-col gap-0.5">
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>

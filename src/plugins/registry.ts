@@ -15,12 +15,7 @@
  * `getPluginsWithSettings`.
  */
 
-import { type ComponentType, type SVGProps } from "react";
-import {
-  ArrowTopRightOnSquareIcon,
-  CalculatorIcon,
-  ClipboardDocumentListIcon,
-} from "@heroicons/react/24/outline";
+import { type ComponentType } from "react";
 import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
 import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
 
@@ -31,8 +26,12 @@ import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./ty
 export interface PluginRegistryEntry {
   /** Human-readable name shown in the settings sidebar. */
   label: string;
+  /** Short description shown in the settings section header. */
+  description?: string;
+  /** String icon identifier (e.g. "heroicons:clipboard-document-list"). */
+  icon?: string;
   /** Icon shown next to the label in the settings sidebar. */
-  settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
+  settingsIcon?: string;
   /** Named view components for the launcher result area (CustomUI). */
   views?: Record<string, ComponentType<PluginViewProps>>;
   /** Named inline view components rendered above the result list (InlineUI). */
@@ -64,10 +63,33 @@ export function unregisterPlugin(id: string): void {
 
 // =========================================================
 // Internal plugin registrations
+//
+// Plugins that previously had no settings entry now get one
+// with just a label, icon, and description — the generic
+// PluginSettingsWrapper provides the enable/disable toggle.
+// Commands and system_commands are intentionally excluded
+// (internal, always-on).
 // =========================================================
+
+registerPlugin("app-launcher", {
+  label: "App Launcher",
+  description: "Search and launch installed applications",
+  icon: "heroicons:magnifying-glass",
+  settingsIcon: "heroicons:magnifying-glass",
+});
+
+registerPlugin("system-preferences", {
+  label: "System Settings",
+  description: "Search and open macOS System Settings panes",
+  icon: "heroicons:cog-8-tooth",
+  settingsIcon: "heroicons:cog-8-tooth",
+});
 
 registerPlugin("emoji-picker", {
   label: "Emoji Picker",
+  description: "Search and insert emoji characters",
+  icon: "heroicons:face-smile",
+  settingsIcon: "heroicons:face-smile",
   views: {
     picker: launcherComponent(() => import("./emoji/EmojiGrid")),
   },
@@ -75,7 +97,9 @@ registerPlugin("emoji-picker", {
 
 registerPlugin("clipboard-manager", {
   label: "Clipboard",
-  settingsIcon: ClipboardDocumentListIcon,
+  description: "Clipboard history with search and paste",
+  icon: "heroicons:clipboard-document-list",
+  settingsIcon: "heroicons:clipboard-document-list",
   views: {
     history: launcherComponent(() => import("./clipboard/ClipboardView")),
   },
@@ -84,13 +108,17 @@ registerPlugin("clipboard-manager", {
 
 registerPlugin("bangs", {
   label: "Bangs",
-  settingsIcon: ArrowTopRightOnSquareIcon,
+  description: "DuckDuckGo bang shortcuts for quick web searches",
+  icon: "heroicons:arrow-top-right-on-square",
+  settingsIcon: "heroicons:arrow-top-right-on-square",
   settings: settingsComponent(() => import("./bangs/BangsSettings")),
 });
 
 registerPlugin("calculator", {
   label: "Calculator",
-  settingsIcon: CalculatorIcon,
+  description: "Evaluate math expressions with history tracking",
+  icon: "heroicons:calculator",
+  settingsIcon: "heroicons:calculator",
   views: {
     history: launcherComponent(() => import("./calculator/CalculatorView")),
   },
@@ -98,6 +126,13 @@ registerPlugin("calculator", {
     result: launcherComponent(() => import("./calculator/CalculatorInline")),
   },
   settings: settingsComponent(() => import("./calculator/CalculatorSettings")),
+});
+
+registerPlugin("open-url", {
+  label: "Open URL",
+  description: "Detect and open URLs typed in the search bar",
+  icon: "heroicons:globe-alt",
+  settingsIcon: "heroicons:globe-alt",
 });
 
 // =========================================================
@@ -135,25 +170,36 @@ export function getPluginSettingsComponent(
 }
 
 /**
- * Return all plugins that have a settings component, for building
- * the settings sidebar navigation.
+ * Return all plugins that have settings metadata, for building
+ * the settings sidebar navigation. A plugin appears in settings
+ * if it has either a custom settings component or at minimum an
+ * icon + description (for the generic enable/disable wrapper).
  */
 export function getPluginsWithSettings(): Array<{
   id: string;
   label: string;
-  settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
+  description?: string;
+  icon?: string;
+  settingsIcon?: string;
 }> {
   const result: Array<{
     id: string;
     label: string;
-    settingsIcon?: ComponentType<SVGProps<SVGSVGElement>>;
+    description?: string;
+    icon?: string;
+    settingsIcon?: string;
   }> = [];
 
   for (const [id, entry] of registry) {
-    if (entry.settings != null) {
+    // A plugin appears in settings if it has a custom settings
+    // component OR has metadata (icon + description) for the
+    // generic wrapper.
+    if (entry.settings != null || (entry.icon != null && entry.description != null)) {
       result.push({
         id,
         label: entry.label,
+        description: entry.description,
+        icon: entry.icon,
         settingsIcon: entry.settingsIcon,
       });
     }

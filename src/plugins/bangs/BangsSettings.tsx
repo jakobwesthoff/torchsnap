@@ -13,7 +13,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import type { PluginSettingsProps } from "../types";
 import { sendPluginMessage } from "../../lib/pluginMessage";
 import { SectionHeader } from "../../settings/SectionHeader";
@@ -114,7 +113,7 @@ export default function BangsSettings({ usePluginSetting }: PluginSettingsProps)
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={ArrowTopRightOnSquareIcon}
+        icon="heroicons:arrow-top-right-on-square"
         title="Bangs"
         description="Use DuckDuckGo bang commands to quickly search services. Type !g for Google, !yt for YouTube, !crates for crates.io, and thousands more."
       />

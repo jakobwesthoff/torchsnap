@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useState } from "react";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useSetting } from "../../hooks/useSetting";
 import { SectionHeader } from "../SectionHeader";
@@ -39,7 +38,7 @@ export function GeneralSection() {
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={Cog6ToothIcon}
+        icon="heroicons:cog-6-tooth"
         title="General"
         description="Core settings for Torchsnap — configure startup behavior, global keyboard shortcuts, and advanced features like the Control API."
       />

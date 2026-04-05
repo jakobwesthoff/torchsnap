@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useCallback, useEffect, useState } from "react";
-import { ChartBarIcon } from "@heroicons/react/24/outline";
 import { command } from "../../lib/command";
 import { useSetting } from "../../hooks/useSetting";
 import { SectionHeader } from "../SectionHeader";
@@ -75,7 +74,7 @@ export function FrecencySection() {
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        icon={ChartBarIcon}
+        icon="heroicons:chart-bar"
         title="Frecency"
         description="Frecency combines frequency and recency to learn which results you use most, automatically ranking them higher over time."
       />
