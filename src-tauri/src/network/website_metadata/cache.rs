@@ -79,29 +79,31 @@ pub fn lookup(db: &SqlStorage, domain: &str, ttl_days: u32) -> Option<CachedEntr
     .and_then(|mut rows| rows.pop())
 }
 
+/// Data to insert or replace for a single domain.
+pub struct CacheEntry<'a> {
+    pub domain: &'a str,
+    pub title: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub favicon_url: Option<&'a str>,
+    pub favicon_key: Option<&'a str>,
+    pub favicon_ext: Option<&'a str>,
+    pub reachable: bool,
+}
+
 /// Insert or replace a metadata entry for a domain.
-pub fn store(
-    db: &SqlStorage,
-    domain: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    favicon_url: Option<&str>,
-    favicon_key: Option<&str>,
-    favicon_ext: Option<&str>,
-    reachable: bool,
-) {
+pub fn store(db: &SqlStorage, entry: &CacheEntry<'_>) {
     let _ = db.execute(
         "INSERT OR REPLACE INTO website_metadata \
              (domain, title, description, favicon_url, favicon_key, favicon_ext, reachable, fetched_at) \
          VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         &[
-            SqlValue::from(domain.to_string()),
-            title.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
-            description.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
-            favicon_url.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
-            favicon_key.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
-            favicon_ext.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
-            SqlValue::from(if reachable { 1i64 } else { 0i64 }),
+            SqlValue::from(entry.domain.to_string()),
+            entry.title.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            entry.description.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            entry.favicon_url.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            entry.favicon_key.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            entry.favicon_ext.map(|s| SqlValue::from(s.to_string())).unwrap_or(SqlValue::Null),
+            SqlValue::from(if entry.reachable { 1i64 } else { 0i64 }),
         ],
     );
 }

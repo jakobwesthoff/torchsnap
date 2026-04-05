@@ -279,14 +279,13 @@ impl RequestBuilder {
 
         // Early reject if Content-Length exceeds the size limit,
         // before reading any body bytes.
-        if let Some(content_length) = response.content_length() {
-            if content_length > max_size {
+        if let Some(content_length) = response.content_length()
+            && content_length > max_size {
                 bail!(
                     "response Content-Length ({content_length} bytes) exceeds \
                      max size limit ({max_size} bytes)"
                 );
             }
-        }
 
         Ok(HttpResponse {
             status,

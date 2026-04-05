@@ -287,9 +287,7 @@ impl Plugin for EmojiPickerPlugin {
     ) -> Option<PluginResponse> {
         // The emoji picker only operates in prefix mode. When called
         // without a prefix (no-prefix fan-out), contribute nothing.
-        if matched_prefix.is_none() {
-            return None;
-        }
+        matched_prefix?;
 
         let entries = self.entries.read().expect("emoji entries read lock");
 
@@ -437,8 +435,8 @@ impl Plugin for EmojiPickerPlugin {
 
                 Some(ScoredEntry {
                     id: entry.emoji.clone(),
-                    title_positions: adjusted_title_pos.to_utf16(&title),
-                    subtitle_positions: m.subtitle_positions.to_utf16(&subtitle),
+                    title_positions: adjusted_title_pos.into_utf16(&title),
+                    subtitle_positions: m.subtitle_positions.into_utf16(&subtitle),
                     title,
                     subtitle: Some(subtitle),
                     icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
@@ -494,7 +492,7 @@ fn emoji_to_scored_entry(
 
     ScoredEntry {
         id: entry.emoji.clone(),
-        title_positions: title_positions.to_utf16(&title),
+        title_positions: title_positions.into_utf16(&title),
         subtitle_positions: Utf16Positions::empty(),
         title,
         subtitle: Some(entry.label.clone()),

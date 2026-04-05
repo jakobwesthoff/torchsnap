@@ -595,10 +595,7 @@ impl Plugin for CalculatorPlugin {
                     return None;
                 }
 
-                let expr = match try_extract_math(query) {
-                    Some(e) => e,
-                    None => return None,
-                };
+                let expr = try_extract_math(query)?;
 
                 let result = match evaluate(expr) {
                     Ok(r) => r,

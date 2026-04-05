@@ -36,7 +36,7 @@ impl GraphemePositions {
     ///
     /// For ASCII-only text the indices are identical so we skip the
     /// conversion entirely.
-    pub fn to_utf16(self, text: &str) -> Utf16Positions {
+    pub fn into_utf16(self, text: &str) -> Utf16Positions {
         let mut indices = self.0;
         if indices.is_empty() || text.is_ascii() {
             return Utf16Positions(indices);
@@ -80,7 +80,7 @@ impl Utf16Positions {
     /// to UTF-16 offsets in one step, without requiring an intermediate
     /// `GraphemePositions` binding at the call site.
     pub fn from_graphemes(positions: Vec<u32>, text: &str) -> Self {
-        GraphemePositions(positions).to_utf16(text)
+        GraphemePositions(positions).into_utf16(text)
     }
 
     /// Compute UTF-16 highlight positions for occurrences of a
@@ -100,7 +100,7 @@ impl Utf16Positions {
         // Pre-compute the UTF-16 offset of every byte position that
         // falls on a char boundary. This lets us map any byte-based
         // match index to its UTF-16 offset with a single lookup.
-        let byte_to_utf16: Vec<u32> = {
+        let byte_into_utf16: Vec<u32> = {
             let mut table = Vec::with_capacity(text.len() + 1);
             let mut utf16_offset = 0u32;
             for ch in text.chars() {
@@ -125,8 +125,8 @@ impl Utf16Positions {
             let byte_start = search_start + byte_start;
             let byte_end = byte_start + substring.len();
 
-            let utf16_start = byte_to_utf16[byte_start];
-            let utf16_end = byte_to_utf16[byte_end];
+            let utf16_start = byte_into_utf16[byte_start];
+            let utf16_end = byte_into_utf16[byte_end];
             for pos in utf16_start..utf16_end {
                 positions.push(pos);
             }
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn ascii_indices_unchanged() {
         let positions = GraphemePositions(vec![0, 2, 4]);
-        let result = positions.to_utf16("hello");
+        let result = positions.into_utf16("hello");
         assert_eq!(result.0, vec![0, 2, 4]);
     }
 
@@ -158,7 +158,7 @@ mod tests {
         let text = "🎨 Palette";
         // Nucleo would report P=2, a=3, l=4 (grapheme indices)
         let positions = GraphemePositions(vec![2, 3, 4]);
-        let result = positions.to_utf16(text);
+        let result = positions.into_utf16(text);
         // In UTF-16: 🎨=0,1  ' '=2  P=3  a=4  l=5
         assert_eq!(result.0, vec![3, 4, 5]);
     }
@@ -169,7 +169,7 @@ mod tests {
         let text = "🇺🇸 US";
         // Nucleo: ' '=1, U=2, S=3
         let positions = GraphemePositions(vec![2, 3]);
-        let result = positions.to_utf16(text);
+        let result = positions.into_utf16(text);
         // UTF-16: 🇺🇸=0,1,2,3  ' '=4  U=5  S=6
         assert_eq!(result.0, vec![5, 6]);
     }
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn empty_positions_unchanged() {
         let positions = GraphemePositions(vec![]);
-        let result = positions.to_utf16("🎨 test");
+        let result = positions.into_utf16("🎨 test");
         assert_eq!(result.0, Vec::<u32>::new());
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let text = "a🎨b";
         // Nucleo: a=0, 🎨=1, b=2
         let positions = GraphemePositions(vec![0, 2]);
-        let result = positions.to_utf16(text);
+        let result = positions.into_utf16(text);
         // UTF-16: a=0, 🎨=1,2, b=3
         assert_eq!(result.0, vec![0, 3]);
     }

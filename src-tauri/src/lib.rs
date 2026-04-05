@@ -139,19 +139,21 @@ fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) 
     let _ = win.set_focus();
 }
 
-/// Build an on-demand auxiliary window that stays hidden until the
-/// frontend emits `"react-ready"`. If the window already exists it
-/// is simply brought to front.
-fn show_auxiliary_window(
-    app: &tauri::AppHandle,
-    label: &str,
-    url: &str,
-    title: &str,
+/// Configuration for an on-demand auxiliary window.
+struct AuxiliaryWindowConfig {
+    label: &'static str,
+    url: &'static str,
+    title: &'static str,
     width: f64,
     height: f64,
     min_width: f64,
     min_height: f64,
-) {
+}
+
+/// Build an on-demand auxiliary window that stays hidden until the
+/// frontend emits `"react-ready"`. If the window already exists it
+/// is simply brought to front.
+fn show_auxiliary_window(app: &tauri::AppHandle, config: &AuxiliaryWindowConfig) {
     #[cfg(target_os = "macos")]
     {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -159,17 +161,17 @@ fn show_auxiliary_window(
     }
 
     // If the window is already alive just bring it to front.
-    if let Some(existing) = app.get_webview_window(label) {
+    if let Some(existing) = app.get_webview_window(config.label) {
         present_auxiliary_window(&existing, app);
         return;
     }
 
     // Build the window hidden — the frontend will signal readiness.
     let mut builder =
-        WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
-            .title(title)
-            .inner_size(width, height)
-            .min_inner_size(min_width, min_height)
+        WebviewWindowBuilder::new(app, config.label, WebviewUrl::App(config.url.into()))
+            .title(config.title)
+            .inner_size(config.width, config.height)
+            .min_inner_size(config.min_width, config.min_height)
             .resizable(true)
             .visible(false)
             .focused(false)
@@ -185,13 +187,13 @@ fn show_auxiliary_window(
     let win = match builder.build() {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("failed to create {label} window: {e:#}");
+            eprintln!("failed to create {} window: {e:#}", config.label);
             return;
         }
     };
 
     let handle = app.clone();
-    let window_label = label.to_string();
+    let window_label = config.label.to_string();
     win.once("react-ready", move |_| {
         let inner_handle = handle.clone();
         let label = window_label;
@@ -207,30 +209,36 @@ fn show_auxiliary_window(
 // Settings Window
 // =========================================================
 
+const SETTINGS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "settings",
+    url: "settings.html",
+    title: "Torchsnap Settings",
+    width: 720.0,
+    height: 520.0,
+    min_width: 600.0,
+    min_height: 400.0,
+};
+
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
-    show_auxiliary_window(
-        app,
-        "settings",
-        "settings.html",
-        "Torchsnap Settings",
-        720.0, 520.0,
-        600.0, 400.0,
-    );
+    show_auxiliary_window(app, &SETTINGS_WINDOW);
 }
 
 // =========================================================
 // Developer Tools Window
 // =========================================================
 
+const DEVTOOLS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "devtools",
+    url: "devtools.html",
+    title: "Torchsnap Developer Tools",
+    width: 900.0,
+    height: 600.0,
+    min_width: 700.0,
+    min_height: 400.0,
+};
+
 pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
-    show_auxiliary_window(
-        app,
-        "devtools",
-        "devtools.html",
-        "Torchsnap Developer Tools",
-        900.0, 600.0,
-        700.0, 400.0,
-    );
+    show_auxiliary_window(app, &DEVTOOLS_WINDOW);
 }
 
 // =========================================================
@@ -525,7 +533,6 @@ pub fn run() {
             // =========================================================
             let mut host = plugin_host::PluginHost::new(
                 Arc::clone(&store),
-                Arc::clone(&notifier),
                 Arc::clone(&frecency_store),
             );
             host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
@@ -884,8 +891,6 @@ fn load_single_wasm_plugin(
     log_sender: &wasm::logging::channel::LogSender,
     source_registry: &wasm::protocol::PluginSourceRegistry,
 ) -> anyhow::Result<String> {
-    use wasm::source::PluginSource as _;
-
     // Open the appropriate source based on path type:
     // .torchsnap files are zip archives, directories use
     // the filesystem directly.

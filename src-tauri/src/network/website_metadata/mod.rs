@@ -86,8 +86,6 @@ pub enum MetadataResult {
     Unreachable,
 }
 
-/// Summary statistics for the settings UI.
-pub use cache::CacheStats;
 
 // =========================================================
 // Service
@@ -369,11 +367,15 @@ impl WebsiteMetadataService {
                 // favicon paths as a fallback.
                 let (favicon_url, favicon_key, favicon_ext, favicon) =
                     self.try_fallback_favicon(domain);
-                cache::store(
-                    &self.db, domain, None, None,
-                    favicon_url.as_deref(), favicon_key.as_deref(),
-                    favicon_ext.as_deref(), true,
-                );
+                cache::store(&self.db, &cache::CacheEntry {
+                    domain,
+                    title: None,
+                    description: None,
+                    favicon_url: favicon_url.as_deref(),
+                    favicon_key: favicon_key.as_deref(),
+                    favicon_ext: favicon_ext.as_deref(),
+                    reachable: true,
+                });
                 return if favicon_key.is_some() {
                     MetadataResult::Found(WebsiteMetadata {
                         title: None,
@@ -398,11 +400,15 @@ impl WebsiteMetadataService {
         {
             let (favicon_url, favicon_key, favicon_ext, favicon) =
                 self.try_fallback_favicon(domain);
-            cache::store(
-                &self.db, domain, None, None,
-                favicon_url.as_deref(), favicon_key.as_deref(),
-                favicon_ext.as_deref(), true,
-            );
+            cache::store(&self.db, &cache::CacheEntry {
+                domain,
+                title: None,
+                description: None,
+                favicon_url: favicon_url.as_deref(),
+                favicon_key: favicon_key.as_deref(),
+                favicon_ext: favicon_ext.as_deref(),
+                reachable: true,
+            });
             return if favicon_key.is_some() {
                 MetadataResult::Found(WebsiteMetadata {
                     title: None,
@@ -430,16 +436,15 @@ impl WebsiteMetadataService {
             };
 
         // Store in SQLite.
-        cache::store(
-            &self.db,
+        cache::store(&self.db, &cache::CacheEntry {
             domain,
-            page_metadata.title.as_deref(),
-            page_metadata.description.as_deref(),
-            page_metadata.favicon_url.as_deref(),
-            favicon_key.as_deref(),
-            favicon_ext.as_deref(),
-            true,
-        );
+            title: page_metadata.title.as_deref(),
+            description: page_metadata.description.as_deref(),
+            favicon_url: page_metadata.favicon_url.as_deref(),
+            favicon_key: favicon_key.as_deref(),
+            favicon_ext: favicon_ext.as_deref(),
+            reachable: true,
+        });
 
         MetadataResult::Found(WebsiteMetadata {
             title: page_metadata.title,

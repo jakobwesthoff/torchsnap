@@ -196,15 +196,14 @@ pub fn fetch_favicon_image(http: &Http, favicon_url: &str) -> Result<FaviconImag
     }
 
     // Strategy 2: Magic-byte detection for raster formats.
-    if let Some(kind) = infer::get(&bytes) {
-        if kind.matcher_type() == infer::MatcherType::Image {
+    if let Some(kind) = infer::get(&bytes)
+        && kind.matcher_type() == infer::MatcherType::Image {
             return Ok(FaviconImageData {
                 url: favicon_url.to_string(),
                 image_data: bytes,
                 content_type: kind.mime_type().to_string(),
             });
         }
-    }
 
     // Strategy 3: SVG is text-based and not detected by `infer`.
     // Check for an `<svg` tag in the first few KB as a fallback.

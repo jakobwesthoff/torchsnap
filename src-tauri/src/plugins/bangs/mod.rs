@@ -33,7 +33,6 @@ use crate::search::types::{
     Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
     ScoredEntry,
 };
-use crate::settings::SettingsInit;
 use crate::storage::SqlStorage;
 use crate::storage::SqlValue;
 use crate::unicode::Utf16Positions;
@@ -167,22 +166,13 @@ impl Plugin for BangsPlugin {
         }
 
         // Find the first token that looks like a bang (`!<word>`).
-        let (bang_trigger, bang_token_idx) = match find_bang_token(query) {
-            Some(found) => found,
-            None => return None,
-        };
+        let (bang_trigger, bang_token_idx) = find_bang_token(query)?;
 
         let state = self.state.lock().expect("state lock not poisoned");
-        let state = match state.as_ref() {
-            Some(s) => s,
-            None => return None,
-        };
+        let state = state.as_ref()?;
 
         // Look up the bang in the database (case-insensitive).
-        let bang = match lookup_bang(&state.sql, bang_trigger) {
-            Some(b) => b,
-            None => return None,
-        };
+        let bang = lookup_bang(&state.sql, bang_trigger)?;
 
         // Remove the bang token from the query and clean up whitespace.
         let clean_query = remove_bang_token(query, bang_token_idx);
