@@ -101,24 +101,38 @@ interface CommandMap {
     };
     result: void;
   };
-  wasm_frontend_plugins: { params: void; result: WasmFrontendInfo[] };
+  wasm_plugins: { params: void; result: WasmPluginManifest[] };
 }
 
 // =========================================================
-// WASM Plugin Frontend Manifest
+// WASM Plugin Manifest
+//
+// TypeScript mirror of the Rust `Manifest` struct. Sent from
+// the backend as JSON with camelCase field names.
 // =========================================================
 
-/** Frontend manifest data for a loaded WASM plugin. */
-export interface WasmFrontendInfo {
-  pluginId: string;
-  name: string;
-  launcherBundle: string | null;
-  launcherCss: string | null;
-  settingsBundle: string | null;
-  settingsCss: string | null;
-  views: Record<string, string>;
-  inlineViews: Record<string, string>;
-  settingsComponent: string | null;
+export interface WasmPluginManifest {
+  plugin: {
+    id: string;
+    name: string;
+    description: string;
+    version: string;
+    wasm: string;
+    /** String icon identifier (e.g. "heroicons:hand-raised" or "icon.webp"). */
+    icon: string;
+    prefixes: string[];
+  };
+  settings: Record<string, unknown>;
+  shortcuts: Record<string, { label: string; default: string }>;
+  frontend?: {
+    launcherBundle?: string;
+    settingsBundle?: string;
+    views: Record<string, string>;
+    inlineViews: Record<string, string>;
+    launcherCss?: string;
+    settingsCss?: string;
+    settings?: { component: string };
+  };
 }
 
 type CommandName = keyof CommandMap;
