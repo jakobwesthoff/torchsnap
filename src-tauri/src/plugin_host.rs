@@ -44,7 +44,6 @@ use crate::search::types::{
     ScoredEntry, SearchMessage, SourcedEntry,
 };
 use crate::settings::{PluginSettings, SettingsInit};
-use crate::settings_notifier::SettingsNotifier;
 use crate::unicode::Utf16Positions;
 
 // =========================================================
@@ -124,7 +123,6 @@ impl PluginSlot {
 pub struct PluginHost {
     slots: Vec<PluginSlot>,
     store: Arc<Store<tauri::Wry>>,
-    notifier: Arc<SettingsNotifier>,
     frecency: Arc<FrecencyStore>,
 
     /// Settings keys that affect shortcut registration. When
@@ -143,14 +141,12 @@ pub struct PluginHost {
 impl PluginHost {
     pub fn new(
         store: Arc<Store<tauri::Wry>>,
-        notifier: Arc<SettingsNotifier>,
         frecency: Arc<FrecencyStore>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
             slots: Vec::new(),
             store,
-            notifier,
             frecency,
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
@@ -195,7 +191,7 @@ impl PluginHost {
                     .get(&old_key)
                     .and_then(|v| v.as_bool());
                 let initial = migrated_value.unwrap_or(true);
-                let _ = self.store.set(enabled_key.clone(), serde_json::Value::Bool(initial));
+                self.store.set(enabled_key.clone(), serde_json::Value::Bool(initial));
             }
 
             // Read the current enabled state and apply to the slot.

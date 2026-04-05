@@ -18,4 +18,4 @@
 mod http;
 pub mod website_metadata;
 
-pub use http::{Http, HttpBuilder, HttpResponse};
+pub use http::Http;

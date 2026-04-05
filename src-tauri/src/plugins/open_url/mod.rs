@@ -201,10 +201,7 @@ impl Plugin for OpenUrlPlugin {
         query: &str,
         _matched_prefix: Option<&str>,
     ) -> Option<PluginResponse> {
-        let detected = match detect_url(query) {
-            Some(d) => d,
-            None => return None,
-        };
+        let detected = detect_url(query)?;
 
         // Blocking metadata lookup — the service handles caching,
         // negative caching, and network fetches internally.
