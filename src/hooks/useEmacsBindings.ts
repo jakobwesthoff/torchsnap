@@ -31,10 +31,10 @@ export function useEmacsBindings(
   // new function identity on each render.
   const setValueRef = useRef(setValue);
 
-  // Render-time ref mutation ("latest-ref" pattern). The rule exists
-  // because concurrent mode can replay renders, making ref writes during
-  // render a potentially unsafe side effect. That concern does not apply
-  // here: the only consumer is onKeyDown, which fires from keyboard
+  // ESLINT: Render-time ref mutation ("latest-ref" pattern). The rule
+  // exists because concurrent mode can replay renders, making ref writes
+  // during render a potentially unsafe side effect. That concern does not
+  // apply here: the only consumer is onKeyDown, which fires from keyboard
   // events — always well after the render has committed. Wrapping this
   // in a useEffect would add overhead for no practical benefit.
   // eslint-disable-next-line react-hooks/refs
