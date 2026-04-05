@@ -270,7 +270,7 @@ impl Plugin for EmojiPickerPlugin {
         &self.prefixes
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, ctx: &PluginContext) {
         let data = Self::parse_emoji_data();
         let mut entries = self.entries.write().expect("emoji entries write lock");
         *entries = data;

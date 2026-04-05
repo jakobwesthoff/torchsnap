@@ -76,7 +76,7 @@ impl Plugin for WasmPluginBridge {
         self.manifest.plugin.id.as_str()
     }
 
-    fn setup(&self, _app: &tauri::AppHandle, _ctx: &crate::plugins::PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &crate::plugins::PluginContext) {
         // WASM plugins don't use AppHandle or PluginContext —
         // they get capabilities through WIT host imports.
         if let Err(e) = self.instance.enable() {
@@ -84,11 +84,15 @@ impl Plugin for WasmPluginBridge {
         }
     }
 
-    fn teardown(&self) {
+    fn disable(&self) {
         if let Err(e) = self.instance.disable() {
             self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }
     }
+
+    // TODO: Forward setting_changed() to the WIT `on-setting-changed`
+    // guest export once that interface is added. Currently a no-op
+    // (default trait implementation).
 
     fn entries(&self) -> Vec<CatalogEntry> {
         match self.instance.entries() {
