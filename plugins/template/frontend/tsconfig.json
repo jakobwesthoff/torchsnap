@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+
+    // vite/client provides import.meta.hot types needed by
+    // transitively resolved host source files.
+    "types": ["vite/client"],
+
+    // React types resolve from @types/react in node_modules.
+    // The react/jsx-runtime alias is only needed in Vite config
+    // (for the build), NOT here — TypeScript already knows how
+    // to resolve react/jsx-runtime from @types/react.
+    "paths": {
+      "@torchsnap/types": ["../../../src/types"],
+      "@torchsnap/plugin": ["../../../src/plugins/types"]
+    }
+  },
+  "include": ["src", "env.d.ts"]
+}

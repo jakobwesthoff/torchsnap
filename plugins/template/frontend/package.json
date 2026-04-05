@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "PLUGIN_ENTRY=launcher vite build && PLUGIN_ENTRY=settings vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6",
+    "@tailwindcss/vite": "^4",
+    "tailwindcss": "^4",
+    "typescript": "^6",
+    "vite": "^8",
+    "@types/react": "^19"
+  }
+}
