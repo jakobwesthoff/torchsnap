@@ -12,7 +12,7 @@
  * fade-out transition can play.
  */
 
-import { useRef } from "react";
+import { useState } from "react";
 import { cn } from "../lib/cn";
 import { getMascotAlt } from "../mascotVariants";
 
@@ -25,10 +25,12 @@ interface MascotInfoOverlayProps {
 export function MascotInfoOverlay({ variant, visible, onDismiss }: MascotInfoOverlayProps) {
   // Track whether the overlay has ever been shown. Once true, the
   // element stays mounted so the fade-out transition can play.
-  const hasBeenVisible = useRef(false);
-  if (visible) hasBeenVisible.current = true;
+  // One-way latch: false → true, never back. The single setState
+  // call is negligible compared to the CSS transition it enables.
+  const [hasBeenVisible, setHasBeenVisible] = useState(false);
+  if (visible && !hasBeenVisible) setHasBeenVisible(true);
 
-  if (!hasBeenVisible.current) return null;
+  if (!hasBeenVisible) return null;
 
   return (
     <div
