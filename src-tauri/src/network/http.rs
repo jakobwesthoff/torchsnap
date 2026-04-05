@@ -56,7 +56,7 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 ///
 /// Wraps a `reqwest::Client` (which is internally `Arc`-based,
 /// so cloning `Http` is cheap). Each plugin constructs its own
-/// instance in `setup()`, matching the `SqlStorage` ownership
+/// instance in `enable()`, matching the `SqlStorage` ownership
 /// pattern.
 pub struct Http {
     client: reqwest::Client,

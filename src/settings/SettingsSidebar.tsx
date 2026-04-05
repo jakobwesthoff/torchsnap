@@ -13,7 +13,7 @@ export interface SidebarItem {
   id: string;
   label: string;
   /** String icon identifier (e.g. "heroicons:cog-6-tooth"). */
-  settingsIcon?: string;
+  icon?: string;
 }
 
 interface SettingsSidebarProps {
@@ -87,7 +87,7 @@ function SidebarButton({
         active ? "bg-accent text-white font-medium" : "text-text-primary hover:bg-surface-hover",
       )}
     >
-      {item.settingsIcon && <Icon icon={item.settingsIcon} className="h-4 w-4 shrink-0" />}
+      {item.icon && <Icon icon={item.icon} className="h-4 w-4 shrink-0" />}
       {item.label}
     </button>
   );

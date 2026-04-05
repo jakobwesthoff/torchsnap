@@ -42,7 +42,6 @@ export function registerWasmPlugin(manifest: WasmPluginManifest): void {
     label: manifest.plugin.name,
     description: manifest.plugin.description,
     icon: manifest.plugin.icon,
-    settingsIcon: manifest.plugin.icon,
   };
 
   const frontend = manifest.frontend;

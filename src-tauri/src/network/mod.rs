@@ -7,7 +7,7 @@
 //
 // HTTP client abstraction that hides the underlying driver
 // (reqwest) behind a simple, WASM-boundary-compatible API.
-// Plugins construct their own `Http` instance in `setup()`,
+// Plugins construct their own `Http` instance in `enable()`,
 // similar to how `SqlStorage` is used for per-plugin databases.
 //
 // The `website_metadata` submodule builds on the HTTP layer

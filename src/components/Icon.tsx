@@ -9,8 +9,6 @@
  *
  * - `heroicons:<name>` — HeroIcon component (kebab-case name,
  *   e.g. `"heroicons:cog-6-tooth"`)
- * - `plugin-asset:<plugin-id>/<path>` — plugin asset loaded via
- *   the `torchsnap-plugin://` custom protocol
  * - `emoji:<character>` — renders the emoji character as text
  * - `data:<url>` — data URL rendered as an `<img>`
  * - `asset:<path>` — filesystem asset rendered via Tauri's
@@ -56,13 +54,6 @@ export function Icon({ icon, className }: IconProps) {
     const name = icon.slice("heroicons:".length);
     const HeroIcon = resolveHeroIcon(name) ?? HeroIcons.CommandLineIcon;
     return <HeroIcon className={className} />;
-  }
-
-  // plugin-asset:<plugin-id>/<path>
-  if (icon.startsWith("plugin-asset:")) {
-    const rest = icon.slice("plugin-asset:".length);
-    const url = `torchsnap-plugin://localhost/${rest}`;
-    return <img src={url} alt="" className={className} draggable={false} />;
   }
 
   // emoji:<character>

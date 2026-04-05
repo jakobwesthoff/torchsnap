@@ -22,14 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import {
-  ClipboardDocumentListIcon,
-  CodeBracketIcon,
-  DocumentIcon,
-  DocumentTextIcon,
-  FolderIcon,
-  PhotoIcon,
-} from "@heroicons/react/24/outline";
+import { Icon } from "../../components/Icon";
 import { DisplayTextPreview } from "./detail/DisplayTextPreview";
 import { ImagePreview } from "./detail/ImagePreview";
 import { FileListPreview } from "./detail/FileListPreview";
@@ -70,24 +63,24 @@ function relativeTime(iso: string): string {
 // Sub-components
 // =========================================================
 
-/** Maps a `primaryFormat` value to the corresponding HeroIcon. */
-const FORMAT_ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
-  text: DocumentTextIcon,
-  image: PhotoIcon,
-  files: FolderIcon,
-  html: CodeBracketIcon,
-  rtf: DocumentIcon,
+/** Maps a `primaryFormat` value to the corresponding icon string. */
+const FORMAT_ICONS: Record<string, string> = {
+  text: "heroicons:document-text",
+  image: "heroicons:photo",
+  files: "heroicons:folder",
+  html: "heroicons:code-bracket",
+  rtf: "heroicons:document",
 };
 
 function EntryIcon({ format }: { format: string }) {
-  const Icon = FORMAT_ICONS[format] ?? DocumentTextIcon;
-  return <Icon className="h-4 w-4 shrink-0 text-text-muted" />;
+  const icon = FORMAT_ICONS[format] ?? "heroicons:document-text";
+  return <Icon icon={icon} className="h-4 w-4 shrink-0 text-text-muted" />;
 }
 
 function EmptyState({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center w-full h-full text-text-muted text-sm gap-2">
-      <ClipboardDocumentListIcon className="h-8 w-8" />
+      <Icon icon="heroicons:clipboard-document-list" className="h-8 w-8" />
       <span>{query ? "No matches found" : "Clipboard history is empty"}</span>
     </div>
   );

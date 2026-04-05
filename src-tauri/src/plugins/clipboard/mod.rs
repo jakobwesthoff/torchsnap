@@ -61,7 +61,7 @@ const RETENTION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30 * 60);
 // WatcherLifecycle — shared mutable watcher state
 //
 // Extracted into its own struct behind Arc<Mutex<...>> so that
-// both the lifecycle management thread and teardown() can
+// both the lifecycle management thread and disable() can
 // start/stop the watcher independently.
 // =========================================================
 
