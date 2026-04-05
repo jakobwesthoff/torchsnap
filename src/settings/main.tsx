@@ -21,7 +21,7 @@ async function main() {
   await initStore();
   initPluginSdk();
 
-  const wasmPlugins = await command("wasm_frontend_plugins");
+  const wasmPlugins = await command("wasm_plugins");
   registerAllWasmPlugins(wasmPlugins);
 
   preloadSettingsComponents();

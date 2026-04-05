@@ -14,13 +14,26 @@
 
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // =========================================================
 // Top-Level Manifest
+//
+// Serde naming conventions:
+//
+// This struct tree is deserialized from TOML (manifest.toml)
+// and serialized to JSON (for the frontend via Tauri commands).
+// TOML uses kebab-case (`launcher-bundle`), JSON uses camelCase
+// (`launcherBundle`). Fields that need different names in each
+// format use `#[serde(rename(deserialize = "...", serialize = "..."))]`.
+//
+// Types with custom serde impls (`PluginId`, `PluginIcon`) handle
+// their own format: `PluginId` serializes as a plain string,
+// `PluginIcon` serializes back to the `"heroicons:<name>"` or
+// bare path format matching the TOML input.
 // =========================================================
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
     pub plugin: PluginMeta,
 
@@ -46,7 +59,7 @@ pub struct Manifest {
 // Plugin Identity & Core Properties
 // =========================================================
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PluginMeta {
     /// Stable identifier. Lowercase alphanumeric and hyphens
     /// only (e.g., `"clipboard-manager"`). Used as the key
@@ -107,6 +120,15 @@ impl std::fmt::Display for PluginId {
     }
 }
 
+impl Serialize for PluginId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
 impl<'de> Deserialize<'de> for PluginId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -158,6 +180,20 @@ pub enum PluginIcon {
     Asset(String),
 }
 
+impl Serialize for PluginIcon {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PluginIcon::HeroIcon(name) => {
+                serializer.serialize_str(&format!("heroicons:{name}"))
+            }
+            PluginIcon::Asset(path) => serializer.serialize_str(path),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for PluginIcon {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -182,7 +218,7 @@ impl<'de> Deserialize<'de> for PluginIcon {
 // =========================================================
 
 /// Declaration of a single global keyboard shortcut.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShortcutDef {
     /// Human-readable label (e.g., "Open Clipboard History").
     pub label: String,
@@ -200,18 +236,22 @@ pub struct ShortcutDef {
 /// Frontend component declarations. The host extracts bundled
 /// JS files and loads them via dynamic `import()` in the
 /// appropriate webview.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Multi-word field names use dual `#[serde(rename(...))]`
+/// attributes for TOML kebab-case ↔ JSON camelCase conversion.
+/// See the `Manifest` module comment for the full naming strategy.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FrontendDef {
     /// Path to the ES module bundle loaded in the launcher
     /// webview. Contains view and inline-view components as
     /// named exports.
-    #[serde(rename = "launcher-bundle")]
+    #[serde(rename(deserialize = "launcher-bundle", serialize = "launcherBundle"))]
     pub launcher_bundle: Option<String>,
 
     /// Path to the ES module bundle loaded in the settings
     /// webview. Contains the settings component as a named
     /// export.
-    #[serde(rename = "settings-bundle")]
+    #[serde(rename(deserialize = "settings-bundle", serialize = "settingsBundle"))]
     pub settings_bundle: Option<String>,
 
     /// Maps view names to named exports from `launcher_bundle`.
@@ -221,18 +261,18 @@ pub struct FrontendDef {
 
     /// Maps inline view names to named exports from
     /// `launcher_bundle`.
-    #[serde(default, rename = "inline-views")]
+    #[serde(default, rename(deserialize = "inline-views", serialize = "inlineViews"))]
     pub inline_views: HashMap<String, String>,
 
     /// Path to the CSS file loaded alongside the launcher
     /// bundle. Served via `torchsnap-plugin://` and scoped to
     /// the plugin's container with `@scope`.
-    #[serde(default, rename = "launcher-css")]
+    #[serde(default, rename(deserialize = "launcher-css", serialize = "launcherCss"))]
     pub launcher_css: Option<String>,
 
     /// Path to the CSS file loaded alongside the settings
     /// bundle.
-    #[serde(default, rename = "settings-css")]
+    #[serde(default, rename(deserialize = "settings-css", serialize = "settingsCss"))]
     pub settings_css: Option<String>,
 
     /// Settings panel component declaration.
@@ -240,7 +280,7 @@ pub struct FrontendDef {
 }
 
 /// Settings component reference.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FrontendSettingsDef {
     /// Named export from `settings_bundle` that provides
     /// the settings React component.

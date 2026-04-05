@@ -29,7 +29,7 @@ async function main() {
   // Register WASM plugin frontend components before preloading.
   // This ensures dynamic import() factories for WASM plugins are
   // set up and included in the preload batch.
-  const wasmPlugins = await command("wasm_frontend_plugins");
+  const wasmPlugins = await command("wasm_plugins");
   registerAllWasmPlugins(wasmPlugins);
 
   preloadLauncherComponents();
