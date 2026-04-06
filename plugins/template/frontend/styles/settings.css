@@ -3,4 +3,4 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 @import "tailwindcss";
-@import "../../../../plugin-sdk/theme.css";
+@import "@torchsnap/plugin-sdk/theme.css";

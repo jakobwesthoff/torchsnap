@@ -5,6 +5,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { torchsnap } from "@torchsnap/plugin-sdk/vite";
 import { resolve } from "path";
 
 // =========================================================
@@ -15,14 +16,14 @@ import { resolve } from "path";
 //
 // Key design decisions:
 //
-// - React is NOT bundled. The `resolve.alias` entries redirect
-//   `react` and `react/jsx-runtime` to shim files that
-//   re-export from `window.__torchsnap`, where the host
+// - React is NOT bundled. The `torchsnap()` Vite plugin
+//   redirects `react` and `react/jsx-runtime` to SDK shims
+//   that re-export from `window.__torchsnap`, where the host
 //   provides its React instance at runtime.
 //
-// - Type imports (`@torchsnap/types`, `@torchsnap/plugin`)
-//   point at the host source for TypeScript resolution but
-//   are erased at compile time — no runtime dependency.
+// - Type imports from `@torchsnap/plugin-sdk` resolve through
+//   node_modules (via the `link:` dependency) and are erased
+//   at compile time — no runtime dependency.
 //
 // - Lib mode with `formats: ["es"]` produces ES modules with
 //   named exports matching the manifest's view/component map.
@@ -37,9 +38,6 @@ import { resolve } from "path";
 // entry point with the PLUGIN_ENTRY env var to select which
 // entry to build.
 // =========================================================
-
-const sdkDir = resolve(__dirname, "../../../plugin-sdk");
-const srcDir = resolve(__dirname, "../../../src");
 
 // Determine which entry point to build. The build script sets
 // PLUGIN_ENTRY to "launcher" or "settings".
@@ -56,22 +54,7 @@ if (!entry) {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-
-  resolve: {
-    alias: {
-      // Runtime: React comes from the host's window.__torchsnap global.
-      // The jsx-runtime alias must come before the react alias so
-      // rolldown matches "react/jsx-runtime" specifically instead of
-      // treating it as a subpath of the "react" alias.
-      "react/jsx-runtime": resolve(sdkDir, "shims/jsx-runtime.ts"),
-      "react": resolve(sdkDir, "shims/react.ts"),
-
-      // Types only (erased at compile time).
-      "@torchsnap/types": resolve(srcDir, "types"),
-      "@torchsnap/plugin": resolve(srcDir, "plugins/types.ts"),
-    },
-  },
+  plugins: [torchsnap(), react(), tailwindcss()],
 
   build: {
     lib: {

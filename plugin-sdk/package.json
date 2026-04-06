@@ -1,0 +1,25 @@
+{
+  "name": "@torchsnap/plugin-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/types/index.ts",
+      "default": "./src/types/index.ts"
+    },
+    "./vite": {
+      "types": "./src/vite/index.ts",
+      "default": "./src/vite/index.ts"
+    },
+    "./theme.css": "./theme.css"
+  },
+  "peerDependencies": {
+    "vite": ">=8"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  }
+}
