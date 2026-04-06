@@ -17,7 +17,7 @@
 // and writes `plugins.template.greeting` in the store.
 // =========================================================
 
-import type { PluginSettingsProps } from "@torchsnap/plugin";
+import type { PluginSettingsProps } from "@torchsnap/plugin-sdk";
 import "../../styles/settings.css";
 
 export function DemoSettings({ usePluginSetting }: PluginSettingsProps) {

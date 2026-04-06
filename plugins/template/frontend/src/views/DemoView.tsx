@@ -17,7 +17,7 @@
 // =========================================================
 
 import { useState } from "react";
-import type { PluginViewProps } from "@torchsnap/plugin";
+import type { PluginViewProps } from "@torchsnap/plugin-sdk";
 import "../../styles/launcher.css";
 
 export function DemoView({ data, query, dismiss }: PluginViewProps) {
