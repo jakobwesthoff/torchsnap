@@ -36,19 +36,44 @@ import type { Logger } from "../types/logger";
 // implementation details into the plugin.
 // ---------------------------------------------------------
 
+// The `TorchsnapGlobal` interface is declared in each shim
+// file with only the slice that shim cares about. TypeScript
+// merges sibling interface declarations across files, so the
+// final shape — assembled by whichever combination of shims
+// the consuming plugin imports — has every contributed slice
+// available without any single shim needing to know the
+// other shims' property types.
 declare global {
-  interface Window {
-    __torchsnap?: {
-      hooks: {
-        usePluginInfo: () => PluginInfo;
-        usePluginRuntime: () => PluginRuntime;
-        useLauncher: () => LauncherActions;
-        usePluginSetting: <T>(
-          key: string,
-        ) => [value: T, setValue: (v: T) => Promise<void>];
-      };
+  interface TorchsnapGlobal {
+    hooks: {
+      usePluginInfo: () => PluginInfo;
+      usePluginRuntime: () => PluginRuntime;
+      useLauncher: () => LauncherActions;
+      usePluginSetting: <T>(
+        key: string,
+      ) => [value: T, setValue: (v: T) => Promise<void>];
+      useWindowedList: (params: UseWindowedListParams) => UseWindowedListResult;
     };
   }
+  interface Window {
+    __torchsnap?: TorchsnapGlobal;
+  }
+}
+
+// ---------------------------------------------------------
+// useWindowedList types (mirrors src/launcher/hooks/useWindowedList.ts)
+// ---------------------------------------------------------
+
+export interface UseWindowedListParams {
+  selectedIndex: number;
+  setSelectedIndex: (index: number) => void;
+  resultCount: number;
+  pageSize: number;
+}
+
+export interface UseWindowedListResult {
+  windowStart: number;
+  wheelRef: (el: HTMLDivElement | null) => void;
 }
 
 // ---------------------------------------------------------
@@ -121,4 +146,10 @@ export function usePluginSetting<T>(
   key: string,
 ): [value: T, setValue: (v: T) => Promise<void>] {
   return hostHooks().usePluginSetting<T>(key);
+}
+
+export function useWindowedList(
+  params: UseWindowedListParams,
+): UseWindowedListResult {
+  return hostHooks().useWindowedList(params);
 }

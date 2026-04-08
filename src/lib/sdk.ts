@@ -6,16 +6,15 @@
  * Plugin SDK global injection.
  *
  * Exposes host-provided modules on `window.__torchsnap` so that
- * dynamically loaded plugin bundles can use React and the
- * plugin component context without bundling their own copies.
+ * dynamically loaded plugin bundles can use React, the plugin
+ * component context, host components, and host hooks without
+ * bundling their own copies.
  *
- * Plugin bundles access these via shim files in `plugin-sdk/shims/`
+ * Plugin bundles access these via shim files in `plugin-sdk/src/shims/`
  * that re-export from the global. At build time, Vite aliases
- * `"react"` and `"react/jsx-runtime"` to the shims; at runtime,
- * the shims read from `window.__torchsnap`.
- *
- * Future expansion (D5 in the migration plan): `components` and
- * `keybindings` will be added once the SDK shims for those land.
+ * `"react"` and `"react/jsx-runtime"` to the React shims; the other
+ * subpaths are real package paths exported from `plugin-sdk/package.json`
+ * and resolved via standard module resolution.
  */
 
 import React from "react";
@@ -24,6 +23,13 @@ import { usePluginInfo } from "../contexts/usePluginInfo";
 import { usePluginRuntime } from "../contexts/usePluginRuntime";
 import { useLauncher } from "../contexts/useLauncher";
 import { usePluginSetting } from "../contexts/usePluginSetting";
+import { useWindowedList } from "../launcher/hooks/useWindowedList";
+import { useKeyBindings } from "../keybindings/useKeyBindings";
+import { LAYER } from "../keybindings/matching";
+import { Switch } from "../components/Switch";
+import { Slider } from "../components/Slider";
+import { Section } from "../settings/Section";
+import { Entry } from "../settings/Entry";
 
 // =========================================================
 // Type declaration
@@ -39,6 +45,17 @@ declare global {
         usePluginRuntime: typeof usePluginRuntime;
         useLauncher: typeof useLauncher;
         usePluginSetting: typeof usePluginSetting;
+        useWindowedList: typeof useWindowedList;
+      };
+      keybindings: {
+        useKeyBindings: typeof useKeyBindings;
+        LAYER: typeof LAYER;
+      };
+      components: {
+        Switch: typeof Switch;
+        Slider: typeof Slider;
+        Section: typeof Section;
+        Entry: typeof Entry;
       };
     };
   }
@@ -62,6 +79,17 @@ export function initPluginSdk(): void {
       usePluginRuntime,
       useLauncher,
       usePluginSetting,
+      useWindowedList,
+    },
+    keybindings: {
+      useKeyBindings,
+      LAYER,
+    },
+    components: {
+      Switch,
+      Slider,
+      Section,
+      Entry,
     },
   };
 }

@@ -6,48 +6,63 @@
 // DemoSettings — Template Plugin Settings Component
 //
 // Rendered in the settings sidebar when the Template Plugin
-// is selected. Demonstrates:
+// is selected. Showcases the typical settings authoring
+// surface so new plugin authors can copy-and-adapt:
 //
-// - Reading and writing plugin settings via the
-//   `usePluginSetting` context hook (now imported from the
-//   SDK rather than threaded through props)
-// - Tailwind styling matching host conventions
-// - The settings component lifecycle
+// - `usePluginInfo()` for the plugin's identity and reactive
+//   `enabled` flag (used to disable controls when the plugin
+//   is off)
+// - `usePluginSetting()` for namespaced reactive settings;
+//   the plugin id is inferred from the surrounding
+//   PluginContextProvider
+// - `Switch`, `Section`, `Entry` from the host's design-system
+//   primitives, shared via the SDK
 //
-// `usePluginSetting` is automatically scoped to the active
-// plugin's namespace via the surrounding PluginContextProvider —
-// calling `usePluginSetting("greeting")` reads and writes
-// `plugins.template.greeting` in the store.
+// This file is meant to be **read** by new plugin authors and
+// adapted into real plugin code. End-to-end test coverage of
+// the SDK shim machinery lives in the dedicated
+// `plugins/test-fixture/` crate, not here.
 // =========================================================
 
-import { usePluginSetting } from "@torchsnap/plugin-sdk/hooks";
+import { usePluginInfo, usePluginSetting } from "@torchsnap/plugin-sdk/hooks";
+import { Entry, Section, Switch } from "@torchsnap/plugin-sdk/components";
 import "../../styles/settings.css";
 
 export function DemoSettings() {
+  const { enabled } = usePluginInfo();
   const [greeting, setGreeting] = usePluginSetting<string>("greeting");
+  const [verbose, setVerbose] = usePluginSetting<boolean>("verbose");
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="template-greeting"
-          className="text-sm font-medium text-text-label"
+      <Section title="Greeting">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="template-greeting" className="text-sm font-medium text-text-label">
+            Greeting Message
+          </label>
+          <input
+            id="template-greeting"
+            type="text"
+            value={greeting ?? ""}
+            onChange={(e) => setGreeting(e.target.value)}
+            disabled={!enabled}
+            className="rounded-md border border-border-input bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+            placeholder="Enter a greeting..."
+          />
+          <p className="text-xs text-text-muted">
+            Stored at <code>plugins.template.greeting</code>.
+          </p>
+        </div>
+      </Section>
+
+      <Section title="Behaviour">
+        <Entry
+          label="Verbose logging"
+          description="Sample boolean setting wired to a Switch control"
         >
-          Greeting Message
-        </label>
-        <input
-          id="template-greeting"
-          type="text"
-          value={greeting ?? ""}
-          onChange={(e) => setGreeting(e.target.value)}
-          className="rounded-md border border-border-input bg-surface px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-          placeholder="Enter a greeting..."
-        />
-        <p className="text-xs text-text-muted">
-          This setting is stored at <code>plugins.template.greeting</code> and
-          demonstrates the <code>usePluginSetting</code> hook.
-        </p>
-      </div>
+          <Switch checked={verbose} onChange={setVerbose} disabled={!enabled} />
+        </Entry>
+      </Section>
     </div>
   );
 }
