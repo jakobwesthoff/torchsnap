@@ -22,6 +22,7 @@
 // stable.
 // =========================================================
 
+import "./global";
 import type { RefObject } from "react";
 import type { ActionId, FooterState } from "../types/data";
 import type { Logger } from "../types/logger";
@@ -55,9 +56,6 @@ declare global {
       useWindowedList: (params: UseWindowedListParams) => UseWindowedListResult;
     };
   }
-  interface Window {
-    __torchsnap?: TorchsnapGlobal;
-  }
 }
 
 // ---------------------------------------------------------
@@ -85,6 +83,29 @@ export interface PluginInfo {
   enabled: boolean;
 }
 
+/**
+ * Sends a custom message to the plugin's backend handler.
+ *
+ * The host routes the call to the plugin identified by the
+ * surrounding `PluginContext` provider's `info.id`. The
+ * returned promise resolves with the backend's response.
+ *
+ * **WASM plugins do not support streaming.** The `onMessage`
+ * callback is part of the public type signature for
+ * symmetry with native plugins, but WASM plugin bridges
+ * silently drop the streaming channel — `onMessage` is
+ * never invoked for a WASM-backed plugin no matter what
+ * the backend tries to push. This is enforced by the
+ * `WasmPluginBridge::handle_message` override (see ADR
+ * 0030 for the rationale and the future
+ * `messaging-stream` sub-interface that would lift this
+ * restriction).
+ *
+ * If you're writing a plugin that needs streaming, your
+ * options are: (a) keep it native, (b) poll via repeated
+ * one-shot calls, or (c) wait for the streaming
+ * sub-interface.
+ */
 export type PluginSendMessage = <
   TPayload = unknown,
   TResult = unknown,
