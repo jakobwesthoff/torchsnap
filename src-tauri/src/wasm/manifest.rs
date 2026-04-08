@@ -64,6 +64,14 @@ pub struct Manifest {
     /// `[storage.kv]` / `[storage.files]` blocks without
     /// breaking existing manifests.
     pub storage: Option<StorageDef>,
+
+    /// Scheduled background tasks. Each `[[tasks]]` entry
+    /// declares a unique `id` and a 5-field POSIX cron
+    /// expression. The host's per-plugin scheduler walks
+    /// the list, sleeps until the earliest next fire, and
+    /// invokes the WIT `tasks::run-task` guest export.
+    #[serde(default, rename = "tasks")]
+    pub tasks: Vec<TaskDef>,
 }
 
 // =========================================================
@@ -347,6 +355,36 @@ pub struct SqlStorageDef {
 }
 
 // =========================================================
+// Scheduled tasks
+// =========================================================
+
+/// `[[tasks]]` entry — a single scheduled background task.
+///
+/// `schedule` is a 5-field POSIX cron expression
+/// (`minute hour day month weekday`). The host parses and
+/// validates it at manifest load time and stores the parsed
+/// `cron::Schedule` separately in the bridge — this struct
+/// only carries the raw user-facing fields so that
+/// (de)serialization stays straightforward.
+///
+/// Sub-minute scheduling is rejected — `cron`'s
+/// underlying syntax is 6/7-field, but plugins use the
+/// stricter 5-field POSIX form so the schedule space is
+/// predictable and there's no chance of accidentally
+/// scheduling a task at the second-resolution.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TaskDef {
+    /// Unique task identifier within the plugin. Passed
+    /// back to the guest via `tasks::run-task(task-id)`
+    /// when the cron schedule fires.
+    pub id: String,
+
+    /// 5-field POSIX cron expression
+    /// (`minute hour day month weekday`).
+    pub schedule: String,
+}
+
+// =========================================================
 // Parsing
 // =========================================================
 
@@ -355,6 +393,12 @@ impl Manifest {
     pub fn parse(toml_source: &str) -> anyhow::Result<Self> {
         let manifest: Manifest =
             toml::from_str(toml_source).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
+
+        // Validate `[[tasks]]` entries early so a malformed
+        // cron expression or a duplicate id fails plugin
+        // load instead of waiting for the scheduler to
+        // crash at runtime.
+        validate_task_definitions(&manifest.tasks)?;
 
         // Validate that views/inline-views reference a launcher bundle.
         if let Some(ref frontend) = manifest.frontend {
@@ -1243,5 +1287,98 @@ mod tests {
             err.to_string().contains("settings-css") && err.to_string().contains("settings-bundle"),
             "error should mention both fields: {err}"
         );
+    }
+}
+
+// =========================================================
+// Task definition validation
+// =========================================================
+
+/// Verify that every `[[tasks]]` entry parses as a valid
+/// 5-field POSIX cron expression and that no two tasks
+/// share the same id.
+///
+/// Both checks happen at manifest load time so that broken
+/// schedules surface as clean plugin-load errors instead of
+/// crashing the scheduler later.
+pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()> {
+    let mut seen_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for task in tasks {
+        if !seen_ids.insert(task.id.as_str()) {
+            anyhow::bail!("duplicate scheduled task id `{}`", task.id);
+        }
+        parse_cron_schedule(&task.schedule)
+            .map_err(|e| anyhow::anyhow!("invalid schedule for task `{}`: {e}", task.id))?;
+    }
+    Ok(())
+}
+
+/// Parse a 5-field POSIX cron expression
+/// (`minute hour day month weekday`) into a
+/// `cron::Schedule`.
+///
+/// The `cron` crate uses Quartz-style 6/7-field syntax
+/// (`sec min hour day month dow [year]`), so we wrap the
+/// user's 5 fields with `0` for seconds and `*` for year.
+/// This wrapping is *the* validation: a valid 5-field POSIX
+/// expression becomes a valid 7-field Quartz expression that
+/// `cron::Schedule::from_str` accepts; anything else (a
+/// truncated 4-field input, an over-eager 6-field input
+/// trying to sneak in seconds, garbage tokens) becomes a
+/// malformed 6/8/9-field expression that `cron` rejects with
+/// its own error message. No separate field-counter needed.
+pub(crate) fn parse_cron_schedule(schedule: &str) -> anyhow::Result<cron::Schedule> {
+    use std::str::FromStr;
+
+    let normalized = format!("0 {schedule} *");
+    cron::Schedule::from_str(&normalized).map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+#[cfg(test)]
+mod task_validation_tests {
+    use super::*;
+
+    fn task(id: &str, schedule: &str) -> TaskDef {
+        TaskDef {
+            id: id.to_string(),
+            schedule: schedule.to_string(),
+        }
+    }
+
+    #[test]
+    fn empty_task_list_is_ok() {
+        validate_task_definitions(&[]).unwrap();
+    }
+
+    #[test]
+    fn valid_5_field_cron_accepted() {
+        validate_task_definitions(&[task("cleanup", "*/30 * * * *")]).unwrap();
+        validate_task_definitions(&[task("daily", "0 4 * * *")]).unwrap();
+    }
+
+    #[test]
+    fn six_field_cron_rejected() {
+        // Quartz-style 6-field input — explicitly out of
+        // scope so plugins don't accidentally schedule at
+        // second resolution. The cron crate's parser
+        // rejects the resulting 8-field intermediate.
+        let err = validate_task_definitions(&[task("bad", "0 */30 * * * *")]).unwrap_err();
+        assert!(err.to_string().contains("schedule"), "{err}");
+    }
+
+    #[test]
+    fn malformed_cron_rejected() {
+        let err = validate_task_definitions(&[task("bad", "not a cron")]).unwrap_err();
+        assert!(err.to_string().contains("schedule"), "{err}");
+    }
+
+    #[test]
+    fn duplicate_task_ids_rejected() {
+        let err = validate_task_definitions(&[
+            task("cleanup", "*/30 * * * *"),
+            task("cleanup", "0 0 * * *"),
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("duplicate"), "{err}");
     }
 }

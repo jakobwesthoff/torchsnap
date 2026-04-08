@@ -17,10 +17,14 @@
 // =========================================================
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use anyhow::Context;
+use chrono::Utc;
+use cron::Schedule;
+use tauri::async_runtime::JoinHandle;
 
 use crate::plugins::Plugin;
 use crate::search::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
@@ -45,8 +49,31 @@ use super::source::PluginSource;
 /// type conversion internally.
 pub struct WasmPluginBridge {
     manifest: Manifest,
-    instance: WasmPluginInstance,
+    /// Wrapped in `Arc` so the per-plugin scheduler tokio
+    /// task spawned by `enable()` can also hold a reference
+    /// to call `run_task` from a separate runtime context.
+    /// `WasmPluginInstance`'s internal `Mutex<Store<...>>`
+    /// already serializes every guest call, so multiple Arc
+    /// holders is safe.
+    instance: Arc<WasmPluginInstance>,
     log_sender: LogSender,
+    /// Pre-parsed `[[tasks]]` entries from the manifest. The
+    /// raw schedule strings are validated at manifest load
+    /// time; this list holds the parsed `cron::Schedule`s
+    /// alongside their ids ready to be consumed by the
+    /// scheduler loop in `enable()`.
+    parsed_tasks: Vec<ParsedTask>,
+    /// Tokio handle for the running scheduler loop. `None`
+    /// while the plugin is disabled or when the plugin has
+    /// no `[[tasks]]` declared. The `Mutex` covers the
+    /// `enable()` / `disable()` swap, not the loop itself.
+    scheduler_handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// A task definition with its cron schedule already parsed.
+struct ParsedTask {
+    id: String,
+    schedule: Schedule,
 }
 
 impl WasmPluginBridge {
@@ -117,13 +144,183 @@ impl WasmPluginBridge {
         // lazily on the first `sql::open()` call.
         instance.set_sql_config(sql_config);
 
+        // Pre-parse every `[[tasks]]` schedule. The manifest
+        // loader has already validated that they're well-
+        // formed 5-field POSIX cron expressions, so this
+        // re-parse is purely a unwrap-safe conversion to the
+        // `cron::Schedule` form the scheduler loop wants.
+        let parsed_tasks = manifest
+            .tasks
+            .iter()
+            .map(|task| {
+                let normalized = format!("0 {} *", task.schedule);
+                let schedule = Schedule::from_str(&normalized).with_context(|| {
+                    format!(
+                        "internal: parsing pre-validated cron schedule `{}` for task `{}`",
+                        task.schedule, task.id
+                    )
+                })?;
+                Ok(ParsedTask {
+                    id: task.id.clone(),
+                    schedule,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
         Ok(Self {
             manifest,
-            instance,
+            instance: Arc::new(instance),
             log_sender,
+            parsed_tasks,
+            scheduler_handle: Mutex::new(None),
         })
     }
 
+    /// Spawn the per-plugin scheduler tokio task that walks
+    /// every `[[tasks]]` entry, sleeps until the earliest
+    /// next fire across all of them, and invokes the WIT
+    /// `tasks::run-task` guest export.
+    ///
+    /// Plugins without `[[tasks]]` get nothing — no tokio
+    /// task is spawned at all, so the cost is zero for
+    /// plugins that don't use the API.
+    fn spawn_scheduler(&self) {
+        if self.parsed_tasks.is_empty() {
+            return;
+        }
+
+        // Snapshot what the scheduler loop needs into Send
+        // clones — the `Arc<WasmPluginInstance>` for guest
+        // calls, the parsed schedules, the log sender, and
+        // a plugin id for log tagging.
+        let instance = Arc::clone(&self.instance);
+        let log_sender = self.log_sender.clone();
+        let plugin_id = self.manifest.plugin.id.as_str().to_string();
+        let schedules: Vec<(String, Schedule)> = self
+            .parsed_tasks
+            .iter()
+            .map(|t| (t.id.clone(), t.schedule.clone()))
+            .collect();
+
+        let handle = tauri::async_runtime::spawn(async move {
+            scheduler_loop(instance, schedules, log_sender, plugin_id).await;
+        });
+
+        let mut slot = self.scheduler_handle.lock().expect("not poisoned");
+        // If a previous scheduler is somehow still running
+        // (re-enable without disable in between), abort it
+        // before installing the new one to avoid duplicate
+        // fires.
+        if let Some(prev) = slot.take() {
+            prev.abort();
+        }
+        *slot = Some(handle);
+    }
+
+    /// Abort the running scheduler tokio task. Called from
+    /// `disable()`.
+    fn stop_scheduler(&self) {
+        if let Some(handle) = self.scheduler_handle.lock().expect("not poisoned").take() {
+            handle.abort();
+        }
+    }
+}
+
+// =========================================================
+// Per-plugin scheduler loop
+//
+// Sequential by construction: a single tokio task walks
+// every `[[tasks]]` entry, sleeps until the earliest next
+// fire across all of them, and invokes the WIT
+// `tasks::run-task` guest export. The wasmtime store mutex
+// already serializes guest calls, so spawning N tokio tasks
+// for N schedules would pay tokio overhead for zero added
+// concurrency.
+//
+// Re-querying every iteration handles clock jumps,
+// laptop sleep/wake, and DST naturally — no manual time
+// math.
+// =========================================================
+
+async fn scheduler_loop(
+    instance: Arc<WasmPluginInstance>,
+    schedules: Vec<(String, Schedule)>,
+    log_sender: LogSender,
+    plugin_id: String,
+) {
+    loop {
+        // Snapshot the next-fire time for every task
+        // relative to "now" at the top of this iteration.
+        // Sleeping past those snapshots tells us
+        // unambiguously which tasks should fire after the
+        // wake — comparing against re-queried `upcoming`
+        // results would skip everything because cron
+        // returns *future* fires only.
+        let now = Utc::now();
+        let next_fires: Vec<(usize, chrono::DateTime<Utc>)> = schedules
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, sched))| sched.after(&now).next().map(|t| (i, t)))
+            .collect();
+
+        let Some(earliest) = next_fires.iter().map(|(_, t)| *t).min() else {
+            // No schedules left to fire (e.g. every cron
+            // expression has exhausted itself, which the
+            // `cron` crate doesn't actually do — but be
+            // defensive).
+            return;
+        };
+
+        let delta = (earliest - now).to_std().unwrap_or_default();
+        if !delta.is_zero() {
+            tokio::time::sleep(delta).await;
+        }
+
+        // Fire every task whose snapshotted next-fire
+        // matched the earliest. Multiple tasks can share
+        // the same fire time (e.g. `0 * * * *` and
+        // `*/30 * * * *` both at :00) — they run back-to-
+        // back in manifest declaration order.
+        for (i, fire) in &next_fires {
+            if *fire != earliest {
+                continue;
+            }
+            let (id, _) = &schedules[*i];
+
+            // The guest call is synchronous from the
+            // tokio task's perspective — wasmtime stores
+            // are blocking. `spawn_blocking` would be more
+            // proper but the existing instance methods do
+            // their own locking and are well-behaved
+            // enough that calling them inline is fine for
+            // a v1 implementation.
+            match instance.run_task(id) {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => log_task_error(&log_sender, &plugin_id, id, &e),
+                Err(e) => log_task_error(&log_sender, &plugin_id, id, &format!("{e:#}")),
+            }
+        }
+    }
+}
+
+fn log_task_error(log_sender: &LogSender, plugin_id: &str, task_id: &str, error: &str) {
+    log_sender.send(LogItem {
+        seq: 0,
+        timestamp: SystemTime::now(),
+        source: LogSource::Plugin(plugin_id.to_string()),
+        kind: LogItemKind::Message {
+            level: LogLevel::Error,
+            message: format!("scheduled task `{task_id}` failed: {error}"),
+            metadata: vec![
+                ("task_id".to_string(), task_id.to_string()),
+                ("error".to_string(), error.to_string()),
+            ],
+            span_id: None,
+        },
+    });
+}
+
+impl WasmPluginBridge {
     /// Emit a log entry for bridge-level events (errors from
     /// guest calls that are caught and handled here).
     fn log(&self, level: LogLevel, message: String) {
@@ -171,9 +368,21 @@ impl Plugin for WasmPluginBridge {
         if let Err(e) = self.instance.enable() {
             self.log(LogLevel::Error, format!("enable() failed: {e:#}"));
         }
+
+        // Start the scheduled-task loop after the guest's
+        // own `enable()` has run. The scheduler is a no-op
+        // when the manifest declares no `[[tasks]]`, so
+        // there is no cost for plugins that don't use it.
+        self.spawn_scheduler();
     }
 
     fn disable(&self) {
+        // Stop the scheduler before tearing down anything
+        // else so it can't fire one last task into a
+        // plugin that's about to lose its settings/storage
+        // handles.
+        self.stop_scheduler();
+
         if let Err(e) = self.instance.disable() {
             self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }

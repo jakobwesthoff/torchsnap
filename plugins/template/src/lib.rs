@@ -28,6 +28,10 @@
 //   and a `[storage.sql]` block in `manifest.toml` listing
 //   migration files. The host applies the migrations on the
 //   first `sql::open()` call within an enable lifetime
+// - Scheduled background tasks via `[[tasks]]` entries in
+//   `manifest.toml` and the `tasks::run-task` guest export.
+//   The host runs a per-plugin tokio scheduler that fires
+//   the export at the cron-scheduled time
 // =========================================================
 
 wit_bindgen::generate!({
@@ -41,6 +45,7 @@ use exports::torchsnap::plugin::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
     SearchResponse, ViewResponse,
 };
+use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
 use torchsnap::plugin::{logging, settings, sql};
 
 struct TemplatePlugin;
@@ -161,6 +166,40 @@ fn read_string_setting(key: &str) -> Option<String> {
 // `Serialize` / `Deserialize` for them — that gives you
 // strong typing on both sides of the boundary.
 // =========================================================
+
+// =========================================================
+// Scheduled background tasks
+//
+// Each `[[tasks]]` entry in `manifest.toml` declares a
+// task `id` and a 5-field POSIX cron expression. The host
+// fires `run_task(id)` at the cron-scheduled times. Match
+// on `task_id` and dispatch to whatever work the task is
+// supposed to do.
+//
+// Returning `Err(string)` is logged by the host but does
+// NOT auto-disable the plugin — scheduled tasks are
+// best-effort background work.
+// =========================================================
+
+impl TasksGuest for TemplatePlugin {
+    fn run_task(task_id: String) -> Result<(), String> {
+        match task_id.as_str() {
+            // The `heartbeat` task fires every 5 minutes per
+            // the manifest schedule. It records a row in the
+            // SQL table and logs the timestamp so plugin
+            // authors can see the scheduler firing in
+            // devtools.
+            "heartbeat" => {
+                let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+                db.execute("INSERT INTO enable_log DEFAULT VALUES", &[])
+                    .map_err(|e| format!("insert: {e}"))?;
+                logging::log(logging::LogLevel::Info, "Heartbeat fired", &[], None);
+                Ok(())
+            }
+            other => Err(format!("unknown task: {other}")),
+        }
+    }
+}
 
 impl MessagingGuest for TemplatePlugin {
     fn handle_message(method: String, payload: String) -> Result<String, String> {
