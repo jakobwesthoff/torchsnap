@@ -31,8 +31,14 @@ interface logging {
   span-end: func(span-id: u64, metadata: list<metadata-entry>);
 }
 
-/// ─── Shared types ───────────────────────────────────────
-interface types {
+/// ─── Guest exports (implemented by plugins) ─────────────
+interface lifecycle {
+  enable: func();
+
+  disable: func();
+}
+
+interface search {
   variant entry-icon {
     hero-icon(string),
     data-url(string),
@@ -112,17 +118,6 @@ interface types {
     dismiss,
     keep-open,
   }
-}
-
-/// ─── Guest exports (implemented by plugins) ─────────────
-interface lifecycle {
-  enable: func();
-
-  disable: func();
-}
-
-interface search {
-  use types.{catalog-entry, action-id, post-action, search-response};
 
   /// Return catalog entries for host-side fuzzy matching.
   entries: func() -> list<catalog-entry>;
@@ -137,7 +132,6 @@ interface search {
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
-  import types;
 
   export lifecycle;
   export search;

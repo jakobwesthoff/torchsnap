@@ -22,12 +22,11 @@ wit_bindgen::generate!({
 });
 
 use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::search::Guest as SearchGuest;
-use torchsnap::plugin::logging;
-use torchsnap::plugin::types::{
-    Action, ActionId, CatalogEntry, EntryIcon, PostAction, SearchResponse,
-    ViewResponse,
+use exports::torchsnap::plugin::search::{
+    Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
+    SearchResponse, ViewResponse,
 };
+use torchsnap::plugin::logging;
 
 struct TemplatePlugin;
 
