@@ -10,9 +10,15 @@ reqwest or other Tokio I/O would panic with "no reactor running".
 
 ## Affected code
 
-- `src-tauri/src/plugins/calculator.rs` lines ~496, ~510: settings watcher
-  threads and retention thread use `std::thread::spawn` with `blocking_changed()`
-- Any other plugin that follows the same pattern
+- The original calculator plugin (deleted in the WASM port) used
+  `std::thread::spawn` for its retention cleanup loop. The WASM
+  rewrite replaced that with the host-managed scheduler in
+  `src-tauri/src/wasm/bridge.rs::scheduler_loop`, which calls the
+  guest export inline from the tokio task — see ADR 0032 and the
+  comment block in `scheduler_loop` explaining when a future
+  pathological task could justify wrapping in `spawn_blocking`.
+- Any remaining native plugin that follows the
+  `std::thread::spawn` + `blocking_changed()` pattern.
 
 ## Recommended fix
 

@@ -102,7 +102,8 @@ pub fn import_bangs(sql: &SqlStorage, entries: &[BangEntry], source: &str) -> Re
             .context("count distinct domains")?;
 
         // Use SQLite's strftime for the import timestamp, matching the
-        // ISO 8601 format used by the clipboard and calculator plugins.
+        // ISO 8601 format used by the clipboard plugin and the WASM
+        // calculator plugin's history table.
         sql.execute(
             "INSERT INTO metadata (key, value) VALUES ('import_date', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             &[],
