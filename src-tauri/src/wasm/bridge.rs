@@ -18,6 +18,7 @@
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -68,6 +69,18 @@ pub struct WasmPluginBridge {
     /// no `[[tasks]]` declared. The `Mutex` covers the
     /// `enable()` / `disable()` swap, not the loop itself.
     scheduler_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Co-operative shutdown flag the scheduler loop
+    /// checks before each `run_task` invocation.
+    /// `tokio::JoinHandle::abort()` only takes effect at
+    /// the next `await` point — for the scheduler that
+    /// is the next `tokio::time::sleep`. Without this
+    /// flag, an in-flight `run_task` would still finish
+    /// against a half-disabled plugin between
+    /// `stop_scheduler()` and the actual abort. Setting
+    /// the flag in `stop_scheduler` and checking it both
+    /// before and after every guest call closes the
+    /// window.
+    scheduler_shutdown: Arc<AtomicBool>,
 }
 
 /// A task definition with its cron schedule already parsed.
@@ -173,6 +186,7 @@ impl WasmPluginBridge {
             log_sender,
             parsed_tasks,
             scheduler_handle: Mutex::new(None),
+            scheduler_shutdown: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -189,11 +203,18 @@ impl WasmPluginBridge {
             return;
         }
 
+        // Reset the shutdown flag — a previous disable
+        // cycle would have set it to true. Without this
+        // reset, the freshly-spawned scheduler would exit
+        // immediately on its first iteration.
+        self.scheduler_shutdown.store(false, Ordering::Relaxed);
+
         // Snapshot what the scheduler loop needs into Send
         // clones — the `Arc<WasmPluginInstance>` for guest
-        // calls, the parsed schedules, the log sender, and
-        // a plugin id for log tagging.
+        // calls, the parsed schedules, the log sender, the
+        // shutdown flag, and a plugin id for log tagging.
         let instance = Arc::clone(&self.instance);
+        let shutdown = Arc::clone(&self.scheduler_shutdown);
         let log_sender = self.log_sender.clone();
         let plugin_id = self.manifest.plugin.id.as_str().to_string();
         let schedules: Vec<(String, Schedule)> = self
@@ -203,7 +224,7 @@ impl WasmPluginBridge {
             .collect();
 
         let handle = tauri::async_runtime::spawn(async move {
-            scheduler_loop(instance, schedules, log_sender, plugin_id).await;
+            scheduler_loop(instance, schedules, shutdown, log_sender, plugin_id).await;
         });
 
         let mut slot = self.scheduler_handle.lock().expect("not poisoned");
@@ -217,9 +238,20 @@ impl WasmPluginBridge {
         *slot = Some(handle);
     }
 
-    /// Abort the running scheduler tokio task. Called from
-    /// `disable()`.
+    /// Signal the running scheduler to stop and abort the
+    /// tokio task. Called from `disable()`.
+    ///
+    /// `JoinHandle::abort()` only takes effect at the next
+    /// `await` point — for the scheduler that's the next
+    /// `tokio::time::sleep`. The shutdown flag is the
+    /// co-operative early-exit path: the loop checks it
+    /// both at the top of every iteration and immediately
+    /// before each `run_task` call, so an in-flight
+    /// guest call finishes cleanly and the next would-be
+    /// invocation is suppressed even if `abort()` hasn't
+    /// taken hold yet.
     fn stop_scheduler(&self) {
+        self.scheduler_shutdown.store(true, Ordering::Relaxed);
         if let Some(handle) = self.scheduler_handle.lock().expect("not poisoned").take() {
             handle.abort();
         }
@@ -245,10 +277,18 @@ impl WasmPluginBridge {
 async fn scheduler_loop(
     instance: Arc<WasmPluginInstance>,
     schedules: Vec<(String, Schedule)>,
+    shutdown: Arc<AtomicBool>,
     log_sender: LogSender,
     plugin_id: String,
 ) {
     loop {
+        // Top-of-iteration shutdown check. Exits cleanly
+        // if `stop_scheduler` set the flag while we were
+        // sleeping or after a long-running guest call.
+        if shutdown.load(Ordering::Relaxed) {
+            return;
+        }
+
         // Snapshot the next-fire time for every task
         // relative to "now" at the top of this iteration.
         // Sleeping past those snapshots tells us
@@ -285,6 +325,16 @@ async fn scheduler_loop(
             if *fire != earliest {
                 continue;
             }
+
+            // Per-task shutdown check. Catches the race
+            // where `stop_scheduler` set the flag while
+            // we were inside the previous task's guest
+            // call (which holds the wasmtime store mutex
+            // and can't be interrupted by `JoinHandle::abort`).
+            if shutdown.load(Ordering::Relaxed) {
+                return;
+            }
+
             let (id, _) = &schedules[*i];
 
             // The guest call is synchronous from the
