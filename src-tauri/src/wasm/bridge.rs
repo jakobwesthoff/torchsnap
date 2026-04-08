@@ -355,15 +355,25 @@ impl Plugin for WasmPluginBridge {
         settings
     }
 
-    fn enable(&self, _app: &tauri::AppHandle, ctx: &crate::plugins::PluginContext) {
+    fn enable(&self, app: &tauri::AppHandle, ctx: &crate::plugins::PluginContext) {
         // Stash the per-plugin `PluginSettings` handle on the
         // wasmtime store data BEFORE invoking the guest's
         // `enable()`, so the guest can call `settings::get`
-        // during its own initialization. WASM plugins still
-        // don't use `AppHandle` directly — every host
-        // capability flows through WIT imports — but they
-        // need the settings handle wired up.
+        // during its own initialization.
         self.instance.set_settings(ctx.settings.clone());
+
+        // Build the clipboard writer closure from the
+        // AppHandle and stash it on `PluginState` so the
+        // `clipboard::write-text` host import can resolve
+        // without coupling the runtime layer to Tauri.
+        let app_handle = app.clone();
+        self.instance.set_clipboard_writer(Box::new(move |text| {
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            app_handle
+                .clipboard()
+                .write_text(text)
+                .map_err(|e| format!("write to clipboard: {e}"))
+        }));
 
         if let Err(e) = self.instance.enable() {
             self.log(LogLevel::Error, format!("enable() failed: {e:#}"));
@@ -390,12 +400,15 @@ impl Plugin for WasmPluginBridge {
         // settings::get calls (none should happen, but be
         // defensive) revert to the "unset" no-op behavior.
         self.instance.clear_settings();
-        // Drop the cached `Arc<SqlStorage>` so the database
-        // file isn't held open between enable cycles. Any
-        // outstanding handle inside the wasmtime
-        // ResourceTable will be cleared on next instantiate
-        // along with the rest of the table.
+        // Release the per-plugin SQL storage. See the
+        // implementation comment on `clear_sql_storage` for
+        // the connection-lifetime semantics.
         self.instance.clear_sql_storage();
+        // Drop the clipboard writer closure so any
+        // post-disable `clipboard::write-text` call (which
+        // shouldn't happen) errors loudly instead of
+        // silently using a stale `AppHandle`.
+        self.instance.clear_clipboard_writer();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {

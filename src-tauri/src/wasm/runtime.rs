@@ -64,7 +64,25 @@ pub struct PluginState {
     /// same `Arc<SqlStorage>`.
     sql_config: SqlConfig,
     sql_storage: Option<Arc<SqlStorage>>,
+    /// Closure that writes a string to the system clipboard.
+    /// Stashed by the bridge from the `tauri::AppHandle` on
+    /// `enable()` so the `clipboard::write-text` host import
+    /// can resolve without `PluginState` itself depending on
+    /// the Tauri AppHandle type. `None` between enable
+    /// cycles; the host import returns an error if accessed
+    /// outside an enable lifetime (which should never
+    /// happen — every guest call runs inside one).
+    clipboard_writer: Option<ClipboardWriter>,
 }
+
+/// Closure type for the clipboard write capability.
+///
+/// Boxed and stored on `PluginState` instead of holding a
+/// `tauri::AppHandle` directly so the runtime layer stays
+/// decoupled from Tauri-specific types. The bridge
+/// constructs the closure from its own `AppHandle` and
+/// stashes it on `enable()`.
+pub type ClipboardWriter = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// Whether and how the plugin's SQL storage is configured.
 ///
@@ -218,6 +236,29 @@ impl bindings::torchsnap::plugin::settings::Host for PluginState {
         // missing from the store.
         let settings = self.settings.as_ref()?;
         settings.get_raw(&key)
+    }
+}
+
+// =========================================================
+// Clipboard host import
+//
+// Routes guest `clipboard::write-text(text)` calls through
+// the closure stashed by the bridge on `enable()`. The
+// closure wraps `tauri_plugin_clipboard_manager` so this
+// module never depends on the Tauri AppHandle directly.
+//
+// Read access is intentionally not exposed by the WIT
+// interface — see the doc comment on the `clipboard`
+// interface in `torchsnap-plugin.wit`.
+// =========================================================
+
+impl bindings::torchsnap::plugin::clipboard::Host for PluginState {
+    fn write_text(&mut self, text: String) -> Result<(), String> {
+        let writer = self.clipboard_writer.as_ref().ok_or_else(|| {
+            "clipboard writer not initialized — clipboard::write-text called outside enable lifetime"
+                .to_string()
+        })?;
+        writer(&text)
     }
 }
 
@@ -483,6 +524,12 @@ impl WasmRuntime {
             // been read from the plugin source.
             sql_config: SqlConfig::None,
             sql_storage: None,
+            // Stashed by the bridge on `enable()` via
+            // `WasmPluginInstance::set_clipboard_writer`,
+            // built from the AppHandle. `None` outside an
+            // enable lifetime; the host import returns an
+            // error in that case.
+            clipboard_writer: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -559,6 +606,23 @@ impl WasmPluginInstance {
     pub fn clear_sql_storage(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().sql_storage = None;
+    }
+
+    /// Install a closure that writes a string to the system
+    /// clipboard. Called by the bridge on `enable()` from a
+    /// closure that captures the `tauri::AppHandle`.
+    pub fn set_clipboard_writer(&self, writer: ClipboardWriter) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().clipboard_writer = Some(writer);
+    }
+
+    /// Drop the stashed clipboard writer on `disable()` so
+    /// any post-disable `clipboard::write-text` call (which
+    /// shouldn't happen) errors loudly instead of silently
+    /// using a stale closure.
+    pub fn clear_clipboard_writer(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().clipboard_writer = None;
     }
 
     /// Call the guest's `enable` export.
