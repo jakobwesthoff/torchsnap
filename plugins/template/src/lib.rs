@@ -5,15 +5,21 @@
 // =========================================================
 // Template Plugin
 //
-// Starting point for new Torchsnap WASM plugins. Demonstrates:
+// Starting point for new Torchsnap WASM plugins. Showcases
+// the full plugin authoring surface so you can copy this
+// directory, rename the plugin ID in `manifest.toml` and
+// `Cargo.toml`, and build from here.
+//
+// What this file demonstrates:
 //
 // - Catalog entries via `entries()`
 // - Custom UI via prefix-triggered `search()`
 // - Action execution via `execute()`
-// - Structured logging with spans
-//
-// Copy this directory, rename the plugin ID in manifest.toml
-// and Cargo.toml, and build from here.
+// - Structured logging with metadata
+// - Reading plugin settings via the `settings::get` host
+//   import and parsing the JSON-encoded values
+// - Reacting to user setting changes via the
+//   `on_setting_changed` lifecycle export
 // =========================================================
 
 wit_bindgen::generate!({
@@ -34,14 +40,14 @@ export!(TemplatePlugin);
 
 impl LifecycleGuest for TemplatePlugin {
     fn enable() {
-        // Read the current values of every plugin setting at
-        // startup so the log shows what the user (or the
-        // manifest defaults) configured. Real plugins would
-        // typically cache these in `static` `AtomicBool`/`OnceLock`
-        // values, but for the template the round-trip is the
-        // point — we want plugin authors to see how
-        // `settings::get` returns JSON-encoded strings that
-        // they parse with `serde_json`.
+        // Read each setting once at startup so internal state
+        // matches whatever the user configured (or whatever
+        // `manifest.toml`'s `[settings]` defaults set). For
+        // settings read frequently from a hot path, cache the
+        // parsed value in a `static` `AtomicBool` / `OnceLock`
+        // and refresh it from `on_setting_changed` below; this
+        // example just logs the values to keep the wiring
+        // visible.
         let greeting = read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
         let verbose = read_bool_setting("verbose").unwrap_or(false);
 
@@ -66,13 +72,13 @@ impl LifecycleGuest for TemplatePlugin {
     }
 
     fn on_setting_changed(key: String, value: String) {
-        // The host's CoalescingDispatcher (ADR 0026) has
-        // already deduplicated rapid same-key writes by the
-        // time we get here, so we can react to every fire
-        // without worrying about flapping. Real plugins would
-        // typically push the parsed value into a cache —
-        // here we just log the change so plugin authors can
-        // see the round-trip in their dev tools.
+        // The host coalesces rapid same-key writes (e.g. a
+        // slider being dragged) before this fires, so it is
+        // safe to react to every invocation — there is no
+        // need to debounce on the plugin side. Push the
+        // parsed value into your in-memory cache here so
+        // subsequent reads see the latest state. This example
+        // just logs the change.
         logging::log(
             logging::LogLevel::Info,
             &format!("Setting `{key}` changed"),
@@ -85,13 +91,12 @@ impl LifecycleGuest for TemplatePlugin {
 // =========================================================
 // Settings helpers
 //
-// `settings::get` returns the raw JSON encoding of the
-// stored value (`true`, `42`, `"hello"`, `{"a":1}`, …) as
-// `Option<String>`. Each plugin parses it into whatever
-// shape it expects via `serde_json::from_str`. The two
-// helpers below cover the common bool / string cases for
-// the template; real plugins extend the pattern with their
-// own typed wrappers.
+// `settings::get` returns the value as a JSON-encoded
+// string (`"true"`, `"42"`, `"\"hello\""`, `"{\"a\":1}"`,
+// …) wrapped in `Option`. Parse it into whatever shape your
+// plugin uses via `serde_json::from_str`. The two helpers
+// below cover the common bool and string cases — extend the
+// pattern with your own typed accessors as needed.
 // =========================================================
 
 fn read_bool_setting(key: &str) -> Option<bool> {
