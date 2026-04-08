@@ -19,10 +19,11 @@
 //    └── execute(entry_id, action_id) → PostAction
 // =========================================================
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
+use wasmtime::component::{Component, HasSelf, Linker, Resource, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
@@ -31,6 +32,7 @@ use super::logging::channel::LogSender;
 use super::logging::spans::{Logger, SpanRegistry};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use crate::settings::PluginSettings;
+use crate::storage::{SqlStorage, SqlValue as HostSqlValue};
 
 // =========================================================
 // Per-Plugin Store State
@@ -53,6 +55,46 @@ pub struct PluginState {
     /// which it shouldn't, since the host always calls
     /// `enable()` before any guest code runs.
     settings: Option<PluginSettings>,
+    /// Per-plugin SQL storage configuration. Populated by
+    /// the bridge at construction time from the manifest's
+    /// `[storage.sql]` block (`SqlConfig::None` when the
+    /// plugin declares no SQL storage). The first
+    /// `sql::open()` call materializes the actual database
+    /// into `sql_storage` below; subsequent calls reuse the
+    /// same `Arc<SqlStorage>`.
+    sql_config: SqlConfig,
+    sql_storage: Option<Arc<SqlStorage>>,
+}
+
+/// Whether and how the plugin's SQL storage is configured.
+///
+/// Materialized at bridge construction so the wasmtime host
+/// import can resolve `sql::open()` synchronously without
+/// touching disk on every call. Migration files are read
+/// once via `PluginSource::read_file` at load time.
+#[derive(Clone)]
+pub enum SqlConfig {
+    /// Plugin did not declare a `[storage.sql]` block in its
+    /// manifest. `sql::open()` returns a clear error.
+    None,
+    /// Plugin opted into SQL storage. The migration strings
+    /// are pre-loaded; the database file is created on
+    /// first `sql::open()` call.
+    Configured {
+        db_path: PathBuf,
+        migrations: Arc<Vec<String>>,
+    },
+}
+
+/// Internal entry stored in the wasmtime `ResourceTable`
+/// behind every `Resource<SqlHandleEntry>` returned to a
+/// plugin. Holding the `Arc<SqlStorage>` here lets the WIT
+/// resource drop semantics (which run when the plugin lets
+/// the handle go out of scope) cleanly release just this
+/// reference; the underlying `SqlStorage` stays alive on
+/// `PluginState::sql_storage` until the plugin is disabled.
+pub struct SqlHandleEntry {
+    storage: Arc<SqlStorage>,
 }
 
 // The WasiView trait is required by wasmtime-wasi to locate
@@ -180,6 +222,168 @@ impl bindings::torchsnap::plugin::settings::Host for PluginState {
 }
 
 // =========================================================
+// SQL host import
+//
+// `sql::open()` materializes the per-plugin database lazily
+// — no file is created until the first call. Migration
+// strings are pre-loaded by the bridge at construction time
+// from the manifest's `[storage.sql] migrations = [...]`
+// list, so this method only needs to create the file and
+// run the migrations once.
+//
+// Subsequent calls within the same enable lifetime return a
+// new `Resource` handle pointing at the cached
+// `Arc<SqlStorage>` — the underlying connection (and its
+// internal mutex) is shared across every outstanding handle.
+// Concurrent host imports are not actually possible because
+// the wasmtime store mutex (`WasmPluginInstance::store`)
+// already serializes every guest call.
+//
+// The Bindgen-generated `WitSqlValue` and `HostSqlHandle`
+// trait names are used by-path here so the mapping between
+// the WIT variant and the host's internal `SqlValue` is
+// kept entirely in this file.
+// =========================================================
+
+impl bindings::torchsnap::plugin::sql::Host for PluginState {
+    fn open(&mut self) -> Result<Resource<SqlHandleEntry>, String> {
+        // Disallow opening if the plugin didn't declare any
+        // [storage.sql] configuration in its manifest. The
+        // alternative — silently opening an empty database —
+        // would mask a misconfiguration as a runtime no-op.
+        let (db_path, migrations) = match &self.sql_config {
+            SqlConfig::None => {
+                return Err("plugin has no [storage.sql] declared in manifest.toml".into());
+            }
+            SqlConfig::Configured {
+                db_path,
+                migrations,
+            } => (db_path.clone(), Arc::clone(migrations)),
+        };
+
+        // Materialize the SqlStorage on the first open() and
+        // reuse it on every subsequent call. SqlStorage::open
+        // creates the parent directory, opens the connection,
+        // configures pragmas, and runs `rusqlite_migration`
+        // on the supplied migration strings.
+        if self.sql_storage.is_none() {
+            let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
+            let storage = SqlStorage::open(db_path, &migration_strs)
+                .map_err(|e| format!("open SQL storage: {e:#}"))?;
+            self.sql_storage = Some(Arc::new(storage));
+        }
+
+        // Push a fresh resource entry pointing at the cached
+        // master Arc. Wasmtime resources are unique handles —
+        // we cannot return the literal same handle twice —
+        // but every handle backs onto the same underlying
+        // connection so the plugin sees identical semantics.
+        let entry = SqlHandleEntry {
+            storage: Arc::clone(self.sql_storage.as_ref().expect("just set")),
+        };
+        let handle = self
+            .wasi_table
+            .push(entry)
+            .map_err(|e| format!("allocate SQL handle: {e}"))?;
+
+        Ok(handle)
+    }
+}
+
+impl bindings::torchsnap::plugin::sql::HostSqlHandle for PluginState {
+    fn execute(
+        &mut self,
+        handle: Resource<SqlHandleEntry>,
+        sql: String,
+        params: Vec<bindings::torchsnap::plugin::sql::SqlValue>,
+    ) -> Result<u64, String> {
+        let entry = self
+            .wasi_table
+            .get(&handle)
+            .map_err(|e| format!("resolve SQL handle: {e}"))?;
+        let native_params: Vec<HostSqlValue> = params.into_iter().map(Into::into).collect();
+        entry
+            .storage
+            .execute(&sql, &native_params)
+            .map(|n| n as u64)
+            .map_err(|e| format!("execute: {e:#}"))
+    }
+
+    fn query(
+        &mut self,
+        handle: Resource<SqlHandleEntry>,
+        sql: String,
+        params: Vec<bindings::torchsnap::plugin::sql::SqlValue>,
+    ) -> Result<Vec<Vec<bindings::torchsnap::plugin::sql::SqlValue>>, String> {
+        let entry = self
+            .wasi_table
+            .get(&handle)
+            .map_err(|e| format!("resolve SQL handle: {e}"))?;
+        let native_params: Vec<HostSqlValue> = params.into_iter().map(Into::into).collect();
+
+        // Re-export every column from every row through the
+        // WIT variant. `SqlRow::columns()` borrows the
+        // materialized `Vec<SqlValue>` so we can clone the
+        // values straight across without going through the
+        // typed `FromSqlValue` accessor.
+        let rows = entry
+            .storage
+            .query_map(&sql, &native_params, |row| Ok(row.columns().to_vec()))
+            .map_err(|e| format!("query: {e:#}"))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| row.into_iter().map(Into::into).collect())
+            .collect())
+    }
+
+    fn drop(&mut self, handle: Resource<SqlHandleEntry>) -> wasmtime::Result<()> {
+        // Removing the entry drops just this resource's
+        // reference to the master Arc; the underlying
+        // SqlStorage stays alive on PluginState until the
+        // plugin is disabled.
+        self.wasi_table.delete(handle)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------
+// SqlValue ↔ host SqlValue
+// ---------------------------------------------------------
+
+impl From<bindings::torchsnap::plugin::sql::SqlValue> for HostSqlValue {
+    fn from(v: bindings::torchsnap::plugin::sql::SqlValue) -> Self {
+        use bindings::torchsnap::plugin::sql::SqlValue as Wit;
+        match v {
+            Wit::Null => HostSqlValue::Null,
+            Wit::Integer(i) => HostSqlValue::Integer(i),
+            Wit::Real(f) => HostSqlValue::Real(f),
+            Wit::Text(s) => HostSqlValue::Text(s),
+            Wit::Blob(b) => HostSqlValue::Blob(b),
+        }
+    }
+}
+
+impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
+    fn from(v: HostSqlValue) -> Self {
+        use bindings::torchsnap::plugin::sql::SqlValue as Wit;
+        match v {
+            HostSqlValue::Null => Wit::Null,
+            HostSqlValue::Integer(i) => Wit::Integer(i),
+            HostSqlValue::Real(f) => Wit::Real(f),
+            HostSqlValue::Text(s) => Wit::Text(s),
+            HostSqlValue::Blob(b) => Wit::Blob(b),
+            // The host's `List` variant is for IN-clause
+            // expansion before binding; it never appears in
+            // result rows and never crosses the WIT
+            // boundary. Plugins expand their own IN clauses
+            // per ADR 0031.
+            HostSqlValue::List(_) => Wit::Null,
+        }
+    }
+}
+
+// =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
 
@@ -272,6 +476,13 @@ impl WasmRuntime {
             // then; the bridge always sets it before the
             // first guest call into `enable()`.
             settings: None,
+            // Populated by the bridge at construction time
+            // via `WasmPluginInstance::set_sql_config` once
+            // the manifest's `[storage.sql]` block (if any)
+            // has been parsed and the migration files have
+            // been read from the plugin source.
+            sql_config: SqlConfig::None,
+            sql_storage: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -329,6 +540,25 @@ impl WasmPluginInstance {
     pub fn clear_settings(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().settings = None;
+    }
+
+    /// Install the SQL storage configuration on the store
+    /// data. Called once by the bridge at construction time
+    /// (before any guest call) — the migration strings have
+    /// already been read from the plugin source by the
+    /// caller, so this is a pure metadata stash with no
+    /// I/O.
+    pub fn set_sql_config(&self, config: SqlConfig) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().sql_config = config;
+    }
+
+    /// Drop the cached `Arc<SqlStorage>` (releasing the
+    /// underlying connection) on plugin disable so the
+    /// database file isn't held open between enable cycles.
+    pub fn clear_sql_storage(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().sql_storage = None;
     }
 
     /// Call the guest's `enable` export.
