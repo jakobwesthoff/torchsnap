@@ -337,13 +337,20 @@ async fn scheduler_loop(
 
             let (id, _) = &schedules[*i];
 
-            // The guest call is synchronous from the
-            // tokio task's perspective — wasmtime stores
-            // are blocking. `spawn_blocking` would be more
-            // proper but the existing instance methods do
-            // their own locking and are well-behaved
-            // enough that calling them inline is fine for
-            // a v1 implementation.
+            // The guest call is synchronous from the tokio task's
+            // perspective — wasmtime stores are blocking. We call it
+            // inline here rather than wrapping in `spawn_blocking`
+            // because v1 task workloads are tiny (the calculator's
+            // retention cleanup is a single SQL DELETE that takes
+            // sub-millisecond time). If a plugin author writes a
+            // pathological task — e.g. a multi-second web scrape or a
+            // large file scan — it will block one tokio worker
+            // thread for the duration. With the default Tauri
+            // runtime (4 worker threads), four such plugins
+            // scheduling simultaneously would saturate the runtime.
+            // The fix when this happens is to wrap `instance.run_task`
+            // in `tokio::task::spawn_blocking(...).await?`; nothing
+            // about the guest interface needs to change.
             match instance.run_task(id) {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => log_task_error(&log_sender, &plugin_id, id, &e),

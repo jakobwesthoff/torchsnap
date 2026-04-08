@@ -1320,16 +1320,37 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
 /// The `cron` crate uses Quartz-style 6/7-field syntax
 /// (`sec min hour day month dow [year]`), so we wrap the
 /// user's 5 fields with `0` for seconds and `*` for year.
-/// This wrapping is *the* validation: a valid 5-field POSIX
-/// expression becomes a valid 7-field Quartz expression that
-/// `cron::Schedule::from_str` accepts; anything else (a
-/// truncated 4-field input, an over-eager 6-field input
-/// trying to sneak in seconds, garbage tokens) becomes a
-/// malformed 6/8/9-field expression that `cron` rejects with
-/// its own error message. No separate field-counter needed.
+/// A pre-check on the field count catches the most common
+/// authoring errors — wrong number of fields, Quartz macros
+/// like `@daily` — with a friendly message before delegating
+/// to `cron` for full validation.
 pub(crate) fn parse_cron_schedule(schedule: &str) -> anyhow::Result<cron::Schedule> {
     use std::str::FromStr;
 
+    // Pre-check the field count so plugin authors who pass
+    // a 4/6/7-field expression get a clear "expected
+    // 5-field POSIX cron" message instead of an opaque
+    // Quartz-internal error from the `cron` crate. The
+    // wrapping below is still the actual validation
+    // mechanism — this check just catches the common
+    // failure modes early with a friendlier explanation.
+    let field_count = schedule.split_whitespace().count();
+    if field_count != 5 {
+        anyhow::bail!(
+            "expected 5-field POSIX cron `minute hour day month weekday`, got {field_count} field(s) — sub-minute scheduling and 6/7-field Quartz syntax are not supported"
+        );
+    }
+
+    // The `cron` crate uses Quartz-style 6/7-field syntax
+    // (`sec min hour day month dow [year]`), so we wrap the
+    // user's 5 fields with `0` for seconds and `*` for year.
+    // This wrapping is also a defensive validation: a valid
+    // 5-field POSIX expression becomes a valid 7-field
+    // Quartz expression that `cron::Schedule::from_str`
+    // accepts; a malformed expression that somehow has 5
+    // tokens but isn't valid POSIX cron becomes a malformed
+    // 7-field Quartz expression that the parser rejects
+    // with its own error.
     let normalized = format!("0 {schedule} *");
     cron::Schedule::from_str(&normalized).map_err(|e| anyhow::anyhow!("{e}"))
 }
@@ -1380,5 +1401,41 @@ mod task_validation_tests {
         ])
         .unwrap_err();
         assert!(err.to_string().contains("duplicate"), "{err}");
+    }
+
+    #[test]
+    fn empty_schedule_rejected() {
+        let err = validate_task_definitions(&[task("bad", "")]).unwrap_err();
+        assert!(err.to_string().contains("5-field"), "{err}");
+    }
+
+    #[test]
+    fn four_field_schedule_rejected() {
+        let err = validate_task_definitions(&[task("bad", "* * * *")]).unwrap_err();
+        assert!(err.to_string().contains("5-field"), "{err}");
+    }
+
+    #[test]
+    fn seven_field_schedule_rejected() {
+        let err = validate_task_definitions(&[task("bad", "0 */30 * * * * *")]).unwrap_err();
+        assert!(err.to_string().contains("5-field"), "{err}");
+    }
+
+    #[test]
+    fn all_wildcards_5_field_accepted() {
+        // The simplest legal POSIX cron expression — fires
+        // every minute. Confirms the base case parses.
+        validate_task_definitions(&[task("ok", "* * * * *")]).unwrap();
+    }
+
+    #[test]
+    fn quartz_macro_at_daily_rejected() {
+        // `@daily` is a Quartz alias for `0 0 * * *`, but
+        // it's a single-token whole-expression macro. After
+        // wrapping it becomes `0 @daily *` which the cron
+        // crate rejects. The friendlier error wrapper catches
+        // it as a 1-field input first.
+        let err = validate_task_definitions(&[task("bad", "@daily")]).unwrap_err();
+        assert!(err.to_string().contains("5-field"), "{err}");
     }
 }
