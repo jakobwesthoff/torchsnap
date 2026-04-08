@@ -488,10 +488,8 @@ pub fn run() {
     // The protocol handler reads from these to serve frontend
     // assets; plugin loading populates the registry.
     let plugin_source_registry = wasm::protocol::new_registry();
-    let builder = wasm::protocol::register_plugin_protocol(
-        builder,
-        Arc::clone(&plugin_source_registry),
-    );
+    let builder =
+        wasm::protocol::register_plugin_protocol(builder, Arc::clone(&plugin_source_registry));
 
     let app = builder
         .setup(move |app| {
@@ -531,10 +529,8 @@ pub fn run() {
             // settings init, parallel enable, shortcut management,
             // search routing, and shutdown.
             // =========================================================
-            let mut host = plugin_host::PluginHost::new(
-                Arc::clone(&store),
-                Arc::clone(&frecency_store),
-            );
+            let mut host =
+                plugin_host::PluginHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
             host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
             host.register(Box::new(
                 plugins::system_commands::SystemCommandsPlugin::new(),
@@ -588,12 +584,12 @@ pub fn run() {
             );
             metadata_service.start_retention();
 
-            host.register(Box::new(plugins::open_url::OpenUrlPlugin::new(
-                Arc::clone(&metadata_service),
-            )));
-            host.register(Box::new(plugins::bangs::BangsPlugin::new(
-                Arc::clone(&metadata_service),
-            )));
+            host.register(Box::new(plugins::open_url::OpenUrlPlugin::new(Arc::clone(
+                &metadata_service,
+            ))));
+            host.register(Box::new(plugins::bangs::BangsPlugin::new(Arc::clone(
+                &metadata_service,
+            ))));
 
             // =========================================================
             // Logging system
@@ -618,7 +614,12 @@ pub fn run() {
             // TODO: Replace hardcoded dev path with proper plugin
             // discovery from $APPDATA/torchsnap/plugins/.
             // =========================================================
-            match load_wasm_plugins(&mut host, &log_sender, &span_registry, &plugin_source_registry) {
+            match load_wasm_plugins(
+                &mut host,
+                &log_sender,
+                &span_registry,
+                &plugin_source_registry,
+            ) {
                 Ok(count) => {
                     if count > 0 {
                         log_sender.send(wasm::logging::LogItem {
@@ -729,8 +730,13 @@ pub fn run() {
             // =========================================================
             // Tray icon with context menu
             // =========================================================
-            PlatformTray::build(app, toggle_launcher_window, show_settings_window, show_devtools_window)
-                .context("build platform tray")?;
+            PlatformTray::build(
+                app,
+                toggle_launcher_window,
+                show_settings_window,
+                show_devtools_window,
+            )
+            .context("build platform tray")?;
 
             // =========================================================
             // Preload windows
@@ -807,10 +813,7 @@ fn load_wasm_plugins(
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
     source_registry: &wasm::protocol::PluginSourceRegistry,
 ) -> anyhow::Result<usize> {
-    let runtime = wasm::runtime::WasmRuntime::new(
-        log_sender.clone(),
-        Arc::clone(span_registry),
-    )?;
+    let runtime = wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
 
     let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
     let entries = match std::fs::read_dir(&plugin_dir) {

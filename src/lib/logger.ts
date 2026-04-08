@@ -59,11 +59,7 @@ export class Logger {
   // ----- Span methods -----
 
   /** Start a span. Returns a local span ID immediately. */
-  spanStart(
-    name: string,
-    parentId?: number,
-    metadata: [string, string][] = [],
-  ): number {
+  spanStart(name: string, parentId?: number, metadata: [string, string][] = []): number {
     const localId = allocateLocalId();
     enqueue({
       type: "spanStart",

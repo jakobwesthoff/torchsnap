@@ -18,8 +18,8 @@
 // =========================================================
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime};
 
 use super::channel::LogSender;
@@ -142,11 +142,7 @@ impl SpanRegistry {
     ///
     /// End-metadata is merged with start-metadata. On key
     /// collision, end-metadata wins.
-    pub fn end(
-        &self,
-        span_id: u64,
-        end_metadata: Vec<(String, String)>,
-    ) -> Option<CompletedSpan> {
+    pub fn end(&self, span_id: u64, end_metadata: Vec<(String, String)>) -> Option<CompletedSpan> {
         let span = self
             .open_spans
             .lock()
@@ -283,12 +279,7 @@ impl Logger {
     }
 
     /// Emit a log message associated with a span.
-    pub fn log_in_span(
-        &self,
-        level: LogLevel,
-        message: impl Into<String>,
-        span_id: u64,
-    ) {
+    pub fn log_in_span(&self, level: LogLevel, message: impl Into<String>, span_id: u64) {
         self.sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
@@ -590,13 +581,11 @@ mod tests {
         }
 
         // The next span should be rejected.
-        let rejected = registry.start(
-            "too-deep".into(),
-            current_id,
-            LogSource::Host,
-            vec![],
+        let rejected = registry.start("too-deep".into(), current_id, LogSource::Host, vec![]);
+        assert!(
+            rejected.is_none(),
+            "span exceeding depth limit should be rejected"
         );
-        assert!(rejected.is_none(), "span exceeding depth limit should be rejected");
 
         assert_eq!(registry.open_count(), MAX_SPAN_NESTING);
     }
@@ -648,7 +637,10 @@ mod tests {
 
     #[test]
     fn metadata_merge_empty_cases() {
-        assert_eq!(merge_metadata(vec![], vec![]), Vec::<(String, String)>::new());
+        assert_eq!(
+            merge_metadata(vec![], vec![]),
+            Vec::<(String, String)>::new()
+        );
 
         let start_only = vec![("k".into(), "v".into())];
         assert_eq!(merge_metadata(start_only.clone(), vec![]), start_only);
@@ -743,15 +735,13 @@ mod tests {
         let (logger, system) = test_logger();
         let mut sub = system.subscribe();
 
-        logger.log_with_meta(
-            LogLevel::Warn,
-            "test",
-            vec![("key".into(), "val".into())],
-        );
+        logger.log_with_meta(LogLevel::Warn, "test", vec![("key".into(), "val".into())]);
 
         let item = recv(&mut sub).await;
         match &item.kind {
-            LogItemKind::Message { level, metadata, .. } => {
+            LogItemKind::Message {
+                level, metadata, ..
+            } => {
                 assert_eq!(*level, LogLevel::Warn);
                 assert_eq!(*metadata, vec![("key".to_string(), "val".to_string())]);
             }
@@ -768,7 +758,9 @@ mod tests {
 
         let item = recv(&mut sub).await;
         match &item.kind {
-            LogItemKind::Message { span_id, message, .. } => {
+            LogItemKind::Message {
+                span_id, message, ..
+            } => {
                 assert_eq!(*span_id, Some(42));
                 assert_eq!(message, "inside span");
             }
@@ -790,7 +782,12 @@ mod tests {
             // First item: span-start.
             let start_item = recv(&mut sub).await;
             match &start_item.kind {
-                LogItemKind::SpanStart { name, depth, parent_id, .. } => {
+                LogItemKind::SpanStart {
+                    name,
+                    depth,
+                    parent_id,
+                    ..
+                } => {
                     assert_eq!(name, "test-span");
                     assert_eq!(*depth, 0);
                     assert_eq!(*parent_id, None);
@@ -803,7 +800,12 @@ mod tests {
         // Second item: span-end.
         let end_item = recv(&mut sub).await;
         match &end_item.kind {
-            LogItemKind::SpanEnd { name, depth, parent_id, .. } => {
+            LogItemKind::SpanEnd {
+                name,
+                depth,
+                parent_id,
+                ..
+            } => {
                 assert_eq!(name, "test-span");
                 assert_eq!(*depth, 0);
                 assert_eq!(*parent_id, None);
@@ -879,7 +881,12 @@ mod tests {
             // Child span-start should reference parent.
             let child_start = recv(&mut sub).await;
             match &child_start.kind {
-                LogItemKind::SpanStart { parent_id: pid, depth, name, .. } => {
+                LogItemKind::SpanStart {
+                    parent_id: pid,
+                    depth,
+                    name,
+                    ..
+                } => {
                     assert_eq!(*pid, Some(parent_id));
                     assert_eq!(*depth, 1);
                     assert_eq!(name, "child");
@@ -891,7 +898,12 @@ mod tests {
         // Child span-end should reference parent.
         let child_end = recv(&mut sub).await;
         match &child_end.kind {
-            LogItemKind::SpanEnd { parent_id: pid, name, depth, .. } => {
+            LogItemKind::SpanEnd {
+                parent_id: pid,
+                name,
+                depth,
+                ..
+            } => {
                 assert_eq!(*pid, Some(parent_id));
                 assert_eq!(name, "child");
                 assert_eq!(*depth, 1);
@@ -917,7 +929,11 @@ mod tests {
 
         let log_item = recv(&mut sub).await;
         match &log_item.kind {
-            LogItemKind::Message { message, span_id: sid, .. } => {
+            LogItemKind::Message {
+                message,
+                span_id: sid,
+                ..
+            } => {
                 assert_eq!(message, "inside");
                 assert_eq!(*sid, Some(span_id));
             }

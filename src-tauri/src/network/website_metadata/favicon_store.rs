@@ -100,10 +100,7 @@ impl FaviconStore {
 
     /// Total disk usage of all stored favicons (bytes).
     pub fn disk_usage(&self) -> u64 {
-        self.storage
-            .entries()
-            .map(|(_, _, meta)| meta.size)
-            .sum()
+        self.storage.entries().map(|(_, _, meta)| meta.size).sum()
     }
 
     /// Remove all favicon files whose keys are not in the valid set.

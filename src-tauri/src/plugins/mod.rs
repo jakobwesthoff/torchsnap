@@ -30,7 +30,7 @@ pub mod system_commands;
 pub mod system_preferences;
 
 use crate::frecency::PluginFrecency;
-use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
+use crate::search::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
 use crate::settings::{PluginSettings, SettingsInit};
 
 // =========================================================
@@ -264,11 +264,7 @@ pub trait Plugin: Send + Sync {
     /// or `Some(PluginResponse)` with the results/UI payload.
     ///
     /// The default is a no-op returning `None` (catalog-only plugins).
-    fn search(
-        &self,
-        _query: &str,
-        _matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
         None
     }
 }

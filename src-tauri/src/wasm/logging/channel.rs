@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 
 use super::storage::{LogStorage, RingBufferStorage};
-use super::{LogItem, BROADCAST_CAPACITY, CHANNEL_CAPACITY, DEFAULT_RING_BUFFER_CAPACITY};
+use super::{BROADCAST_CAPACITY, CHANNEL_CAPACITY, DEFAULT_RING_BUFFER_CAPACITY, LogItem};
 
 // =========================================================
 // LogSender
@@ -227,13 +227,11 @@ mod tests {
 
         sender.send(test_item());
 
-        let received = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            subscriber.recv(),
-        )
-        .await
-        .expect("timeout waiting for broadcast")
-        .expect("broadcast recv error");
+        let received =
+            tokio::time::timeout(std::time::Duration::from_millis(100), subscriber.recv())
+                .await
+                .expect("timeout waiting for broadcast")
+                .expect("broadcast recv error");
 
         assert_eq!(received.seq, 1);
         match &received.kind {

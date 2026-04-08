@@ -52,7 +52,12 @@ impl Plugin for BuiltInCommandsPlugin {
                 title: "Developer Tools".into(),
                 subtitle: Some("Open Torchsnap developer tools".into()),
                 icon: Some(EntryIcon::HeroIcon("wrench-screwdriver".into())),
-                keywords: vec!["debug".into(), "console".into(), "logs".into(), "dev".into()],
+                keywords: vec![
+                    "debug".into(),
+                    "console".into(),
+                    "logs".into(),
+                    "dev".into(),
+                ],
                 actions: vec![Action {
                     id: ActionId::Open,
                     label: "Open".into(),

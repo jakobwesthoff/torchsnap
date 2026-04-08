@@ -57,11 +57,10 @@ export function registerWasmPlugin(manifest: WasmPluginManifest, webview: Webvie
       const views: Record<string, ComponentType<PluginViewProps>> = {};
 
       for (const [viewName, exportName] of Object.entries(frontend.views)) {
-        views[viewName] = launcherComponent(
-          () =>
-            import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-              default: mod[exportName],
-            })),
+        views[viewName] = launcherComponent(() =>
+          import(/* @vite-ignore */ bundleUrl).then((mod) => ({
+            default: mod[exportName],
+          })),
         );
       }
 
@@ -74,11 +73,10 @@ export function registerWasmPlugin(manifest: WasmPluginManifest, webview: Webvie
       const inlineViews: Record<string, ComponentType<InlineViewProps>> = {};
 
       for (const [viewName, exportName] of Object.entries(frontend.inlineViews)) {
-        inlineViews[viewName] = launcherComponent(
-          () =>
-            import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-              default: mod[exportName],
-            })),
+        inlineViews[viewName] = launcherComponent(() =>
+          import(/* @vite-ignore */ bundleUrl).then((mod) => ({
+            default: mod[exportName],
+          })),
         );
       }
 
@@ -90,11 +88,10 @@ export function registerWasmPlugin(manifest: WasmPluginManifest, webview: Webvie
       const bundleUrl = `${baseUrl}/${frontend.settingsBundle}`;
       const exportName = frontend.settings.component;
 
-      entry.settings = settingsComponent(
-        () =>
-          import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-            default: mod[exportName],
-          })),
+      entry.settings = settingsComponent(() =>
+        import(/* @vite-ignore */ bundleUrl).then((mod) => ({
+          default: mod[exportName],
+        })),
       );
     }
 

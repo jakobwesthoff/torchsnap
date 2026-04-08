@@ -188,20 +188,44 @@ mod tests {
 
     #[test]
     fn log_level_serializes_as_camel_case() {
-        assert_eq!(serde_json::to_string(&LogLevel::Trace).unwrap(), "\"trace\"");
-        assert_eq!(serde_json::to_string(&LogLevel::Debug).unwrap(), "\"debug\"");
+        assert_eq!(
+            serde_json::to_string(&LogLevel::Trace).unwrap(),
+            "\"trace\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LogLevel::Debug).unwrap(),
+            "\"debug\""
+        );
         assert_eq!(serde_json::to_string(&LogLevel::Info).unwrap(), "\"info\"");
         assert_eq!(serde_json::to_string(&LogLevel::Warn).unwrap(), "\"warn\"");
-        assert_eq!(serde_json::to_string(&LogLevel::Error).unwrap(), "\"error\"");
+        assert_eq!(
+            serde_json::to_string(&LogLevel::Error).unwrap(),
+            "\"error\""
+        );
     }
 
     #[test]
     fn log_level_deserializes_from_camel_case() {
-        assert_eq!(serde_json::from_str::<LogLevel>("\"trace\"").unwrap(), LogLevel::Trace);
-        assert_eq!(serde_json::from_str::<LogLevel>("\"debug\"").unwrap(), LogLevel::Debug);
-        assert_eq!(serde_json::from_str::<LogLevel>("\"info\"").unwrap(), LogLevel::Info);
-        assert_eq!(serde_json::from_str::<LogLevel>("\"warn\"").unwrap(), LogLevel::Warn);
-        assert_eq!(serde_json::from_str::<LogLevel>("\"error\"").unwrap(), LogLevel::Error);
+        assert_eq!(
+            serde_json::from_str::<LogLevel>("\"trace\"").unwrap(),
+            LogLevel::Trace
+        );
+        assert_eq!(
+            serde_json::from_str::<LogLevel>("\"debug\"").unwrap(),
+            LogLevel::Debug
+        );
+        assert_eq!(
+            serde_json::from_str::<LogLevel>("\"info\"").unwrap(),
+            LogLevel::Info
+        );
+        assert_eq!(
+            serde_json::from_str::<LogLevel>("\"warn\"").unwrap(),
+            LogLevel::Warn
+        );
+        assert_eq!(
+            serde_json::from_str::<LogLevel>("\"error\"").unwrap(),
+            LogLevel::Error
+        );
     }
 
     #[test]
@@ -213,7 +237,13 @@ mod tests {
 
     #[test]
     fn log_level_roundtrip() {
-        for level in [LogLevel::Trace, LogLevel::Debug, LogLevel::Info, LogLevel::Warn, LogLevel::Error] {
+        for level in [
+            LogLevel::Trace,
+            LogLevel::Debug,
+            LogLevel::Info,
+            LogLevel::Warn,
+            LogLevel::Error,
+        ] {
             let json = serde_json::to_string(&level).unwrap();
             let back: LogLevel = serde_json::from_str(&json).unwrap();
             assert_eq!(back, level);

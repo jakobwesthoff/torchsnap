@@ -20,10 +20,7 @@
 // =========================================================
 
 import { memo, useCallback } from "react";
-import {
-  ChevronRightIcon,
-  ClipboardDocumentIcon,
-} from "@heroicons/react/24/outline";
+import { ChevronRightIcon, ClipboardDocumentIcon } from "@heroicons/react/24/outline";
 import { PlayIcon, StopIcon } from "@heroicons/react/16/solid";
 import { cn } from "../../lib/cn";
 import type { LogItem, LogLevel } from "../types";
@@ -82,13 +79,15 @@ export const LogItemRow = memo(function LogItemRow({
   const metadata = kind.metadata;
   const hasMetadata = metadata.length > 0;
 
-  const pluginId =
-    item.source.type === "plugin" ? item.source.value : null;
+  const pluginId = item.source.type === "plugin" ? item.source.value : null;
 
-  const copyToClipboard = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(formatItemForClipboard(item));
-  }, [item]);
+  const copyToClipboard = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(formatItemForClipboard(item));
+    },
+    [item],
+  );
 
   // Determine display text and level badge.
   const messageText = kind.type === "message" ? kind.message : kind.name;
@@ -100,9 +99,7 @@ export const LogItemRow = memo(function LogItemRow({
         "group flex items-start gap-2 px-3 py-1 text-xs border-b border-border-divider/50",
         "hover:bg-surface-hover/50 transition-colors",
         "border-l-2",
-        isSpan
-          ? "border-l-cyan-500"
-          : levelBorderColor[kind.level],
+        isSpan ? "border-l-cyan-500" : levelBorderColor[kind.level],
         index % 2 === 0 && "bg-surface-inset/20",
         hasMetadata && "cursor-pointer",
       )}
@@ -119,11 +116,18 @@ export const LogItemRow = memo(function LogItemRow({
           isSpan ? "text-cyan-400" : levelTextColor[kind.level],
         )}
       >
-        {isSpan
-          ? <>span{kind.type === "spanStart"
-              ? <PlayIcon className="w-2.5 h-2.5" />
-              : <StopIcon className="w-2.5 h-2.5" />}</>
-          : kind.level}
+        {isSpan ? (
+          <>
+            span
+            {kind.type === "spanStart" ? (
+              <PlayIcon className="w-2.5 h-2.5" />
+            ) : (
+              <StopIcon className="w-2.5 h-2.5" />
+            )}
+          </>
+        ) : (
+          kind.level
+        )}
       </span>
 
       {/* Source */}
@@ -136,9 +140,7 @@ export const LogItemRow = memo(function LogItemRow({
                 PLUGIN_COLORS[pluginColorIndex(pluginId)],
               )}
             />
-            <span className="text-[11px] text-text-secondary truncate font-medium">
-              {pluginId}
-            </span>
+            <span className="text-[11px] text-text-secondary truncate font-medium">{pluginId}</span>
           </>
         ) : (
           <span className="text-[11px] text-text-muted italic">host</span>
@@ -149,12 +151,7 @@ export const LogItemRow = memo(function LogItemRow({
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-1">
           {/* Depth indentation */}
-          {depth > 0 && (
-            <span
-              style={{ width: `${depth * 16}px` }}
-              className="shrink-0"
-            />
-          )}
+          {depth > 0 && <span style={{ width: `${depth * 16}px` }} className="shrink-0" />}
 
           {/* Message */}
           <span className="flex-1 min-w-0 font-mono text-[11px] leading-5 text-text-primary break-words select-text">
@@ -165,15 +162,12 @@ export const LogItemRow = memo(function LogItemRow({
           <span className="shrink-0 w-[70px] text-right">
             {kind.type === "spanEnd" && (
               <span
-                className={cn(
-                  "text-[10px] font-mono tabular-nums",
-                  durationColor(kind.durationUs),
-                )}
+                className={cn("text-[10px] font-mono tabular-nums", durationColor(kind.durationUs))}
               >
                 {formatDuration(kind.durationUs)}
               </span>
             )}
-            {kind.type === "spanStart" && !(completedSpanIds?.has(kind.spanId)) && (
+            {kind.type === "spanStart" && !completedSpanIds?.has(kind.spanId) && (
               <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                 running
               </span>

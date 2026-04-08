@@ -76,8 +76,7 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
   const handleScroll = useCallback(() => {
     const el = parentRef.current;
     if (!el) return;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
     setIsAtBottom(atBottom);
     if (atBottom) setNewSinceScroll(0);
   }, []);
@@ -108,9 +107,7 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
       <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
         <CommandLineIcon className="w-10 h-10 text-text-muted/50" />
         <p className="text-sm">No log entries yet</p>
-        <p className="text-xs text-text-muted/70">
-          Log output from plugins will appear here
-        </p>
+        <p className="text-xs text-text-muted/70">Log output from plugins will appear here</p>
       </div>
     );
   }
@@ -126,11 +123,7 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
       )}
 
       {/* Scrollable log list */}
-      <div
-        ref={parentRef}
-        className="h-full overflow-y-auto"
-        onScroll={handleScroll}
-      >
+      <div ref={parentRef} className="h-full overflow-y-auto" onScroll={handleScroll}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -183,9 +176,7 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
             onClick={scrollToBottom}
           >
             <ArrowDownIcon className="w-3.5 h-3.5" />
-            {newSinceScroll > 0 && (
-              <span className="tabular-nums">{newSinceScroll} new</span>
-            )}
+            {newSinceScroll > 0 && <span className="tabular-nums">{newSinceScroll} new</span>}
           </button>
         </div>
       )}

@@ -136,11 +136,9 @@ pub fn clear_all(db: &SqlStorage) -> anyhow::Result<()> {
 /// Gather summary statistics for the settings UI.
 pub fn stats(db: &SqlStorage) -> CacheStats {
     let entry_count = db
-        .query_map(
-            "SELECT COUNT(*) FROM website_metadata",
-            &[],
-            |row| Ok(row.get::<i64>(0).unwrap_or(0)),
-        )
+        .query_map("SELECT COUNT(*) FROM website_metadata", &[], |row| {
+            Ok(row.get::<i64>(0).unwrap_or(0))
+        })
         .ok()
         .and_then(|mut rows| rows.pop())
         .unwrap_or(0);

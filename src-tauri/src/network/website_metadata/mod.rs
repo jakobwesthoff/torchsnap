@@ -86,7 +86,6 @@ pub enum MetadataResult {
     Unreachable,
 }
 
-
 // =========================================================
 // Service
 // =========================================================
@@ -120,11 +119,8 @@ impl WebsiteMetadataService {
         notifier: &SettingsNotifier,
         initial_ttl_days: u32,
     ) -> anyhow::Result<Self> {
-        let db = SqlStorage::open(
-            cache_dir.join("metadata.db"),
-            &[cache::MIGRATION_001],
-        )
-        .context("open website metadata cache database")?;
+        let db = SqlStorage::open(cache_dir.join("metadata.db"), &[cache::MIGRATION_001])
+            .context("open website metadata cache database")?;
 
         let favicons = FaviconStore::new(cache_dir.join("favicons"));
 
@@ -279,7 +275,10 @@ impl WebsiteMetadataService {
 
     /// Check if a domain is in the negative cache and not yet expired.
     fn is_negatively_cached(&self, domain: &str) -> bool {
-        let cache = self.negative_cache.lock().expect("negative cache not poisoned");
+        let cache = self
+            .negative_cache
+            .lock()
+            .expect("negative cache not poisoned");
         if let Some(timestamp) = cache.get(domain) {
             timestamp.elapsed() < NEGATIVE_CACHE_TTL
         } else {
@@ -303,10 +302,7 @@ impl WebsiteMetadataService {
 
         // ReachableNoData: row exists with reachable=true but all
         // metadata fields are NULL.
-        if entry.title.is_none()
-            && entry.description.is_none()
-            && entry.favicon_key.is_none()
-        {
+        if entry.title.is_none() && entry.description.is_none() && entry.favicon_key.is_none() {
             return MetadataResult::ReachableNoData;
         }
 
@@ -352,7 +348,12 @@ impl WebsiteMetadataService {
             }
         }
 
-        (None, None, None, EntryIcon::HeroIcon("globe-alt".to_string()))
+        (
+            None,
+            None,
+            None,
+            EntryIcon::HeroIcon("globe-alt".to_string()),
+        )
     }
 
     /// Fetch metadata and favicon from the network, store in cache,
@@ -367,15 +368,18 @@ impl WebsiteMetadataService {
                 // favicon paths as a fallback.
                 let (favicon_url, favicon_key, favicon_ext, favicon) =
                     self.try_fallback_favicon(domain);
-                cache::store(&self.db, &cache::CacheEntry {
-                    domain,
-                    title: None,
-                    description: None,
-                    favicon_url: favicon_url.as_deref(),
-                    favicon_key: favicon_key.as_deref(),
-                    favicon_ext: favicon_ext.as_deref(),
-                    reachable: true,
-                });
+                cache::store(
+                    &self.db,
+                    &cache::CacheEntry {
+                        domain,
+                        title: None,
+                        description: None,
+                        favicon_url: favicon_url.as_deref(),
+                        favicon_key: favicon_key.as_deref(),
+                        favicon_ext: favicon_ext.as_deref(),
+                        reachable: true,
+                    },
+                );
                 return if favicon_key.is_some() {
                     MetadataResult::Found(WebsiteMetadata {
                         title: None,
@@ -400,15 +404,18 @@ impl WebsiteMetadataService {
         {
             let (favicon_url, favicon_key, favicon_ext, favicon) =
                 self.try_fallback_favicon(domain);
-            cache::store(&self.db, &cache::CacheEntry {
-                domain,
-                title: None,
-                description: None,
-                favicon_url: favicon_url.as_deref(),
-                favicon_key: favicon_key.as_deref(),
-                favicon_ext: favicon_ext.as_deref(),
-                reachable: true,
-            });
+            cache::store(
+                &self.db,
+                &cache::CacheEntry {
+                    domain,
+                    title: None,
+                    description: None,
+                    favicon_url: favicon_url.as_deref(),
+                    favicon_key: favicon_key.as_deref(),
+                    favicon_ext: favicon_ext.as_deref(),
+                    reachable: true,
+                },
+            );
             return if favicon_key.is_some() {
                 MetadataResult::Found(WebsiteMetadata {
                     title: None,
@@ -436,15 +443,18 @@ impl WebsiteMetadataService {
             };
 
         // Store in SQLite.
-        cache::store(&self.db, &cache::CacheEntry {
-            domain,
-            title: page_metadata.title.as_deref(),
-            description: page_metadata.description.as_deref(),
-            favicon_url: page_metadata.favicon_url.as_deref(),
-            favicon_key: favicon_key.as_deref(),
-            favicon_ext: favicon_ext.as_deref(),
-            reachable: true,
-        });
+        cache::store(
+            &self.db,
+            &cache::CacheEntry {
+                domain,
+                title: page_metadata.title.as_deref(),
+                description: page_metadata.description.as_deref(),
+                favicon_url: page_metadata.favicon_url.as_deref(),
+                favicon_key: favicon_key.as_deref(),
+                favicon_ext: favicon_ext.as_deref(),
+                reachable: true,
+            },
+        );
 
         MetadataResult::Found(WebsiteMetadata {
             title: page_metadata.title,
@@ -454,13 +464,13 @@ impl WebsiteMetadataService {
     }
 
     /// Fetch a favicon image and store it via the `FaviconStore`.
-    fn fetch_and_store_favicon(
-        &self,
-        favicon_url: &str,
-    ) -> Option<favicon_store::StoredFavicon> {
+    fn fetch_and_store_favicon(&self, favicon_url: &str) -> Option<favicon_store::StoredFavicon> {
         let image_data = fetch::fetch_favicon_image(&self.http, favicon_url).ok()?;
-        self.favicons
-            .store(favicon_url, &image_data.image_data, &image_data.content_type)
+        self.favicons.store(
+            favicon_url,
+            &image_data.image_data,
+            &image_data.content_type,
+        )
     }
 
     /// Spawn a background thread to fetch metadata for a domain.

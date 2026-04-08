@@ -21,10 +21,7 @@
  * in `<head>`. The CSS is wrapped in `@scope` so it only applies
  * inside the plugin's container div.
  */
-export async function injectPluginCss(
-  pluginId: string,
-  cssPath: string,
-): Promise<void> {
+export async function injectPluginCss(pluginId: string, cssPath: string): Promise<void> {
   const url = `torchsnap-plugin://localhost/${pluginId}/${cssPath}`;
   const response = await fetch(url);
 
@@ -49,8 +46,6 @@ export async function injectPluginCss(
  * Used when a plugin is uninstalled or disabled.
  */
 export function removePluginCss(pluginId: string): void {
-  const style = document.head.querySelector(
-    `style[data-plugin-css="${pluginId}"]`,
-  );
+  const style = document.head.querySelector(`style[data-plugin-css="${pluginId}"]`);
   style?.remove();
 }

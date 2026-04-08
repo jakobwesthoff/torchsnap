@@ -15,7 +15,7 @@
 
 use std::collections::VecDeque;
 
-use super::{LogItem, DEFAULT_RING_BUFFER_CAPACITY};
+use super::{DEFAULT_RING_BUFFER_CAPACITY, LogItem};
 
 // =========================================================
 // LogStorage Trait

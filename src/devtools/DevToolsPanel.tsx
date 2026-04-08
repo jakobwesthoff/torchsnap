@@ -30,9 +30,7 @@ export function DevToolsPanel() {
       <DevToolsTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Tab content — fills remaining vertical space */}
-      <div className="flex-1 min-h-0">
-        {activeTab === "console" && <ConsoleTab />}
-      </div>
+      <div className="flex-1 min-h-0">{activeTab === "console" && <ConsoleTab />}</div>
     </div>
   );
 }

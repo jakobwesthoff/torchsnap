@@ -19,7 +19,7 @@
 use std::time::SystemTime;
 
 use crate::plugins::Plugin;
-use crate::search::types::{ActionId, CatalogEntry, PostAction, PluginResponse};
+use crate::search::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
 use crate::settings::SettingsInit;
 
 use super::logging::channel::LogSender;
@@ -126,11 +126,7 @@ impl Plugin for WasmPluginBridge {
         self.instance.execute(entry_id, action_id)
     }
 
-    fn search(
-        &self,
-        query: &str,
-        matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> {
         match self.instance.search(query, matched_prefix) {
             Ok(response) => match response {
                 PluginResponse::Results(ref entries) if entries.is_empty() => None,

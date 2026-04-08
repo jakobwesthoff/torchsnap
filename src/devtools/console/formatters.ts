@@ -41,32 +41,25 @@ export function durationColor(durationUs: number): string {
 
 export function formatItemForClipboard(item: LogItem): string {
   const time = formatTimestamp(item.timestamp);
-  const source =
-    item.source.type === "plugin" ? item.source.value : "host";
+  const source = item.source.type === "plugin" ? item.source.value : "host";
   const { kind } = item;
 
   if (kind.type === "message") {
     const label = kind.level.toUpperCase();
     const meta =
-      kind.metadata.length > 0
-        ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}`
-        : "";
+      kind.metadata.length > 0 ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}` : "";
     return `[${time}] [${label}] [${source}] ${kind.message}${meta}`;
   }
 
   if (kind.type === "spanStart") {
     const meta =
-      kind.metadata.length > 0
-        ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}`
-        : "";
+      kind.metadata.length > 0 ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}` : "";
     return `[${time}] [SPAN▶] [${source}] ${kind.name}${meta}`;
   }
 
   // spanEnd
   const meta =
-    kind.metadata.length > 0
-      ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}`
-      : "";
+    kind.metadata.length > 0 ? ` {${kind.metadata.map(([k, v]) => `${k}=${v}`).join(", ")}}` : "";
   const dur = formatDuration(kind.durationUs);
   return `[${time}] [SPAN◀] [${source}] ${kind.name} ${dur}${meta}`;
 }

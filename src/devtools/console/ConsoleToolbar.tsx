@@ -11,7 +11,13 @@
 // =========================================================
 
 import { useEffect, useRef, useState } from "react";
-import { Bars3Icon, ChevronDownIcon, FunnelIcon, QueueListIcon, TrashIcon } from "@heroicons/react/24/outline";
+import {
+  Bars3Icon,
+  ChevronDownIcon,
+  FunnelIcon,
+  QueueListIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
@@ -90,8 +96,7 @@ function SourceDropdown({
   }, [open]);
 
   const isAllSources = filters.sources === "all";
-  const selectedCount =
-    filters.sources === "all" ? knownSources.length : filters.sources.size;
+  const selectedCount = filters.sources === "all" ? knownSources.length : filters.sources.size;
 
   let label: string;
   if (isAllSources) {
@@ -115,26 +120,39 @@ function SourceDropdown({
       >
         <FunnelIcon className="w-3.5 h-3.5" />
         <span className="max-w-[120px] truncate">{label}</span>
-        <ChevronDownIcon className={cn("w-3 h-3 text-text-muted transition-transform", open && "rotate-180")} />
+        <ChevronDownIcon
+          className={cn("w-3 h-3 text-text-muted transition-transform", open && "rotate-180")}
+        />
       </button>
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] py-1 bg-surface border border-border rounded-lg shadow-lg">
           {/* All sources option */}
           <button
-            onClick={() => { onSetAllSources(); setOpen(false); }}
+            onClick={() => {
+              onSetAllSources();
+              setOpen(false);
+            }}
             className={cn(
               "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-surface-hover transition-colors",
               isAllSources && "text-text-primary font-medium",
               !isAllSources && "text-text-secondary",
             )}
           >
-            <span className={cn(
-              "w-3.5 h-3.5 flex items-center justify-center rounded border",
-              isAllSources ? "bg-accent border-accent" : "border-border-input",
-            )}>
+            <span
+              className={cn(
+                "w-3.5 h-3.5 flex items-center justify-center rounded border",
+                isAllSources ? "bg-accent border-accent" : "border-border-input",
+              )}
+            >
               {isAllSources && (
-                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                <svg
+                  className="w-2.5 h-2.5 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={3}
+                  stroke="currentColor"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                 </svg>
               )}
@@ -146,7 +164,8 @@ function SourceDropdown({
 
           {/* Individual sources */}
           {knownSources.map((source) => {
-            const checked = isAllSources || (filters.sources !== "all" && filters.sources.has(source));
+            const checked =
+              isAllSources || (filters.sources !== "all" && filters.sources.has(source));
             const isPlugin = source !== "host";
 
             return (
@@ -155,25 +174,37 @@ function SourceDropdown({
                 onClick={() => onToggleSource(source)}
                 className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-text-primary hover:bg-surface-hover transition-colors"
               >
-                <span className={cn(
-                  "w-3.5 h-3.5 flex items-center justify-center rounded border",
-                  checked ? "bg-accent border-accent" : "border-border-input",
-                )}>
+                <span
+                  className={cn(
+                    "w-3.5 h-3.5 flex items-center justify-center rounded border",
+                    checked ? "bg-accent border-accent" : "border-border-input",
+                  )}
+                >
                   {checked && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    <svg
+                      className="w-2.5 h-2.5 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={3}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m4.5 12.75 6 6 9-13.5"
+                      />
                     </svg>
                   )}
                 </span>
                 {isPlugin && (
-                  <span className={cn(
-                    "w-1.5 h-1.5 rounded-full shrink-0",
-                    PLUGIN_COLORS[pluginColorIndex(source)],
-                  )} />
+                  <span
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      PLUGIN_COLORS[pluginColorIndex(source)],
+                    )}
+                  />
                 )}
-                <span className={cn(!isPlugin && "italic text-text-secondary")}>
-                  {source}
-                </span>
+                <span className={cn(!isPlugin && "italic text-text-secondary")}>{source}</span>
               </button>
             );
           })}
@@ -248,13 +279,9 @@ export function ConsoleToolbar({
                   : "bg-transparent border-border text-text-muted opacity-50",
               )}
             >
-              <span
-                className={cn("w-1.5 h-1.5 rounded-full", style.dot)}
-              />
+              <span className={cn("w-1.5 h-1.5 rounded-full", style.dot)} />
               {level}
-              {count > 0 && (
-                <span className="ml-0.5 tabular-nums">{count}</span>
-              )}
+              {count > 0 && <span className="ml-0.5 tabular-nums">{count}</span>}
             </button>
           );
         })}
@@ -272,9 +299,7 @@ export function ConsoleToolbar({
         >
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
           span
-          {spanCount > 0 && (
-            <span className="ml-0.5 tabular-nums">{spanCount}</span>
-          )}
+          {spanCount > 0 && <span className="ml-0.5 tabular-nums">{spanCount}</span>}
         </button>
 
         {/* Spacer pushes clear to the right */}
@@ -305,9 +330,7 @@ export function ConsoleToolbar({
 
         {/* Entry count */}
         <span className="text-[10px] text-text-muted tabular-nums shrink-0">
-          {filteredCount === totalCount
-            ? `${totalCount}`
-            : `${filteredCount}/${totalCount}`}
+          {filteredCount === totalCount ? `${totalCount}` : `${filteredCount}/${totalCount}`}
         </span>
 
         {/* Divider */}

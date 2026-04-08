@@ -20,8 +20,8 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use super::channel::LoggingSystem;
 use super::spans::SpanRegistry;
@@ -71,7 +71,10 @@ pub fn devtools_log_history(
     limit: usize,
     state: State<'_, Arc<LoggingSystem>>,
 ) -> Vec<LogItem> {
-    let storage = state.storage().lock().expect("logging storage not poisoned");
+    let storage = state
+        .storage()
+        .lock()
+        .expect("logging storage not poisoned");
     storage.entries_after(after_seq, limit)
 }
 
@@ -139,14 +142,20 @@ pub fn devtools_log_subscribe(
 /// Clear all items from the ring buffer.
 #[tauri::command]
 pub fn devtools_log_clear(state: State<'_, Arc<LoggingSystem>>) {
-    let mut storage = state.storage().lock().expect("logging storage not poisoned");
+    let mut storage = state
+        .storage()
+        .lock()
+        .expect("logging storage not poisoned");
     storage.clear();
 }
 
 /// Get current logging statistics.
 #[tauri::command]
 pub fn devtools_log_stats(state: State<'_, Arc<LoggingSystem>>) -> LogStats {
-    let storage = state.storage().lock().expect("logging storage not poisoned");
+    let storage = state
+        .storage()
+        .lock()
+        .expect("logging storage not poisoned");
     LogStats {
         count: storage.len(),
         dropped: state.dropped_count(),
@@ -289,10 +298,7 @@ mod tests {
         // An empty string is not "host" — treated as a plugin
         // with an empty ID. Not a useful case, but the behavior
         // should be defined.
-        assert_eq!(
-            resolve_source(""),
-            LogSource::Plugin("".into()),
-        );
+        assert_eq!(resolve_source(""), LogSource::Plugin("".into()),);
     }
 
     // ----- Frontend log emission (exercising the same code paths
@@ -318,7 +324,12 @@ mod tests {
         let item = recv(&mut sub).await;
         assert_eq!(item.source, LogSource::Plugin("my-plugin".into()));
         match &item.kind {
-            LogItemKind::Message { level, message, metadata, span_id } => {
+            LogItemKind::Message {
+                level,
+                message,
+                metadata,
+                span_id,
+            } => {
                 assert_eq!(*level, LogLevel::Info);
                 assert_eq!(message, "hello from frontend");
                 assert_eq!(*metadata, vec![("key".to_string(), "val".to_string())]);
@@ -357,7 +368,12 @@ mod tests {
 
         // Start a span to get a valid ID.
         let (span_id, _) = registry
-            .start("test-span".into(), None, LogSource::Plugin("p".into()), vec![])
+            .start(
+                "test-span".into(),
+                None,
+                LogSource::Plugin("p".into()),
+                vec![],
+            )
             .expect("span should start");
 
         system.sender().send(LogItem {
@@ -391,7 +407,12 @@ mod tests {
 
         let source = resolve_source("my-plugin");
         let (id, depth) = registry
-            .start("frontend-span".into(), None, source.clone(), vec![("k".into(), "v".into())])
+            .start(
+                "frontend-span".into(),
+                None,
+                source.clone(),
+                vec![("k".into(), "v".into())],
+            )
             .expect("span should start");
 
         system.sender().send(LogItem {
@@ -412,7 +433,13 @@ mod tests {
 
         let item = recv(&mut sub).await;
         match &item.kind {
-            LogItemKind::SpanStart { span_id, name, parent_id, depth: d, metadata } => {
+            LogItemKind::SpanStart {
+                span_id,
+                name,
+                parent_id,
+                depth: d,
+                metadata,
+            } => {
                 assert_eq!(*span_id, id);
                 assert_eq!(name, "frontend-span");
                 assert_eq!(*parent_id, None);
@@ -430,13 +457,19 @@ mod tests {
         let mut sub = system.subscribe();
 
         let (id, _) = registry
-            .start("timed-op".into(), None, LogSource::Plugin("p".into()), vec![])
+            .start(
+                "timed-op".into(),
+                None,
+                LogSource::Plugin("p".into()),
+                vec![],
+            )
             .expect("span should start");
 
         // Small delay to ensure measurable duration.
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 
-        let completed = registry.end(id, vec![("result".into(), "ok".into())])
+        let completed = registry
+            .end(id, vec![("result".into(), "ok".into())])
             .expect("span should end");
 
         system.sender().send(LogItem {
@@ -448,10 +481,19 @@ mod tests {
 
         let item = recv(&mut sub).await;
         match &item.kind {
-            LogItemKind::SpanEnd { span_id, name, duration_us, metadata, .. } => {
+            LogItemKind::SpanEnd {
+                span_id,
+                name,
+                duration_us,
+                metadata,
+                ..
+            } => {
                 assert_eq!(*span_id, id);
                 assert_eq!(name, "timed-op");
-                assert!(*duration_us >= 4000, "duration should be at least ~5ms ({duration_us}μs)");
+                assert!(
+                    *duration_us >= 4000,
+                    "duration should be at least ~5ms ({duration_us}μs)"
+                );
                 let meta: std::collections::HashMap<String, String> =
                     metadata.clone().into_iter().collect();
                 assert_eq!(meta.get("result").unwrap(), "ok");
@@ -507,7 +549,9 @@ mod tests {
         // Verify parent start.
         let p_start = recv(&mut sub).await;
         match &p_start.kind {
-            LogItemKind::SpanStart { depth, parent_id, .. } => {
+            LogItemKind::SpanStart {
+                depth, parent_id, ..
+            } => {
                 assert_eq!(*depth, 0);
                 assert_eq!(*parent_id, None);
             }
@@ -517,7 +561,11 @@ mod tests {
         // Verify child start.
         let c_start = recv(&mut sub).await;
         match &c_start.kind {
-            LogItemKind::SpanStart { depth, parent_id: pid, .. } => {
+            LogItemKind::SpanStart {
+                depth,
+                parent_id: pid,
+                ..
+            } => {
                 assert_eq!(*depth, 1);
                 assert_eq!(*pid, Some(parent_id));
             }
