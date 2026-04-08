@@ -6,48 +6,38 @@
  * Settings component for the calculator plugin.
  *
  * Controls:
- * - Enable/disable toggle
  * - Heuristic (prefix-free) parsing toggle
  * - History enable/disable toggle
  * - Retention period slider
  * - Storage stats + clear history
+ *
+ * The plugin's enabled flag (used to disable controls when the
+ * user has turned the calculator off) comes from
+ * `usePluginInfo().enabled`. The three settings come from
+ * `usePluginSetting<T>(key)` and the `stats` / `clear_history`
+ * RPC calls go through `usePluginRuntime().sendMessage`.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { usePluginInfo } from "../../contexts/usePluginInfo";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
-import { usePluginSetting } from "../../contexts/usePluginSetting";
-import { Section } from "../../settings/Section";
-import { Entry } from "../../settings/Entry";
-import { Switch } from "../../components/Switch";
-import { Slider } from "../../components/Slider";
-
-// =========================================================
-// Types
-// =========================================================
+import {
+  usePluginInfo,
+  usePluginRuntime,
+  usePluginSetting,
+} from "@torchsnap/plugin-sdk/hooks";
+import { Entry, Section, Slider, Switch } from "@torchsnap/plugin-sdk/components";
+import "../../styles/settings.css";
 
 interface CalcStats {
   entryCount: number;
   dbSize: number;
 }
 
-// =========================================================
-// Helpers
-// =========================================================
-
 function formatRetentionDays(days: number): string {
   if (days === 365) return "1 year";
   return `${days}d`;
 }
 
-// =========================================================
-// Component
-// =========================================================
-
-export default function CalculatorSettings() {
-  // Identity (id + reactive enabled flag) and runtime
-  // capabilities now come from the plugin context. The host
-  // wraps every settings panel mount in PluginContextProvider.
+export function CalculatorSettings() {
   const { enabled } = usePluginInfo();
   const { sendMessage } = usePluginRuntime();
 

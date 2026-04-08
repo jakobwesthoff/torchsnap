@@ -5,7 +5,7 @@
 /**
  * Prefix mode custom UI for the calculator plugin.
  *
- * Registered as `views["history"]` in the plugin registry. Layout:
+ * Registered as `views["history"]` in the plugin manifest. Layout:
  * - Top: CalculatorResult (or CalculatorHelp if no result)
  * - Divider
  * - History list (windowed, most recent first)
@@ -19,15 +19,15 @@
  */
 
 import { memo, useEffect, useState } from "react";
-import type { PluginViewProps } from "../types";
-import type { FooterState } from "../../types";
+import type { FooterState, PluginViewProps } from "@torchsnap/plugin-sdk";
+import {
+  useLauncher,
+  usePluginRuntime,
+  useWindowedList,
+} from "@torchsnap/plugin-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
-import { CalculatorHelp, CalculatorError } from "./CalculatorHelp";
-import { useKeyBindings } from "../../keybindings/useKeyBindings";
-import { LAYER } from "../../keybindings/matching";
-import { useWindowedList } from "../../launcher/hooks/useWindowedList";
-import { useLauncher } from "../../contexts/useLauncher";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
+import { CalculatorError, CalculatorHelp } from "./CalculatorHelp";
 
 // Layout constants. The inline area (result/help/error) has a fixed
 // height so the history list below it doesn't shift as the content
@@ -53,7 +53,7 @@ const CALCULATOR_FOOTER: FooterState = {
   hints: [{ combo: { modifiers: [], key: "Escape" }, label: "Back" }],
 };
 
-export default memo(function CalculatorView({
+export const CalculatorView = memo(function CalculatorView({
   results,
   data,
   query,
@@ -61,6 +61,7 @@ export default memo(function CalculatorView({
 }: PluginViewProps) {
   const { goBack, mouseActiveRef, onExecute, onFooterChange, setDisplayQuery } = useLauncher();
   const { sendMessage } = usePluginRuntime();
+
   // The backend's search() returns the eval result in the `data`
   // field of the CustomUI response, threaded through PluginViewRef.
   const rawData = data as CalcData | null | undefined;

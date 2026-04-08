@@ -1,0 +1,49 @@
+[plugin]
+id = "calculator"
+name = "Calculator"
+description = "Evaluate math expressions with history tracking"
+version = "0.1.0"
+wasm = "calculator_plugin.wasm"
+icon = "heroicons:calculator"
+prefixes = ["="]
+
+[settings]
+heuristicEnabled = true
+historyEnabled = true
+retentionDays = 30
+
+[storage.sql]
+migrations = [
+    "migrations/001_init.sql",
+]
+
+# Periodic retention cleanup. Deletes history rows older than
+# the configured `retentionDays` setting. Runs every 30
+# minutes — sub-minute scheduling is not supported.
+[[tasks]]
+id = "retention-cleanup"
+schedule = "*/30 * * * *"
+
+[frontend]
+launcher-bundle = "frontend/dist/launcher.js"
+launcher-css = "frontend/dist/launcher.css"
+settings-bundle = "frontend/dist/settings.js"
+settings-css = "frontend/dist/settings.css"
+
+# Prefix-mode custom UI. The plugin's `search()` returns
+# `CustomUI { view = "history" }` and the host mounts the
+# named export below, replacing the standard result list
+# with the calculator's own layout (inline result + history
+# list).
+[frontend.views]
+history = "CalculatorView"
+
+# Heuristic-mode inline UI. The plugin's `search()` returns
+# `InlineUI { view = "result" }` for queries that look like
+# math expressions; the host mounts this above the standard
+# result list.
+[frontend.inline-views]
+result = "CalculatorInline"
+
+[frontend.settings]
+component = "CalculatorSettings"
