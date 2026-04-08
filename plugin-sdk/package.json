@@ -12,6 +12,18 @@
       "types": "./src/shims/hooks.ts",
       "default": "./src/shims/hooks.ts"
     },
+    "./components": {
+      "types": "./src/shims/components.ts",
+      "default": "./src/shims/components.ts"
+    },
+    "./keybindings": {
+      "types": "./src/shims/keybindings.ts",
+      "default": "./src/shims/keybindings.ts"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    },
     "./vite": {
       "types": "./src/vite/index.ts",
       "default": "./src/vite/index.ts"

@@ -9,6 +9,7 @@ prefixes = ["tpl:"]
 
 [settings]
 greeting = "Hello from Template!"
+verbose = false
 
 [frontend]
 launcher-bundle = "frontend/dist/launcher.js"
