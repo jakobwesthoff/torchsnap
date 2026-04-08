@@ -53,18 +53,46 @@ build-plugin name:
     just package-plugin "{{ name }}"
 
 # Package a plugin directory into a .torchsnap zip archive.
-# Includes manifest.toml and any files referenced by the manifest
-# (WASM binary, frontend assets). Build artifacts and source code
-# are excluded.
+#
+# **Blacklist semantics**: every file under the plugin directory
+# is included by default. The recipe excludes only known build
+# artifacts and source files that shouldn't ship to users. This
+# means new manifest features that reference additional files
+# (e.g. SQL migrations, asset bundles, fixture data) work
+# automatically — plugin authors don't need to update this
+# recipe whenever they add a new file kind, and we can't
+# silently leave a file out of the archive that the runtime
+# loader expects to find.
+#
+# Excluded paths (build inputs and developer-only artifacts):
+#
+# - `target/`        — Rust build output, the compiled `.wasm`
+#                       lives at the plugin root after
+#                       `build-plugin` copies it there
+# - `Cargo.toml`,
+#   `Cargo.lock`     — Rust build manifests, not runtime config
+# - `src/`           — Rust source, only the compiled binary
+#                       ships
+# - `frontend/node_modules/` — JS dependencies
+# - `frontend/src/`  — TypeScript source, only the bundled
+#                       `frontend/dist/` output ships
+# - `frontend/styles/` — Tailwind input compiled into
+#                         `frontend/dist/*.css`
+# - `frontend/{package.json,tsconfig.json,vite.config.ts,env.d.ts,bun.lock}`
+#                    — frontend build config
+# - `.gitignore`,
+#   `.git/`          — VCS metadata
+# - `*.torchsnap`    — never include a stale archive in a new
+#                       archive
 package-plugin name:
     #!/usr/bin/env bash
     set -euo pipefail
     dir="plugins/{{ name }}"
 
-    # Determine which files to include. Always start with the
-    # manifest and the WASM binary it references.
+    # Sanity check: the WASM binary must exist at the path
+    # the manifest declares, or the archive would package the
+    # frontend without the WASM that drives it.
     wasm_file=$(grep '^wasm' "$dir/manifest.toml" | sed 's/.*= *"//' | sed 's/".*//')
-
     if [ ! -f "$dir/$wasm_file" ]; then
         echo "Error: WASM binary not found: $dir/$wasm_file"
         echo "Run 'just build-plugin {{ name }}' first"
@@ -73,21 +101,32 @@ package-plugin name:
 
     archive="plugins/{{ name }}.torchsnap"
 
-    # Build the archive from the plugin directory. Paths inside
-    # the zip are relative to the plugin root.
-    cd "$dir"
-    zip -j "../../$archive" "manifest.toml" "$wasm_file"
+    # Remove any stale archive from a previous run before
+    # packing. `zip -r` would otherwise update-in-place, which
+    # leaves files from the previous run inside the archive
+    # even if they no longer exist on disk.
+    rm -f "$archive"
 
-    # Include frontend assets referenced in the manifest.
-    # Each bundle and CSS path is optional — only include files
-    # that exist.
-    for key in launcher-bundle launcher-css settings-bundle settings-css; do
-        path=$(grep "^$key" manifest.toml 2>/dev/null | sed 's/.*= *"//' | sed 's/".*//' || true)
-        if [ -n "$path" ] && [ -f "$path" ]; then
-            zip "../../$archive" "$path"
-            echo "  + $path"
-        fi
-    done
+    # Pack everything under the plugin directory using `zip -r`,
+    # excluding the blacklist patterns documented above. Paths
+    # inside the archive are relative to the plugin root.
+    cd "$dir"
+    zip -r "../../$archive" . \
+        -x 'target/*' \
+        -x 'Cargo.toml' \
+        -x 'Cargo.lock' \
+        -x 'src/*' \
+        -x 'frontend/node_modules/*' \
+        -x 'frontend/src/*' \
+        -x 'frontend/styles/*' \
+        -x 'frontend/package.json' \
+        -x 'frontend/tsconfig.json' \
+        -x 'frontend/vite.config.ts' \
+        -x 'frontend/env.d.ts' \
+        -x 'frontend/bun.lock' \
+        -x '.gitignore' \
+        -x '.git/*' \
+        -x '*.torchsnap'
 
     echo "Packaged → $archive"
 
