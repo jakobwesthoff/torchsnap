@@ -5,7 +5,7 @@
 /**
  * Inline result component for the calculator's heuristic mode.
  *
- * Registered as `inlineViews["result"]` in the plugin registry.
+ * Registered as `inline-views["result"]` in the plugin manifest.
  * Renders the calculator result above the standard result list.
  * Participates in the host's selection model at index 0.
  *
@@ -13,12 +13,10 @@
  */
 
 import { memo, useEffect } from "react";
-import type { InlineViewProps } from "../types";
+import type { InlineViewProps } from "@torchsnap/plugin-sdk";
+import { useLauncher, usePluginRuntime } from "@torchsnap/plugin-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
-import { useKeyBindings } from "../../keybindings/useKeyBindings";
-import { LAYER } from "../../keybindings/matching";
-import { useLauncher } from "../../contexts/useLauncher";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
 
 interface CalcData {
   expression: string;
@@ -26,7 +24,10 @@ interface CalcData {
   resultType: string;
 }
 
-export default memo(function CalculatorInline({ data, selected }: InlineViewProps) {
+export const CalculatorInline = memo(function CalculatorInline({
+  data,
+  selected,
+}: InlineViewProps) {
   const { onExecute, onFooterChange } = useLauncher();
   const { sendMessage } = usePluginRuntime();
   const calcData = data as CalcData | undefined;

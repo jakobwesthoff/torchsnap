@@ -108,18 +108,10 @@ registerPlugin("bangs", {
   settings: settingsComponent(() => import("./bangs/BangsSettings")),
 });
 
-registerPlugin("calculator", {
-  label: "Calculator",
-  description: "Evaluate math expressions with history tracking",
-  icon: "heroicons:calculator",
-  views: {
-    history: launcherComponent(() => import("./calculator/CalculatorView")),
-  },
-  inlineViews: {
-    result: launcherComponent(() => import("./calculator/CalculatorInline")),
-  },
-  settings: settingsComponent(() => import("./calculator/CalculatorSettings")),
-});
+// `calculator` is now a WASM plugin loaded from
+// `plugins/calculator/`. The host's `wasmPluginLoader`
+// registers it dynamically at startup, so the static
+// registry no longer needs an entry.
 
 registerPlugin("open-url", {
   label: "Open URL",

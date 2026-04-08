@@ -1,0 +1,18 @@
+[package]
+name = "calculator-plugin"
+version = "0.1.0"
+edition = "2024"
+
+# This crate targets wasm32-wasip2 and is built with
+# `cargo build --target wasm32-wasip2`, not the host target.
+
+[dependencies]
+wit-bindgen = "0.54"
+serde_json = "1.0.149"
+evalexpr = "13.1"
+regex = "1.11"
+blake3 = "1.8"
+ulid = "1.2"
+
+[lib]
+crate-type = ["cdylib"]

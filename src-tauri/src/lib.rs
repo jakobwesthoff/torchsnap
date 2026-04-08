@@ -556,7 +556,9 @@ pub fn run() {
                 platform::PlatformClipboard,
             )));
             host.register(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
-            host.register(Box::new(plugins::calculator::CalculatorPlugin::new()));
+            // `calculator` is now a WASM plugin loaded
+            // dynamically from `plugins/calculator/` by
+            // `load_wasm_plugins` below.
 
             // =========================================================
             // Website metadata service
