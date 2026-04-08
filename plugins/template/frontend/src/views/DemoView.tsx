@@ -12,15 +12,19 @@
 // - React hooks via the shim (`import { useState } from "react"`)
 // - Tailwind utilities using the host's design tokens
 // - Dark mode via inherited CSS custom properties
-// - Reading `data` and `query` from PluginViewProps
-// - Dismissing the launcher via `props.dismiss()`
+// - Reading per-render data (`data`, `query`) from PluginViewProps
+// - Reading host-provided launcher actions via the
+//   `useLauncher()` context hook (per-call ambient capabilities
+//   no longer thread through props)
 // =========================================================
 
 import { useState } from "react";
 import type { PluginViewProps } from "@torchsnap/plugin-sdk";
+import { useLauncher } from "@torchsnap/plugin-sdk/hooks";
 import "../../styles/launcher.css";
 
-export function DemoView({ data, query, dismiss }: PluginViewProps) {
+export function DemoView({ data, query }: PluginViewProps) {
+  const { dismiss } = useLauncher();
   const [count, setCount] = useState(0);
   const echoText = (data as { query?: string })?.query ?? query ?? "";
 

@@ -8,6 +8,10 @@
       "types": "./src/types/index.ts",
       "default": "./src/types/index.ts"
     },
+    "./hooks": {
+      "types": "./src/shims/hooks.ts",
+      "default": "./src/shims/hooks.ts"
+    },
     "./vite": {
       "types": "./src/vite/index.ts",
       "default": "./src/vite/index.ts"

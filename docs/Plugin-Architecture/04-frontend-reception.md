@@ -115,3 +115,63 @@ interface PluginRegistryEntry {
 View and settings components are lazy-loaded via `launcherComponent()` /
 `settingsComponent()` wrappers. The `PluginViewRef.view` field from the
 backend is the key into `views` / `inlineViews`.
+
+## Plugin Component Contract (ADR 0028)
+
+Plugin components — view, inline, and settings — receive **only**
+per-render data through their props (`results`, `data`, `query`,
+`matchedPrefix`, `selected`). Everything else flows through the React
+context defined in `src/contexts/`.
+
+### Provider placement
+
+`PluginViewContainer` and `InlineViewContainer` in
+`src/launcher/Launcher.tsx`, plus `PluginSectionContent` in
+`src/settings/SettingsPanel.tsx`, each wrap their plugin component
+mount in a `<PluginContextProvider>` carrying:
+
+- `info`: `{ id, enabled }` — identity plus reactive enabled flag
+  read from `enabled.<plugin-id>`
+- `runtime`: `{ sendMessage, logger }` — capabilities the host
+  provides to every plugin
+- `launcher` (only inside the launcher tree): `{ goBack, dismiss,
+  onExecute, onFooterChange, setDisplayQuery, mouseActiveRef }`
+
+The provider also drives the legacy `LoggerContext` so any code
+reading via `useLogger()` continues to work unchanged.
+
+### Hooks
+
+Plugin components — and any sub-component nested arbitrarily deep —
+read what they need via four hooks (in `src/contexts/`):
+
+- `usePluginInfo()` — info slice. Available everywhere.
+- `usePluginRuntime()` — runtime slice. Available everywhere.
+- `useLauncher()` — launcher slice. Throws if called outside the
+  launcher tree (settings panels have no launcher actions).
+- `usePluginSetting<T>(key)` — reactive accessor for the active
+  plugin's namespace. Returns `[value, setValue]`. The plugin id is
+  derived from the surrounding provider, so call sites only deal
+  with short relative key names.
+
+### WASM plugin SDK exposure
+
+Out-of-tree WASM plugins reach the same hooks via the
+`@torchsnap/plugin-sdk/hooks` subpath, which resolves at build time
+to `plugin-sdk/src/shims/hooks.ts`. The shim re-reads from
+`window.__torchsnap.hooks`, populated by the host's `initPluginSdk()`
+in `src/lib/sdk.ts`.
+
+This is the same `window.__torchsnap` shim mechanism already in use
+for `react` and `react/jsx-runtime`. The host source files are the
+single source of truth; plugin bundles ship import statements only.
+
+### Why not props?
+
+The props-based contract that preceded ADR 0028 forced every
+sub-component to thread `pluginId`, `usePluginSetting`, `sendMessage`,
+`logger`, and the launcher actions explicitly through every level.
+Adding a new ambient capability was a breaking change for every
+plugin. Per-render data still travels as props because hoisting it
+into context would invalidate the context value on every keystroke
+and force every consumer to re-render.

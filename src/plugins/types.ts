@@ -3,18 +3,18 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Shared props interface for plugin custom UI components (ADR 0013).
+ * Plugin component prop interfaces — host-side mirror of
+ * `@torchsnap/plugin-sdk`'s `plugin.ts`.
  *
- * When a plugin requests custom UI via SearchResponse::CustomUI, the
- * host mounts the plugin's React component with these props. The
- * plugin renders into the result list slot and communicates back to
- * the host via callbacks.
+ * Per ADR 0028, ambient capabilities (`pluginId`, `sendMessage`,
+ * `logger`, launcher actions, reactive setting accessors) are
+ * provided via the React context exposed by `src/contexts/`. The
+ * three prop interfaces here carry only per-render data — the
+ * pieces that change on every keystroke and would invalidate
+ * the context value if hoisted.
  */
 
-import type { RefObject } from "react";
-import type { ActionId, FooterState, SourcedEntry } from "@torchsnap/types";
-import type { createPluginSettingHook } from "../hooks/usePluginSetting";
-import type { Logger } from "../lib/logger";
+import type { SourcedEntry } from "@torchsnap/types";
 
 export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
@@ -28,37 +28,6 @@ export interface PluginViewProps {
   query: string;
   /** Which prefix activated the plugin. */
   matchedPrefix: string;
-  /** Pop back to previous state (clear prefix or restore snapshot). */
-  goBack: () => void;
-  /** Close the launcher entirely. */
-  dismiss: () => void;
-  /** Shared mouse-active tracking to suppress hover-selection
-   *  during keyboard navigation. */
-  mouseActiveRef: RefObject<boolean>;
-  /** Delegate execution to the host. The host owns PostAction
-   *  handling and dismiss logic. */
-  onExecute: (entryId: string, actionId: ActionId) => void;
-  /** Set the footer content. The plugin is responsible for keeping
-   *  this in sync with its actual keybindings. */
-  onFooterChange: (state: FooterState) => void;
-  /** Update the search input display without triggering a new search.
-   *  Used by plugins like the calculator to show a history entry's
-   *  expression in the input field while keeping the search stable. */
-  setDisplayQuery: (query: string) => void;
-  /** Send a custom message to the plugin's backend handler.
-   *
-   *  The host routes this to the plugin identified by the active
-   *  customPluginView. `onMessage` (if provided) receives streaming
-   *  updates pushed by the backend over a Tauri channel before the
-   *  promise resolves with the final response. */
-  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
-    method: string,
-    payload: TPayload,
-    onMessage?: (msg: TStream) => void,
-  ) => Promise<TResult>;
-  /** Pre-bound logger for this plugin. Writes to the Developer
-   *  Tools console log stream. */
-  logger: Logger;
 }
 
 // =========================================================
@@ -95,22 +64,6 @@ export interface InlineViewProps {
   matchedPrefix: string;
   /** Whether the inline slot is currently selected (index 0). */
   selected: boolean;
-  /** Delegate execution to the host. */
-  onExecute: (entryId: string, actionId: ActionId) => void;
-  /** Set the footer content. Called by the inline component to
-   *  report its footer to the host (same pattern as PluginViewProps). */
-  onFooterChange: (state: FooterState) => void;
-  /** Close the launcher. */
-  dismiss: () => void;
-  /** Send a custom message to the plugin's backend handler.
-   *  Same signature as PluginViewProps.sendMessage. */
-  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
-    method: string,
-    payload: TPayload,
-    onMessage?: (msg: TStream) => void,
-  ) => Promise<TResult>;
-  /** Pre-bound logger for this plugin. */
-  logger: Logger;
 }
 
 // =========================================================
@@ -118,14 +71,12 @@ export interface InlineViewProps {
 // =========================================================
 
 /**
- * Props passed to a plugin's settings component when rendered in
- * the settings sidebar. The `usePluginSetting` hook is pre-bound
- * to the plugin's namespace so the component only deals with
- * short key names.
+ * Settings panels receive no per-render data. Identity, runtime
+ * capabilities, and reactive setting accessors all come from the
+ * plugin context hooks (`usePluginInfo`, `usePluginRuntime`,
+ * `usePluginSetting`). The interface stays as a named (empty)
+ * type so `ComponentType<PluginSettingsProps>` continues to
+ * typecheck consistently with the SDK mirror.
  */
-export interface PluginSettingsProps {
-  pluginId: string;
-  usePluginSetting: ReturnType<typeof createPluginSettingHook>;
-  /** Pre-bound logger for this plugin. */
-  logger: Logger;
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface PluginSettingsProps {}

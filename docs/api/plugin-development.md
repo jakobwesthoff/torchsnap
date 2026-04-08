@@ -513,8 +513,9 @@ fn execute(&self, entry_id: &str, _action: &ActionId, _app: &tauri::AppHandle)
 ### Frontend ↔ Backend Messaging
 
 When the custom UI component needs live data from the backend, it sends
-messages through a `sendMessage` prop. The host routes these to
-`handle_message()`.
+messages through `sendMessage`, retrieved from the plugin context via
+the `usePluginRuntime()` hook (see "Plugin Component Contract" below).
+The host routes these to `handle_message()`.
 
 The `channel` parameter enables streaming: the plugin holds the channel and
 pushes updates asynchronously. The channel is dropped when the frontend
@@ -553,6 +554,70 @@ fn handle_message(
 
 `handle_message()` returns a `serde_json::Value` as a one-shot response.
 Ongoing updates go through the `channel`.
+
+### Plugin Component Contract
+
+Plugin React components (view, inline, settings) receive **only**
+per-render data through their props. Identity, runtime capabilities,
+launcher actions, and reactive setting accessors all flow through a
+React context (ADR 0028).
+
+The contract is exposed via four hooks. For host-tree components
+(native plugin React) they live in `src/contexts/`; for WASM plugins
+they're available via `@torchsnap/plugin-sdk/hooks`:
+
+```tsx
+import {
+  usePluginInfo,
+  usePluginRuntime,
+  useLauncher,
+  usePluginSetting,
+} from "@torchsnap/plugin-sdk/hooks";
+
+function MyView({ data, query }: PluginViewProps) {
+  // Identity (always available)
+  const { id, enabled } = usePluginInfo();
+
+  // Runtime capabilities (always available)
+  const { sendMessage, logger } = usePluginRuntime();
+
+  // Launcher actions (only inside the launcher tree —
+  // throws when called from a settings panel)
+  const { dismiss, onExecute, onFooterChange } = useLauncher();
+
+  // Reactive setting accessor — automatically scoped to
+  // the active plugin's namespace
+  const [retentionDays, setRetentionDays] =
+    usePluginSetting<number>("retentionDays");
+
+  // ...
+}
+```
+
+Settings panels receive an empty props object — every value comes
+from hooks:
+
+```tsx
+function MySettings() {
+  const { enabled } = usePluginInfo();
+  const [greeting, setGreeting] = usePluginSetting<string>("greeting");
+  return (
+    <input
+      value={greeting}
+      onChange={(e) => setGreeting(e.target.value)}
+      disabled={!enabled}
+    />
+  );
+}
+```
+
+Per-render data (`results`, `data`, `query`, `matchedPrefix`,
+`selected`) stays as props on `PluginViewProps` / `InlineViewProps`
+because it changes every keystroke and would invalidate the context
+value if hoisted.
+
+Sub-components extracted from a plugin component can call any of the
+four hooks directly — no prop threading required.
 
 ---
 

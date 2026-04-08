@@ -45,3 +45,16 @@ that is missing the header, add it immediately regardless of the current task.
 
 Files that do NOT need headers: `.json`, `.toml`, `.lock`, `.md`, images,
 and other non-source configuration files.
+
+## Tooling notes
+
+### `cargo-component` is NOT used
+
+This project does **not** use `cargo-component`. WASM plugins are built
+with plain `cargo build --target wasm32-wasip2 --release` and the WIT
+bindings are generated via the `wit-bindgen` macro inside each plugin
+crate. Do not install `cargo-component` and do not add recipes that
+depend on it.
+
+WIT inspection / formatting uses `wasm-tools` (`just check-wit`,
+`just fmt-wit`), which is a separate tool.

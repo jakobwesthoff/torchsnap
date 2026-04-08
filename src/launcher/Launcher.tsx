@@ -9,7 +9,8 @@ import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { createLogger } from "../lib/logger";
-import { LoggerProvider } from "../contexts/LoggerProvider";
+import { PluginContextProvider } from "../contexts/PluginContextProvider";
+import type { LauncherActions, PluginInfo, PluginRuntime } from "../contexts/PluginContext";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
@@ -76,15 +77,24 @@ interface LauncherProps {
 function PluginViewContainer({
   pluginId,
   viewName,
+  info,
+  runtime,
+  launcher,
   ...props
-}: PluginViewProps & { pluginId: string; viewName: string }) {
+}: PluginViewProps & {
+  pluginId: string;
+  viewName: string;
+  info: PluginInfo;
+  runtime: PluginRuntime;
+  launcher: LauncherActions;
+}) {
   const View = getPluginView(pluginId, viewName);
   if (!View) return null;
   return (
     <div data-plugin={pluginId}>
-      <LoggerProvider source={pluginId}>
+      <PluginContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
-      </LoggerProvider>
+      </PluginContextProvider>
     </div>
   );
 }
@@ -92,15 +102,24 @@ function PluginViewContainer({
 function InlineViewContainer({
   pluginId,
   viewName,
+  info,
+  runtime,
+  launcher,
   ...props
-}: InlineViewProps & { pluginId: string; viewName: string }) {
+}: InlineViewProps & {
+  pluginId: string;
+  viewName: string;
+  info: PluginInfo;
+  runtime: PluginRuntime;
+  launcher: LauncherActions;
+}) {
   const View = getPluginInlineView(pluginId, viewName);
   if (!View) return null;
   return (
     <div data-plugin={pluginId}>
-      <LoggerProvider source={pluginId}>
+      <PluginContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
-      </LoggerProvider>
+      </PluginContextProvider>
     </div>
   );
 }
@@ -442,6 +461,67 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const inlineLogger = useMemo(() => createLogger(inlineLoggerId), [inlineLoggerId]);
 
   // =========================================================
+  // PluginContext value assembly
+  //
+  // The host packs identity (id + enabled), runtime
+  // capabilities (sendMessage + logger), and launcher actions
+  // into the three slices the PluginContextProvider expects.
+  // The `enabled` flag for each is read reactively from the
+  // host's `enabled.<plugin-id>` setting so plugin components
+  // see disable toggles immediately via usePluginInfo().
+  // =========================================================
+
+  const [pluginEnabled] = useSetting<boolean>(
+    customPluginView ? `enabled.${customPluginView.pluginId}` : "enabled.__none__",
+  );
+  const [inlineEnabled] = useSetting<boolean>(
+    activeInlineView ? `enabled.${activeInlineView.pluginId}` : "enabled.__none__",
+  );
+
+  const pluginInfo = useMemo<PluginInfo>(
+    () => ({ id: customPluginView?.pluginId ?? "host", enabled: pluginEnabled }),
+    [customPluginView?.pluginId, pluginEnabled],
+  );
+  const pluginRuntime = useMemo<PluginRuntime>(
+    () => ({ sendMessage, logger: pluginLogger }),
+    [sendMessage, pluginLogger],
+  );
+  const pluginLauncher = useMemo<LauncherActions>(
+    () => ({
+      goBack: handleGoBack,
+      dismiss,
+      onExecute: handlePluginExecute,
+      onFooterChange: setPluginFooter,
+      setDisplayQuery,
+      mouseActiveRef,
+    }),
+    [handleGoBack, dismiss, handlePluginExecute, setDisplayQuery],
+  );
+
+  const inlineInfo = useMemo<PluginInfo>(
+    () => ({ id: activeInlineView?.pluginId ?? "host", enabled: inlineEnabled }),
+    [activeInlineView?.pluginId, inlineEnabled],
+  );
+  const inlineRuntime = useMemo<PluginRuntime>(
+    () => ({ sendMessage: sendInlineMessage, logger: inlineLogger }),
+    [sendInlineMessage, inlineLogger],
+  );
+  const inlineLauncher = useMemo<LauncherActions>(
+    () => ({
+      // Inline views never need goBack/setDisplayQuery — they sit
+      // above the result list. Provide stable no-ops so the
+      // launcher slice is non-optional in the context contract.
+      goBack: () => {},
+      dismiss,
+      onExecute: handleInlineExecute,
+      onFooterChange: setInlineFooter,
+      setDisplayQuery: () => {},
+      mouseActiveRef,
+    }),
+    [dismiss, handleInlineExecute],
+  );
+
+  // =========================================================
   // Action Execution (list mode)
   // =========================================================
 
@@ -556,18 +636,13 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         <PluginViewContainer
           pluginId={customPluginView.pluginId}
           viewName={customPluginView.view}
+          info={pluginInfo}
+          runtime={pluginRuntime}
+          launcher={pluginLauncher}
           results={results}
           data={customPluginView.data}
           query={strippedQuery}
           matchedPrefix={pluginPrefix}
-          goBack={handleGoBack}
-          dismiss={dismiss}
-          mouseActiveRef={mouseActiveRef}
-          onExecute={handlePluginExecute}
-          onFooterChange={setPluginFooter}
-          setDisplayQuery={setDisplayQuery}
-          sendMessage={sendMessage}
-          logger={pluginLogger}
         />
       </Suspense>
     );
@@ -582,15 +657,13 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             <InlineViewContainer
               pluginId={activeInlineView.pluginId}
               viewName={activeInlineView.view}
+              info={inlineInfo}
+              runtime={inlineRuntime}
+              launcher={inlineLauncher}
               data={activeInlineView.data}
               query={strippedQuery}
               matchedPrefix={pluginPrefix}
               selected={inlineSelected}
-              onExecute={handleInlineExecute}
-              onFooterChange={setInlineFooter}
-              dismiss={dismiss}
-              sendMessage={sendInlineMessage}
-              logger={inlineLogger}
             />
           </Suspense>
         )}

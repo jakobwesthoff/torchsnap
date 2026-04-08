@@ -25,9 +25,9 @@
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import type { PluginViewProps } from "../plugins/types";
+import type { PluginSendMessage } from "../contexts/PluginContext";
 
-type SendMessage = PluginViewProps["sendMessage"];
+type SendMessage = PluginSendMessage;
 
 export interface PluginStreamState<TResult, TSnapshot> {
   /** Whether the invoke Promise has resolved. */

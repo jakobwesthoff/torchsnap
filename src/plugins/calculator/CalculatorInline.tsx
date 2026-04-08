@@ -17,6 +17,8 @@ import type { InlineViewProps } from "../types";
 import { CalculatorResult } from "./CalculatorResult";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";
 import { LAYER } from "../../keybindings/matching";
+import { useLauncher } from "../../contexts/useLauncher";
+import { usePluginRuntime } from "../../contexts/usePluginRuntime";
 
 interface CalcData {
   expression: string;
@@ -24,13 +26,9 @@ interface CalcData {
   resultType: string;
 }
 
-export default memo(function CalculatorInline({
-  data,
-  selected,
-  onExecute,
-  onFooterChange,
-  sendMessage,
-}: InlineViewProps) {
+export default memo(function CalculatorInline({ data, selected }: InlineViewProps) {
+  const { onExecute, onFooterChange } = useLauncher();
+  const { sendMessage } = usePluginRuntime();
   const calcData = data as CalcData | undefined;
 
   // Report our footer to the host on mount.

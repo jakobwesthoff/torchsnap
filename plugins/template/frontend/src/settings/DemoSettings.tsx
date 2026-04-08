@@ -8,19 +8,22 @@
 // Rendered in the settings sidebar when the Template Plugin
 // is selected. Demonstrates:
 //
-// - Reading and writing plugin settings via `usePluginSetting`
+// - Reading and writing plugin settings via the
+//   `usePluginSetting` context hook (now imported from the
+//   SDK rather than threaded through props)
 // - Tailwind styling matching host conventions
 // - The settings component lifecycle
 //
-// The `usePluginSetting` hook is pre-bound to this plugin's
-// namespace — calling `usePluginSetting("greeting")` reads
-// and writes `plugins.template.greeting` in the store.
+// `usePluginSetting` is automatically scoped to the active
+// plugin's namespace via the surrounding PluginContextProvider —
+// calling `usePluginSetting("greeting")` reads and writes
+// `plugins.template.greeting` in the store.
 // =========================================================
 
-import type { PluginSettingsProps } from "@torchsnap/plugin-sdk";
+import { usePluginSetting } from "@torchsnap/plugin-sdk/hooks";
 import "../../styles/settings.css";
 
-export function DemoSettings({ usePluginSetting }: PluginSettingsProps) {
+export function DemoSettings() {
   const [greeting, setGreeting] = usePluginSetting<string>("greeting");
 
   return (

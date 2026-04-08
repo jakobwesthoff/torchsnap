@@ -5,9 +5,11 @@
 import { type ComponentType, Suspense, useMemo, useState } from "react";
 import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
 import type { PluginSettingsProps } from "../plugins/types";
-import { createPluginSettingHook } from "../hooks/usePluginSetting";
 import { createLogger } from "../lib/logger";
-import { LoggerProvider } from "../contexts/LoggerProvider";
+import { useSetting } from "../hooks/useSetting";
+import { PluginContextProvider } from "../contexts/PluginContextProvider";
+import type { PluginInfo, PluginRuntime } from "../contexts/PluginContext";
+import { sendPluginMessage } from "../lib/pluginMessage";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
@@ -119,8 +121,27 @@ function PluginSectionContent({
   plugin: ReturnType<typeof getPluginsWithSettings>[number];
   CustomSettings?: ComponentType<PluginSettingsProps>;
 }) {
-  const usePluginSetting = useMemo(() => createPluginSettingHook(plugin.id), [plugin.id]);
+  // The plugin's enabled flag flows through PluginContext so
+  // setting components can read it via usePluginInfo() and
+  // visually disable controls when the plugin is off.
+  const [enabled] = useSetting<boolean>(`enabled.${plugin.id}`);
   const logger = useMemo(() => createLogger(plugin.id), [plugin.id]);
+
+  // sendMessage is bound to the active plugin id; the closure
+  // never changes for a given mount.
+  const sendMessage = useMemo(
+    () =>
+      <TPayload = unknown, TResult = unknown, TStream = never>(
+        method: string,
+        payload: TPayload,
+        onMessage?: (msg: TStream) => void,
+      ): Promise<TResult> =>
+        sendPluginMessage<TPayload, TResult, TStream>(plugin.id, method, payload, onMessage),
+    [plugin.id],
+  );
+
+  const info = useMemo<PluginInfo>(() => ({ id: plugin.id, enabled }), [plugin.id, enabled]);
+  const runtime = useMemo<PluginRuntime>(() => ({ sendMessage, logger }), [sendMessage, logger]);
 
   return (
     <PluginSettingsWrapper
@@ -130,13 +151,9 @@ function PluginSectionContent({
       description={plugin.description ?? ""}
     >
       {CustomSettings && (
-        <LoggerProvider source={plugin.id}>
-          <CustomSettings
-            pluginId={plugin.id}
-            usePluginSetting={usePluginSetting}
-            logger={logger}
-          />
-        </LoggerProvider>
+        <PluginContextProvider info={info} runtime={runtime}>
+          <CustomSettings />
+        </PluginContextProvider>
       )}
     </PluginSettingsWrapper>
   );
