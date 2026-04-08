@@ -68,8 +68,13 @@ pub async fn plugin_message(
 ) -> Result<Value, String> {
     let host = Arc::clone(&state);
     tokio::task::spawn_blocking(move || {
+        // Format the outermost error only (not the full anyhow
+        // chain) so the JS Promise rejection sees a clean
+        // plugin-level message instead of bridge-internal
+        // context labels. The full chain still appears in host
+        // logs for debugging.
         host.handle_message(&source, &method, payload, channel)
-            .map_err(|e| format!("{e:#}"))
+            .map_err(|e| format!("{e}"))
     })
     .await
     .expect("plugin message task must not panic")

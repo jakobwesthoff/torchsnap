@@ -222,6 +222,13 @@ pub trait Plugin: Send + Sync {
     /// stream live updates back to the frontend. The default
     /// returns an error — override only when the plugin needs
     /// custom frontend ↔ backend communication.
+    ///
+    /// **WASM plugins:** The `WasmPluginBridge` adapter that
+    /// wraps a WIT guest export ignores the `channel`
+    /// parameter — WASM plugins are strictly request/response
+    /// (per ADR 0030). If a plugin needs streaming support,
+    /// it must stay native or wait for a future
+    /// `messaging-stream` WIT sub-interface.
     fn handle_message(
         &self,
         _method: &str,
