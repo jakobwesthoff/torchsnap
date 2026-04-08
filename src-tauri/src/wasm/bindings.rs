@@ -28,8 +28,14 @@ wasmtime::component::bindgen!({
 // Type Conversions: WIT types → native types
 // =========================================================
 
+// All search/UI types now live inside the `search` guest
+// interface, not a separate imported `types` interface — see
+// ADR 0029. Because `search` is a guest export from the
+// host's perspective, its generated module lives under
+// `exports::torchsnap::plugin::search` instead of the
+// import-side path the old `types` interface used.
 use crate::search::types as native;
-use torchsnap::plugin::types as wit;
+use exports::torchsnap::plugin::search as wit;
 
 impl From<wit::EntryIcon> for native::EntryIcon {
     fn from(icon: wit::EntryIcon) -> Self {

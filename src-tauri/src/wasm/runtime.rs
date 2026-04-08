@@ -148,12 +148,6 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
     }
 }
 
-// The `types` interface is imported but contains only type
-// definitions (records, enums, variants) — no functions.
-// wasmtime still generates a Host trait for it, but the
-// implementation is empty.
-impl bindings::torchsnap::plugin::types::Host for PluginState {}
-
 // =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
@@ -343,7 +337,8 @@ impl WasmPluginInstance {
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
 
-        let wit_action_id: bindings::torchsnap::plugin::types::ActionId = action_id.clone().into();
+        let wit_action_id: bindings::exports::torchsnap::plugin::search::ActionId =
+            action_id.clone().into();
 
         let result = self
             .plugin
