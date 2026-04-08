@@ -29,8 +29,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
-    ScoredEntry,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
 use crate::unicode::Utf16Positions;
 
@@ -79,7 +78,10 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
     if let Ok(parsed) = url::Url::parse(trimmed) {
         let scheme = parsed.scheme();
         if (scheme == "http" || scheme == "https") && parsed.host_str().is_some() {
-            let domain = parsed.host_str().expect("host presence checked above").to_string();
+            let domain = parsed
+                .host_str()
+                .expect("host presence checked above")
+                .to_string();
             return Some(DetectedUrl {
                 full_url: parsed.to_string(),
                 domain,
@@ -196,11 +198,7 @@ impl Plugin for OpenUrlPlugin {
     // Explicit URLs always produce a result (globe-alt fallback).
     // =========================================================
 
-    fn search(
-        &self,
-        query: &str,
-        _matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
         let detected = detect_url(query)?;
 
         // Blocking metadata lookup — the service handles caching,
@@ -212,9 +210,7 @@ impl Plugin for OpenUrlPlugin {
         // Subtitle always shows "Open {url}" to communicate the action.
         let (title, icon) = match metadata_result {
             MetadataResult::Found(meta) => {
-                let title = meta
-                    .title
-                    .unwrap_or_else(|| detected.domain.clone());
+                let title = meta.title.unwrap_or_else(|| detected.domain.clone());
                 (title, meta.favicon)
             }
             MetadataResult::ReachableNoData => (

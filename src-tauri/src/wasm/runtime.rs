@@ -171,10 +171,7 @@ pub struct WasmRuntime {
 
 impl WasmRuntime {
     /// Create a new runtime with default configuration.
-    pub fn new(
-        log_sender: LogSender,
-        span_registry: Arc<SpanRegistry>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(log_sender: LogSender, span_registry: Arc<SpanRegistry>) -> anyhow::Result<Self> {
         let mut config = Config::new();
         config.wasm_component_model(true);
 
@@ -211,13 +208,10 @@ impl WasmRuntime {
         let logger = self.logger_for(plugin_id);
 
         // Top-level load span encompassing compile + instantiate.
-        let load_span = logger.span("load")
-            .meta("plugin_id", plugin_id)
-            .start();
+        let load_span = logger.span("load").meta("plugin_id", plugin_id).start();
 
         // Compile the WASM component.
-        let compile_span = load_span.as_ref()
-            .and_then(|s| s.child("compile").start());
+        let compile_span = load_span.as_ref().and_then(|s| s.child("compile").start());
         let component = Component::new(&self.engine, wasm_bytes)
             .map_err(|e| anyhow::anyhow!("compiling WASM component: {e}"))?;
         drop(compile_span);
@@ -252,7 +246,8 @@ impl WasmRuntime {
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component and get the typed bindings.
-        let instantiate_span = load_span.as_ref()
+        let instantiate_span = load_span
+            .as_ref()
             .and_then(|s| s.child("instantiate").start());
         let plugin = bindings::Plugin::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
@@ -324,9 +319,7 @@ impl WasmPluginInstance {
         query: &str,
         matched_prefix: Option<&str>,
     ) -> anyhow::Result<crate::search::types::PluginResponse> {
-        let _span = self.logger.span("search")
-            .meta("query", query)
-            .start();
+        let _span = self.logger.span("search").meta("query", query).start();
         let mut store = self.store.lock().expect("store not poisoned");
         let response = self
             .plugin
@@ -343,13 +336,14 @@ impl WasmPluginInstance {
         entry_id: &str,
         action_id: &crate::search::types::ActionId,
     ) -> anyhow::Result<crate::search::types::PostAction> {
-        let _span = self.logger.span("execute")
+        let _span = self
+            .logger
+            .span("execute")
             .meta("entry_id", entry_id)
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
 
-        let wit_action_id: bindings::torchsnap::plugin::types::ActionId =
-            action_id.clone().into();
+        let wit_action_id: bindings::torchsnap::plugin::types::ActionId = action_id.clone().into();
 
         let result = self
             .plugin

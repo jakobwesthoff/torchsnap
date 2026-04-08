@@ -24,8 +24,8 @@
 // =========================================================
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -40,8 +40,7 @@ use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
-    ActionId, PluginResponse, PluginViewRef, PostAction,
-    ScoredEntry, SearchMessage, SourcedEntry,
+    ActionId, PluginResponse, PluginViewRef, PostAction, ScoredEntry, SearchMessage, SourcedEntry,
 };
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::unicode::Utf16Positions;
@@ -139,10 +138,7 @@ pub struct PluginHost {
 }
 
 impl PluginHost {
-    pub fn new(
-        store: Arc<Store<tauri::Wry>>,
-        frecency: Arc<FrecencyStore>,
-    ) -> Self {
+    pub fn new(store: Arc<Store<tauri::Wry>>, frecency: Arc<FrecencyStore>) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
             slots: Vec::new(),
@@ -186,12 +182,10 @@ impl PluginHost {
                 // state at `plugins.<id>.enabled`, copy that value
                 // to the new top-level key.
                 let old_key = format!("plugins.{id}.enabled");
-                let migrated_value = self
-                    .store
-                    .get(&old_key)
-                    .and_then(|v| v.as_bool());
+                let migrated_value = self.store.get(&old_key).and_then(|v| v.as_bool());
                 let initial = migrated_value.unwrap_or(true);
-                self.store.set(enabled_key.clone(), serde_json::Value::Bool(initial));
+                self.store
+                    .set(enabled_key.clone(), serde_json::Value::Bool(initial));
             }
 
             // Read the current enabled state and apply to the slot.
@@ -486,7 +480,9 @@ impl PluginHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let plugins: Vec<Arc<dyn Plugin>> = self.slots.iter()
+        let plugins: Vec<Arc<dyn Plugin>> = self
+            .slots
+            .iter()
             .filter(|s| s.is_active())
             .map(|s| Arc::clone(&s.plugin))
             .collect();
@@ -523,9 +519,7 @@ impl PluginHost {
             let plugin = Arc::clone(&slot.plugin);
             let query = query_owned.clone();
 
-            join_set.spawn_blocking(move || {
-                (source, plugin.search(&query, None))
-            });
+            join_set.spawn_blocking(move || (source, plugin.search(&query, None)));
         }
 
         // Drain the JoinSet — each completed task yields one
@@ -786,8 +780,7 @@ impl PluginHost {
                 return;
             };
 
-            slot.dispatcher
-                .enqueue(setting_key.to_string(), value);
+            slot.dispatcher.enqueue(setting_key.to_string(), value);
 
             let plugin = Arc::clone(&slot.plugin);
             slot.dispatcher.dispatch(|k, v| {
@@ -973,7 +966,6 @@ mod tests {
             self.search_response = Some(response);
             self
         }
-
     }
 
     impl Plugin for MockPlugin {
@@ -989,11 +981,7 @@ mod tests {
             self.catalog_entries.clone()
         }
 
-        fn search(
-            &self,
-            _query: &str,
-            _matched_prefix: Option<&str>,
-        ) -> Option<PluginResponse> {
+        fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
             self.search_response.clone()
         }
 
@@ -1071,7 +1059,11 @@ mod tests {
 
         let result = plugin.search("=2+2", Some("="));
         match result.unwrap() {
-            PluginResponse::CustomUI { view, data, results } => {
+            PluginResponse::CustomUI {
+                view,
+                data,
+                results,
+            } => {
                 assert_eq!(view, "history");
                 assert!(data.is_some());
                 assert_eq!(results.len(), 1);
@@ -1128,18 +1120,13 @@ mod tests {
 
     #[test]
     fn no_prefix_plugins_no_match() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("a"),
-            MockPlugin::new("b"),
-        ]);
+        let plugins = plugin_slots(vec![MockPlugin::new("a"), MockPlugin::new("b")]);
         assert!(find_prefix_match(&plugins, "hello").is_none());
     }
 
     #[test]
     fn single_prefix_match() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("calc").with_prefixes(&["="]),
-        ]);
+        let plugins = plugin_slots(vec![MockPlugin::new("calc").with_prefixes(&["="])]);
         let (plugin, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
         assert_eq!(plugin.id(), "calc");
         assert_eq!(prefix, "=");
@@ -1160,9 +1147,7 @@ mod tests {
 
     #[test]
     fn prefix_must_be_at_start() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("calc").with_prefixes(&["="]),
-        ]);
+        let plugins = plugin_slots(vec![MockPlugin::new("calc").with_prefixes(&["="])]);
         // "hello =" doesn't start with "=".
         assert!(find_prefix_match(&plugins, "hello =").is_none());
     }
@@ -1183,8 +1168,7 @@ mod tests {
             MockPlugin::new("disabled-long")
                 .with_prefixes(&["!g"])
                 .with_enabled(false),
-            MockPlugin::new("enabled-short")
-                .with_prefixes(&["!"]),
+            MockPlugin::new("enabled-short").with_prefixes(&["!"]),
         ]);
 
         let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
@@ -1207,9 +1191,7 @@ mod tests {
     #[test]
     fn exact_prefix_query() {
         // Query is exactly the prefix with nothing after it.
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("emoji").with_prefixes(&[":"]),
-        ]);
+        let plugins = plugin_slots(vec![MockPlugin::new("emoji").with_prefixes(&[":"])]);
         let (plugin, prefix) = find_prefix_match(&plugins, ":").unwrap();
         assert_eq!(plugin.id(), "emoji");
         assert_eq!(prefix, ":");
@@ -1234,10 +1216,7 @@ mod tests {
 
     #[test]
     fn results_response_extracts_entries() {
-        let response = PluginResponse::Results(vec![
-            scored_entry("a", 100),
-            scored_entry("b", 50),
-        ]);
+        let response = PluginResponse::Results(vec![scored_entry("a", 100), scored_entry("b", 50)]);
         let (view, entries) = process_plugin_response(response, "test-plugin", false);
         assert!(view.is_none());
         assert_eq!(entries.len(), 2);
@@ -1309,7 +1288,10 @@ mod tests {
                 results: vec![],
             };
             let (view, _) = process_plugin_response(response, "p", allow_custom);
-            assert!(view.is_some(), "InlineUI should produce view ref with allow_custom={allow_custom}");
+            assert!(
+                view.is_some(),
+                "InlineUI should produce view ref with allow_custom={allow_custom}"
+            );
         }
     }
 
@@ -1327,9 +1309,7 @@ mod tests {
 
     #[test]
     fn source_id_propagated_to_entries() {
-        let response = PluginResponse::Results(vec![
-            scored_entry("x", 1),
-        ]);
+        let response = PluginResponse::Results(vec![scored_entry("x", 1)]);
         let (_, entries) = process_plugin_response(response, "my-plugin", false);
         assert_eq!(entries[0].source, "my-plugin");
     }

@@ -169,10 +169,7 @@ fn detect_content_type(path: &str, data: &[u8]) -> String {
 
     // Fall back to file extension for text-based formats that
     // infer can't detect by content (JS, CSS, HTML, JSON, etc.).
-    match Path::new(path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-    {
+    match Path::new(path).extension().and_then(|ext| ext.to_str()) {
         Some("js" | "mjs") => "text/javascript",
         Some("css") => "text/css",
         Some("html" | "htm") => "text/html",
@@ -294,10 +291,7 @@ mod tests {
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
-        assert_eq!(
-            response.headers().get("Content-Type").unwrap(),
-            "text/css"
-        );
+        assert_eq!(response.headers().get("Content-Type").unwrap(), "text/css");
     }
 
     #[test]
@@ -330,10 +324,7 @@ mod tests {
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
-        assert_eq!(
-            response.headers().get("Content-Type").unwrap(),
-            "image/png"
-        );
+        assert_eq!(response.headers().get("Content-Type").unwrap(), "image/png");
     }
 
     #[test]
@@ -346,7 +337,10 @@ mod tests {
         let request = make_request_with_origin("/test-plugin/test.js", "http://localhost:1420");
         let response = handle_request(&registry, &request);
         assert_eq!(
-            response.headers().get("Access-Control-Allow-Origin").unwrap(),
+            response
+                .headers()
+                .get("Access-Control-Allow-Origin")
+                .unwrap(),
             "http://localhost:1420"
         );
 
@@ -354,7 +348,10 @@ mod tests {
         let request = make_request_with_origin("/test-plugin/test.js", "tauri://localhost");
         let response = handle_request(&registry, &request);
         assert_eq!(
-            response.headers().get("Access-Control-Allow-Origin").unwrap(),
+            response
+                .headers()
+                .get("Access-Control-Allow-Origin")
+                .unwrap(),
             "tauri://localhost"
         );
     }
@@ -540,8 +537,14 @@ mod tests {
 
     #[test]
     fn detect_js_by_extension() {
-        assert_eq!(detect_content_type("bundle.js", b"//code"), "text/javascript");
-        assert_eq!(detect_content_type("module.mjs", b"//code"), "text/javascript");
+        assert_eq!(
+            detect_content_type("bundle.js", b"//code"),
+            "text/javascript"
+        );
+        assert_eq!(
+            detect_content_type("module.mjs", b"//code"),
+            "text/javascript"
+        );
     }
 
     #[test]
@@ -562,10 +565,7 @@ mod tests {
 
     #[test]
     fn detect_svg_by_extension() {
-        assert_eq!(
-            detect_content_type("icon.svg", b"<svg>"),
-            "image/svg+xml"
-        );
+        assert_eq!(detect_content_type("icon.svg", b"<svg>"), "image/svg+xml");
     }
 
     #[test]
@@ -618,8 +618,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let root = dir.path();
 
-        std::fs::write(root.join("manifest.toml"), manifest)
-            .expect("write manifest");
+        std::fs::write(root.join("manifest.toml"), manifest).expect("write manifest");
 
         for (path, contents) in files {
             let full = root.join(path);
@@ -629,16 +628,11 @@ mod tests {
             std::fs::write(&full, contents).expect("write file");
         }
 
-        let source = Arc::new(
-            DirectorySource::open(root).expect("open directory source"),
-        );
+        let source = Arc::new(DirectorySource::open(root).expect("open directory source"));
         let plugin_id = source.manifest().plugin.id.to_string();
 
         let registry = new_registry();
-        registry
-            .write()
-            .expect("lock")
-            .insert(plugin_id, source);
+        registry.write().expect("lock").insert(plugin_id, source);
 
         (dir, registry)
     }
@@ -682,10 +676,7 @@ mod tests {
         let response = handle_request(&registry, &request);
 
         assert_eq!(response.status(), 200);
-        assert_eq!(
-            response.headers().get("Content-Type").unwrap(),
-            "text/css",
-        );
+        assert_eq!(response.headers().get("Content-Type").unwrap(), "text/css",);
         assert_eq!(response.body(), css);
     }
 

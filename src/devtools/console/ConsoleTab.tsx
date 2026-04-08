@@ -39,14 +39,12 @@ export function ConsoleTab() {
 
   // Tree view state — lifted here so the toolbar can show the
   // correct visible row count in tree mode.
-  const { flatRows, toggleSpan, collapsedSpans, resetCollapse } =
-    useTreeView(filteredItems);
+  const { flatRows, toggleSpan, collapsedSpans, resetCollapse } = useTreeView(filteredItems);
 
   // The count shown in the toolbar should reflect what the user
   // actually sees: in flat mode that's filteredItems.length, in
   // tree mode it's the number of visible (flattened) rows.
-  const visibleCount =
-    viewMode === "flat" ? filteredItems.length : flatRows.length;
+  const visibleCount = viewMode === "flat" ? filteredItems.length : flatRows.length;
 
   // Window-local keyboard shortcuts.
   const handleKeyDown = useCallback(

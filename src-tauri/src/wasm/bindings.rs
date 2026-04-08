@@ -111,9 +111,7 @@ impl From<wit::ScoredEntry> for native::ScoredEntry {
             icon: entry.icon.map(Into::into),
             score: entry.score,
             title_positions: crate::unicode::Utf16Positions(entry.title_highlight_positions),
-            subtitle_positions: crate::unicode::Utf16Positions(
-                entry.subtitle_highlight_positions,
-            ),
+            subtitle_positions: crate::unicode::Utf16Positions(entry.subtitle_highlight_positions),
             actions: entry.actions.into_iter().map(Into::into).collect(),
         }
     }
@@ -203,7 +201,11 @@ mod tests {
         };
         let response: native::PluginResponse = wit::SearchResponse::CustomUi(vr).into();
         match response {
-            native::PluginResponse::CustomUI { view, data, results } => {
+            native::PluginResponse::CustomUI {
+                view,
+                data,
+                results,
+            } => {
                 assert_eq!(view, "picker");
                 assert_eq!(data.unwrap()["key"], "value");
                 assert_eq!(results.len(), 1);
@@ -222,7 +224,11 @@ mod tests {
         };
         let response: native::PluginResponse = wit::SearchResponse::InlineUi(vr).into();
         match response {
-            native::PluginResponse::InlineUI { view, data, results } => {
+            native::PluginResponse::InlineUI {
+                view,
+                data,
+                results,
+            } => {
                 assert_eq!(view, "result");
                 assert_eq!(data.unwrap()["num"], 42);
                 assert!(results.is_empty());

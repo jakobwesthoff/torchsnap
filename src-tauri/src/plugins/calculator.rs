@@ -29,9 +29,7 @@ use serde_json::json;
 use tauri::Manager;
 
 use super::{Plugin, PluginContext};
-use crate::search::types::{
-    Action, ActionId, EntryIcon, PluginResponse, PostAction, ScoredEntry,
-};
+use crate::search::types::{Action, ActionId, EntryIcon, PluginResponse, PostAction, ScoredEntry};
 use crate::settings::SettingsInit;
 use crate::storage::{SqlStorage, SqlValue};
 use crate::unicode::Utf16Positions;
@@ -545,11 +543,7 @@ impl Plugin for CalculatorPlugin {
         }
     }
 
-    fn search(
-        &self,
-        query: &str,
-        matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> {
         match matched_prefix {
             Some("=") => {
                 // Prefix mode: evaluate expression, return CustomUI

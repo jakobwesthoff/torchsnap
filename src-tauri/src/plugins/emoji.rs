@@ -27,8 +27,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use super::{Plugin, PluginContext};
 use crate::frecency::PluginFrecency;
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
-    ScoredEntry,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
 use crate::unicode::{GraphemePositions, Utf16Positions};
 
@@ -280,11 +279,7 @@ impl Plugin for EmojiPickerPlugin {
         *frecency = Some(ctx.frecency.clone());
     }
 
-    fn search(
-        &self,
-        query: &str,
-        matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> {
         // The emoji picker only operates in prefix mode. When called
         // without a prefix (no-prefix fan-out), contribute nothing.
         matched_prefix?;

@@ -25,11 +25,7 @@ import { cn } from "../../lib/cn";
 import type { LogItem } from "../types";
 import { LogItemRow } from "./LogItemRow";
 import type { FlatRow, TreeNode } from "./useTreeView";
-import {
-  formatTimestamp,
-  formatDuration,
-  durationColor,
-} from "./formatters";
+import { formatTimestamp, formatDuration, durationColor } from "./formatters";
 import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
 
 const AUTO_SCROLL_THRESHOLD = 50;
@@ -55,21 +51,12 @@ interface SpanHeaderRowProps {
   index: number;
 }
 
-function SpanHeaderRow({
-  node,
-  depth,
-  collapsed,
-  onToggleCollapse,
-  index,
-}: SpanHeaderRowProps) {
+function SpanHeaderRow({ node, depth, collapsed, onToggleCollapse, index }: SpanHeaderRowProps) {
   const startKind = node.spanStart.kind;
   // Type narrowing — we know this is a spanStart item.
   if (startKind.type !== "spanStart") return null;
 
-  const pluginId =
-    node.spanStart.source.type === "plugin"
-      ? node.spanStart.source.value
-      : null;
+  const pluginId = node.spanStart.source.type === "plugin" ? node.spanStart.source.value : null;
 
   const childCount = node.children.length;
 
@@ -103,9 +90,7 @@ function SpanHeaderRow({
                 PLUGIN_COLORS[pluginColorIndex(pluginId)],
               )}
             />
-            <span className="text-[11px] text-text-secondary truncate font-medium">
-              {pluginId}
-            </span>
+            <span className="text-[11px] text-text-secondary truncate font-medium">{pluginId}</span>
           </>
         ) : (
           <span className="text-[11px] text-text-muted italic">host</span>
@@ -115,12 +100,7 @@ function SpanHeaderRow({
       {/* Collapse chevron + indentation + name + duration */}
       <div className="flex-1 min-w-0 flex items-start gap-1">
         {/* Depth indentation */}
-        {depth > 0 && (
-          <span
-            style={{ width: `${depth * 16}px` }}
-            className="shrink-0"
-          />
-        )}
+        {depth > 0 && <span style={{ width: `${depth * 16}px` }} className="shrink-0" />}
 
         {/* Collapse/expand chevron */}
         <ChevronRightIcon
@@ -137,9 +117,7 @@ function SpanHeaderRow({
 
         {/* Child count badge when collapsed */}
         {collapsed && childCount > 0 && (
-          <span className="shrink-0 text-[10px] text-text-muted tabular-nums">
-            ({childCount})
-          </span>
+          <span className="shrink-0 text-[10px] text-text-muted tabular-nums">({childCount})</span>
         )}
 
         {/* Duration badge */}
@@ -182,9 +160,7 @@ export function TreeLogList({
   droppedCount,
 }: TreeLogListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const [expandedSeqs, setExpandedSeqs] = useState<Set<number>>(
-    () => new Set(),
-  );
+  const [expandedSeqs, setExpandedSeqs] = useState<Set<number>>(() => new Set());
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(0);
   const prevLengthRef = useRef(flatRows.length);
@@ -219,8 +195,7 @@ export function TreeLogList({
   const handleScroll = useCallback(() => {
     const el = parentRef.current;
     if (!el) return;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
     setIsAtBottom(atBottom);
     if (atBottom) setNewSinceScroll(0);
   }, []);
@@ -250,9 +225,7 @@ export function TreeLogList({
       <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
         <CommandLineIcon className="w-10 h-10 text-text-muted/50" />
         <p className="text-sm">No log entries yet</p>
-        <p className="text-xs text-text-muted/70">
-          Log output from plugins will appear here
-        </p>
+        <p className="text-xs text-text-muted/70">Log output from plugins will appear here</p>
       </div>
     );
   }
@@ -268,11 +241,7 @@ export function TreeLogList({
       )}
 
       {/* Scrollable tree list */}
-      <div
-        ref={parentRef}
-        className="h-full overflow-y-auto"
-        onScroll={handleScroll}
-      >
+      <div ref={parentRef} className="h-full overflow-y-auto" onScroll={handleScroll}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -334,9 +303,7 @@ export function TreeLogList({
             onClick={scrollToBottom}
           >
             <ArrowDownIcon className="w-3.5 h-3.5" />
-            {newSinceScroll > 0 && (
-              <span className="tabular-nums">{newSinceScroll} new</span>
-            )}
+            {newSinceScroll > 0 && <span className="tabular-nums">{newSinceScroll} new</span>}
           </button>
         </div>
       )}

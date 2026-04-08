@@ -16,15 +16,7 @@ import { useMemo, type ReactNode } from "react";
 import { createLogger } from "../lib/logger";
 import { LoggerContext } from "./LoggerContext";
 
-export function LoggerProvider({
-  source,
-  children,
-}: {
-  source: string;
-  children: ReactNode;
-}) {
+export function LoggerProvider({ source, children }: { source: string; children: ReactNode }) {
   const logger = useMemo(() => createLogger(source), [source]);
-  return (
-    <LoggerContext.Provider value={logger}>{children}</LoggerContext.Provider>
-  );
+  return <LoggerContext.Provider value={logger}>{children}</LoggerContext.Provider>;
 }

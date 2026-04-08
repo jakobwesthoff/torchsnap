@@ -153,7 +153,10 @@ fn validate_plugin_id(id: &str) -> Result<(), String> {
             "plugin id `{id}` must not start or end with a hyphen"
         ));
     }
-    if let Some(ch) = id.chars().find(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && *c != '-') {
+    if let Some(ch) = id
+        .chars()
+        .find(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && *c != '-')
+    {
         return Err(format!(
             "plugin id `{id}` contains invalid character `{ch}` — \
              only lowercase alphanumeric and hyphens are allowed"
@@ -190,9 +193,7 @@ impl Serialize for PluginIcon {
         S: serde::Serializer,
     {
         match self {
-            PluginIcon::HeroIcon(name) => {
-                serializer.serialize_str(&format!("heroicons:{name}"))
-            }
+            PluginIcon::HeroIcon(name) => serializer.serialize_str(&format!("heroicons:{name}")),
             PluginIcon::Asset(path) => serializer.serialize_str(path),
         }
     }
@@ -265,18 +266,27 @@ pub struct FrontendDef {
 
     /// Maps inline view names to named exports from
     /// `launcher_bundle`.
-    #[serde(default, rename(deserialize = "inline-views", serialize = "inlineViews"))]
+    #[serde(
+        default,
+        rename(deserialize = "inline-views", serialize = "inlineViews")
+    )]
     pub inline_views: HashMap<String, String>,
 
     /// Path to the CSS file loaded alongside the launcher
     /// bundle. Served via `torchsnap-plugin://` and scoped to
     /// the plugin's container with `@scope`.
-    #[serde(default, rename(deserialize = "launcher-css", serialize = "launcherCss"))]
+    #[serde(
+        default,
+        rename(deserialize = "launcher-css", serialize = "launcherCss")
+    )]
     pub launcher_css: Option<String>,
 
     /// Path to the CSS file loaded alongside the settings
     /// bundle.
-    #[serde(default, rename(deserialize = "settings-css", serialize = "settingsCss"))]
+    #[serde(
+        default,
+        rename(deserialize = "settings-css", serialize = "settingsCss")
+    )]
     pub settings_css: Option<String>,
 
     /// Settings panel component declaration.
@@ -306,27 +316,19 @@ impl Manifest {
             let has_launcher_components =
                 !frontend.views.is_empty() || !frontend.inline_views.is_empty();
             if has_launcher_components && frontend.launcher_bundle.is_none() {
-                anyhow::bail!(
-                    "manifest declares views or inline-views but no launcher-bundle"
-                );
+                anyhow::bail!("manifest declares views or inline-views but no launcher-bundle");
             }
 
             if frontend.launcher_css.is_some() && frontend.launcher_bundle.is_none() {
-                anyhow::bail!(
-                    "manifest declares launcher-css but no launcher-bundle"
-                );
+                anyhow::bail!("manifest declares launcher-css but no launcher-bundle");
             }
 
             if frontend.settings.is_some() && frontend.settings_bundle.is_none() {
-                anyhow::bail!(
-                    "manifest declares a settings component but no settings-bundle"
-                );
+                anyhow::bail!("manifest declares a settings component but no settings-bundle");
             }
 
             if frontend.settings_css.is_some() && frontend.settings_bundle.is_none() {
-                anyhow::bail!(
-                    "manifest declares settings-css but no settings-bundle"
-                );
+                anyhow::bail!("manifest declares settings-css but no settings-bundle");
             }
         }
 
@@ -468,10 +470,7 @@ mod tests {
             "plugin123",
         ];
         for id in valid {
-            assert!(
-                validate_plugin_id(id).is_ok(),
-                "should accept `{id}`"
-            );
+            assert!(validate_plugin_id(id).is_ok(), "should accept `{id}`");
         }
     }
 
@@ -622,8 +621,7 @@ mod tests {
 
     #[test]
     fn parse_multiple_prefixes() {
-        let m = Manifest::parse(&minimal(r#"prefixes = [":", "=", "!"]"#))
-            .expect("should parse");
+        let m = Manifest::parse(&minimal(r#"prefixes = [":", "=", "!"]"#)).expect("should parse");
         assert_eq!(m.plugin.prefixes, vec![":", "=", "!"]);
     }
 
@@ -656,9 +654,18 @@ mod tests {
         "#;
 
         let m = Manifest::parse(toml).expect("should parse");
-        assert_eq!(m.settings.get("enabled").and_then(|v| v.as_bool()), Some(true));
-        assert_eq!(m.settings.get("maxItems").and_then(|v| v.as_integer()), Some(100));
-        assert_eq!(m.settings.get("ratio").and_then(|v| v.as_float()), Some(0.5));
+        assert_eq!(
+            m.settings.get("enabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            m.settings.get("maxItems").and_then(|v| v.as_integer()),
+            Some(100)
+        );
+        assert_eq!(
+            m.settings.get("ratio").and_then(|v| v.as_float()),
+            Some(0.5)
+        );
         assert_eq!(
             m.settings.get("label").and_then(|v| v.as_str()),
             Some("hello")
@@ -735,7 +742,10 @@ mod tests {
         let fe = m.frontend.as_ref().expect("frontend");
         assert_eq!(fe.launcher_bundle.as_deref(), Some("frontend/launcher.js"));
         assert!(fe.settings_bundle.is_none());
-        assert_eq!(fe.views.get("picker").map(String::as_str), Some("EmojiGrid"));
+        assert_eq!(
+            fe.views.get("picker").map(String::as_str),
+            Some("EmojiGrid")
+        );
         assert!(fe.inline_views.is_empty());
         assert!(fe.settings.is_none());
     }
@@ -794,8 +804,14 @@ mod tests {
         let m = Manifest::parse(toml).expect("should parse");
         let fe = m.frontend.as_ref().expect("frontend");
         assert_eq!(fe.views.len(), 2);
-        assert_eq!(fe.views.get("history").map(String::as_str), Some("HistoryView"));
-        assert_eq!(fe.views.get("detail").map(String::as_str), Some("DetailView"));
+        assert_eq!(
+            fe.views.get("history").map(String::as_str),
+            Some("HistoryView")
+        );
+        assert_eq!(
+            fe.views.get("detail").map(String::as_str),
+            Some("DetailView")
+        );
         assert_eq!(fe.inline_views.len(), 1);
         assert_eq!(
             fe.inline_views.get("result").map(String::as_str),
@@ -1157,8 +1173,7 @@ mod tests {
 
         let err = Manifest::parse(toml).unwrap_err();
         assert!(
-            err.to_string().contains("launcher-css")
-                && err.to_string().contains("launcher-bundle"),
+            err.to_string().contains("launcher-css") && err.to_string().contains("launcher-bundle"),
             "error should mention both fields: {err}"
         );
     }
@@ -1180,8 +1195,7 @@ mod tests {
 
         let err = Manifest::parse(toml).unwrap_err();
         assert!(
-            err.to_string().contains("settings-css")
-                && err.to_string().contains("settings-bundle"),
+            err.to_string().contains("settings-css") && err.to_string().contains("settings-bundle"),
             "error should mention both fields: {err}"
         );
     }

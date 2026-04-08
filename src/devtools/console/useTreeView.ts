@@ -36,9 +36,7 @@ export interface TreeNode {
   inProgress: boolean;
 }
 
-export type TreeChild =
-  | { kind: "item"; item: LogItem }
-  | { kind: "span"; node: TreeNode };
+export type TreeChild = { kind: "item"; item: LogItem } | { kind: "span"; node: TreeNode };
 
 // =========================================================
 // Flat Rows for Virtualization
@@ -134,9 +132,7 @@ export interface UseTreeViewReturn {
 }
 
 export function useTreeView(items: LogItem[]): UseTreeViewReturn {
-  const [collapsedSpans, setCollapsedSpans] = useState<Set<number>>(
-    () => new Set(),
-  );
+  const [collapsedSpans, setCollapsedSpans] = useState<Set<number>>(() => new Set());
 
   // Build tree from flat item stream.
   const { rootChildren } = useMemo(() => buildTree(items), [items]);

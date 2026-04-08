@@ -27,11 +27,10 @@ use serde::Serialize;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::network::Http;
+use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
 use crate::search::types::{
-    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction,
-    ScoredEntry,
+    Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
 use crate::storage::SqlStorage;
 use crate::storage::SqlValue;
@@ -86,9 +85,7 @@ pub struct BangsPlugin {
 }
 
 impl BangsPlugin {
-    pub fn new(
-        metadata_service: Arc<WebsiteMetadataService>,
-    ) -> Self {
+    pub fn new(metadata_service: Arc<WebsiteMetadataService>) -> Self {
         Self {
             ready: AtomicBool::new(false),
             state: Mutex::new(None),
@@ -156,11 +153,7 @@ impl Plugin for BangsPlugin {
     // bangs can appear anywhere in the input.
     // =========================================================
 
-    fn search(
-        &self,
-        query: &str,
-        _matched_prefix: Option<&str>,
-    ) -> Option<PluginResponse> {
+    fn search(&self, query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
         if !self.ready.load(Ordering::Relaxed) {
             return None;
         }
@@ -198,19 +191,16 @@ impl Plugin for BangsPlugin {
         } else {
             format!("Open '{}' in {}", clean_query, bang.service_name)
         };
-        let title_positions =
-            Utf16Positions::from_substring(&title, &bang.service_name, false);
+        let title_positions = Utf16Positions::from_substring(&title, &bang.service_name, false);
 
         let entry = ScoredEntry {
             id: format!("!{}", bang_trigger),
             title,
             subtitle: Some(resolved_url),
-            icon: Some(
-                match self.metadata_service.try_cached(&bang.domain) {
-                    MetadataResult::Found(meta) => meta.favicon,
-                    _ => EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
-                },
-            ),
+            icon: Some(match self.metadata_service.try_cached(&bang.domain) {
+                MetadataResult::Found(meta) => meta.favicon,
+                _ => EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
+            }),
             score: BANG_SCORE,
             title_positions,
             subtitle_positions: Utf16Positions(vec![]),

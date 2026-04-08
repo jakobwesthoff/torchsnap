@@ -71,19 +71,11 @@ impl DirectorySource {
         let root = root.into();
         let manifest_path = root.join("manifest.toml");
 
-        let toml_source = std::fs::read_to_string(&manifest_path).with_context(|| {
-            format!(
-                "reading manifest at {}",
-                manifest_path.display()
-            )
-        })?;
+        let toml_source = std::fs::read_to_string(&manifest_path)
+            .with_context(|| format!("reading manifest at {}", manifest_path.display()))?;
 
-        let manifest = Manifest::parse(&toml_source).with_context(|| {
-            format!(
-                "parsing manifest at {}",
-                manifest_path.display()
-            )
-        })?;
+        let manifest = Manifest::parse(&toml_source)
+            .with_context(|| format!("parsing manifest at {}", manifest_path.display()))?;
 
         Ok(Self { root, manifest })
     }
@@ -92,7 +84,6 @@ impl DirectorySource {
     pub fn root(&self) -> &Path {
         &self.root
     }
-
 }
 
 impl PluginSource for DirectorySource {
@@ -134,8 +125,7 @@ impl PluginSource for DirectorySource {
             "plugin file path `{path}` escapes the plugin directory"
         );
 
-        std::fs::read(&canonical)
-            .with_context(|| format!("reading plugin file `{path}`"))
+        std::fs::read(&canonical).with_context(|| format!("reading plugin file `{path}`"))
     }
 }
 
@@ -197,14 +187,12 @@ impl ArchiveSource {
 
         // Read and parse manifest.toml from the archive.
         let manifest = {
-            let mut entry = archive
-                .by_name("manifest.toml")
-                .with_context(|| {
-                    format!(
-                        "archive at {} does not contain manifest.toml",
-                        path.display()
-                    )
-                })?;
+            let mut entry = archive.by_name("manifest.toml").with_context(|| {
+                format!(
+                    "archive at {} does not contain manifest.toml",
+                    path.display()
+                )
+            })?;
 
             let mut toml_source = String::new();
             entry
@@ -212,10 +200,7 @@ impl ArchiveSource {
                 .context("reading manifest.toml from archive")?;
 
             Manifest::parse(&toml_source).with_context(|| {
-                format!(
-                    "parsing manifest.toml in archive at {}",
-                    path.display()
-                )
+                format!("parsing manifest.toml in archive at {}", path.display())
             })?
         };
 
@@ -260,10 +245,7 @@ impl PluginSource for ArchiveSource {
             );
         }
 
-        let mut archive = self
-            .archive
-            .lock()
-            .expect("archive mutex not poisoned");
+        let mut archive = self.archive.lock().expect("archive mutex not poisoned");
 
         let mut entry = archive
             .by_name(&normalized_str)
@@ -295,8 +277,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let root = dir.path().to_path_buf();
 
-        std::fs::write(root.join("manifest.toml"), manifest_toml)
-            .expect("write manifest");
+        std::fs::write(root.join("manifest.toml"), manifest_toml).expect("write manifest");
 
         for (path, contents) in files {
             let full = root.join(path);
@@ -321,10 +302,8 @@ mod tests {
 
     #[test]
     fn open_valid_directory() {
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"fake wasm bytes")],
-        );
+        let (_dir, root) =
+            make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm bytes")]);
 
         let source = DirectorySource::open(&root).expect("should open");
         assert_eq!(source.manifest().plugin.id.as_str(), "test-plugin");
@@ -334,10 +313,7 @@ mod tests {
     #[test]
     fn read_wasm_binary() {
         let wasm_bytes = b"\x00asm fake component";
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", wasm_bytes)],
-        );
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", wasm_bytes)]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let bytes = source.read_wasm().expect("should read wasm");
@@ -355,25 +331,21 @@ mod tests {
         );
 
         let source = DirectorySource::open(&root).expect("should open");
-        let js = source.read_file("frontend/launcher.js").expect("should read");
+        let js = source
+            .read_file("frontend/launcher.js")
+            .expect("should read");
         assert_eq!(js, b"export function View() {}");
     }
 
     #[test]
     fn reject_path_traversal() {
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let result = source.read_file("../../../etc/passwd");
         assert!(result.is_err(), "should reject path traversal");
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("escapes"),
+            result.unwrap_err().to_string().contains("escapes"),
             "error should mention escaping"
         );
     }
@@ -387,10 +359,7 @@ mod tests {
 
     #[test]
     fn reject_invalid_manifest() {
-        let (_dir, root) = make_plugin_dir(
-            "not valid toml [[[",
-            &[],
-        );
+        let (_dir, root) = make_plugin_dir("not valid toml [[[", &[]);
 
         let result = DirectorySource::open(&root);
         assert!(result.is_err(), "should fail with invalid toml");
@@ -398,10 +367,7 @@ mod tests {
 
     #[test]
     fn reject_nonexistent_file() {
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let result = source.read_file("does-not-exist.txt");
@@ -439,10 +405,7 @@ mod tests {
 
     #[test]
     fn reject_traversal_via_dot_segments_to_sibling() {
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
 
@@ -472,10 +435,7 @@ mod tests {
         let binary: Vec<u8> = (0..=255).collect();
         let (_dir, root) = make_plugin_dir(
             MINIMAL_MANIFEST,
-            &[
-                ("plugin.wasm", b"wasm"),
-                ("data.bin", &binary),
-            ],
+            &[("plugin.wasm", b"wasm"), ("data.bin", &binary)],
         );
 
         let source = DirectorySource::open(&root).expect("should open");
@@ -485,10 +445,7 @@ mod tests {
 
     #[test]
     fn manifest_accessible_after_open() {
-        let (_dir, root) = make_plugin_dir(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
 
@@ -550,19 +507,16 @@ mod tests {
 
     /// Helper: build a `.torchsnap` zip file in a temp directory.
     /// Returns the temp dir (for lifetime) and the archive path.
-    fn make_archive(
-        manifest_toml: &str,
-        files: &[(&str, &[u8])],
-    ) -> (tempfile::TempDir, PathBuf) {
+    fn make_archive(manifest_toml: &str, files: &[(&str, &[u8])]) -> (tempfile::TempDir, PathBuf) {
         use std::io::{Cursor, Write as _};
-        use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Cursor::new(Vec::new());
         {
             let mut writer = ZipWriter::new(&mut buf);
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
             writer
                 .start_file("manifest.toml", options)
@@ -587,18 +541,16 @@ mod tests {
     }
 
     /// Helper: build a zip without a manifest.toml.
-    fn make_archive_without_manifest(
-        files: &[(&str, &[u8])],
-    ) -> (tempfile::TempDir, PathBuf) {
+    fn make_archive_without_manifest(files: &[(&str, &[u8])]) -> (tempfile::TempDir, PathBuf) {
         use std::io::{Cursor, Write as _};
-        use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
 
         let mut buf = Cursor::new(Vec::new());
         {
             let mut writer = ZipWriter::new(&mut buf);
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
             for (path, contents) in files {
                 writer.start_file(*path, options).expect("start file entry");
@@ -617,10 +569,7 @@ mod tests {
 
     #[test]
     fn archive_open_valid() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"fake wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         assert_eq!(source.manifest().plugin.id.as_str(), "test-plugin");
@@ -629,10 +578,7 @@ mod tests {
     #[test]
     fn archive_read_wasm() {
         let wasm_bytes = b"\x00asm fake component";
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", wasm_bytes)],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", wasm_bytes)]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let bytes = source.read_wasm().expect("should read wasm");
@@ -650,7 +596,9 @@ mod tests {
         );
 
         let source = ArchiveSource::open(&path).expect("should open");
-        let js = source.read_file("frontend/launcher.js").expect("should read");
+        let js = source
+            .read_file("frontend/launcher.js")
+            .expect("should read");
         assert_eq!(js, b"export function View() {}");
     }
 
@@ -659,10 +607,7 @@ mod tests {
         let binary: Vec<u8> = (0..=255).collect();
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[
-                ("plugin.wasm", b"wasm"),
-                ("data.bin", &binary),
-            ],
+            &[("plugin.wasm", b"wasm"), ("data.bin", &binary)],
         );
 
         let source = ArchiveSource::open(&path).expect("should open");
@@ -672,10 +617,7 @@ mod tests {
 
     #[test]
     fn archive_manifest_accessible() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let manifest = source.manifest();
@@ -688,9 +630,7 @@ mod tests {
 
     #[test]
     fn archive_reject_missing_manifest() {
-        let (_dir, path) = make_archive_without_manifest(
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive_without_manifest(&[("plugin.wasm", b"wasm")]);
 
         let result = ArchiveSource::open(&path);
         assert!(result.is_err(), "should fail without manifest.toml");
@@ -698,10 +638,7 @@ mod tests {
 
     #[test]
     fn archive_reject_invalid_manifest() {
-        let (_dir, path) = make_archive(
-            "not valid toml [[[",
-            &[],
-        );
+        let (_dir, path) = make_archive("not valid toml [[[", &[]);
 
         let result = ArchiveSource::open(&path);
         assert!(result.is_err(), "should fail with invalid toml");
@@ -709,10 +646,7 @@ mod tests {
 
     #[test]
     fn archive_reject_nonexistent_file() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("does-not-exist.txt");
@@ -721,10 +655,7 @@ mod tests {
 
     #[test]
     fn archive_reject_path_traversal() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("../../../etc/passwd");
@@ -737,10 +668,7 @@ mod tests {
 
     #[test]
     fn archive_reject_dot_segment_escape() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("frontend/../../secret");
@@ -749,10 +677,7 @@ mod tests {
 
     #[test]
     fn archive_reject_absolute_path() {
-        let (_dir, path) = make_archive(
-            MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm")],
-        );
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("/etc/passwd");

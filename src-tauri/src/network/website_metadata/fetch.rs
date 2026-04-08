@@ -85,10 +85,7 @@ pub fn fetch_page_metadata(http: &Http, domain: &str) -> Result<PageMetadata, Fe
     // Check Content-Type before reading the body. Servers that return
     // non-HTML responses (redirects to APIs, binary files, etc.) are
     // not useful for metadata extraction.
-    let content_type = response
-        .header("content-type")
-        .unwrap_or("")
-        .to_string();
+    let content_type = response.header("content-type").unwrap_or("").to_string();
 
     if !content_type.contains("text/html") {
         return Err(FetchError::NotHtml { content_type });
@@ -179,10 +176,7 @@ pub fn fetch_favicon_image(http: &Http, favicon_url: &str) -> Result<FaviconImag
         .send()
         .map_err(FetchError::Http)?;
 
-    let server_content_type = response
-        .header("content-type")
-        .unwrap_or("")
-        .to_string();
+    let server_content_type = response.header("content-type").unwrap_or("").to_string();
 
     let bytes = response.bytes().map_err(FetchError::Http)?;
 
@@ -197,13 +191,14 @@ pub fn fetch_favicon_image(http: &Http, favicon_url: &str) -> Result<FaviconImag
 
     // Strategy 2: Magic-byte detection for raster formats.
     if let Some(kind) = infer::get(&bytes)
-        && kind.matcher_type() == infer::MatcherType::Image {
-            return Ok(FaviconImageData {
-                url: favicon_url.to_string(),
-                image_data: bytes,
-                content_type: kind.mime_type().to_string(),
-            });
-        }
+        && kind.matcher_type() == infer::MatcherType::Image
+    {
+        return Ok(FaviconImageData {
+            url: favicon_url.to_string(),
+            image_data: bytes,
+            content_type: kind.mime_type().to_string(),
+        });
+    }
 
     // Strategy 3: SVG is text-based and not detected by `infer`.
     // Check for an `<svg` tag in the first few KB as a fallback.

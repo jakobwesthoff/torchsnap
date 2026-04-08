@@ -39,9 +39,7 @@ export interface UseLogFiltersReturn {
 }
 
 export function useLogFilters(items: LogItem[]): UseLogFiltersReturn {
-  const [levels, setLevels] = useState<Set<LogLevel>>(
-    () => new Set(ALL_LEVELS),
-  );
+  const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set(ALL_LEVELS));
   const [showSpans, setShowSpans] = useState(true);
   const [sources, setSources] = useState<Set<string> | "all">("all");
   const [searchText, setSearchText] = useState("");
@@ -136,16 +134,14 @@ export function useLogFilters(items: LogItem[]): UseLogFiltersReturn {
 
       // Source filter.
       if (sources !== "all") {
-        const sourceKey =
-          item.source.type === "plugin" ? item.source.value : "host";
+        const sourceKey = item.source.type === "plugin" ? item.source.value : "host";
         if (!sources.has(sourceKey)) return false;
       }
 
       // Text search — match against message for messages,
       // name for span entries.
       if (lowerSearch) {
-        const text =
-          kind.type === "message" ? kind.message : kind.name;
+        const text = kind.type === "message" ? kind.message : kind.name;
         if (!text.toLowerCase().includes(lowerSearch)) {
           return false;
         }

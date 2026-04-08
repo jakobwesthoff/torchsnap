@@ -11,9 +11,7 @@ interface DevToolsTabBarProps {
   onTabChange: (tab: DevToolsTab) => void;
 }
 
-const tabs: { id: DevToolsTab; label: string }[] = [
-  { id: "console", label: "Console" },
-];
+const tabs: { id: DevToolsTab; label: string }[] = [{ id: "console", label: "Console" }];
 
 export function DevToolsTabBar({ activeTab, onTabChange }: DevToolsTabBarProps) {
   return (
