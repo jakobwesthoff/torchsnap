@@ -73,3 +73,82 @@ The enabled toggle lives at `enabled.<plugin-id>` — a top-level key, not
 under `plugins.<id>.*`. This means it is outside the namespace that
 `setting_changed()` receives, and plugins cannot accidentally react to their
 own enable state. Only the host acts on that key.
+
+## WASM Plugins (ADR 0029)
+
+WASM plugins use the same pipeline as native plugins — the host's
+`CoalescingDispatcher` (above) sits in front of every plugin slot
+regardless of whether it's a native or a WASM bridge. The bridge
+just adapts the trait method into a call across the wasmtime
+boundary.
+
+### Reading settings: `settings::get`
+
+WASM plugins import the `settings` interface from the WIT world:
+
+```wit
+interface settings {
+  /// Returns the JSON-encoded value for `key`, or `none` if unset.
+  /// `key` is relative to the plugin's namespace.
+  get: func(key: string) -> option<string>;
+}
+```
+
+The host implementation routes the call through the per-plugin
+`PluginSettings` handle that the bridge stashes on the wasmtime
+store data when `enable()` is called. The handle adds the
+`plugins.<id>.` namespace prefix, so guests cannot escape their
+own bucket no matter what key string they pass.
+
+Values cross the boundary as JSON-encoded strings (`true`, `42`,
+`"hello"`, `{"a":1}`) — WIT has no opaque value type, so the
+plugin parses the result with `serde_json::from_str` on its side.
+A typical read looks like:
+
+```rust
+let verbose: bool = serde_json::from_str(
+    &settings::get("verbose").unwrap_or_else(|| "false".into()),
+).unwrap_or(false);
+```
+
+`settings::get` returns `none` only when the key has never been
+set in the store — neither by the manifest's `[settings]` defaults
+nor by a runtime write. Plugins typically fall back to a hard-coded
+default in that case (the same default that lives in
+`manifest.toml`).
+
+### Reacting to changes: `lifecycle::on-setting-changed`
+
+The lifecycle interface gains a third method:
+
+```wit
+interface lifecycle {
+  enable: func();
+  disable: func();
+  on-setting-changed: func(key: string, value: string);
+}
+```
+
+The host's `WasmPluginBridge::setting_changed` override re-encodes
+the `serde_json::Value` from the dispatcher to a JSON string and
+calls the guest export. By the time the bridge fires, the
+`CoalescingDispatcher` has already deduplicated rapid same-key
+writes — plugin code never sees flapping intermediate values
+during a slider drag.
+
+### Bridge wiring
+
+`WasmPluginBridge::enable()` clones `ctx.settings` and stashes it
+on `PluginState` *before* invoking the guest's `enable()` so that
+the guest can call `settings::get` from inside its own
+initialization. `WasmPluginBridge::disable()` clears the stashed
+handle so subsequent host imports revert to the "unset" no-op
+behavior.
+
+### Manifest defaults
+
+`[settings]` defaults declared in `manifest.toml` are wired into
+the store by `WasmPluginBridge::initialize_settings()` via
+`settings.ensure(key, json_value)` — same path as before D2 of
+the migration. The new WIT interfaces only cover **runtime reads**
+and **reactive updates**.

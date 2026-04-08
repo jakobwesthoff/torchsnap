@@ -30,6 +30,7 @@ use super::bindings;
 use super::logging::channel::LogSender;
 use super::logging::spans::{Logger, SpanRegistry};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
+use crate::settings::PluginSettings;
 
 // =========================================================
 // Per-Plugin Store State
@@ -45,6 +46,13 @@ pub struct PluginState {
     wasi_table: ResourceTable,
     log_sender: LogSender,
     span_registry: Arc<SpanRegistry>,
+    /// Per-plugin namespaced settings reader. `None` until the
+    /// bridge stashes the `PluginContext.settings` handle on
+    /// `enable()`. The settings host import (`settings::get`)
+    /// errors gracefully if accessed before that happens —
+    /// which it shouldn't, since the host always calls
+    /// `enable()` before any guest code runs.
+    settings: Option<PluginSettings>,
 }
 
 // The WasiView trait is required by wasmtime-wasi to locate
@@ -149,6 +157,29 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
 }
 
 // =========================================================
+// Settings host import
+//
+// Routes guest `settings::get(key)` calls through the
+// per-plugin `PluginSettings` handle stashed on
+// `PluginState`. The plugin namespace prefix
+// (`plugins.<id>.`) is added by `PluginSettings::get_raw`
+// itself, so plugins can never escape their own bucket.
+// =========================================================
+
+impl bindings::torchsnap::plugin::settings::Host for PluginState {
+    fn get(&mut self, key: String) -> Option<String> {
+        // If the bridge hasn't stashed a `PluginSettings`
+        // yet (e.g. settings::get called before enable()),
+        // pretend the key is unset rather than panicking.
+        // The plugin can fall back to its hard-coded default
+        // exactly as it would if the value were genuinely
+        // missing from the store.
+        let settings = self.settings.as_ref()?;
+        settings.get_raw(&key)
+    }
+}
+
+// =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
 
@@ -235,6 +266,12 @@ impl WasmRuntime {
             wasi_table: ResourceTable::new(),
             log_sender: self.log_sender.clone(),
             span_registry: Arc::clone(&self.span_registry),
+            // Stashed by the bridge on `enable()` via
+            // `WasmPluginInstance::set_settings`. The
+            // `settings::get` host import is a no-op until
+            // then; the bridge always sets it before the
+            // first guest call into `enable()`.
+            settings: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -274,6 +311,26 @@ pub struct WasmPluginInstance {
 }
 
 impl WasmPluginInstance {
+    /// Stash a per-plugin `PluginSettings` handle on the
+    /// store data so the `settings::get` host import can
+    /// resolve reads. Called by the bridge from `enable()`
+    /// before the guest's own `enable()` runs.
+    ///
+    /// Replacing an existing handle is allowed (re-enable
+    /// after disable hands in a fresh `PluginContext`).
+    pub fn set_settings(&self, settings: PluginSettings) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().settings = Some(settings);
+    }
+
+    /// Drop the stashed `PluginSettings` handle. Called by
+    /// the bridge from `disable()` so the host import
+    /// reverts to "unset" between enable cycles.
+    pub fn clear_settings(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().settings = None;
+    }
+
     /// Call the guest's `enable` export.
     pub fn enable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("enable").start();
@@ -282,6 +339,23 @@ impl WasmPluginInstance {
             .torchsnap_plugin_lifecycle()
             .call_enable(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"))
+    }
+
+    /// Call the guest's `on-setting-changed` export. Used by
+    /// the bridge's `setting_changed` trait override after the
+    /// host's `CoalescingDispatcher` has deduplicated rapid
+    /// writes to the same key.
+    pub fn on_setting_changed(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        let _span = self
+            .logger
+            .span("on_setting_changed")
+            .meta("key", key)
+            .start();
+        let mut store = self.store.lock().expect("store not poisoned");
+        self.plugin
+            .torchsnap_plugin_lifecycle()
+            .call_on_setting_changed(&mut *store, key, value)
+            .map_err(|e| anyhow::anyhow!("calling plugin on_setting_changed(): {e}"))
     }
 
     /// Call the guest's `disable` export.

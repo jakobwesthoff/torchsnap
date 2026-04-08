@@ -31,11 +31,45 @@ interface logging {
   span-end: func(span-id: u64, metadata: list<metadata-entry>);
 }
 
+/// Read settings from this plugin's namespace.
+///
+/// Plugins are confined to keys under `plugins.<plugin-id>.`
+/// — the host strips the prefix transparently. There is no
+/// way to read other plugins' settings or host-level keys.
+///
+/// Returned values are JSON-encoded strings (`true`, `42`,
+/// `"hello"`, `{"a":1}`, …) so any TOML-compatible value
+/// shape can cross the WIT boundary without inventing a
+/// dedicated value variant. The plugin parses the JSON
+/// into whatever shape it expects.
+///
+/// `none` means the key has never been set in the store,
+/// neither by the manifest's `[settings]` defaults nor by a
+/// runtime write. Plugins typically fall back to a hard-coded
+/// default in that case (the same default that lives in
+/// `manifest.toml`).
+interface settings {
+  /// Returns the JSON-encoded value for `key`, or `none` if unset.
+  /// `key` is relative to the plugin's namespace.
+  get: func(key: string) -> option<string>;
+}
+
 /// ─── Guest exports (implemented by plugins) ─────────────
 interface lifecycle {
   enable: func();
 
   disable: func();
+
+  /// Called by the host whenever a setting in this plugin's
+  /// namespace changes. `key` is relative (matching the
+  /// `settings::get` argument); `value` is the new
+  /// JSON-encoded value, same encoding as `settings::get`.
+  ///
+  /// The host's existing CoalescingDispatcher (ADR 0026)
+  /// runs *before* the change reaches the plugin, so rapid
+  /// successive writes to the same key are deduplicated to
+  /// the most recent value before this callback fires.
+  on-setting-changed: func(key: string, value: string);
 }
 
 interface search {
@@ -132,6 +166,7 @@ interface search {
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
+  import settings;
 
   export lifecycle;
   export search;

@@ -89,9 +89,16 @@ impl Plugin for WasmPluginBridge {
         settings
     }
 
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &crate::plugins::PluginContext) {
-        // WASM plugins don't use AppHandle or PluginContext —
-        // they get capabilities through WIT host imports.
+    fn enable(&self, _app: &tauri::AppHandle, ctx: &crate::plugins::PluginContext) {
+        // Stash the per-plugin `PluginSettings` handle on the
+        // wasmtime store data BEFORE invoking the guest's
+        // `enable()`, so the guest can call `settings::get`
+        // during its own initialization. WASM plugins still
+        // don't use `AppHandle` directly — every host
+        // capability flows through WIT imports — but they
+        // need the settings handle wired up.
+        self.instance.set_settings(ctx.settings.clone());
+
         if let Err(e) = self.instance.enable() {
             self.log(LogLevel::Error, format!("enable() failed: {e:#}"));
         }
@@ -101,11 +108,36 @@ impl Plugin for WasmPluginBridge {
         if let Err(e) = self.instance.disable() {
             self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }
+        // Drop the stashed PluginSettings so subsequent
+        // settings::get calls (none should happen, but be
+        // defensive) revert to the "unset" no-op behavior.
+        self.instance.clear_settings();
     }
 
-    // TODO: Forward setting_changed() to the WIT `on-setting-changed`
-    // guest export once that interface is added. Currently a no-op
-    // (default trait implementation).
+    fn setting_changed(&self, key: &str, value: serde_json::Value) {
+        // The host's CoalescingDispatcher (ADR 0026) has
+        // already deduplicated rapid same-key writes by the
+        // time we get here, so the bridge does not need its
+        // own throttling. Re-encode the JSON value as a
+        // string for the WIT crossing — `settings::get` and
+        // `on-setting-changed` use the same encoding.
+        let json = match serde_json::to_string(&value) {
+            Ok(s) => s,
+            Err(e) => {
+                self.log(
+                    LogLevel::Error,
+                    format!("serialize setting value for `{key}`: {e}"),
+                );
+                return;
+            }
+        };
+        if let Err(e) = self.instance.on_setting_changed(key, &json) {
+            self.log(
+                LogLevel::Error,
+                format!("on_setting_changed({key}) failed: {e:#}"),
+            );
+        }
+    }
 
     fn entries(&self) -> Vec<CatalogEntry> {
         match self.instance.entries() {

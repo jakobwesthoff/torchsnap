@@ -65,6 +65,11 @@ impl LifecycleGuest for HelloWorld {
         PETNAMES.with(|cell| cell.borrow_mut().clear());
         logging::log(logging::LogLevel::Info, "Hello World plugin disabled", &[], None);
     }
+
+    /// Hello-world has no settings, so the host never invokes
+    /// this with any meaningful key. The default no-op
+    /// implementation satisfies the lifecycle interface.
+    fn on_setting_changed(_key: String, _value: String) {}
 }
 
 impl SearchGuest for HelloWorld {
