@@ -7,31 +7,34 @@
 //
 // Custom UI component rendered when the user types the "tpl:"
 // prefix. Showcases the typical plugin authoring surface so
-// new plugin authors can copy-and-adapt:
+// you can copy-and-adapt for your own plugin:
 //
 // - JSX with the automatic runtime (no `import React` needed)
 // - React hooks via the SDK
 // - Per-render data (`data`, `query`) from PluginViewProps
 // - Launcher actions via the `useLauncher()` context hook
+// - Custom RPC into your Rust backend via
+//   `usePluginRuntime().sendMessage(method, payload)` —
+//   the host routes the call to your `MessagingGuest::handle_message`
 // - Component-lifecycle keybinding registration via
 //   `useKeyBindings` and the `LAYER` constants
 // - Windowed list rendering via `useWindowedList`
 // - Tailwind utilities using the host's design tokens
 //
-// This file is meant to be **read** by new plugin authors and
-// adapted into real plugin code. It is intentionally kept
-// simple and pedagogical. End-to-end test coverage of the SDK
-// shim machinery lives in the dedicated `plugins/test-fixture/`
-// crate, not here.
+// This file is meant to be **read** and adapted into your
+// own plugin code. End-to-end test coverage of the SDK
+// shim machinery lives in the dedicated
+// `plugins/test-fixture/` crate, not here.
 // =========================================================
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PluginViewProps } from "@torchsnap/plugin-sdk";
-import { useLauncher, useWindowedList } from "@torchsnap/plugin-sdk/hooks";
 import {
-  LAYER,
-  useKeyBindings,
-} from "@torchsnap/plugin-sdk/keybindings";
+  useLauncher,
+  usePluginRuntime,
+  useWindowedList,
+} from "@torchsnap/plugin-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
 import "../../styles/launcher.css";
 
 // Sample dataset for the windowed list. Real plugins source
@@ -42,10 +45,28 @@ const PAGE_SIZE = 6;
 
 export function DemoView({ data, query }: PluginViewProps) {
   const { dismiss } = useLauncher();
+  const { sendMessage } = usePluginRuntime();
   const [count, setCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const echoText = (data as { query?: string })?.query ?? query ?? "";
+
+  // Live greeting fetched from the Rust backend on mount via
+  // the `current-greeting` message handler. Define a typed
+  // response interface so the round-trip stays end-to-end
+  // typed all the way from `handle_message`'s JSON return
+  // back to the JSX consumer.
+  interface GreetingResponse {
+    greeting: string;
+  }
+
+  const [greeting, setGreeting] = useState<string | null>(null);
+
+  useEffect(() => {
+    sendMessage<unknown, GreetingResponse>("current-greeting", {})
+      .then((res) => setGreeting(res.greeting))
+      .catch((e) => setGreeting(`(error: ${String(e)})`));
+  }, [sendMessage]);
 
   // Windowed list — exposes a `wheelRef` to attach to the
   // scroll container plus a `windowStart` index to slice the
@@ -89,13 +110,27 @@ export function DemoView({ data, query }: PluginViewProps) {
         via the <code className="text-accent">torchsnap-plugin://</code> protocol.
       </p>
 
-      {/* Echo the query to prove data flows from WASM → host → React */}
+      {/* Per-render data: the host hands `query` and `data`
+          to every view render. */}
       <div className="rounded-lg border border-border bg-surface-inset p-4">
         <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
           Query
         </p>
         <p className="text-sm text-text-primary font-mono">
           {echoText || "(empty)"}
+        </p>
+      </div>
+
+      {/* Live data fetched from the Rust backend via
+          sendMessage("current-greeting"). Refreshes on
+          mount; real plugins typically also re-fetch on
+          relevant events. */}
+      <div className="rounded-lg border border-border bg-surface-inset p-4">
+        <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+          Greeting (from Rust backend)
+        </p>
+        <p className="text-sm text-text-primary font-mono">
+          {greeting ?? "(loading…)"}
         </p>
       </div>
 

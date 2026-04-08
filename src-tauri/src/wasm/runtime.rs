@@ -358,6 +358,32 @@ impl WasmPluginInstance {
             .map_err(|e| anyhow::anyhow!("calling plugin on_setting_changed(): {e}"))
     }
 
+    /// Call the guest's `messaging::handle-message` export.
+    ///
+    /// `payload` is a JSON-encoded string (the plugin parses
+    /// it on its side). The returned outer `Result` is for
+    /// wasmtime trap / serialization errors; the inner
+    /// `Result<String, String>` is the plugin's own
+    /// success/error arm. The success arm is the
+    /// JSON-encoded response string.
+    #[allow(clippy::type_complexity)]
+    pub fn handle_message(
+        &self,
+        method: &str,
+        payload: &str,
+    ) -> anyhow::Result<Result<String, String>> {
+        let _span = self
+            .logger
+            .span("handle_message")
+            .meta("method", method)
+            .start();
+        let mut store = self.store.lock().expect("store not poisoned");
+        self.plugin
+            .torchsnap_plugin_messaging()
+            .call_handle_message(&mut *store, method, payload)
+            .map_err(|e| anyhow::anyhow!("calling plugin handle_message(): {e}"))
+    }
+
     /// Call the guest's `disable` export.
     pub fn disable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("disable").start();

@@ -20,6 +20,10 @@
 //   import and parsing the JSON-encoded values
 // - Reacting to user setting changes via the
 //   `on_setting_changed` lifecycle export
+// - Custom frontend ↔ plugin RPC via the
+//   `messaging::handle-message` guest export — your frontend
+//   calls `sendMessage(method, payload)` and this method
+//   dispatches by name
 // =========================================================
 
 wit_bindgen::generate!({
@@ -28,6 +32,7 @@ wit_bindgen::generate!({
 });
 
 use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
+use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
 use exports::torchsnap::plugin::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
     SearchResponse, ViewResponse,
@@ -105,6 +110,51 @@ fn read_bool_setting(key: &str) -> Option<bool> {
 
 fn read_string_setting(key: &str) -> Option<String> {
     serde_json::from_str(&settings::get(key)?).ok()
+}
+
+// =========================================================
+// Custom frontend ↔ plugin messaging
+//
+// Your React frontend calls `sendMessage(method, payload)`
+// (from `usePluginRuntime()`); the host routes the call to
+// `handle_message` below. Dispatch by `method` and return a
+// JSON-encoded response on success or `Err(string)` on
+// failure — the frontend's promise will resolve / reject
+// accordingly.
+//
+// Both the incoming `payload` and the outgoing success arm
+// are JSON-encoded strings, so use `serde_json::from_str`
+// for parsing and `serde_json::to_string` for serializing.
+// Define dedicated request / response structs and derive
+// `Serialize` / `Deserialize` for them — that gives you
+// strong typing on both sides of the boundary.
+// =========================================================
+
+impl MessagingGuest for TemplatePlugin {
+    fn handle_message(method: String, payload: String) -> Result<String, String> {
+        match method.as_str() {
+            // `echo` round-trips the payload back unchanged.
+            // Use this as a smoke test from your frontend
+            // when you first wire up `sendMessage` — if the
+            // exact payload comes back, the bridge is
+            // working end to end.
+            "echo" => Ok(payload),
+
+            // `current-greeting` reads the `greeting`
+            // setting and returns it as a JSON object so the
+            // frontend can render it without parsing the raw
+            // setting itself. Demonstrates composing the
+            // settings API with the messaging API.
+            "current-greeting" => {
+                let greeting =
+                    read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
+                serde_json::to_string(&serde_json::json!({ "greeting": greeting }))
+                    .map_err(|e| format!("serialize response: {e}"))
+            }
+
+            other => Err(format!("unknown method: {other}")),
+        }
+    }
 }
 
 impl SearchGuest for TemplatePlugin {
