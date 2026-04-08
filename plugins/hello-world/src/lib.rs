@@ -26,6 +26,7 @@ use exports::torchsnap::plugin::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
     SearchResponse, ViewResponse,
 };
+use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
 use torchsnap::plugin::logging;
 
 mod petnames;
@@ -148,5 +149,15 @@ impl MessagingGuest for HelloWorld {
     /// accidental wiring obvious.
     fn handle_message(method: String, _payload: String) -> Result<String, String> {
         Err(format!("hello-world does not handle messages: {method}"))
+    }
+}
+
+impl TasksGuest for HelloWorld {
+    /// Hello-world declares no `[[tasks]]` in its manifest,
+    /// so the host never spawns a scheduler loop and this
+    /// method is never invoked. The default no-op stub
+    /// satisfies the WIT export contract.
+    fn run_task(_task_id: String) -> Result<(), String> {
+        Ok(())
     }
 }

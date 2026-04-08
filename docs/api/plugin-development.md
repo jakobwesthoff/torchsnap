@@ -619,6 +619,71 @@ value if hoisted.
 Sub-components extracted from a plugin component can call any of the
 four hooks directly — no prop threading required.
 
+### Scheduled background tasks (WASM plugins, ADR 0032)
+
+WASM plugins can't spawn their own threads. The host runs a per-plugin
+tokio scheduler driven by `[[tasks]]` entries in `manifest.toml`:
+
+```toml
+[[tasks]]
+id = "retention-cleanup"
+schedule = "*/30 * * * *"
+```
+
+`schedule` is a 5-field POSIX cron expression
+(`minute hour day month weekday`). Sub-minute scheduling is not
+supported.
+
+The plugin implements the `tasks::run-task` guest export and
+dispatches by `task_id`:
+
+```rust
+use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
+use torchsnap::plugin::sql;
+
+impl TasksGuest for MyPlugin {
+    fn run_task(task_id: String) -> Result<(), String> {
+        match task_id.as_str() {
+            "retention-cleanup" => {
+                let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+                db.execute(
+                    "DELETE FROM history WHERE created_at < datetime('now', '-30 days')",
+                    &[],
+                ).map_err(|e| format!("delete: {e}"))?;
+                Ok(())
+            }
+            other => Err(format!("unknown task: {other}")),
+        }
+    }
+}
+```
+
+Key semantics:
+
+- **First fire is at the next cron match.** No automatic immediate
+  fire on enable. Plugins that want startup work should do it in
+  their own `enable()`.
+- **Failures are logged, not fatal.** Returning `Err(string)` from
+  `run-task` is logged at error level by the host. The plugin is
+  not auto-disabled. Both wasmtime traps (panics) and plugin-reported
+  errors flow through the same logging path.
+- **Missed fires across launcher restarts are not made up.** If the
+  launcher is closed for 4 hours and a task was supposed to fire 8
+  times, it does not "make up" the missed fires on next launch.
+- **Sequential execution within the plugin.** The wasmtime store
+  mutex serializes every guest call, so two tasks scheduled at the
+  same instant run back-to-back in manifest declaration order — not
+  concurrently. There's no need for the plugin to coordinate access
+  to its own state across tasks.
+- **Plugins without `[[tasks]]` pay zero cost.** The host never
+  spawns a scheduler loop when the manifest declares no tasks. Every
+  plugin still has to implement `TasksGuest::run_task` (it's a WIT
+  contract) but a one-line `Ok(())` stub is enough.
+
+Schedule and id validation happens at manifest parse time. A
+malformed cron expression or a duplicate task id fails plugin load
+with a clear error.
+
 ### Per-plugin SQL storage (WASM plugins, ADR 0031)
 
 WASM plugins get an isolated SQLite database scoped to

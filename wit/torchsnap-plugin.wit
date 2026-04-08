@@ -249,6 +249,39 @@ interface messaging {
   handle-message: func(method: string, payload: string) -> result<string, string>;
 }
 
+/// Scheduled background tasks.
+///
+/// WASM has no threads — plugins can't spawn their own
+/// timers or background loops. The host runs a per-plugin
+/// tokio scheduler that walks every `[[tasks]]` entry from
+/// the manifest, sleeps until the earliest next fire, and
+/// invokes `run-task` with the manifest-declared `task-id`
+/// at the configured cadence.
+///
+/// Schedules are 5-field POSIX cron expressions
+/// (`minute hour day month weekday`) declared in
+/// `manifest.toml`:
+///
+///   [[tasks]]
+///   id = "retention-cleanup"
+///   schedule = "*/30 * * * *"
+///
+/// Plugins without `[[tasks]]` ship a default no-op
+/// implementation; the host never spawns a scheduler loop
+/// when the manifest declares no tasks, so the cost is zero
+/// for plugins that don't use the API.
+///
+/// Returning `err(string)` is logged by the host and does
+/// not disable the plugin — scheduled tasks are best-effort
+/// background work, not lifecycle-critical.
+interface tasks {
+  /// Invoked by the host at the cron-scheduled time for the
+  /// task with the given manifest-declared `task-id`. The
+  /// plugin dispatches by name and runs whatever work the
+  /// task is supposed to do.
+  run-task: func(task-id: string) -> result<_, string>;
+}
+
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
@@ -258,4 +291,5 @@ world plugin {
   export lifecycle;
   export search;
   export messaging;
+  export tasks;
 }

@@ -588,6 +588,34 @@ impl WasmPluginInstance {
             .map_err(|e| anyhow::anyhow!("calling plugin on_setting_changed(): {e}"))
     }
 
+    /// Call the guest's `tasks::run-task` export.
+    ///
+    /// Used by the per-plugin scheduler loop to fire a
+    /// scheduled task. The `task_id` matches a `[[tasks]]`
+    /// entry from the manifest. The plugin dispatches by
+    /// name and runs whatever work the task is supposed to
+    /// do.
+    ///
+    /// The outer `Result` is for wasmtime trap /
+    /// serialization errors; the inner
+    /// `Result<(), String>` is the plugin's own
+    /// success/error arm. Returning `Err(string)` is
+    /// logged by the bridge — it does not auto-disable the
+    /// plugin.
+    #[allow(clippy::type_complexity)]
+    pub fn run_task(&self, task_id: &str) -> anyhow::Result<Result<(), String>> {
+        let _span = self
+            .logger
+            .span("run_task")
+            .meta("task_id", task_id)
+            .start();
+        let mut store = self.store.lock().expect("store not poisoned");
+        self.plugin
+            .torchsnap_plugin_tasks()
+            .call_run_task(&mut *store, task_id)
+            .map_err(|e| anyhow::anyhow!("calling plugin run_task(): {e}"))
+    }
+
     /// Call the guest's `messaging::handle-message` export.
     ///
     /// `payload` is a JSON-encoded string (the plugin parses

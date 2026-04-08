@@ -16,6 +16,18 @@ migrations = [
     "migrations/001_init.sql",
 ]
 
+# Scheduled background tasks. The host runs a per-plugin
+# tokio scheduler that walks every entry below, sleeps until
+# the earliest next fire across all of them, and invokes the
+# `tasks::run-task` guest export with the task's `id`.
+#
+# Schedules are 5-field POSIX cron expressions
+# (`minute hour day month weekday`). Sub-minute scheduling
+# is intentionally not supported.
+[[tasks]]
+id = "heartbeat"
+schedule = "*/5 * * * *"
+
 [frontend]
 launcher-bundle = "frontend/dist/launcher.js"
 launcher-css = "frontend/dist/launcher.css"
