@@ -6,20 +6,24 @@
  * Plugin SDK global injection.
  *
  * Exposes host-provided modules on `window.__torchsnap` so that
- * dynamically loaded plugin bundles can use React without bundling
- * their own copy.
+ * dynamically loaded plugin bundles can use React and the
+ * plugin component context without bundling their own copies.
  *
  * Plugin bundles access these via shim files in `plugin-sdk/shims/`
  * that re-export from the global. At build time, Vite aliases
  * `"react"` and `"react/jsx-runtime"` to the shims; at runtime,
  * the shims read from `window.__torchsnap`.
  *
- * Future expansion: `components`, `keybindings`, and `hooks` will
- * be added once barrel exports exist for those modules.
+ * Future expansion (D5 in the migration plan): `components` and
+ * `keybindings` will be added once the SDK shims for those land.
  */
 
 import React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
+import { usePluginInfo } from "../contexts/usePluginInfo";
+import { usePluginRuntime } from "../contexts/usePluginRuntime";
+import { useLauncher } from "../contexts/useLauncher";
+import { usePluginSetting } from "../contexts/usePluginSetting";
 
 // =========================================================
 // Type declaration
@@ -30,6 +34,12 @@ declare global {
     __torchsnap?: {
       React: typeof React;
       jsxRuntime: typeof jsxRuntime;
+      hooks: {
+        usePluginInfo: typeof usePluginInfo;
+        usePluginRuntime: typeof usePluginRuntime;
+        useLauncher: typeof useLauncher;
+        usePluginSetting: typeof usePluginSetting;
+      };
     };
   }
 }
@@ -47,5 +57,11 @@ export function initPluginSdk(): void {
   window.__torchsnap = {
     React,
     jsxRuntime,
+    hooks: {
+      usePluginInfo,
+      usePluginRuntime,
+      useLauncher,
+      usePluginSetting,
+    },
   };
 }

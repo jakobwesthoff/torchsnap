@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/keybindings";
 import { cn } from "../../lib/cn";
 import { highlightText } from "../../lib/highlightText";
+import { useLauncher } from "../../contexts/useLauncher";
+import { usePluginRuntime } from "../../contexts/usePluginRuntime";
 import type { PluginViewProps } from "../types";
 import type { SourcedEntry } from "@torchsnap/types";
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./constants";
@@ -64,14 +66,9 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
 // Emoji Grid
 // =========================================================
 
-export default function EmojiGrid({
-  results,
-  goBack,
-  mouseActiveRef,
-  onExecute,
-  onFooterChange,
-  logger,
-}: PluginViewProps) {
+export default function EmojiGrid({ results }: PluginViewProps) {
+  const { goBack, mouseActiveRef, onExecute, onFooterChange } = useLauncher();
+  const { logger } = usePluginRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Reset selection when results change (new query).
   const [prevResults, setPrevResults] = useState(results);
@@ -101,12 +98,8 @@ export default function EmojiGrid({
       const span = logger.spanStart("results-update", undefined, [
         ["previousCount", prevResultCount.current.toString()],
       ]);
-      logger.debug("Emoji results updated", [
-        ["count", results.length.toString()],
-      ], span);
-      logger.spanEnd(span, [
-        ["newCount", results.length.toString()],
-      ]);
+      logger.debug("Emoji results updated", [["count", results.length.toString()]], span);
+      logger.spanEnd(span, [["newCount", results.length.toString()]]);
       prevResultCount.current = results.length;
     }
   }, [results.length, logger]);

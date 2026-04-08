@@ -5,60 +5,54 @@
 // =========================================================
 // Plugin Component Props
 //
-// Prop interfaces for the three types of React components
-// a plugin can provide:
+// Per-render data passed to the three plugin component
+// kinds. Everything else (identity, sendMessage, logger,
+// launcher actions) flows through the React context exposed
+// via `@torchsnap/plugin-sdk/hooks` so that sub-components
+// don't need to thread props through every level.
 //
-// - PluginViewProps     — full-screen custom view (launcher)
-// - InlineViewProps     — inline result row with custom UI
-// - PluginSettingsProps — settings panel in the sidebar
+// - PluginViewProps     — full-screen launcher view
+// - InlineViewProps     — inline result row above the list
+// - PluginSettingsProps — settings sidebar panel (no per-render data)
 //
-// These are the canonical definitions. The host constructs
-// objects satisfying these interfaces before rendering
-// plugin components.
+// The host constructs objects satisfying these interfaces
+// before rendering plugin components and wraps the mount in
+// a <PluginContextProvider> that supplies everything else.
 // =========================================================
 
-import type { RefObject } from "react";
-import type { ActionId, FooterState, SourcedEntry } from "./data";
-import type { Logger } from "./logger";
-import type { UsePluginSetting } from "./settings";
+import type { SourcedEntry } from "./data";
 
 export interface PluginViewProps {
+  /** Search results from the normal search() flow. The plugin
+   *  decides whether to use them or ignore them. */
   results: SourcedEntry[];
+  /** Opaque data from the backend's PluginViewRef.data field.
+   *  Only present when the plugin returned CustomUI or InlineUI
+   *  with a data payload. */
   data?: unknown;
+  /** Current query, stripped of the matched prefix. */
   query: string;
+  /** Which prefix activated the plugin. */
   matchedPrefix: string;
-  goBack: () => void;
-  dismiss: () => void;
-  mouseActiveRef: RefObject<boolean>;
-  onExecute: (entryId: string, actionId: ActionId) => void;
-  onFooterChange: (state: FooterState) => void;
-  setDisplayQuery: (query: string) => void;
-  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
-    method: string,
-    payload: TPayload,
-    onMessage?: (msg: TStream) => void,
-  ) => Promise<TResult>;
-  logger: Logger;
 }
 
 export interface InlineViewProps {
+  /** Opaque data from the backend's PluginViewRef.data field. */
   data: unknown;
+  /** Current search query (stripped of prefix). */
   query: string;
+  /** Prefix that activated the plugin (empty in heuristic mode). */
   matchedPrefix: string;
+  /** Whether the inline slot is currently selected (index 0). */
   selected: boolean;
-  onExecute: (entryId: string, actionId: ActionId) => void;
-  onFooterChange: (state: FooterState) => void;
-  dismiss: () => void;
-  sendMessage: <TPayload = unknown, TResult = unknown, TStream = never>(
-    method: string,
-    payload: TPayload,
-    onMessage?: (msg: TStream) => void,
-  ) => Promise<TResult>;
-  logger: Logger;
 }
 
-export interface PluginSettingsProps {
-  pluginId: string;
-  usePluginSetting: UsePluginSetting;
-  logger: Logger;
-}
+/**
+ * Settings panels receive no per-render data. Identity, runtime
+ * capabilities, and reactive setting accessors all come from the
+ * plugin context hooks. Kept as a named (empty) interface so that
+ * `ComponentType<PluginSettingsProps>` continues to typecheck and
+ * future per-render fields (if any) have an obvious home.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface PluginSettingsProps {}

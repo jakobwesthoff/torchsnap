@@ -14,9 +14,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { PluginSettingsProps } from "../types";
-import { sendPluginMessage } from "../../lib/pluginMessage";
-import { useSetting } from "../../hooks/useSetting";
+import { usePluginInfo } from "../../contexts/usePluginInfo";
+import { usePluginRuntime } from "../../contexts/usePluginRuntime";
+import { usePluginSetting } from "../../contexts/usePluginSetting";
 import { Section } from "../../settings/Section";
 import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
@@ -35,12 +35,6 @@ interface CalcStats {
 // Helpers
 // =========================================================
 
-const PLUGIN_ID = "calculator";
-
-function pluginMessage<T>(method: string, payload: unknown = {}): Promise<T> {
-  return sendPluginMessage<unknown, T>(PLUGIN_ID, method, payload);
-}
-
 function formatRetentionDays(days: number): string {
   if (days === 365) return "1 year";
   return `${days}d`;
@@ -50,9 +44,13 @@ function formatRetentionDays(days: number): string {
 // Component
 // =========================================================
 
-export default function CalculatorSettings({ pluginId, usePluginSetting }: PluginSettingsProps) {
-  // Read the host-managed enabled key for gating controls.
-  const [enabled] = useSetting<boolean>(`enabled.${pluginId}`);
+export default function CalculatorSettings() {
+  // Identity (id + reactive enabled flag) and runtime
+  // capabilities now come from the plugin context. The host
+  // wraps every settings panel mount in PluginContextProvider.
+  const { enabled } = usePluginInfo();
+  const { sendMessage } = usePluginRuntime();
+
   const [heuristicEnabled, setHeuristicEnabled] = usePluginSetting<boolean>("heuristicEnabled");
   const [historyEnabled, setHistoryEnabled] = usePluginSetting<boolean>("historyEnabled");
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
@@ -62,10 +60,10 @@ export default function CalculatorSettings({ pluginId, usePluginSetting }: Plugi
   const [confirmClear, setConfirmClear] = useState(false);
 
   const refreshStats = useCallback(() => {
-    pluginMessage<CalcStats>("stats")
+    sendMessage<unknown, CalcStats>("stats", {})
       .then(setStats)
       .catch((e) => console.error("calculator: fetch stats failed:", e));
-  }, []);
+  }, [sendMessage]);
 
   useEffect(() => {
     refreshStats();
@@ -79,7 +77,7 @@ export default function CalculatorSettings({ pluginId, usePluginSetting }: Plugi
 
     setClearing(true);
     try {
-      await pluginMessage("clear_history");
+      await sendMessage("clear_history", {});
       refreshStats();
     } catch (e) {
       console.error("calculator: clear history failed:", e);
@@ -87,7 +85,7 @@ export default function CalculatorSettings({ pluginId, usePluginSetting }: Plugi
       setClearing(false);
       setConfirmClear(false);
     }
-  }, [confirmClear, refreshStats]);
+  }, [confirmClear, refreshStats, sendMessage]);
 
   const handleCancelClear = useCallback(() => {
     setConfirmClear(false);

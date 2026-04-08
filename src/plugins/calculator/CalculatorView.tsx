@@ -26,6 +26,8 @@ import { CalculatorHelp, CalculatorError } from "./CalculatorHelp";
 import { useKeyBindings } from "../../keybindings/useKeyBindings";
 import { LAYER } from "../../keybindings/matching";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
+import { useLauncher } from "../../contexts/useLauncher";
+import { usePluginRuntime } from "../../contexts/usePluginRuntime";
 
 // Layout constants. The inline area (result/help/error) has a fixed
 // height so the history list below it doesn't shift as the content
@@ -56,13 +58,9 @@ export default memo(function CalculatorView({
   data,
   query,
   matchedPrefix,
-  goBack,
-  mouseActiveRef,
-  onExecute,
-  onFooterChange,
-  setDisplayQuery,
-  sendMessage,
 }: PluginViewProps) {
+  const { goBack, mouseActiveRef, onExecute, onFooterChange, setDisplayQuery } = useLauncher();
+  const { sendMessage } = usePluginRuntime();
   // The backend's search() returns the eval result in the `data`
   // field of the CustomUI response, threaded through PluginViewRef.
   const rawData = data as CalcData | null | undefined;

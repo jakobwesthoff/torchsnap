@@ -14,9 +14,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { PluginSettingsProps } from "../types";
-import { sendPluginMessage } from "../../lib/pluginMessage";
-import { useSetting } from "../../hooks/useSetting";
+import { usePluginInfo } from "../../contexts/usePluginInfo";
+import { usePluginRuntime } from "../../contexts/usePluginRuntime";
+import { usePluginSetting } from "../../contexts/usePluginSetting";
 import { Section } from "../../settings/Section";
 import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
@@ -37,13 +37,6 @@ interface ClipboardStats {
 // Helpers
 // =========================================================
 
-const PLUGIN_ID = "clipboard-manager";
-
-/** Send a message to the clipboard plugin's backend handler. */
-function pluginMessage<T>(method: string, payload: unknown = {}): Promise<T> {
-  return sendPluginMessage<unknown, T>(PLUGIN_ID, method, payload);
-}
-
 /** Format a byte count as a human-readable string. */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -62,9 +55,13 @@ function formatRetentionDays(days: number): string {
 // Component
 // =========================================================
 
-export default function ClipboardSettings({ pluginId, usePluginSetting }: PluginSettingsProps) {
-  // Read the host-managed enabled key for gating controls.
-  const [enabled] = useSetting<boolean>(`enabled.${pluginId}`);
+export default function ClipboardSettings() {
+  // Identity (with reactive enabled flag) and runtime
+  // capabilities are provided by the surrounding
+  // PluginContextProvider.
+  const { enabled } = usePluginInfo();
+  const { sendMessage } = usePluginRuntime();
+
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
   const [bringToFrontOnPaste, setBringToFrontOnPaste] =
     usePluginSetting<boolean>("bringToFrontOnPaste");
@@ -75,10 +72,10 @@ export default function ClipboardSettings({ pluginId, usePluginSetting }: Plugin
   const [confirmClear, setConfirmClear] = useState(false);
 
   const refreshStats = useCallback(() => {
-    pluginMessage<ClipboardStats>("stats")
+    sendMessage<unknown, ClipboardStats>("stats", {})
       .then(setStats)
       .catch((e) => console.error("clipboard: fetch stats failed:", e));
-  }, []);
+  }, [sendMessage]);
 
   // Fetch stats on mount.
   useEffect(() => {
@@ -93,7 +90,7 @@ export default function ClipboardSettings({ pluginId, usePluginSetting }: Plugin
 
     setClearing(true);
     try {
-      await pluginMessage("clear_history");
+      await sendMessage("clear_history", {});
       refreshStats();
     } catch (e) {
       console.error("clipboard: clear history failed:", e);
@@ -101,7 +98,7 @@ export default function ClipboardSettings({ pluginId, usePluginSetting }: Plugin
       setClearing(false);
       setConfirmClear(false);
     }
-  }, [confirmClear, refreshStats]);
+  }, [confirmClear, refreshStats, sendMessage]);
 
   // Reset confirmation when clicking elsewhere.
   const handleCancelClear = useCallback(() => {
