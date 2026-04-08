@@ -163,6 +163,38 @@ interface search {
   execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
 }
 
+/// Custom frontend ↔ plugin RPC.
+///
+/// The plugin's React frontend can call
+/// `sendMessage(method, payload)` to invoke the backend on
+/// demand. The host routes the call to this guest export;
+/// the response is returned to the frontend's
+/// `sendMessage` promise.
+///
+/// Both `payload` and the success arm of `result` are
+/// JSON-encoded strings — same encoding convention as the
+/// `settings::get` interface. The plugin parses the
+/// payload with `serde_json::from_str` on the way in and
+/// serializes the response on the way out.
+///
+/// Returning `err(string)` propagates as a Tauri command
+/// error to the frontend's `sendMessage` promise (the
+/// frontend sees `"plugin error: <string>"` so bridge-level
+/// failures and plugin-reported failures are
+/// distinguishable in logs).
+///
+/// **WASM plugins cannot stream.** This export is
+/// strictly request/response. Native plugins still get the
+/// full streaming `Channel<Value>` via the underlying
+/// `Plugin::handle_message` trait — only the WIT bridge is
+/// limited to one-shot returns. If a future WASM plugin
+/// genuinely needs streaming, a `messaging-stream`
+/// sub-interface can be added without breaking this one.
+interface messaging {
+  /// Handle a custom message from the plugin's frontend.
+  handle-message: func(method: string, payload: string) -> result<string, string>;
+}
+
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
@@ -170,4 +202,5 @@ world plugin {
 
   export lifecycle;
   export search;
+  export messaging;
 }

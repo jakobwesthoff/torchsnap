@@ -21,6 +21,7 @@ wit_bindgen::generate!({
 use std::cell::RefCell;
 
 use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
+use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
 use exports::torchsnap::plugin::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
     SearchResponse, ViewResponse,
@@ -137,5 +138,15 @@ impl SearchGuest for HelloWorld {
             None,
         );
         Ok(PostAction::Dismiss)
+    }
+}
+
+impl MessagingGuest for HelloWorld {
+    /// Hello-world has no frontend RPC calls; the bridge
+    /// only invokes this if the React side intentionally
+    /// fires a `sendMessage`. Returning a clear error keeps
+    /// accidental wiring obvious.
+    fn handle_message(method: String, _payload: String) -> Result<String, String> {
+        Err(format!("hello-world does not handle messages: {method}"))
     }
 }

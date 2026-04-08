@@ -18,6 +18,8 @@
 
 use std::time::SystemTime;
 
+use anyhow::Context;
+
 use crate::plugins::Plugin;
 use crate::search::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
 use crate::settings::SettingsInit;
@@ -173,5 +175,48 @@ impl Plugin for WasmPluginBridge {
 
     fn search_prefixes(&self) -> &[String] {
         &self.manifest.plugin.prefixes
+    }
+
+    /// Forward custom frontend messages to the WASM guest's
+    /// `messaging::handle-message` export.
+    ///
+    /// The streaming `_channel` parameter is intentionally
+    /// ignored — WASM plugins are strictly request/response.
+    /// Plugins that need streaming should stay native, or
+    /// wait for a future `messaging-stream` sub-interface.
+    ///
+    /// Errors are wrapped with explicit prefixes so log
+    /// readers can distinguish bridge-level failures
+    /// (linker, serialization, store lock) from
+    /// plugin-reported failures (the inner `err(string)`
+    /// arm of the WIT `result`).
+    fn handle_message(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+        _channel: tauri::ipc::Channel<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        // Re-encode the payload as a JSON string for the WIT
+        // crossing — same convention as `settings::get`.
+        let payload_json =
+            serde_json::to_string(&payload).context("serialize handle_message payload")?;
+
+        // Two layers of error: the outer `Result` is the
+        // wasmtime / store-lock layer; the inner
+        // `Result<String, String>` is what the plugin
+        // returned. Plugin-reported errors get a
+        // `"plugin error: "` prefix to disambiguate them
+        // from bridge failures in logs.
+        let result_json = self
+            .instance
+            .handle_message(method, &payload_json)
+            .context("invoke guest handle-message")?
+            .map_err(|e| anyhow::anyhow!("plugin error: {e}"))?;
+
+        // Parse the plugin's JSON response back into a
+        // `serde_json::Value` for the Tauri command return.
+        // A malformed response is a plugin bug — surface it
+        // with a clear context so log readers can locate it.
+        serde_json::from_str(&result_json).context("parse guest handle-message response")
     }
 }
