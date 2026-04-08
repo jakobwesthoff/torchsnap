@@ -52,7 +52,7 @@ use exports::torchsnap::plugin::search::{
 };
 use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
 use torchsnap::plugin::sql::{self, SqlHandle, SqlValue};
-use torchsnap::plugin::{logging, settings};
+use torchsnap::plugin::{clipboard, logging, settings};
 
 // =========================================================
 // Constants
@@ -154,10 +154,16 @@ impl SearchGuest for CalculatorPlugin {
         }
     }
 
-    fn execute(_entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
-        // The frontend's `onExecute({type:"copy"})` performs
-        // the actual clipboard write — the plugin only needs
-        // to dismiss the launcher.
+    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+        // The launcher passes the result string as the
+        // entry id when it executes a copy action — both
+        // the inline view (`onExecute(calcData.result, ...)`)
+        // and the prefix-mode view (`onExecute(resultToCopy,
+        // ...)` after Enter on a history row) hand us the
+        // text to copy. Write it to the system clipboard
+        // via the WIT host import, then dismiss the
+        // launcher.
+        clipboard::write_text(&entry_id).map_err(|e| format!("copy to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }
 }

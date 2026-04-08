@@ -31,6 +31,29 @@ interface logging {
   span-end: func(span-id: u64, metadata: list<metadata-entry>);
 }
 
+/// System clipboard write access.
+///
+/// WASM plugins have no direct access to host APIs — they
+/// can't reach `tauri_plugin_clipboard_manager` the way
+/// native plugins do. This interface exposes a single
+/// write-text operation so plugins can copy results to the
+/// clipboard from inside `execute()`, `handle-message`, or
+/// any other guest entry point.
+///
+/// Read access (paste, query) is intentionally NOT exposed.
+/// Reading the clipboard from a sandboxed plugin would let
+/// any plugin slurp arbitrary content the user has copied
+/// from other applications, which is a privacy footgun.
+/// Plugins that need clipboard read should stay native or
+/// wait for an explicit, audited extension of this
+/// interface.
+interface clipboard {
+  /// Write `text` to the system clipboard. Returns
+  /// `err(string)` if the host's clipboard backend reports
+  /// a failure.
+  write-text: func(text: string) -> result<_, string>;
+}
+
 /// Per-plugin SQLite storage.
 ///
 /// Each plugin gets an isolated database file at
@@ -287,6 +310,7 @@ world plugin {
   import logging;
   import settings;
   import sql;
+  import clipboard;
 
   export lifecycle;
   export search;
