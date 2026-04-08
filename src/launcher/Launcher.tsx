@@ -125,6 +125,17 @@ function InlineViewContainer({
 }
 /* eslint-enable react-hooks/static-components */
 
+// Hooks must be called unconditionally per Rules of Hooks. The internal
+// sentinel key is namespaced under `__internal__.` so it can never collide
+// with a real plugin enable flag (plugin IDs are validated
+// lowercase-alphanumeric — see PluginId in src-tauri/src/wasm/manifest.rs).
+function useOptionalPluginEnabled(pluginId: string | null | undefined): boolean {
+  const [value] = useSetting<boolean>(
+    pluginId ? `enabled.${pluginId}` : "__internal__.no-active-plugin",
+  );
+  return pluginId ? value : false;
+}
+
 export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // =========================================================
   // Query split: displayQuery vs searchQuery
@@ -471,12 +482,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // see disable toggles immediately via usePluginInfo().
   // =========================================================
 
-  const [pluginEnabled] = useSetting<boolean>(
-    customPluginView ? `enabled.${customPluginView.pluginId}` : "enabled.__none__",
-  );
-  const [inlineEnabled] = useSetting<boolean>(
-    activeInlineView ? `enabled.${activeInlineView.pluginId}` : "enabled.__none__",
-  );
+  const pluginEnabled = useOptionalPluginEnabled(customPluginView?.pluginId);
+  const inlineEnabled = useOptionalPluginEnabled(activeInlineView?.pluginId);
 
   const pluginInfo = useMemo<PluginInfo>(
     () => ({ id: customPluginView?.pluginId ?? "host", enabled: pluginEnabled }),
@@ -511,11 +518,24 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       // Inline views never need goBack/setDisplayQuery — they sit
       // above the result list. Provide stable no-ops so the
       // launcher slice is non-optional in the context contract.
-      goBack: () => {},
+      // Dev-mode warnings make accidental calls visible instead of silent.
+      goBack: () => {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "useLauncher().goBack() called from an inline view — inline views have no goBack action; this is a no-op.",
+          );
+        }
+      },
       dismiss,
       onExecute: handleInlineExecute,
       onFooterChange: setInlineFooter,
-      setDisplayQuery: () => {},
+      setDisplayQuery: () => {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "useLauncher().setDisplayQuery() called from an inline view — inline views have no setDisplayQuery action; this is a no-op.",
+          );
+        }
+      },
       mouseActiveRef,
     }),
     [dismiss, handleInlineExecute],
