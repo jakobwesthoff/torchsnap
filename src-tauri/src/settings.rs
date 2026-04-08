@@ -165,4 +165,21 @@ impl<R: tauri::Runtime> PluginSettings<R> {
             .get(&full_key)
             .and_then(|v| serde_json::from_value(v).ok())
     }
+
+    /// Read the raw JSON-encoded value for `key` as a string.
+    ///
+    /// Returns `None` if the key does not exist. Used by the WASM
+    /// plugin bridge — WIT has no opaque JSON value type, so the
+    /// host hands the JSON across the boundary as a string and the
+    /// guest parses it on its side.
+    ///
+    /// Equivalent to `serde_json::to_string(&self.store.get(key))`,
+    /// but skips the round-trip through `serde_json::Value` if the
+    /// key is missing.
+    pub fn get_raw(&self, key: &str) -> Option<String> {
+        let full_key = format!("{}{}", self.prefix, key);
+        self.store
+            .get(&full_key)
+            .and_then(|v| serde_json::to_string(&v).ok())
+    }
 }

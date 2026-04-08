@@ -26,7 +26,7 @@ use exports::torchsnap::plugin::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
     SearchResponse, ViewResponse,
 };
-use torchsnap::plugin::logging;
+use torchsnap::plugin::{logging, settings};
 
 struct TemplatePlugin;
 
@@ -34,10 +34,24 @@ export!(TemplatePlugin);
 
 impl LifecycleGuest for TemplatePlugin {
     fn enable() {
+        // Read the current values of every plugin setting at
+        // startup so the log shows what the user (or the
+        // manifest defaults) configured. Real plugins would
+        // typically cache these in `static` `AtomicBool`/`OnceLock`
+        // values, but for the template the round-trip is the
+        // point — we want plugin authors to see how
+        // `settings::get` returns JSON-encoded strings that
+        // they parse with `serde_json`.
+        let greeting = read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
+        let verbose = read_bool_setting("verbose").unwrap_or(false);
+
         logging::log(
             logging::LogLevel::Info,
             "Template plugin enabled",
-            &[],
+            &[
+                ("greeting".into(), greeting),
+                ("verbose".into(), verbose.to_string()),
+            ],
             None,
         );
     }
@@ -50,6 +64,42 @@ impl LifecycleGuest for TemplatePlugin {
             None,
         );
     }
+
+    fn on_setting_changed(key: String, value: String) {
+        // The host's CoalescingDispatcher (ADR 0026) has
+        // already deduplicated rapid same-key writes by the
+        // time we get here, so we can react to every fire
+        // without worrying about flapping. Real plugins would
+        // typically push the parsed value into a cache —
+        // here we just log the change so plugin authors can
+        // see the round-trip in their dev tools.
+        logging::log(
+            logging::LogLevel::Info,
+            &format!("Setting `{key}` changed"),
+            &[("key".into(), key), ("value".into(), value)],
+            None,
+        );
+    }
+}
+
+// =========================================================
+// Settings helpers
+//
+// `settings::get` returns the raw JSON encoding of the
+// stored value (`true`, `42`, `"hello"`, `{"a":1}`, …) as
+// `Option<String>`. Each plugin parses it into whatever
+// shape it expects via `serde_json::from_str`. The two
+// helpers below cover the common bool / string cases for
+// the template; real plugins extend the pattern with their
+// own typed wrappers.
+// =========================================================
+
+fn read_bool_setting(key: &str) -> Option<bool> {
+    serde_json::from_str(&settings::get(key)?).ok()
+}
+
+fn read_string_setting(key: &str) -> Option<String> {
+    serde_json::from_str(&settings::get(key)?).ok()
 }
 
 impl SearchGuest for TemplatePlugin {
