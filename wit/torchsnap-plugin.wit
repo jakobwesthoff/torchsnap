@@ -31,6 +31,60 @@ interface logging {
   span-end: func(span-id: u64, metadata: list<metadata-entry>);
 }
 
+/// Per-plugin SQLite storage.
+///
+/// Each plugin gets an isolated database file at
+/// `app_data_dir/plugins/<plugin-id>/storage.db`. The host
+/// applies the migration files declared in
+/// `manifest.toml`'s `[storage.sql]` table on the first
+/// `open()` call within an enable lifetime, then hands back
+/// a typed handle the plugin uses to issue queries.
+///
+/// Plugins are responsible for scoring, ordering, and
+/// `IN (...)` expansion on their side — the WIT `sql-value`
+/// variant intentionally omits the host's internal `List`
+/// variant. Use `serde_json` (or any other serialization)
+/// to marshal complex types in and out of `text` /
+/// `blob` columns.
+///
+/// Errors come back as `err(string)`. The plugin decides
+/// what to do (log and bail from `enable()`, fall back to a
+/// degraded mode, etc.). Bridge-level failures (missing
+/// migration file, malformed SQL, filesystem permission)
+/// surface from `open()`; per-statement errors surface from
+/// `execute` / `query`.
+interface sql {
+  /// A database value matching SQLite's five storage classes.
+  /// Plugins build query parameters and read result rows in
+  /// terms of this variant.
+  variant sql-value {
+    null,
+    integer(s64),
+    real(f64),
+    text(string),
+    blob(list<u8>),
+  }
+
+  resource sql-handle {
+    /// Execute a statement that modifies data (INSERT,
+    /// UPDATE, DELETE). Returns the number of rows
+    /// affected.
+    execute: func(sql: string, params: list<sql-value>) -> result<u64, string>;
+    /// Execute a SELECT and return all matching rows. Each
+    /// row is a list of column values matching the SELECT's
+    /// column order.
+    query: func(sql: string, params: list<sql-value>) -> result<list<list<sql-value>>, string>;
+  }
+
+  /// Open (or create) the plugin's database, applying any
+  /// declared migrations on first call. Subsequent calls
+  /// within the same enable lifetime return a fresh handle
+  /// pointing at the same underlying database. The handle is
+  /// released automatically via WIT resource drop semantics
+  /// when the plugin lets it go out of scope.
+  open: func() -> result<sql-handle, string>;
+}
+
 /// Read settings from this plugin's namespace.
 ///
 /// Plugins are confined to keys under `plugins.<plugin-id>.`
@@ -199,6 +253,7 @@ interface messaging {
 world plugin {
   import logging;
   import settings;
+  import sql;
 
   export lifecycle;
   export search;

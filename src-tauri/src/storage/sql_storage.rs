@@ -147,6 +147,14 @@ impl SqlRow {
             .ok_or_else(|| anyhow::anyhow!("column index {index} out of bounds"))?;
         T::from_sql_value(value).ok_or_else(|| anyhow::anyhow!("column {index}: type mismatch"))
     }
+
+    /// Borrow the materialized column slice. Used by the
+    /// WASM SQL bridge to forward result rows across the
+    /// WIT boundary without going through the typed
+    /// `FromSqlValue` accessor.
+    pub fn columns(&self) -> &[SqlValue] {
+        &self.columns
+    }
 }
 
 /// Materialize a rusqlite `Row` into a `SqlRow` by reading all

@@ -16,6 +16,8 @@
 // the typed WASM guest exports.
 // =========================================================
 
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -27,7 +29,8 @@ use crate::settings::SettingsInit;
 use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
-use super::runtime::WasmPluginInstance;
+use super::runtime::{SqlConfig, WasmPluginInstance};
+use super::source::PluginSource;
 
 // =========================================================
 // WasmPluginBridge
@@ -47,14 +50,78 @@ pub struct WasmPluginBridge {
 }
 
 impl WasmPluginBridge {
-    /// Create a bridge from a parsed manifest and a live
-    /// WASM plugin instance.
-    pub fn new(manifest: Manifest, instance: WasmPluginInstance, log_sender: LogSender) -> Self {
-        Self {
+    /// Create a bridge from a parsed manifest, a live WASM
+    /// plugin instance, and the host-side bits the SQL host
+    /// import needs at construction time:
+    ///
+    /// - `source` is the `PluginSource` (directory or
+    ///   archive) the plugin was loaded from. Used here to
+    ///   read migration files declared in
+    ///   `manifest.storage.sql.migrations` *once*, eagerly,
+    ///   so the `sql::open()` host import can resolve
+    ///   without re-touching the source on every call.
+    /// - `app_data_dir` is the host's per-app data root
+    ///   (`tauri::AppHandle::path().app_data_dir()`); the
+    ///   plugin's database file lives at
+    ///   `<app_data_dir>/plugins/<plugin-id>/storage.db`.
+    ///
+    /// Migration-file reads are surfaced as `Err` here
+    /// rather than deferred to the first `sql::open()`
+    /// call, because a missing migration file is a manifest
+    /// authoring bug — better to refuse to load the plugin
+    /// than to half-load it and wait for the symptom to
+    /// surface in a search hot path.
+    pub fn new(
+        manifest: Manifest,
+        instance: WasmPluginInstance,
+        log_sender: LogSender,
+        source: &dyn PluginSource,
+        app_data_dir: &std::path::Path,
+    ) -> anyhow::Result<Self> {
+        // Materialize the SQL configuration once at load
+        // time. Plugins without `[storage.sql]` get
+        // `SqlConfig::None`, which the host import
+        // translates into a clear "no storage configured"
+        // error if they call `sql::open()` anyway.
+        let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+            None => SqlConfig::None,
+            Some(sql) => {
+                let mut migrations: Vec<String> = Vec::with_capacity(sql.migrations.len());
+                for path in &sql.migrations {
+                    let bytes = source
+                        .read_file(path)
+                        .with_context(|| format!("read SQL migration file `{path}`"))?;
+                    let text = String::from_utf8(bytes).with_context(|| {
+                        format!("SQL migration file `{path}` is not valid UTF-8")
+                    })?;
+                    migrations.push(text);
+                }
+
+                let db_path: PathBuf = app_data_dir
+                    .join("plugins")
+                    .join(manifest.plugin.id.as_str())
+                    .join("storage.db");
+
+                SqlConfig::Configured {
+                    db_path,
+                    migrations: Arc::new(migrations),
+                }
+            }
+        };
+
+        // Stash the configuration on the wasmtime store
+        // immediately so that any future host-import call
+        // sees a fully-initialized `PluginState`. The
+        // PluginState's own `sql_storage` cache stays
+        // `None` — the actual database file is materialized
+        // lazily on the first `sql::open()` call.
+        instance.set_sql_config(sql_config);
+
+        Ok(Self {
             manifest,
             instance,
             log_sender,
-        }
+        })
     }
 
     /// Emit a log entry for bridge-level events (errors from
@@ -114,6 +181,12 @@ impl Plugin for WasmPluginBridge {
         // settings::get calls (none should happen, but be
         // defensive) revert to the "unset" no-op behavior.
         self.instance.clear_settings();
+        // Drop the cached `Arc<SqlStorage>` so the database
+        // file isn't held open between enable cycles. Any
+        // outstanding handle inside the wasmtime
+        // ResourceTable will be cleared on next instantiate
+        // along with the rest of the table.
+        self.instance.clear_sql_storage();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {

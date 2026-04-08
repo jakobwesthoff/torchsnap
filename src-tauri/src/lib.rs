@@ -619,6 +619,7 @@ pub fn run() {
                 &log_sender,
                 &span_registry,
                 &plugin_source_registry,
+                &app_data_dir,
             ) {
                 Ok(count) => {
                     if count > 0 {
@@ -812,6 +813,7 @@ fn load_wasm_plugins(
     log_sender: &wasm::logging::channel::LogSender,
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
     source_registry: &wasm::protocol::PluginSourceRegistry,
+    app_data_dir: &std::path::Path,
 ) -> anyhow::Result<usize> {
     let runtime = wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
 
@@ -849,7 +851,14 @@ fn load_wasm_plugins(
         }
 
         let source_kind = if is_archive { "archive" } else { "directory" };
-        let loaded = load_single_wasm_plugin(&runtime, &path, host, log_sender, source_registry);
+        let loaded = load_single_wasm_plugin(
+            &runtime,
+            &path,
+            host,
+            log_sender,
+            source_registry,
+            app_data_dir,
+        );
         match loaded {
             Ok(plugin_id) => {
                 log_sender.send(wasm::logging::LogItem {
@@ -893,6 +902,7 @@ fn load_single_wasm_plugin(
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
     source_registry: &wasm::protocol::PluginSourceRegistry,
+    app_data_dir: &std::path::Path,
 ) -> anyhow::Result<String> {
     // Open the appropriate source based on path type:
     // .torchsnap files are zip archives, directories use
@@ -907,7 +917,13 @@ fn load_single_wasm_plugin(
     let wasm_bytes = source.read_wasm()?;
     let instance = runtime.instantiate(&plugin_id, &wasm_bytes)?;
     let manifest = source.manifest().clone();
-    let bridge = wasm::bridge::WasmPluginBridge::new(manifest, instance, log_sender.clone());
+    let bridge = wasm::bridge::WasmPluginBridge::new(
+        manifest,
+        instance,
+        log_sender.clone(),
+        source.as_ref(),
+        app_data_dir,
+    )?;
     host.register(Box::new(bridge));
 
     // Retain the source in the registry so the protocol

@@ -51,21 +51,30 @@ export function DemoView({ data, query }: PluginViewProps) {
 
   const echoText = (data as { query?: string })?.query ?? query ?? "";
 
-  // Live greeting fetched from the Rust backend on mount via
-  // the `current-greeting` message handler. Define a typed
-  // response interface so the round-trip stays end-to-end
-  // typed all the way from `handle_message`'s JSON return
-  // back to the JSX consumer.
+  // Live data fetched from the Rust backend on mount via
+  // two separate message handlers — `current-greeting` reads
+  // a setting and `enable-count` queries the SQL database.
+  // Define typed response interfaces so the round-trip stays
+  // end-to-end typed all the way from `handle_message`'s
+  // JSON return back to the JSX consumer.
   interface GreetingResponse {
     greeting: string;
   }
+  interface EnableCountResponse {
+    enable_count: number;
+  }
 
   const [greeting, setGreeting] = useState<string | null>(null);
+  const [enableCount, setEnableCount] = useState<number | null>(null);
 
   useEffect(() => {
     sendMessage<unknown, GreetingResponse>("current-greeting", {})
       .then((res) => setGreeting(res.greeting))
       .catch((e) => setGreeting(`(error: ${String(e)})`));
+
+    sendMessage<unknown, EnableCountResponse>("enable-count", {})
+      .then((res) => setEnableCount(res.enable_count))
+      .catch(() => setEnableCount(null));
   }, [sendMessage]);
 
   // Windowed list — exposes a `wheelRef` to attach to the
@@ -122,15 +131,25 @@ export function DemoView({ data, query }: PluginViewProps) {
       </div>
 
       {/* Live data fetched from the Rust backend via
-          sendMessage("current-greeting"). Refreshes on
-          mount; real plugins typically also re-fetch on
-          relevant events. */}
+          sendMessage. The greeting is read from a setting,
+          and the enable count is read from the per-plugin
+          SQL database. Both fetch on mount; real plugins
+          typically also re-fetch on relevant events. */}
       <div className="rounded-lg border border-border bg-surface-inset p-4">
         <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
           Greeting (from Rust backend)
         </p>
         <p className="text-sm text-text-primary font-mono">
           {greeting ?? "(loading…)"}
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface-inset p-4">
+        <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+          Times enabled (from SQL storage)
+        </p>
+        <p className="text-sm text-text-primary font-mono">
+          {enableCount ?? "(loading…)"}
         </p>
       </div>
 

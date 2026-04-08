@@ -619,6 +619,70 @@ value if hoisted.
 Sub-components extracted from a plugin component can call any of the
 four hooks directly — no prop threading required.
 
+### Per-plugin SQL storage (WASM plugins, ADR 0031)
+
+WASM plugins get an isolated SQLite database scoped to
+`<app_data_dir>/plugins/<plugin-id>/storage.db`. Schema migrations are
+declared in `manifest.toml` as a list of file paths relative to the
+plugin root:
+
+```toml
+[storage.sql]
+migrations = [
+    "migrations/001_init.sql",
+]
+```
+
+Each `.sql` file is plain SQL — diffable, syntax-highlighted, and
+shared with your unit tests via `include_str!`. The host applies
+migrations through `rusqlite_migration` on the first `sql::open()`
+call within an enable lifetime.
+
+The plugin opens its database via the WIT host import:
+
+```rust
+use torchsnap::plugin::sql;
+
+let db = sql::open()
+    .map_err(|e| format!("open SQL storage: {e}"))?;
+
+db.execute("INSERT INTO log (msg) VALUES (?)", &[
+    sql::SqlValue::Text("hello".into()),
+])?;
+
+let rows = db.query("SELECT id, msg FROM log ORDER BY id DESC LIMIT 10", &[])?;
+for row in rows {
+    let sql::SqlValue::Integer(id) = row[0] else { continue };
+    let sql::SqlValue::Text(ref msg) = row[1] else { continue };
+    println!("{id}: {msg}");
+}
+```
+
+Key points:
+
+- **Lazy materialization** — the database file is created on the first
+  `sql::open()` call. Plugins that never declare `[storage.sql]` and
+  never call `sql::open()` get no file on disk.
+- **Idempotent re-open** — a second `sql::open()` within the same
+  enable lifetime returns a fresh handle backed by the same
+  underlying connection. Outstanding handles share one connection;
+  the connection's internal mutex serializes execution.
+- **Drop semantics** — letting the handle go out of scope releases
+  just that handle. The cached `Arc<SqlStorage>` lives until the
+  plugin is disabled.
+- **No `IN (?)` expansion** — the WIT `sql-value` variant intentionally
+  omits the host's `List` variant. Plugins build their own `IN (?, ?,
+  ?)` clauses (one `?` per element) before calling `query`/`execute`.
+- **Transactions are not yet exposed.** Calculator-style two-statement
+  inserts are fine without; if a plugin genuinely needs save-pointed
+  transactions, raise the API gap.
+
+Migration file errors (missing file, malformed SQL, migration apply
+failure) surface from `sql::open()` as `Err(string)`. Per-statement
+errors come back from `execute` / `query`. Plugins decide whether to
+log and bail from `enable()`, fall back to a degraded mode, or hard
+error.
+
 ---
 
 ## Types Reference

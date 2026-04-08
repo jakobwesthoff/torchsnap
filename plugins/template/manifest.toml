@@ -11,6 +11,11 @@ prefixes = ["tpl:"]
 greeting = "Hello from Template!"
 verbose = false
 
+[storage.sql]
+migrations = [
+    "migrations/001_init.sql",
+]
+
 [frontend]
 launcher-bundle = "frontend/dist/launcher.js"
 launcher-css = "frontend/dist/launcher.css"
