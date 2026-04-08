@@ -33,31 +33,45 @@ import { Entry } from "../settings/Entry";
 
 // =========================================================
 // Type declaration
+//
+// Declares the full shape of `window.__torchsnap` for the host
+// compilation. TypeScript module augmentation is scope-limited
+// to files that (transitively) import the augmenting module —
+// so `sdk.ts` must declare the complete `TorchsnapGlobal` shape
+// here using `typeof` the actual implementations, because the
+// shim augmentations are only visible in files that import the
+// shims. The shim type simplifications (e.g. `string[]` instead
+// of `ModifierKey[]`) are intentional for plugin ergonomics and
+// do not affect the host assignment below.
 // =========================================================
 
 declare global {
-  interface Window {
-    __torchsnap?: {
-      React: typeof React;
-      jsxRuntime: typeof jsxRuntime;
-      hooks: {
-        usePluginInfo: typeof usePluginInfo;
-        usePluginRuntime: typeof usePluginRuntime;
-        useLauncher: typeof useLauncher;
-        usePluginSetting: typeof usePluginSetting;
-        useWindowedList: typeof useWindowedList;
-      };
-      keybindings: {
-        useKeyBindings: typeof useKeyBindings;
-        LAYER: typeof LAYER;
-      };
-      components: {
-        Switch: typeof Switch;
-        Slider: typeof Slider;
-        Section: typeof Section;
-        Entry: typeof Entry;
-      };
+  // `React` and `jsxRuntime` are host-only slices that the plugin
+  // shims don't expose. `keybindings` and `components` are declared
+  // here because the shim augmentations for those slices are not in
+  // `sdk.ts`'s transitive import graph (they come from
+  // `plugin-sdk/src/shims/keybindings.ts` and `components.ts`, which
+  // nothing in `src/` imports except `PluginContext.tsx`'s type-sync
+  // check — and that only imports `hooks.ts`). `hooks` is intentionally
+  // omitted: `hooks.ts` IS transitively reachable and its augmentation
+  // is already in scope; re-declaring it here would cause a TS2717
+  // conflict.
+  interface TorchsnapGlobal {
+    React: typeof React;
+    jsxRuntime: typeof jsxRuntime;
+    keybindings: {
+      useKeyBindings: typeof useKeyBindings;
+      LAYER: typeof LAYER;
     };
+    components: {
+      Switch: typeof Switch;
+      Slider: typeof Slider;
+      Section: typeof Section;
+      Entry: typeof Entry;
+    };
+  }
+  interface Window {
+    __torchsnap?: TorchsnapGlobal;
   }
 }
 

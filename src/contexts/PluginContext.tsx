@@ -92,3 +92,38 @@ export interface PluginContextValue {
 // ---------------------------------------------------------
 
 export const PluginContext = createContext<PluginContextValue | null>(null);
+
+// =========================================================
+// SDK shim type sync check
+//
+// `plugin-sdk/src/shims/hooks.ts` mirrors `PluginInfo`,
+// `PluginRuntime`, `LauncherActions`, and `PluginSendMessage`
+// for the WASM plugin SDK consumers. The shim re-declares
+// the shapes locally so plugins don't need to reach into
+// host source via path-based imports for IDE completion.
+// The assertions below fail compilation the moment either
+// side drifts from the other, ensuring the mirror stays in
+// sync without runtime cost.
+// =========================================================
+
+import type {
+  LauncherActions as SdkLauncherActions,
+  PluginInfo as SdkPluginInfo,
+  PluginRuntime as SdkPluginRuntime,
+  PluginSendMessage as SdkPluginSendMessage,
+} from "../../plugin-sdk/src/shims/hooks";
+
+// The tuple must be assignable to `[true, true, ...]` — if any
+// pair diverges, one of the `extends` arms resolves to `never`
+// and the assignment fails to compile. Consumed with `void` to
+// satisfy `noUnusedLocals` without runtime cost.
+void [
+  true as SdkPluginInfo extends PluginInfo ? true : never,
+  true as PluginInfo extends SdkPluginInfo ? true : never,
+  true as SdkPluginRuntime extends PluginRuntime ? true : never,
+  true as PluginRuntime extends SdkPluginRuntime ? true : never,
+  true as SdkLauncherActions extends LauncherActions ? true : never,
+  true as LauncherActions extends SdkLauncherActions ? true : never,
+  true as SdkPluginSendMessage extends PluginSendMessage ? true : never,
+  true as PluginSendMessage extends SdkPluginSendMessage ? true : never,
+];

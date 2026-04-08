@@ -18,7 +18,7 @@
  * history (if valid), and dismisses.
  */
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import type { FooterState, PluginViewProps } from "@torchsnap/plugin-sdk";
 import {
   useLauncher,
@@ -196,7 +196,7 @@ export const CalculatorView = memo(function CalculatorView({
       ? historyEntries[selectedIndex - 1]
       : null;
 
-  let inlineArea: React.ReactNode;
+  let inlineArea: ReactNode;
   if (selectedHistoryEntry && selectedHistoryEntry.subtitle) {
     // History entry selected — display its stored expression and result.
     inlineArea = (

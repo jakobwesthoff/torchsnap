@@ -24,6 +24,8 @@
 // host's main bundle and remain invisible to plugin authors.
 // =========================================================
 
+import "./global";
+import { createElement } from "react";
 import type { ComponentType, ReactNode } from "react";
 
 // ---------------------------------------------------------
@@ -75,26 +77,32 @@ declare global {
       Entry: ComponentType<EntryProps>;
     };
   }
-  interface Window {
-    __torchsnap?: TorchsnapGlobal;
-  }
 }
 
 // ---------------------------------------------------------
 // Re-exports
 //
-// Resolved at module evaluation time. The host calls
-// `initPluginSdk()` before any plugin bundle is fetched, so
-// `window.__torchsnap.components` is guaranteed to exist by
-// the time this destructure runs. Same pattern as the React
-// shim's hook destructure.
+// Resolved lazily on first call rather than at module
+// evaluation time. This keeps the shim safe in test setups
+// where module evaluation order isn't fully controlled, and
+// matches the defensive pattern used by `hooks.ts`.
 // ---------------------------------------------------------
 
-const components = window.__torchsnap?.components;
-if (!components) {
-  throw new Error(
-    "@torchsnap/plugin-sdk/components: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
-  );
+function hostComponents() {
+  const t = window.__torchsnap;
+  if (!t) {
+    throw new Error(
+      "@torchsnap/plugin-sdk/components: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+    );
+  }
+  return t.components;
 }
 
-export const { Switch, Slider, Section, Entry } = components;
+export const Switch: ComponentType<SwitchProps> = (props) =>
+  createElement(hostComponents().Switch, props);
+export const Slider: ComponentType<SliderProps> = (props) =>
+  createElement(hostComponents().Slider, props);
+export const Section: ComponentType<SectionProps> = (props) =>
+  createElement(hostComponents().Section, props);
+export const Entry: ComponentType<EntryProps> = (props) =>
+  createElement(hostComponents().Entry, props);
