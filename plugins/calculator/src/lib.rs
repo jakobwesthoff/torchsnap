@@ -624,16 +624,27 @@ fn save_to_history(db: &SqlHandle, expression: &str, result: &EvalResult) -> Res
 /// expression substring. Returns entries ordered by most
 /// recent first.
 fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry> {
+    // We intentionally don't fetch `result_type` here. The
+    // host's `ScoredEntry` has no metadata field to carry it
+    // across the WIT boundary, so any data we read would just
+    // be discarded. This means boolean history entries render
+    // with the default "number" styling in the history list
+    // — a minor visual regression vs the native calculator
+    // that will resolve when `ScoredEntry` gains a metadata
+    // field. The inline result area (typed query, not
+    // history) still displays the correct styling because the
+    // `data` payload of the CustomUI response carries
+    // `resultType` directly.
     let (sql_text, params) = if filter.is_empty() {
         (
-            "SELECT id, expression, result, result_type FROM calc_history \
+            "SELECT id, expression, result FROM calc_history \
              ORDER BY computed_at DESC LIMIT ?"
                 .to_string(),
             vec![SqlValue::Integer(HISTORY_LIMIT)],
         )
     } else {
         (
-            "SELECT id, expression, result, result_type FROM calc_history \
+            "SELECT id, expression, result FROM calc_history \
              WHERE expression LIKE ? \
              ORDER BY computed_at DESC LIMIT ?"
                 .to_string(),
@@ -651,8 +662,7 @@ fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry> {
 
     rows.into_iter()
         .filter_map(|columns| {
-            // Each row carries id, expression, result,
-            // result_type as Text columns.
+            // Each row carries id, expression, result as Text columns.
             let id = expect_text(columns.first())?;
             let expression = expect_text(columns.get(1))?;
             let result = expect_text(columns.get(2))?;
