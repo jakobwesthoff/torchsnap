@@ -152,7 +152,15 @@ impl SqlRow {
     /// WASM SQL bridge to forward result rows across the
     /// WIT boundary without going through the typed
     /// `FromSqlValue` accessor.
-    pub fn columns(&self) -> &[SqlValue] {
+    ///
+    /// Crate-private on purpose: any caller outside the
+    /// crate should use the typed `get<T>` accessor instead
+    /// — bypassing it should be a deliberate decision the
+    /// boundary code makes, not a casual choice. Promote to
+    /// `pub` only if a future external caller has a
+    /// genuine reason and acknowledges the typed-accessor
+    /// trade-off.
+    pub(crate) fn columns(&self) -> &[SqlValue] {
         &self.columns
     }
 }

@@ -240,12 +240,21 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
 
 impl bindings::torchsnap::plugin::settings::Host for PluginState {
     fn get(&mut self, key: String) -> Option<String> {
-        // If the bridge hasn't stashed a `PluginSettings`
-        // yet (e.g. settings::get called before enable()),
-        // pretend the key is unset rather than panicking.
-        // The plugin can fall back to its hard-coded default
-        // exactly as it would if the value were genuinely
-        // missing from the store.
+        // The bridge stashes `PluginSettings` BEFORE
+        // calling the guest's `enable()`, so any guest
+        // call (which can only run after `enable()`
+        // returns) should always find the handle present.
+        // The `debug_assert` documents that invariant and
+        // fires loudly during development if the lifecycle
+        // ever changes; in release builds we still
+        // gracefully degrade to "unset" so a stale
+        // `settings::get` (e.g. between disable and a
+        // re-enable cycle that hasn't restashed yet)
+        // returns `None` instead of panicking the guest.
+        debug_assert!(
+            self.settings.is_some(),
+            "settings::get called before bridge stashed PluginSettings — lifecycle invariant broken",
+        );
         let settings = self.settings.as_ref()?;
         settings.get_raw(&key)
     }
@@ -447,8 +456,19 @@ impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
             // expansion before binding; it never appears in
             // result rows and never crosses the WIT
             // boundary. Plugins expand their own IN clauses
-            // per ADR 0031.
-            HostSqlValue::List(_) => Wit::Null,
+            // per ADR 0031. The arm is unreachable in
+            // current code paths — `materialize_row` only
+            // produces scalar variants from rusqlite — but
+            // a `debug_assert` documents the invariant and
+            // catches future violations during development
+            // without panicking in release builds.
+            HostSqlValue::List(_) => {
+                debug_assert!(
+                    false,
+                    "SqlValue::List should never appear in result rows or cross the WIT boundary",
+                );
+                Wit::Null
+            }
         }
     }
 }

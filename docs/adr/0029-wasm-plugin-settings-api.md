@@ -112,9 +112,13 @@ WIT additions only cover runtime reads and reactive updates.
 **No SDK helper crate yet.** Plugins call `settings::get(key)`
 directly and parse the returned JSON via `serde_json::from_str`.
 A Rust SDK crate with typed wrappers
-(`get_setting<T: DeserializeOwned>(key) -> Option<T>`) is a future
-follow-up — there's only one user (the template plugin) so far,
-and the boilerplate is two lines per setting.
+(`get_setting<T: DeserializeOwned>(key) -> Option<T>`) is a near-
+term follow-up — see
+`todos/01knpw4sthqzwtm1tx5rrqxn52-rust-plugin-sdk-crate.md`. The
+calculator port (which landed shortly after this ADR) is the
+second user of the per-setting boilerplate; the trigger for the
+SDK crate has fired and it should be created before a third
+plugin lands and forces a churn-heavy retrofit.
 
 ## Consequences
 
