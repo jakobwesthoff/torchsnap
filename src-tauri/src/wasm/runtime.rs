@@ -64,6 +64,18 @@ pub struct PluginState {
     /// same `Arc<SqlStorage>`.
     sql_config: SqlConfig,
     sql_storage: Option<Arc<SqlStorage>>,
+    /// Resource reps for every `SqlHandleEntry` currently
+    /// live in `wasi_table`. Pushed on `sql::open()`,
+    /// removed on the WIT-driven `drop()` of an individual
+    /// handle, and drained-and-deleted on
+    /// `clear_sql_storage()` so that disable cleanly
+    /// releases every outstanding `Arc<SqlStorage>`
+    /// reference. Without this list, a plugin that opened
+    /// a handle and never explicitly dropped it would leak
+    /// the rusqlite `Connection` until the
+    /// `WasmPluginInstance` itself is dropped (i.e. until
+    /// app shutdown).
+    sql_handle_reps: Vec<u32>,
     /// Closure that writes a string to the system clipboard.
     /// Stashed by the bridge from the `tauri::AppHandle` on
     /// `enable()` so the `clipboard::write-text` host import
@@ -327,6 +339,14 @@ impl bindings::torchsnap::plugin::sql::Host for PluginState {
             .push(entry)
             .map_err(|e| format!("allocate SQL handle: {e}"))?;
 
+        // Track the rep so `clear_sql_storage` can drain
+        // every outstanding handle on disable, even if the
+        // guest forgot to drop them. Without this list, a
+        // leaked handle would keep the rusqlite connection
+        // alive until the entire WasmPluginInstance is
+        // dropped (effectively until app shutdown).
+        self.sql_handle_reps.push(handle.rep());
+
         Ok(handle)
     }
 }
@@ -379,10 +399,19 @@ impl bindings::torchsnap::plugin::sql::HostSqlHandle for PluginState {
     }
 
     fn drop(&mut self, handle: Resource<SqlHandleEntry>) -> wasmtime::Result<()> {
+        // Untrack the rep first so `clear_sql_storage`
+        // doesn't try to double-delete it on disable. The
+        // O(N) `retain` is fine — N is the number of
+        // currently-outstanding handles, which for any
+        // sensible plugin is a small number.
+        let rep = handle.rep();
+        self.sql_handle_reps.retain(|&r| r != rep);
+
         // Removing the entry drops just this resource's
-        // reference to the master Arc; the underlying
-        // SqlStorage stays alive on PluginState until the
-        // plugin is disabled.
+        // clone of the master Arc. The underlying
+        // SqlStorage stays alive on PluginState's
+        // `sql_storage` field until the plugin is
+        // disabled.
         self.wasi_table.delete(handle)?;
         Ok(())
     }
@@ -524,6 +553,7 @@ impl WasmRuntime {
             // been read from the plugin source.
             sql_config: SqlConfig::None,
             sql_storage: None,
+            sql_handle_reps: Vec::new(),
             // Stashed by the bridge on `enable()` via
             // `WasmPluginInstance::set_clipboard_writer`,
             // built from the AppHandle. `None` outside an
@@ -600,12 +630,40 @@ impl WasmPluginInstance {
         store.data_mut().sql_config = config;
     }
 
-    /// Drop the cached `Arc<SqlStorage>` (releasing the
-    /// underlying connection) on plugin disable so the
-    /// database file isn't held open between enable cycles.
+    /// Drop every outstanding SQL handle and the cached
+    /// `Arc<SqlStorage>` so the rusqlite `Connection` is
+    /// fully closed on disable.
+    ///
+    /// Drain order matters: we delete the handle entries
+    /// from `wasi_table` first (each delete drops one
+    /// `Arc<SqlStorage>` clone), then clear the master
+    /// `sql_storage` reference. After both steps the strong
+    /// count is zero and `SqlStorage::Drop` runs, closing
+    /// the connection and the SQLite file. Without this
+    /// drain, a plugin that opened a handle and never
+    /// explicitly dropped it would leak the connection
+    /// until the entire `WasmPluginInstance` is dropped
+    /// (effectively until app shutdown).
+    ///
+    /// `wasi_table.delete` errors (e.g., a stale rep that
+    /// was already deleted) are ignored — the goal is best-
+    /// effort reclaim, not strict accounting.
     pub fn clear_sql_storage(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().sql_storage = None;
+        let data = store.data_mut();
+        let reps = std::mem::take(&mut data.sql_handle_reps);
+        for rep in reps {
+            // `Resource::new_own(rep)` reconstructs an owned
+            // resource handle from the raw rep so we can
+            // hand it to `wasi_table.delete`. The original
+            // `Resource` returned to the guest is gone (or
+            // we wouldn't be in clear-on-disable territory),
+            // but the rep alone is sufficient for the
+            // table to look up and remove the entry.
+            let resource: Resource<SqlHandleEntry> = Resource::new_own(rep);
+            let _ = data.wasi_table.delete(resource);
+        }
+        data.sql_storage = None;
     }
 
     /// Install a closure that writes a string to the system
