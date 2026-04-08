@@ -20,6 +20,8 @@
 // `initPluginSdk()` runs before any plugin bundle loads.
 // =========================================================
 
+import "./global";
+
 // ---------------------------------------------------------
 // Type mirrors (single source of truth lives in host)
 // ---------------------------------------------------------
@@ -67,21 +69,39 @@ declare global {
       LAYER: LayerConstants;
     };
   }
-  interface Window {
-    __torchsnap?: TorchsnapGlobal;
-  }
 }
 
 // ---------------------------------------------------------
 // Re-exports
+//
+// Resolved lazily on first call rather than at module
+// evaluation time — matches the defensive pattern in
+// `hooks.ts` and `components.ts`.
 // ---------------------------------------------------------
 
-const k = window.__torchsnap?.keybindings;
-if (!k) {
-  throw new Error(
-    "@torchsnap/plugin-sdk/keybindings: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
-  );
+function hostKeybindings() {
+  const t = window.__torchsnap;
+  if (!t) {
+    throw new Error(
+      "@torchsnap/plugin-sdk/keybindings: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+    );
+  }
+  return t.keybindings;
 }
 
-export const useKeyBindings = k.useKeyBindings;
-export const LAYER = k.LAYER;
+export function useKeyBindings<T extends KeyBindingDefinition>(
+  definitions: T[],
+  changed?: (prev: T[], next: T[]) => boolean,
+): void {
+  return hostKeybindings().useKeyBindings(definitions, changed);
+}
+
+// LAYER is a constant — resolve once on first access via a Proxy.
+// Using a getter-backed Proxy avoids the eager `window.__torchsnap`
+// access while still letting consumers write `LAYER.COMPONENT` as
+// if it were a plain object.
+export const LAYER: LayerConstants = new Proxy({} as LayerConstants, {
+  get(_, prop: string) {
+    return (hostKeybindings().LAYER as unknown as Record<string, number>)[prop];
+  },
+});
