@@ -2,8 +2,7 @@
 --
 -- Keep migrations small, additive, and named in
 -- numeric order (`001_…`, `002_…`). The host applies
--- them via `rusqlite_migration` on the first
--- `sql::open()` call within an enable lifetime, so
+-- them via `rusqlite_migration` during `enable()`, so
 -- editing an already-applied migration after a release
 -- breaks every existing user. Add a new
 -- `002_…` file instead.

@@ -24,10 +24,10 @@
 //   `messaging::handle-message` guest export — your frontend
 //   calls `sendMessage(method, payload)` and this method
 //   dispatches by name
-// - Per-plugin SQLite storage via the `sql::open` host import
-//   and a `[storage.sql]` block in `manifest.toml` listing
-//   migration files. The host applies the migrations on the
-//   first `sql::open()` call within an enable lifetime
+// - Per-plugin SQLite storage via the `sql::connection` host
+//   import and a `[storage.sql]` block in `manifest.toml`
+//   listing migration files. The host creates the database
+//   and applies migrations before the guest's `enable()` runs
 // - Scheduled background tasks via `[[tasks]]` entries in
 //   `manifest.toml` and the `tasks::run-task` guest export.
 //   The host runs a per-plugin tokio scheduler that fires
@@ -65,28 +65,15 @@ impl LifecycleGuest for TemplatePlugin {
         let greeting = read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
         let verbose = read_bool_setting("verbose").unwrap_or(false);
 
-        // Open the per-plugin SQL database (creates the file
-        // and applies migrations on first call) and append a
-        // row recording this enable. `sql::open` returns
-        // `Err` if `[storage.sql]` is missing from the
-        // manifest or if a migration file fails to apply —
-        // log and continue rather than crashing the plugin,
-        // since storage is best-effort for this example.
-        match sql::open() {
-            Ok(db) => {
-                if let Err(e) = db.execute("INSERT INTO enable_log DEFAULT VALUES", &[]) {
-                    logging::log(
-                        logging::LogLevel::Warn,
-                        &format!("recording enable timestamp failed: {e}"),
-                        &[],
-                        None,
-                    );
-                }
-            }
-            Err(e) => {
+        // Append a row recording this enable. The host
+        // initializes the database before enable() runs, so
+        // sql::connection() is always ready.
+        {
+            let db = sql::connection();
+            if let Err(e) = db.execute("INSERT INTO enable_log DEFAULT VALUES", &[]) {
                 logging::log(
                     logging::LogLevel::Warn,
-                    &format!("opening SQL storage failed: {e}"),
+                    &format!("recording enable timestamp failed: {e}"),
                     &[],
                     None,
                 );
@@ -190,7 +177,7 @@ impl TasksGuest for TemplatePlugin {
             // authors can see the scheduler firing in
             // devtools.
             "heartbeat" => {
-                let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+                let db = sql::connection();
                 db.execute("INSERT INTO enable_log DEFAULT VALUES", &[])
                     .map_err(|e| format!("insert: {e}"))?;
                 logging::log(logging::LogLevel::Info, "Heartbeat fired", &[], None);
@@ -223,14 +210,14 @@ impl MessagingGuest for TemplatePlugin {
                     .map_err(|e| format!("serialize response: {e}"))
             }
 
-            // `enable-count` opens the SQL database and
-            // returns the number of rows in `enable_log` —
-            // i.e. how many times this plugin has been
-            // enabled. Demonstrates composing the SQL API
-            // with the messaging API and round-tripping a
-            // typed result row across the WIT boundary.
+            // `enable-count` returns the number of rows in
+            // `enable_log` — i.e. how many times this plugin
+            // has been enabled. Demonstrates composing the
+            // SQL API with the messaging API and round-
+            // tripping a typed result row across the WIT
+            // boundary.
             "enable-count" => {
-                let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+                let db = sql::connection();
                 let rows = db
                     .query("SELECT COUNT(*) FROM enable_log", &[])
                     .map_err(|e| format!("query: {e}"))?;

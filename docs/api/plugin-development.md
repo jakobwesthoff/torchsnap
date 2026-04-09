@@ -645,7 +645,7 @@ impl TasksGuest for MyPlugin {
     fn run_task(task_id: String) -> Result<(), String> {
         match task_id.as_str() {
             "retention-cleanup" => {
-                let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+                let db = sql::connection();
                 db.execute(
                     "DELETE FROM history WHERE created_at < datetime('now', '-30 days')",
                     &[],
@@ -699,17 +699,17 @@ migrations = [
 ```
 
 Each `.sql` file is plain SQL — diffable, syntax-highlighted, and
-shared with your unit tests via `include_str!`. The host applies
-migrations through `rusqlite_migration` on the first `sql::open()`
-call within an enable lifetime.
+shared with your unit tests via `include_str!`. The host creates the
+database file and applies migrations before the guest's `enable()`
+runs — by the time the plugin's own code executes, the schema is
+ready.
 
-The plugin opens its database via the WIT host import:
+The plugin obtains a connection handle via the WIT host import:
 
 ```rust
 use torchsnap::plugin::sql;
 
-let db = sql::open()
-    .map_err(|e| format!("open SQL storage: {e}"))?;
+let db = sql::connection();
 
 db.execute("INSERT INTO log (msg) VALUES (?)", &[
     sql::SqlValue::Text("hello".into()),
@@ -725,13 +725,14 @@ for row in rows {
 
 Key points:
 
-- **Lazy materialization** — the database file is created on the first
-  `sql::open()` call. Plugins that never declare `[storage.sql]` and
-  never call `sql::open()` get no file on disk.
-- **Idempotent re-open** — a second `sql::open()` within the same
-  enable lifetime returns a fresh handle backed by the same
-  underlying connection. Outstanding handles share one connection;
-  the connection's internal mutex serializes execution.
+- **Host-managed initialization** — the host creates the database
+  file and runs migrations during `enable()`, before the guest's
+  `enable()` runs. Plugins that never declare `[storage.sql]` get no
+  file on disk.
+- **Infallible connection** — `sql::connection()` always succeeds for
+  plugins that declare `[storage.sql]`. Each call returns a fresh
+  handle backed by the same underlying connection; the connection's
+  internal mutex serializes execution.
 - **Drop semantics** — letting the handle go out of scope releases
   just that handle. The cached `Arc<SqlStorage>` lives until the
   plugin is disabled.
@@ -743,10 +744,8 @@ Key points:
   transactions, raise the API gap.
 
 Migration file errors (missing file, malformed SQL, migration apply
-failure) surface from `sql::open()` as `Err(string)`. Per-statement
-errors come back from `execute` / `query`. Plugins decide whether to
-log and bail from `enable()`, fall back to a degraded mode, or hard
-error.
+failure) surface as a host-side `enable()` error — the guest never
+sees them. Per-statement errors come back from `execute` / `query`.
 
 ---
 

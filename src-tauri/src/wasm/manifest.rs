@@ -338,8 +338,7 @@ pub struct StorageDef {
 /// Migrations are declared as a list of file paths relative
 /// to the plugin root. The host reads the file contents via
 /// `PluginSource::read_file` at plugin load time and applies
-/// them via `rusqlite_migration` on the first `sql::open()`
-/// call.
+/// them during `enable()` before the guest runs.
 ///
 /// Single source of truth: the `.sql` files. Plugin tests can
 /// `include_str!` the same files the manifest references —

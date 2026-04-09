@@ -98,19 +98,18 @@ impl WasmPluginBridge {
     ///   archive) the plugin was loaded from. Used here to
     ///   read migration files declared in
     ///   `manifest.storage.sql.migrations` *once*, eagerly,
-    ///   so the `sql::open()` host import can resolve
-    ///   without re-touching the source on every call.
+    ///   so `open_sql_storage` (called from `enable()`) can
+    ///   resolve without re-touching the source.
     /// - `app_data_dir` is the host's per-app data root
     ///   (`tauri::AppHandle::path().app_data_dir()`); the
     ///   plugin's database file lives at
     ///   `<app_data_dir>/plugins/<plugin-id>/storage.db`.
     ///
     /// Migration-file reads are surfaced as `Err` here
-    /// rather than deferred to the first `sql::open()`
-    /// call, because a missing migration file is a manifest
+    /// because a missing migration file is a manifest
     /// authoring bug — better to refuse to load the plugin
     /// than to half-load it and wait for the symptom to
-    /// surface in a search hot path.
+    /// surface later.
     pub fn new(
         manifest: Manifest,
         instance: WasmPluginInstance,
@@ -120,9 +119,8 @@ impl WasmPluginBridge {
     ) -> anyhow::Result<Self> {
         // Materialize the SQL configuration once at load
         // time. Plugins without `[storage.sql]` get
-        // `SqlConfig::None`, which the host import
-        // translates into a clear "no storage configured"
-        // error if they call `sql::open()` anyway.
+        // `SqlConfig::None`; the bridge's `enable()` skips
+        // database creation for those.
         let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
             None => SqlConfig::None,
             Some(sql) => {
@@ -150,11 +148,10 @@ impl WasmPluginBridge {
         };
 
         // Stash the configuration on the wasmtime store
-        // immediately so that any future host-import call
-        // sees a fully-initialized `PluginState`. The
-        // PluginState's own `sql_storage` cache stays
-        // `None` — the actual database file is materialized
-        // lazily on the first `sql::open()` call.
+        // immediately so that `open_sql_storage` (called
+        // from `enable()`) finds the config ready. The
+        // PluginState's own `sql_storage` cache stays `None`
+        // until the bridge's `enable()` materializes it.
         instance.set_sql_config(sql_config);
 
         // Pre-parse every `[[tasks]]` schedule. The manifest
@@ -431,6 +428,13 @@ impl Plugin for WasmPluginBridge {
                 .write_text(text)
                 .map_err(|e| format!("write to clipboard: {e}"))
         }));
+
+        // Materialize the SQL database (file creation,
+        // pragmas, migrations) before the guest's enable()
+        // runs, so sql::connection() is ready immediately.
+        if let Err(e) = self.instance.open_sql_storage() {
+            self.log(LogLevel::Error, format!("SQL storage init failed: {e:#}"));
+        }
 
         if let Err(e) = self.instance.enable() {
             self.log(LogLevel::Error, format!("enable() failed: {e:#}"));

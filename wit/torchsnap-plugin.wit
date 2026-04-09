@@ -58,10 +58,11 @@ interface clipboard {
 ///
 /// Each plugin gets an isolated database file at
 /// `app_data_dir/plugins/<plugin-id>/storage.db`. The host
-/// applies the migration files declared in
-/// `manifest.toml`'s `[storage.sql]` table on the first
-/// `open()` call within an enable lifetime, then hands back
-/// a typed handle the plugin uses to issue queries.
+/// creates the file and applies the migration files declared
+/// in `manifest.toml`'s `[storage.sql]` table before the
+/// guest's `enable()` runs. Plugins obtain lightweight
+/// connection handles via `connection()` and use them to
+/// issue queries.
 ///
 /// Plugins are responsible for scoring, ordering, and
 /// `IN (...)` expansion on their side — the WIT `sql-value`
@@ -70,12 +71,10 @@ interface clipboard {
 /// to marshal complex types in and out of `text` /
 /// `blob` columns.
 ///
-/// Errors come back as `err(string)`. The plugin decides
-/// what to do (log and bail from `enable()`, fall back to a
-/// degraded mode, etc.). Bridge-level failures (missing
-/// migration file, malformed SQL, filesystem permission)
-/// surface from `open()`; per-statement errors surface from
-/// `execute` / `query`.
+/// Bridge-level failures (missing migration file, malformed
+/// SQL, filesystem permission) surface as an `enable()`
+/// error on the host side — the guest never sees them.
+/// Per-statement errors surface from `execute` / `query`.
 interface sql {
   /// A database value matching SQLite's five storage classes.
   /// Plugins build query parameters and read result rows in
@@ -99,13 +98,14 @@ interface sql {
     query: func(sql: string, params: list<sql-value>) -> result<list<list<sql-value>>, string>;
   }
 
-  /// Open (or create) the plugin's database, applying any
-  /// declared migrations on first call. Subsequent calls
-  /// within the same enable lifetime return a fresh handle
-  /// pointing at the same underlying database. The handle is
+  /// Obtain a connection handle to the plugin's database.
+  /// The host initializes the database (file creation,
+  /// migrations) before the guest's `enable()` runs, so
+  /// this always succeeds for plugins that declare
+  /// `[storage.sql]` in their manifest. The handle is
   /// released automatically via WIT resource drop semantics
   /// when the plugin lets it go out of scope.
-  open: func() -> result<sql-handle, string>;
+  connection: func() -> sql-handle;
 }
 
 /// Read settings from this plugin's namespace.
