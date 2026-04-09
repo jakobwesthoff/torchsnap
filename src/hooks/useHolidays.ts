@@ -51,26 +51,27 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((bDay.getTime() - aDay.getTime()) / msPerDay);
 }
 
-/** October 1–31. */
+/** October 24–31. */
 export function isHalloween(now: Date = new Date()): boolean {
-  return now.getMonth() === 9;
+  return now.getMonth() === 9 && now.getDate() >= 24;
 }
 
-/** December 1–26. */
+/** December 20–26. */
 export function isChristmas(now: Date = new Date()): boolean {
   const month = now.getMonth();
   const day = now.getDate();
-  return month === 11 && day <= 26;
+  return month === 11 && day >= 20 && day <= 26;
 }
 
-/** December 30 – January 2. */
+/** December 31 20:00 – January 1 12:00. */
 export function isNewYear(now: Date = new Date()): boolean {
   const month = now.getMonth();
   const day = now.getDate();
-  return (month === 11 && day >= 30) || (month === 0 && day <= 2);
+  const hour = now.getHours();
+  return (month === 11 && day === 31 && hour >= 20) || (month === 0 && day === 1 && hour < 12);
 }
 
-/** Within 7 days of Easter Sunday. */
+/** Good Friday (−2) through Easter Monday (+1). */
 export function isEaster(now: Date = new Date()): boolean {
   const year = now.getFullYear();
 
@@ -78,7 +79,8 @@ export function isEaster(now: Date = new Date()): boolean {
   // in case we're near a year boundary (early January / late December).
   for (const y of [year - 1, year, year + 1]) {
     const easter = getEasterDate(y);
-    if (Math.abs(daysBetween(now, easter)) <= 7) {
+    const diff = daysBetween(easter, now);
+    if (diff >= -2 && diff <= 1) {
       return true;
     }
   }
