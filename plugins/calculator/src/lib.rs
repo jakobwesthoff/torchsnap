@@ -198,14 +198,12 @@ fn prefix_mode_search(query: &str) -> SearchResponse {
     };
 
     // Query history filtered by the current input. If
-    // history is disabled or the database open fails (e.g.
-    // first call before migrations succeed), fall back to
-    // an empty list — the inline result still renders.
+    // history is disabled or obtaining a connection fails,
+    // fall back to an empty list — the inline result still
+    // renders.
     let history = if HISTORY_ENABLED.with(Cell::get) {
-        match sql::open() {
-            Ok(db) => query_history(&db, query),
-            Err(_) => vec![],
-        }
+        let db = sql::connection();
+        query_history(&db, query)
     } else {
         vec![]
     };
@@ -302,7 +300,7 @@ fn save_history_method(payload: &str) -> Result<String, String> {
         .and_then(serde_json::Value::as_str)
         .ok_or("missing 'resultType' field")?;
 
-    let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+    let db = sql::connection();
     save_to_history(
         &db,
         &expression,
@@ -320,7 +318,7 @@ fn save_history_method(payload: &str) -> Result<String, String> {
 }
 
 fn stats_method() -> Result<String, String> {
-    let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+    let db = sql::connection();
     let rows = db
         .query("SELECT COUNT(*) FROM calc_history", &[])
         .map_err(|e| format!("count: {e}"))?;
@@ -340,7 +338,7 @@ fn stats_method() -> Result<String, String> {
 }
 
 fn clear_history_method() -> Result<String, String> {
-    let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+    let db = sql::connection();
     db.execute("DELETE FROM calc_history", &[])
         .map_err(|e| format!("delete: {e}"))?;
     Ok(json!({ "cleared": true }).to_string())
@@ -364,7 +362,7 @@ impl TasksGuest for CalculatorPlugin {
 /// declared in `manifest.toml`'s `[[tasks]]` block.
 fn cleanup_expired_history() -> Result<(), String> {
     let days = RETENTION_DAYS.with(Cell::get).max(1);
-    let db = sql::open().map_err(|e| format!("open storage: {e}"))?;
+    let db = sql::connection();
     db.execute(
         "DELETE FROM calc_history \
          WHERE computed_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",

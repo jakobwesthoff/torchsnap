@@ -27,8 +27,8 @@ sandboxing of the underlying abstraction.
 
 Add a new `interface sql` host import to the WIT world. The interface
 exposes a `sql-handle` resource (wasmtime component-model resource type)
-with `execute` and `query` methods, plus a top-level `open()` function
-that materializes the resource lazily.
+with `execute` and `query` methods, plus a top-level `connection()`
+function that returns a handle to the host-managed database.
 
 ```wit
 interface sql {
@@ -40,7 +40,7 @@ interface sql {
     blob(list<u8>),
   }
 
-  open: func() -> result<sql-handle, string>;
+  connection: func() -> sql-handle;
 
   resource sql-handle {
     execute: func(sql: string, params: list<sql-value>) -> result<u64, string>;
@@ -90,20 +90,19 @@ The `[storage]` table is a wrapper namespace so `[storage.kv]` /
 `[storage.files]` blocks can be added in the future without breaking
 existing manifests.
 
-### File creation timing: lazy on `sql::open()`
+### File creation timing: host-managed on `enable()`
 
 The host reads the migration file contents at plugin **load** time
 via `PluginSource::read_file` — failing fast on missing or
 malformed migration files (treat them as a manifest authoring bug).
 The actual database file at
-`<app_data_dir>/plugins/<plugin-id>/storage.db` is created lazily on
-the first `sql::open()` call. Plugins that never call `sql::open()`
-get no file on disk.
+`<app_data_dir>/plugins/<plugin-id>/storage.db` is created by the
+bridge during `enable()`, before the guest's own `enable()` runs.
+Plugins that never declare `[storage.sql]` get no file on disk.
 
-A second `sql::open()` call within the same enable lifetime returns a
-fresh handle pointing at the *same* underlying connection. The
-wasmtime store mutex serializes every guest call, so no concurrent
-opens are even possible — sequential repeat calls just allocate
+`sql::connection()` returns a fresh handle pointing at the underlying
+connection. The wasmtime store mutex serializes every guest call, so
+no concurrent access is possible — sequential calls just allocate
 another resource entry that backs onto the same `Arc<SqlStorage>`.
 
 ### Resource handle: real WIT resource, not opaque integer
@@ -128,20 +127,20 @@ its handle go out of scope, releasing the per-handle `ResourceTable`
 entry. The master `Arc<SqlStorage>` lives on `PluginState` and is
 cleared on `disable()`.
 
-Alternative considered: opaque `u64` handle returned from `open()` and
-threaded through every call. Rejected because it loses the automatic
-drop semantics and forces the plugin to remember to call `close()`.
+Alternative considered: opaque `u64` handle returned from
+`connection()` and threaded through every call. Rejected because it
+loses the automatic drop semantics and forces the plugin to remember
+to call `close()`.
 
-### Error surfacing: at `sql::open()`
+### Error surfacing: at bridge `enable()`
 
-Storage-related errors — missing migration file, malformed SQL,
-filesystem permission, migration apply failure — surface as the
-`err(string)` return of `sql::open()`. Per-statement errors surface
-from `execute` / `query`. There is no fail-at-load behavior (the
-plugin loads even if migration files reference future schemas) — but
-note that **migration file reads happen at bridge construction time**
-(before `enable()`), so a missing migration file actually fails the
-plugin load with an `anyhow::Context` chain like
+Storage-related errors — malformed SQL, filesystem permission,
+migration apply failure — surface as a host-side `enable()` error
+before the guest's own `enable()` runs. The guest never sees storage
+initialization failures. Per-statement errors surface from `execute`
+/ `query`. Note that **migration file reads happen at bridge
+construction time** (before `enable()`), so a missing migration file
+actually fails the plugin load with an `anyhow::Context` chain like
 `read SQL migration file 'migrations/001_init.sql' → ... not found`.
 
 ### Transactions: deferred
@@ -156,8 +155,8 @@ non-breaking.
 ### Multiple databases per plugin: no
 
 One DB per plugin (`storage.db`). YAGNI for calculator and any plugin
-on the roadmap. If a future plugin needs more, `open` can grow a name
-parameter and gate access to `storage-<name>.db` files inside the
+on the roadmap. If a future plugin needs more, `connection` can grow a
+name parameter and gate access to `storage-<name>.db` files inside the
 plugin's data dir.
 
 ### Bridge wiring
@@ -175,8 +174,9 @@ cycles.
 `PluginState` gains:
 
 - `sql_config: SqlConfig` — pre-loaded config from the bridge
-- `sql_storage: Option<Arc<SqlStorage>>` — materialized on first
-  `sql::open()`, cached for subsequent calls
+- `sql_storage: Option<Arc<SqlStorage>>` — materialized by the
+  bridge's `enable()` before the guest runs, used by
+  `sql::connection()` for subsequent handle allocation
 
 `bindings::torchsnap::plugin::sql::Host` and `HostSqlHandle` are
 implemented for `PluginState` and pick up the new linker entries
@@ -210,17 +210,15 @@ automatically via `bindings::Plugin::add_to_linker(...)`.
 - Adding a host import is automatically picked up by
   `bindings::Plugin::add_to_linker(...)` — no per-interface plumbing
   needed at the linker level.
-- Plugins that never declare `[storage.sql]` and never call
-  `sql::open()` pay no runtime cost (no file on disk, no in-memory
-  state).
+- Plugins that never declare `[storage.sql]` pay no runtime cost (no
+  file on disk, no in-memory state).
 - The WIT resource model gives us automatic drop semantics —
   plugins that misuse the handle (drop it, then keep using it) get
   a clean error instead of a use-after-free.
 - The migration file paths in the manifest are read at bridge
-  construction time, which means a typo'd path fails plugin load
-  rather than waiting for the first `sql::open()` call. This is the
-  desired behavior — better to refuse to load than to half-load and
-  surprise the user later.
+  construction time, which means a typo'd path fails plugin load.
+  This is the desired behavior — better to refuse to load than to
+  half-load and surprise the user later.
 - Adding transactions later requires a new resource type
   (`sql-transaction`) wrapping the same connection. This is purely
   additive to the WIT world.
