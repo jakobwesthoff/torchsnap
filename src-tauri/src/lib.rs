@@ -817,7 +817,8 @@ fn load_wasm_plugins(
     source_registry: &wasm::protocol::PluginSourceRegistry,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<usize> {
-    let runtime = wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
+    let runtime: Arc<wasm::runtime::WasmRuntime> =
+        wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
 
     let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
     let entries = match std::fs::read_dir(&plugin_dir) {
