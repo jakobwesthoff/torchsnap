@@ -1,0 +1,59 @@
+# Plugin::enable should return Result so the host can react to failure
+
+## Context
+
+Today `Plugin::enable(&self, app, ctx)` returns `()`. If a plugin's
+enable path fails — for WASM plugins, that includes the guest's own
+`lifecycle::enable` export returning `Err` — the bridge can only log
+the error. There is no channel to tell `PluginHost` "I failed, please
+flip my `AtomicBool enabled` flag back to false."
+
+The WASM instance destroy/recreate refactor (ADR 0033) made this worse:
+on guest `enable()` failure the bridge now drops the `WasmPluginInstance`
+back to `None` (the right semantic — see that ADR), but the host's
+`AtomicBool` stays `true`. The settings UI shows the plugin as enabled;
+subsequent dispatch hits the bridge's defensive `None` branch and logs a
+warning. The user sees a "working" plugin that silently does nothing.
+
+## Current State
+
+- `Plugin` trait in `src-tauri/src/plugins/mod.rs`: `fn enable(&self,
+  app: &AppHandle, ctx: &PluginContext)` — no return value
+- `PluginHost::handle_setting_changed` for `enabled.<id>` calls
+  `slot.plugin.enable(&app, &ctx)` and assumes success
+- `WasmPluginBridge::enable` (post-ADR-0033) logs + drops instance on
+  guest-side failure; cannot report failure upward
+
+## Target
+
+- `Plugin::enable` returns `Result<(), PluginEnableError>` (or
+  `anyhow::Error` — TBD during design)
+- `PluginHost` checks the return and on `Err` flips the slot's `enabled`
+  `AtomicBool` back to `false`, persists the settings store's
+  `enabled.<id>` key back to `false`, logs the failure, and notifies
+  any UI subscribers so the settings toggle reflects reality
+- Every existing `Plugin` impl updated (native plugins: most simply
+  `Ok(())` their way through; WASM bridge propagates the guest error)
+- New tests: a plugin whose `enable` fails deterministically, assert
+  that after the failed transition the host's `enabled` state is `false`
+  and the settings store reflects that
+
+## Open Questions
+
+- Error type: introduce a dedicated `PluginEnableError` enum, or just
+  use `anyhow::Error` for simplicity?
+- UI feedback: should a failed enable surface a toast/notification to
+  the user, or is the silent revert + log line enough?
+- Retry semantics: does flipping the flag back mean the next
+  `enable.<id>: true` setting write is treated as a fresh attempt, or
+  should there be a cooldown / backoff to avoid toggle loops?
+
+## References
+
+- ADR 0025 — enable/disable lifecycle foundation
+- ADR 0033 — WASM instance lifecycle (introduces the failure path this
+  todo addresses)
+- `src-tauri/src/plugin_host.rs` — `handle_setting_changed` for
+  `enabled.<id>` is where the new error handling wires in
+- `src-tauri/src/wasm/bridge.rs` — WASM bridge's enable path, first
+  real producer of the error
