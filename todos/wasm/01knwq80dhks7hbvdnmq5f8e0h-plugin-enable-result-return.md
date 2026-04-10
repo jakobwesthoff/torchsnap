@@ -38,6 +38,19 @@ warning. The user sees a "working" plugin that silently does nothing.
   that after the failed transition the host's `enabled` state is `false`
   and the settings store reflects that
 
+### Bridge disabled-dispatch handling upgrade
+
+Once the host flips its `AtomicBool` back on enable failure, the
+"instance slot is `None` while the host thinks the plugin is enabled"
+window is eliminated. At that point the `log_dispatched_while_disabled`
+helper in `WasmPluginBridge` becomes genuinely unreachable, and the
+call sites in the trait methods (`setting_changed`, `entries`,
+`execute`, `search`, `handle_message`) should be upgraded from
+"`Error` log + no-op" to `debug_assert!(false, ...)` — or an outright
+`unreachable!()` in release — so future dispatch bugs crash loudly
+instead of silently no-opping. The helper itself can be deleted at
+that point.
+
 ## Open Questions
 
 - Error type: introduce a dedicated `PluginEnableError` enum, or just

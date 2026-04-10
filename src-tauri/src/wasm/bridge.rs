@@ -450,6 +450,25 @@ impl WasmPluginBridge {
             .as_ref()
             .map(Arc::clone)
     }
+
+    /// Log a "bridge dispatched while disabled" event at
+    /// `Error` level with a uniform `bug:` prefix. This
+    /// state should never occur under the host's
+    /// `AtomicBool` gating — if it does, it is either a
+    /// genuine dispatch bug or the known transient
+    /// post-guest-enable-failure window described in the
+    /// `Plugin::enable → Result` follow-up todo. Once
+    /// that follow-up lands and the window is eliminated,
+    /// the log calls at the call sites should be replaced
+    /// by `debug_assert!(false, ...)` or an outright
+    /// `unreachable!()` — the code path is provably
+    /// dead at that point.
+    fn log_dispatched_while_disabled(&self, method: &str) {
+        self.log(
+            LogLevel::Error,
+            format!("bug: {method} dispatched on disabled plugin"),
+        );
+    }
 }
 
 impl Plugin for WasmPluginBridge {
@@ -558,10 +577,7 @@ impl Plugin for WasmPluginBridge {
             }
         };
         let Some(instance) = self.current_instance() else {
-            self.log(
-                LogLevel::Warn,
-                format!("setting_changed({key}) on disabled plugin"),
-            );
+            self.log_dispatched_while_disabled(&format!("setting_changed({key})"));
             return;
         };
         if let Err(e) = instance.on_setting_changed(key, &json) {
@@ -574,7 +590,7 @@ impl Plugin for WasmPluginBridge {
 
     fn entries(&self) -> Vec<CatalogEntry> {
         let Some(instance) = self.current_instance() else {
-            self.log(LogLevel::Warn, "entries() on disabled plugin".to_string());
+            self.log_dispatched_while_disabled("entries()");
             return vec![];
         };
         match instance.entries() {
@@ -592,14 +608,18 @@ impl Plugin for WasmPluginBridge {
         action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        let instance = self
-            .current_instance()
-            .context("execute() called on disabled plugin")?;
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled("execute()");
+            anyhow::bail!("execute() called on disabled plugin");
+        };
         instance.execute(entry_id, action_id)
     }
 
     fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> {
-        let instance = self.current_instance()?;
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled("search()");
+            return None;
+        };
         match instance.search(query, matched_prefix) {
             Ok(response) => match response {
                 PluginResponse::Results(ref entries) if entries.is_empty() => None,
@@ -635,9 +655,10 @@ impl Plugin for WasmPluginBridge {
         payload: serde_json::Value,
         _channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        let instance = self
-            .current_instance()
-            .context("handle_message() called on disabled plugin")?;
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled(&format!("handle_message({method})"));
+            anyhow::bail!("handle_message() called on disabled plugin");
+        };
 
         // Re-encode the payload as a JSON string for the WIT
         // crossing — same convention as `settings::get`.
