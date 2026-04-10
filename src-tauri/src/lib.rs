@@ -916,8 +916,8 @@ fn load_single_wasm_plugin(
     };
 
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
-    let wasm_bytes = source.read_wasm()?;
-    let instance = runtime.instantiate(&plugin_id, &wasm_bytes)?;
+    runtime.compile(&plugin_id, &source.read_wasm()?)?;
+    let instance = runtime.instantiate(&plugin_id)?;
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmPluginBridge::new(
         manifest,
