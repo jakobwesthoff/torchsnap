@@ -855,7 +855,7 @@ fn load_wasm_plugins(
 
         let source_kind = if is_archive { "archive" } else { "directory" };
         let loaded = load_single_wasm_plugin(
-            &runtime,
+            Arc::clone(&runtime),
             &path,
             host,
             log_sender,
@@ -900,7 +900,7 @@ fn load_wasm_plugins(
 }
 
 fn load_single_wasm_plugin(
-    runtime: &wasm::runtime::WasmRuntime,
+    runtime: Arc<wasm::runtime::WasmRuntime>,
     path: &std::path::Path,
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
@@ -917,12 +917,10 @@ fn load_single_wasm_plugin(
     };
 
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
-    runtime.compile(&plugin_id, &source.read_wasm()?)?;
-    let instance = runtime.instantiate(&plugin_id)?;
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmPluginBridge::new(
         manifest,
-        instance,
+        runtime,
         log_sender.clone(),
         source.as_ref(),
         app_data_dir,
