@@ -983,7 +983,7 @@ WASM debugging is harder than native Rust. Plugin authors will need:
 | Component | Location | Notes |
 |---|---|---|
 | WIT contract | `wit/torchsnap-plugin.wit` | `logging` + `types` (host imports), `lifecycle` + `search` (guest exports) |
-| WASM runtime | `src-tauri/src/wasm/runtime.rs` | `WasmRuntime` (shared `Engine`) + `WasmPluginInstance` (`Mutex<Store>`) |
+| WASM runtime | `src-tauri/src/wasm/runtime.rs` | `WasmRuntime` (shared `Engine` + compiled-`Component` cache, split `compile()`/`instantiate()` API) + `WasmPluginInstance` (`Mutex<Store>`) |
 | WasmPluginBridge | `src-tauri/src/wasm/bridge.rs` | Adapts `WasmPluginInstance` to native `Plugin` trait |
 | Plugin sources | `src-tauri/src/wasm/source.rs` | `DirectorySource` (dev) + `ArchiveSource` (production) |
 | Asset protocol | `src-tauri/src/wasm/protocol.rs` | `torchsnap-plugin://localhost/<id>/<path>` with CORS + content-type |
