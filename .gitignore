@@ -31,6 +31,12 @@ plugins/*/*.wasm
 # Packaged plugin archives built by `just package-plugin`
 plugins/*.torchsnap
 
+# Test fixture crate build artifacts — each fixture is a
+# standalone wasm32-wasip2 crate with its own target/ dir.
+# The committed `*.wasm` next to each fixture's Cargo.toml is
+# the canonical test input, rebuilt via `just build-test-fixtures`.
+src-tauri/tests/fixtures/*/target/
+
 # Generated asset data lives in src/derived/ and IS checked in.
 # See src/derived/README.md for regeneration instructions.
 

@@ -146,6 +146,49 @@ check-plugins:
 check-plugin name:
     cargo check --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2
 
+# Build the WASM test fixtures used by src-tauri's Rust test
+# suite. Each fixture is a standalone wasm32-wasip2 crate under
+# `src-tauri/tests/fixtures/`; this recipe compiles them and
+# copies the `.wasm` artifact to the plugin root directory (next
+# to the fixture's Cargo.toml / README) where the tests look for
+# it.
+#
+# The `.wasm` artifacts are committed to the repository — this
+# recipe is only run by developers when a fixture's source
+# changes or the shared WIT world is updated. CI runs the Rust
+# test suite against the committed `.wasm`.
+build-test-fixtures:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in src-tauri/tests/fixtures/*/; do
+        if [ ! -f "$dir/Cargo.toml" ]; then
+            continue
+        fi
+        name=$(basename "$dir")
+        echo "Building test fixture: $name"
+        cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
+
+        # Resolve the target directory. These fixture crates sit
+        # outside any workspace, so cargo writes their build
+        # output to `$dir/target/` — next to the crate's own
+        # Cargo.toml. The artifact filename matches the crate
+        # name with hyphens replaced by underscores.
+        crate_name=$(grep '^name' "$dir/Cargo.toml" | head -1 | sed 's/.*= *"//' | sed 's/".*//' | tr '-' '_')
+        src="$dir/target/wasm32-wasip2/release/${crate_name}.wasm"
+
+        # Read the wasm filename from the fixture's manifest so
+        # the copy target matches whatever the fixture declares.
+        wasm_file=$(grep '^wasm' "$dir/manifest.toml" | sed 's/.*= *"//' | sed 's/".*//')
+
+        if [ -f "$src" ]; then
+            cp "$src" "$dir/$wasm_file"
+            echo "Copied $src → $dir/$wasm_file"
+        else
+            echo "Error: expected artifact not found: $src"
+            exit 1
+        fi
+    done
+
 # Validate WIT definitions parse correctly
 check-wit:
     wasm-tools component wit wit/ > /dev/null
