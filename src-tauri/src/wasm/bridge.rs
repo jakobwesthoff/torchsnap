@@ -451,18 +451,13 @@ impl WasmPluginBridge {
             .map(Arc::clone)
     }
 
-    /// Log a "bridge dispatched while disabled" event at
-    /// `Error` level with a uniform `bug:` prefix. This
-    /// state should never occur under the host's
-    /// `AtomicBool` gating — if it does, it is either a
-    /// genuine dispatch bug or the known transient
-    /// post-guest-enable-failure window described in the
-    /// `Plugin::enable → Result` follow-up todo. Once
-    /// that follow-up lands and the window is eliminated,
-    /// the log calls at the call sites should be replaced
-    /// by `debug_assert!(false, ...)` or an outright
-    /// `unreachable!()` — the code path is provably
-    /// dead at that point.
+    /// Log a "dispatched into disabled plugin" event with a
+    /// uniform `bug:` prefix. The only path that reaches
+    /// this today is the known transient window after a
+    /// guest `enable()` failure; once the `Plugin::enable →
+    /// Result` follow-up closes that window the branch is
+    /// dead and the call sites should be upgraded to
+    /// `debug_assert!` / `unreachable!()`.
     fn log_dispatched_while_disabled(&self, method: &str) {
         self.log(
             LogLevel::Error,
@@ -716,20 +711,14 @@ impl WasmPluginBridge {
 
 #[cfg(test)]
 mod tests {
-    //! Bridge-level tests that exercise the
-    //! `ensure_instance`/`take_instance` lifecycle and the
-    //! constructor's fail-fast behavior.
+    //! Bridge-level tests.
     //!
-    //! **Scope**: these tests deliberately do *not* go
-    //! through the full `Plugin::enable` path. That path
-    //! takes a `PluginContext` whose `PluginSettings`
-    //! requires a real Tauri store, and there is currently
-    //! no lightweight way to build one from a unit test.
-    //! Instead, the tests drive the primitives
-    //! (`ensure_instance`, guest `enable()`,
-    //! `take_instance`) directly — the Plugin trait glue
-    //! that composes them is straightforward and covered
-    //! by code review.
+    //! These exercise the `ensure_instance`/`take_instance`
+    //! lifecycle and the constructor's fail-fast behavior
+    //! directly. The full `Plugin::enable` path is not
+    //! covered because `PluginContext.settings` needs a
+    //! real Tauri store; the primitives it composes are
+    //! driven directly instead.
 
     use super::*;
     use crate::wasm::logging::channel::LogSender;
@@ -766,25 +755,14 @@ mod tests {
 
     #[test]
     fn new_compiles_but_does_not_instantiate() {
-        // The constructor compiles the component into the
-        // runtime cache and materializes the sql config,
-        // but the instance slot stays `None` until
-        // `ensure_instance` is called.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
-        assert!(
-            !bridge.instance_is_some(),
-            "fresh bridge should have an empty instance slot"
-        );
+        assert!(!bridge.instance_is_some());
         assert!(matches!(bridge.sql_config_for_tests(), SqlConfig::None));
     }
 
     #[test]
     fn new_surfaces_compile_errors() {
-        // Pointing the bridge at a fixture whose `wasm`
-        // field references a file with garbage bytes
-        // should fail at the `runtime.compile` step and
-        // return an `Err` from the constructor.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bad_plugin_dir = tmp.path().join("bad-plugin");
         std::fs::create_dir_all(&bad_plugin_dir).expect("mkdir");
@@ -815,24 +793,17 @@ icon = "heroicons:x-mark"
             &source,
             app_data.path(),
         );
-        assert!(
-            result.is_err(),
-            "bridge construction should fail for broken wasm bytes"
-        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn new_surfaces_missing_migration_file() {
-        // A manifest that declares a migration file which
-        // does not exist in the source must fail bridge
-        // construction, not silently skip the migration.
         let tmp = tempfile::tempdir().expect("tempdir");
         let plugin_dir = tmp.path().join("sql-plugin");
         std::fs::create_dir_all(&plugin_dir).expect("mkdir");
 
-        // Copy the minimal-plugin wasm in so the compile
-        // step succeeds; the failure we want is the
-        // migration read.
+        // Copy the minimal-plugin wasm so the compile step
+        // passes; we want the migration-read step to fail.
         let wasm_src = std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
         std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
 
@@ -877,12 +848,10 @@ migrations = ["migrations/001_init.sql"]
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
 
-        let first = bridge.ensure_instance().expect("first ensure creates instance");
+        let first = bridge.ensure_instance().expect("first ensure");
         assert!(bridge.instance_is_some());
 
-        let second = bridge
-            .ensure_instance()
-            .expect("second ensure returns the same instance");
+        let second = bridge.ensure_instance().expect("second ensure");
         assert!(
             Arc::ptr_eq(&first, &second),
             "repeated ensure_instance should return the same Arc"
@@ -894,22 +863,17 @@ migrations = ["migrations/001_init.sql"]
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
 
-        assert!(bridge.take_instance().is_none(), "empty slot takes nothing");
+        assert!(bridge.take_instance().is_none());
 
         bridge.ensure_instance().expect("create instance");
         assert!(bridge.instance_is_some());
 
-        let taken = bridge.take_instance();
-        assert!(taken.is_some(), "populated slot returns the Arc");
-        assert!(!bridge.instance_is_some(), "take empties the slot");
+        assert!(bridge.take_instance().is_some());
+        assert!(!bridge.instance_is_some());
     }
 
     #[test]
     fn re_instantiate_after_take_produces_new_instance() {
-        // Destroy/recreate: take the current instance,
-        // drop it, then ensure again. The second
-        // `ensure_instance` must allocate a fresh
-        // `WasmPluginInstance` with a distinct `Arc`.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
 
@@ -917,79 +881,56 @@ migrations = ["migrations/001_init.sql"]
         let first_ptr = Arc::as_ptr(&first);
         drop(first);
         let _ = bridge.take_instance();
-        assert!(!bridge.instance_is_some());
 
         let second = bridge.ensure_instance().expect("second ensure");
-        let second_ptr = Arc::as_ptr(&second);
         assert_ne!(
-            first_ptr, second_ptr,
+            first_ptr,
+            Arc::as_ptr(&second),
             "re-instantiation should produce a distinct Arc"
         );
     }
 
     #[test]
     fn guest_enable_failure_reports_err() {
-        // Drive the failing-enable fixture directly: the
-        // guest's `enable()` panics, which surfaces as an
-        // `Err` from `WasmPluginInstance::enable`. The
-        // bridge's `Plugin::enable` uses this signal to
-        // tear the slot down.
+        // The fixture's guest `enable()` panics → wasmtime
+        // turns the panic into a trap → host sees `Err`.
+        // This is the signal `Plugin::enable` uses to tear
+        // the slot back down.
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("failing-enable-plugin", tmp.path())
-            .expect("failing-enable bridge construction");
+        let bridge = test_bridge("failing-enable-plugin", tmp.path()).expect("bridge construction");
 
-        let instance = bridge.ensure_instance().expect("instantiate fixture");
-        assert!(
-            instance.enable().is_err(),
-            "failing-enable fixture's guest enable() must return Err"
-        );
+        let instance = bridge.ensure_instance().expect("instantiate");
+        assert!(instance.enable().is_err());
 
-        // Simulate the bridge's drop-on-failure path:
-        // drop our local clone, take the slot.
         drop(instance);
-        let taken = bridge.take_instance();
-        assert!(taken.is_some(), "take returns the Arc to drop");
-        drop(taken);
-        assert!(
-            !bridge.instance_is_some(),
-            "after tear-down the slot is empty"
-        );
+        assert!(bridge.take_instance().is_some());
+        assert!(!bridge.instance_is_some());
     }
 
     #[test]
     fn instance_drop_releases_memory() {
-        // After `take_instance` returns and every clone is
+        // After `take_instance` and every local clone are
         // dropped, the `Weak` must fail to upgrade — proof
-        // that no leaked clones are keeping the wasmtime
-        // `Store` alive.
+        // that nothing is leaking the wasmtime `Store`.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
 
         let instance = bridge.ensure_instance().expect("instantiate");
-        let weak = bridge.instance_weak().expect("weak snapshot available");
-        assert!(
-            weak.upgrade().is_some(),
-            "weak upgrades while the instance is alive"
-        );
+        let weak = bridge.instance_weak().expect("weak snapshot");
+        assert!(weak.upgrade().is_some());
 
         drop(instance);
-        let taken = bridge.take_instance().expect("take the slot");
-        drop(taken);
+        drop(bridge.take_instance().expect("take"));
 
-        assert!(
-            weak.upgrade().is_none(),
-            "weak should not upgrade after the last strong clone is dropped"
-        );
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]
     fn sql_config_applied_on_each_instance() {
-        // Construct a bridge whose manifest declares a SQL
-        // migration. The cached `sql_config` should be
-        // `Configured`, and each fresh instance should be
-        // able to open its SQL storage — which is a direct
-        // check that `ensure_instance` re-applied the
-        // config onto the new `PluginState`.
+        // Each fresh instance must be able to open its SQL
+        // storage — proof that `ensure_instance` re-applied
+        // the cached config onto the new `PluginState`
+        // (which would otherwise default to `SqlConfig::None`).
         let tmp = tempfile::tempdir().expect("tempdir");
         let plugin_dir = tmp.path().join("sql-plugin");
         std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
@@ -1031,46 +972,33 @@ migrations = ["migrations/001_init.sql"]
         )
         .expect("bridge construction");
 
-        assert!(
-            matches!(bridge.sql_config_for_tests(), SqlConfig::Configured { .. }),
-            "bridge should cache Configured sql config"
-        );
+        assert!(matches!(
+            bridge.sql_config_for_tests(),
+            SqlConfig::Configured { .. }
+        ));
 
-        // Enable → disable → enable drives two
-        // instantiations. Both must be able to open SQL
-        // storage, which exercises the re-application path.
+        // Two instantiations across an explicit teardown
+        // exercise the re-application path.
         let first = bridge.ensure_instance().expect("first ensure");
-        first
-            .open_sql_storage()
-            .expect("first instance opens SQL storage");
+        first.open_sql_storage().expect("first SQL open");
         drop(first);
         let _ = bridge.take_instance();
 
         let second = bridge.ensure_instance().expect("second ensure");
-        second
-            .open_sql_storage()
-            .expect("second instance re-applies sql config and opens storage");
+        second.open_sql_storage().expect("second SQL open");
     }
 
     #[test]
     fn manifest_without_tasks_parses_no_scheduler_entries() {
-        // The minimal fixture declares no `[[tasks]]`, so
-        // `parsed_tasks` should end up empty and
-        // `spawn_scheduler` will become a no-op.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
-        assert!(
-            bridge.parsed_tasks.is_empty(),
-            "fixture has no tasks, parsed list should be empty"
-        );
+        assert!(bridge.parsed_tasks.is_empty());
     }
 
     #[test]
     fn parses_task_schedules_when_present() {
-        // Verify the bridge correctly ingests `[[tasks]]`
-        // entries into `parsed_tasks`. Uses a tempdir
-        // manifest because no committed fixture has
-        // tasks declared.
+        // Tempdir manifest because no committed fixture
+        // declares `[[tasks]]`.
         let tmp = tempfile::tempdir().expect("tempdir");
         let plugin_dir = tmp.path().join("task-plugin");
         std::fs::create_dir_all(&plugin_dir).expect("mkdir");

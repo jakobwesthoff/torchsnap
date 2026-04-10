@@ -19,13 +19,9 @@
 //    ├── entries() → Vec<CatalogEntry>
 //    └── execute(entry_id, action_id) → PostAction
 //
-// The compile/instantiate split exists so the expensive
-// step (parsing and validating a WASM component, producing
-// native code) can run once per plugin while the cheap step
-// (creating a fresh `Store` + linker and instantiating
-// against the cached `Component`) can be repeated on demand
-// without triggering a recompile. See ADR 0033 for the full
-// rationale.
+// The compile/instantiate split lets the expensive step run
+// once per plugin while instantiation stays cheap enough to
+// repeat on demand. See ADR 0033.
 // =========================================================
 
 use std::collections::HashMap;
@@ -475,22 +471,15 @@ impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
 // WasmRuntime — shared across all plugins
 // =========================================================
 
-/// Shared WASM runtime that holds the wasmtime Engine and a
+/// Shared WASM runtime holding the wasmtime Engine and a
 /// per-plugin compiled-component cache.
 ///
-/// One instance per application. The Engine caches compiled
-/// code and shares configuration, so all plugins benefit
-/// from a single Engine. The `components` cache holds one
-/// compiled `Component` per plugin ID — populated by
-/// `compile()` and consumed by `instantiate()`. Splitting
-/// those two steps lets callers pay the compile cost once
-/// per plugin while keeping instantiation cheap enough to
-/// repeat whenever a fresh `WasmPluginInstance` is needed.
-///
-/// A compiled `Component` is small relative to the `Store`
-/// that backs a live instance: it is the native code for
-/// the guest's imports/exports but holds no linear memory,
-/// no resource tables, and no per-enable-cycle state.
+/// One instance per application. A cached `Component` is
+/// small relative to the `Store` that backs a live instance
+/// — it holds native code for the guest's imports/exports
+/// but no linear memory, resource tables, or per-enable
+/// state — so keeping compiled components around for
+/// disabled plugins is cheap.
 pub struct WasmRuntime {
     engine: Engine,
     log_sender: LogSender,
@@ -506,14 +495,9 @@ pub struct WasmRuntime {
 impl WasmRuntime {
     /// Create a new runtime with default configuration.
     ///
-    /// Returns an `Arc<Self>` so the single runtime can be
-    /// cloned cheaply into every bridge that needs a handle
-    /// for on-demand instantiation. There is only ever one
-    /// `WasmRuntime` per application — the shared `Engine`
-    /// means a second runtime would just duplicate JIT
-    /// caches — so sharing via `Arc` rather than `&` lets
-    /// each bridge keep its own reference without tying the
-    /// runtime to the call stack that loaded it.
+    /// Returns `Arc<Self>` so every bridge can hold a cheap
+    /// clone for on-demand instantiation without borrowing
+    /// from the call stack that loaded it.
     pub fn new(
         log_sender: LogSender,
         span_registry: Arc<SpanRegistry>,
@@ -544,19 +528,15 @@ impl WasmRuntime {
     /// Compile a WASM component's bytes and cache the
     /// resulting `Component` under `plugin_id`.
     ///
-    /// Must be called once per plugin before the first
-    /// `instantiate()` for that ID. Compilation is the
-    /// expensive step — it parses the component model
-    /// binary, validates it, and produces native code —
-    /// so running it up front at load time surfaces broken
-    /// WASM as a load error and keeps subsequent
-    /// `instantiate()` calls cheap enough to repeat on
-    /// demand.
+    /// Must be called before the first `instantiate()` for
+    /// that ID. Compilation is the expensive step (parse +
+    /// validate + codegen), so running it up front surfaces
+    /// broken WASM as a load error and keeps `instantiate()`
+    /// cheap enough to repeat on demand.
     ///
     /// Re-compiling an existing entry replaces the cached
-    /// `Component`. No current code path triggers this, but
-    /// the branch is kept so a future hot-reload mechanism
-    /// can drop in without API changes.
+    /// `Component` — no current code path triggers this,
+    /// but the branch is kept for a future hot-reload path.
     pub fn compile(&self, plugin_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()> {
         let logger = self.logger_for(plugin_id);
         let _compile_span = logger
@@ -577,23 +557,16 @@ impl WasmRuntime {
 
     /// Instantiate a previously-compiled WASM plugin.
     ///
-    /// Looks up the cached `Component` for `plugin_id`,
-    /// builds a fresh linker, `WasiCtx`, `PluginState`, and
-    /// `Store`, and instantiates the component against them.
-    /// Returns a ready-to-call `WasmPluginInstance` that the
-    /// bridge then stashes settings/sql/clipboard state on
-    /// before invoking the guest's own `enable()`.
+    /// Builds a fresh linker + `WasiCtx` + `PluginState` +
+    /// `Store` against the cached `Component` and returns a
+    /// ready-to-call instance. The linker is rebuilt on
+    /// every call because it references `PluginState`, but
+    /// linker construction is just map inserts (no WASM
+    /// compilation) and `instantiate` is not in a hot path.
     ///
-    /// The linker is rebuilt on every call because it
-    /// references `PluginState`, which is freshly allocated
-    /// per instance. Registering host functions is cheap
-    /// (a handful of map inserts, no WASM compilation), so
-    /// this is not in any measurable hot path.
-    ///
-    /// Returns an error if `plugin_id` has not been
-    /// compiled via `compile()`. That is an internal
-    /// programming error — a missing cache entry indicates
-    /// a lifecycle bug, not a user-facing failure mode.
+    /// Errors if `plugin_id` has not been compiled — that
+    /// is an internal lifecycle bug, not a user-facing
+    /// failure mode.
     pub fn instantiate(&self, plugin_id: &str) -> anyhow::Result<WasmPluginInstance> {
         let logger = self.logger_for(plugin_id);
         let _instantiate_span = logger
@@ -601,12 +574,11 @@ impl WasmRuntime {
             .meta("plugin_id", plugin_id)
             .start();
 
-        // Hold the cache lock only long enough to clone the
-        // `Component` out of it. `Component` is cheap to
-        // clone (it is an `Arc` internally inside wasmtime),
-        // so cloning here lets the instantiation work run
-        // without blocking other plugins from compiling or
-        // instantiating concurrently.
+        // Clone the `Component` out of the cache under the
+        // lock (wasmtime's `Component` is an `Arc` internally
+        // so cloning is cheap) and drop the guard before the
+        // linker/store work, so concurrent plugin loads don't
+        // block on each other.
         let component = {
             let cache = self
                 .components
@@ -989,176 +961,101 @@ mod tests {
 
     #[test]
     fn compile_then_instantiate_succeeds() {
-        // Happy path: compile the fixture, instantiate it,
-        // confirm the returned instance can be driven through
-        // the guest's `enable()` export without the host side
-        // complaining. The minimal fixture's `enable()` is a
-        // no-op, so success here means the full
-        // compile → cache → instantiate → guest-call path is
-        // wired up end to end.
         let runtime = test_runtime();
-
         runtime
             .compile("minimal", MINIMAL_PLUGIN_WASM)
-            .expect("compile succeeds for valid fixture bytes");
-
-        let instance = runtime
-            .instantiate("minimal")
-            .expect("instantiate succeeds after compile");
-
-        instance
-            .enable()
-            .expect("guest enable() is a no-op for the minimal fixture");
+            .expect("compile valid fixture");
+        let instance = runtime.instantiate("minimal").expect("instantiate");
+        instance.enable().expect("guest enable no-op");
     }
 
     #[test]
     fn compile_caches_component() {
-        // Second instantiate should hit the cache, not
-        // recompile. We do not have a direct
-        // recompilation counter to assert on, so the check
-        // is: compile once, instantiate twice, both succeed
-        // without a second compile. The cache check happens
-        // indirectly via `instantiate_without_compile_errors`
-        // below — together they prove compile populates the
-        // cache and instantiate reads from it.
+        // No direct recompilation counter to assert on; we
+        // verify the cache retains the entry after two
+        // successful instantiates instead.
         let runtime = test_runtime();
-
         runtime
             .compile("minimal", MINIMAL_PLUGIN_WASM)
-            .expect("first compile succeeds");
+            .expect("compile");
+        let _first = runtime.instantiate("minimal").expect("first instantiate");
+        let _second = runtime.instantiate("minimal").expect("second instantiate");
 
-        let _first = runtime
-            .instantiate("minimal")
-            .expect("first instantiate succeeds");
-        let _second = runtime
-            .instantiate("minimal")
-            .expect("second instantiate hits the cached Component");
-
-        // Sanity check: the cache still holds the entry.
-        let cache = runtime
-            .components
-            .lock()
-            .expect("cache lock not poisoned");
         assert!(
-            cache.contains_key("minimal"),
-            "cache retains the compiled Component after instantiate"
+            runtime
+                .components
+                .lock()
+                .expect("cache lock")
+                .contains_key("minimal")
         );
     }
 
     #[test]
     fn instantiate_without_compile_errors() {
-        // Calling `instantiate` against a plugin ID that has
-        // never been compiled must return an error, never
-        // panic. This is a programming-bug surface (the
-        // bridge calls `compile` in its constructor, so a
-        // missing entry means a lifecycle bug), but we still
-        // want a typed error rather than an unwrap crash.
         let runtime = test_runtime();
-
-        // `WasmPluginInstance` does not implement `Debug`, so
-        // `.expect_err` is not available on this return. Pull
-        // the error out via `Result::err` instead and assert
-        // the message points the caller at `compile`.
         let err = runtime
             .instantiate("never-compiled")
             .err()
-            .expect("instantiate returns Err for an unknown plugin id");
-
+            .expect("instantiate returns Err for unknown id");
         let msg = format!("{err:#}");
         assert!(
             msg.contains("never-compiled") && msg.contains("compile"),
-            "error message should name the missing plugin and hint at `compile` (got: {msg})"
+            "error should name the missing plugin and hint at `compile` (got: {msg})"
         );
     }
 
     #[test]
     fn compile_invalid_bytes_errors() {
-        // Compile must reject garbage bytes and leave the
-        // cache untouched. We check both: the return is an
-        // `Err`, and a subsequent `instantiate` still errors
-        // with the "not compiled" message rather than
-        // silently succeeding against a partial entry.
+        // Both checks matter: the return is an `Err` AND the
+        // cache stays empty, so a subsequent `instantiate`
+        // cannot silently succeed against a partial entry.
         let runtime = test_runtime();
-
         assert!(
             runtime
                 .compile("garbage", b"not a wasm component at all")
-                .is_err(),
-            "compile rejects non-WASM bytes"
+                .is_err()
         );
-
         assert!(
             !runtime
                 .components
                 .lock()
-                .expect("cache lock not poisoned")
-                .contains_key("garbage"),
-            "failed compile must not insert into the cache"
+                .expect("cache lock")
+                .contains_key("garbage")
         );
-
-        assert!(
-            runtime.instantiate("garbage").is_err(),
-            "instantiate still reports the entry as missing"
-        );
+        assert!(runtime.instantiate("garbage").is_err());
     }
 
     #[test]
     fn compile_replaces_existing_entry() {
-        // Compiling the same plugin ID twice is explicitly
-        // allowed — the second call replaces the cached
-        // entry. No current code path exercises this, but
-        // the branch is kept for a future hot-reload
-        // mechanism; the test pins the behavior so a
-        // refactor that accidentally rejects duplicate
-        // compiles would trip this assertion.
+        // Pins the "re-compile replaces" semantic so a future
+        // refactor that accidentally rejects duplicate compiles
+        // would trip this assertion.
         let runtime = test_runtime();
-
         runtime
             .compile("minimal", MINIMAL_PLUGIN_WASM)
-            .expect("first compile succeeds");
+            .expect("first compile");
         runtime
             .compile("minimal", MINIMAL_PLUGIN_WASM)
-            .expect("second compile replaces the cached entry");
-
-        runtime
-            .instantiate("minimal")
-            .expect("instantiate succeeds against the replaced cache entry");
+            .expect("second compile replaces");
+        runtime.instantiate("minimal").expect("instantiate");
     }
 
     #[test]
     fn instances_are_independent() {
-        // Two instances built from the same cached
-        // `Component` must have independent `PluginState`s:
-        // calling a setter on one must not leak into the
-        // other. The `set_settings` cycle is the easiest
-        // setter to exercise without pulling in the full
-        // `PluginContext`, but every call is against the
-        // instance's own `Store`, so any passing
-        // setter/getter pair is sufficient to prove state
-        // isolation.
+        // Two instances from the same cached Component must
+        // have disjoint PluginStates: operating on one must
+        // not disturb the other.
         let runtime = test_runtime();
         runtime
             .compile("minimal", MINIMAL_PLUGIN_WASM)
-            .expect("compile succeeds");
+            .expect("compile");
 
-        let first = runtime
-            .instantiate("minimal")
-            .expect("first instantiate succeeds");
-        let second = runtime
-            .instantiate("minimal")
-            .expect("second instantiate succeeds");
+        let first = runtime.instantiate("minimal").expect("first");
+        let second = runtime.instantiate("minimal").expect("second");
 
-        // Clearing `sql_storage` on one instance does not
-        // reach into the other — the wasmtime stores are
-        // disjoint, so the second instance remains in its
-        // default state. This is a structural check: if the
-        // two instances ever shared a store, one clear would
-        // affect both.
         first.clear_sql_storage();
-        // Driving the second instance through a no-op guest
-        // call confirms its store is still usable.
         second
             .enable()
-            .expect("second instance is untouched by operations on the first");
+            .expect("second instance untouched by operations on the first");
     }
 }

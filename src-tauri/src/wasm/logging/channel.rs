@@ -69,33 +69,14 @@ impl LogSender {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Construct a `LogSender` that discards every item, for
-    /// tests that do not care about log capture.
-    ///
-    /// The backing mpsc channel's receiver is held alive by
-    /// the returned sender via a private field — dropping
-    /// the receiver immediately would cause every `send` to
-    /// fail and increment the dropped counter, which is fine
-    /// in isolation but slightly noisy for tests that assert
-    /// other state. This helper keeps the receiver alive and
-    /// ignores the items: the channel fills up to capacity
-    /// and subsequent sends are silently dropped, matching
-    /// the "no log capture" promise without coupling tests to
-    /// drop-counter details.
+    /// Discarding `LogSender` for tests. The receiver is
+    /// leaked so the channel stays open for the test's
+    /// lifetime — closing it would make every `send` fail
+    /// and pollute the dropped counter.
     #[cfg(test)]
     pub fn test_sender() -> Self {
-        // Capacity here is `CHANNEL_CAPACITY` — the
-        // same the real `LoggingSystem::start` uses — so
-        // tests can fire more than a handful of log items
-        // without hitting the dropped path during a single
-        // span's worth of work.
-        let (tx, _rx) = mpsc::channel::<LogItem>(CHANNEL_CAPACITY);
-        // The receiver is intentionally leaked via
-        // `Box::leak` so the channel never closes during
-        // the test's lifetime. Tests run in isolated
-        // processes so the leak does not affect anything
-        // else.
-        Box::leak(Box::new(_rx));
+        let (tx, rx) = mpsc::channel::<LogItem>(CHANNEL_CAPACITY);
+        Box::leak(Box::new(rx));
         Self {
             tx,
             dropped: Arc::new(AtomicU64::new(0)),
