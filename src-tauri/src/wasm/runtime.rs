@@ -505,18 +505,30 @@ pub struct WasmRuntime {
 
 impl WasmRuntime {
     /// Create a new runtime with default configuration.
-    pub fn new(log_sender: LogSender, span_registry: Arc<SpanRegistry>) -> anyhow::Result<Self> {
+    ///
+    /// Returns an `Arc<Self>` so the single runtime can be
+    /// cloned cheaply into every bridge that needs a handle
+    /// for on-demand instantiation. There is only ever one
+    /// `WasmRuntime` per application — the shared `Engine`
+    /// means a second runtime would just duplicate JIT
+    /// caches — so sharing via `Arc` rather than `&` lets
+    /// each bridge keep its own reference without tying the
+    /// runtime to the call stack that loaded it.
+    pub fn new(
+        log_sender: LogSender,
+        span_registry: Arc<SpanRegistry>,
+    ) -> anyhow::Result<Arc<Self>> {
         let mut config = Config::new();
         config.wasm_component_model(true);
 
         let engine =
             Engine::new(&config).map_err(|e| anyhow::anyhow!("creating wasmtime engine: {e}"))?;
-        Ok(Self {
+        Ok(Arc::new(Self {
             engine,
             log_sender,
             span_registry,
             components: Mutex::new(HashMap::new()),
-        })
+        }))
     }
 
     /// Create a Logger for a specific plugin, used for
@@ -967,7 +979,7 @@ mod tests {
     /// Construct a bare `WasmRuntime` for tests. Uses a
     /// discarding `LogSender` and a fresh `SpanRegistry` so
     /// tests do not depend on a running logging task.
-    fn test_runtime() -> WasmRuntime {
+    fn test_runtime() -> Arc<WasmRuntime> {
         WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()))
             .expect("WasmRuntime::new should succeed with default config")
     }
