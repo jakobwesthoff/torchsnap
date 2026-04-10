@@ -6,6 +6,8 @@ Date: 2026-04-08
 
 Accepted
 
+Amended by [33. WASM plugin bridge owns instance lifecycle with compile-at-load and instantiate-on-enable](0033-wasm-plugin-bridge-owns-instance-lifecycle-with-compile-at-load-and-instantiate-on-enable.md)
+
 ## Context
 
 WASM plugins need persistent storage for the same reason native plugins
@@ -30,7 +32,7 @@ exposes a `sql-handle` resource (wasmtime component-model resource type)
 with `execute` and `query` methods, plus a top-level `connection()`
 function that returns a handle to the host-managed database.
 
-```wit
+````wit
 interface sql {
   variant sql-value {
     null,
@@ -48,7 +50,7 @@ interface sql {
         -> result<list<list<sql-value>>, string>;
   }
 }
-```
+````
 
 `sql-value` mirrors SQLite's five storage classes 1:1. The host's
 internal `SqlValue::List` variant (used for `IN (?)` clause expansion
@@ -61,23 +63,23 @@ and predictable.
 Migrations are declared in `manifest.toml` as a list of file paths
 relative to the plugin root:
 
-```toml
+````toml
 [storage.sql]
 migrations = [
     "migrations/001_init.sql",
 ]
-```
+````
 
 Plugin layout:
 
-```
+````
 plugins/template/
 ├── manifest.toml          # references migration files
 ├── migrations/
 │   └── 001_init.sql       # plain SQL, syntax-highlighted, diffable
 ├── src/lib.rs
 └── frontend/
-```
+````
 
 Single source of truth: the `.sql` files. Plugin tests can
 `include_str!` the same files the manifest references — no duplication,
@@ -112,7 +114,7 @@ The handle is a real WIT `resource sql-handle`, exposed as
 `with` option swaps the default placeholder type for our concrete
 `SqlHandleEntry { storage: Arc<SqlStorage> }`:
 
-```rust
+````rust
 wasmtime::component::bindgen!({
     path: "../wit",
     world: "plugin",
@@ -120,7 +122,7 @@ wasmtime::component::bindgen!({
         "torchsnap:plugin/sql.sql-handle": super::runtime::SqlHandleEntry,
     },
 });
-```
+````
 
 WIT resource drop semantics fire automatically when the plugin lets
 its handle go out of scope, releasing the per-handle `ResourceTable`
@@ -173,8 +175,8 @@ cycles.
 
 `PluginState` gains:
 
-- `sql_config: SqlConfig` — pre-loaded config from the bridge
-- `sql_storage: Option<Arc<SqlStorage>>` — materialized by the
+* `sql_config: SqlConfig` — pre-loaded config from the bridge
+* `sql_storage: Option<Arc<SqlStorage>>` — materialized by the
   bridge's `enable()` before the guest runs, used by
   `sql::connection()` for subsequent handle allocation
 
@@ -184,19 +186,19 @@ automatically via `bindings::Plugin::add_to_linker(...)`.
 
 ## Alternatives considered
 
-- **A KV-only API** (get/set/delete by string key) — rejected. The
+* **A KV-only API** (get/set/delete by string key) — rejected. The
   calculator's queries (most-recent-N with substring filter, dedup
   by content hash) have no efficient KV translation.
-- **Document storage** (JSON blobs by ID) — same problem; no efficient
+* **Document storage** (JSON blobs by ID) — same problem; no efficient
   range scans, no indexing.
-- **A fixed schema baked into the host** — rejected as
+* **A fixed schema baked into the host** — rejected as
   least-flexible. Each plugin would have to wedge its data into a
   one-size-fits-all schema.
-- **Inline migration strings** in `manifest.toml` instead of file
+* **Inline migration strings** in `manifest.toml` instead of file
   references — rejected. File references give plugin authors syntax
   highlighting, diffable history, and the ability to share the same
   files between the runtime and unit tests.
-- **No `[storage.sql]` declaration required**, just open the database
+* **No `[storage.sql]` declaration required**, just open the database
   on demand with no migrations — rejected. Forcing the manifest
   declaration means missing schemas surface at plugin load time
   (clearer error path) and sets up the future for migration version
@@ -204,21 +206,21 @@ automatically via `bindings::Plugin::add_to_linker(...)`.
 
 ## Consequences
 
-- WASM plugins get full SQL access with the same `SqlStorage`
+* WASM plugins get full SQL access with the same `SqlStorage`
   abstraction native plugins use. The calculator port can implement
   its history table 1:1 against this API.
-- Adding a host import is automatically picked up by
+* Adding a host import is automatically picked up by
   `bindings::Plugin::add_to_linker(...)` — no per-interface plumbing
   needed at the linker level.
-- Plugins that never declare `[storage.sql]` pay no runtime cost (no
+* Plugins that never declare `[storage.sql]` pay no runtime cost (no
   file on disk, no in-memory state).
-- The WIT resource model gives us automatic drop semantics —
+* The WIT resource model gives us automatic drop semantics —
   plugins that misuse the handle (drop it, then keep using it) get
   a clean error instead of a use-after-free.
-- The migration file paths in the manifest are read at bridge
+* The migration file paths in the manifest are read at bridge
   construction time, which means a typo'd path fails plugin load.
   This is the desired behavior — better to refuse to load than to
   half-load and surprise the user later.
-- Adding transactions later requires a new resource type
+* Adding transactions later requires a new resource type
   (`sql-transaction`) wrapping the same connection. This is purely
   additive to the WIT world.
