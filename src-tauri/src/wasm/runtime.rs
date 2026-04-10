@@ -653,11 +653,14 @@ impl WasmRuntime {
             // then; the bridge always sets it before the
             // first guest call into `enable()`.
             settings: None,
-            // Populated by the bridge at construction time
-            // via `WasmPluginInstance::set_sql_config` once
-            // the manifest's `[storage.sql]` block (if any)
-            // has been parsed and the migration files have
-            // been read from the plugin source.
+            // Re-applied on every instantiation by the
+            // bridge's `ensure_instance` helper. The
+            // materialized `SqlConfig` lives on the bridge
+            // (built once from the manifest at bridge
+            // construction) and is copied onto each fresh
+            // `PluginState` so migration strings and the
+            // database path survive disable/re-enable
+            // cycles without re-reading the plugin source.
             sql_config: SqlConfig::None,
             sql_storage: None,
             sql_handle_reps: Vec::new(),
