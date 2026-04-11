@@ -89,15 +89,17 @@ function MacTitleBar() {
     void getCurrentWebviewWindow().toggleMaximize();
   };
   const handleFullscreen = async () => {
+    console.log("[TitleBar] fullscreen click received");
     const win = getCurrentWebviewWindow();
     try {
+      console.log("[TitleBar] calling isFullscreen()");
       const fullscreen = await win.isFullscreen();
+      console.log("[TitleBar] isFullscreen returned:", fullscreen);
+      console.log("[TitleBar] calling setFullscreen(", !fullscreen, ")");
       await win.setFullscreen(!fullscreen);
+      console.log("[TitleBar] setFullscreen resolved");
     } catch (e) {
-      // Temporary — something about our window config is
-      // preventing fullscreen from toggling. Surface the error
-      // so we can see it in devtools.
-      console.error("TitleBar: fullscreen toggle failed:", e);
+      console.error("[TitleBar] fullscreen toggle failed:", e);
     }
   };
 
