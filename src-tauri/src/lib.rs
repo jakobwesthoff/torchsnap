@@ -120,13 +120,18 @@ fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) 
         // the lifetime of the WebviewWindow and we only borrow it
         // briefly to update a collection behavior flag.
         let ns_window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
-        // OR the new flag with the existing collection behavior
-        // instead of replacing it. The default behavior includes
-        // `FullScreenPrimary`, which `toggleFullScreen:` silently
-        // needs — replacing it would make `setFullscreen` a no-op
-        // on auxiliary windows.
+        // OR our flags into whatever collection behavior Tauri
+        // configured so we preserve the defaults instead of
+        // clobbering them. `FullScreenPrimary` is explicitly
+        // added because `toggleFullScreen:` silently no-ops
+        // without it, and Tauri's builder does not guarantee
+        // the flag is set on windows that use `TitleBarStyle::Overlay`.
         let existing = ns_window.collectionBehavior();
-        ns_window.setCollectionBehavior(existing | NSWindowCollectionBehavior::MoveToActiveSpace);
+        ns_window.setCollectionBehavior(
+            existing
+                | NSWindowCollectionBehavior::MoveToActiveSpace
+                | NSWindowCollectionBehavior::FullScreenPrimary,
+        );
     }
 
     if let Some(monitor) = monitor_under_cursor(app)
