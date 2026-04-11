@@ -270,7 +270,7 @@ const DEVTOOLS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     height: 600.0,
     min_width: 700.0,
     min_height: 400.0,
-    hide_native_chrome: false,
+    hide_native_chrome: true,
 };
 
 pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
