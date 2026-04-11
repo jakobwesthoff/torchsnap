@@ -39,10 +39,31 @@ import { cn } from "../lib/cn";
 // variant is chosen, it must render an absolute overlay of
 // the same shape so the rest of the app stays oblivious to
 // platform differences.
+//
+// Two visual modes are supported:
+//
+// - `"embedded"` (default): a fully transparent overlay. The
+//   content underneath provides the visual weight (e.g. the
+//   settings window's tinted sidebar card visually encases
+//   the traffic lights). Occupies `h-12` (48px); consumers
+//   reserve the same height below the overlay.
+//
+// - `"titlebar"`: a visible strip with its own background and
+//   a centered title, used by tool windows like devtools
+//   that want a classic macOS title bar. Occupies `h-8`
+//   (32px); consumers reserve `pt-8` below the overlay. The
+//   traffic lights sit at the native-style top-left corner.
 // =========================================================
 
-export function TitleBar() {
-  return <MacTitleBar />;
+interface TitleBarProps {
+  /** Visual mode — see module comment. Defaults to `"embedded"`. */
+  variant?: "embedded" | "titlebar";
+  /** Title text, shown centered in `"titlebar"` mode only. */
+  title?: string;
+}
+
+export function TitleBar(props: TitleBarProps = {}) {
+  return <MacTitleBar {...props} />;
 }
 
 // =========================================================
@@ -57,7 +78,7 @@ export function TitleBar() {
 // buttons does not reliably work.
 // =========================================================
 
-function MacTitleBar() {
+function MacTitleBar({ variant = "embedded", title }: TitleBarProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
 
@@ -94,13 +115,23 @@ function MacTitleBar() {
     await win.setFullscreen(!fullscreen);
   };
 
+  const isTitlebar = variant === "titlebar";
+
   return (
     <div
       data-tauri-drag-region
-      className="absolute inset-x-0 top-0 z-50 h-12 select-none"
+      className={cn(
+        "absolute inset-x-0 top-0 z-50 select-none",
+        isTitlebar
+          ? "h-8 bg-surface-inset/60 border-b border-border-divider"
+          : "h-12",
+      )}
     >
       <div
-        className="absolute left-[24px] top-[24px] flex items-center gap-[8px]"
+        className={cn(
+          "absolute flex items-center gap-[8px]",
+          isTitlebar ? "left-[13px] top-[9px]" : "left-[24px] top-[24px]",
+        )}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
@@ -126,6 +157,14 @@ function MacTitleBar() {
           {isHovering && (isAltPressed ? <PlusGlyph /> : <FullscreenGlyph />)}
         </TrafficLight>
       </div>
+
+      {/* Centered title text — pointer-events-none so the drag
+          region still catches clicks behind the label. */}
+      {isTitlebar && title && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="text-xs font-medium text-text-secondary">{title}</span>
+        </div>
+      )}
     </div>
   );
 }
