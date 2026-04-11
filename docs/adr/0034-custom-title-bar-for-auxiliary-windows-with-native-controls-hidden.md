@@ -97,8 +97,9 @@ Concretely:
 
   `AuxiliaryWindowConfig` gains a `hide_native_chrome: bool` flag.
   `show_auxiliary_window` invokes `PlatformWindowChrome::hide_controls`
-  on the freshly built window when the flag is set. The settings window
-  opts in; the devtools window does not (for now).
+  on the freshly built window when the flag is set. Both the settings
+  window and the devtools window opt in, so the whole app speaks one
+  visual language.
 
   `TitleBarStyle::Overlay` + `hidden_title(true)` stay in place on
   macOS. They continue to give us the transparent title bar region
@@ -106,20 +107,66 @@ Concretely:
   window (shadow, rounded corners, resize) is fully intact because we
   never touched `decorations`.
 
+  One gotcha worth recording: `present_auxiliary_window` historically
+  replaced each auxiliary window's `collectionBehavior` with just
+  `MoveToActiveSpace`, which silently clobbered the default
+  `FullScreenPrimary` flag and made `toggleFullScreen:` a no-op from
+  JavaScript (the IPC succeeded but the native call had nothing to
+  do). The fix is to OR the new flag into whatever Tauri configured
+  and also explicitly OR `FullScreenPrimary` in — because with
+  `TitleBarStyle::Overlay` Tauri does not guarantee the flag is
+  present in the default.
+
+  Window control permissions had to be added to the default capability
+  (`src-tauri/capabilities/default.json`): `core:window:allow-close`,
+  `allow-minimize`, `allow-toggle-maximize`, `allow-is-fullscreen`,
+  `allow-set-fullscreen`. Without these the JS calls resolve as
+  permission denials that are easy to mistake for silent no-ops.
+
 - **Frontend side.** A `TitleBar` component in `src/components/` owns
   the title bar completely. It renders absolutely over the top of the
   main layout so swapping it for a different platform implementation
   does not perturb the layout underneath. It contains:
   - A `data-tauri-drag-region` strip spanning the full window width.
+    The traffic light buttons live as descendants of the drag region —
+    Tauri's handler walks the click target's ancestors and excludes
+    interactive elements from drag behavior, so the buttons remain
+    clickable while the rest of the strip drags the window.
+    Structuring the drag region as a *sibling* of the buttons does
+    not reliably work.
   - Platform-appropriate window controls (macOS: three traffic-light
-    circles calling `getCurrentWindow().close() / .minimize() /
-    .setFullscreen(!)`).
+    circles calling `getCurrentWebviewWindow().close() / .minimize() /
+    .setFullscreen(!)`). Hover reveals the native-style glyphs via
+    React state (so we can also react to the Alt key); holding Alt
+    swaps the fullscreen glyph for a `+` and the click handler from
+    `setFullscreen` to `toggleMaximize`, matching macOS's
+    "zoom instead of fullscreen" shortcut.
 
   The component dispatches internally to `MacTitleBar` for now. When we
   add Windows, a `WinTitleBar` sibling is added and the dispatch
   branches. Because the component is the only thing that knows its own
   height, adding a platform whose title bar is a different size does
   not break the underlying layout — only the chrome overlay changes.
+
+  **Two visual variants** are supported via a `variant` prop on
+  `<TitleBar />`:
+
+  - `"embedded"` (default): a fully transparent overlay. The content
+    underneath provides the visual weight — for the settings window
+    that is the tinted sidebar card, which visually encases the
+    traffic lights at `left-[24px] top-[24px]`. Strip is `h-12`
+    (48px) so consumers reserve the same below it.
+  - `"titlebar"`: a classic macOS-style visible strip with
+    `bg-surface-inset/60` and a hairline bottom border, traffic
+    lights at the native-style top-left corner (`left-[13px]
+    top-[9px]`), and an optional centered `title` string rendered
+    in a `pointer-events-none` container so the drag region still
+    catches clicks behind the label. Strip is `h-8` (32px).
+
+  The devtools window uses the `"titlebar"` variant with title
+  `"Developer Tools"`; the settings window uses the default
+  `"embedded"` variant because its sidebar card is what the
+  traffic lights visually belong to.
 
 ### Alternatives considered
 
@@ -186,11 +233,11 @@ Concretely:
   is that the same component infrastructure serves Windows and Linux
   when those platforms land.
 
-- **Per-window opt-in, temporary inconsistency.** The devtools window
-  keeps its native chrome until its frontend is migrated to render
-  `<TitleBar />`, at which point its `hide_native_chrome` flag flips
-  to `true` and the whole app speaks one visual language again. Until
-  that follow-up lands we live with two different window-chrome shapes
-  in the app. Acceptable — the settings window is the one that drives
-  the visual direction, and migrating devtools is mechanical once the
-  component exists.
+- **Two variants mean two positioning tables.** `"embedded"` places
+  the traffic lights relative to the surrounding content (settings'
+  sidebar card margin), while `"titlebar"` places them at the
+  native-style corner. The offsets are hard-coded per variant
+  inside `MacTitleBar`. If we add more auxiliary windows with
+  different embedded layouts we may need to make the embedded
+  offsets prop-configurable — until then, the two hard-coded
+  positions cover every current consumer.
