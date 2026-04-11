@@ -11,6 +11,7 @@ import { PluginContextProvider } from "../contexts/PluginContextProvider";
 import type { PluginInfo, PluginRuntime } from "../contexts/PluginContext";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
+import { TitleBar } from "../components/TitleBar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { FrecencySection } from "./sections/FrecencySection";
@@ -43,17 +44,18 @@ export function SettingsPanel() {
   const pluginSections = useMemo(() => getPluginsWithSettings(), []);
 
   return (
-    <div className="flex h-screen font-sans antialiased bg-surface text-text-primary">
-      {/* Drag region — macOS overlay titlebar. Covers the full width
-          so the user can drag from anywhere along the top edge. */}
-      <div data-tauri-drag-region className="absolute inset-x-0 top-0 h-12 select-none z-10" />
+    <div className="relative flex h-screen font-sans antialiased bg-surface text-text-primary">
+      {/* Title bar overlay — renders the drag region and window
+          controls absolutely on top of the layout below, so
+          swapping the platform variant does not affect anything
+          else. See ADR 0034. */}
+      <TitleBar />
 
-      {/* Sidebar — a floating card inset from the left and bottom
-          window edges, extending up to the window's top so the
-          macOS traffic-light region sits on top of the card. Inner
-          `pt-12` keeps the nav content clear of that area. */}
+      {/* Sidebar — a floating card inset from all four window
+          edges with equal margins. Inner `pt-6` keeps the nav
+          content clear of the TitleBar overlay above it. */}
       <aside
-        className="w-[200px] shrink-0 mb-3 ml-3 pt-12 rounded-xl bg-surface-sidebar overflow-y-auto"
+        className="w-[200px] shrink-0 m-3 pt-6 rounded-xl bg-surface-sidebar overflow-y-auto"
         style={{ boxShadow: "var(--sidebar-shadow)" }}
       >
         <SettingsSidebar
