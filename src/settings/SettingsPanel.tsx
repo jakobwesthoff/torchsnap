@@ -48,10 +48,11 @@ export function SettingsPanel() {
           so the user can drag from anywhere along the top edge. */}
       <div data-tauri-drag-region className="absolute inset-x-0 top-0 h-12 select-none z-10" />
 
-      {/* Sidebar — two-tone surface + inset edge shadow fakes the
-          macOS sidebar material without requiring real vibrancy. */}
+      {/* Sidebar — a floating card inset from the window edges,
+          elevated with a soft drop shadow. Top margin clears the
+          macOS traffic-light / drag region above it. */}
       <aside
-        className="w-[200px] shrink-0 bg-surface-sidebar pt-12 overflow-y-auto"
+        className="w-[200px] shrink-0 mt-12 mb-3 ml-3 rounded-xl bg-surface-sidebar overflow-y-auto"
         style={{ boxShadow: "var(--sidebar-shadow)" }}
       >
         <SettingsSidebar
