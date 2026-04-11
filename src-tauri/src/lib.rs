@@ -29,7 +29,10 @@ use tauri::{
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
-use platform::{LauncherPanel as _, PlatformLauncherPanel, PlatformTray, Tray as _};
+use platform::{
+    LauncherPanel as _, PlatformLauncherPanel, PlatformTray, PlatformWindowChrome, Tray as _,
+    WindowChrome as _,
+};
 
 // =========================================================
 // Launcher Window Layout
@@ -148,6 +151,12 @@ struct AuxiliaryWindowConfig {
     height: f64,
     min_width: f64,
     min_height: f64,
+    /// When true, the native window controls (close / minimize /
+    /// zoom on macOS, equivalent on other platforms) are hidden
+    /// after the window is built so the frontend can render its
+    /// own title bar. See ADR 0034 for the rationale behind this
+    /// approach over `decorations(false)`.
+    hide_native_chrome: bool,
 }
 
 /// Build an on-demand auxiliary window that stays hidden until the
@@ -192,6 +201,20 @@ fn show_auxiliary_window(app: &tauri::AppHandle, config: &AuxiliaryWindowConfig)
         }
     };
 
+    // Tauri v2 has no API to hide only the native title-bar
+    // controls (macOS traffic lights / Windows caption buttons)
+    // while keeping the rest of the native window intact. Using
+    // `decorations(false)` would remove too much — rounded
+    // corners, shadow, edge-drag niceties — with no clean route
+    // back on macOS. The platform abstraction below hides only
+    // the buttons via public AppKit API. ADR 0034 documents the
+    // reasoning and the alternatives we considered.
+    if config.hide_native_chrome
+        && let Err(e) = PlatformWindowChrome::hide_controls(&win)
+    {
+        eprintln!("failed to hide {} window controls: {e:#}", config.label);
+    }
+
     let handle = app.clone();
     let window_label = config.label.to_string();
     win.once("react-ready", move |_| {
@@ -217,6 +240,7 @@ const SETTINGS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     height: 520.0,
     min_width: 600.0,
     min_height: 400.0,
+    hide_native_chrome: true,
 };
 
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
@@ -235,6 +259,7 @@ const DEVTOOLS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     height: 600.0,
     min_width: 700.0,
     min_height: 400.0,
+    hide_native_chrome: false,
 };
 
 pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {

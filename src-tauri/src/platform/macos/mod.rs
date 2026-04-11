@@ -9,9 +9,11 @@ mod launcher_panel;
 pub(crate) mod osascript;
 mod settings_discovery;
 mod tray;
+mod window_chrome;
 
 pub use app_discovery::MdfindDiscovery;
 pub use clipboard::MacosClipboard;
 pub use launcher_panel::MacosLauncherPanel;
 pub use settings_discovery::MacosSettingsDiscovery;
 pub use tray::MacosTray;
+pub use window_chrome::MacosWindowChrome;
