@@ -17,6 +17,8 @@
 //     extraction, and launching
 //   - SettingsDiscovery: system settings pane scanning, icon
 //     rendering, and opening
+//   - WindowChrome: hiding the native title bar controls so
+//     the frontend can render its own (see ADR 0034)
 // =========================================================
 
 pub mod app_discovery;
@@ -34,6 +36,8 @@ pub use macos::MacosSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(target_os = "macos")]
 pub use macos::MacosTray as PlatformTray;
 #[cfg(target_os = "macos")]
+pub use macos::MacosWindowChrome as PlatformWindowChrome;
+#[cfg(target_os = "macos")]
 pub use macos::MdfindDiscovery as PlatformAppDiscovery;
 
 #[cfg(not(target_os = "macos"))]
@@ -48,6 +52,8 @@ pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
 pub use fallback::FallbackSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackTray as PlatformTray;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackWindowChrome as PlatformWindowChrome;
 
 /// Abstraction over platform-specific launcher window behavior.
 ///
@@ -129,4 +135,25 @@ pub trait Tray {
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()>;
+}
+
+/// Abstraction over hiding a window's native title-bar controls so
+/// the frontend can render its own title bar.
+///
+/// On macOS this hides the three `standardWindowButton`s (close,
+/// miniaturize, zoom) via the public `NSWindow` API while leaving the
+/// rest of the native window (shadow, rounded corners, edge-drag
+/// resize) fully intact. The alternative — `decorations(false)` —
+/// strips too much on macOS and has no clean path back to native
+/// rounded corners without pulling in a community plugin. See
+/// [ADR 0034](../../../docs/adr/0034-custom-title-bar-with-native-controls-hidden.md).
+///
+/// Other platforms will implement this as needed when we add
+/// cross-platform support; the fallback is a no-op so the rest of
+/// the codebase can call `PlatformWindowChrome::hide_controls`
+/// unconditionally.
+pub trait WindowChrome {
+    /// Hide the native close / minimize / zoom (or platform
+    /// equivalent) buttons on the given window.
+    fn hide_controls(window: &tauri::WebviewWindow) -> anyhow::Result<()>;
 }
