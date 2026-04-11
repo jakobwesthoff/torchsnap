@@ -3,12 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Header banner displayed at the top of each settings section.
+ * Header displayed at the top of each settings section.
  *
- * Shows the section icon inside a subtle accent-tinted container
- * alongside the section title and a short explanatory description.
- * This gives users immediate context about what the section controls
- * before they interact with the settings below.
+ * Shows an accent-tinted icon tile next to the section title and a
+ * short explanatory description, rendered inline on the content
+ * surface without a container card.
  */
 
 import { Icon } from "../components/Icon";
@@ -22,7 +21,7 @@ interface SectionHeaderProps {
 
 export function SectionHeader({ icon, title, description }: SectionHeaderProps) {
   return (
-    <div className="flex items-center gap-4 rounded-xl bg-surface-inset/60 p-4 mb-4">
+    <div className="flex items-center gap-4 mb-6">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
         <Icon icon={icon} className="h-5 w-5 text-accent" />
       </div>
