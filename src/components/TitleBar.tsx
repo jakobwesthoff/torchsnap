@@ -97,10 +97,10 @@ function MacTitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="absolute inset-x-0 top-0 z-50 h-11 select-none"
+      className="absolute inset-x-0 top-0 z-50 h-12 select-none"
     >
       <div
-        className="absolute left-[20px] top-[20px] flex items-center gap-[8px]"
+        className="absolute left-[24px] top-[24px] flex items-center gap-[8px]"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
@@ -149,7 +149,7 @@ function TrafficLight({ colorClass, label, onClick, children }: TrafficLightProp
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "flex h-3 w-3 cursor-default items-center justify-center rounded-full",
+        "flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full",
         "border border-black/[.12] dark:border-none",
         "text-black/60 dark:text-black",
         colorClass,
