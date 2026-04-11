@@ -52,10 +52,13 @@ export function SettingsPanel() {
       <TitleBar />
 
       {/* Sidebar — a floating card inset from all four window
-          edges with equal margins. Inner `pt-6` keeps the nav
-          content clear of the TitleBar overlay above it. */}
+          edges with equal margins. Inner `pt-9` keeps the nav
+          content clear of the TitleBar overlay above it (the
+          overlay's drag region extends to y=44 from window top;
+          card top sits at y=12, so content needs ≥32px of top
+          padding to be interactive). */}
       <aside
-        className="w-[200px] shrink-0 m-3 pt-6 rounded-xl bg-surface-sidebar overflow-y-auto"
+        className="w-[200px] shrink-0 m-3 pt-9 rounded-xl bg-surface-sidebar overflow-y-auto"
         style={{ boxShadow: "var(--sidebar-shadow)" }}
       >
         <SettingsSidebar
