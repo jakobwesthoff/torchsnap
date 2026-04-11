@@ -5,28 +5,26 @@
 // =========================================================
 // Developer Tools Panel
 //
-// Top-level layout for the Developer Tools window. The drag
-// region is a separate visual strip at the top (housing the
-// macOS traffic lights), with the tab bar below it left-
-// aligned to the window edge.
+// Top-level layout for the Developer Tools window. A custom
+// `<TitleBar />` overlays the top 48px as an absolute chrome
+// layer (see ADR 0034); the outer flex container uses `pt-12`
+// to reserve that space so the tab bar and console render
+// cleanly below it.
 // =========================================================
 
 import { useState } from "react";
 import { DevToolsTabBar, type DevToolsTab } from "./DevToolsTabBar";
 import { ConsoleTab } from "./console/ConsoleTab";
+import { TitleBar } from "../components/TitleBar";
 
 export function DevToolsPanel() {
   const [activeTab, setActiveTab] = useState<DevToolsTab>("console");
 
   return (
-    <div className="flex flex-col h-screen font-sans antialiased bg-surface text-text-primary">
-      {/* Drag region — separate strip for traffic lights */}
-      <div
-        data-tauri-drag-region
-        className="shrink-0 h-[30px] bg-surface-inset/50 border-b border-border-divider"
-      />
+    <div className="relative flex flex-col h-screen pt-12 font-sans antialiased bg-surface text-text-primary">
+      <TitleBar />
 
-      {/* Tab bar — below drag region, left-aligned */}
+      {/* Tab bar — sits just below the TitleBar overlay */}
       <DevToolsTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Tab content — fills remaining vertical space */}
