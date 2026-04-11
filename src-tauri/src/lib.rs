@@ -118,9 +118,15 @@ fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) 
         // SAFETY: Tauri's `ns_window()` returns a valid `*mut c_void`
         // pointing to the underlying NSWindow. The pointer is valid for
         // the lifetime of the WebviewWindow and we only borrow it
-        // briefly to set a collection behavior flag.
+        // briefly to update a collection behavior flag.
         let ns_window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
-        ns_window.setCollectionBehavior(NSWindowCollectionBehavior::MoveToActiveSpace);
+        // OR the new flag with the existing collection behavior
+        // instead of replacing it. The default behavior includes
+        // `FullScreenPrimary`, which `toggleFullScreen:` silently
+        // needs — replacing it would make `setFullscreen` a no-op
+        // on auxiliary windows.
+        let existing = ns_window.collectionBehavior();
+        ns_window.setCollectionBehavior(existing | NSWindowCollectionBehavior::MoveToActiveSpace);
     }
 
     if let Some(monitor) = monitor_under_cursor(app)
