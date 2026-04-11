@@ -17,8 +17,10 @@ export interface SidebarItem {
 }
 
 interface SettingsSidebarProps {
-  /** Built-in sections (General, Appearance). */
-  builtInItems: SidebarItem[];
+  /** Top-level items (General). Rendered without a group header. */
+  generalItems: SidebarItem[];
+  /** Customization group items (Appearance, Frecency, …). */
+  customizationItems: SidebarItem[];
   /** Plugin-provided sections. */
   pluginItems: SidebarItem[];
   /** Currently selected section ID. */
@@ -32,14 +34,61 @@ interface SettingsSidebarProps {
 // =========================================================
 
 export function SettingsSidebar({
-  builtInItems,
+  generalItems,
+  customizationItems,
   pluginItems,
   activeId,
   onSelect,
 }: SettingsSidebarProps) {
   return (
-    <nav className="flex flex-col gap-0.5 py-2 px-2">
-      {builtInItems.map((item) => (
+    <nav className="flex flex-col py-2 px-2">
+      <SidebarGroup items={generalItems} activeId={activeId} onSelect={onSelect} />
+
+      {customizationItems.length > 0 && (
+        <SidebarGroup
+          label="Customization"
+          items={customizationItems}
+          activeId={activeId}
+          onSelect={onSelect}
+        />
+      )}
+
+      {pluginItems.length > 0 && (
+        <SidebarGroup
+          label="Plugins"
+          items={pluginItems}
+          activeId={activeId}
+          onSelect={onSelect}
+        />
+      )}
+    </nav>
+  );
+}
+
+// =========================================================
+// Sidebar group — optional uppercase tracked header
+// followed by its buttons. First group omits the header.
+// =========================================================
+
+function SidebarGroup({
+  label,
+  items,
+  activeId,
+  onSelect,
+}: {
+  label?: string;
+  items: SidebarItem[];
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 mb-2">
+      {label && (
+        <h4 className="text-[10px] font-semibold tracking-wider uppercase text-text-tertiary px-3 pt-3 pb-1">
+          {label}
+        </h4>
+      )}
+      {items.map((item) => (
         <SidebarButton
           key={item.id}
           item={item}
@@ -47,21 +96,7 @@ export function SettingsSidebar({
           onSelect={onSelect}
         />
       ))}
-
-      {pluginItems.length > 0 && (
-        <>
-          <div className="mx-2 my-1.5 border-t border-border-divider" />
-          {pluginItems.map((item) => (
-            <SidebarButton
-              key={item.id}
-              item={item}
-              active={item.id === activeId}
-              onSelect={onSelect}
-            />
-          ))}
-        </>
-      )}
-    </nav>
+    </div>
   );
 }
 

@@ -21,8 +21,11 @@ import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 // Built-in sidebar sections
 // =========================================================
 
-const BUILT_IN_SECTIONS: SidebarItem[] = [
+const GENERAL_SECTIONS: SidebarItem[] = [
   { id: "general", label: "General", icon: "heroicons:cog-6-tooth" },
+];
+
+const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
   { id: "appearance", label: "Appearance", icon: "heroicons:swatch" },
   { id: "frecency", label: "Frecency", icon: "heroicons:chart-bar" },
   { id: "website-metadata", label: "Website Metadata", icon: "heroicons:globe-alt" },
@@ -45,10 +48,15 @@ export function SettingsPanel() {
           so the user can drag from anywhere along the top edge. */}
       <div data-tauri-drag-region className="absolute inset-x-0 top-0 h-12 select-none z-10" />
 
-      {/* Sidebar */}
-      <aside className="w-[200px] shrink-0 border-r border-border pt-12 overflow-y-auto">
+      {/* Sidebar — two-tone surface + inset edge shadow fakes the
+          macOS sidebar material without requiring real vibrancy. */}
+      <aside
+        className="w-[200px] shrink-0 bg-surface-sidebar pt-12 overflow-y-auto"
+        style={{ boxShadow: "var(--sidebar-shadow)" }}
+      >
         <SettingsSidebar
-          builtInItems={BUILT_IN_SECTIONS}
+          generalItems={GENERAL_SECTIONS}
+          customizationItems={CUSTOMIZATION_SECTIONS}
           pluginItems={pluginSections}
           activeId={activeSection}
           onSelect={setActiveSection}
