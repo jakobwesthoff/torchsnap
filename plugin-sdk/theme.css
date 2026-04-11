@@ -35,8 +35,8 @@
   /* --- Surfaces -------------------------------------------- */
   --color-surface: var(--color-white);
   --color-surface-inset: var(--color-gray-50);
-  --color-surface-sidebar: #f5f2ea;
-  --color-surface-group: #f8f4ec;
+  --color-surface-sidebar: #f8f5ef;
+  --color-surface-group: #faf8f3;
   --color-surface-hover: var(--color-gray-50);
   --color-surface-active: var(--color-gray-100);
 
@@ -79,8 +79,8 @@
   /* --- Surfaces ------------------------------------------ */
   --color-surface: #1c1c1e;
   --color-surface-inset: #2c2c2e;
-  --color-surface-sidebar: #242428;
-  --color-surface-group: #232326;
+  --color-surface-sidebar: #222224;
+  --color-surface-group: #1f1f21;
   --color-surface-hover: #2a2a2c;
   --color-surface-active: #3a3a3c;
 
