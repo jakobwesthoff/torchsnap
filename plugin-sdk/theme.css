@@ -35,8 +35,8 @@
   /* --- Surfaces -------------------------------------------- */
   --color-surface: var(--color-white);
   --color-surface-inset: var(--color-gray-50);
-  --color-surface-sidebar: #eff0f3;
-  --color-surface-group: #f5f5f7;
+  --color-surface-sidebar: #f5f2ea;
+  --color-surface-group: #f8f4ec;
   --color-surface-hover: var(--color-gray-50);
   --color-surface-active: var(--color-gray-100);
 
