@@ -22,7 +22,7 @@ interface SectionHeaderProps {
 
 export function SectionHeader({ icon, title, description }: SectionHeaderProps) {
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-surface-inset/50 p-4 mb-4">
+    <div className="flex items-center gap-4 rounded-xl bg-surface-inset/60 p-4 mb-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
         <Icon icon={icon} className="h-5 w-5 text-accent" />
       </div>
