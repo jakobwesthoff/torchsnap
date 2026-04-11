@@ -90,8 +90,15 @@ function MacTitleBar() {
   };
   const handleFullscreen = async () => {
     const win = getCurrentWebviewWindow();
-    const fullscreen = await win.isFullscreen();
-    await win.setFullscreen(!fullscreen);
+    try {
+      const fullscreen = await win.isFullscreen();
+      await win.setFullscreen(!fullscreen);
+    } catch (e) {
+      // Temporary — something about our window config is
+      // preventing fullscreen from toggling. Surface the error
+      // so we can see it in devtools.
+      console.error("TitleBar: fullscreen toggle failed:", e);
+    }
   };
 
   return (
@@ -170,7 +177,7 @@ function TrafficLight({ colorClass, label, onClick, children }: TrafficLightProp
 
 function CloseGlyph() {
   return (
-    <svg width="6" height="6" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="7" height="8" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M15.7522 4.44381L11.1543 9.04165L15.7494 13.6368C16.0898 13.9771 16.078 14.5407 15.724 14.8947L13.8907 16.728C13.5358 17.0829 12.9731 17.0938 12.6328 16.7534L8.03766 12.1583L3.44437 16.7507C3.10402 17.091 2.54132 17.0801 2.18645 16.7253L0.273257 14.8121C-0.0807018 14.4572 -0.0925004 13.8945 0.247845 13.5542L4.84024 8.96087L0.32499 4.44653C-0.0153555 4.10619 -0.00355681 3.54258 0.350402 3.18862L2.18373 1.35529C2.53859 1.00042 3.1013 0.989533 3.44164 1.32988L7.95689 5.84422L12.5556 1.24638C12.8951 0.906035 13.4587 0.917833 13.8126 1.27179L15.7267 3.18589C16.0807 3.53985 16.0925 4.10346 15.7522 4.44381Z"
         fill="currentColor"
@@ -181,7 +188,7 @@ function CloseGlyph() {
 
 function MinimizeGlyph() {
   return (
-    <svg width="8" height="8" viewBox="0 0 17 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="10" height="10" viewBox="0 0 17 6" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -194,7 +201,7 @@ function MinimizeGlyph() {
 
 function FullscreenGlyph() {
   return (
-    <svg width="6" height="6" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="7" height="7" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -207,7 +214,7 @@ function FullscreenGlyph() {
 
 function PlusGlyph() {
   return (
-    <svg width="8" height="8" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="10" height="9" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
