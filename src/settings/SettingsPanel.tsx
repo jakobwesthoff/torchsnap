@@ -58,7 +58,7 @@ export function SettingsPanel() {
           card top sits at y=12, so content needs ≥36px of top
           padding to be interactive). */}
       <aside
-        className="w-[200px] shrink-0 m-3 pt-10 rounded-xl bg-surface-sidebar overflow-y-auto"
+        className="w-[200px] shrink-0 m-3 pt-10 rounded-xl bg-surface-sidebar overflow-y-auto scrollbar-muted"
         style={{ boxShadow: "var(--sidebar-shadow)" }}
       >
         <SettingsSidebar
@@ -71,7 +71,7 @@ export function SettingsPanel() {
       </aside>
 
       {/* Content area */}
-      <main className="flex-1 overflow-y-auto pt-12 px-6 pb-6">
+      <main className="flex-1 overflow-y-auto scrollbar-muted pt-12 pl-6 pr-8 pb-6">
         <SectionContent activeSection={activeSection} pluginSections={pluginSections} />
       </main>
     </div>
