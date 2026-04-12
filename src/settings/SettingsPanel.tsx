@@ -58,16 +58,28 @@ export function SettingsPanel() {
           card top sits at y=12, so content needs ≥36px of top
           padding to be interactive). */}
       <aside
-        className="w-[200px] shrink-0 m-3 pt-10 rounded-xl bg-surface-sidebar overflow-y-auto scrollbar-muted"
+        className="relative w-[200px] shrink-0 m-3 rounded-xl bg-surface-sidebar overflow-y-auto scrollbar-muted"
         style={{ boxShadow: "var(--sidebar-shadow)" }}
       >
-        <SettingsSidebar
-          generalItems={GENERAL_SECTIONS}
-          customizationItems={CUSTOMIZATION_SECTIONS}
-          pluginItems={pluginSections}
-          activeId={activeSection}
-          onSelect={setActiveSection}
+        {/* Fade mask — covers only the content area (not the
+            scrollbar) so sidebar items fade out beneath the
+            traffic-light controls. */}
+        <div
+          className="sticky top-0 z-10 h-10 -mb-10 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to bottom, var(--color-surface-sidebar) 85%, transparent)",
+          }}
         />
+        <div className="pt-8">
+          <SettingsSidebar
+            generalItems={GENERAL_SECTIONS}
+            customizationItems={CUSTOMIZATION_SECTIONS}
+            pluginItems={pluginSections}
+            activeId={activeSection}
+            onSelect={setActiveSection}
+          />
+        </div>
       </aside>
 
       {/* Content area */}
