@@ -122,9 +122,7 @@ function MacTitleBar({ variant = "embedded", title }: TitleBarProps) {
       data-tauri-drag-region
       className={cn(
         "absolute inset-x-0 top-0 z-50 select-none",
-        isTitlebar
-          ? "h-8 bg-surface-inset/60 border-b border-border-divider"
-          : "h-12",
+        isTitlebar ? "h-8 bg-surface-inset/60 border-b border-border-divider" : "h-12",
       )}
     >
       <div
