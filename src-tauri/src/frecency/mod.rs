@@ -139,7 +139,7 @@ impl FrecencyStore {
         notifier: &SettingsNotifier,
         store: &Store<tauri::Wry>,
     ) -> Result<Self> {
-        let db_path = app_data_dir.join("frecency.db");
+        let db_path = app_data_dir.join("frecency.sqlite3");
         let db = SqlStorage::open(db_path, schema::MIGRATIONS).context("open frecency database")?;
 
         // Seed the settings watch with the current store value.
@@ -457,7 +457,7 @@ mod tests {
     /// frecency always enabled (no real settings store needed).
     fn test_store() -> (FrecencyStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("frecency.db");
+        let db_path = dir.path().join("frecency.sqlite3");
         let db = SqlStorage::open(db_path, schema::MIGRATIONS).expect("open test db");
 
         // Create a settings watch that always returns true.
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn disabled_store_is_noop() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("frecency.db");
+        let db_path = dir.path().join("frecency.sqlite3");
         let db = SqlStorage::open(db_path, schema::MIGRATIONS).expect("open test db");
 
         let notifier = SettingsNotifier::new();

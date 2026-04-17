@@ -283,14 +283,19 @@ impl Plugin for ClipboardPlugin {
 
     fn enable(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
         // ----- Initialize state (DB + file storage) -----
+        //
+        // State lives under `plugin-home/<id>/`: code lives
+        // under `plugins/` and is owned by the installer, so
+        // host-managed state gets its own root with reserved
+        // sibling slots (`sql/`, `files/`, future additions).
         let data_dir = app
             .path()
             .app_data_dir()
             .expect("resolve app data dir")
-            .join("plugins")
+            .join("plugin-home")
             .join(PLUGIN_ID);
 
-        let db_path = data_dir.join("clipboard.db");
+        let db_path = data_dir.join("sql").join("clipboard.sqlite3");
         let files_dir = data_dir.join("files");
 
         let sql = SqlStorage::open(db_path, &[MIGRATION_001]).expect("open clipboard database");

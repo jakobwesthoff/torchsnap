@@ -101,7 +101,14 @@ impl WasmPluginBridge {
     /// once to read the WASM bytes and any SQL migration
     /// files). `app_data_dir` is the host's per-app data
     /// root; the plugin's database lives at
-    /// `<app_data_dir>/plugins/<plugin-id>/storage.db`.
+    /// `<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3`.
+    ///
+    /// The `plugin-home/<plugin-id>/` tree is the plugin's
+    /// host-managed state root — `sql/` sits alongside
+    /// future sibling slots (e.g. `files/`, `cache/`).
+    /// Separating state from code lets `plugins/` remain a
+    /// pure code directory that the install/uninstall flow
+    /// owns.
     ///
     /// Compiles the WASM component into the runtime's
     /// cache right here so broken plugins fail fast at
@@ -146,9 +153,10 @@ impl WasmPluginBridge {
                 }
 
                 let db_path: PathBuf = app_data_dir
-                    .join("plugins")
+                    .join("plugin-home")
                     .join(plugin_id.as_str())
-                    .join("storage.db");
+                    .join("sql")
+                    .join("storage.sqlite3");
 
                 SqlConfig::Configured {
                     db_path,
@@ -804,7 +812,8 @@ icon = "heroicons:x-mark"
 
         // Copy the minimal-plugin wasm so the compile step
         // passes; we want the migration-read step to fail.
-        let wasm_src = std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
+        let wasm_src =
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
         std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
 
         std::fs::write(
@@ -935,7 +944,8 @@ migrations = ["migrations/001_init.sql"]
         let plugin_dir = tmp.path().join("sql-plugin");
         std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
 
-        let wasm_src = std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
+        let wasm_src =
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
         std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
 
         std::fs::write(
@@ -995,6 +1005,136 @@ migrations = ["migrations/001_init.sql"]
         assert!(bridge.parsed_tasks.is_empty());
     }
 
+    /// Construct a WASM bridge with a `[storage.sql]` block
+    /// declared in its manifest. `source_root` is where the
+    /// plugin files are written (typically a tempdir owned
+    /// by the caller so the on-disk layout can be inspected
+    /// before cleanup). The single migration creates a
+    /// trivial `probe` table; tests do not care about the
+    /// contents, only that the path is correct.
+    fn bridge_with_sql(
+        plugin_id: &str,
+        source_root: &std::path::Path,
+        app_data_dir: &std::path::Path,
+    ) -> anyhow::Result<WasmPluginBridge> {
+        let plugin_dir = source_root.join(plugin_id);
+        std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
+
+        let wasm_src =
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
+        std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
+
+        std::fs::write(
+            plugin_dir.join("migrations/001_init.sql"),
+            "CREATE TABLE IF NOT EXISTS probe (id INTEGER PRIMARY KEY);",
+        )
+        .expect("write migration");
+        std::fs::write(
+            plugin_dir.join("manifest.toml"),
+            format!(
+                r#"
+[plugin]
+id = "{plugin_id}"
+name = "SQL Plugin"
+description = "plugin with sql config"
+version = "0.0.0"
+wasm = "minimal_plugin.wasm"
+icon = "heroicons:circle-stack"
+
+[storage.sql]
+migrations = ["migrations/001_init.sql"]
+"#
+            ),
+        )
+        .expect("write manifest");
+
+        let source = DirectorySource::open(&plugin_dir).expect("open directory");
+        let manifest = source.manifest().clone();
+        WasmPluginBridge::new(
+            manifest,
+            test_runtime(),
+            LogSender::test_sender(),
+            &source,
+            app_data_dir,
+        )
+    }
+
+    /// The host-managed storage path must follow the
+    /// `plugin-home/<id>/sql/storage.sqlite3` layout.
+    /// This is a structural guarantee for both plugin
+    /// authors (who reason about where their data lives)
+    /// and the uninstall flow (which deletes the
+    /// `plugin-home/<id>/` subtree to clean up).
+    #[test]
+    fn sql_config_uses_plugin_home_layout() {
+        let source_root = tempfile::tempdir().expect("source tempdir");
+        let app_data = tempfile::tempdir().expect("app data tempdir");
+        let bridge =
+            bridge_with_sql("layout-plugin", source_root.path(), app_data.path()).expect("bridge");
+
+        match bridge.sql_config_for_tests() {
+            SqlConfig::Configured { db_path, .. } => {
+                let expected = app_data
+                    .path()
+                    .join("plugin-home")
+                    .join("layout-plugin")
+                    .join("sql")
+                    .join("storage.sqlite3");
+                assert_eq!(db_path, &expected);
+            }
+            SqlConfig::None => panic!("expected SqlConfig::Configured"),
+        }
+    }
+
+    /// Plugin IDs that share a textual prefix (e.g. `foo` vs
+    /// `foo-bar`) must land in separate directories. A bug
+    /// that used the ID as a flat filename prefix instead of
+    /// a directory segment would let `foo-bar` stomp on
+    /// `foo`'s storage.
+    #[test]
+    fn sql_config_path_isolated_by_plugin_id() {
+        let short_root = tempfile::tempdir().expect("short source tempdir");
+        let long_root = tempfile::tempdir().expect("long source tempdir");
+        let app_data = tempfile::tempdir().expect("app data tempdir");
+        let short =
+            bridge_with_sql("foo", short_root.path(), app_data.path()).expect("short bridge");
+        let long =
+            bridge_with_sql("foo-bar", long_root.path(), app_data.path()).expect("long bridge");
+
+        let (
+            SqlConfig::Configured { db_path: short, .. },
+            SqlConfig::Configured { db_path: long, .. },
+        ) = (short.sql_config_for_tests(), long.sql_config_for_tests())
+        else {
+            panic!("both bridges must have SqlConfig::Configured");
+        };
+
+        assert_ne!(short, long);
+        // Directory containment also differs — the `foo`
+        // tree must not contain anything from `foo-bar`.
+        let short_root = short.parent().and_then(|p| p.parent()).expect("foo root");
+        let long_root = long
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("foo-bar root");
+        assert_ne!(short_root, long_root);
+    }
+
+    /// A plugin with no `[storage.sql]` block must not cause
+    /// any `plugin-home/` directory to be created: the bridge
+    /// constructor is a no-op for storage in that case.
+    #[test]
+    fn no_sql_config_creates_no_directory() {
+        let app_data = tempfile::tempdir().expect("app data tempdir");
+        let _bridge = test_bridge("minimal-plugin", app_data.path()).expect("bridge construction");
+
+        let plugin_home = app_data.path().join("plugin-home");
+        assert!(
+            !plugin_home.exists(),
+            "plugin-home/ must not be created for a plugin without [storage.sql]"
+        );
+    }
+
     #[test]
     fn parses_task_schedules_when_present() {
         // Tempdir manifest because no committed fixture
@@ -1003,7 +1143,8 @@ migrations = ["migrations/001_init.sql"]
         let plugin_dir = tmp.path().join("task-plugin");
         std::fs::create_dir_all(&plugin_dir).expect("mkdir");
 
-        let wasm_src = std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
+        let wasm_src =
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
         std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
 
         std::fs::write(

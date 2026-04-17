@@ -119,7 +119,7 @@ impl WebsiteMetadataService {
         notifier: &SettingsNotifier,
         initial_ttl_days: u32,
     ) -> anyhow::Result<Self> {
-        let db = SqlStorage::open(cache_dir.join("metadata.db"), &[cache::MIGRATION_001])
+        let db = SqlStorage::open(cache_dir.join("metadata.sqlite3"), &[cache::MIGRATION_001])
             .context("open website metadata cache database")?;
 
         let favicons = FaviconStore::new(cache_dir.join("favicons"));
