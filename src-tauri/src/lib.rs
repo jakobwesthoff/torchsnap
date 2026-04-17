@@ -463,6 +463,17 @@ fn wasm_plugins(
     sources.values().map(|s| s.manifest().clone()).collect()
 }
 
+/// Return the origin of every registered plugin (native,
+/// bundled WASM, user-installed WASM, or dev-path WASM).
+/// Consumed by the Plugins settings panel to render source
+/// badges and gate the uninstall action to `user` plugins.
+#[tauri::command]
+fn plugin_sources(
+    host: tauri::State<'_, Arc<plugin_host::PluginHost>>,
+) -> std::collections::HashMap<String, wasm::source::PluginSourceKind> {
+    host.plugin_sources()
+}
+
 // =========================================================
 // Control API — frontend channel subscription
 // =========================================================
@@ -505,6 +516,7 @@ pub fn run() {
             wasm::logging::commands::logger_span_start,
             wasm::logging::commands::logger_span_end,
             wasm_plugins,
+            plugin_sources,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -567,10 +579,18 @@ pub fn run() {
             // =========================================================
             let mut host =
                 plugin_host::PluginHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
-            host.register(Box::new(plugins::commands::BuiltInCommandsPlugin));
-            host.register(Box::new(
-                plugins::system_commands::SystemCommandsPlugin::new(),
-            ));
+            // All built-in plugins are native Rust code compiled
+            // into the binary — tag them `Builtin`. The Plugins
+            // settings panel uses this to suppress the uninstall
+            // action for built-ins.
+            host.register(
+                Box::new(plugins::commands::BuiltInCommandsPlugin),
+                wasm::source::PluginSourceKind::Builtin,
+            );
+            host.register(
+                Box::new(plugins::system_commands::SystemCommandsPlugin::new()),
+                wasm::source::PluginSourceKind::Builtin,
+            );
 
             let icon_cache_dir = app
                 .path()
@@ -578,20 +598,30 @@ pub fn run() {
                 .context("resolve app cache dir")?
                 .join("icons");
             let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
-            host.register(Box::new(plugins::app_launcher::AppLauncherPlugin::new(
-                platform::PlatformAppDiscovery,
-                Arc::clone(&icon_cache),
-            )));
-            host.register(Box::new(
-                plugins::system_preferences::SystemPreferencesPlugin::new(
+            host.register(
+                Box::new(plugins::app_launcher::AppLauncherPlugin::new(
+                    platform::PlatformAppDiscovery,
+                    Arc::clone(&icon_cache),
+                )),
+                wasm::source::PluginSourceKind::Builtin,
+            );
+            host.register(
+                Box::new(plugins::system_preferences::SystemPreferencesPlugin::new(
                     platform::PlatformSettingsDiscovery,
                     Arc::clone(&icon_cache),
-                ),
-            ));
-            host.register(Box::new(plugins::clipboard::ClipboardPlugin::new(
-                platform::PlatformClipboard,
-            )));
-            host.register(Box::new(plugins::emoji::EmojiPickerPlugin::new()));
+                )),
+                wasm::source::PluginSourceKind::Builtin,
+            );
+            host.register(
+                Box::new(plugins::clipboard::ClipboardPlugin::new(
+                    platform::PlatformClipboard,
+                )),
+                wasm::source::PluginSourceKind::Builtin,
+            );
+            host.register(
+                Box::new(plugins::emoji::EmojiPickerPlugin::new()),
+                wasm::source::PluginSourceKind::Builtin,
+            );
             // `calculator` is now a WASM plugin loaded
             // dynamically from `plugins/calculator/` by
             // `load_wasm_plugins` below.
@@ -622,12 +652,18 @@ pub fn run() {
             );
             metadata_service.start_retention();
 
-            host.register(Box::new(plugins::open_url::OpenUrlPlugin::new(Arc::clone(
-                &metadata_service,
-            ))));
-            host.register(Box::new(plugins::bangs::BangsPlugin::new(Arc::clone(
-                &metadata_service,
-            ))));
+            host.register(
+                Box::new(plugins::open_url::OpenUrlPlugin::new(Arc::clone(
+                    &metadata_service,
+                ))),
+                wasm::source::PluginSourceKind::Builtin,
+            );
+            host.register(
+                Box::new(plugins::bangs::BangsPlugin::new(Arc::clone(
+                    &metadata_service,
+                ))),
+                wasm::source::PluginSourceKind::Builtin,
+            );
 
             // =========================================================
             // Logging system
@@ -961,7 +997,12 @@ fn load_single_wasm_plugin(
         source.as_ref(),
         app_data_dir,
     )?;
-    host.register(Box::new(bridge));
+    // TODO(phase-4): the loader will pass the correct
+    // `PluginSourceKind` per scanned root (System / User /
+    // Dev). Until then every WASM plugin is tagged `Dev`,
+    // since today's loader scans only the repo-relative dev
+    // path.
+    host.register(Box::new(bridge), wasm::source::PluginSourceKind::Dev);
 
     // Retain the source in the registry so the protocol
     // handler can serve frontend assets from it.

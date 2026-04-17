@@ -15,7 +15,10 @@
 // Both implement `PluginSource`, which provides access to
 // the parsed manifest and the raw bytes of any file within
 // the plugin. The rest of the plugin system is agnostic to
-// which source loaded the plugin.
+// which source loaded the plugin — the source kind
+// (`PluginSourceKind`) is tracked separately by the host so
+// UI surfaces (badges, uninstall availability) can reason
+// about where a plugin came from.
 // =========================================================
 
 use std::io::Read as _;
@@ -25,6 +28,45 @@ use std::sync::Mutex;
 use anyhow::Context as _;
 
 use super::manifest::Manifest;
+
+// =========================================================
+// PluginSourceKind
+// =========================================================
+
+/// Tags each loaded plugin with the root it was discovered
+/// from. Orthogonal to [`PluginSource`]: the trait abstracts
+/// *how* we read the plugin's files (directory vs. archive),
+/// this enum records *where on the host* it came from.
+///
+/// The UI uses this to:
+///
+/// - Show a source badge next to each plugin.
+/// - Gate the uninstall action to `User` only.
+/// - Reject install-time ID collisions against `Builtin`,
+///   `System`, and `Dev` plugins.
+///
+/// Serialized as lowercase strings (`builtin`, `system`,
+/// `user`, `dev`) across the Tauri IPC boundary.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginSourceKind {
+    /// Native Rust plugin compiled directly into the host
+    /// binary (e.g. `clipboard`, `bangs`). Always present;
+    /// not uninstallable.
+    Builtin,
+    /// WASM plugin shipped inside the application bundle
+    /// under `<resource_dir>/plugins/`. Upgraded with the
+    /// app; not uninstallable at runtime.
+    System,
+    /// WASM plugin installed by the user under
+    /// `<app_data_dir>/plugins/`. Uninstallable from the
+    /// Plugins settings panel.
+    User,
+    /// WASM plugin loaded from the repo-relative development
+    /// path (`CARGO_MANIFEST_DIR/../plugins`) in debug
+    /// builds. Skipped entirely in release builds.
+    Dev,
+}
 
 // =========================================================
 // PluginSource Trait
@@ -267,6 +309,61 @@ impl PluginSource for ArchiveSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================
+    // PluginSourceKind serialization
+    // =========================================================
+
+    /// Every variant must round-trip through JSON unchanged.
+    /// The IPC boundary with the frontend uses JSON, so any
+    /// serializer/deserializer asymmetry would surface as a
+    /// silently-lost source kind on the UI.
+    #[test]
+    fn plugin_source_kind_round_trips_through_json() {
+        for kind in [
+            PluginSourceKind::Builtin,
+            PluginSourceKind::System,
+            PluginSourceKind::User,
+            PluginSourceKind::Dev,
+        ] {
+            let encoded = serde_json::to_string(&kind).expect("serialize");
+            let decoded: PluginSourceKind = serde_json::from_str(&encoded).expect("deserialize");
+            assert_eq!(decoded, kind, "round-trip lost information for {kind:?}");
+        }
+    }
+
+    /// The wire format must stay lowercase. The TypeScript
+    /// `PluginSourceKind` string literal type depends on these
+    /// exact values — if Rust ever produces `"Builtin"` or
+    /// `"BUILTIN"` instead of `"builtin"`, the frontend will
+    /// silently fail to match.
+    #[test]
+    fn plugin_source_kind_uses_lowercase_wire_names() {
+        let cases = [
+            (PluginSourceKind::Builtin, "\"builtin\""),
+            (PluginSourceKind::System, "\"system\""),
+            (PluginSourceKind::User, "\"user\""),
+            (PluginSourceKind::Dev, "\"dev\""),
+        ];
+        for (kind, expected) in cases {
+            let encoded = serde_json::to_string(&kind).expect("serialize");
+            assert_eq!(encoded, expected);
+        }
+    }
+
+    /// Deserialization of any other casing must fail — we
+    /// rely on this strictness so typos in a consumer are
+    /// caught rather than silently producing a wrong kind.
+    #[test]
+    fn plugin_source_kind_rejects_non_lowercase_input() {
+        for bad in ["\"Builtin\"", "\"SYSTEM\"", "\"User \"", "\"\"", "null"] {
+            let decoded: Result<PluginSourceKind, _> = serde_json::from_str(bad);
+            assert!(
+                decoded.is_err(),
+                "expected rejection for input {bad}, got {decoded:?}"
+            );
+        }
+    }
 
     /// Helper: create a temporary plugin directory with a
     /// manifest and optional extra files.

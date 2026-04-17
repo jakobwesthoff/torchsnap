@@ -102,7 +102,19 @@ interface CommandMap {
     result: void;
   };
   wasm_plugins: { params: void; result: WasmPluginManifest[] };
+  plugin_sources: { params: void; result: Record<string, PluginSourceKind> };
 }
+
+// =========================================================
+// Plugin Source Kind
+//
+// Mirrors the Rust `PluginSourceKind` enum. Serialized as
+// lowercase strings across the Tauri IPC boundary. Used by
+// the Plugins settings panel to render source badges and
+// gate the uninstall action to `user` plugins.
+// =========================================================
+
+export type PluginSourceKind = "builtin" | "system" | "user" | "dev";
 
 // =========================================================
 // WASM Plugin Manifest
