@@ -225,33 +225,30 @@ function PluginRowView({
         />
       )}
       <div className="flex min-w-0 flex-col flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-primary truncate">{row.label}</span>
-          <SourceBadge kind={row.sourceKind} />
-        </div>
+        <span className="text-sm font-medium text-text-primary truncate">{row.label}</span>
         {row.description && (
           <span className="text-xs text-text-tertiary truncate">{row.description}</span>
         )}
       </div>
       <Switch checked={enabled ?? true} onChange={setEnabled} />
-      <button
-        type="button"
-        onClick={() => onUninstall(row.id)}
-        disabled={!canUninstall}
-        title={
-          canUninstall
-            ? "Uninstall this user plugin"
-            : "Built-in, system, and dev plugins cannot be uninstalled"
-        }
-        className={cn(
-          "rounded-md px-2 py-1 text-xs transition-colors",
-          canUninstall
-            ? "text-text-muted hover:text-text-primary hover:bg-surface-hover"
-            : "text-text-disabled cursor-not-allowed",
-        )}
-      >
-        Uninstall
-      </button>
+      {/* Trailing slot is either the Uninstall action (for user
+          plugins) or the source badge (for everything else). The
+          two surfaces are mutually exclusive: non-user plugins
+          can't be uninstalled, so showing a disabled button there
+          just adds noise; surfacing the source kind instead makes
+          it obvious *why* uninstall is unavailable. */}
+      {canUninstall ? (
+        <button
+          type="button"
+          onClick={() => onUninstall(row.id)}
+          title="Uninstall this user plugin"
+          className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+        >
+          Uninstall
+        </button>
+      ) : (
+        <SourceBadge kind={row.sourceKind} />
+      )}
     </div>
   );
 }
