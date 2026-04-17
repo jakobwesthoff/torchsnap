@@ -5,14 +5,9 @@
 // =========================================================
 // PluginContext
 //
-// The plugin component contract. Replaces the old props-based
-// approach where every plugin component had to destructure
-// `pluginId`, `sendMessage`, `logger`, `goBack`, `dismiss`,
-// `onExecute`, etc. directly from its props.
-//
-// The host wraps every plugin component mount in a
-// <PluginContextProvider> (see PluginContextProvider.tsx)
-// that carries:
+// The plugin component contract. The host wraps every plugin
+// component mount in a <PluginContextProvider> (see
+// PluginContextProvider.tsx) that carries:
 //
 //   - info     — identity (id, enabled flag)
 //   - runtime  — host capabilities (sendMessage, logger)

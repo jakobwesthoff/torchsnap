@@ -21,8 +21,6 @@
 
 pub mod app_launcher;
 pub mod bangs;
-// `calculator` is now a WASM plugin in `plugins/calculator/`,
-// loaded dynamically by `wasm::load_wasm_plugins`.
 pub mod clipboard;
 pub mod commands;
 pub mod emoji;

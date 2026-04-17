@@ -626,9 +626,6 @@ pub fn run() {
                 Box::new(plugins::emoji::EmojiPickerPlugin::new()),
                 wasm::source::PluginSourceKind::Builtin,
             );
-            // `calculator` is now a WASM plugin loaded
-            // dynamically from `plugins/calculator/` by
-            // `load_wasm_plugins` below.
 
             // =========================================================
             // Website metadata service
@@ -778,11 +775,8 @@ pub fn run() {
                             .get(&payload.key)
                             .unwrap_or(serde_json::Value::Null);
 
-                        // Legacy: propagate to watch channels.
                         notifier.notify(&payload.key, value.clone());
 
-                        // New: route to host-managed lifecycle and
-                        // plugin setting_changed dispatch.
                         host_for_listener.handle_setting_changed(
                             &payload.key,
                             value,
