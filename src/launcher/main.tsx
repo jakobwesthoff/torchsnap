@@ -67,7 +67,6 @@ async function main() {
     );
   });
 
-  // Phase 2: normal render, no measurement overhead.
   root.render(
     <StrictMode>
       <ThemeProvider>

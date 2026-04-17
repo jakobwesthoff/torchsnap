@@ -25,10 +25,9 @@ export const SHADOW_PADDING = 64;
 // =========================================================
 // Mascot Overlap Constants
 //
-// Absolute pixel positions where the original mascot's visible
-// content edges land in the launcher layout. Derived once from
-// the original hardcoded positions and the original's trim data
-// (bottom: 8.7%, left: 8.5%):
+// Absolute pixel positions where the default mascot's visible
+// content edges land in the launcher layout. Derived from the
+// default mascot's trim data (bottom: 8.7%, left: 8.5%):
 //
 //   Center Y:   -156 + 192 × (1 - 0.087) = 19.3px below card top
 //   Sidekick Y: -72  +  96 × (1 - 0.087) = 15.6px below card top
