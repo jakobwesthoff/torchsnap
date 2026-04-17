@@ -112,14 +112,18 @@ impl Plugin for BangsPlugin {
     // =========================================================
 
     fn enable(&self, app: &tauri::AppHandle, _ctx: &PluginContext) {
+        // State lives under `plugin-home/<id>/`: code lives
+        // under `plugins/` and is owned by the installer, so
+        // host-managed state gets its own root with reserved
+        // sibling slots (`sql/`, `files/`, future additions).
         let data_dir = app
             .path()
             .app_data_dir()
             .expect("app data dir is available")
-            .join("plugins")
+            .join("plugin-home")
             .join(PLUGIN_ID);
 
-        let db_path = data_dir.join("bangs.db");
+        let db_path = data_dir.join("sql").join("bangs.sqlite3");
         let sql = SqlStorage::open(db_path, &[MIGRATION_001]).expect("open bang database");
 
         let http = Http::new();

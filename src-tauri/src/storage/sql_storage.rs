@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn open_migrate_insert_query() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -563,7 +563,7 @@ mod tests {
     #[test]
     fn optional_columns() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -631,7 +631,7 @@ mod tests {
     #[test]
     fn list_query_map() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     fn transaction_commit() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -698,7 +698,7 @@ mod tests {
     #[test]
     fn transaction_rollback() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -734,7 +734,7 @@ mod tests {
     #[test]
     fn transaction_nested() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -773,7 +773,7 @@ mod tests {
     #[test]
     fn transaction_returns_value() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
@@ -803,7 +803,7 @@ mod tests {
     #[test]
     fn transaction_unique_savepoint_names() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let db_path = dir.path().join("test.db");
+        let db_path = dir.path().join("test.sqlite3");
 
         let storage = SqlStorage::open(
             db_path,
