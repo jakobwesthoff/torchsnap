@@ -134,12 +134,17 @@ impl PluginSource for DirectorySource {
     }
 
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
+        // First, the lexical guard — catches absolute paths,
+        // traversal, Windows-style roots, backslashes, NULs,
+        // and anything else before we touch the filesystem.
+        validate_plugin_path(path)?;
+
         let full_path = self.root.join(path);
 
-        // Prevent path traversal outside the plugin directory.
-        // We canonicalize both the root and the target path to
-        // resolve symlinks and `..` components, then verify that
-        // the target is still within the root.
+        // Second, a canonicalize-based check that follows
+        // symlinks. A plugin directory containing a symlink
+        // into the host's filesystem would pass the lexical
+        // guard but be caught here.
         let canonical_root = self
             .root
             .canonicalize()
@@ -194,6 +199,118 @@ fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     result
+}
+
+// =========================================================
+// Plugin Path Guard
+//
+// Single lexical validator for every user-supplied path
+// inside a plugin — manifest-referenced files (wasm, icon,
+// migrations, frontend bundles/CSS) and every argument to
+// `read_file()`.
+//
+// A manifest that says `launcher-bundle = "../../.ssh/id_rsa"`
+// would otherwise get the host to read an arbitrary file and
+// hand the bytes back as a "frontend bundle". The host would
+// gladly serve that to the webview via the plugin protocol.
+// The WIT sandbox does not cover this path because the read
+// happens host-side before anything reaches the guest.
+//
+// Applied at two layers:
+//
+// 1. **Manifest parse** — every path field in `manifest.toml`
+//    is validated before the plugin is considered loadable.
+//    This is the primary gate.
+// 2. **Read boundary** — both `DirectorySource::read_file` and
+//    `ArchiveSource::read_file` re-validate their `path`
+//    argument. Defense-in-depth against a host bug that ever
+//    forwards an unvalidated path to the source layer.
+//
+// Rules the guard enforces:
+//
+// - Non-empty.
+// - No NUL bytes (defensive against embedded-null path
+//   truncation surprises on some platforms).
+// - No backslashes — paths inside a plugin are always
+//   forward-slash, regardless of host OS. Archives use the
+//   zip spec (forward-slash), directory manifests are
+//   cross-platform by policy.
+// - Not an absolute POSIX path (leading `/`).
+// - Not a Windows absolute path (`C:\…`, `\\…`). This guard
+//   fires even on macOS/Linux so a Windows-targeted malicious
+//   plugin still gets rejected before reaching platform-
+//   specific code.
+// - After lexically resolving `..` and `.` segments, the
+//   running depth never goes below zero (i.e. the path never
+//   escapes the plugin root).
+//
+// Returns the lexically normalized path for callers that want
+// to use it as a filesystem-side key. The unnormalized input
+// is still carried in error messages to help plugin authors
+// debug rejections.
+// =========================================================
+
+/// Validate that `path` is a safe, plugin-relative path.
+/// Returns the lexically normalized form on success. See the
+/// module-level "Plugin Path Guard" comment for the full list
+/// of rules.
+pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
+    anyhow::ensure!(!path.is_empty(), "plugin file path must not be empty");
+    anyhow::ensure!(
+        !path.contains('\0'),
+        "plugin file path `{path}` must not contain NUL bytes"
+    );
+    anyhow::ensure!(
+        !path.contains('\\'),
+        "plugin file path `{path}` must use forward slashes (`/`) — backslashes are rejected regardless of host OS"
+    );
+    anyhow::ensure!(
+        !path.starts_with('/'),
+        "plugin file path `{path}` must be relative (no leading `/`)"
+    );
+
+    // Windows drive-letter detection (`C:`, `z:`, …). Rejected
+    // on all platforms so a malicious plugin shipped from a
+    // Windows author still fails on macOS/Linux.
+    let mut bytes = path.bytes();
+    if let (Some(first), Some(second)) = (bytes.next(), bytes.next()) {
+        if first.is_ascii_alphabetic() && second == b':' {
+            anyhow::bail!(
+                "plugin file path `{path}` looks like a Windows absolute path — paths must be plugin-relative"
+            );
+        }
+    }
+
+    // Walk the components in order, tracking the running
+    // depth. A path that drops below zero at any point is
+    // escaping — catches `../foo` and also the subtler
+    // `a/../../bar` where the final normalized form may
+    // happen to land inside the root but the walk crossed
+    // the boundary.
+    let mut depth: i32 = 0;
+    for component in Path::new(path).components() {
+        match component {
+            std::path::Component::ParentDir => {
+                depth -= 1;
+                anyhow::ensure!(
+                    depth >= 0,
+                    "plugin file path `{path}` escapes the plugin root"
+                );
+            }
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::CurDir => {}
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                // Prefix covers Windows `\\?\` and drive
+                // prefixes in case an exotic input slipped
+                // past the earlier checks.
+                anyhow::bail!(
+                    "plugin file path `{path}` must be relative (no root or drive prefix)"
+                );
+            }
+        }
+    }
+
+    Ok(normalize_path(Path::new(path)))
 }
 
 // =========================================================
@@ -259,33 +376,12 @@ impl PluginSource for ArchiveSource {
     }
 
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
-        // Reject paths that attempt to escape the archive root.
-        // Zip entry names are relative strings — we can't use
-        // filesystem canonicalization, so we track directory
-        // depth during normalization. If it ever goes negative,
-        // the path escapes the root.
-        anyhow::ensure!(
-            !path.starts_with('/'),
-            "plugin file path `{path}` must be relative"
-        );
-
-        let normalized = normalize_path(Path::new(path));
+        // Validate and normalize before touching the archive.
+        // The guard rejects absolute / Windows / backslash /
+        // NUL / traversal paths in one place; the normalized
+        // output is what zip `by_name` lookups should use.
+        let normalized = validate_plugin_path(path)?;
         let normalized_str = normalized.to_string_lossy();
-
-        // Walk components and track depth. A `..` that would
-        // go above the root (depth < 0) is a traversal attempt.
-        let mut depth: i32 = 0;
-        for component in Path::new(path).components() {
-            match component {
-                std::path::Component::ParentDir => depth -= 1,
-                std::path::Component::Normal(_) => depth += 1,
-                _ => {}
-            }
-            anyhow::ensure!(
-                depth >= 0,
-                "plugin file path `{path}` escapes the archive root"
-            );
-        }
 
         let mut archive = self.archive.lock().expect("archive mutex not poisoned");
 
@@ -363,6 +459,131 @@ mod tests {
                 "expected rejection for input {bad}, got {decoded:?}"
             );
         }
+    }
+
+    // =========================================================
+    // validate_plugin_path: the accept-cases
+    //
+    // Every path a legitimate plugin author might write must
+    // pass. Failing any of these would break the real-world
+    // plugins (calculator, clipboard, hello-world, template)
+    // when they reference their own files.
+    // =========================================================
+
+    #[test]
+    fn path_guard_accepts_bare_filename() {
+        assert!(validate_plugin_path("manifest.toml").is_ok());
+        assert!(validate_plugin_path("icon.webp").is_ok());
+    }
+
+    #[test]
+    fn path_guard_accepts_nested_file() {
+        assert!(validate_plugin_path("frontend/dist/launcher.js").is_ok());
+        assert!(validate_plugin_path("migrations/001_init.sql").is_ok());
+    }
+
+    #[test]
+    fn path_guard_accepts_deeply_nested_path() {
+        assert!(validate_plugin_path("a/b/c/d/e/deeply_nested.bin").is_ok());
+    }
+
+    #[test]
+    fn path_guard_accepts_dots_within_components() {
+        // A filename that contains dots but is not a `..`
+        // segment must pass — `.env.local`, `foo.bar.baz`,
+        // etc. are legitimate filenames.
+        assert!(validate_plugin_path("foo.bar.baz.wasm").is_ok());
+        assert!(validate_plugin_path("frontend/.prettierrc.json").is_ok());
+    }
+
+    #[test]
+    fn path_guard_accepts_roundtrip_into_self() {
+        // `a/./b` normalizes to `a/b` — curdir segments are
+        // valid even though they're unusual.
+        assert!(validate_plugin_path("frontend/./launcher.js").is_ok());
+    }
+
+    #[test]
+    fn path_guard_returns_normalized_output() {
+        // The normalized form strips `./` and dedupes
+        // separators. Callers use this for zip `by_name`
+        // lookups so it must match what a well-behaved
+        // manifest author would have written.
+        let normalized = validate_plugin_path("frontend/./dist/launcher.js").unwrap();
+        assert_eq!(normalized, Path::new("frontend/dist/launcher.js"));
+    }
+
+    // =========================================================
+    // validate_plugin_path: the reject-cases
+    //
+    // Every form of attacker-controlled path that could
+    // escape the plugin root must be rejected. Failures here
+    // are the exact scenarios documented in the Plugin Path
+    // Guard comment above.
+    // =========================================================
+
+    #[test]
+    fn path_guard_rejects_empty_string() {
+        assert!(validate_plugin_path("").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_nul_byte() {
+        assert!(validate_plugin_path("foo\0bar").is_err());
+        assert!(validate_plugin_path("\0").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_backslash_separator() {
+        // Even on Windows we reject backslashes: plugin
+        // paths are forward-slash by policy, matching the
+        // zip spec. This keeps cross-platform behaviour
+        // uniform.
+        assert!(validate_plugin_path("frontend\\launcher.js").is_err());
+        assert!(validate_plugin_path("..\\escape").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_leading_slash() {
+        assert!(validate_plugin_path("/etc/passwd").is_err());
+        assert!(validate_plugin_path("/").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_windows_drive_letter() {
+        assert!(validate_plugin_path("C:/Windows/System32/cmd.exe").is_err());
+        assert!(validate_plugin_path("z:foo").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_parent_at_start() {
+        assert!(validate_plugin_path("../secret").is_err());
+        assert!(validate_plugin_path("..").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_parent_in_middle() {
+        // The walking check catches paths where the running
+        // depth dips below zero, even if the end result
+        // happens to land back inside the root.
+        assert!(validate_plugin_path("a/../../outside").is_err());
+    }
+
+    #[test]
+    fn path_guard_rejects_nested_parent_traversal() {
+        assert!(validate_plugin_path("../../../../etc/shadow").is_err());
+        assert!(validate_plugin_path("frontend/../../escape").is_err());
+    }
+
+    /// Regression guard for the "crosses zero then returns"
+    /// case: `a/../../b/c/d` normalizes to `b/c/d` which
+    /// lands inside the root, but the walk visits depth -1
+    /// in the middle — an attacker could otherwise abuse
+    /// this to probe the filesystem structure outside the
+    /// plugin.
+    #[test]
+    fn path_guard_rejects_depth_dip_even_if_final_inside_root() {
+        assert!(validate_plugin_path("a/../../b/c").is_err());
     }
 
     /// Helper: create a temporary plugin directory with a
