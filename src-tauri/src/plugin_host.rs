@@ -44,6 +44,7 @@ use crate::search::types::{
 };
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::unicode::Utf16Positions;
+use crate::wasm::source::PluginSourceKind;
 
 // =========================================================
 // Internal Helpers
@@ -87,6 +88,11 @@ struct ActivatePluginPayload {
 struct PluginSlot {
     plugin: Arc<dyn Plugin>,
 
+    /// Where this plugin was loaded from. Surfaced to the
+    /// frontend so the Plugins settings panel can badge each
+    /// entry and gate uninstall to `User` only.
+    source_kind: PluginSourceKind,
+
     /// Host-owned enabled flag. Checked before including the
     /// plugin in search results, shortcut registration, etc.
     /// Updated by the host when `enabled.<id>` changes in the
@@ -100,9 +106,10 @@ struct PluginSlot {
 }
 
 impl PluginSlot {
-    fn new(plugin: Arc<dyn Plugin>) -> Self {
+    fn new(plugin: Arc<dyn Plugin>, source_kind: PluginSourceKind) -> Self {
         Self {
             plugin,
+            source_kind,
             enabled: AtomicBool::new(true),
             dispatcher: CoalescingDispatcher::new(),
         }
@@ -150,8 +157,26 @@ impl PluginHost {
         }
     }
 
-    pub fn register(&mut self, plugin: Box<dyn Plugin>) {
-        self.slots.push(PluginSlot::new(Arc::from(plugin)));
+    /// Register a plugin with the host. `source_kind` records
+    /// where the plugin was loaded from (native Rust code,
+    /// bundled WASM archive, user install, dev path) and is
+    /// surfaced through [`Self::plugin_sources`] to the frontend
+    /// so the Plugins settings panel can badge and gate each
+    /// entry appropriately.
+    pub fn register(&mut self, plugin: Box<dyn Plugin>, source_kind: PluginSourceKind) {
+        self.slots
+            .push(PluginSlot::new(Arc::from(plugin), source_kind));
+    }
+
+    /// Snapshot of the plugin-id → source-kind mapping. Exposed
+    /// via the `plugin_sources` Tauri command. The host's slot
+    /// list is append-only after setup, so this snapshot is
+    /// stable over the process lifetime.
+    pub fn plugin_sources(&self) -> std::collections::HashMap<String, PluginSourceKind> {
+        self.slots
+            .iter()
+            .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
+            .collect()
     }
 
     // =========================================================
@@ -1009,13 +1034,17 @@ mod tests {
         }
     }
 
-    /// Helper to wrap mock plugins in `PluginSlot`.
+    /// Helper to wrap mock plugins in `PluginSlot`. Tests
+    /// default slots to `PluginSourceKind::Builtin` since
+    /// they exercise host routing logic, not source-kind
+    /// plumbing — dedicated tests below cover the source-kind
+    /// path.
     fn plugin_slots(plugins: Vec<MockPlugin>) -> Vec<PluginSlot> {
         plugins
             .into_iter()
             .map(|p| {
                 let enabled = p.enabled;
-                let slot = PluginSlot::new(Arc::new(p));
+                let slot = PluginSlot::new(Arc::new(p), PluginSourceKind::Builtin);
                 slot.enabled.store(enabled, Ordering::Relaxed);
                 slot
             })
@@ -1312,5 +1341,59 @@ mod tests {
         let response = PluginResponse::Results(vec![scored_entry("x", 1)]);
         let (_, entries) = process_plugin_response(response, "my-plugin", false);
         assert_eq!(entries[0].source, "my-plugin");
+    }
+
+    // =======================================================
+    // PluginSourceKind plumbing through the slot
+    // =======================================================
+
+    /// Every variant must survive `PluginSlot::new`. The
+    /// field drives the frontend source badge, so a slot
+    /// that silently dropped the kind would present the
+    /// wrong origin to the user.
+    #[test]
+    fn slot_preserves_every_source_kind_variant() {
+        for kind in [
+            PluginSourceKind::Builtin,
+            PluginSourceKind::System,
+            PluginSourceKind::User,
+            PluginSourceKind::Dev,
+        ] {
+            let slot = PluginSlot::new(Arc::new(MockPlugin::new("probe")), kind);
+            assert_eq!(slot.source_kind, kind);
+        }
+    }
+
+    /// Aggregation across multiple slots yields the plugin-id →
+    /// source-kind map exposed to the frontend. This mirrors
+    /// the body of `PluginHost::plugin_sources`; together with
+    /// the per-slot preservation test above it is sufficient
+    /// coverage for the command's output without constructing
+    /// a full `PluginHost` (which would require a real
+    /// `Store` + `FrecencyStore`).
+    #[test]
+    fn slot_aggregation_produces_expected_source_map() {
+        let slots = vec![
+            PluginSlot::new(
+                Arc::new(MockPlugin::new("builtin-a")),
+                PluginSourceKind::Builtin,
+            ),
+            PluginSlot::new(
+                Arc::new(MockPlugin::new("system-x")),
+                PluginSourceKind::System,
+            ),
+            PluginSlot::new(Arc::new(MockPlugin::new("user-y")), PluginSourceKind::User),
+            PluginSlot::new(Arc::new(MockPlugin::new("dev-z")), PluginSourceKind::Dev),
+        ];
+        let map: std::collections::HashMap<String, PluginSourceKind> = slots
+            .iter()
+            .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
+            .collect();
+
+        assert_eq!(map.len(), 4);
+        assert_eq!(map["builtin-a"], PluginSourceKind::Builtin);
+        assert_eq!(map["system-x"], PluginSourceKind::System);
+        assert_eq!(map["user-y"], PluginSourceKind::User);
+        assert_eq!(map["dev-z"], PluginSourceKind::Dev);
     }
 }
