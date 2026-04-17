@@ -58,3 +58,31 @@ depend on it.
 
 WIT inspection / formatting uses `wasm-tools` (`just check-wit`,
 `just fmt-wit`), which is a separate tool.
+
+## Plugin build pipeline
+
+Release bundles ship only the plugins whitelisted in
+`plugins/bundled.toml`. The `stage-bundled-plugins` Just recipe
+reads the whitelist, rebuilds each listed plugin, and copies the
+resulting `.torchsnap` archives into `target/bundled-plugins/`,
+which Tauri picks up via the `resources` entry in
+`tauri.conf.json`. `just build` runs this staging step before
+`tauri build` automatically; no manual orchestration needed.
+
+The repo-root `target/` directory is gitignored — it is owned
+entirely by this staging flow. Cargo itself uses
+`src-tauri/target/` and `plugins/*/target/`.
+
+To add a plugin to release bundles, edit `plugins/bundled.toml`
+and rebuild. To develop a plugin without adding it to release
+bundles, just keep its source under `plugins/<id>/` — the debug
+loader scans that directory automatically (ADR 0035).
+
+## Plugin storage layout
+
+Host-managed per-plugin state (SQLite databases, future blob /
+cache sibling directories) lives under
+`<app_data_dir>/plugin-home/<plugin-id>/`, separate from plugin
+code which lives under `<app_data_dir>/plugins/`. SQLite files
+use the `.sqlite3` extension project-wide (not `.db`). See
+ADR 0035 (distribution) and ADR 0018 (SQL storage) for details.

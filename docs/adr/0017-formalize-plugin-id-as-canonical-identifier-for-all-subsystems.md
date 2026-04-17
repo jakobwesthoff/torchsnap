@@ -36,8 +36,15 @@ plugin across all subsystems:
 - Search result routing and action dispatch (existing)
 - Frontend component registry keys (existing, now formalized)
 - Per-plugin cache directories (e.g., `app_cache_dir/<plugin-id>/`)
-- Per-plugin data directories (e.g., `app_data_dir/plugins/<plugin-id>/`)
-- Per-plugin storage files (e.g., `<plugin-id>.db`)
+- Per-plugin host-managed state under
+  `app_data_dir/plugin-home/<plugin-id>/` (`sql/`, future
+  `files/`, `cache/`). See ADR 0035 for the split between
+  `plugins/` (code) and `plugin-home/` (state).
+- Per-plugin WASM code at `app_data_dir/plugins/<plugin-id>.torchsnap`
+  (user-installed) or `<resource_dir>/plugins/<plugin-id>.torchsnap`
+  (bundled), per ADR 0035.
+- Per-plugin storage files (e.g., `storage.sqlite3` under the
+  plugin's `sql/` subdirectory).
 - Per-plugin settings namespacing (e.g., `plugins.<plugin-id>.*`)
 - Any future subsystem that operates per-plugin
 
