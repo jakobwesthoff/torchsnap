@@ -40,10 +40,17 @@ export interface PluginRegistryEntry {
 
 const registry = new Map<string, PluginRegistryEntry>();
 
+/**
+ * Register a plugin in the registry. Overwrites any existing
+ * entry for the same ID.
+ */
 export function registerPlugin(id: string, entry: PluginRegistryEntry): void {
   registry.set(id, entry);
 }
 
+/**
+ * Remove a plugin from the registry (e.g., on uninstall).
+ */
 export function unregisterPlugin(id: string): void {
   registry.delete(id);
 }
@@ -103,6 +110,10 @@ registerPlugin("open-url", {
 // Public API
 // =========================================================
 
+/**
+ * Look up a named view component for a plugin's CustomUI response.
+ * The view name is always provided — if missing, it's a bug.
+ */
 export function getPluginView(
   pluginId: string,
   viewName: string,
@@ -110,6 +121,9 @@ export function getPluginView(
   return registry.get(pluginId)?.views?.[viewName];
 }
 
+/**
+ * Look up a named inline view component for a plugin's InlineUI response.
+ */
 export function getPluginInlineView(
   pluginId: string,
   viewName: string,
@@ -117,6 +131,9 @@ export function getPluginInlineView(
   return registry.get(pluginId)?.inlineViews?.[viewName];
 }
 
+/**
+ * Look up the settings component for a plugin.
+ */
 export function getPluginSettingsComponent(
   pluginId: string,
 ): ComponentType<PluginSettingsProps> | undefined {
@@ -143,6 +160,9 @@ export function getPluginsWithSettings(): Array<{
   }> = [];
 
   for (const [id, entry] of registry) {
+    // A plugin appears in settings if it has a custom settings
+    // component OR has metadata (icon + description) for the
+    // generic wrapper.
     if (entry.settings != null || (entry.icon != null && entry.description != null)) {
       result.push({
         id,

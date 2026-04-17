@@ -236,6 +236,8 @@ fn retention_cleanup_loop(
             .wait_timeout(lc, RETENTION_CLEANUP_INTERVAL)
             .expect("lifecycle not poisoned");
 
+        // Check if we should exit: either no longer running
+        // (disabled) or app is shutting down.
         let lc = result.0;
         if !lc.running || lc.app_shutting_down {
             break;

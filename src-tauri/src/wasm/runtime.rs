@@ -486,7 +486,9 @@ pub struct WasmRuntime {
     span_registry: Arc<SpanRegistry>,
     /// Keyed by plugin ID. Populated by `compile()`,
     /// consumed by `instantiate()`. Re-compiling the same
-    /// ID replaces the existing entry.
+    /// ID replaces the existing entry — belt-and-suspenders
+    /// for a future hot-reload path, not wired up by any
+    /// current code path.
     components: Mutex<HashMap<String, Component>>,
 }
 
@@ -533,7 +535,8 @@ impl WasmRuntime {
     /// cheap enough to repeat on demand.
     ///
     /// Re-compiling an existing entry replaces the cached
-    /// `Component`.
+    /// `Component` — no current code path triggers this,
+    /// but the branch is kept for a future hot-reload path.
     pub fn compile(&self, plugin_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()> {
         let logger = self.logger_for(plugin_id);
         let _compile_span = logger.span("compile").meta("plugin_id", plugin_id).start();
