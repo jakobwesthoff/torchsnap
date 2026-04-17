@@ -103,9 +103,7 @@ pub fn enumerate_search_roots(
 ///   not plugins and are skipped).
 ///
 /// When both forms coexist (`foo.torchsnap` alongside
-/// `foo/`), the archive is kept and the directory is dropped,
-/// matching the hand-off semantics used in the prior
-/// single-root loader.
+/// `foo/`), the archive is kept and the directory is dropped.
 pub fn scan_plugin_entries(root: &Path) -> Vec<PathBuf> {
     let read_dir = match std::fs::read_dir(root) {
         Ok(d) => d,

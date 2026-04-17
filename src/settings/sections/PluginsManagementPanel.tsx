@@ -231,12 +231,8 @@ function PluginRowView({
         )}
       </div>
       <Switch checked={enabled ?? true} onChange={setEnabled} />
-      {/* Trailing slot is either the Uninstall action (for user
-          plugins) or the source badge (for everything else). The
-          two surfaces are mutually exclusive: non-user plugins
-          can't be uninstalled, so showing a disabled button there
-          just adds noise; surfacing the source kind instead makes
-          it obvious *why* uninstall is unavailable. */}
+      {/* Trailing slot: Uninstall for user plugins, source badge
+          for every other kind. Mutually exclusive by design. */}
       {canUninstall ? (
         <button
           type="button"
