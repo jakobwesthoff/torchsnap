@@ -40,13 +40,21 @@ are scoped per plugin using the plugin ID (ADR 0017).
 ### Physical layout
 
 ```
-<app_data_dir>/plugins/<plugin-id>/
-├── store.db                    # SqlStorage
+<app_data_dir>/plugin-home/<plugin-id>/
+├── sql/
+│   └── storage.sqlite3         # SqlStorage (WASM plugin shape)
 ```
 
-Directory resolved via Tauri's `app.path().app_data_dir()`. File-based
-blob storage lives alongside this in the same plugin directory but is
-a separate concern (ADR 0019).
+Directory resolved via Tauri's `app.path().app_data_dir()`. The
+top-level split between `plugins/` (plugin *code* — archives and
+dev directories, owned by the install/uninstall flow) and
+`plugin-home/` (plugin *state* — host-managed, owned by the
+runtime) is formalized in ADR 0035. Native plugins follow the
+same layout with their own filename under `sql/` (e.g.
+`sql/clipboard.sqlite3`, `sql/bangs.sqlite3`).
+
+File-based blob storage lives alongside `sql/` as a reserved
+sibling slot under `plugin-home/<plugin-id>/` (ADR 0019).
 
 ### Core app DB
 
@@ -90,7 +98,9 @@ and gives the host visibility into schema changes.
 - Plugins get a thin SQL interface that maps directly to WASM host
   functions when the time comes.
 - Each plugin's structured data is isolated in its own DB file.
-  Removing a plugin means deleting its directory.
+  Removing a user-installed plugin means deleting its
+  `plugin-home/<plugin-id>/` subtree (the uninstall command in
+  ADR 0035 does exactly this).
 - `rusqlite` and `rusqlite_migration` become new dependencies.
 - The host is responsible for creating plugin data directories and
   opening connections during `enable()`.

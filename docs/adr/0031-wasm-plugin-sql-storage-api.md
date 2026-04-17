@@ -98,9 +98,11 @@ The host reads the migration file contents at plugin **load** time
 via `PluginSource::read_file` — failing fast on missing or
 malformed migration files (treat them as a manifest authoring bug).
 The actual database file at
-`<app_data_dir>/plugins/<plugin-id>/storage.db` is created by the
-bridge during `enable()`, before the guest's own `enable()` runs.
-Plugins that never declare `[storage.sql]` get no file on disk.
+`<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3` is
+created by the bridge during `enable()`, before the guest's own
+`enable()` runs. (The top-level `plugin-home/` split from
+`plugins/` is defined in ADR 0035.) Plugins that never declare
+`[storage.sql]` get no file on disk.
 
 `sql::connection()` returns a fresh handle pointing at the underlying
 connection. The wasmtime store mutex serializes every guest call, so
@@ -156,10 +158,10 @@ non-breaking.
 
 ### Multiple databases per plugin: no
 
-One DB per plugin (`storage.db`). YAGNI for calculator and any plugin
-on the roadmap. If a future plugin needs more, `connection` can grow a
-name parameter and gate access to `storage-<name>.db` files inside the
-plugin's data dir.
+One DB per plugin (`sql/storage.sqlite3`). YAGNI for calculator and
+any plugin on the roadmap. If a future plugin needs more,
+`connection` can grow a name parameter and gate access to
+`sql/<name>.sqlite3` files inside the plugin's state directory.
 
 ### Bridge wiring
 

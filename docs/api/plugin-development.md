@@ -22,6 +22,8 @@ plugins, and progressively more complex examples.
 - [Custom UI](#custom-ui)
   - [Taking Over the Result Area](#taking-over-the-result-area)
   - [Frontend ↔ Backend Messaging](#frontend--backend-messaging)
+- [How your plugin is discovered (WASM plugins, ADR 0035)](#how-your-plugin-is-discovered-wasm-plugins-adr-0035)
+- [Packaging and distributing your plugin (WASM plugins, ADR 0035)](#packaging-and-distributing-your-plugin-wasm-plugins-adr-0035)
 - [Types Reference](#types-reference)
 - [Registering a Plugin](#registering-a-plugin)
 - [Full Examples](#full-examples)
@@ -687,9 +689,9 @@ with a clear error.
 ### Per-plugin SQL storage (WASM plugins, ADR 0031)
 
 WASM plugins get an isolated SQLite database scoped to
-`<app_data_dir>/plugins/<plugin-id>/storage.db`. Schema migrations are
-declared in `manifest.toml` as a list of file paths relative to the
-plugin root:
+`<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3`. Schema
+migrations are declared in `manifest.toml` as a list of file paths
+relative to the plugin root:
 
 ```toml
 [storage.sql]
@@ -746,6 +748,84 @@ Key points:
 Migration file errors (missing file, malformed SQL, migration apply
 failure) surface as a host-side `enable()` error — the guest never
 sees them. Per-statement errors come back from `execute` / `query`.
+
+---
+
+## How your plugin is discovered (WASM plugins, ADR 0035)
+
+Torchsnap scans three roots at startup, in precedence order:
+
+1. **System** — `<resource_dir>/plugins/`. Shipped inside the
+   application bundle. Populated at build time from plugins listed
+   in `plugins/bundled.toml`.
+2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/`. Scanned only in
+   debug builds; release builds never touch this root. Your plugin
+   source checkout lives here during development, and the loader
+   picks it up automatically.
+3. **User** — `<app_data_dir>/plugins/`. Where user-installed
+   `.torchsnap` archives land when users install via the Plugins
+   settings panel.
+
+A plugin id can only be registered once; the first root to claim a
+given id wins. The install flow rejects colliding ids up front, so
+in practice cross-root collisions only come up in development (e.g.
+a user plugin with the same id as a dev checkout).
+
+Each root accepts both `.torchsnap` archives and directory-form
+plugins (`<id>/` containing `manifest.toml` at its top). Inside a
+single root, an archive (`foo.torchsnap`) wins over a sibling
+directory (`foo/`) — handy when you want to keep a working-tree
+copy next to a published artifact.
+
+The host tags each loaded plugin with a `PluginSourceKind`
+(`system`, `dev`, `user`, or the built-in `builtin` for native
+Rust plugins). The Plugins settings panel renders this as a badge
+next to each plugin and gates the uninstall action to `user` only.
+
+---
+
+## Packaging and distributing your plugin (WASM plugins, ADR 0035)
+
+A `.torchsnap` file is a plain zip archive containing your plugin's
+`manifest.toml`, compiled `.wasm`, bundled frontend assets, and any
+SQL migration files. Produce one with:
+
+```bash
+just build-plugin <your-plugin>
+# or, if the build step has already run:
+just package-plugin <your-plugin>
+```
+
+The output lands at `plugins/<your-plugin>.torchsnap`.
+
+**Getting your plugin into a Torchsnap build:**
+
+- *Ship with the app* (first-party only): add your plugin id to
+  `plugins/bundled.toml` and rebuild. Tauri picks up the archive as
+  a resource through the `stage-bundled-plugins` Just recipe and
+  embeds it in `Contents/Resources/plugins/` (macOS) or the
+  equivalent on other platforms.
+
+- *Share with users* (third-party): send them the
+  `.torchsnap` file. They drop it onto the Plugins settings panel
+  (file picker or drag-drop); the app copies it to
+  `<app_data_dir>/plugins/<id>.torchsnap` and prompts for a restart.
+
+**Manifest path rules.** Every path your manifest references
+(`plugin.wasm`, asset-form `icon`, `frontend.*-bundle`,
+`frontend.*-css`, `storage.sql.migrations[*]`) must be
+plugin-relative: no `..` segments, no leading `/`, no backslashes,
+no Windows drive letters. A manifest that violates any of these
+fails to parse and the plugin never loads. Plan your asset layout
+inside the archive accordingly — everything stays under the
+archive root.
+
+**Trust model.** There is no archive signing today. The sandbox is
+the WIT capability surface (no network imports, no arbitrary file
+reads, write-only clipboard). Users trust the source they got the
+archive from; the host limits what the plugin can reach beyond
+that. See ADR 0036 for the full rationale and the triggers for
+revisiting.
 
 ---
 

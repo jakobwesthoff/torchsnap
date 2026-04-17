@@ -29,11 +29,17 @@ data path. A plugin can have multiple `FileStorage` instances for
 different purposes.
 
 ```
-<app_data_dir>/plugins/<plugin-id>/
-├── store.db                    # SqlStorage (ADR 0018)
+<app_data_dir>/plugin-home/<plugin-id>/
+├── sql/
+│   └── storage.sqlite3         # SqlStorage (ADR 0018)
 ├── icons/                      # FileStorage("icons")
 ├── thumbnails/                 # FileStorage("thumbnails")
 ```
+
+The per-plugin state root at `<app_data_dir>/plugin-home/<plugin-id>/`
+is formalized in ADR 0035, which splits plugin *code* (under
+`<app_data_dir>/plugins/`) from plugin *state* (under
+`<app_data_dir>/plugin-home/`).
 
 **API:**
 

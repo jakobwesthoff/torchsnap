@@ -260,9 +260,18 @@ Both yield the same `Manifest` struct and provide access to the WASM binary and
 frontend assets. The `PluginHost` (and `WasmPlugin` adapter) are agnostic to
 which source loaded the plugin.
 
-**Development workflow:** point the host at a plugin directory (e.g., via a dev
-config or CLI flag). **Production:** scan `$APPDATA/torchsnap/plugins/` for
-`.torchsnap` files.
+> **Superseded by ADR 0035.** The discovery and layout details below
+> have been finalized as three precedence-ordered search roots
+> (`<resource_dir>/plugins/` for bundled System plugins,
+> `<CARGO_MANIFEST_DIR>/../plugins/` for Dev plugins in debug builds,
+> `<app_data_dir>/plugins/` for user-installed plugins). See ADR 0035
+> for the authoritative rules; this paragraph is preserved for
+> historical design context.
+
+**Development workflow:** the debug-build loader automatically scans
+`<CARGO_MANIFEST_DIR>/../plugins/` — no config or CLI flag needed.
+**Production:** `<resource_dir>/plugins/` for bundled `.torchsnap`
+archives and `<app_data_dir>/plugins/` for user-installed ones.
 
 ### 4.3 Why Zip?
 
@@ -271,8 +280,9 @@ config or CLI flag). **Production:** scan `$APPDATA/torchsnap/plugins/` for
 - Can be read in-memory without extracting to disk (though extraction to a
   cache dir is fine for frontend assets that the WebView needs to load via URL)
 - The frontend JS files need to be accessible via a URL for dynamic `import()`.
-  Options: extract to `$APPDATA/plugins/<id>/frontend/`, then load via
-  `asset://` protocol, or use a custom Tauri protocol handler.
+  The ADR-0035 install flow keeps archives intact on disk; frontend
+  assets are served via a custom `torchsnap-plugin://` protocol
+  handler that streams them straight out of the zip.
 
 ## 5. WIT Interface Design
 
@@ -668,15 +678,23 @@ if the contract is violated.
 
 ### 6.1 Plugin Discovery
 
+> **Superseded by ADR 0035.** The final discovery scheme uses three
+> precedence-ordered roots. The single-directory sketch below is
+> preserved as design history.
+
 ```
-$APPDATA/torchsnap/plugins/
-├── emoji-picker.torchsnap
+<app_data_dir>/plugins/
 ├── calculator.torchsnap
-└── clipboard-manager.torchsnap
+└── hello-world.torchsnap
 ```
 
-At startup, the host scans this directory, reads each archive's `manifest.toml`,
-validates the `api-version`, and registers the plugin with the `PluginHost`.
+At startup, the host scans each of the three search roots (resource-
+bundled System, repo-relative Dev in debug builds, user-installed
+User), reads each archive's `manifest.toml`, validates the path
+guard, and registers the plugin with the `PluginHost` tagged with its
+`PluginSourceKind`. The data dir for host-managed per-plugin state
+lives at `<app_data_dir>/plugin-home/<plugin-id>/` — separate from
+`<app_data_dir>/plugins/` which carries only plugin code.
 
 ### 6.2 WASM Plugin Adapter
 

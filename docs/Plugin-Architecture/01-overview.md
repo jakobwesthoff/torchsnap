@@ -110,3 +110,20 @@ access to two subsystems:
   namespace (`plugins.<id>.*`).
 - **`frecency: PluginFrecency`** — scoped frecency scoring handle for ranking
   results by past user selection.
+
+## Discovery and distribution
+
+Native plugins (`Builtin`) are compiled into the host binary and
+registered manually in `lib.rs` during setup. WASM plugins are
+discovered at startup from three precedence-ordered search roots
+(resource-bundled System, repo-relative Dev in debug builds,
+user-installed User), each plugin tagged with its
+`PluginSourceKind`. The full rules — including the per-root
+archive-over-directory precedence, cross-root collision handling,
+install/uninstall flow, and the `plugins/bundled.toml` whitelist —
+live in **[ADR 0035](../adr/0035-plugin-distribution-via-bundled-and-user-installable-archives.md)**.
+
+Host-managed plugin state (SQLite databases, future blob storage)
+lives under `<app_data_dir>/plugin-home/<plugin-id>/`, separate
+from plugin code at `<app_data_dir>/plugins/`. See ADR 0018 and
+0019 for the storage shape.
