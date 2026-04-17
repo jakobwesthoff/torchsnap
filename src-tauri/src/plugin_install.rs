@@ -15,8 +15,8 @@
 //
 // 1. Open the source `.torchsnap` via `ArchiveSource::open`,
 //    which validates the zip and parses the manifest. The
-//    path guard that runs during `Manifest::parse` (phase 3)
-//    catches traversal here.
+//    path guard that runs during `Manifest::parse` catches
+//    traversal here.
 // 2. Extract the manifest's plugin id.
 // 3. Reject if a plugin with that id is already registered
 //    with any `PluginSourceKind`, with a message specific to
@@ -111,8 +111,8 @@ fn install_impl(
     archive_path: &Path,
 ) -> anyhow::Result<InstalledPluginInfo> {
     // Opening the archive validates the zip structure, parses
-    // the manifest, and runs the path guard from phase 3 on
-    // every manifest-referenced file. If any of those fail the
+    // the manifest, and runs the path guard on every
+    // manifest-referenced file. If any of those fail the
     // archive is not a safe install candidate.
     let source =
         ArchiveSource::open(archive_path).context("open plugin archive for installation")?;
@@ -120,11 +120,9 @@ fn install_impl(
     let plugin_id = manifest.plugin.id.as_str().to_string();
 
     // Collision check against every already-registered source
-    // kind. Messages differ so the user can tell why the install
-    // was refused (and know whether to uninstall first, rename
-    // a dev plugin, etc.). Hot-lifecycle work will later collapse
-    // some of these cases — the override todo covers the
-    // eventual `System` case.
+    // kind. Each kind gets a distinct error message so the user
+    // can tell which rejection applies and what remediation (if
+    // any) fits their case.
     if let Some(kind) = host.plugin_sources().get(&plugin_id).copied() {
         match kind {
             PluginSourceKind::Builtin => anyhow::bail!(
