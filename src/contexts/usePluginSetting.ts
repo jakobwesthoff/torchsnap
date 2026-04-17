@@ -14,11 +14,6 @@
 // authors only deal with short relative key names:
 //
 //   const [days, setDays] = usePluginSetting<number>("retentionDays");
-//
-// This is the context-bound replacement for the old pattern
-// where the host built a per-plugin
-// `createPluginSettingHook(pluginId)` factory and passed it
-// to settings components as a prop.
 // =========================================================
 
 import { useSetting } from "../hooks/useSetting";
