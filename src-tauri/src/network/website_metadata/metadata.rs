@@ -8,9 +8,8 @@
 //! (title, description, favicon URL). No I/O — all functions operate on
 //! in-memory strings and return data structures.
 //!
-//! Adapted from the squirly project's `metadata/mod.rs`. The fetching
-//! orchestration that lived in squirly's `Metadata` struct has been moved
-//! to the `fetch` module; this module retains only the extraction logic.
+//! Fetch orchestration lives in the sibling `fetch` module;
+//! this module holds only extraction logic.
 
 use scraper::{Html, Selector};
 use url::Url;
