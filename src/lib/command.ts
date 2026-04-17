@@ -103,6 +103,33 @@ interface CommandMap {
   };
   wasm_plugins: { params: void; result: WasmPluginManifest[] };
   plugin_sources: { params: void; result: Record<string, PluginSourceKind> };
+  install_plugin_archive: {
+    params: { archivePath: string };
+    result: InstalledPluginInfo;
+  };
+  uninstall_user_plugin: {
+    params: { pluginId: string };
+    result: UninstallResult;
+  };
+}
+
+// =========================================================
+// Plugin Install / Uninstall
+//
+// Response shapes mirror `plugin_install.rs`. Serialized
+// as JSON with camelCase field names so the TypeScript call
+// sites stay idiomatic.
+// =========================================================
+
+export interface InstalledPluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  requiresRestart: boolean;
+}
+
+export interface UninstallResult {
+  requiresRestart: boolean;
 }
 
 // =========================================================

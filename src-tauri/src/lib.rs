@@ -9,6 +9,7 @@ mod icons;
 mod network;
 mod platform;
 mod plugin_host;
+mod plugin_install;
 mod plugins;
 mod search;
 mod settings;
@@ -517,6 +518,8 @@ pub fn run() {
             wasm::logging::commands::logger_span_end,
             wasm_plugins,
             plugin_sources,
+            plugin_install::install_plugin_archive,
+            plugin_install::uninstall_user_plugin,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
