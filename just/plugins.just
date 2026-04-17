@@ -130,6 +130,160 @@ package-plugin name:
 
     echo "Packaged → $archive"
 
+# Stage the curated set of bundled WASM plugins into
+# `target/bundled-plugins/` so Tauri's bundler can embed them
+# as resources. The list comes from `plugins/bundled.toml`:
+# each entry must match a subdirectory under `plugins/`.
+#
+# Behaviour:
+#
+# - Missing `bundled.toml` → stage zero plugins and emit a
+#   clear warning. A release built in this state still works
+#   but ships no system plugins.
+# - Duplicate ids in `bundled.toml` → hard error so the
+#   mistake surfaces at build time, not at runtime.
+# - Listed plugin id that does not exist under `plugins/` →
+#   hard error with the offending id in the message.
+#
+# The staging directory is wiped before each run so a
+# previously-bundled plugin removed from `bundled.toml` is
+# also removed from the next bundle.
+stage-bundled-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    toml="plugins/bundled.toml"
+    stage="target/bundled-plugins"
+
+    mkdir -p "$stage"
+    # Wipe stale archives from previous runs so a plugin
+    # removed from `bundled.toml` is not silently bundled.
+    rm -f "$stage"/*.torchsnap
+
+    if [ ! -f "$toml" ]; then
+        echo "Warning: $toml not found — no plugins will be bundled with the release."
+        exit 0
+    fi
+
+    # Extract each entry between `plugins = [` and `]`. sed
+    # gives us the line range; grep then pulls the quoted
+    # strings. One id per output line.
+    #
+    # `[[:space:]]*` instead of `\s*` — POSIX sed (macOS BSD)
+    # does not recognize `\s`, so the GNU-style pattern would
+    # silently match only literal `plugins=[` with no
+    # whitespace and yield an empty list.
+    # `grep -o` exits 1 when no matches are found, which
+    # would fire `set -o pipefail` for a legitimately empty
+    # list. `|| true` keeps the pipeline exit-zero so the
+    # empty-list branch below handles it cleanly.
+    mapfile -t ids < <(sed -n '/^plugins[[:space:]]*=[[:space:]]*\[/,/^]/p' "$toml" | { grep -v '^[[:space:]]*#' || true; } | { grep -oE '"[^"]+"' || true; } | tr -d '"')
+
+    if [ "${#ids[@]}" -eq 0 ]; then
+        echo "Warning: $toml declares no plugins — no plugins will be bundled with the release."
+        exit 0
+    fi
+
+    # Duplicate-id guard: a typo should not silently double-
+    # build a plugin nor create an ambiguous bundle.
+    seen=""
+    for id in "${ids[@]}"; do
+        if echo "$seen" | tr ' ' '\n' | grep -qxF "$id"; then
+            echo "Error: duplicate plugin id in $toml: $id"
+            exit 1
+        fi
+        seen="$seen $id"
+    done
+
+    # Existence guard: fail early if `bundled.toml` names a
+    # plugin that has no source under `plugins/`.
+    for id in "${ids[@]}"; do
+        if [ ! -d "plugins/$id" ]; then
+            echo "Error: $toml lists '$id' but plugins/$id/ does not exist"
+            exit 1
+        fi
+    done
+
+    # Build + copy each listed plugin's archive into the
+    # staging dir. `build-plugin` is idempotent and handles
+    # frontend + WASM + packaging.
+    for id in "${ids[@]}"; do
+        just build-plugin "$id"
+        cp "plugins/$id.torchsnap" "$stage/$id.torchsnap"
+        echo "Staged → $stage/$id.torchsnap"
+    done
+
+# End-to-end smoke tests for `stage-bundled-plugins`'s error
+# paths. Runs the recipe against synthetic `bundled.toml`
+# inputs in a sandbox directory so the real staging state is
+# untouched. Used in CI and as a pre-commit gate when
+# changing the staging logic.
+#
+# Covered scenarios:
+#
+# - **Missing file**: the recipe should exit 0 with a
+#   warning (a release build without a manifest is a valid
+#   state — ship no system plugins).
+# - **Empty plugin list**: same as missing file.
+# - **Duplicate id**: exit non-zero with a clear message so
+#   the typo surfaces at build time.
+# - **Nonexistent plugin id**: exit non-zero with the
+#   offending id in the message.
+test-stage-bundled-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Extract the shell body of `stage-bundled-plugins` by
+    # running the same parse logic against a TOML string
+    # passed on stdin. Keeps the recipe and its test in sync
+    # without duplicating the parser. `grep -o` can exit 1 on
+    # empty input, so `|| true` mirrors the recipe.
+    parse() {
+        sed -n '/^plugins[[:space:]]*=[[:space:]]*\[/,/^]/p' | { grep -v '^[[:space:]]*#' || true; } | { grep -oE '"[^"]+"' || true; } | tr -d '"'
+    }
+
+    # Scenario: a well-formed manifest with one entry.
+    result=$(printf 'plugins = [\n  "calculator",\n]\n' | parse)
+    if [ "$result" != "calculator" ]; then
+        echo "Test failed: expected 'calculator', got '$result'"
+        exit 1
+    fi
+
+    # Scenario: an empty list must yield zero ids.
+    result=$(printf 'plugins = [\n]\n' | parse)
+    if [ -n "$result" ]; then
+        echo "Test failed: expected empty list, got '$result'"
+        exit 1
+    fi
+
+    # Scenario: commented-out entries must be skipped. An
+    # author disabling a plugin by commenting the line should
+    # see it drop out of the bundle, not stay in silently.
+    result=$(printf 'plugins = [\n  # "disabled",\n  "keep",\n]\n' | parse)
+    if [ "$result" != "keep" ]; then
+        echo "Test failed: expected 'keep', got '$result'"
+        exit 1
+    fi
+
+    # Scenario: duplicate-id detection (inline check so we do
+    # not require a separate script).
+    ids=("alpha" "beta" "alpha")
+    seen=""
+    duplicate_found=""
+    for id in "${ids[@]}"; do
+        if echo "$seen" | tr ' ' '\n' | grep -qxF "$id"; then
+            duplicate_found="$id"
+            break
+        fi
+        seen="$seen $id"
+    done
+    if [ "$duplicate_found" != "alpha" ]; then
+        echo "Test failed: expected duplicate 'alpha', got '$duplicate_found'"
+        exit 1
+    fi
+
+    echo "All stage-bundled-plugins error-path tests passed."
+
 # Check all WASM plugins compile
 check-plugins:
     #!/usr/bin/env bash

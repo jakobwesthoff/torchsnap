@@ -24,6 +24,13 @@ dist-ssr
 *.sln
 *.sw?
 
+# Repo-root `target/` holds the staging dir for bundled
+# plugins (`target/bundled-plugins/`, populated by
+# `just stage-bundled-plugins`). Cargo does not use this
+# directory because all Rust crates live under `src-tauri/`
+# or `plugins/*/` with their own `target/` dirs.
+/target/
+
 # Rust build artifacts (plugin crates have their own target/ dirs)
 plugins/*/target/
 # Compiled WASM artifacts copied to plugin root by `just build-plugin`
