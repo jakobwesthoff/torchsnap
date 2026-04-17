@@ -72,6 +72,7 @@ wasmtime-wasi = "43.0.0"
 zip = { version = "8.5.0", default-features = false, features = ["deflate"] }
 cron = "0.16.0"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
+tauri-plugin-dialog = "2.7.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

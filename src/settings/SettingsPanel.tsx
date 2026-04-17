@@ -16,6 +16,7 @@ import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { FrecencySection } from "./sections/FrecencySection";
 import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
+import { PluginsManagementPanel } from "./sections/PluginsManagementPanel";
 import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 
 // =========================================================
@@ -24,6 +25,7 @@ import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 
 const GENERAL_SECTIONS: SidebarItem[] = [
   { id: "general", label: "General", icon: "heroicons:cog-6-tooth" },
+  { id: "plugins", label: "Plugins", icon: "heroicons:puzzle-piece" },
 ];
 
 const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
@@ -103,6 +105,9 @@ function SectionContent({
   // Built-in sections
   if (activeSection === "general") {
     return <GeneralSection />;
+  }
+  if (activeSection === "plugins") {
+    return <PluginsManagementPanel />;
   }
   if (activeSection === "appearance") {
     return <AppearanceSection />;
