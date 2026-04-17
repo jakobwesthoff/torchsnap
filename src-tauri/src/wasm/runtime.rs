@@ -539,10 +539,7 @@ impl WasmRuntime {
     /// but the branch is kept for a future hot-reload path.
     pub fn compile(&self, plugin_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()> {
         let logger = self.logger_for(plugin_id);
-        let _compile_span = logger
-            .span("compile")
-            .meta("plugin_id", plugin_id)
-            .start();
+        let _compile_span = logger.span("compile").meta("plugin_id", plugin_id).start();
 
         let component = Component::new(&self.engine, wasm_bytes)
             .map_err(|e| anyhow::anyhow!("compiling WASM component: {e}"))?;
@@ -584,14 +581,11 @@ impl WasmRuntime {
                 .components
                 .lock()
                 .expect("wasm component cache not poisoned");
-            cache
-                .get(plugin_id)
-                .cloned()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "plugin `{plugin_id}` has not been compiled — call WasmRuntime::compile first"
-                    )
-                })?
+            cache.get(plugin_id).cloned().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "plugin `{plugin_id}` has not been compiled — call WasmRuntime::compile first"
+                )
+            })?
         };
 
         // Set up the linker with all host imports.

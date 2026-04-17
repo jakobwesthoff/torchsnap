@@ -54,12 +54,7 @@ export function SettingsSidebar({
       )}
 
       {pluginItems.length > 0 && (
-        <SidebarGroup
-          label="Plugins"
-          items={pluginItems}
-          activeId={activeId}
-          onSelect={onSelect}
-        />
+        <SidebarGroup label="Plugins" items={pluginItems} activeId={activeId} onSelect={onSelect} />
       )}
     </nav>
   );

@@ -67,8 +67,7 @@ export function SettingsPanel() {
         <div
           className="sticky top-0 z-10 h-10 -mb-10 pointer-events-none"
           style={{
-            background:
-              "linear-gradient(to bottom, var(--color-surface-sidebar) 85%, transparent)",
+            background: "linear-gradient(to bottom, var(--color-surface-sidebar) 85%, transparent)",
           }}
         />
         <div className="pt-8">
