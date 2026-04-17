@@ -685,15 +685,22 @@ pub fn run() {
             // DirectorySource, instantiated via wasmtime, and bridged
             // to the native Plugin trait.
             //
-            // TODO: Replace hardcoded dev path with proper plugin
-            // discovery from $APPDATA/torchsnap/plugins/.
+            // Roots scanned (see `wasm::discovery` for details):
+            //
+            // - `resource_dir/plugins/` — bundled System plugins
+            //   (release + debug if the resource dir exists).
+            // - `CARGO_MANIFEST_DIR/../plugins/` — Dev plugins
+            //   (debug builds only, stripped in release).
+            // - `app_data_dir/plugins/` — User-installed plugins.
             // =========================================================
+            let resource_dir = app.path().resource_dir().ok();
             match load_wasm_plugins(
                 &mut host,
                 &log_sender,
                 &span_registry,
                 &plugin_source_registry,
                 &app_data_dir,
+                resource_dir.as_deref(),
             ) {
                 Ok(count) => {
                     if count > 0 {
@@ -873,13 +880,20 @@ pub fn run() {
 // =========================================================
 // WASM Plugin Loader
 //
-// Scans the `plugins/` development directory for WASM plugin
-// directories, instantiates each one, and registers them
-// with the PluginHost.
+// Scans every configured search root (see
+// `wasm::discovery`) for plugin archives and directory-form
+// plugins, instantiates each one once, and registers it with
+// the `PluginHost` tagged with its `PluginSourceKind`.
 //
-// TODO: Replace hardcoded dev path with proper plugin
-// discovery from $APPDATA/torchsnap/plugins/ and support
-// for .torchsnap archive files via ArchiveSource.
+// Cross-root collision rule: the first root that registers a
+// given plugin id wins. Since `enumerate_search_roots` orders
+// the roots System → Dev → User, a bundled plugin always
+// shadows a user copy that happens to share its id. A
+// warning is logged for the skipped copy so the user can see
+// why their install did not take effect.
+//
+// Per-root precedence (archive-over-directory) is owned by
+// `wasm::discovery::scan_plugin_entries`.
 // =========================================================
 
 fn load_wasm_plugins(
@@ -888,82 +902,94 @@ fn load_wasm_plugins(
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
     source_registry: &wasm::protocol::PluginSourceRegistry,
     app_data_dir: &std::path::Path,
+    resource_dir: Option<&std::path::Path>,
 ) -> anyhow::Result<usize> {
     let runtime: Arc<wasm::runtime::WasmRuntime> =
         wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
 
-    let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
-    let entries = match std::fs::read_dir(&plugin_dir) {
-        Ok(entries) => entries,
-        // No plugins directory — not an error, just nothing to load.
-        Err(_) => return Ok(0),
-    };
+    let roots = wasm::discovery::enumerate_search_roots(resource_dir, app_data_dir);
 
-    let mut count = 0;
+    let mut loaded_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut count: usize = 0;
 
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for (source_kind, root) in roots {
+        for path in wasm::discovery::scan_plugin_entries(&root) {
+            // Open the source once. On any error — corrupt
+            // archive, missing manifest, failing path guard —
+            // log and move on so one broken plugin does not
+            // prevent the rest from loading.
+            let source: Arc<dyn wasm::source::PluginSource> = match open_plugin_source(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    log_loader_error(log_sender, &path, source_kind, &e);
+                    continue;
+                }
+            };
 
-        // Load .torchsnap archives or plugin directories.
-        // When both exist (e.g., hello-world/ alongside
-        // hello-world.torchsnap), the archive takes precedence
-        // and the directory is skipped.
-        let is_archive = path.extension().is_some_and(|ext| ext == "torchsnap");
-        let is_directory = path.is_dir() && path.join("manifest.toml").exists();
-
-        if !is_archive && !is_directory {
-            continue;
-        }
-
-        if is_directory {
-            // Check if a .torchsnap archive exists alongside
-            // the directory. If so, skip the directory — the
-            // archive will be loaded when the iterator reaches it.
-            let archive_path = path.with_extension("torchsnap");
-            if archive_path.exists() {
-                continue;
-            }
-        }
-
-        let source_kind = if is_archive { "archive" } else { "directory" };
-        let loaded = load_single_wasm_plugin(
-            Arc::clone(&runtime),
-            &path,
-            host,
-            log_sender,
-            source_registry,
-            app_data_dir,
-        );
-        match loaded {
-            Ok(plugin_id) => {
+            // Dedup across roots: the System/Dev/User ordering
+            // means the first registration of a given id wins.
+            // Subsequent appearances are skipped with a warning
+            // so an install-time collision bug surfaces visibly
+            // instead of silently.
+            let plugin_id = source.manifest().plugin.id.as_str().to_string();
+            if !loaded_ids.insert(plugin_id.clone()) {
                 log_sender.send(wasm::logging::LogItem {
                     seq: 0,
                     timestamp: std::time::SystemTime::now(),
                     source: wasm::logging::LogSource::Host,
                     kind: wasm::logging::LogItemKind::Message {
-                        level: wasm::logging::LogLevel::Info,
-                        message: format!("Loaded plugin: {plugin_id} ({source_kind})"),
+                        level: wasm::logging::LogLevel::Warn,
+                        message: format!(
+                            "plugin id `{plugin_id}` already loaded from an earlier root — skipping {}",
+                            path.display()
+                        ),
                         metadata: vec![
-                            ("plugin_id".to_string(), plugin_id),
-                            ("source".to_string(), source_kind.to_string()),
+                            ("plugin_id".to_string(), plugin_id.clone()),
+                            ("source".to_string(), format!("{source_kind:?}")),
+                            ("skipped_path".to_string(), path.display().to_string()),
                         ],
                         span_id: None,
                     },
                 });
-                count += 1;
+                continue;
             }
-            Err(e) => {
-                log_sender.send(wasm::logging::LogItem {
-                    seq: 0,
-                    timestamp: std::time::SystemTime::now(),
-                    source: wasm::logging::LogSource::Host,
-                    kind: wasm::logging::LogItemKind::Message {
-                        level: wasm::logging::LogLevel::Error,
-                        message: format!("Failed to load {}: {e:#}", path.display()),
-                        metadata: vec![],
-                        span_id: None,
-                    },
-                });
+
+            match load_single_wasm_plugin(
+                Arc::clone(&runtime),
+                source,
+                source_kind,
+                host,
+                log_sender,
+                source_registry,
+                app_data_dir,
+            ) {
+                Ok(plugin_id) => {
+                    log_sender.send(wasm::logging::LogItem {
+                        seq: 0,
+                        timestamp: std::time::SystemTime::now(),
+                        source: wasm::logging::LogSource::Host,
+                        kind: wasm::logging::LogItemKind::Message {
+                            level: wasm::logging::LogLevel::Info,
+                            message: format!("Loaded plugin: {plugin_id} ({source_kind:?})"),
+                            metadata: vec![
+                                ("plugin_id".to_string(), plugin_id),
+                                ("source".to_string(), format!("{source_kind:?}")),
+                            ],
+                            span_id: None,
+                        },
+                    });
+                    count += 1;
+                }
+                Err(e) => {
+                    // Removing from loaded_ids so a fallback
+                    // copy in a later root could still get a
+                    // chance. The registration itself is already
+                    // rolled back — `register` is the last step
+                    // in `load_single_wasm_plugin` and the error
+                    // happens before it.
+                    loaded_ids.remove(&plugin_id);
+                    log_loader_error(log_sender, &path, source_kind, &e);
+                }
             }
         }
     }
@@ -971,23 +997,55 @@ fn load_wasm_plugins(
     Ok(count)
 }
 
+/// Open a plugin source from a filesystem path, choosing
+/// `DirectorySource` vs `ArchiveSource` by directory-ness.
+/// Split out of `load_wasm_plugins` so the collision check
+/// can run against the manifest id *before* the expensive
+/// WASM compile in `WasmPluginBridge::new`.
+fn open_plugin_source(
+    path: &std::path::Path,
+) -> anyhow::Result<Arc<dyn wasm::source::PluginSource>> {
+    if path.is_dir() {
+        Ok(Arc::new(wasm::source::DirectorySource::open(path)?))
+    } else {
+        Ok(Arc::new(wasm::source::ArchiveSource::open(path)?))
+    }
+}
+
+/// Emit a load-failure log entry. Used for both source-open
+/// and bridge-construction failures so the two failure modes
+/// surface identically in the devtools log viewer.
+fn log_loader_error(
+    log_sender: &wasm::logging::channel::LogSender,
+    path: &std::path::Path,
+    source_kind: wasm::source::PluginSourceKind,
+    error: &anyhow::Error,
+) {
+    log_sender.send(wasm::logging::LogItem {
+        seq: 0,
+        timestamp: std::time::SystemTime::now(),
+        source: wasm::logging::LogSource::Host,
+        kind: wasm::logging::LogItemKind::Message {
+            level: wasm::logging::LogLevel::Error,
+            message: format!("Failed to load {}: {error:#}", path.display()),
+            metadata: vec![
+                ("source".to_string(), format!("{source_kind:?}")),
+                ("path".to_string(), path.display().to_string()),
+            ],
+            span_id: None,
+        },
+    });
+}
+
 fn load_single_wasm_plugin(
     runtime: Arc<wasm::runtime::WasmRuntime>,
-    path: &std::path::Path,
+    source: Arc<dyn wasm::source::PluginSource>,
+    source_kind: wasm::source::PluginSourceKind,
     host: &mut plugin_host::PluginHost,
     log_sender: &wasm::logging::channel::LogSender,
     source_registry: &wasm::protocol::PluginSourceRegistry,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<String> {
-    // Open the appropriate source based on path type:
-    // .torchsnap files are zip archives, directories use
-    // the filesystem directly.
-    let source: Arc<dyn wasm::source::PluginSource> = if path.is_dir() {
-        Arc::new(wasm::source::DirectorySource::open(path)?)
-    } else {
-        Arc::new(wasm::source::ArchiveSource::open(path)?)
-    };
-
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmPluginBridge::new(
@@ -997,12 +1055,7 @@ fn load_single_wasm_plugin(
         source.as_ref(),
         app_data_dir,
     )?;
-    // TODO(phase-4): the loader will pass the correct
-    // `PluginSourceKind` per scanned root (System / User /
-    // Dev). Until then every WASM plugin is tagged `Dev`,
-    // since today's loader scans only the repo-relative dev
-    // path.
-    host.register(Box::new(bridge), wasm::source::PluginSourceKind::Dev);
+    host.register(Box::new(bridge), source_kind);
 
     // Retain the source in the registry so the protocol
     // handler can serve frontend assets from it.
