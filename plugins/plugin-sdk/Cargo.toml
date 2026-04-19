@@ -1,0 +1,18 @@
+[package]
+name = "torchsnap-plugin-sdk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+# The SDK is a regular Rust library — not a cdylib. It only
+# exists to be depended on by each plugin crate; the plugin
+# crates themselves are the wasm components that actually get
+# shipped. We still build against `wasm32-wasip2` (inherited
+# from `.cargo/config.toml`) because the `wit_bindgen::generate!`
+# macro emits target-specific FFI shims.
+
+[dependencies]
+wit-bindgen = "0.54"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

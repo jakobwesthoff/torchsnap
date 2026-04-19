@@ -27,29 +27,17 @@
 // they open the picker with just ":".
 // =========================================================
 
-wit_bindgen::generate!({
-    path: "../../wit",
-    world: "plugin",
-});
-
 use std::cell::OnceCell;
 use std::collections::HashMap;
 
-use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-use exports::torchsnap::plugin::search::{
-    Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction, ScoredEntry,
-    SearchResponse, ViewResponse,
-};
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Deserialize;
-use torchsnap::plugin::{clipboard, frecency, logging};
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 
 struct EmojiPickerPlugin;
-
-export!(EmojiPickerPlugin);
+define_plugin!(EmojiPickerPlugin);
 
 // =========================================================
 // Tunables
@@ -572,34 +560,9 @@ impl SearchGuest for EmojiPickerPlugin {
     }
 }
 
-// =========================================================
-// Messaging / Tasks — unused by the emoji picker
-//
-// The grid UI talks to the host directly through
-// `onExecute` and the host-side `clipboard::write-text`
-// import; no frontend↔backend RPC is exchanged. The
-// manifest also declares no `[[tasks]]`. Both exports
-// therefore reject any call so a misrouted invocation
-// (stray `sendMessage`, mis-scheduled task) surfaces in
-// the host logs instead of silently succeeding.
-//
-// See `todos/wasm/01kpkaj132k1z5z895scfv2p3d-optional-wit-guest-exports.md`
-// for a follow-up that would let prefix-only plugins like
-// this one drop these stubs entirely.
-// =========================================================
-
-impl MessagingGuest for EmojiPickerPlugin {
-    fn handle_message(method: String, _payload: String) -> Result<String, String> {
-        Err(format!(
-            "emoji-picker does not handle custom messages (method `{method}`)"
-        ))
-    }
-}
-
-impl TasksGuest for EmojiPickerPlugin {
-    fn run_task(task_id: String) -> Result<(), String> {
-        Err(format!(
-            "emoji-picker declares no scheduled tasks (called with `{task_id}`)"
-        ))
-    }
-}
+// Emoji picker is prefix-only with no frontend↔backend RPC
+// and no scheduled tasks. The SDK noop macros provide the
+// mandatory WIT exports; misrouted calls still surface in
+// host logs as the macro stubs return an error.
+impl_noop_messaging!(EmojiPickerPlugin);
+impl_noop_tasks!(EmojiPickerPlugin);

@@ -9,12 +9,9 @@
 // provides nucleo-based fuzzy matching over them.
 // =========================================================
 
-use crate::exports::torchsnap::plugin::search::{
-    Action, ActionId, EntryIcon, ScoredEntry,
-};
-
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
+use torchsnap_plugin_sdk::{Action, ActionId, EntryIcon, ScoredEntry};
 
 // =========================================================
 // Word Lists

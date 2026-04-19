@@ -20,7 +20,7 @@
 // =========================================================
 
 wasmtime::component::bindgen!({
-    path: "../wit",
+    path: "../plugins/plugin-sdk/wit",
     world: "plugin",
     // Tell wit-bindgen to use our concrete `SqlHandleEntry`
     // type as the resource representation for the
