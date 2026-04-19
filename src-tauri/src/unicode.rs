@@ -27,6 +27,10 @@ use unicode_segmentation::UnicodeSegmentation;
 pub struct GraphemePositions(pub Vec<u32>);
 
 impl GraphemePositions {
+    /// Idiomatic empty-value constructor, mirroring `Vec::new` /
+    /// `String::new`. Kept as public API surface even without internal
+    /// callers.
+    #[allow(dead_code)]
     pub fn empty() -> Self {
         Self(Vec::new())
     }
@@ -118,10 +122,7 @@ impl Utf16Positions {
         let mut positions = Vec::new();
         let mut search_start = 0;
 
-        loop {
-            let Some(byte_start) = text[search_start..].find(substring) else {
-                break;
-            };
+        while let Some(byte_start) = text[search_start..].find(substring) {
             let byte_start = search_start + byte_start;
             let byte_end = byte_start + substring.len();
 

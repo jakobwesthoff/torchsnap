@@ -559,15 +559,14 @@ fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
         }
     }
 
-    if let Some(ref storage) = manifest.storage {
-        if let Some(ref sql) = storage.sql {
+    if let Some(ref storage) = manifest.storage
+        && let Some(ref sql) = storage.sql {
             for path in &sql.migrations {
                 validate_plugin_path(path).map_err(|e| {
                     anyhow::anyhow!("invalid `storage.sql.migrations` entry `{path}`: {e}")
                 })?;
             }
         }
-    }
 
     Ok(())
 }
@@ -1904,14 +1903,13 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
 /// - `[permissions.http]` with an empty `origins` list.
 /// - Any `origins` entry that is not a parseable URL (and not `"*"`).
 fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<PermissionsDef> {
-    if let Some(ref opener) = permissions.opener {
-        if opener.schemes.is_empty() {
+    if let Some(ref opener) = permissions.opener
+        && opener.schemes.is_empty() {
             anyhow::bail!(
                 "`[permissions.opener]` declared with an empty `schemes` list — \
                  either add at least one scheme or remove the section"
             );
         }
-    }
 
     let http = permissions
         .http

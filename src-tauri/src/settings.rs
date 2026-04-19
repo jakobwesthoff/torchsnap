@@ -44,13 +44,6 @@ pub struct SettingsInit {
 }
 
 impl SettingsInit {
-    /// Create an empty initializer (no existing values loaded).
-    pub fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
-    }
-
     /// Load all keys matching `prefix` from the store.
     ///
     /// The prefix is stripped from keys in the returned map, so
@@ -85,13 +78,16 @@ impl SettingsInit {
 
     /// Remove a key from the initializer, returning its value if present.
     ///
-    /// Useful for settings migrations where a key was renamed:
+    /// The documented primitive for settings-key migrations: pull the
+    /// value out under its old name, then re-insert it via `ensure`
+    /// under the new name.
     ///
     /// ```ignore
     /// if let Some(old) = settings.remove("pollInterval") {
     ///     settings = settings.ensure("pollingInterval", old);
     /// }
     /// ```
+    #[allow(dead_code)]
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         self.entries.remove(key)
     }

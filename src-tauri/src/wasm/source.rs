@@ -273,13 +273,12 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
     // on all platforms so a malicious plugin shipped from a
     // Windows author still fails on macOS/Linux.
     let mut bytes = path.bytes();
-    if let (Some(first), Some(second)) = (bytes.next(), bytes.next()) {
-        if first.is_ascii_alphabetic() && second == b':' {
+    if let (Some(first), Some(second)) = (bytes.next(), bytes.next())
+        && first.is_ascii_alphabetic() && second == b':' {
             anyhow::bail!(
                 "plugin file path `{path}` looks like a Windows absolute path — paths must be plugin-relative"
             );
         }
-    }
 
     // Walk the components in order, tracking the running
     // depth. A path that drops below zero at any point is

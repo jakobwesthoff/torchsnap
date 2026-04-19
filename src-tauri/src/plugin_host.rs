@@ -495,7 +495,7 @@ impl PluginHost {
                 // used on the merging path (`entry.id ASC`)
                 // would overwrite that intent.
                 self.frecency.apply_scores(&source, &mut entries);
-                entries.sort_by(|a, b| b.inner.score.cmp(&a.inner.score));
+                entries.sort_by_key(|entry| std::cmp::Reverse(entry.inner.score));
             }
 
             let _ = on_results.send(SearchMessage::SearchResults {
