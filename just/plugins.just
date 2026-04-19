@@ -7,11 +7,17 @@
 # component targeting wasm32-wasip2.
 
 # Build all WASM plugins
+#
+# The loop keys off `manifest.toml` rather than `Cargo.toml`
+# so the shared `plugin-sdk` workspace member (no manifest)
+# is transparently skipped once PR 2 lands. Today all four
+# plugin directories carry both files, so the behaviour
+# is identical.
 build-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
     for dir in plugins/*/; do
-        if [ -f "$dir/Cargo.toml" ]; then
+        if [ -f "$dir/manifest.toml" ]; then
             name=$(basename "$dir")
             just build-plugin "$name"
         fi
@@ -33,7 +39,12 @@ build-plugin name:
         (cd "$dir/frontend" && bun install && bun run build)
     fi
 
-    cargo build --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2 --release
+    # Run cargo from inside the plugin workspace so
+    # `plugins/.cargo/config.toml` (which sets the default
+    # target to `wasm32-wasip2`) is picked up and we share
+    # the workspace-level `plugins/target/` build cache
+    # across every plugin.
+    (cd plugins && cargo build --manifest-path "{{ name }}/Cargo.toml" --release)
 
     # Read the wasm filename from the manifest and copy the
     # built artifact to the plugin root directory.
@@ -41,7 +52,7 @@ build-plugin name:
     # Cargo names the artifact after the crate name with
     # hyphens replaced by underscores.
     crate_name=$(tools/toml-get "$dir/Cargo.toml" package.name | tr '-' '_')
-    src="$dir/target/wasm32-wasip2/release/${crate_name}.wasm"
+    src="plugins/target/wasm32-wasip2/release/${crate_name}.wasm"
     if [ -f "$src" ]; then
         cp "$src" "$dir/$wasm_file"
         echo "Copied $src → $dir/$wasm_file"
@@ -185,21 +196,21 @@ stage-bundled-plugins:
         echo "Staged → $stage/$id.torchsnap"
     done
 
-# Check all WASM plugins compile
+# Check every workspace member (including plugin-sdk once
+# PR 2 lands). Cargo resolves the workspace from the
+# `plugins/` directory and `plugins/.cargo/config.toml`
+# supplies the wasm32-wasip2 target by default, so no
+# explicit `--target` flag is needed here.
 check-plugins:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for dir in plugins/*/; do
-        if [ -f "$dir/Cargo.toml" ]; then
-            name=$(basename "$dir")
-            echo "Checking plugin: $name"
-            cargo check --manifest-path "$dir/Cargo.toml" --target wasm32-wasip2
-        fi
-    done
+    cd plugins && cargo check --workspace
 
-# Check a single WASM plugin compiles
+# Check a single WASM plugin compiles. The `name` argument
+# matches the plugin's *directory* name (e.g. `hello-world`),
+# which differs from the crate name (`hello-world-plugin`);
+# `--manifest-path` takes a path, so we stay directory-based
+# for caller ergonomics.
 check-plugin name:
-    cargo check --manifest-path "plugins/{{ name }}/Cargo.toml" --target wasm32-wasip2
+    cd plugins && cargo check --manifest-path "{{ name }}/Cargo.toml"
 
 # Build the WASM test fixtures used by src-tauri's Rust test
 # suite. Each fixture is a standalone wasm32-wasip2 crate under

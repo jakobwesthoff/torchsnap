@@ -16,12 +16,3 @@ ulid = "1.2"
 
 [lib]
 crate-type = ["cdylib"]
-
-# Release profile tuned for WASM component plugins.
-# See `plugins/hello-world/Cargo.toml` for rationale behind
-# each setting — the trade-offs apply identically here.
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"

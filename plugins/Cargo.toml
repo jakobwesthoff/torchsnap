@@ -1,0 +1,43 @@
+# =========================================================
+# Torchsnap WASM Plugin Workspace
+#
+# A virtual Cargo workspace that owns every in-tree WASM
+# plugin plus the shared `torchsnap-plugin-sdk` crate. The
+# workspace is deliberately separate from `src-tauri/` —
+# plugins target `wasm32-wasip2`, the host targets the
+# native triple, and the two toolchains should not share a
+# lockfile or build directory.
+#
+# The plugin-sdk member is added in PR 2 once the crate
+# exists. WIT test fixtures under
+# `src-tauri/tests/fixtures/` intentionally remain outside
+# this workspace: they are standalone crates used to
+# exercise edge cases of the host loader and must be
+# buildable in isolation.
+# =========================================================
+
+[workspace]
+members = ["hello-world", "calculator", "emoji-picker", "template"]
+resolver = "3"
+
+# =========================================================
+# Release profile (shared by every plugin)
+#
+# See `plugins/hello-world/src/lib.rs` or the retired per-
+# crate blocks for the trade-off rationale behind each
+# setting. The short version:
+#
+# - `opt-level = 3`    — optimise for speed on the search
+#                        hot path.
+# - `lto = "fat"`      — cross-crate inlining across
+#                        wit-bindgen / plugin code.
+# - `codegen-units = 1` — required for `lto = "fat"` to
+#                        inline across compilation units.
+# - `panic = "abort"`  — strips unwind tables; wasmtime
+#                        traps panics regardless.
+# =========================================================
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,15 @@
+# =========================================================
+# Plugin-workspace cargo defaults
+#
+# Cargo looks for `.cargo/config.toml` walking up from the
+# invocation directory, so any `cargo <cmd>` run with this
+# workspace's root as an ancestor defaults to
+# `wasm32-wasip2`. That lets developers skip
+# `--target wasm32-wasip2` when iterating on a plugin and
+# lets the justfile recipes drop the flag on their cargo
+# invocations (they switch into `plugins/` first via `-C`
+# or a subshell `cd`).
+# =========================================================
+
+[build]
+target = "wasm32-wasip2"
