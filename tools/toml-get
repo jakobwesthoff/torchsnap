@@ -1,0 +1,80 @@
+#!/usr/bin/env bun
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//
+// Extract a single string value from a TOML file by dotted key path and
+// print it to stdout (no trailing newline so callers can safely pipe or
+// assign without stripping).
+//
+// Exit codes:
+//   0  — value found and printed
+//   1  — file not found, path not found, or value is not a string
+//
+// Usage:
+//   tools/toml-get <file> <dotted.key.path>
+//
+// Examples:
+//   tools/toml-get plugins/calculator/manifest.toml plugin.wasm
+//   tools/toml-get plugins/calculator/Cargo.toml    package.name
+//
+
+import { readFileSync } from "fs";
+import { parse } from "smol-toml";
+
+const [file, keyPath] = process.argv.slice(2);
+
+if (!file || !keyPath) {
+  console.error("Usage: toml-get <file> <dotted.key.path>");
+  process.exit(1);
+}
+
+// =========================================================
+// Parse
+// =========================================================
+
+let raw: string;
+try {
+  raw = readFileSync(file, "utf8");
+} catch {
+  console.error(`Error: cannot read ${file}`);
+  process.exit(1);
+}
+
+const config = parse(raw);
+
+// =========================================================
+// Walk the dotted path
+// =========================================================
+
+// Each segment of the path indexes one level deeper into the
+// parsed document. We stop and error on the first missing key
+// so the caller gets a precise message rather than a silent
+// empty result.
+const segments = keyPath.split(".");
+let node: unknown = config;
+
+for (const segment of segments) {
+  if (
+    typeof node !== "object" ||
+    node === null ||
+    !(segment in (node as Record<string, unknown>))
+  ) {
+    console.error(`Error: key '${keyPath}' not found in ${file}`);
+    process.exit(1);
+  }
+  node = (node as Record<string, unknown>)[segment];
+}
+
+if (typeof node !== "string") {
+  console.error(
+    `Error: value at '${keyPath}' in ${file} is not a string (got ${typeof node})`,
+  );
+  process.exit(1);
+}
+
+// No trailing newline — this is a value emission, not a line printer.
+// Shell variable assignments strip trailing newlines anyway, but being
+// explicit avoids surprises when the output is used in other contexts.
+process.stdout.write(node);
