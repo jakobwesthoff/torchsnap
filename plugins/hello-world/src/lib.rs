@@ -13,27 +13,15 @@
 //            and fuzzy-matches them using nucleo-matcher
 // =========================================================
 
-wit_bindgen::generate!({
-    path: "../../wit",
-    world: "plugin",
-});
-
 use std::cell::RefCell;
 
-use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-use exports::torchsnap::plugin::search::{
-    Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
-    SearchResponse, ViewResponse,
-};
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
-use torchsnap::plugin::logging;
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 
 mod petnames;
 
 struct HelloWorld;
-
-export!(HelloWorld);
+define_plugin!(HelloWorld);
 
 // =========================================================
 // Petname Storage
@@ -142,22 +130,10 @@ impl SearchGuest for HelloWorld {
     }
 }
 
-impl MessagingGuest for HelloWorld {
-    /// Hello-world has no frontend RPC calls; the bridge
-    /// only invokes this if the React side intentionally
-    /// fires a `sendMessage`. Returning a clear error keeps
-    /// accidental wiring obvious.
-    fn handle_message(method: String, _payload: String) -> Result<String, String> {
-        Err(format!("hello-world does not handle messages: {method}"))
-    }
-}
-
-impl TasksGuest for HelloWorld {
-    /// Hello-world declares no `[[tasks]]` in its manifest,
-    /// so the host never spawns a scheduler loop and this
-    /// method is never invoked. The default no-op stub
-    /// satisfies the WIT export contract.
-    fn run_task(_task_id: String) -> Result<(), String> {
-        Ok(())
-    }
-}
+// Hello-world has no frontend RPC calls and declares no
+// scheduled tasks in its manifest; the SDK no-op macros
+// satisfy the mandatory WIT exports without hand-rolled
+// stubs. Any misrouted call surfaces as a clear error in
+// host logs.
+impl_noop_messaging!(HelloWorld);
+impl_noop_tasks!(HelloWorld);

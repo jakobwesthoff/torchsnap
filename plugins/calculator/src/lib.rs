@@ -32,27 +32,16 @@
 // reactively via `on_setting_changed`.
 // =========================================================
 
-wit_bindgen::generate!({
-    path: "../../wit",
-    world: "plugin",
-});
-
 use std::cell::Cell;
 use std::sync::LazyLock;
 
 use evalexpr::{Node, Operator, Value, build_operator_tree};
 use regex::Regex;
+use serde::Deserialize;
 use serde_json::json;
-
-use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-use exports::torchsnap::plugin::search::{
-    Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction, ScoredEntry,
-    SearchResponse, ViewResponse,
-};
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
-use torchsnap::plugin::sql::{self, SqlHandle, SqlValue};
-use torchsnap::plugin::{clipboard, logging, settings};
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::define_plugin;
+use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue};
 
 // =========================================================
 // Constants
@@ -94,8 +83,7 @@ thread_local! {
 // =========================================================
 
 struct CalculatorPlugin;
-
-export!(CalculatorPlugin);
+define_plugin!(CalculatorPlugin);
 
 impl LifecycleGuest for CalculatorPlugin {
     fn enable() {
@@ -104,9 +92,9 @@ impl LifecycleGuest for CalculatorPlugin {
         // user values yet). On_setting_changed below
         // refreshes these reactively when the user toggles
         // a control in the settings panel.
-        HEURISTIC_ENABLED.with(|c| c.set(read_bool_setting("heuristicEnabled").unwrap_or(true)));
-        HISTORY_ENABLED.with(|c| c.set(read_bool_setting("historyEnabled").unwrap_or(true)));
-        RETENTION_DAYS.with(|c| c.set(read_u32_setting("retentionDays").unwrap_or(30)));
+        HEURISTIC_ENABLED.with(|c| c.set(settings::get_or("heuristicEnabled", true)));
+        HISTORY_ENABLED.with(|c| c.set(settings::get_or("historyEnabled", true)));
+        RETENTION_DAYS.with(|c| c.set(settings::get_or::<u32>("retentionDays", 30)));
 
         logging::log(logging::LogLevel::Info, "Calculator enabled", &[], None);
     }
@@ -274,39 +262,32 @@ impl MessagingGuest for CalculatorPlugin {
     }
 }
 
+/// Frontend payload for `save_history`. Field names match
+/// the JSON keys the `CalculatorView` component sends.
+#[derive(Deserialize)]
+struct SaveHistoryPayload {
+    expression: String,
+    result: String,
+    #[serde(rename = "resultType")]
+    result_type: String,
+}
+
 fn save_history_method(payload: &str) -> Result<String, String> {
     if !HISTORY_ENABLED.with(Cell::get) {
         return Ok(json!({ "saved": false }).to_string());
     }
 
-    // Plugin SDK helpers (`parse_payload` /
-    // `to_response`) would shrink this — see
-    // todos/01knpw4sthqzwtm1tx5rrqxn52-rust-plugin-sdk-crate.md
-    let value: serde_json::Value =
-        serde_json::from_str(payload).map_err(|e| format!("invalid save_history payload: {e}"))?;
-
-    let expression = value
-        .get("expression")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("missing 'expression' field")?
-        .to_string();
-    let result = value
-        .get("result")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("missing 'result' field")?
-        .to_string();
-    let result_type = value
-        .get("resultType")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("missing 'resultType' field")?;
-
+    let req: SaveHistoryPayload = messaging::parse_payload(payload)?;
     let db = sql::connection();
     save_to_history(
         &db,
-        &expression,
+        &req.expression,
         &EvalResult {
-            value: result,
-            result_type: if result_type == "boolean" {
+            value: req.result,
+            // Anything other than an explicit `"boolean"` flag
+            // is rendered numerically — the frontend only
+            // distinguishes these two kinds.
+            result_type: if req.result_type == "boolean" {
                 "boolean"
             } else {
                 "number"
@@ -370,18 +351,6 @@ fn cleanup_expired_history() -> Result<(), String> {
     )
     .map_err(|e| format!("delete expired: {e}"))?;
     Ok(())
-}
-
-// =========================================================
-// Settings helpers
-// =========================================================
-
-fn read_bool_setting(key: &str) -> Option<bool> {
-    serde_json::from_str(&settings::get(key)?).ok()
-}
-
-fn read_u32_setting(key: &str) -> Option<u32> {
-    serde_json::from_str(&settings::get(key)?).ok()
 }
 
 // =========================================================

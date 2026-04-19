@@ -255,15 +255,18 @@ build-test-fixtures:
         fi
     done
 
-# Validate WIT definitions parse correctly
+# Validate WIT definitions parse correctly.
+# The WIT world lives under the `torchsnap-plugin-sdk`
+# crate so the SDK owns both the `.wit` source and the
+# generated bindings in one place.
 check-wit:
-    wasm-tools component wit wit/ > /dev/null
+    wasm-tools component wit plugins/plugin-sdk/wit/ > /dev/null
 
 # Format WIT definitions to canonical form
 fmt-wit:
     #!/usr/bin/env bash
     set -euo pipefail
-    for f in wit/*.wit; do
+    for f in plugins/plugin-sdk/wit/*.wit; do
         wasm-tools component wit "$f" -o "$f"
     done
 
@@ -271,7 +274,7 @@ fmt-wit:
 fmt-check-wit:
     #!/usr/bin/env bash
     set -euo pipefail
-    for f in wit/*.wit; do
+    for f in plugins/plugin-sdk/wit/*.wit; do
         if ! diff -q <(wasm-tools component wit "$f") "$f" > /dev/null 2>&1; then
             echo "WIT not formatted: $f"
             echo "Run 'just fmt-wit' to fix"

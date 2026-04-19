@@ -17,7 +17,13 @@
 # =========================================================
 
 [workspace]
-members = ["hello-world", "calculator", "emoji-picker", "template"]
+members = [
+    "plugin-sdk",
+    "hello-world",
+    "calculator",
+    "emoji-picker",
+    "template",
+]
 resolver = "3"
 
 # =========================================================

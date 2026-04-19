@@ -34,23 +34,11 @@
 //   the export at the cron-scheduled time
 // =========================================================
 
-wit_bindgen::generate!({
-    path: "../../wit",
-    world: "plugin",
-});
-
-use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-use exports::torchsnap::plugin::search::{
-    Action, ActionId, CatalogEntry, EntryIcon, Guest as SearchGuest, PostAction,
-    SearchResponse, ViewResponse,
-};
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
-use torchsnap::plugin::{logging, settings, sql};
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::define_plugin;
 
 struct TemplatePlugin;
-
-export!(TemplatePlugin);
+define_plugin!(TemplatePlugin);
 
 impl LifecycleGuest for TemplatePlugin {
     fn enable() {
@@ -62,8 +50,8 @@ impl LifecycleGuest for TemplatePlugin {
         // and refresh it from `on_setting_changed` below; this
         // example just logs the values to keep the wiring
         // visible.
-        let greeting = read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
-        let verbose = read_bool_setting("verbose").unwrap_or(false);
+        let greeting: String = settings::get_or_else("greeting", || "(unset)".into());
+        let verbose: bool = settings::get_or("verbose", false);
 
         // Append a row recording this enable. The host
         // initializes the database before enable() runs, so
@@ -115,25 +103,6 @@ impl LifecycleGuest for TemplatePlugin {
             None,
         );
     }
-}
-
-// =========================================================
-// Settings helpers
-//
-// `settings::get` returns the value as a JSON-encoded
-// string (`"true"`, `"42"`, `"\"hello\""`, `"{\"a\":1}"`,
-// …) wrapped in `Option`. Parse it into whatever shape your
-// plugin uses via `serde_json::from_str`. The two helpers
-// below cover the common bool and string cases — extend the
-// pattern with your own typed accessors as needed.
-// =========================================================
-
-fn read_bool_setting(key: &str) -> Option<bool> {
-    serde_json::from_str(&settings::get(key)?).ok()
-}
-
-fn read_string_setting(key: &str) -> Option<String> {
-    serde_json::from_str(&settings::get(key)?).ok()
 }
 
 // =========================================================
@@ -204,10 +173,9 @@ impl MessagingGuest for TemplatePlugin {
             // setting itself. Demonstrates composing the
             // settings API with the messaging API.
             "current-greeting" => {
-                let greeting =
-                    read_string_setting("greeting").unwrap_or_else(|| "(unset)".into());
-                serde_json::to_string(&serde_json::json!({ "greeting": greeting }))
-                    .map_err(|e| format!("serialize response: {e}"))
+                let greeting: String =
+                    settings::get_or_else("greeting", || "(unset)".into());
+                messaging::to_response(&serde_json::json!({ "greeting": greeting }))
             }
 
             // `enable-count` returns the number of rows in
@@ -218,15 +186,10 @@ impl MessagingGuest for TemplatePlugin {
             // boundary.
             "enable-count" => {
                 let db = sql::connection();
-                let rows = db
-                    .query("SELECT COUNT(*) FROM enable_log", &[])
+                let row = sql::query_one(&db, "SELECT COUNT(*) FROM enable_log", &[])
                     .map_err(|e| format!("query: {e}"))?;
-                let count = match rows.first().and_then(|row| row.first()) {
-                    Some(sql::SqlValue::Integer(n)) => *n,
-                    _ => 0,
-                };
-                serde_json::to_string(&serde_json::json!({ "enable_count": count }))
-                    .map_err(|e| format!("serialize response: {e}"))
+                let count = row.and_then(|r| r.integer(0)).unwrap_or(0);
+                messaging::to_response(&serde_json::json!({ "enable_count": count }))
             }
 
             other => Err(format!("unknown method: {other}")),

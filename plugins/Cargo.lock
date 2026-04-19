@@ -62,9 +62,10 @@ dependencies = [
  "blake3",
  "evalexpr",
  "regex",
+ "serde",
  "serde_json",
+ "torchsnap-plugin-sdk",
  "ulid",
- "wit-bindgen 0.54.0",
 ]
 
 [[package]]
@@ -105,7 +106,7 @@ dependencies = [
  "nucleo-matcher",
  "serde",
  "serde_json",
- "wit-bindgen 0.54.0",
+ "torchsnap-plugin-sdk",
 ]
 
 [[package]]
@@ -171,7 +172,7 @@ version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
  "serde_json",
- "wit-bindgen 0.54.0",
+ "torchsnap-plugin-sdk",
 ]
 
 [[package]]
@@ -425,6 +426,16 @@ dependencies = [
 name = "template-plugin"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "torchsnap-plugin-sdk",
+]
+
+[[package]]
+name = "torchsnap-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "serde_json",
  "wit-bindgen 0.54.0",
 ]

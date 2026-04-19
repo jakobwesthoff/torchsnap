@@ -345,13 +345,13 @@ Requires adding `serde` as a direct dep on the calculator
 crate (currently only `serde_json` is listed; the derive
 macro needs `serde`).
 
-**Strong recommendation:** wait to apply this until the
-[Rust plugin SDK crate](./01knpw4sthqzwtm1tx5rrqxn52-rust-plugin-sdk-crate.md)
-exists. The SDK's `parse_payload<T: DeserializeOwned>`
-helper would shrink this to a one-liner and the calculator
-becomes the canonical motivating example. Doing it inline
-in the calculator first means a churn-heavy rewrite when
-the SDK helper later lands.
+The Rust plugin SDK (`torchsnap-plugin-sdk`) now exposes
+`messaging::parse_payload<T: DeserializeOwned>` /
+`messaging::to_response<T: Serialize>` for exactly this
+pattern — the calculator's `save_history_method` is already
+migrated over. If any remaining handler still does manual
+parsing, apply the SDK helpers rather than open-coding
+another `serde_json::from_str`.
 
 ---
 
@@ -360,10 +360,11 @@ the SDK helper later lands.
 These came up during the review but already have dedicated
 todos or were explicitly deferred by the migration plan:
 
-- **Rust plugin SDK crate** —
-  `todos/01knpw4sthqzwtm1tx5rrqxn52-rust-plugin-sdk-crate.md`.
-  The trigger has fired (calculator + template both repeat
-  the boilerplate); creating the crate is now overdue.
+- **Rust plugin SDK crate** — implemented as
+  `torchsnap-plugin-sdk` (see `plugins/plugin-sdk/`).
+  Plugins consume it via `use torchsnap_plugin_sdk::prelude::*;`
+  and the `define_plugin!` macro replaces the hand-rolled
+  `wit_bindgen::generate!` + `export!` boilerplate.
 - **Dedicated `plugins/test-fixture/` crate** for end-to-end
   WASM bridge integration tests against the wasmtime linker.
   Mentioned by the migration plan as required for D1-D4
