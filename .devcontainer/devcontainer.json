@@ -87,6 +87,24 @@
     "RUSTUP_HOME": "/usr/local/rustup"
   },
 
+  // remoteEnv is applied per `devcontainer exec` session rather than
+  // baked into the container at creation time. That's the right place
+  // for terminal-emulator hints: each new shell session inherits the
+  // host's current TERM/COLORTERM at attach time, so a user who later
+  // attaches from a different terminal (tmux → direct, iTerm → kitty)
+  // gets the capabilities their current emulator actually supports.
+  //
+  // Without this forwarding, docker exec defaults TERM to "xterm" and
+  // leaves COLORTERM unset — Claude and most other modern CLIs then
+  // drop back to muted 16-color output. The base image already ships
+  // terminfo entries for common TERM values including tmux-256color,
+  // so no extra package install is needed.
+  "remoteEnv": {
+    "TERM": "${localEnv:TERM}",
+    "COLORTERM": "${localEnv:COLORTERM}",
+    "TERM_PROGRAM": "${localEnv:TERM_PROGRAM}"
+  },
+
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
 
