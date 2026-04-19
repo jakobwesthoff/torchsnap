@@ -74,6 +74,8 @@
     "source=${localEnv:HOME}/.claude/CLAUDE.md,target=/home/dev/.claude/CLAUDE.md,type=bind,readonly",
     "source=${localEnv:HOME}/.claude/skills,target=/home/dev/.claude/skills,type=bind,readonly",
     "source=${localEnv:HOME}/.claude/commands,target=/home/dev/.claude/commands,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude/settings.json,target=/home/dev/.claude/settings.json,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude/statusline-command.sh,target=/home/dev/.claude/statusline-command.sh,type=bind,readonly",
 
     "source=${localEnv:HOME}/.gitconfig,target=/home/dev/.gitconfig,type=bind,readonly",
     "source=${localEnv:HOME}/.config/git/ignore,target=/home/dev/.config/git/ignore,type=bind,readonly"
