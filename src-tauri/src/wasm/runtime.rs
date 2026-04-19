@@ -1446,6 +1446,13 @@ mod tests {
             .expect("second instance untouched by operations on the first");
     }
 
+    /// Bytes of the committed `opener-http-plugin` fixture.
+    /// Exercises the `opener` and `http` host interfaces via
+    /// `messaging::handle-message` dispatch.
+    const OPENER_HTTP_PLUGIN_WASM: &[u8] = include_bytes!(
+        "../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm"
+    );
+
     // =========================================================
     // Unit tests for opener/http pure functions
     //
@@ -1772,5 +1779,138 @@ mod tests {
         use bindings::torchsnap::plugin::http::Host;
         let resp = state.fetch(request).expect("fetch should succeed");
         assert_eq!(resp.body, b"hello body");
+    }
+
+    // =========================================================
+    // WASM integration tests for opener/http via fixture plugin
+    //
+    // These tests run the actual `opener-http-plugin` fixture
+    // WASM and exercise `opener::open-url` and `http::fetch`
+    // end-to-end through `handle_message` dispatch, with a mock
+    // opener closure and a `httpmock` HTTP server respectively.
+    // =========================================================
+
+    fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+        let runtime = test_runtime();
+        runtime
+            .compile("opener-http-plugin", OPENER_HTTP_PLUGIN_WASM)
+            .expect("compile opener-http fixture");
+        let instance = runtime
+            .instantiate("opener-http-plugin")
+            .expect("instantiate opener-http fixture");
+        (runtime, instance)
+    }
+
+    #[test]
+    fn opener_permitted_scheme_calls_writer() {
+        let (_runtime, instance) = compile_opener_http_fixture();
+
+        let called_url: std::sync::Arc<Mutex<Option<String>>> =
+            std::sync::Arc::new(Mutex::new(None));
+        let called_url_clone = called_url.clone();
+
+        instance.set_opener_schemes(vec!["https".into()]);
+        instance.set_opener_writer(Box::new(move |url: &str| {
+            *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
+            Ok(())
+        }));
+
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("opener.open-url", "https://example.com")
+            .expect("handle_message call succeeded")
+            .expect("guest returned Ok");
+
+        assert_eq!(result, "ok");
+        assert_eq!(
+            called_url.lock().expect("not poisoned").as_deref(),
+            Some("https://example.com")
+        );
+    }
+
+    #[test]
+    fn opener_forbidden_scheme_returns_error() {
+        let (_runtime, instance) = compile_opener_http_fixture();
+
+        instance.set_opener_schemes(vec!["https".into()]);
+        instance.set_opener_writer(Box::new(|_: &str| Ok(())));
+
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("opener.open-url", "ftp://example.com")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should return Err for ftp://");
+        assert!(
+            err.contains("scheme not permitted: ftp"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn opener_writer_not_set_returns_error() {
+        let (_runtime, instance) = compile_opener_http_fixture();
+
+        instance.set_opener_schemes(vec!["https".into()]);
+        // Intentionally omit set_opener_writer.
+
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("opener.open-url", "https://example.com")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should return Err when writer missing");
+        assert!(
+            err.contains("opener not initialized"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn http_permitted_origin_proceeds() {
+        use httpmock::MockServer;
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/ping");
+            then.status(200).body("pong");
+        });
+
+        let (_runtime, instance) = compile_opener_http_fixture();
+        instance.set_http_origins(vec!["*".into()]);
+        instance.set_http_client(Arc::new(crate::network::Http::new()));
+
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("http.get", &server.url("/ping"))
+            .expect("handle_message call succeeded")
+            .expect("guest returned Ok");
+
+        assert_eq!(result, "status:200");
+    }
+
+    #[test]
+    fn http_blocked_origin_returns_permission_denied() {
+        let (_runtime, instance) = compile_opener_http_fixture();
+        // Empty origins = deny all.
+        instance.set_http_origins(vec![]);
+        instance.set_http_client(Arc::new(crate::network::Http::new()));
+
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("http.get", "https://example.com/test")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should return Err for blocked origin");
+        assert!(
+            err.contains("PermissionDenied"),
+            "unexpected error: {err}"
+        );
     }
 }
