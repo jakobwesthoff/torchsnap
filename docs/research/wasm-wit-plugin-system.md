@@ -165,7 +165,7 @@ Build with `cargo component build --release` — produces a `.wasm` component.
 use wasmtime::component::*;
 use wasmtime::{Config, Engine, Store};
 
-wasmtime::component::bindgen!("plugin" in "wit/");
+wasmtime::component::bindgen!("plugin" in "plugins/plugin-sdk/wit/");
 
 struct HostState { /* app state */ }
 

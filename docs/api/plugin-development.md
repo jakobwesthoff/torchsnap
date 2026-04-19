@@ -639,11 +639,11 @@ schedule = "*/30 * * * *"
 supported.
 
 The plugin implements the `tasks::run-task` guest export and
-dispatches by `task_id`:
+dispatches by `task_id`. With the `torchsnap-plugin-sdk` crate the
+guest trait and host imports are re-exported at the prelude root:
 
 ```rust
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
-use torchsnap::plugin::sql;
+use torchsnap_plugin_sdk::prelude::*;
 
 impl TasksGuest for MyPlugin {
     fn run_task(task_id: String) -> Result<(), String> {
@@ -661,6 +661,10 @@ impl TasksGuest for MyPlugin {
     }
 }
 ```
+
+Plugins that declare no `[[tasks]]` entries still have to satisfy
+the WIT contract; reach for `impl_noop_tasks!(MyPlugin);` from the
+SDK instead of hand-writing the stub.
 
 Key semantics:
 
@@ -708,24 +712,38 @@ database file and applies migrations before the guest's `enable()`
 runs — by the time the plugin's own code executes, the schema is
 ready.
 
-The plugin obtains a connection handle via the WIT host import:
+The plugin obtains a connection handle via the SDK's `sql`
+helper module, which re-exports the WIT host import and layers a
+typed `Row` accessor plus `From` conversions over the raw
+`SqlValue` variants:
 
 ```rust
-use torchsnap::plugin::sql;
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::sql::{query_all, Row};
 
 let db = sql::connection();
 
-db.execute("INSERT INTO log (msg) VALUES (?)", &[
-    sql::SqlValue::Text("hello".into()),
-])?;
+db.execute(
+    "INSERT INTO log (msg) VALUES (?)",
+    &[SqlValue::from("hello")],
+)?;
 
-let rows = db.query("SELECT id, msg FROM log ORDER BY id DESC LIMIT 10", &[])?;
-for row in rows {
-    let sql::SqlValue::Integer(id) = row[0] else { continue };
-    let sql::SqlValue::Text(ref msg) = row[1] else { continue };
+let rows: Vec<Row> = query_all(
+    &db,
+    "SELECT id, msg FROM log ORDER BY id DESC LIMIT 10",
+    &[],
+)?;
+for row in &rows {
+    let Some(id) = row.integer(0) else { continue };
+    let Some(msg) = row.text(1) else { continue };
     println!("{id}: {msg}");
 }
 ```
+
+`Row::integer` / `text` / `real` / `blob` return `None` for both
+missing columns and wrong storage classes; plugins that need to
+distinguish the two can match on the underlying `Vec<SqlValue>`
+directly via the `Row`'s public field.
 
 Key points:
 
@@ -766,10 +784,12 @@ Omitting `[permissions.opener]` entirely means the plugin has no opener
 access. The host enforces the scheme allowlist at call time — any scheme not
 listed returns an error without invoking the OS opener.
 
-Call `open_url` from any guest entry point:
+Call `open_url` from any guest entry point — the SDK prelude
+re-exports the `opener` host import so no extra `use` is
+required:
 
 ```rust
-use torchsnap::plugin::opener;
+use torchsnap_plugin_sdk::prelude::*;
 
 fn open_result_url(url: &str) -> Result<(), String> {
     opener::open_url(url)
@@ -807,10 +827,13 @@ to their ASCII-serialized form at manifest parse time, so a misconfigured
 origin (invalid URL) fails plugin load with a clear error rather than
 silently blocking requests at runtime.
 
-Build a request and call `fetch`:
+Build a request and call `fetch`. The SDK prelude re-exports the
+`http` host import, so the inner types (`HttpMethod`,
+`HttpRequest`, `HttpError`) come off that module directly:
 
 ```rust
-use torchsnap::plugin::http::{self, HttpMethod, HttpRequest};
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::http::{HttpError, HttpMethod, HttpRequest};
 
 fn lookup(query: &str) -> Result<Vec<u8>, String> {
     let url = format!("https://api.duckduckgo.com/?q={query}&format=json");
@@ -824,9 +847,9 @@ fn lookup(query: &str) -> Result<Vec<u8>, String> {
     };
 
     let response = http::fetch(&request).map_err(|e| match e {
-        http::HttpError::PermissionDenied(msg) => format!("permission denied: {msg}"),
-        http::HttpError::Network(msg) => format!("network error: {msg}"),
-        http::HttpError::Timeout => "request timed out".to_string(),
+        HttpError::PermissionDenied(msg) => format!("permission denied: {msg}"),
+        HttpError::Network(msg) => format!("network error: {msg}"),
+        HttpError::Timeout => "request timed out".to_string(),
     })?;
 
     Ok(response.body)

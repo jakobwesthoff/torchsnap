@@ -6,12 +6,11 @@
 # plugins/ is a standalone Rust project that compiles to a .wasm
 # component targeting wasm32-wasip2.
 
+# The loop keys off `manifest.toml` rather than `Cargo.toml` so the
+# shared `plugin-sdk` workspace member (which has a `Cargo.toml` but no
+# plugin manifest) is transparently skipped.
+
 # Build all WASM plugins
-#
-# The loop keys off `manifest.toml` rather than `Cargo.toml`
-# so the shared `plugin-sdk` workspace member (which has a
-# `Cargo.toml` but no plugin manifest) is transparently
-# skipped.
 build-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -22,11 +21,12 @@ build-plugins:
         fi
     done
 
-# Build a single WASM plugin by name.
-# If the plugin has a frontend (package.json), builds it first
-# with Vite. Then compiles the WASM binary and copies the
-# artifact to the plugin root so DirectorySource can find it
-# via the manifest's `wasm` path during development.
+# If the plugin has a frontend (package.json), builds it first with
+# Vite. Then compiles the WASM binary and copies the artifact to the
+# plugin root so DirectorySource can find it via the manifest's `wasm`
+# path during development.
+
+# Build a single WASM plugin by name
 build-plugin name:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -94,6 +94,8 @@ build-plugin name:
 #   `.git/`          — VCS metadata
 # - `*.torchsnap`    — never include a stale archive in a new
 #                       archive
+
+# Package a plugin directory into a .torchsnap zip archive
 package-plugin name:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -156,8 +158,10 @@ package-plugin name:
 #   hard error with the offending id in the message.
 #
 # The staging directory is wiped before each run so a
-# previously-bundled plugin removed from `bundled.toml` is
-# also removed from the next bundle.
+# previously-bundled plugin removed from `bundled.toml` is also removed
+# from the next bundle.
+
+# Stage whitelisted plugins into target/bundled-plugins/ for Tauri bundling
 stage-bundled-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -195,33 +199,34 @@ stage-bundled-plugins:
         echo "Staged → $stage/$id.torchsnap"
     done
 
-# Check every workspace member, including `plugin-sdk`.
-# Cargo resolves the workspace from the `plugins/`
-# directory and `plugins/.cargo/config.toml` supplies the
-# wasm32-wasip2 target by default, so no explicit
-# `--target` flag is needed here.
+# Cargo resolves the workspace from the `plugins/` directory and
+# `plugins/.cargo/config.toml` supplies the wasm32-wasip2 target by
+# default, so no explicit `--target` flag is needed here.
+
+# Check every WASM plugin in the plugins/ workspace (including plugin-sdk)
 check-plugins:
     cd plugins && cargo check --workspace
 
-# Check a single WASM plugin compiles. The `name` argument
-# matches the plugin's *directory* name (e.g. `hello-world`),
-# which differs from the crate name (`hello-world-plugin`);
-# `--manifest-path` takes a path, so we stay directory-based
-# for caller ergonomics.
+# The `name` argument matches the plugin's *directory* name (e.g.
+# `hello-world`), which differs from the crate name
+# (`hello-world-plugin`); `--manifest-path` takes a path, so we stay
+# directory-based for caller ergonomics.
+
+# Check that a single WASM plugin compiles
 check-plugin name:
     cd plugins && cargo check --manifest-path "{{ name }}/Cargo.toml"
 
-# Build the WASM test fixtures used by src-tauri's Rust test
-# suite. Each fixture is a standalone wasm32-wasip2 crate under
-# `src-tauri/tests/fixtures/`; this recipe compiles them and
-# copies the `.wasm` artifact to the plugin root directory (next
-# to the fixture's Cargo.toml / README) where the tests look for
-# it.
+# Each fixture is a standalone wasm32-wasip2 crate under
+# `src-tauri/tests/fixtures/`; this recipe compiles them and copies the
+# `.wasm` artifact to the plugin root directory (next to the fixture's
+# Cargo.toml / README) where the tests look for it.
 #
-# The `.wasm` artifacts are committed to the repository — this
-# recipe is only run by developers when a fixture's source
-# changes or the shared WIT world is updated. CI runs the Rust
-# test suite against the committed `.wasm`.
+# The `.wasm` artifacts are committed to the repository — this recipe
+# is only run by developers when a fixture's source changes or the
+# shared WIT world is updated. CI runs the Rust test suite against the
+# committed `.wasm`.
+
+# Build the WASM test fixtures used by the src-tauri Rust tests
 build-test-fixtures:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -254,10 +259,11 @@ build-test-fixtures:
         fi
     done
 
-# Validate WIT definitions parse correctly.
-# The WIT world lives under the `torchsnap-plugin-sdk`
-# crate so the SDK owns both the `.wit` source and the
-# generated bindings in one place.
+# The WIT world lives under the `torchsnap-plugin-sdk` crate so the
+# SDK owns both the `.wit` source and the generated bindings in one
+# place.
+
+# Validate that WIT definitions parse correctly
 check-wit:
     wasm-tools component wit plugins/plugin-sdk/wit/ > /dev/null
 

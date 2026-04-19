@@ -41,7 +41,7 @@ tokio task per plugin (only when the manifest declares at least one
 earliest next fire across all of them, and invokes the
 `tasks::run-task` WIT guest export.
 
-**WIT additions** (`wit/torchsnap-plugin.wit`):
+**WIT additions** (`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
 
 ````wit
 interface tasks {

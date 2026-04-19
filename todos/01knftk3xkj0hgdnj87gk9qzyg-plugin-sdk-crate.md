@@ -1,5 +1,9 @@
 # Plugin SDK Crate
 
+**Status:** Done — implemented as `torchsnap-plugin-sdk` under
+`plugins/plugin-sdk/`. The notes below are kept for historical
+reference; new work lives in the crate itself.
+
 Create a `torchsnap-plugin-sdk` Rust crate that simplifies WASM plugin
 development by wrapping the raw `wit_bindgen` output.
 
@@ -30,6 +34,6 @@ would risk building the wrong API.
 
 ## References
 
-- WIT definitions: `wit/torchsnap-plugin.wit`
+- WIT definitions: `plugins/plugin-sdk/wit/torchsnap-plugin.wit`
 - Hello-world plugin: `plugins/hello-world/` (current boilerplate baseline)
 - Strategy doc: `docs/strategy/Selfcontained-Plugin-System.md`

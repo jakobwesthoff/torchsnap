@@ -158,7 +158,7 @@ read what they need via four hooks (in `src/contexts/`):
 
 Out-of-tree WASM plugins reach the same hooks via the
 `@torchsnap/plugin-sdk/hooks` subpath, which resolves at build time
-to `plugin-sdk/src/shims/hooks.ts`. The shim re-reads from
+to `packages/plugin-sdk/src/shims/hooks.ts`. The shim re-reads from
 `window.__torchsnap.hooks`, populated by the host's `initPluginSdk()`
 in `src/lib/sdk.ts`.
 

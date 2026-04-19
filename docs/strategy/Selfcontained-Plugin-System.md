@@ -581,7 +581,7 @@ Both sides consume the same `.wit` files by path, but the tooling differs:
 // Produces: a `Plugin` type with methods like `call_enable()`,
 // `call_entries()`, etc., and a trait to implement for host imports.
 wasmtime::component::bindgen!({
-    path: "../wit",
+    path: "../plugins/plugin-sdk/wit",
     world: "plugin",
     async: false,  // start synchronous, revisit for async host calls later
 });
@@ -614,30 +614,33 @@ impl logging::Host for PluginState {
 }
 ```
 
-**Guest side (cargo-component):**
+**Guest side (`torchsnap-plugin-sdk`):**
 
 ```rust
 // In plugins/hello-world/src/lib.rs
-// cargo-component auto-generates bindings from the WIT files.
-// The plugin author implements the `Guest` trait.
+// The SDK crate owns the wit-bindgen invocation; plugin code
+// consumes the generated bindings through the prelude and
+// registers itself via `define_plugin!`.
 
-cargo_component_bindings::generate!();
-
-use bindings::exports::torchsnap::plugin::*;
-use bindings::torchsnap::plugin::logging;
-use bindings::torchsnap::plugin::types::*;
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 
 struct HelloWorld;
+define_plugin!(HelloWorld);
 
-impl Guest for HelloWorld {
+impl LifecycleGuest for HelloWorld {
     fn enable() {
-        logging::log(logging::LogLevel::Info, "Hello from WASM!");
+        logging::log(logging::LogLevel::Info, "Hello from WASM!", &[], None);
     }
 
     fn disable() {
-        logging::log(logging::LogLevel::Info, "Goodbye from WASM!");
+        logging::log(logging::LogLevel::Info, "Goodbye from WASM!", &[], None);
     }
 
+    fn on_setting_changed(_key: String, _value: String) {}
+}
+
+impl SearchGuest for HelloWorld {
     fn entries() -> Vec<CatalogEntry> {
         vec![CatalogEntry {
             id: "greet".into(),
@@ -646,30 +649,46 @@ impl Guest for HelloWorld {
             icon: Some(EntryIcon::HeroIcon("hand-raised".into())),
             keywords: vec!["hello".into(), "greet".into(), "test".into()],
             actions: vec![Action {
-                id: "open".into(),
+                id: ActionId::Open,
                 label: "Run".into(),
             }],
         }]
     }
 
-    fn execute(entry_id: String, _action_id: String) -> Result<PostAction, String> {
+    fn search(_query: String, _matched_prefix: Option<String>) -> SearchResponse {
+        SearchResponse::Nothing
+    }
+
+    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
         logging::log(
             logging::LogLevel::Info,
             &format!("Executed: {entry_id}"),
+            &[],
+            None,
         );
         Ok(PostAction::Dismiss)
     }
 }
+
+// The WIT world mandates `messaging` and `tasks` exports; the
+// SDK no-op macros satisfy them for plugins that declare
+// neither RPC methods nor scheduled tasks.
+impl_noop_messaging!(HelloWorld);
+impl_noop_tasks!(HelloWorld);
 ```
 
-Built with `cargo component build --release`, produces a `.wasm` component.
+Built with `cargo build --release` from the `plugins/` virtual
+workspace (`wasm32-wasip2` is the workspace-default target), producing a
+`.wasm` component.
 
 **Adding new host imports follows this pattern:**
 
-1. Add a new `interface` to the `.wit` file
+1. Add a new `interface` to the `.wit` file in `plugins/plugin-sdk/wit/`
 2. Add `import <interface-name>;` to the `world plugin` block
 3. Host side: `bindgen!` regenerates automatically — implement the new trait
-4. Guest side: `cargo component build` regenerates — new import functions available
+4. Guest side: rebuilding the SDK crate regenerates the bindings —
+   plugins pick up the new import via `torchsnap_plugin_sdk::prelude::*`
+   (or a dedicated re-export if the SDK surfaces it explicitly)
 
 The WIT file is the single source of truth. Both sides get compile-time errors
 if the contract is violated.
@@ -810,36 +829,47 @@ Start with a hello-world proof-of-concept, then convert real plugins simplest-fi
 
 ### 8.4 Project Layout
 
-No cargo workspace — `src-tauri` and plugin crates are independent projects.
-The host builds for the native target with `cargo build`, plugins build for
-`wasm32-wasip2` with `cargo component build`. They never build together in one
-invocation, so a shared workspace adds complexity for no benefit. Build
-orchestration is handled by just recipes.
+The host (`src-tauri/`) is an independent cargo crate. Plugin crates live
+under `plugins/` inside a virtual cargo workspace (`plugins/Cargo.toml`),
+with `wasm32-wasip2` as the workspace-default target
+(`plugins/.cargo/config.toml`). Host and plugins still never build in one
+invocation; build orchestration is handled by just recipes.
 
-WIT definitions live in a shared `wit/` directory at the repo root — not a
-Rust crate, just `.wit` files consumed by relative path from both sides.
+WIT definitions live inside the `torchsnap-plugin-sdk` crate
+(`plugins/plugin-sdk/wit/`) so plugin crates pick them up through the
+SDK and the host references them by relative path from `src-tauri/`.
 
 ```
 torchsnap/
 ├── src-tauri/                      # standalone Rust crate (Tauri host app)
 │   ├── Cargo.toml
 │   └── Cargo.lock
-├── wit/                            # shared WIT definitions (not a crate)
-│   └── torchsnap-plugin.wit
-├── plugins/
-│   └── hello-world/                # standalone cargo-component crate
+├── plugins/                        # virtual cargo workspace
+│   ├── Cargo.toml                  # workspace manifest + release profile
+│   ├── Cargo.lock                  # single lockfile for all plugins
+│   ├── .cargo/config.toml          # default target = wasm32-wasip2
+│   ├── plugin-sdk/                 # torchsnap-plugin-sdk crate
+│   │   ├── Cargo.toml
+│   │   ├── wit/
+│   │   │   └── torchsnap-plugin.wit
+│   │   └── src/lib.rs
+│   └── hello-world/                # example plugin crate
 │       ├── Cargo.toml
-│       ├── Cargo.lock
 │       ├── manifest.toml           # plugin manifest (used by DirectorySource)
 │       └── src/lib.rs
+├── packages/
+│   └── plugin-sdk/                 # TypeScript SDK (`@torchsnap/plugin-sdk`)
 ├── src/                            # frontend (unchanged)
 ├── package.json
 └── ...
 ```
 
-Both host and guest reference the WIT files by relative path:
-- Host: `wasmtime::component::bindgen!({ path: "../wit" })`
-- Guest: `[package.metadata.component]` wit path in Cargo.toml
+The WIT file is referenced by relative path from both sides:
+- Host: `wasmtime::component::bindgen!({ path: "../plugins/plugin-sdk/wit" })`
+- SDK crate: `wit_bindgen::generate!({ path: "wit", ... })` (relative to
+  the SDK crate root); individual plugin crates don't invoke
+  `generate!` themselves — they consume the bindings through
+  `torchsnap_plugin_sdk::prelude::*` + `define_plugin!`.
 
 Plugin crates during initial development live in `plugins/`. The template for
 external plugins will be a standalone repo later.
@@ -981,7 +1011,7 @@ WASM debugging is harder than native Rust. Plugin authors will need:
 | 2026-04-03 | Disabled plugins skip WASM instantiation | Only manifest is parsed. Full instantiation on enable, full teardown + drop on disable. Saves memory and startup time. |
 | 2026-04-03 | Plugin metadata in manifest for settings UI | `name`, `description`, `icon` in `[plugin]` — host renders settings sidebar without plugin frontend code. |
 | 2026-04-03 | No search mode field | Plugins implement full export surface; empty returns for unused modes. Matches native trait design. |
-| 2026-04-03 | No cargo workspace — independent projects | Host and plugins have separate targets; build orchestration via just recipes. WIT files shared by path in `wit/` at repo root. |
+| 2026-04-03 | No cargo workspace — independent projects | Host and plugins have separate targets; build orchestration via just recipes. WIT files shared by path in `wit/` at repo root. (Superseded: plugins now share a virtual cargo workspace at `plugins/Cargo.toml`, and the WIT file lives under `plugins/plugin-sdk/wit/`.) |
 | 2026-04-03 | `logging` as first host import | Simplest host function, proves bidirectional communication in hello-world |
 | 2026-04-03 | `Mutex<Store>` as permanent threading model | WASM is inherently single-threaded per instance; dedicated-thread model adds complexity for no concurrency benefit. |
 | 2026-04-03 | One shared `wasmtime::Engine` | All WASM plugins share an engine instance — saves compilation cache and memory |
@@ -1000,7 +1030,7 @@ WASM debugging is harder than native Rust. Plugin authors will need:
 
 | Component | Location | Notes |
 |---|---|---|
-| WIT contract | `wit/torchsnap-plugin.wit` | `logging` + `types` (host imports), `lifecycle` + `search` (guest exports) |
+| WIT contract | `plugins/plugin-sdk/wit/torchsnap-plugin.wit` | `logging` + `types` (host imports), `lifecycle` + `search` (guest exports) |
 | WASM runtime | `src-tauri/src/wasm/runtime.rs` | `WasmRuntime` (shared `Engine` + compiled-`Component` cache, split `compile()`/`instantiate()` API) + `WasmPluginInstance` (`Mutex<Store>`) |
 | WasmPluginBridge | `src-tauri/src/wasm/bridge.rs` | Host-side representation of a WASM plugin. Owns the compile-at-load / instantiate-on-enable / drop-on-disable lifecycle and implements the native `Plugin` trait. |
 | Plugin sources | `src-tauri/src/wasm/source.rs` | `DirectorySource` (dev) + `ArchiveSource` (production) |

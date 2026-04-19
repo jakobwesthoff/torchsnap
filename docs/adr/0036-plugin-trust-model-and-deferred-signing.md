@@ -17,7 +17,7 @@ from doing damage?
 The surface area worth reasoning about, concretely:
 
 - A plugin's WASM component runs inside wasmtime with host-provided
-  imports defined in `wit/torchsnap-plugin.wit`. Available imports
+  imports defined in `plugins/plugin-sdk/wit/torchsnap-plugin.wit`. Available imports
   today: `logging`, `clipboard` (write-only), `sql`, `settings`,
   `messaging`. **There is no `network` interface.** Guest code
   cannot open sockets, make HTTP requests, or read arbitrary files

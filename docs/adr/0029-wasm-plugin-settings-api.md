@@ -38,7 +38,7 @@ export for change notifications.
 
 ## Decision
 
-**WIT additions** (`wit/torchsnap-plugin.wit`):
+**WIT additions** (`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
 
 ```wit
 interface settings {
@@ -117,6 +117,12 @@ term follow-up. The calculator port (which landed shortly after
 this ADR) is the second user of the per-setting boilerplate; the
 trigger for the SDK crate has fired and it should be created
 before a third plugin lands and forces a churn-heavy retrofit.
+
+(Trigger has since fired: the `torchsnap-plugin-sdk` crate under
+`plugins/plugin-sdk/` now exposes `settings::get<T>` /
+`settings::get_or<T>` / `settings::get_or_else<T>`, and every
+bundled plugin consumes those helpers in place of the raw
+`serde_json::from_str` dance described above.)
 
 ## Consequences
 

@@ -90,7 +90,7 @@ keystroke and would invalidate the context value identity on every
 render if hoisted, forcing every consumer to re-render.
 
 The post-refactor prop interfaces (mirrored in both
-`src/plugins/types.ts` and `plugin-sdk/src/types/plugin.ts`):
+`src/plugins/types.ts` and `packages/plugin-sdk/src/types/plugin.ts`):
 
 ```ts
 interface PluginViewProps {
@@ -122,12 +122,12 @@ mechanism:
 
 - `src/lib/sdk.ts` populates `window.__torchsnap.hooks` with the four
   host implementations during `initPluginSdk()`.
-- `plugin-sdk/src/shims/hooks.ts` re-exports them under the
+- `packages/plugin-sdk/src/shims/hooks.ts` re-exports them under the
   `@torchsnap/plugin-sdk/hooks` subpath so plugin code does
   `import { usePluginInfo } from "@torchsnap/plugin-sdk/hooks"`.
 
 This is the same bridge pattern already in use for `react` and
-`react/jsx-runtime` (see `plugin-sdk/src/shims/react.ts`).
+`react/jsx-runtime` (see `packages/plugin-sdk/src/shims/react.ts`).
 
 ### Single context, optional launcher slice
 

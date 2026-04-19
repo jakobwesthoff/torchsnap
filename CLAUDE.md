@@ -51,10 +51,14 @@ and other non-source configuration files.
 ### `cargo-component` is NOT used
 
 This project does **not** use `cargo-component`. WASM plugins are built
-with plain `cargo build --target wasm32-wasip2 --release` and the WIT
-bindings are generated via the `wit-bindgen` macro inside each plugin
-crate. Do not install `cargo-component` and do not add recipes that
-depend on it.
+with plain `cargo build --release` from the `plugins/` virtual
+workspace (the `wasm32-wasip2` target is set as the workspace default
+via `plugins/.cargo/config.toml`). The WIT `wit_bindgen::generate!`
+invocation lives in the `torchsnap-plugin-sdk` crate
+(`plugins/plugin-sdk/`); plugin crates consume the generated bindings
+through `use torchsnap_plugin_sdk::prelude::*;` and register themselves
+via `define_plugin!(MyPlugin)`. Do not install `cargo-component` and do
+not add recipes that depend on it.
 
 WIT inspection / formatting uses `wasm-tools` (`just check-wit`,
 `just fmt-wit`), which is a separate tool.
@@ -71,7 +75,8 @@ which Tauri picks up via the `resources` entry in
 
 The repo-root `target/` directory is gitignored — it is owned
 entirely by this staging flow. Cargo itself uses
-`src-tauri/target/` and `plugins/*/target/`.
+`src-tauri/target/` for the host and `plugins/target/` for the
+plugin virtual workspace.
 
 To add a plugin to release bundles, edit `plugins/bundled.toml`
 and rebuild. To develop a plugin without adding it to release
