@@ -74,15 +74,6 @@ registerPlugin("system-preferences", {
   icon: "heroicons:cog-8-tooth",
 });
 
-registerPlugin("emoji-picker", {
-  label: "Emoji Picker",
-  description: "Search and insert emoji characters",
-  icon: "heroicons:face-smile",
-  views: {
-    picker: launcherComponent(() => import("./emoji/EmojiGrid")),
-  },
-});
-
 registerPlugin("clipboard-manager", {
   label: "Clipboard",
   description: "Clipboard history with search and paste",

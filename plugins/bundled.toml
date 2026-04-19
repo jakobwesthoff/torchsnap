@@ -12,4 +12,5 @@
 # or removing a plugin produces a clean, one-line diff.
 plugins = [
     "calculator",
+    "emoji-picker",
 ]

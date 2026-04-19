@@ -622,10 +622,6 @@ pub fn run() {
                 )),
                 wasm::source::PluginSourceKind::Builtin,
             );
-            host.register(
-                Box::new(plugins::emoji::EmojiPickerPlugin::new()),
-                wasm::source::PluginSourceKind::Builtin,
-            );
 
             // =========================================================
             // Website metadata service
