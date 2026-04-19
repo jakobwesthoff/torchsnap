@@ -22,6 +22,8 @@ plugins, and progressively more complex examples.
 - [Custom UI](#custom-ui)
   - [Taking Over the Result Area](#taking-over-the-result-area)
   - [Frontend ↔ Backend Messaging](#frontend--backend-messaging)
+- [Opener (WASM plugins, ADR 0037)](#opener-wasm-plugins-adr-0037)
+- [HTTP (WASM plugins, ADR 0038)](#http-wasm-plugins-adr-0038)
 - [How your plugin is discovered (WASM plugins, ADR 0035)](#how-your-plugin-is-discovered-wasm-plugins-adr-0035)
 - [Packaging and distributing your plugin (WASM plugins, ADR 0035)](#packaging-and-distributing-your-plugin-wasm-plugins-adr-0035)
 - [Types Reference](#types-reference)
@@ -748,6 +750,105 @@ Key points:
 Migration file errors (missing file, malformed SQL, migration apply
 failure) surface as a host-side `enable()` error — the guest never
 sees them. Per-statement errors come back from `execute` / `query`.
+
+### Opener (WASM plugins, ADR 0037)
+
+WASM plugins can open URLs in the OS default handler (browser, mail client,
+etc.) via the `opener` host import. Declare which URL schemes the plugin is
+allowed to open under `[permissions.opener]` in `manifest.toml`:
+
+```toml
+[permissions.opener]
+schemes = ["https", "http"]
+```
+
+Omitting `[permissions.opener]` entirely means the plugin has no opener
+access. The host enforces the scheme allowlist at call time — any scheme not
+listed returns an error without invoking the OS opener.
+
+Call `open_url` from any guest entry point:
+
+```rust
+use torchsnap::plugin::opener;
+
+fn open_result_url(url: &str) -> Result<(), String> {
+    opener::open_url(url)
+}
+```
+
+Key points:
+
+- **Deny by default** — no `[permissions.opener]` section = no `open-url`
+  access, regardless of what the plugin calls.
+- **Error string** — on scheme rejection the host returns
+  `"scheme not permitted: {scheme}"`. On OS opener failure the host returns
+  the backend's error message.
+- **`reveal-path` is not yet exposed.** Opening a directory in Finder /
+  Explorer is deferred until the app-launcher plugin conversion.
+- **WASM-only.** Native plugins call Tauri's `tauri-plugin-opener` directly.
+
+### HTTP (WASM plugins, ADR 0038)
+
+WASM plugins can make synchronous HTTP requests via the `http` host import.
+Declare which origins the plugin is allowed to reach under
+`[permissions.http]` in `manifest.toml`:
+
+```toml
+[permissions.http]
+origins = ["https://api.duckduckgo.com"]
+
+# or trust-all:
+origins = ["*"]
+```
+
+`"*"` opts the plugin into trust-all mode. Omitting `[permissions.http]`
+entirely means the plugin has no HTTP access. Declared origins are normalized
+to their ASCII-serialized form at manifest parse time, so a misconfigured
+origin (invalid URL) fails plugin load with a clear error rather than
+silently blocking requests at runtime.
+
+Build a request and call `fetch`:
+
+```rust
+use torchsnap::plugin::http::{self, HttpMethod, HttpRequest};
+
+fn lookup(query: &str) -> Result<Vec<u8>, String> {
+    let url = format!("https://api.duckduckgo.com/?q={query}&format=json");
+    let request = HttpRequest {
+        url,
+        method: HttpMethod::Get,
+        headers: vec![],
+        body: None,
+        timeout_ms: Some(5_000),
+        max_body_size: None,
+    };
+
+    let response = http::fetch(&request).map_err(|e| match e {
+        http::HttpError::PermissionDenied(msg) => format!("permission denied: {msg}"),
+        http::HttpError::Network(msg) => format!("network error: {msg}"),
+        http::HttpError::Timeout => "request timed out".to_string(),
+    })?;
+
+    Ok(response.body)
+}
+```
+
+Key points:
+
+- **Deny by default** — no `[permissions.http]` section = no HTTP access.
+- **Three error variants** — `permission-denied(string)` means the request's
+  origin is not in the allowlist (check the manifest); `network(string)` means
+  any transport failure (DNS, TLS, connection refused); `timeout` means the
+  request exceeded the configured or host-default deadline.
+- **`timeout-ms` and `max-body-size` are optional guards.** `none` delegates
+  to the host default. Override `timeout-ms` for latency-sensitive calls;
+  override `max-body-size` when the response body is expected to be large.
+- **HTTP status codes are not errors.** A 4xx or 5xx response arrives as a
+  normal `HttpResponse` — the plugin inspects `response.status` and decides
+  what to do.
+- **Blocking call.** The host runs the request on a thread-pool thread via
+  `tokio::task::block_in_place`. The guest blocks for the full round-trip.
+- **WASM-only.** Native plugins call `reqwest` or `ureq` directly.
 
 ---
 
