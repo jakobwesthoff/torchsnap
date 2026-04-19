@@ -74,6 +74,12 @@ pub struct Manifest {
     /// invokes the WIT `tasks::run-task` guest export.
     #[serde(default, rename = "tasks")]
     pub tasks: Vec<TaskDef>,
+
+    /// Host capability permissions. Plugins opt into `opener`
+    /// and `http` by declaring the relevant sub-table. Omitting
+    /// `[permissions]` entirely means neither capability is
+    /// available (deny by default).
+    pub permissions: Option<PermissionsDef>,
 }
 
 // =========================================================
@@ -356,6 +362,72 @@ pub struct SqlStorageDef {
 }
 
 // =========================================================
+// Permissions
+//
+// Plugins opt into host capabilities by declaring the
+// relevant sub-table under `[permissions]`. Omitting a
+// sub-table means the capability is denied. This mirrors
+// the Android/iOS permission model: no capability is
+// implicitly granted.
+//
+// Origins in `[permissions.http]` are normalized to
+// `url::Origin::ascii_serialization()` form at parse time
+// (see `validate_permissions`) so runtime checks are plain
+// string equality — no re-parsing at call time — and
+// variant spellings like `"https://example.com/"`,
+// `"HTTPS://example.com"`, and `"https://example.com:443"`
+// all map to the same canonical form `"https://example.com"`.
+// =========================================================
+
+/// `[permissions]` block.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PermissionsDef {
+    /// `[permissions.opener]` — URL-opening capability.
+    pub opener: Option<OpenerPermissionsDef>,
+    /// `[permissions.http]` — HTTP fetch capability.
+    pub http: Option<HttpPermissionsDef>,
+}
+
+/// `[permissions.opener]` — declares which URL schemes the
+/// plugin is allowed to open via `opener::open-url`.
+///
+/// ```toml
+/// [permissions.opener]
+/// schemes = ["https", "http"]
+/// ```
+///
+/// An empty `schemes` list is a manifest authoring error
+/// (declaring the section without granting anything).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OpenerPermissionsDef {
+    pub schemes: Vec<String>,
+}
+
+/// `[permissions.http]` — declares which origins the plugin
+/// is allowed to reach via `http::fetch`.
+///
+/// ```toml
+/// [permissions.http]
+/// origins = ["https://api.example.com"]
+///
+/// # or trust-all:
+/// origins = ["*"]
+/// ```
+///
+/// Origins must be valid `scheme + host` pairs
+/// (e.g. `"https://api.example.com"`). They are normalized
+/// to `ascii_serialization()` form at parse time. The
+/// special value `"*"` opts the plugin into trust-all mode.
+///
+/// An empty `origins` list is a manifest authoring error.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HttpPermissionsDef {
+    /// Stored as normalized `ascii_serialization()` origins,
+    /// except for the literal `"*"` which is preserved as-is.
+    pub origins: Vec<String>,
+}
+
+// =========================================================
 // Scheduled tasks
 // =========================================================
 
@@ -392,7 +464,7 @@ pub struct TaskDef {
 impl Manifest {
     /// Parse a manifest from TOML source text.
     pub fn parse(toml_source: &str) -> anyhow::Result<Self> {
-        let manifest: Manifest =
+        let mut manifest: Manifest =
             toml::from_str(toml_source).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
 
         // Validate `[[tasks]]` entries early so a malformed
@@ -400,6 +472,13 @@ impl Manifest {
         // load instead of waiting for the scheduler to
         // crash at runtime.
         validate_task_definitions(&manifest.tasks)?;
+
+        // Validate and normalize `[permissions]` entries.
+        // Origins are normalized to ascii_serialization() in-place
+        // so runtime checks can use plain string equality.
+        if let Some(ref mut permissions) = manifest.permissions {
+            validate_permissions(permissions)?;
+        }
 
         // Every user-supplied path must be plugin-relative and
         // free of traversal. Rejecting at parse time keeps the
@@ -1597,6 +1676,191 @@ mod tests {
             "error should mention both fields: {err}"
         );
     }
+
+    // =====================================================
+    // Permissions: happy paths
+    // =====================================================
+
+    #[test]
+    fn accept_manifest_without_permissions_section() {
+        let m = Manifest::parse(&minimal("")).expect("should parse");
+        assert!(m.permissions.is_none());
+    }
+
+    #[test]
+    fn accept_permissions_section_with_no_sub_tables() {
+        let m = Manifest::parse(&minimal("[permissions]")).expect("should parse");
+        let p = m.permissions.expect("permissions present");
+        assert!(p.opener.is_none());
+        assert!(p.http.is_none());
+    }
+
+    #[test]
+    fn accept_opener_permission_with_schemes() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.opener]
+               schemes = ["https", "http"]"#,
+        ))
+        .expect("should parse");
+        let schemes = m
+            .permissions
+            .expect("permissions")
+            .opener
+            .expect("opener")
+            .schemes;
+        assert_eq!(schemes, vec!["https", "http"]);
+    }
+
+    #[test]
+    fn accept_http_permission_with_specific_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://api.example.com"]"#,
+        ))
+        .expect("should parse");
+        let origins = m
+            .permissions
+            .expect("permissions")
+            .http
+            .expect("http")
+            .origins;
+        assert_eq!(origins, vec!["https://api.example.com"]);
+    }
+
+    #[test]
+    fn accept_http_permission_with_wildcard() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("should parse");
+        let origins = m
+            .permissions
+            .expect("permissions")
+            .http
+            .expect("http")
+            .origins;
+        assert_eq!(origins, vec!["*"]);
+    }
+
+    #[test]
+    fn accept_opener_and_http_permissions_together() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.opener]
+               schemes = ["https"]
+               [permissions.http]
+               origins = ["https://api.example.com"]"#,
+        ))
+        .expect("should parse");
+        let p = m.permissions.expect("permissions");
+        assert!(p.opener.is_some());
+        assert!(p.http.is_some());
+    }
+
+    // =====================================================
+    // Permissions: origin normalization
+    // =====================================================
+
+    #[test]
+    fn normalize_trailing_slash_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com/"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn normalize_uppercase_scheme_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["HTTPS://example.com"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn normalize_default_port_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com:443"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn preserve_non_default_port_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com:8443"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com:8443");
+    }
+
+    #[test]
+    fn preserve_wildcard_as_is() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "*");
+    }
+
+    // =====================================================
+    // Permissions: validation errors
+    // =====================================================
+
+    #[test]
+    fn reject_opener_permission_with_empty_schemes() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.opener]
+               schemes = []"#,
+        ))
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("permissions.opener") && msg.contains("schemes"),
+            "error should mention both fields: {msg}"
+        );
+    }
+
+    #[test]
+    fn reject_http_permission_with_empty_origins() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = []"#,
+        ))
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("permissions.http") && msg.contains("origins"),
+            "error should mention both fields: {msg}"
+        );
+    }
+
+    #[test]
+    fn reject_malformed_origin() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["not-a-url"]"#,
+        ))
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not-a-url"),
+            "error should mention the offending value: {msg}"
+        );
+    }
 }
 
 // =========================================================
@@ -1619,6 +1883,58 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
         parse_cron_schedule(&task.schedule)
             .map_err(|e| anyhow::anyhow!("invalid schedule for task `{}`: {e}", task.id))?;
     }
+    Ok(())
+}
+
+// =========================================================
+// Permission validation
+// =========================================================
+
+/// Validate and normalize `[permissions]` at manifest parse time.
+///
+/// Takes `&mut` to normalize HTTP origins in-place. After this
+/// call, every entry in `permissions.http.origins` (except `"*"`)
+/// is stored as the `ascii_serialization()` of its parsed origin,
+/// making runtime checks plain string equality — no re-parsing.
+///
+/// Rejects:
+/// - `[permissions.opener]` with an empty `schemes` list.
+/// - `[permissions.http]` with an empty `origins` list.
+/// - Any `origins` entry that is not a parseable URL (and not `"*"`).
+fn validate_permissions(permissions: &mut PermissionsDef) -> anyhow::Result<()> {
+    if let Some(ref opener) = permissions.opener {
+        if opener.schemes.is_empty() {
+            anyhow::bail!(
+                "`[permissions.opener]` declared with an empty `schemes` list — \
+                 either add at least one scheme or remove the section"
+            );
+        }
+    }
+
+    if let Some(ref mut http) = permissions.http {
+        if http.origins.is_empty() {
+            anyhow::bail!(
+                "`[permissions.http]` declared with an empty `origins` list — \
+                 either add at least one origin (or `\"*\"`) or remove the section"
+            );
+        }
+
+        // Normalize each declared origin to ascii_serialization().
+        // Reject malformed entries immediately so authors discover
+        // errors at plugin-load time rather than at the first fetch.
+        for origin in &mut http.origins {
+            if origin == "*" {
+                continue;
+            }
+            let parsed = url::Url::parse(origin).map_err(|e| {
+                anyhow::anyhow!(
+                    "`[permissions.http]` origin `{origin}` is not a valid URL: {e}"
+                )
+            })?;
+            *origin = parsed.origin().ascii_serialization();
+        }
+    }
+
     Ok(())
 }
 
