@@ -1,0 +1,88 @@
+#!/usr/bin/env bun
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//
+// Read `plugins/bundled.toml` (or the path given as $1), validate the
+// plugin list, and print each plugin id on its own line.
+//
+// Exit codes:
+//   0  — success; zero or more ids printed to stdout
+//   1  — structural error (duplicate id, non-string id, malformed TOML)
+//
+// Warnings (missing file, empty list) are printed to stderr and exit 0
+// so the caller can distinguish "nothing to do" from "something is wrong".
+//
+// Usage:
+//   tools/list-bundled-plugins [bundled.toml path]
+//
+
+import { readFileSync } from "fs";
+import { parse } from "smol-toml";
+
+const tomlPath = process.argv[2] ?? "plugins/bundled.toml";
+
+// =========================================================
+// Read the manifest — a missing file is a valid "no plugins"
+// state, not an error. This happens during early development
+// before any plugin is ready to ship.
+// =========================================================
+
+let raw: string;
+try {
+  raw = readFileSync(tomlPath, "utf8");
+} catch {
+  console.error(
+    `Warning: ${tomlPath} not found — no plugins will be bundled with the release.`,
+  );
+  process.exit(0);
+}
+
+const config = parse(raw);
+
+// =========================================================
+// Validate and extract the plugin list
+// =========================================================
+
+// An absent or empty `plugins` key is allowed — it means the author
+// explicitly cleared the list rather than deleting the file.
+const ids: unknown = (config as Record<string, unknown>).plugins;
+
+if (!Array.isArray(ids) || ids.length === 0) {
+  console.error(
+    `Warning: ${tomlPath} declares no plugins — no plugins will be bundled with the release.`,
+  );
+  process.exit(0);
+}
+
+// All entries must be strings — a non-string id in the TOML is most
+// likely a copy-paste mistake (forgot the quotes) and should fail loudly.
+for (const id of ids) {
+  if (typeof id !== "string") {
+    console.error(
+      `Error: non-string plugin id in ${tomlPath}: ${JSON.stringify(id)}`,
+    );
+    process.exit(1);
+  }
+}
+
+// Duplicate ids cause ambiguous staging behaviour — two entries for the
+// same plugin would build it twice and could silently shadow one archive
+// with another. Fail early so the mistake surfaces at build time.
+const seen = new Set<string>();
+for (const id of ids as string[]) {
+  if (seen.has(id)) {
+    console.error(`Error: duplicate plugin id in ${tomlPath}: ${id}`);
+    process.exit(1);
+  }
+  seen.add(id);
+}
+
+// =========================================================
+// Emit — one id per line so the caller can do `mapfile -t`
+// =========================================================
+
+for (const id of ids as string[]) {
+  console.log(id);
+}
