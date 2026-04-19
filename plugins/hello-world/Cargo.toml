@@ -13,3 +13,25 @@ serde_json = "1.0.149"
 
 [lib]
 crate-type = ["cdylib"]
+
+# Release profile tuned for WASM component plugins.
+#
+# - `opt-level = 3`    — optimise for speed; these components
+#                        run on the launch hot-path (scoring,
+#                        filtering) so size-first (`"s"`/`"z"`)
+#                        is not worth the latency trade-off.
+# - `lto = "fat"`      — cross-crate inlining and dead-code
+#                        elimination across `wit-bindgen`,
+#                        `nucleo-matcher`, and plugin code.
+# - `codegen-units = 1` — required for `lto = "fat"` to actually
+#                        merge code across compilation units;
+#                        larger values silo LTO per unit.
+# - `panic = "abort"`  — strips unwind tables and `_Unwind_*`
+#                        imports. A panic inside a component is
+#                        trapped by the host (Wasmtime) regardless,
+#                        so unwinding has no runtime value here.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
