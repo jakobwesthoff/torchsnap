@@ -39,6 +39,7 @@ use super::bindings;
 use super::logging::channel::LogSender;
 use super::logging::spans::{Logger, SpanRegistry};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
+use crate::frecency::PluginFrecency;
 use crate::settings::PluginSettings;
 use crate::storage::{SqlStorage, SqlValue as HostSqlValue};
 
@@ -93,6 +94,15 @@ pub struct PluginState {
     /// outside an enable lifetime (which should never
     /// happen — every guest call runs inside one).
     clipboard_writer: Option<ClipboardWriter>,
+    /// Per-plugin namespaced frecency reader. Same lifecycle
+    /// as `settings`: stashed by the bridge on `enable()` from
+    /// the `PluginContext.frecency` handle and cleared on
+    /// `disable()`. The host automatically records selections
+    /// before `execute()` and applies score bonuses after
+    /// `search()` — this handle is only for plugins that
+    /// need to read frecency state directly (e.g. to drive an
+    /// empty-query browse mode).
+    frecency: Option<PluginFrecency>,
 }
 
 /// Closure type for the clipboard write capability.
@@ -265,6 +275,40 @@ impl bindings::torchsnap::plugin::settings::Host for PluginState {
         );
         let settings = self.settings.as_ref()?;
         settings.get_raw(&key)
+    }
+}
+
+// =========================================================
+// Frecency host import
+//
+// Routes guest `frecency::is-enabled` / `frecency::top-items`
+// calls through the per-plugin `PluginFrecency` handle
+// stashed on `PluginState`. Same "degrade gracefully when
+// the handle is missing" contract as the settings import:
+// an accidental call outside an enable lifetime returns
+// empty results rather than trapping.
+//
+// Record and boost are intentionally NOT exposed here —
+// the host already records selections before `execute()`
+// dispatches and applies score bonuses to `search()` results
+// before they reach the frontend, so plugins never need to
+// touch those paths directly.
+// =========================================================
+
+impl bindings::torchsnap::plugin::frecency::Host for PluginState {
+    fn is_enabled(&mut self) -> bool {
+        self.frecency.as_ref().is_some_and(|f| f.is_enabled())
+    }
+
+    fn top_items(&mut self, limit: u32) -> Vec<bindings::torchsnap::plugin::frecency::FrecencyItem> {
+        let Some(frecency) = self.frecency.as_ref() else {
+            return Vec::new();
+        };
+        frecency
+            .top_items(limit as usize)
+            .into_iter()
+            .map(Into::into)
+            .collect()
     }
 }
 
@@ -636,6 +680,12 @@ impl WasmRuntime {
             // enable lifetime; the host import returns an
             // error in that case.
             clipboard_writer: None,
+            // Stashed by the bridge on `enable()` via
+            // `WasmPluginInstance::set_frecency`. The
+            // `frecency::*` host imports gracefully degrade
+            // to "disabled / empty" when the handle is
+            // missing — same contract as `settings`.
+            frecency: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -777,6 +827,24 @@ impl WasmPluginInstance {
     pub fn clear_clipboard_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().clipboard_writer = None;
+    }
+
+    /// Stash a per-plugin `PluginFrecency` handle on the store
+    /// data so the `frecency::*` host imports can resolve
+    /// reads. Called by the bridge from `enable()` before the
+    /// guest's own `enable()` runs — same contract as
+    /// `set_settings`.
+    pub fn set_frecency(&self, frecency: PluginFrecency) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().frecency = Some(frecency);
+    }
+
+    /// Drop the stashed frecency handle on `disable()`. The
+    /// host import reverts to "disabled / empty" between
+    /// enable cycles, matching the `settings` lifecycle.
+    pub fn clear_frecency(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().frecency = None;
     }
 
     /// Call the guest's `enable` export.

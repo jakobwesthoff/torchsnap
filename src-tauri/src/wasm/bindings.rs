@@ -46,6 +46,26 @@ wasmtime::component::bindgen!({
 use crate::search::types as native;
 use exports::torchsnap::plugin::search as wit;
 
+// =========================================================
+// Frecency: host → WIT
+//
+// The `frecency` import lets plugins read their own top-N
+// items from the host's frecency store. Host items come out
+// of `PluginFrecency::top_items` as the native `FrecencyItem`
+// struct; this conversion maps them onto the bindgen-
+// generated record so the Host impl can return them across
+// the WIT boundary directly.
+// =========================================================
+
+impl From<crate::frecency::FrecencyItem> for torchsnap::plugin::frecency::FrecencyItem {
+    fn from(item: crate::frecency::FrecencyItem) -> Self {
+        torchsnap::plugin::frecency::FrecencyItem {
+            item_id: item.item_id,
+            score: item.score,
+        }
+    }
+}
+
 impl From<wit::EntryIcon> for native::EntryIcon {
     fn from(icon: wit::EntryIcon) -> Self {
         match icon {
