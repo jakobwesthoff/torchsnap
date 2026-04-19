@@ -31,7 +31,11 @@ dist-ssr
 # or `plugins/*/` with their own `target/` dirs.
 /target/
 
-# Rust build artifacts (plugin crates have their own target/ dirs)
+# Rust build artifacts — the plugin workspace owns a single
+# `plugins/target/` directory; per-plugin `target/` dirs are
+# retained here for historical checkouts and any standalone
+# work outside the workspace.
+plugins/target/
 plugins/*/target/
 # Compiled WASM artifacts copied to plugin root by `just build-plugin`
 plugins/*/*.wasm
