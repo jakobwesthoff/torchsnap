@@ -20,6 +20,10 @@
       "types": "./src/shims/keybindings.ts",
       "default": "./src/shims/keybindings.ts"
     },
+    "./utils": {
+      "types": "./src/shims/utils.ts",
+      "default": "./src/shims/utils.ts"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"

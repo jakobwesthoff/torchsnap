@@ -30,6 +30,7 @@ import { Switch } from "../components/Switch";
 import { Slider } from "../components/Slider";
 import { Section } from "../settings/Section";
 import { Entry } from "../settings/Entry";
+import { highlightText } from "./highlightText";
 
 // =========================================================
 // Type declaration
@@ -69,6 +70,9 @@ declare global {
       Section: typeof Section;
       Entry: typeof Entry;
     };
+    utils: {
+      highlightText: typeof highlightText;
+    };
   }
   interface Window {
     __torchsnap?: TorchsnapGlobal;
@@ -104,6 +108,9 @@ export function initPluginSdk(): void {
       Slider,
       Section,
       Entry,
+    },
+    utils: {
+      highlightText,
     },
   };
 }
