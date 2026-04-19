@@ -448,12 +448,9 @@ impl Plugin for EmojiPickerPlugin {
             })
             .collect();
 
-        // Apply frecency bonuses so frequently-used emoji float up.
-        let frecency = self.frecency.read().expect("emoji frecency read lock");
-        if let Some(ref frec) = *frecency {
-            frec.apply_scores(&mut scored_results);
-        }
-
+        // Frecency bonuses are applied by the host on the
+        // prefix search path; the plugin only sorts by the
+        // nucleo-derived scores here.
         scored_results.sort_by(|a, b| b.score.cmp(&a.score));
         Some(PluginResponse::CustomUI {
             view: "picker".into(),

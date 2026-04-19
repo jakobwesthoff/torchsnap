@@ -487,6 +487,15 @@ impl PluginHost {
                 }
 
                 entries.extend(results);
+
+                // Exactly one plugin responds in prefix mode,
+                // so a stable score-descending sort preserves
+                // the plugin's intended ordering for equal-
+                // score items. The `cmp_sort_key` tiebreaker
+                // used on the merging path (`entry.id ASC`)
+                // would overwrite that intent.
+                self.frecency.apply_scores(&source, &mut entries);
+                entries.sort_by(|a, b| b.inner.score.cmp(&a.inner.score));
             }
 
             let _ = on_results.send(SearchMessage::SearchResults {
