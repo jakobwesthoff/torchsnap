@@ -10,11 +10,12 @@
  * component context, host components, and host hooks without
  * bundling their own copies.
  *
- * Plugin bundles access these via shim files in `plugin-sdk/src/shims/`
- * that re-export from the global. At build time, Vite aliases
- * `"react"` and `"react/jsx-runtime"` to the React shims; the other
- * subpaths are real package paths exported from `plugin-sdk/package.json`
- * and resolved via standard module resolution.
+ * Plugin bundles access these via shim files in
+ * `packages/plugin-sdk/src/shims/` that re-export from the global.
+ * At build time, Vite aliases `"react"` and `"react/jsx-runtime"`
+ * to the React shims; the other subpaths are real package paths
+ * exported from `@torchsnap/plugin-sdk`'s `package.json` and
+ * resolved via standard module resolution.
  */
 
 import React from "react";
@@ -51,7 +52,7 @@ declare global {
   // shims don't expose. `keybindings` and `components` are declared
   // here because the shim augmentations for those slices are not in
   // `sdk.ts`'s transitive import graph (they come from
-  // `plugin-sdk/src/shims/keybindings.ts` and `components.ts`, which
+  // `packages/plugin-sdk/src/shims/keybindings.ts` and `components.ts`, which
   // nothing in `src/` imports except `PluginContext.tsx`'s type-sync
   // check — and that only imports `hooks.ts`). `hooks` is intentionally
   // omitted: `hooks.ts` IS transitively reachable and its augmentation

@@ -6,7 +6,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@torchsnap/plugin-sdk": "file:../../../plugin-sdk",
+    "@torchsnap/plugin-sdk": "file:../../../packages/plugin-sdk",
     "@vitejs/plugin-react": "^6",
     "@tailwindcss/vite": "^4",
     "emojibase-data": "^17.0.0",

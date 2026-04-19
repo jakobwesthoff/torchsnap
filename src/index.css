@@ -15,7 +15,7 @@
   font-display: swap;
 }
 
-@import "../plugin-sdk/theme.css";
+@import "../packages/plugin-sdk/theme.css";
 
 /* =========================================================
  * Base Styles

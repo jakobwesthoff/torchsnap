@@ -9,10 +9,9 @@
 # Build all WASM plugins
 #
 # The loop keys off `manifest.toml` rather than `Cargo.toml`
-# so the shared `plugin-sdk` workspace member (no manifest)
-# is transparently skipped once PR 2 lands. Today all four
-# plugin directories carry both files, so the behaviour
-# is identical.
+# so the shared `plugin-sdk` workspace member (which has a
+# `Cargo.toml` but no plugin manifest) is transparently
+# skipped.
 build-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -196,11 +195,11 @@ stage-bundled-plugins:
         echo "Staged → $stage/$id.torchsnap"
     done
 
-# Check every workspace member (including plugin-sdk once
-# PR 2 lands). Cargo resolves the workspace from the
-# `plugins/` directory and `plugins/.cargo/config.toml`
-# supplies the wasm32-wasip2 target by default, so no
-# explicit `--target` flag is needed here.
+# Check every workspace member, including `plugin-sdk`.
+# Cargo resolves the workspace from the `plugins/`
+# directory and `plugins/.cargo/config.toml` supplies the
+# wasm32-wasip2 target by default, so no explicit
+# `--target` flag is needed here.
 check-plugins:
     cd plugins && cargo check --workspace
 
