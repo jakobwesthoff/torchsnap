@@ -101,21 +101,30 @@ store data when `enable()` is called. The handle adds the
 own bucket no matter what key string they pass.
 
 Values cross the boundary as JSON-encoded strings (`true`, `42`,
-`"hello"`, `{"a":1}`) — WIT has no opaque value type, so the
-plugin parses the result with `serde_json::from_str` on its side.
-A typical read looks like:
+`"hello"`, `{"a":1}`) — WIT has no opaque value type. The SDK's
+`settings` module wraps that encoding so plugin code deals in
+typed values directly. A typical read looks like:
 
 ```rust
-let verbose: bool = serde_json::from_str(
-    &settings::get("verbose").unwrap_or_else(|| "false".into()),
-).unwrap_or(false);
+use torchsnap_plugin_sdk::prelude::*;
+
+let verbose: bool = settings::get_or("verbose", false);
 ```
 
-`settings::get` returns `none` only when the key has never been
-set in the store — neither by the manifest's `[settings]` defaults
-nor by a runtime write. Plugins typically fall back to a hard-coded
-default in that case (the same default that lives in
-`manifest.toml`).
+`settings::get_or::<T>(key, default)` handles the `Option<String>`
+return, JSON parsing, and type coercion in one call.
+`settings::get::<T>(key)` is available when the caller needs to
+distinguish "unset" from "set to default". Plugins that need to
+reach the raw WIT import can still use the unwrapped
+`settings_host::get` re-export, but the typed helpers are the
+intended path.
+
+The underlying WIT `settings::get` returns `none` only when the
+key has never been set in the store — neither by the manifest's
+`[settings]` defaults nor by a runtime write. Plugins typically
+fall back to a hard-coded default in that case (the same default
+that lives in `manifest.toml`), which is why `get_or` is usually
+the right helper.
 
 ### Reacting to changes: `lifecycle::on-setting-changed`
 

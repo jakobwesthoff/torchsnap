@@ -5,14 +5,13 @@
 # This file compiles all project artifacts. Torchsnap is a Tauri
 # desktop app with a Vite frontend, Rust backend, and WASM plugins.
 
-# Build the Tauri app (plugins + frontend + Rust).
-#
-# `stage-bundled-plugins` rebuilds and stages only the
-# whitelisted plugins from `plugins/bundled.toml` so Tauri's
-# bundler picks them up as resources. `build-plugins` is
-# still run afterwards so every plugin under `plugins/` —
-# bundled or not — has an up-to-date committed `.torchsnap`
-# for the dev-directory loader.
+# `stage-bundled-plugins` rebuilds and stages only the whitelisted
+# plugins from `plugins/bundled.toml` so Tauri's bundler picks them up
+# as resources. `build-plugins` is still run afterwards so every plugin
+# under `plugins/` — bundled or not — has an up-to-date committed
+# `.torchsnap` for the dev-directory loader.
+
+# Build the Tauri app (plugins + frontend + Rust)
 [arg('profile', long='release', value='release')]
 build profile="debug":
     just stage-bundled-plugins

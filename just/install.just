@@ -13,10 +13,11 @@ install: assets install-packages install-crates
 install-packages:
     bun install
 
-# Fetch Rust dependencies for both workspaces: the native
-# host under `src-tauri/` and the plugin workspace under
-# `plugins/`. They resolve independently because the two
-# trees target different triples.
+# The native host under `src-tauri/` and the plugin workspace under
+# `plugins/` resolve independently because the two trees target
+# different triples.
+
+# Fetch Rust dependencies for both the src-tauri/ and plugins/ workspaces
 install-crates:
     cargo fetch --manifest-path src-tauri/Cargo.toml
     cargo fetch --manifest-path plugins/Cargo.toml

@@ -1,8 +1,20 @@
 # Plugin SDK npm Package (`@torchsnap/plugin-sdk`)
 
-Publish `plugin-sdk/` as a proper npm package so third-party plugin
-authors can `bun add -D @torchsnap/plugin-sdk` instead of relying on
-relative path aliases into the monorepo.
+**Status:** partially complete. The SDK now lives as a proper
+workspace package at `packages/plugin-sdk/` with a real
+`package.json` (exports map, Vite plugin, hooks/components/testing
+subpaths). In-repo consumers — plugins and the host — depend on it
+via `"@torchsnap/plugin-sdk": "file:../../../packages/plugin-sdk"`
+(or workspace-root `file:./packages/plugin-sdk`), so the "relative
+path aliases into the monorepo" problem is solved for in-tree
+development. What remains is the *external* publishing story
+(actually shipping the package to the npm registry with
+generated `.d.ts` artifacts); the notes below document that
+deferred work.
+
+Publish the `packages/plugin-sdk/` workspace package to npm so
+third-party plugin authors can `bun add -D @torchsnap/plugin-sdk`
+instead of cloning the monorepo.
 
 ## Scope
 
@@ -34,11 +46,11 @@ publish time.
 React is a runtime dependency provided by the host via
 `window.__torchsnap.React`. Plugins must NOT bundle their own copy.
 
-During in-repo development, a shim file (`plugin-sdk/shims/react.ts`)
-re-exports from the global, and Vite `resolve.alias` redirects
-`import React from "react"` to the shim. The shim gets inlined into
-the bundle (~2 lines), producing a self-contained ES module with no
-unresolved imports.
+During in-repo development, a shim file
+(`packages/plugin-sdk/src/shims/react.ts`) re-exports from the global,
+and Vite `resolve.alias` redirects `import React from "react"` to the
+shim. The shim gets inlined into the bundle (~2 lines), producing a
+self-contained ES module with no unresolved imports.
 
 In the npm package, this becomes a Vite plugin:
 

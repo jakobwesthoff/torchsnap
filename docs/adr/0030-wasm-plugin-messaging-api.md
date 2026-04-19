@@ -43,7 +43,7 @@ the bridge to forward into.
 Add a standalone `messaging` guest interface to the WIT world and
 override `WasmPluginBridge::handle_message` to dispatch into it.
 
-**WIT additions** (`wit/torchsnap-plugin.wit`):
+**WIT additions** (`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
 
 ```wit
 interface messaging {
@@ -115,6 +115,12 @@ inline via `serde_json::from_str` and `serde_json::to_string`.
 Helper functions like `parse_payload<T: DeserializeOwned>` would
 trim two lines per method but aren't worth a dedicated crate
 until there are multiple WASM plugins to share them.
+
+(Trigger has since fired: the `torchsnap-plugin-sdk` crate under
+`plugins/plugin-sdk/` now exposes `messaging::parse_payload<T>` /
+`messaging::to_response<T>`, and the `impl_noop_messaging!` macro
+covers the stub case for plugins that declare no frontend RPC
+methods.)
 
 ## Alternatives considered
 

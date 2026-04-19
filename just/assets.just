@@ -11,8 +11,10 @@
 # Generate all assets (mascots, mascot data, timezone data, app icons, tray icon)
 assets: asset-mascots asset-mascot-data asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
 
-# Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental).
-# All Tauri targets (WebKit, WebView2) support WebP natively — no PNG output needed.
+# All Tauri targets (WebKit, WebView2) support WebP natively — no PNG
+# output needed.
+
+# Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental)
 asset-mascots:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -46,11 +48,11 @@ asset-mascots:
     done
     echo "Mascots: ${processed} processed, ${skipped} up to date."
 
-# Enrich hand-authored mascots.json with per-variant trim data computed
-# from the source PNGs, then write the result to src/ where Vite can
-# import it. Trim values are the percentage of transparent space on each
-# edge of the 1024×1024 source image — used at runtime to align mascot
-# variants so their feet land at the same position regardless of pose.
+# Trim values are the percentage of transparent space on each edge of
+# the 1024×1024 source image — used at runtime to align mascot variants
+# so their feet land at the same position regardless of pose.
+
+# Enrich mascots.json with per-variant trim data and write to src/derived/ (incremental)
 asset-mascot-data:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -158,9 +160,10 @@ asset-tray-icon:
     tools/png-to-alpha-mask "$tmp" "$tray"
     rm -f "$tmp"
 
-# Parse the system IANA zone.tab into a JSON lookup table mapping timezone
-# names to [latitude, longitude] pairs. Used by the nighttime detection
-# code to compute sunset/sunrise times for the user's timezone.
+# Used by the nighttime detection code to compute sunset/sunrise times
+# for the user's timezone.
+
+# Parse IANA zone.tab into a timezone → [lat, lon] JSON lookup table (incremental)
 asset-timezone-data:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -118,7 +118,7 @@ The handle is a real WIT `resource sql-handle`, exposed as
 
 ````rust
 wasmtime::component::bindgen!({
-    path: "../wit",
+    path: "../plugins/plugin-sdk/wit",
     world: "plugin",
     with: {
         "torchsnap:plugin/sql.sql-handle": super::runtime::SqlHandleEntry,
