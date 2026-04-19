@@ -1300,6 +1300,33 @@ impl WasmPluginInstance {
 // =========================================================
 
 #[cfg(test)]
+impl PluginState {
+    /// Construct a `PluginState` with all capability fields set
+    /// to their "absent" defaults. Tests override specific fields
+    /// with struct update syntax (`..PluginState::default_for_test()`).
+    fn default_for_test() -> Self {
+        let wasi = WasiCtxBuilder::new().build();
+        PluginState {
+            plugin_id: "test-plugin".to_string(),
+            wasi,
+            wasi_table: ResourceTable::new(),
+            log_sender: LogSender::test_sender(),
+            span_registry: Arc::new(SpanRegistry::new()),
+            settings: None,
+            sql_config: SqlConfig::None,
+            sql_storage: None,
+            sql_handle_reps: Vec::new(),
+            clipboard_writer: None,
+            frecency: None,
+            opener_schemes: Vec::new(),
+            opener_writer: None,
+            http_origins: Vec::new(),
+            http_client: None,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1417,5 +1444,333 @@ mod tests {
         second
             .enable()
             .expect("second instance untouched by operations on the first");
+    }
+
+    // =========================================================
+    // Unit tests for opener/http pure functions
+    //
+    // These functions have no WASM or tokio dependency so the
+    // tests are fast synchronous assertions.
+    // =========================================================
+
+    fn strs(ss: &[&str]) -> Vec<String> {
+        ss.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ---- check_opener_scheme --------------------------------
+
+    #[test]
+    fn opener_permitted_scheme_passes() {
+        assert!(check_opener_scheme(&strs(&["https"]), "https://example.com").is_ok());
+    }
+
+    #[test]
+    fn opener_forbidden_scheme_blocked() {
+        let err = check_opener_scheme(&strs(&["https"]), "ftp://example.com")
+            .unwrap_err();
+        assert!(err.contains("scheme not permitted: ftp"), "got: {err}");
+    }
+
+    #[test]
+    fn opener_empty_allowlist_denies_everything() {
+        assert!(check_opener_scheme(&[], "https://example.com").is_err());
+    }
+
+    #[test]
+    fn opener_unparseable_url_returns_error() {
+        assert!(check_opener_scheme(&strs(&["https"]), "not-a-url").is_err());
+    }
+
+    #[test]
+    fn opener_scheme_check_is_case_insensitive() {
+        // The `url` crate normalizes schemes to lowercase, so an
+        // uppercase scheme in the URL still matches the allowlist.
+        assert!(check_opener_scheme(&strs(&["https"]), "HTTPS://example.com").is_ok());
+    }
+
+    #[test]
+    fn opener_multiple_schemes_second_matches() {
+        assert!(
+            check_opener_scheme(&strs(&["https", "mailto"]), "mailto:user@x.com").is_ok()
+        );
+    }
+
+    // ---- check_http_origin ----------------------------------
+
+    #[test]
+    fn http_exact_origin_match_passes() {
+        assert!(
+            check_http_origin(&strs(&["https://example.com"]), "https://example.com/path")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn http_non_matching_origin_denied() {
+        let err =
+            check_http_origin(&strs(&["https://example.com"]), "https://other.com/x")
+                .unwrap_err();
+        assert!(matches!(err, WasmHttpError::PermissionDenied(_)));
+    }
+
+    #[test]
+    fn http_wildcard_allows_any_origin() {
+        assert!(check_http_origin(&strs(&["*"]), "https://any-host.example/path").is_ok());
+    }
+
+    #[test]
+    fn http_empty_origins_denies_everything() {
+        assert!(check_http_origin(&[], "https://example.com").is_err());
+    }
+
+    #[test]
+    fn http_non_default_port_included_in_origin() {
+        assert!(
+            check_http_origin(
+                &strs(&["https://example.com:8443"]),
+                "https://example.com:8443/resource"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn http_default_port_stripped_from_origin() {
+        // https:443 normalizes to the same origin as https (no port).
+        assert!(
+            check_http_origin(
+                &strs(&["https://example.com"]),
+                "https://example.com:443/resource"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn http_wrong_port_is_different_origin() {
+        let err = check_http_origin(
+            &strs(&["https://example.com"]),
+            "https://example.com:8080/x",
+        )
+        .unwrap_err();
+        assert!(matches!(err, WasmHttpError::PermissionDenied(_)));
+    }
+
+    #[test]
+    fn http_unparseable_url_returns_network_error() {
+        let err = check_http_origin(&strs(&["https://example.com"]), "not-a-url").unwrap_err();
+        assert!(matches!(err, WasmHttpError::Network(_)));
+    }
+
+    #[test]
+    fn http_wildcard_short_circuits_before_url_parse() {
+        // The wildcard check happens before `url::Url::parse`, so an
+        // unparseable URL is still allowed when the list contains `"*"`.
+        assert!(check_http_origin(&strs(&["*"]), "not-a-url").is_ok());
+    }
+
+    // ---- wit_method_to_reqwest ------------------------------
+
+    #[test]
+    fn wit_method_named_variants_map_correctly() {
+        use bindings::torchsnap::plugin::http::HttpMethod;
+        let cases = [
+            (HttpMethod::Get, reqwest::Method::GET),
+            (HttpMethod::Post, reqwest::Method::POST),
+            (HttpMethod::Put, reqwest::Method::PUT),
+            (HttpMethod::Patch, reqwest::Method::PATCH),
+            (HttpMethod::Delete, reqwest::Method::DELETE),
+            (HttpMethod::Head, reqwest::Method::HEAD),
+        ];
+        for (wit, expected) in cases {
+            assert_eq!(
+                wit_method_to_reqwest(wit).unwrap(),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn wit_method_other_valid_string() {
+        use bindings::torchsnap::plugin::http::HttpMethod;
+        let method = wit_method_to_reqwest(HttpMethod::Other("PROPFIND".into())).unwrap();
+        assert_eq!(method.as_str(), "PROPFIND");
+    }
+
+    #[test]
+    fn wit_method_other_invalid_string_returns_network_error() {
+        use bindings::torchsnap::plugin::http::HttpMethod;
+        let err = wit_method_to_reqwest(HttpMethod::Other("has space".into())).unwrap_err();
+        assert!(matches!(err, WasmHttpError::Network(_)));
+    }
+
+    // ---- WasmHttpError → HttpError conversion ---------------
+
+    #[test]
+    fn wasm_http_error_conversion_all_variants() {
+        use bindings::torchsnap::plugin::http::HttpError;
+        let cases: Vec<(WasmHttpError, HttpError)> = vec![
+            (
+                WasmHttpError::PermissionDenied("origin".into()),
+                HttpError::PermissionDenied("origin".into()),
+            ),
+            (WasmHttpError::Timeout, HttpError::Timeout),
+            (
+                WasmHttpError::Network("oops".into()),
+                HttpError::Network("oops".into()),
+            ),
+        ];
+        for (input, expected) in cases {
+            let converted: HttpError = input.into();
+            assert!(
+                std::mem::discriminant(&converted) == std::mem::discriminant(&expected),
+                "discriminant mismatch"
+            );
+        }
+    }
+
+    // ---- httpmock integration tests for http::fetch ---------
+    //
+    // These tests exercise the full `Http` builder pipeline in
+    // `http::Host::fetch` — specifically that headers, body,
+    // status, and response headers are forwarded correctly.
+    // They don't need a live WASM instance; they call the
+    // private pieces directly.
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_forwards_request_headers() {
+        use httpmock::MockServer;
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/test")
+                .header("x-custom", "value123");
+            then.status(200).body("ok");
+        });
+
+        let client = crate::network::Http::new();
+        let request = bindings::torchsnap::plugin::http::HttpRequest {
+            url: server.url("/test"),
+            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            headers: vec![("x-custom".into(), "value123".into())],
+            body: None,
+            timeout_ms: None,
+            max_body_size: None,
+        };
+
+        let mut state = PluginState {
+            http_origins: vec!["*".into()],
+            http_client: Some(Arc::new(client)),
+            ..PluginState::default_for_test()
+        };
+
+        use bindings::torchsnap::plugin::http::Host;
+        let resp = state.fetch(request).expect("fetch should succeed");
+        assert_eq!(resp.status, 200);
+        mock.assert();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_forwards_request_body() {
+        use httpmock::MockServer;
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(POST).path("/data").body("hello");
+            then.status(201);
+        });
+
+        let client = crate::network::Http::new();
+        let request = bindings::torchsnap::plugin::http::HttpRequest {
+            url: server.url("/data"),
+            method: bindings::torchsnap::plugin::http::HttpMethod::Post,
+            headers: vec![],
+            body: Some(b"hello".to_vec()),
+            timeout_ms: None,
+            max_body_size: None,
+        };
+
+        let mut state = PluginState {
+            http_origins: vec!["*".into()],
+            http_client: Some(Arc::new(client)),
+            ..PluginState::default_for_test()
+        };
+
+        use bindings::torchsnap::plugin::http::Host;
+        let resp = state.fetch(request).expect("fetch should succeed");
+        assert_eq!(resp.status, 201);
+        mock.assert();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_returns_response_status_and_headers() {
+        use httpmock::MockServer;
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/head-test");
+            then.status(404).header("x-resp-header", "present");
+        });
+
+        let client = crate::network::Http::new();
+        let request = bindings::torchsnap::plugin::http::HttpRequest {
+            url: server.url("/head-test"),
+            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: None,
+            max_body_size: None,
+        };
+
+        let mut state = PluginState {
+            http_origins: vec!["*".into()],
+            http_client: Some(Arc::new(client)),
+            ..PluginState::default_for_test()
+        };
+
+        use bindings::torchsnap::plugin::http::Host;
+        let resp = state.fetch(request).expect("fetch should succeed");
+        assert_eq!(resp.status, 404);
+        let has_header = resp
+            .headers
+            .iter()
+            .any(|(k, v)| k.eq_ignore_ascii_case("x-resp-header") && v == "present");
+        assert!(has_header, "expected x-resp-header in response headers");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_returns_response_body() {
+        use httpmock::MockServer;
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/body");
+            then.status(200).body(b"hello body".as_slice());
+        });
+
+        let client = crate::network::Http::new();
+        let request = bindings::torchsnap::plugin::http::HttpRequest {
+            url: server.url("/body"),
+            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: None,
+            max_body_size: None,
+        };
+
+        let mut state = PluginState {
+            http_origins: vec!["*".into()],
+            http_client: Some(Arc::new(client)),
+            ..PluginState::default_for_test()
+        };
+
+        use bindings::torchsnap::plugin::http::Host;
+        let resp = state.fetch(request).expect("fetch should succeed");
+        assert_eq!(resp.body, b"hello body");
     }
 }

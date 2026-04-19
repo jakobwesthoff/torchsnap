@@ -102,5 +102,6 @@ strip = true
 #lto = true
 
 [dev-dependencies]
+httpmock = "0.8.3"
 tempfile = "3.27.0"
 tokio = { version = "1.50.0", features = ["macros", "rt"] }
