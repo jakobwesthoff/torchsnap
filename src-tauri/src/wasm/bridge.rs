@@ -33,7 +33,7 @@ use crate::settings::SettingsInit;
 use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
-use super::runtime::{SqlConfig, WasmPluginInstance, WasmRuntime};
+use super::runtime::{SqlConfig, UrlOpenerFn, WasmPluginInstance, WasmRuntime};
 use super::source::PluginSource;
 
 // =========================================================
@@ -54,6 +54,15 @@ pub struct WasmPluginBridge {
     /// materialized config here to survive disable/re-enable
     /// cycles without re-reading the plugin source.
     sql_config: SqlConfig,
+    /// Permitted URL schemes for `opener::open-url`. Extracted
+    /// from `[permissions.opener].schemes` at construction;
+    /// empty means the plugin has no opener access.
+    opener_schemes: Vec<String>,
+    /// Permitted origins for `http::fetch`. Extracted from
+    /// `[permissions.http].origins` at construction; empty
+    /// means the plugin has no HTTP access; `"*"` means
+    /// trust-all.
+    http_origins: Vec<String>,
     /// Live guest instance, or `None` while disabled.
     ///
     /// **Lock discipline**: never call into the guest while
@@ -165,6 +174,23 @@ impl WasmPluginBridge {
             }
         };
 
+        // Extract permission allowlists from the manifest.
+        // Each list defaults to empty (deny all) when the
+        // corresponding `[permissions.*]` sub-table is absent.
+        let opener_schemes = manifest
+            .permissions
+            .as_ref()
+            .and_then(|p| p.opener.as_ref())
+            .map(|o| o.schemes.clone())
+            .unwrap_or_default();
+
+        let http_origins = manifest
+            .permissions
+            .as_ref()
+            .and_then(|p| p.http.as_ref())
+            .map(|h| h.origins.clone())
+            .unwrap_or_default();
+
         // Pre-parse every `[[tasks]]` schedule. The manifest
         // loader has already validated that they're well-
         // formed 5-field POSIX cron expressions, so this
@@ -193,6 +219,8 @@ impl WasmPluginBridge {
             plugin_id,
             runtime,
             sql_config,
+            opener_schemes,
+            http_origins,
             instance: Mutex::new(None),
             log_sender,
             parsed_tasks,
@@ -523,6 +551,26 @@ impl Plugin for WasmPluginBridge {
                 .map_err(|e| format!("write to clipboard: {e}"))
         }));
 
+        // Stash the permission allowlists and wire up the
+        // opener and HTTP client. The opener closure captures
+        // an `AppHandle` clone — same lifetime model as the
+        // clipboard writer above. The HTTP client is a fresh
+        // `Http` instance per enable cycle.
+        instance.set_opener_schemes(self.opener_schemes.clone());
+        instance.set_http_origins(self.http_origins.clone());
+
+        let opener_handle = app.clone();
+        let opener_fn: UrlOpenerFn = Box::new(move |url: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            opener_handle
+                .opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| e.to_string())
+        });
+        instance.set_opener_writer(opener_fn);
+
+        instance.set_http_client(Arc::new(crate::network::Http::new()));
+
         // Materialize the SQL database before the guest's
         // enable() runs. Failure here leaves the guest in a
         // bad state (any `sql::connection()` call would
@@ -568,6 +616,8 @@ impl Plugin for WasmPluginBridge {
         instance.clear_frecency();
         instance.clear_sql_storage();
         instance.clear_clipboard_writer();
+        instance.clear_opener_writer();
+        instance.clear_http_client();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {
