@@ -943,15 +943,19 @@ migrations = ["migrations/001_init.sql"]
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
 
+        // Keep `first` alive across the comparison. Its `ArcInner`
+        // slot stays occupied, so the allocator must hand `second`
+        // a different address — making `Arc::ptr_eq` a well-defined
+        // identity check. Dropping `first` before re-ensuring would
+        // free the slot and let the allocator legally reuse the
+        // same address, turning this into an allocator-dependent
+        // flake rather than a real invariant.
         let first = bridge.ensure_instance().expect("first ensure");
-        let first_ptr = Arc::as_ptr(&first);
-        drop(first);
         let _ = bridge.take_instance();
-
         let second = bridge.ensure_instance().expect("second ensure");
-        assert_ne!(
-            first_ptr,
-            Arc::as_ptr(&second),
+
+        assert!(
+            !Arc::ptr_eq(&first, &second),
             "re-instantiation should produce a distinct Arc"
         );
     }
