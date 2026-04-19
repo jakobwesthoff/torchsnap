@@ -91,7 +91,7 @@ export const PluginContext = createContext<PluginContextValue | null>(null);
 // =========================================================
 // SDK shim type sync check
 //
-// `plugin-sdk/src/shims/hooks.ts` mirrors `PluginInfo`,
+// `packages/plugin-sdk/src/shims/hooks.ts` mirrors `PluginInfo`,
 // `PluginRuntime`, `LauncherActions`, and `PluginSendMessage`
 // for the WASM plugin SDK consumers. The shim re-declares
 // the shapes locally so plugins don't need to reach into
@@ -106,7 +106,7 @@ import type {
   PluginInfo as SdkPluginInfo,
   PluginRuntime as SdkPluginRuntime,
   PluginSendMessage as SdkPluginSendMessage,
-} from "../../plugin-sdk/src/shims/hooks";
+} from "../../packages/plugin-sdk/src/shims/hooks";
 
 // The tuple must be assignable to `[true, true, ...]` — if any
 // pair diverges, one of the `extends` arms resolves to `never`
