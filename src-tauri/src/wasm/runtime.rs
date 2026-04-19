@@ -39,12 +39,12 @@ use super::bindings;
 use super::logging::channel::LogSender;
 // reqwest is a direct dependency used for HTTP method construction and
 // timeout error detection in the http::Host implementation.
-use reqwest;
 use super::logging::spans::{Logger, SpanRegistry};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use crate::frecency::PluginFrecency;
 use crate::settings::PluginSettings;
 use crate::storage::{SqlStorage, SqlValue as HostSqlValue};
+use reqwest;
 
 // =========================================================
 // Per-Plugin Store State
@@ -333,7 +333,10 @@ impl bindings::torchsnap::plugin::frecency::Host for PluginState {
         self.frecency.as_ref().is_some_and(|f| f.is_enabled())
     }
 
-    fn top_items(&mut self, limit: u32) -> Vec<bindings::torchsnap::plugin::frecency::FrecencyItem> {
+    fn top_items(
+        &mut self,
+        limit: u32,
+    ) -> Vec<bindings::torchsnap::plugin::frecency::FrecencyItem> {
         let Some(frecency) = self.frecency.as_ref() else {
             return Vec::new();
         };
@@ -665,8 +668,8 @@ fn check_http_origin(allowed: &[String], url: &str) -> Result<(), WasmHttpError>
     if allowed.iter().any(|o| o == "*") {
         return Ok(());
     }
-    let parsed = url::Url::parse(url)
-        .map_err(|e| WasmHttpError::Network(format!("invalid URL: {e}")))?;
+    let parsed =
+        url::Url::parse(url).map_err(|e| WasmHttpError::Network(format!("invalid URL: {e}")))?;
     let origin = parsed.origin().ascii_serialization();
     if allowed.iter().any(|o| o == &origin) {
         Ok(())
@@ -707,16 +710,13 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
         use bindings::torchsnap::plugin::http::HttpError as WitHttpError;
         use bindings::torchsnap::plugin::http::HttpResponse as WitHttpResponse;
 
-        check_http_origin(&self.http_origins, &request.url)
-            .map_err(WitHttpError::from)?;
+        check_http_origin(&self.http_origins, &request.url).map_err(WitHttpError::from)?;
 
-        let method = wit_method_to_reqwest(request.method)
-            .map_err(WitHttpError::from)?;
+        let method = wit_method_to_reqwest(request.method).map_err(WitHttpError::from)?;
 
-        let client = self
-            .http_client
-            .as_ref()
-            .ok_or_else(|| WitHttpError::from(WasmHttpError::Network("http client not initialized".into())))?;
+        let client = self.http_client.as_ref().ok_or_else(|| {
+            WitHttpError::from(WasmHttpError::Network("http client not initialized".into()))
+        })?;
 
         let mut builder = client.request(method, &request.url);
         for (k, v) in request.headers {
@@ -1449,9 +1449,8 @@ mod tests {
     /// Bytes of the committed `opener-http-plugin` fixture.
     /// Exercises the `opener` and `http` host interfaces via
     /// `messaging::handle-message` dispatch.
-    const OPENER_HTTP_PLUGIN_WASM: &[u8] = include_bytes!(
-        "../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm"
-    );
+    const OPENER_HTTP_PLUGIN_WASM: &[u8] =
+        include_bytes!("../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm");
 
     // =========================================================
     // Unit tests for opener/http pure functions
@@ -1473,8 +1472,7 @@ mod tests {
 
     #[test]
     fn opener_forbidden_scheme_blocked() {
-        let err = check_opener_scheme(&strs(&["https"]), "ftp://example.com")
-            .unwrap_err();
+        let err = check_opener_scheme(&strs(&["https"]), "ftp://example.com").unwrap_err();
         assert!(err.contains("scheme not permitted: ftp"), "got: {err}");
     }
 
@@ -1497,9 +1495,7 @@ mod tests {
 
     #[test]
     fn opener_multiple_schemes_second_matches() {
-        assert!(
-            check_opener_scheme(&strs(&["https", "mailto"]), "mailto:user@x.com").is_ok()
-        );
+        assert!(check_opener_scheme(&strs(&["https", "mailto"]), "mailto:user@x.com").is_ok());
     }
 
     // ---- check_http_origin ----------------------------------
@@ -1507,16 +1503,14 @@ mod tests {
     #[test]
     fn http_exact_origin_match_passes() {
         assert!(
-            check_http_origin(&strs(&["https://example.com"]), "https://example.com/path")
-                .is_ok()
+            check_http_origin(&strs(&["https://example.com"]), "https://example.com/path").is_ok()
         );
     }
 
     #[test]
     fn http_non_matching_origin_denied() {
         let err =
-            check_http_origin(&strs(&["https://example.com"]), "https://other.com/x")
-                .unwrap_err();
+            check_http_origin(&strs(&["https://example.com"]), "https://other.com/x").unwrap_err();
         assert!(matches!(err, WasmHttpError::PermissionDenied(_)));
     }
 
@@ -1590,10 +1584,7 @@ mod tests {
             (HttpMethod::Head, reqwest::Method::HEAD),
         ];
         for (wit, expected) in cases {
-            assert_eq!(
-                wit_method_to_reqwest(wit).unwrap(),
-                expected,
-            );
+            assert_eq!(wit_method_to_reqwest(wit).unwrap(), expected,);
         }
     }
 
@@ -1908,9 +1899,6 @@ mod tests {
             .expect("handle_message call succeeded");
 
         let err = result.expect_err("guest should return Err for blocked origin");
-        assert!(
-            err.contains("PermissionDenied"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("PermissionDenied"), "unexpected error: {err}");
     }
 }
