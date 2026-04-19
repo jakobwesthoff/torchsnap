@@ -3,30 +3,46 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Emoji picker grid — first plugin custom UI (ADR 0013).
+ * Emoji picker grid — the custom UI the host mounts when the
+ * user triggers the `:` prefix.
  *
- * Renders emoji results as a 10-column grid instead of the standard
+ * Renders results as a 10-column grid instead of the standard
  * vertical result list. Each cell shows the emoji glyph; the
- * shortcode and label are displayed in the footer for the selected
- * cell.
+ * shortcode and label are displayed in the footer for the
+ * selected cell.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useKeyBindings, LAYER, type KeyBindingDefinition } from "@torchsnap/keybindings";
-import { cn } from "../../lib/cn";
-import { highlightText } from "../../lib/highlightText";
-import { useLauncher } from "../../contexts/useLauncher";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
-import type { PluginViewProps } from "../types";
-import type { SourcedEntry } from "@torchsnap/types";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type RefObject,
+} from "react";
+import type { PluginViewProps, SourcedEntry } from "@torchsnap/plugin-sdk";
+import { useLauncher } from "@torchsnap/plugin-sdk/hooks";
+import {
+  LAYER,
+  useKeyBindings,
+  type KeyBindingDefinition,
+} from "@torchsnap/plugin-sdk/keybindings";
+import { highlightText } from "@torchsnap/plugin-sdk/utils";
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./constants";
 import { useWindowedGrid } from "./useWindowedGrid";
-import type { RefObject } from "react";
 
-// Plugin keybindings sit above the host's launcher layer so they
-// take priority when the plugin is mounted. The host deregisters
-// its bindings via enabled=false, but using a higher layer adds
-// defense-in-depth.
+/**
+ * Truthy-class joiner. The grid has no conflicting-class
+ * patterns that would need `tailwind-merge` resolution — the
+ * only `border` toggle is disambiguated by the ternary
+ * branches in `GridCell`.
+ */
+function cn(...classes: (string | false | null | undefined)[]): string {
+  return classes.filter(Boolean).join(" ");
+}
+
+// Picker bindings sit above the host's launcher layer so
+// Enter / arrows / Escape route to the grid while it is
+// mounted, not to the default result list.
 const PLUGIN_LAYER = LAYER.COMPONENT + 2;
 
 const FOOTER_HIGHLIGHT = "underline font-bold";
@@ -66,47 +82,17 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
 // Emoji Grid
 // =========================================================
 
-export default function EmojiGrid({ results }: PluginViewProps) {
+export function EmojiGrid({ results }: PluginViewProps) {
   const { goBack, mouseActiveRef, onExecute, onFooterChange } = useLauncher();
-  const { logger } = usePluginRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  // Reset selection when results change (new query).
+
+  // Reset selection when a new query produces a new result
+  // array so the first entry is highlighted by default.
   const [prevResults, setPrevResults] = useState(results);
   if (prevResults !== results) {
     setPrevResults(results);
     setSelectedIndex(0);
   }
-
-  // -------------------------------------------------------
-  // Logging — demonstrates the frontend Logger API with
-  // spans, messages, metadata, and nesting.
-  // -------------------------------------------------------
-
-  // Log once on mount.
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      logger.info("Emoji grid mounted");
-    }
-  }, [logger]);
-
-  // Log result count changes with a span.
-  const prevResultCount = useRef(results.length);
-  useEffect(() => {
-    if (results.length !== prevResultCount.current) {
-      const span = logger.spanStart("results-update", undefined, [
-        ["previousCount", prevResultCount.current.toString()],
-      ]);
-      logger.debug("Emoji results updated", [["count", results.length.toString()]], span);
-      logger.spanEnd(span, [["newCount", results.length.toString()]]);
-      prevResultCount.current = results.length;
-    }
-  }, [results.length, logger]);
-
-  // -------------------------------------------------------
-  // Windowing
-  // -------------------------------------------------------
 
   const { windowStartRow, wheelRef: gridRef } = useWindowedGrid({
     selectedIndex,
@@ -116,13 +102,9 @@ export default function EmojiGrid({ results }: PluginViewProps) {
     visibleRows: GRID_VISIBLE_ROWS,
   });
 
-  // -------------------------------------------------------
-  // Footer sync
-  //
-  // Show the selected emoji's shortcode and label alongside
-  // the Enter key hint.
-  // -------------------------------------------------------
-
+  // Footer shows the selected emoji's shortcode and label
+  // alongside the Enter key hint. Highlight positions come
+  // from the plugin's Rust side as UTF-16 offsets.
   useEffect(() => {
     const entry = results[selectedIndex];
     onFooterChange({
@@ -146,19 +128,18 @@ export default function EmojiGrid({ results }: PluginViewProps) {
     });
   }, [selectedIndex, results, onFooterChange]);
 
-  // -------------------------------------------------------
-  // Keyboard navigation
-  // -------------------------------------------------------
-
   const moveSelection = useCallback(
     (delta: number) => {
       mouseActiveRef.current = false;
       setSelectedIndex((prev) => {
         const target = prev + delta;
 
-        // For vertical movement (delta is a multiple of GRID_COLUMNS),
-        // don't jump to the last item if the target column doesn't
-        // exist in the target row. Instead, stay put.
+        // Vertical jumps (delta is a full row or more) must
+        // not clamp to the last item when the destination
+        // column doesn't exist in the target row — clamping
+        // would make ArrowDown from the last full row land
+        // on a different column. Staying put preserves the
+        // column invariant.
         if (Math.abs(delta) >= GRID_COLUMNS && (target < 0 || target >= results.length)) {
           return prev;
         }
@@ -172,13 +153,9 @@ export default function EmojiGrid({ results }: PluginViewProps) {
   const handleEnter = useCallback(() => {
     const entry = results[selectedIndex];
     if (entry) {
-      logger.info("Emoji selected", [
-        ["emoji", entry.icon?.value ?? ""],
-        ["shortcode", entry.title],
-      ]);
       onExecute(entry.id, { type: "copy" });
     }
-  }, [results, selectedIndex, onExecute, logger]);
+  }, [results, selectedIndex, onExecute]);
 
   const gridBindings: KeyBindingDefinition[] = useMemo(
     () => [
@@ -243,10 +220,6 @@ export default function EmojiGrid({ results }: PluginViewProps) {
   );
 
   useKeyBindings(gridBindings);
-
-  // -------------------------------------------------------
-  // Render
-  // -------------------------------------------------------
 
   const startIdx = windowStartRow * GRID_COLUMNS;
   const endIdx = Math.min(startIdx + GRID_COLUMNS * GRID_VISIBLE_ROWS, results.length);

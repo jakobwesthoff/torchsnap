@@ -1,0 +1,27 @@
+[plugin]
+id = "emoji-picker"
+name = "Emoji Picker"
+description = "Search and insert emojis by shortcode"
+version = "0.1.0"
+wasm = "emoji_picker_plugin.wasm"
+icon = "heroicons:face-smile"
+prefixes = [":"]
+
+# No `[settings]` — the plugin has no user-configurable
+# options. Empty-query browse order is driven by the host's
+# frecency store (read via the `frecency` WIT import), not a
+# per-plugin setting.
+#
+# No `[storage.sql]` — all selection history lives in the
+# host's frecency database. The guest only reads it via
+# `frecency::top-items` to prime the empty-query grid.
+#
+# No `[[tasks]]` — no background work; frecency eviction is
+# handled by the host on startup.
+
+[frontend]
+launcher-bundle = "frontend/dist/launcher.js"
+launcher-css = "frontend/dist/launcher.css"
+
+[frontend.views]
+picker = "EmojiGrid"
