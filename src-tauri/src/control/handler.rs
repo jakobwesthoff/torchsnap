@@ -28,8 +28,6 @@ use serde_json::Value;
 pub enum ControlError {
     /// A precondition is not met (e.g., dismiss while already hidden).
     InvalidState { message: String },
-    /// A referenced entity does not exist (plugin, entry, etc.).
-    NotFound { message: String },
     /// An unexpected internal failure.
     Internal { message: String },
 }
@@ -38,7 +36,6 @@ impl ControlError {
     pub fn code(&self) -> i64 {
         match self {
             ControlError::InvalidState { .. } => -1,
-            ControlError::NotFound { .. } => -2,
             ControlError::Internal { .. } => -3,
         }
     }
@@ -46,7 +43,6 @@ impl ControlError {
     pub fn message(&self) -> &str {
         match self {
             ControlError::InvalidState { message }
-            | ControlError::NotFound { message }
             | ControlError::Internal { message } => message,
         }
     }
