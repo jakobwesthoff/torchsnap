@@ -166,6 +166,95 @@ interface settings {
   get: func(key: string) -> option<string>;
 }
 
+/// Opens a URL in the OS default handler (browser, mail client, etc.).
+///
+/// WASM plugins have no direct access to Tauri's opener APIs. This interface
+/// exposes a single `open-url` operation — the only case WASM plugins need
+/// today. `reveal-path` (Show in Finder/Explorer) is tracked separately and
+/// deferred until the `app-launcher` conversion is underway.
+///
+/// Plugins declare which URL schemes they are allowed to open under
+/// `[permissions.opener]` in `manifest.toml`. The host enforces this at
+/// call time — any scheme not listed returns `err("scheme not permitted:
+/// {scheme}")`. Omitting `[permissions.opener]` entirely means the plugin
+/// has no `open-url` access (deny by default).
+///
+/// ```toml
+/// [permissions.opener]
+/// schemes = ["https", "http"]
+/// ```
+interface opener {
+    /// Open `url` in the OS default handler. Returns `err(string)` if the
+    /// scheme is not in the plugin's declared allowlist, or if the host's
+    /// opener backend reports a failure.
+    open-url: func(url: string) -> result<_, string>;
+}
+
+/// Minimal synchronous HTTP client for WASM plugins.
+///
+/// WASM plugins have no async runtime, so `fetch` is a blocking host call
+/// executed on the host's thread pool. Plugins declare allowed origins under
+/// `[permissions.http]` in `manifest.toml`. The host enforces this at call
+/// time. The special origin `"*"` opts the plugin into trust-all mode.
+///
+/// ```toml
+/// [permissions.http]
+/// origins = ["https://api.duckduckgo.com"]
+///
+/// # or trust-all:
+/// origins = ["*"]
+/// ```
+interface http {
+    /// HTTP method. The six common methods are named variants; `other(string)`
+    /// covers non-standard methods (WebDAV, etc.) without exposing the common
+    /// cases to typos.
+    variant http-method {
+        get,
+        post,
+        put,
+        patch,
+        delete,
+        head,
+        other(string),
+    }
+
+    /// A synchronous HTTP request issued by a WASM plugin through the host.
+    ///
+    /// `timeout-ms: none` delegates to the host default. `max-body-size: none`
+    /// delegates to the host default (guards against unbounded downloads).
+    record http-request {
+        url:           string,
+        method:        http-method,
+        headers:       list<tuple<string, string>>,
+        body:          option<list<u8>>,
+        timeout-ms:    option<u32>,
+        max-body-size: option<u64>,
+    }
+
+    /// The HTTP response returned to a WASM plugin.
+    record http-response {
+        status:  u16,
+        headers: list<tuple<string, string>>,
+        body:    list<u8>,
+    }
+
+    /// Error variants for `fetch`. There are exactly three categories;
+    /// any real transport failure fits `network`.
+    variant http-error {
+        /// The request URL's origin is not in the plugin's declared allowlist.
+        permission-denied(string),
+        /// A connection-level failure: DNS, TLS, refused connection, invalid
+        /// method string, or any other transport error.
+        network(string),
+        /// The request exceeded the configured or host-default timeout.
+        timeout,
+    }
+
+    /// Execute an HTTP request and return the full response. The call blocks
+    /// until the response body is fully received or an error occurs.
+    fetch: func(request: http-request) -> result<http-response, http-error>;
+}
+
 /// ─── Guest exports (implemented by plugins) ─────────────
 interface lifecycle {
   enable: func();
@@ -347,6 +436,8 @@ world plugin {
   import sql;
   import clipboard;
   import frecency;
+  import opener;
+  import http;
 
   export lifecycle;
   export search;

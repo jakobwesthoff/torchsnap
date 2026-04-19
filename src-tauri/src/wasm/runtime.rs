@@ -27,7 +27,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 
@@ -37,6 +37,9 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::bindings;
 use super::logging::channel::LogSender;
+// reqwest is a direct dependency used for HTTP method construction and
+// timeout error detection in the http::Host implementation.
+use reqwest;
 use super::logging::spans::{Logger, SpanRegistry};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use crate::frecency::PluginFrecency;
@@ -103,6 +106,29 @@ pub struct PluginState {
     /// need to read frecency state directly (e.g. to drive an
     /// empty-query browse mode).
     frecency: Option<PluginFrecency>,
+    /// URL schemes this plugin is permitted to open. Populated
+    /// by the bridge from `[permissions.opener].schemes` in the
+    /// manifest. Empty means deny-all. Compared
+    /// case-insensitively against the scheme extracted from the
+    /// URL at call time by `opener::open-url`.
+    opener_schemes: Vec<String>,
+    /// Closure that opens a URL in the OS default handler.
+    /// Same lifecycle and decoupling contract as
+    /// `clipboard_writer`: the bridge constructs this from its
+    /// `AppHandle` on `enable()` and clears it on `disable()`.
+    opener_writer: Option<UrlOpenerFn>,
+    /// Origins this plugin is permitted to fetch. Populated by
+    /// the bridge from `[permissions.http].origins` in the
+    /// manifest and already normalized to
+    /// `ascii_serialization()` form. Empty means deny-all;
+    /// `["*"]` means trust-all. Compared against the
+    /// ASCII-serialized origin of the request URL at call time.
+    http_origins: Vec<String>,
+    /// HTTP client for this plugin, created on `enable()` and
+    /// cleared on `disable()`. `None` outside an enable
+    /// lifetime; the `http::fetch` host import returns an error
+    /// in that case.
+    http_client: Option<Arc<crate::network::Http>>,
 }
 
 /// Closure type for the clipboard write capability.
@@ -113,6 +139,13 @@ pub struct PluginState {
 /// constructs the closure from its own `AppHandle` and
 /// stashes it on `enable()`.
 pub type ClipboardWriter = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// Closure type for the opener `open-url` capability.
+///
+/// Follows the same decoupling pattern as `ClipboardWriter`: the bridge
+/// builds the closure from `tauri::AppHandle` at `enable()` time and
+/// stashes it here so this module never imports Tauri types directly.
+pub type UrlOpenerFn = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// Whether and how the plugin's SQL storage is configured.
 ///
@@ -512,6 +545,219 @@ impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
 }
 
 // =========================================================
+// Opener host import
+//
+// Enforces the per-plugin scheme allowlist declared in
+// `[permissions.opener]` before delegating to the
+// `UrlOpenerFn` closure the bridge stashes on `enable()`.
+//
+// `check_opener_scheme` is a pure free function so the
+// permission logic can be unit-tested without a running
+// wasmtime instance.
+// =========================================================
+
+/// Verify that `url`'s scheme is in `allowed`.
+///
+/// `allowed` strings are compared case-insensitively against
+/// the scheme extracted by the `url` crate (which always
+/// lowercases it per RFC 3986).
+fn check_opener_scheme(allowed: &[String], url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|_| format!("invalid URL: {url}"))?;
+    let scheme = parsed.scheme();
+    if allowed.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
+        Ok(())
+    } else {
+        Err(format!("scheme not permitted: {scheme}"))
+    }
+}
+
+impl bindings::torchsnap::plugin::opener::Host for PluginState {
+    fn open_url(&mut self, url: String) -> Result<(), String> {
+        check_opener_scheme(&self.opener_schemes, &url)?;
+        let writer = self
+            .opener_writer
+            .as_ref()
+            .ok_or_else(|| "opener not initialized".to_string())?;
+        writer(&url)
+    }
+}
+
+// =========================================================
+// HTTP host import
+//
+// A minimal synchronous HTTP client for WASM plugins. The
+// host function body must NOT call `Http::send()` directly
+// from within a tokio async task — that would cause
+// `Handle::block_on()` inside `Http::send()` to panic.
+//
+// WASM guest calls are dispatched inline from tokio tasks
+// (the bridge task scheduler calls `instance.run_task()`
+// without `spawn_blocking`), so we use
+// `tokio::task::block_in_place` here. This moves the
+// current thread out of the async pool temporarily,
+// making the inner `block_on()` safe while letting tokio
+// schedule other tasks on remaining threads.
+//
+// Both `check_http_origin` and `wit_method_to_reqwest` are
+// pure free functions for the same testability reason as
+// `check_opener_scheme` above.
+// =========================================================
+
+/// Internal error type that classifies transport-level
+/// failures before mapping to the WIT `http-error` variant.
+#[derive(Debug, thiserror::Error)]
+enum WasmHttpError {
+    #[error("origin not permitted: {0}")]
+    PermissionDenied(String),
+    #[error("request timed out")]
+    Timeout,
+    #[error("network error: {0}")]
+    Network(String),
+}
+
+impl WasmHttpError {
+    /// Classify an `anyhow::Error` from `Http::send()` or
+    /// `HttpResponse::bytes()` into the three WIT variants.
+    ///
+    /// `Http` adds context wrappers so `downcast_ref` on the
+    /// outer `anyhow::Error` won't find `reqwest::Error`
+    /// directly. We try both the direct downcast (for the
+    /// unwrapped case) and scan the formatted chain for
+    /// timeout indicators (for context-wrapped errors).
+    fn from_request_error(e: anyhow::Error) -> Self {
+        if e.downcast_ref::<reqwest::Error>()
+            .map(|re| re.is_timeout())
+            .unwrap_or(false)
+        {
+            return Self::Timeout;
+        }
+        let is_timeout = e.chain().any(|cause| {
+            let s = cause.to_string();
+            s.contains("timed out") || s.contains("deadline has elapsed")
+        });
+        if is_timeout {
+            Self::Timeout
+        } else {
+            Self::Network(e.to_string())
+        }
+    }
+}
+
+impl From<WasmHttpError> for bindings::torchsnap::plugin::http::HttpError {
+    fn from(e: WasmHttpError) -> Self {
+        use bindings::torchsnap::plugin::http::HttpError;
+        match e {
+            WasmHttpError::PermissionDenied(msg) => HttpError::PermissionDenied(msg),
+            WasmHttpError::Timeout => HttpError::Timeout,
+            WasmHttpError::Network(msg) => HttpError::Network(msg),
+        }
+    }
+}
+
+/// Verify that `url`'s origin is in the `allowed` list.
+///
+/// `"*"` short-circuits before URL parsing (trust-all). All
+/// other entries are compared against the request URL's
+/// ASCII-serialized origin, which normalizes scheme,
+/// host, and port identically to how the manifest validation
+/// stored them.
+fn check_http_origin(allowed: &[String], url: &str) -> Result<(), WasmHttpError> {
+    if allowed.iter().any(|o| o == "*") {
+        return Ok(());
+    }
+    let parsed = url::Url::parse(url)
+        .map_err(|e| WasmHttpError::Network(format!("invalid URL: {e}")))?;
+    let origin = parsed.origin().ascii_serialization();
+    if allowed.iter().any(|o| o == &origin) {
+        Ok(())
+    } else {
+        Err(WasmHttpError::PermissionDenied(origin))
+    }
+}
+
+/// Map a WIT `http-method` variant to a `reqwest::Method`.
+///
+/// `other(string)` is validated via `Method::from_bytes` —
+/// an invalid method string maps to `WasmHttpError::Network`
+/// rather than being sent over the wire.
+fn wit_method_to_reqwest(
+    method: bindings::torchsnap::plugin::http::HttpMethod,
+) -> Result<reqwest::Method, WasmHttpError> {
+    use bindings::torchsnap::plugin::http::HttpMethod;
+    match method {
+        HttpMethod::Get => Ok(reqwest::Method::GET),
+        HttpMethod::Post => Ok(reqwest::Method::POST),
+        HttpMethod::Put => Ok(reqwest::Method::PUT),
+        HttpMethod::Patch => Ok(reqwest::Method::PATCH),
+        HttpMethod::Delete => Ok(reqwest::Method::DELETE),
+        HttpMethod::Head => Ok(reqwest::Method::HEAD),
+        HttpMethod::Other(s) => reqwest::Method::from_bytes(s.as_bytes())
+            .map_err(|e| WasmHttpError::Network(format!("invalid HTTP method: {e}"))),
+    }
+}
+
+impl bindings::torchsnap::plugin::http::Host for PluginState {
+    fn fetch(
+        &mut self,
+        request: bindings::torchsnap::plugin::http::HttpRequest,
+    ) -> Result<
+        bindings::torchsnap::plugin::http::HttpResponse,
+        bindings::torchsnap::plugin::http::HttpError,
+    > {
+        use bindings::torchsnap::plugin::http::HttpError as WitHttpError;
+        use bindings::torchsnap::plugin::http::HttpResponse as WitHttpResponse;
+
+        check_http_origin(&self.http_origins, &request.url)
+            .map_err(WitHttpError::from)?;
+
+        let method = wit_method_to_reqwest(request.method)
+            .map_err(WitHttpError::from)?;
+
+        let client = self
+            .http_client
+            .as_ref()
+            .ok_or_else(|| WitHttpError::from(WasmHttpError::Network("http client not initialized".into())))?;
+
+        let mut builder = client.request(method, &request.url);
+        for (k, v) in request.headers {
+            builder = builder.header(&k, &v);
+        }
+        if let Some(body) = request.body {
+            builder = builder.body(body);
+        }
+        if let Some(ms) = request.timeout_ms {
+            builder = builder.timeout(Duration::from_millis(ms as u64));
+        }
+        if let Some(max) = request.max_body_size {
+            builder = builder.max_size(max);
+        }
+
+        // `Http::send()` uses `Handle::block_on()` internally, which panics
+        // if called from within a tokio async task. WASM guest calls are
+        // dispatched inline from async tasks (see bridge.rs task scheduler),
+        // so we use `block_in_place` to move this thread out of the async
+        // pool before blocking.
+        let (status, headers, body) =
+            tokio::task::block_in_place(|| -> Result<_, WasmHttpError> {
+                let mut response = builder.send().map_err(WasmHttpError::from_request_error)?;
+                let status = response.status();
+                let headers = response.headers().to_vec();
+                let body = response
+                    .bytes()
+                    .map_err(WasmHttpError::from_request_error)?;
+                Ok((status, headers, body))
+            })
+            .map_err(WitHttpError::from)?;
+
+        Ok(WitHttpResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+// =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
 
@@ -686,6 +932,15 @@ impl WasmRuntime {
             // to "disabled / empty" when the handle is
             // missing — same contract as `settings`.
             frecency: None,
+            // Both scheme/origin lists and the opener/http
+            // capabilities are stashed by the bridge on
+            // `enable()`. Calls outside an enable lifetime
+            // degrade gracefully: permission lists are empty
+            // (deny-all) and the writer/client are `None`.
+            opener_schemes: Vec::new(),
+            opener_writer: None,
+            http_origins: Vec::new(),
+            http_client: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -845,6 +1100,49 @@ impl WasmPluginInstance {
     pub fn clear_frecency(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().frecency = None;
+    }
+
+    /// Stash the URL scheme allowlist for `opener::open-url`.
+    /// Called by the bridge at `enable()` from the manifest's
+    /// `[permissions.opener].schemes` list.
+    pub fn set_opener_schemes(&self, schemes: Vec<String>) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().opener_schemes = schemes;
+    }
+
+    /// Install the closure that opens a URL via the OS default
+    /// handler. Called by the bridge at `enable()`.
+    pub fn set_opener_writer(&self, writer: UrlOpenerFn) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().opener_writer = Some(writer);
+    }
+
+    /// Drop the opener closure on `disable()`.
+    pub fn clear_opener_writer(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().opener_writer = None;
+    }
+
+    /// Stash the origin allowlist for `http::fetch`. Called by
+    /// the bridge at `enable()` from the manifest's
+    /// `[permissions.http].origins` list (already normalized).
+    pub fn set_http_origins(&self, origins: Vec<String>) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().http_origins = origins;
+    }
+
+    /// Install the HTTP client. Called by the bridge at
+    /// `enable()`.
+    pub fn set_http_client(&self, client: Arc<crate::network::Http>) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().http_client = Some(client);
+    }
+
+    /// Drop the HTTP client on `disable()` so the connection
+    /// pool is released between enable cycles.
+    pub fn clear_http_client(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().http_client = None;
     }
 
     /// Call the guest's `enable` export.
