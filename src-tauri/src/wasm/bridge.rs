@@ -508,6 +508,12 @@ impl Plugin for WasmPluginBridge {
         // during its own initialization.
         instance.set_settings(ctx.settings.clone());
 
+        // Frecency follows the same pre-enable lifecycle: the
+        // guest may read `frecency::top-items` from its own
+        // `enable()` (e.g. an empty-query browse mode that
+        // primes a cache on startup).
+        instance.set_frecency(ctx.frecency.clone());
+
         let app_handle = app.clone();
         instance.set_clipboard_writer(Box::new(move |text| {
             use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -559,6 +565,7 @@ impl Plugin for WasmPluginBridge {
             self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }
         instance.clear_settings();
+        instance.clear_frecency();
         instance.clear_sql_storage();
         instance.clear_clipboard_writer();
     }

@@ -108,6 +108,41 @@ interface sql {
   connection: func() -> sql-handle;
 }
 
+/// Plugin-scoped frecency tracking.
+///
+/// The host already records selections automatically before
+/// dispatching `execute()` and applies frecency score bonuses
+/// to every query plugin's results after `search()` returns
+/// — neither path requires the plugin to do anything. This
+/// interface exists for the narrower case of plugins that
+/// need to *read* frecency state to drive their own UI, e.g.
+/// the emoji picker's empty-query browse mode, which surfaces
+/// the user's most-used emoji when the query is just the
+/// prefix character.
+///
+/// All calls are namespaced to the plugin's own ID — plugins
+/// cannot read other plugins' frecency data, same guarantee
+/// as the `settings` interface.
+interface frecency {
+    /// A single item with its computed frecency score. `score`
+    /// is opaque — plugins should treat it as a relative
+    /// ordering key, not an absolute magnitude.
+    record frecency-item {
+        item-id: string,
+        score:   u32,
+    }
+
+    /// Whether frecency tracking is currently enabled. When
+    /// false, `top-items` always returns empty and any
+    /// frecency-driven UI should fall back to a static order.
+    is-enabled: func() -> bool;
+
+    /// Top-N items by frecency score, highest first. Items
+    /// with zero score are omitted. Returns an empty list
+    /// when frecency is disabled or no history exists.
+    top-items: func(limit: u32) -> list<frecency-item>;
+}
+
 /// Read settings from this plugin's namespace.
 ///
 /// Plugins are confined to keys under `plugins.<plugin-id>.`
@@ -311,6 +346,7 @@ world plugin {
   import settings;
   import sql;
   import clipboard;
+  import frecency;
 
   export lifecycle;
   export search;
