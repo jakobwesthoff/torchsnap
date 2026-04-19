@@ -15,6 +15,7 @@ import 'just/bangs.just'
 import 'just/doctor.just'
 import 'just/maintenance.just'
 import 'just/tools.just'
+import 'just/devcontainer.just'
 
 # Show available recipes
 default:

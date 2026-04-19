@@ -1,0 +1,95 @@
+// Adapted from the Anthropic Claude Code reference devcontainer:
+//   https://github.com/anthropics/claude-code/tree/main/.devcontainer
+//
+// The upstream is © Anthropic PBC, "All rights reserved" under Anthropic's
+// Commercial Terms of Service. We reproduce and adapt it here in reliance
+// on the implied license granted by Anthropic's public documentation at
+// https://docs.claude.com/en/docs/claude-code/devcontainer, which directs
+// users to adopt and customize these files.
+//
+// Torchsnap-specific additions are original work; this file as a whole is
+// therefore NOT covered by the project's MPL-2.0 license. See
+// .devcontainer/NOTICE.md for full provenance details.
+{
+  "name": "Torchsnap Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:Europe/Berlin}",
+      "CLAUDE_CODE_VERSION": "latest",
+      "GIT_DELTA_VERSION": "0.18.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.0",
+      "RUST_VERSION": "1"
+    }
+  },
+
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "bytecodealliance.wit-idl",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": { "path": "zsh" },
+          "bash": { "path": "bash", "icon": "terminal-bash" }
+        },
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.linkedProjects": [
+          "src-tauri/Cargo.toml",
+          "plugins/Cargo.toml"
+        ]
+      }
+    }
+  },
+
+  "remoteUser": "dev",
+
+  "mounts": [
+    "source=torchsnap-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+    "source=torchsnap-claude-config-${devcontainerId},target=/home/dev/.claude,type=volume",
+
+    "source=torchsnap-cargo-registry-${devcontainerId},target=/usr/local/cargo/registry,type=volume",
+    "source=torchsnap-cargo-git-${devcontainerId},target=/usr/local/cargo/git,type=volume",
+    "source=torchsnap-bun-cache-${devcontainerId},target=/home/dev/.bun/install/cache,type=volume",
+
+    "source=${localEnv:HOME}/.claude/CLAUDE.md,target=/home/dev/.claude/CLAUDE.md,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude/skills,target=/home/dev/.claude/skills,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude/commands,target=/home/dev/.claude/commands,type=bind,readonly",
+
+    "source=${localEnv:HOME}/.gitconfig,target=/home/dev/.gitconfig,type=bind,readonly",
+    "source=${localEnv:HOME}/.config/git/ignore,target=/home/dev/.config/git/ignore,type=bind,readonly"
+  ],
+
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
+    "CLAUDE_CODE_NO_FLICKER": "1",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
+    "CARGO_HOME": "/usr/local/cargo",
+    "RUSTUP_HOME": "/usr/local/rustup"
+  },
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "waitFor": "postStartCommand"
+}
