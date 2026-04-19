@@ -464,7 +464,7 @@ pub struct TaskDef {
 impl Manifest {
     /// Parse a manifest from TOML source text.
     pub fn parse(toml_source: &str) -> anyhow::Result<Self> {
-        let mut manifest: Manifest =
+        let manifest: Manifest =
             toml::from_str(toml_source).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
 
         // Validate `[[tasks]]` entries early so a malformed
@@ -474,11 +474,13 @@ impl Manifest {
         validate_task_definitions(&manifest.tasks)?;
 
         // Validate and normalize `[permissions]` entries.
-        // Origins are normalized to ascii_serialization() in-place
+        // `validate_permissions` consumes the raw value and returns a
+        // normalized copy — origins are stored as `ascii_serialization()`
         // so runtime checks can use plain string equality.
-        if let Some(ref mut permissions) = manifest.permissions {
-            validate_permissions(permissions)?;
-        }
+        let manifest = Manifest {
+            permissions: manifest.permissions.map(validate_permissions).transpose()?,
+            ..manifest
+        };
 
         // Every user-supplied path must be plugin-relative and
         // free of traversal. Rejecting at parse time keeps the
@@ -1901,7 +1903,7 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
 /// - `[permissions.opener]` with an empty `schemes` list.
 /// - `[permissions.http]` with an empty `origins` list.
 /// - Any `origins` entry that is not a parseable URL (and not `"*"`).
-fn validate_permissions(permissions: &mut PermissionsDef) -> anyhow::Result<()> {
+fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<PermissionsDef> {
     if let Some(ref opener) = permissions.opener {
         if opener.schemes.is_empty() {
             anyhow::bail!(
@@ -1911,31 +1913,43 @@ fn validate_permissions(permissions: &mut PermissionsDef) -> anyhow::Result<()> 
         }
     }
 
-    if let Some(ref mut http) = permissions.http {
-        if http.origins.is_empty() {
-            anyhow::bail!(
-                "`[permissions.http]` declared with an empty `origins` list — \
-                 either add at least one origin (or `\"*\"`) or remove the section"
-            );
-        }
-
-        // Normalize each declared origin to ascii_serialization().
-        // Reject malformed entries immediately so authors discover
-        // errors at plugin-load time rather than at the first fetch.
-        for origin in &mut http.origins {
-            if origin == "*" {
-                continue;
+    let http = permissions
+        .http
+        .map(|mut http| -> anyhow::Result<HttpPermissionsDef> {
+            if http.origins.is_empty() {
+                anyhow::bail!(
+                    "`[permissions.http]` declared with an empty `origins` list — \
+                     either add at least one origin (or `\"*\"`) or remove the section"
+                );
             }
-            let parsed = url::Url::parse(origin).map_err(|e| {
-                anyhow::anyhow!(
-                    "`[permissions.http]` origin `{origin}` is not a valid URL: {e}"
-                )
-            })?;
-            *origin = parsed.origin().ascii_serialization();
-        }
-    }
 
-    Ok(())
+            // Normalize each declared origin to ascii_serialization().
+            // Reject malformed entries immediately so authors discover
+            // errors at plugin-load time rather than at the first fetch.
+            let origins = http
+                .origins
+                .into_iter()
+                .map(|origin| {
+                    if origin == "*" {
+                        return Ok(origin);
+                    }
+                    let parsed = url::Url::parse(&origin).map_err(|e| {
+                        anyhow::anyhow!(
+                            "`[permissions.http]` origin `{origin}` is not a valid URL: {e}"
+                        )
+                    })?;
+                    Ok(parsed.origin().ascii_serialization())
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            http.origins = origins;
+            Ok(http)
+        })
+        .transpose()?;
+
+    Ok(PermissionsDef {
+        opener: permissions.opener,
+        http,
+    })
 }
 
 /// Parse a 5-field POSIX cron expression
