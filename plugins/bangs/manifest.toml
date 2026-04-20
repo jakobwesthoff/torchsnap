@@ -1,0 +1,25 @@
+[plugin]
+id = "bangs"
+name = "Bangs"
+description = "DuckDuckGo bang shortcuts for quick web searches"
+version = "0.1.0"
+wasm = "bangs_plugin.wasm"
+icon = "heroicons:arrow-top-right-on-square"
+
+[storage.sql]
+migrations = [
+    "migrations/001_init.sql",
+]
+
+[permissions.opener]
+schemes = ["https", "http"]
+
+[permissions.http]
+origins = ["https://duckduckgo.com"]
+
+[frontend]
+settings-bundle = "frontend/dist/settings.js"
+settings-css = "frontend/dist/settings.css"
+
+[frontend.settings]
+component = "BangsSettings"
