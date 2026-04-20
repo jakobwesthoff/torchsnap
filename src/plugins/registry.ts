@@ -84,13 +84,6 @@ registerPlugin("clipboard-manager", {
   settings: settingsComponent(() => import("./clipboard/ClipboardSettings")),
 });
 
-registerPlugin("bangs", {
-  label: "Bangs",
-  description: "DuckDuckGo bang shortcuts for quick web searches",
-  icon: "heroicons:arrow-top-right-on-square",
-  settings: settingsComponent(() => import("./bangs/BangsSettings")),
-});
-
 registerPlugin("open-url", {
   label: "Open URL",
   description: "Detect and open URLs typed in the search bar",
