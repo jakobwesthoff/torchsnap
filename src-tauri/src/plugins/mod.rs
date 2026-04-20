@@ -20,7 +20,6 @@
 // =========================================================
 
 pub mod app_launcher;
-pub mod bangs;
 pub mod clipboard;
 pub mod commands;
 pub mod open_url;

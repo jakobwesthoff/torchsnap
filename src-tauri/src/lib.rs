@@ -655,12 +655,6 @@ pub fn run() {
                 ))),
                 wasm::source::PluginSourceKind::Builtin,
             );
-            host.register(
-                Box::new(plugins::bangs::BangsPlugin::new(Arc::clone(
-                    &metadata_service,
-                ))),
-                wasm::source::PluginSourceKind::Builtin,
-            );
 
             // =========================================================
             // Logging system
