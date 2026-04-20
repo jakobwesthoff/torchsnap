@@ -40,7 +40,6 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::define_plugin;
 use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue};
 
 // =========================================================
