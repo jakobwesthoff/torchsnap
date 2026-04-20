@@ -36,7 +36,7 @@ Changes:
 
 3. In `new()`, replace `source.read_wasm()` / `source.read_file(path)` with `source.read_wasm()` / `source.read_file(path)` calls on the Arc (no change — `Arc<dyn Trait>` auto-derefs), then at the end of the `Ok(Self { ... })` block add `plugin_source: source,`.
 
-4. Update the single production call site — `src-tauri/src/lib.rs:1045` inside `load_single_wasm_plugin`. The local `source` is already `Arc<dyn wasm::source::PluginSource>` (line 1036). Change the parameter type to `Arc<dyn wasm::source::PluginSource + Send + Sync>` and pass `Arc::clone(&source)` to `WasmPluginBridge::new` (keep the existing `source_registry.insert(..., source)` line — the registry gets the Arc afterward). **Verify during implementation:** the `Arc<dyn PluginSource>` at `lib.rs:1036` needs `+ Send + Sync` at its call site too (discovery layer builds the Arc); trace and update as needed.
+4. Update the single production call site — `load_single_wasm_plugin` at `src-tauri/src/lib.rs:1034`. The parameter `source: Arc<dyn wasm::source::PluginSource>` is at line 1036; the `WasmPluginBridge::new(..., source.as_ref(), ...)` call is at line 1045 inside the body. Change the parameter type to `Arc<dyn wasm::source::PluginSource + Send + Sync>` and pass `Arc::clone(&source)` to `WasmPluginBridge::new` (keep the existing `source_registry.insert(..., source)` line — the registry gets the Arc afterward). **Verify during implementation:** the `Arc<dyn PluginSource>` at `lib.rs:1036` needs `+ Send + Sync` at its call site too (discovery layer builds the Arc); trace and update as needed.
 
 5. Update every test call site inside `bridge.rs` (lines 812, 854, 897, 1037, 1114, 1236). The pattern inside each test is currently `WasmPluginBridge::new(manifest, runtime, log_sender, &source, app_data_dir)` — change to `Arc::new(source)` wrapped equivalently. `DirectorySource` implements `PluginSource + Send + Sync` by construction, so `Arc::new(source) as Arc<dyn PluginSource + Send + Sync>` works.
 
@@ -98,13 +98,24 @@ interface assets {
 }
 ```
 
-Then in `world plugin` (lines 433–446), add `import assets;` between `import frecency;` (line 438) and `import opener;` (line 439):
+Then in `world plugin` (lines 433–446), **reorder the existing imports to match interface-definition order** (logging/clipboard/sql/frecency/settings/opener/http) and append the new `import assets;` at the end — so the world import order matches the order the interfaces are defined in the file. The current world import order (logging/settings/sql/clipboard/frecency/opener/http) diverges from definition order; this step fixes that inconsistency while adding the new import. The resulting block:
 
 ```wit
+world plugin {
+  import logging;
+  import clipboard;
+  import sql;
   import frecency;
-  import assets;
+  import settings;
   import opener;
   import http;
+  import assets;
+
+  export lifecycle;
+  export search;
+  export messaging;
+  export tasks;
+}
 ```
 
 `bindings.rs` regenerates on next `cargo build` — no manual edit required.
@@ -226,7 +237,7 @@ fn into_assets_io_error(e: anyhow::Error) -> bindings::torchsnap::plugin::assets
 }
 ```
 
-**The `assets::Host` impl** (insert after the `http::Host` impl at line 758):
+**The `assets::Host` impl** (insert at the end of the `impl http::Host` block — the http impl begins at line 702 and ends in the 750s, before the `WasmRuntime` struct at line 773):
 
 ```rust
 // =========================================================
@@ -330,7 +341,7 @@ In `Plugin::disable` (line 602), next to `instance.clear_http_client()` at line 
 instance.clear_plugin_source();
 ```
 
-Also mirror these calls in the two failure paths inside `enable()` (lines 582, 595) — those currently tear the instance down without running the clear suite; since `take_instance` drops the instance entirely, the clears are dead code for Arc cleanup but documenting symmetry is worth the lines.
+Follow the existing convention: `clear_*` is only called from `disable()`, never from `enable()`'s failure paths (lines 582, 595). In those paths `drop(instance) + take_instance()` already drops the `Arc<WasmPluginInstance>` strong count to zero (scheduler not yet spawned), so every capability field on `PluginState` is released automatically. Adding a lone `clear_plugin_source()` to the failure paths would diverge from the existing pattern — matching `disable()`-only is simpler and keeps the PR scoped.
 
 **Verify during implementation:** no additional state fields needed on the bridge — the new `plugin_source: Arc<dyn PluginSource + Send + Sync>` added in step 1a is the single source of truth.
 
@@ -397,6 +408,39 @@ After this step: `cd plugins && cargo check --workspace`. Commit: `plugin-sdk: r
 
 ---
 
+### Step 1g-prelude — Fold the plugin boilerplate macros into the prelude
+
+**Files:**
+- `plugins/plugin-sdk/src/lib.rs` — extend the `prelude` module.
+- `plugins/hello-world/src/lib.rs` — drop redundant macro imports.
+- `plugins/emoji-picker/src/lib.rs` — drop redundant macro imports.
+
+**Rationale:** The SDK's `prelude` module (line 97, comment: "Common glob import for plugin authors") re-exports guest traits, search records, and host-import modules, but not the `#[macro_export]`-ed helpers `define_plugin!`, `impl_noop_messaging!`, `impl_noop_tasks!`. Every existing plugin has to write a separate `use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};` line alongside the prelude glob. That's boilerplate the prelude exists to eliminate.
+
+Rust 2018+ supports `pub use` of `#[macro_export]`-ed macros through modules, and glob imports pick them up. Verified by the existing `pub use super::{logging, messaging, settings, sql};` pattern in the same module — the same re-export mechanism applies to macros.
+
+**Changes:**
+
+1. `plugins/plugin-sdk/src/lib.rs` — in the `prelude` module (line 97–113), add a new line after the existing `pub use super::{clipboard, frecency, http, opener};`:
+
+   ```rust
+   pub use super::{define_plugin, impl_noop_messaging, impl_noop_tasks};
+   ```
+
+   Also update the prelude's doc comment at line 98 to mention the macros:
+   
+   > `use torchsnap_plugin_sdk::prelude::*;` pulls in the four guest traits, the search record / variant types, the SDK's helper modules, and the `define_plugin!` / `impl_noop_*!` macros plugins use to wire themselves up.
+
+2. `plugins/hello-world/src/lib.rs:19` — change `use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};` to just drop the line (the macros now come through the prelude already imported one line earlier via `use torchsnap_plugin_sdk::prelude::*;`). **Verify during implementation:** confirm hello-world uses the prelude — if not, keep the explicit import line to avoid unrelated churn.
+
+3. `plugins/emoji-picker/src/lib.rs:37` — same change: drop the explicit macro import line if the prelude is already in scope.
+
+**Why fold this into PR 1 and not a standalone PR:** it's a trivial SDK improvement, and PR 1 already touches `plugin-sdk/src/lib.rs` in step 1g. Two SDK-side edits in one atomic commit per step keeps history clean. The new bangs plugin in PR 2 then only needs the prelude glob.
+
+After this step: `cd plugins && cargo check --workspace`. Commit: `plugin-sdk: export define_plugin/impl_noop_* macros via prelude`.
+
+---
+
 ### Step 1h — Documentation
 
 **File:** `docs/api/plugin-development.md`
@@ -408,9 +452,38 @@ Add an `### Assets (WASM plugins)` section before the `### Opener` section at li
 - A Rust code sample showing `assets::read(path)` and the three `AssetsError` variants being matched.
 - Key points bullet list: (1) paths validated by `validate_plugin_path`, (2) bytes cross the boundary in full — not a handle, (3) typical use is enable-time data loading, (4) `exists` is cheap, no bytes transferred.
 
-No ADR. (Rationale per the settled decisions: `PluginSource` semantics already document themselves in `source.rs`, and the interface is a thin capability — no new architectural trade-off to capture.)
-
 After this step: commit as `docs: document assets host interface`.
+
+---
+
+### Step 1i — ADR 0039: WASM plugin assets API
+
+**New file:** `docs/adr/0039-wasm-plugin-assets-api.md`
+
+Runs `EDITOR=true adrs new "WASM plugin assets API"` to scaffold the file with the project's ADR template, then fills it in. Style matches the two prior capability ADRs: `0037-wasm-plugin-opener-api.md` and `0038-wasm-plugin-http-api.md`.
+
+**Why an ADR:** This is the first WASM host capability shipped **without a permission allowlist**. Every prior capability (opener, http, clipboard, sql) requires a `[permissions.<iface>]` section in `manifest.toml`. Assets deliberately does not — the trust model is spatial, guaranteed by `validate_plugin_path` confining reads to the plugin root. That trust-model decision warrants a standalone record alongside ADR 0035 (distribution) and ADR 0036 (trust model), because a future auditor asking "why is this capability unguarded?" should find the answer in `docs/adr/` rather than having to reconstruct the reasoning from source comments.
+
+**Content outline:**
+
+- **Status:** Accepted, 2026-04-20.
+- **Context:** WASM plugins need to read their own bundled assets (e.g. bangs' 2.2 MB `bang.json`). The existing permission-gated capabilities (opener/http) don't fit — reading your own files isn't an external resource access. A new capability is needed, and the question is whether it requires a permission declaration.
+- **Decision:** Add the `assets` WIT interface with no `[permissions.assets]` section. Security is enforced by `validate_plugin_path` rejecting any path outside the plugin root (`..` traversal, absolute paths, Windows drive letters, NUL bytes, backslashes), plus canonicalization guarding against symlink escape.
+- **Consequences:**
+  - **Positive:** Plugins can load bundled data without boilerplate permission declarations. Matches the expectation that a plugin's own archive is trusted.
+  - **Negative:** Establishes a precedent for permission-less capabilities. Future capabilities must justify whether they follow this pattern (spatial guarantee) or the opener/http pattern (explicit allowlist).
+  - **Neutral:** `validate_plugin_path` becomes load-bearing for yet another callsite — regressions there now affect one more interface. Mitigated by the extensive test coverage on the guard itself.
+- **Alternatives considered:**
+  - `[permissions.assets]` with a path allowlist (e.g. `files = ["bang.json"]`): rejected as friction without benefit — the plugin already ships the files it's reading, so an allowlist would be redundant self-declaration.
+  - Reading assets at load time and passing them via `enable()` arguments: rejected because it defeats the lazy-load use case and bloats the instantiation path.
+  - Going through the filesystem interface (none exists yet, and would be a much larger capability surface): rejected as overkill.
+- **References:**
+  - ADR 0035 — plugin distribution via bundled and user-installable archives
+  - ADR 0036 — plugin trust model and deferred signing
+  - ADR 0037 — WASM plugin opener API (comparison: permission-gated)
+  - ADR 0038 — WASM plugin HTTP API (comparison: permission-gated)
+
+After this step: commit as `docs: add ADR 0039 for WASM plugin assets API`.
 
 ---
 
@@ -696,7 +769,7 @@ After this step: `cd plugins && cargo check --manifest-path bangs/Cargo.toml` an
   ```
 - `tsconfig.json`, `env.d.ts` — verbatim copy from calculator.
 - `styles/settings.css` — empty file that just imports tailwind base (copy calculator's `settings.css`).
-- `src/BangsSettings.tsx` — moved from `src/plugins/bangs/BangsSettings.tsx` (181 lines) with import rewrites:
+- `src/BangsSettings.tsx` — moved from `src/plugins/bangs/BangsSettings.tsx` (181 lines) using `git mv src/plugins/bangs/BangsSettings.tsx plugins/bangs/frontend/src/BangsSettings.tsx` so git tracks the rename and history survives. After the `git mv`, apply the following import rewrites in place:
   - `import { sendPluginMessage } from "../../lib/pluginMessage";` → remove; replace with the SDK hook pattern used by calculator:
     ```tsx
     import { usePluginRuntime } from "@torchsnap/plugin-sdk/hooks";
@@ -706,7 +779,7 @@ After this step: `cd plugins && cargo check --manifest-path bangs/Cargo.toml` an
   - `import { Section } from "../../settings/Section";` → `import { Section } from "@torchsnap/plugin-sdk/components";` (calculator does this at `plugins/calculator/frontend/src/settings/CalculatorSettings.tsx:27`).
   - Remove the module-level `const PLUGIN_ID = "bangs"` — the SDK's `sendMessage` is already scoped to the current plugin.
   - Import the styles: `import "../styles/settings.css";`
-  - Keep the `export default function BangsSettings()` — the manifest's `[frontend.settings] component = "BangsSettings"` resolves against the default export per the existing convention. **Verify during implementation:** calculator uses a named export `export function CalculatorSettings()` not default — check whether the manifest registry expects named or default and match. If named, rename to `export function BangsSettings()`.
+  - **Convert to a named export** to match the calculator convention (`plugins/calculator/frontend/src/settings/CalculatorSettings.tsx:40` uses `export function CalculatorSettings()`). Change the current `export default function BangsSettings()` to `export function BangsSettings()`. The manifest's `[frontend.settings] component = "BangsSettings"` resolves against this named export, same as calculator's `component = "CalculatorSettings"`.
 
 After this step: `cd plugins/bangs/frontend && bun install && bun run build` produces `plugins/bangs/frontend/dist/settings.{js,css}`. Then `just build-plugin bangs` re-packages. Commit: `plugins/bangs: port settings frontend from legacy plugins/bangs/`.
 
@@ -761,8 +834,7 @@ After this step: `just stage-bundled-plugins` produces `target/bundled-plugins/b
 - `src-tauri/src/plugins/bangs/import.rs` (127 lines)
 - `src-tauri/src/plugins/bangs/schema.rs` (36 lines)
 - `src-tauri/derived/bang.json` (2.2 MB)
-- `src/plugins/bangs/BangsSettings.tsx` (181 lines — already moved)
-- `src/plugins/bangs/` (empty directory after the above delete)
+- `src/plugins/bangs/` — remove the now-empty directory (`BangsSettings.tsx` was `git mv`'d in step 2c, so git already tracks the rename; nothing to delete from inside this directory).
 
 **Files to edit:**
 
@@ -797,15 +869,18 @@ bun run lint                     # frontend
 
 | File | Change | PR |
 |---|---|---|
-| `plugins/plugin-sdk/wit/torchsnap-plugin.wit` | Add `assets` interface + `import assets;` in world | 1 |
+| `plugins/plugin-sdk/wit/torchsnap-plugin.wit` | Add `assets` interface + reorder world imports to match definition order + add `import assets;` | 1 |
 | `src-tauri/src/wasm/source.rs` | `PluginSource::file_exists` trait method + `DirectorySource`/`ArchiveSource` impls + tests | 1 |
 | `src-tauri/src/wasm/runtime.rs` | `PluginState::plugin_source` field, setter/clearer on `WasmPluginInstance`, `assets::Host` impl, unit + integration tests | 1 |
-| `src-tauri/src/wasm/bridge.rs` | `plugin_source: Arc<dyn PluginSource + Send + Sync>` field, `new()` signature, stash/clear on enable/disable | 1 |
+| `src-tauri/src/wasm/bridge.rs` | `plugin_source: Arc<dyn PluginSource + Send + Sync>` field, `new()` signature, stash on enable, clear on disable | 1 |
 | `src-tauri/src/lib.rs` | Update `load_single_wasm_plugin` call site to pass `Arc::clone(&source)`; remove native `BangsPlugin` registration | 1, 2 |
 | `src-tauri/tests/fixtures/assets-plugin/` | New test fixture (`Cargo.toml`, `manifest.toml`, `src/lib.rs`, `greeting.txt`, committed `.wasm`) | 1 |
 | `src-tauri/src/wasm/bindings.rs` | Auto-regenerated | 1 |
-| `plugins/plugin-sdk/src/lib.rs` | Re-export `assets` via `pub use` and in `prelude` | 1 |
+| `plugins/plugin-sdk/src/lib.rs` | Re-export `assets` via `pub use` and in `prelude`; fold `define_plugin!`/`impl_noop_*!` macros into `prelude` | 1 |
+| `plugins/hello-world/src/lib.rs` | Drop redundant `use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};` now covered by prelude | 1 |
+| `plugins/emoji-picker/src/lib.rs` | Drop redundant macro imports now covered by prelude | 1 |
 | `docs/api/plugin-development.md` | Add `### Assets` section before `### Opener` | 1 |
+| `docs/adr/0039-wasm-plugin-assets-api.md` | New ADR documenting the permission-less capability decision | 1 |
 | `plugins/Cargo.toml` | Add `"bangs"` to workspace `members` | 2 |
 | `plugins/bangs/Cargo.toml` | New crate manifest | 2 |
 | `plugins/bangs/manifest.toml` | New plugin manifest with opener+http permissions | 2 |
@@ -819,7 +894,8 @@ bun run lint                     # frontend
 | `src-tauri/src/plugins/mod.rs` | Remove `pub mod bangs;` | 2 |
 | `src-tauri/src/plugins/bangs/{mod,import,schema}.rs` | Deleted | 2 |
 | `src-tauri/derived/bang.json` | Deleted | 2 |
-| `src/plugins/bangs/BangsSettings.tsx` | Deleted | 2 |
+| `src/plugins/bangs/BangsSettings.tsx` | `git mv` to `plugins/bangs/frontend/src/BangsSettings.tsx` | 2 |
+| `src/plugins/bangs/` | Empty dir removed after `git mv` | 2 |
 | `src/plugins/registry.ts` | Remove `registerPlugin("bangs", ...)` block | 2 |
 
 ---
