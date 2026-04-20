@@ -2,15 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# Download the DuckDuckGo bang database and store it as a derived asset
-# for the Rust build. The file is baked into the binary via include_str!
-# as a fallback when the plugin cannot fetch a fresh copy at runtime.
+# Download the DuckDuckGo bang database into the bangs
+# plugin's bundled assets directory. The WASM guest reads the
+# file via the `assets::read` host import as a fallback when
+# the plugin cannot fetch a fresh copy from DDG at runtime.
+# The file ships inside the `.torchsnap` archive produced by
+# `just build-plugin bangs`.
 
-# Download DuckDuckGo bang database into src-tauri/derived/
+# Download DuckDuckGo bang database into plugins/bangs/assets/
 asset-bang-data:
     #!/usr/bin/env bash
     set -euo pipefail
-    dst="src-tauri/derived/bang.json"
+    dst="plugins/bangs/assets/bang.json"
     mkdir -p "$(dirname "$dst")"
     echo "Downloading DuckDuckGo bang database..."
     curl -sL 'https://duckduckgo.com/bang.js' -o "$dst"
