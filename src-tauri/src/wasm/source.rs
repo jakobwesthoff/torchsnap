@@ -142,6 +142,45 @@ impl DirectorySource {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// Resolve a plugin-relative path against the plugin
+    /// root, enforcing both the lexical guard
+    /// (`validate_plugin_path`) and the symlink-target
+    /// guard (`canonicalize` + `starts_with`). Returns the
+    /// canonical path when the file exists inside the root;
+    /// `Ok(None)` when the path is lexically valid but the
+    /// file is not present; `Err` on every rejection.
+    ///
+    /// The missing-file branch intentionally does **not**
+    /// perform a second lexical `starts_with` check against
+    /// the canonicalized root. On macOS the canonical form
+    /// (`/private/var/...`) diverges from the lexical
+    /// `self.root.join(path)` result (`/var/...`), which
+    /// would otherwise produce false-negative "escapes"
+    /// errors for every missing-file read.
+    /// `validate_plugin_path` has already enforced the
+    /// lexical bound, and there is no symlink target to
+    /// inspect when the file doesn't exist.
+    fn resolve_inside_root(&self, path: &str) -> anyhow::Result<Option<PathBuf>> {
+        validate_plugin_path(path)?;
+
+        let full_path = self.root.join(path);
+        let canonical_root = self
+            .root
+            .canonicalize()
+            .context("resolving plugin root directory")?;
+
+        let canonical = match full_path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => return Ok(None),
+        };
+
+        anyhow::ensure!(
+            canonical.starts_with(&canonical_root),
+            "plugin file path `{path}` escapes the plugin directory"
+        );
+        Ok(Some(canonical))
+    }
 }
 
 impl PluginSource for DirectorySource {
@@ -150,88 +189,32 @@ impl PluginSource for DirectorySource {
     }
 
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
-        // First, the lexical guard — catches absolute paths,
-        // traversal, Windows-style roots, backslashes, NULs,
-        // and anything else before we touch the filesystem.
-        validate_plugin_path(path)?;
-
-        let full_path = self.root.join(path);
-
-        // Second, a canonicalize-based check that follows
-        // symlinks. A plugin directory containing a symlink
-        // into the host's filesystem would pass the lexical
-        // guard but be caught here.
-        let canonical_root = self
-            .root
-            .canonicalize()
-            .context("resolving plugin root directory")?;
-
-        let canonical = match full_path.canonicalize() {
-            Ok(p) => p,
-            Err(_) => {
-                // If canonicalize fails (e.g., file doesn't exist),
-                // normalize manually to check for traversal before
-                // returning the more specific "file not found" error.
-                let normalized = normalize_path(&full_path);
-                anyhow::ensure!(
-                    normalized.starts_with(&canonical_root),
-                    "plugin file path `{path}` escapes the plugin directory"
-                );
-                // Path is within bounds but file doesn't exist.
-                return std::fs::read(&full_path)
-                    .with_context(|| format!("reading plugin file `{path}`"));
+        match self.resolve_inside_root(path)? {
+            Some(canonical) => {
+                std::fs::read(&canonical).with_context(|| format!("reading plugin file `{path}`"))
             }
-        };
-
-        anyhow::ensure!(
-            canonical.starts_with(&canonical_root),
-            "plugin file path `{path}` escapes the plugin directory"
-        );
-
-        std::fs::read(&canonical).with_context(|| format!("reading plugin file `{path}`"))
+            None => {
+                // Surface a proper "not found" error. The
+                // lexical join is safe to expose — the guard
+                // in `resolve_inside_root` already validated
+                // the path.
+                std::fs::read(self.root.join(path))
+                    .with_context(|| format!("reading plugin file `{path}`"))
+            }
+        }
     }
 
     fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
-        // Same lexical guard as `read_file`: traversal,
-        // absolute paths, backslashes, etc. surface as
-        // errors (Err), not as "valid path, missing file"
-        // (Ok(false)).
-        validate_plugin_path(path)?;
-
-        let full_path = self.root.join(path);
-
-        let canonical_root = self
-            .root
-            .canonicalize()
-            .context("resolving plugin root directory")?;
-
-        // If the file doesn't exist, `validate_plugin_path`
-        // above has already established that the lexical
-        // path sits inside the plugin root. There is no
-        // symlink target to inspect in the "doesn't exist"
-        // branch, so we don't need a canonicalization-based
-        // root check here (doing one is fragile: on macOS
-        // the plugin root's canonical form is
-        // `/private/var/...` while the lexical join yields
-        // `/var/...`, producing false-negative "escapes"
-        // errors). Return `Ok(false)` directly.
-        let canonical = match full_path.canonicalize() {
-            Ok(p) => p,
-            Err(_) => return Ok(false),
-        };
-
-        // Canonicalize succeeded — the entry exists. Verify
-        // it didn't resolve outside the root via a symlink
-        // that `validate_plugin_path` couldn't see.
-        anyhow::ensure!(
-            canonical.starts_with(&canonical_root),
-            "plugin file path `{path}` escapes the plugin directory"
-        );
-
-        // Require a regular file so `file_exists("some-subdir")`
-        // reports `false` for directories rather than
-        // misleading callers.
-        Ok(canonical.is_file())
+        // `resolve_inside_root` returns `None` for the
+        // missing-file case; that maps straight to
+        // `Ok(false)` here. Subdirectory entries resolve
+        // but are not regular files, so `is_file()` weeds
+        // them out — callers asking "does this asset exist"
+        // want a file, not a directory.
+        match self.resolve_inside_root(path)? {
+            Some(canonical) => Ok(canonical.is_file()),
+            None => Ok(false),
+        }
     }
 }
 
@@ -768,8 +751,25 @@ mod tests {
         let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
-        let result = source.read_file("does-not-exist.txt");
-        assert!(result.is_err(), "should fail for missing file");
+        let err = source
+            .read_file("does-not-exist.txt")
+            .expect_err("should fail for missing file");
+        // The error must describe the missing-file condition,
+        // NOT claim the path escapes the plugin directory.
+        // On macOS, `canonicalize()` on a tempdir path yields
+        // `/private/var/...` while lexical joins yield
+        // `/var/...`; an incorrect starts_with check against
+        // the canonical root in the missing-file branch would
+        // surface the wrong error here.
+        let msg = format!("{err:#}");
+        assert!(
+            !msg.contains("escapes"),
+            "missing file must not surface as traversal error (got: {msg})"
+        );
+        assert!(
+            msg.contains("does-not-exist.txt"),
+            "error should name the missing file (got: {msg})"
+        );
     }
 
     #[test]
