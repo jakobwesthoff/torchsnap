@@ -314,7 +314,13 @@ struct EmojiMatch {
 }
 
 fn search_entries(query: &str, entries: &[EmojiData]) -> Vec<ScoredEntry> {
-    let mut matcher = Matcher::new(Config::DEFAULT);
+    // `prefer_prefix` gives shortcodes that start with the
+    // query (`hug` → `hugs`) a distance-weighted bonus,
+    // keeping prefix hits above mid-word matches like
+    // `shrug`.
+    let mut config = Config::DEFAULT;
+    config.prefer_prefix = true;
+    let mut matcher = Matcher::new(config);
     let pattern = Pattern::parse(query, CaseMatching::Smart, Normalization::Smart);
     let mut char_buf = Vec::new();
     let mut indices_buf = Vec::new();
