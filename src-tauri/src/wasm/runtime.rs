@@ -781,6 +781,13 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
 // - `exists`: the source's `file_exists` returns `Ok(false)` on
 //   miss, which maps directly to `Ok(false)` in WIT.
 //
+// The `read` pre-probe has a benign TOCTOU: a file that
+// passes `file_exists` can be unlinked between the two calls
+// (realistic only for `DirectorySource` during development;
+// archive entries never race). In that narrow case the guest
+// sees `IoError` rather than `NotFound`. Accept this; the
+// fix would require a richer trait error enum.
+//
 // Any remaining error from the source — filesystem, archive
 // lookup, unexpected zip variant — collapses to `IoError`.
 // =========================================================

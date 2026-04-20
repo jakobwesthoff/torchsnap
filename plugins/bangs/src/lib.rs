@@ -35,19 +35,22 @@ use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
 //
 // SAFETY INVARIANT (load-bearing):
 //
-//   search() runs synchronously per query cycle, and the UI
-//   can only execute the currently-displayed result. Because
-//   host calls into the guest are serialized on the
-//   WasmPluginInstance's store mutex, a subsequent search()
-//   cannot race with an execute() — the two methods on the
-//   same plugin instance strictly alternate.
+//   `wasm32-wasip2` is single-threaded per guest instance,
+//   so a `thread_local!` here is effectively per-instance
+//   static storage. The host's UI flow writes via search()
+//   and reads via execute() with no other caller that
+//   touches the cell — search() runs synchronously per
+//   query cycle, the UI can only execute the currently
+//   displayed result, and the host serializes guest calls
+//   on the store mutex as a belt-and-suspenders second
+//   line of defense.
 //
 // Therefore the URL written by search() is always the URL
-// the user sees when they trigger execute(). If that
-// invariant ever changes (background tasks that touch the
-// cell, concurrent search/execute, pipelined WIT calls),
-// this mechanism breaks silently — execute() would open a
-// stale or wrong URL.
+// the user sees when they trigger execute(). If either
+// condition breaks (multi-threaded guest runtime, a
+// background task that touches the cell, pipelined WIT
+// calls that overlap), this mechanism breaks silently —
+// execute() would open a stale or wrong URL.
 //
 // HACK/FIXME: This whole mechanism disappears once todo
 //   01kn7v6ynyf580ax9jyyt25jgc-plugin-execute-data-param.md
