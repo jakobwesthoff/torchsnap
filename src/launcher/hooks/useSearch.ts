@@ -172,7 +172,22 @@ export function useSearch(query: string): UseSearchResult {
             } else {
               accumulatorRef.current.set(key, next);
             }
+          }
 
+          // Force a `setResults` call on the first message of
+          // every new generation. Without this, a generation
+          // whose first message happens to be empty-to-empty
+          // would short-circuit the setResults call below and
+          // leave the previous generation's results visible in
+          // React state — the Map is already fresh/empty so
+          // `prev` is `[]` for every source at the boundary,
+          // which made every first message spuriously qualify
+          // for the short-circuit.
+          //
+          // Within a generation, subsequent empty-to-empty
+          // messages still skip the setResults to avoid
+          // spurious re-renders for no-op deltas.
+          if (entriesChanged || isFirstMessageOfGeneration) {
             // Recompute the flat sorted list across every
             // source. The per-source batches arrive pre-sorted
             // within themselves, but sources are independent,
@@ -187,12 +202,6 @@ export function useSearch(query: string): UseSearchResult {
             flat.sort(compareEntries);
             setResults(flat);
           }
-          // Empty-to-empty short-circuits the `setResults`
-          // call — no state change, no re-render. The
-          // view-ref update still runs below because an
-          // empty-entries batch can still carry a view
-          // reference (e.g., a plugin that surfaces its UI
-          // via `inline-ui` with no list entries).
 
           // -------------------------------------------------
           // View ref update logic
