@@ -198,12 +198,12 @@ fn show_auxiliary_window(app: &tauri::AppHandle, config: &AuxiliaryWindowConfig)
             .focused(false)
             .center();
 
+    // Shadowed on macOS to extend the builder without requiring `mut`
+    // on platforms where the extension does not apply.
     #[cfg(target_os = "macos")]
-    {
-        builder = builder
-            .title_bar_style(TitleBarStyle::Overlay)
-            .hidden_title(true);
-    }
+    let builder = builder
+        .title_bar_style(TitleBarStyle::Overlay)
+        .hidden_title(true);
 
     let win = match builder.build() {
         Ok(w) => w,
