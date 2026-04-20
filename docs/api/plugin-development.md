@@ -769,6 +769,67 @@ Migration file errors (missing file, malformed SQL, migration apply
 failure) surface as a host-side `enable()` error — the guest never
 sees them. Per-statement errors come back from `execute` / `query`.
 
+### Assets (WASM plugins, ADR 0039)
+
+WASM plugins can read files from inside their own `.torchsnap` archive
+(or development directory) via the `assets` host import. Unlike every
+other capability, there is **no `[permissions.assets]` section** —
+plugins can always read their own bundled files. Security is spatial:
+paths are validated by the same guard that governs every other
+plugin-file read on the host, so the interface can only reach files
+already inside the plugin root.
+
+No manifest opt-in is required. Bundled assets ship as ordinary files
+inside the plugin directory / archive alongside `manifest.toml`:
+
+```toml
+[plugin]
+id = "my-plugin"
+name = "My Plugin"
+# … bundled/ bang.json, data/seed.sqlite3, etc. sit next to
+# manifest.toml and plugin.wasm. No [permissions.assets] block.
+```
+
+Call `assets::read` or `assets::exists` from any guest entry point —
+the SDK prelude re-exports the module so no extra `use` is required:
+
+```rust
+use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_plugin_sdk::assets::AssetsError;
+
+fn load_seed_db() -> Result<Vec<u8>, String> {
+    match assets::read("data/seed.sqlite3") {
+        Ok(bytes) => Ok(bytes),
+        Err(AssetsError::InvalidPath(msg)) => Err(format!("bad path: {msg}")),
+        Err(AssetsError::NotFound) => Err("seed db missing from bundle".into()),
+        Err(AssetsError::IoError(msg)) => Err(format!("read failed: {msg}")),
+    }
+}
+```
+
+`exists` returns `Ok(true)` / `Ok(false)` for valid-path probes and
+`Err(InvalidPath)` for malformed paths — useful for optional assets
+that may or may not ship depending on the build.
+
+Key points:
+
+- **Paths are plugin-relative.** Same convention as `manifest.toml`
+  path fields. Absolute paths, `..` traversal, backslash separators,
+  Windows drive letters, and NUL bytes are rejected as `InvalidPath`.
+  The host-side `validate_plugin_path` guard is the single security
+  boundary.
+- **Bytes cross the boundary in full.** `read` returns a complete
+  `Vec<u8>` on every call — the host holds no cached handle. Plugins
+  that need to retain an asset (e.g. a parsed JSON database) should
+  keep one copy in their own linear memory after reading.
+- **Typical use is enable-time data loading.** The bangs plugin loads
+  its bundled `bang.json` from `enable()` if the SQL store is empty.
+  Hot-path reads on every search would work but are usually better
+  served by caching in guest memory.
+- **`exists` is cheap.** No bytes transferred, no archive decompression
+  — only a central-directory lookup for archives or a filesystem stat
+  for directories.
+
 ### Opener (WASM plugins, ADR 0037)
 
 WASM plugins can open URLs in the OS default handler (browser, mail client,
