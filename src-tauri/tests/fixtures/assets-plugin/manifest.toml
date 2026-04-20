@@ -1,0 +1,7 @@
+[plugin]
+id = "assets-plugin"
+name = "Assets Test Plugin"
+description = "Test-only fixture exercising the assets host interface"
+version = "0.0.0"
+wasm = "assets_plugin.wasm"
+icon = "heroicons:beaker"

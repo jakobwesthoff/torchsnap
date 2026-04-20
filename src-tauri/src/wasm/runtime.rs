@@ -1567,6 +1567,12 @@ mod tests {
     const OPENER_HTTP_PLUGIN_WASM: &[u8] =
         include_bytes!("../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm");
 
+    /// Bytes of the committed `assets-plugin` fixture.
+    /// Exercises the `assets` host interface via
+    /// `messaging::handle-message` dispatch.
+    const ASSETS_PLUGIN_WASM: &[u8] =
+        include_bytes!("../../tests/fixtures/assets-plugin/assets_plugin.wasm");
+
     // =========================================================
     // Unit tests for opener/http pure functions
     //
@@ -2266,5 +2272,196 @@ icon = "heroicons:beaker"
             }
             other => panic!("expected IoError, got {other:?}"),
         }
+    }
+
+    // =========================================================
+    // WASM integration tests for assets via fixture plugin
+    //
+    // The assets fixture directory contains `greeting.txt` at
+    // the root and `data/payload.bin` nested. These tests
+    // compile the fixture, wire it to a `DirectorySource`
+    // pointing at the fixture directory, and exercise
+    // `assets::read` / `assets::exists` end-to-end through
+    // `handle_message` dispatch.
+    // =========================================================
+
+    fn compile_assets_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+        let runtime = test_runtime();
+        runtime
+            .compile("assets-plugin", ASSETS_PLUGIN_WASM)
+            .expect("compile assets fixture");
+        let instance = runtime
+            .instantiate("assets-plugin")
+            .expect("instantiate assets fixture");
+        (runtime, instance)
+    }
+
+    /// Build a `PluginSource` pointing at the committed
+    /// assets-plugin fixture directory. This mirrors what
+    /// the bridge does in production: `DirectorySource::open`
+    /// on the plugin root, wrapped in an `Arc`, then stashed
+    /// on the instance via `set_plugin_source`.
+    fn assets_fixture_source() -> Arc<dyn super::super::source::PluginSource + Send + Sync>
+    {
+        use super::super::source::DirectorySource;
+        let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/assets-plugin");
+        Arc::new(DirectorySource::open(fixture_root).expect("open assets fixture"))
+    }
+
+    #[test]
+    fn wasm_assets_read_returns_bundled_file_contents() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "greeting.txt")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+
+        assert!(
+            result.contains("Hello from the assets fixture"),
+            "unexpected body: {result}"
+        );
+    }
+
+    #[test]
+    fn wasm_assets_read_binary_preserves_byte_count() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        // `data/payload.bin` was written with a known
+        // length; verify the full byte count crosses the
+        // WIT boundary without truncation.
+        let result = instance
+            .handle_message("assets.read-len", "data/payload.bin")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+
+        let expected_len =
+            std::fs::metadata(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/assets-plugin/data/payload.bin"))
+            .expect("stat fixture")
+            .len();
+
+        assert_eq!(result, format!("len:{expected_len}"));
+    }
+
+    #[test]
+    fn wasm_assets_exists_true_for_bundled_file() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.exists", "greeting.txt")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+        assert_eq!(result, "true");
+    }
+
+    #[test]
+    fn wasm_assets_exists_false_for_missing_file() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.exists", "not-here.txt")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+        assert_eq!(result, "false");
+    }
+
+    #[test]
+    fn wasm_assets_exists_false_for_nested_missing_file() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.exists", "data/not-here.txt")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+        assert_eq!(result, "false");
+    }
+
+    #[test]
+    fn wasm_assets_read_rejects_traversal() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "../../../etc/passwd")
+            .expect("dispatch succeeded");
+        let err = result.expect_err("traversal must error");
+        assert!(
+            err.contains("InvalidPath"),
+            "expected InvalidPath variant in guest debug output, got: {err}"
+        );
+    }
+
+    #[test]
+    fn wasm_assets_read_rejects_absolute_path() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "/etc/passwd")
+            .expect("dispatch succeeded");
+        let err = result.expect_err("absolute must error");
+        assert!(err.contains("InvalidPath"), "expected InvalidPath, got: {err}");
+    }
+
+    #[test]
+    fn wasm_assets_read_returns_not_found_for_missing_file() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "not-present.json")
+            .expect("dispatch succeeded");
+        let err = result.expect_err("missing must error");
+        assert!(
+            err.contains("NotFound"),
+            "expected NotFound variant in guest debug output, got: {err}"
+        );
+    }
+
+    #[test]
+    fn wasm_assets_read_succeeds_on_nested_path() {
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.set_plugin_source(assets_fixture_source());
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "data/payload.bin")
+            .expect("dispatch succeeded")
+            .expect("guest returned Ok");
+        assert!(
+            result.contains("nested binary data for tests"),
+            "unexpected body: {result}"
+        );
+    }
+
+    #[test]
+    fn wasm_assets_calls_without_plugin_source_return_io_error() {
+        // Skip `set_plugin_source` — same shape the bridge
+        // would produce if it forgot to stash the source
+        // on enable. The host returns `IoError` and the
+        // guest bubbles the debug form up to our caller.
+        let (_runtime, instance) = compile_assets_fixture();
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("assets.read", "greeting.txt")
+            .expect("dispatch succeeded");
+        let err = result.expect_err("uninit must error");
+        assert!(err.contains("IoError"), "expected IoError, got: {err}");
     }
 }
