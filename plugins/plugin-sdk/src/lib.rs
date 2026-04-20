@@ -90,7 +90,7 @@ pub use exports::torchsnap::plugin::search::{
 // higher-level `settings` helper module. The same applies to
 // `logging_host`.
 // =========================================================
-pub use torchsnap::plugin::{clipboard, frecency, http, opener};
+pub use torchsnap::plugin::{assets, clipboard, frecency, http, opener};
 pub use torchsnap::plugin::logging as logging_host;
 pub use torchsnap::plugin::settings as settings_host;
 
@@ -100,16 +100,16 @@ pub mod prelude {
     //! `use torchsnap_plugin_sdk::prelude::*;` pulls in the
     //! four guest traits, the search record / variant types
     //! plugins work with every file, and the SDK's helper
-    //! modules. Host import modules (`clipboard`, `frecency`,
-    //! `http`, `opener`) are also surfaced so plugin code
-    //! can call them without an extra `use`.
+    //! modules. Host import modules (`assets`, `clipboard`,
+    //! `frecency`, `http`, `opener`) are also surfaced so
+    //! plugin code can call them without an extra `use`.
     pub use super::{LifecycleGuest, MessagingGuest, SearchGuest, TasksGuest};
     pub use super::{
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
     pub use super::{logging, messaging, settings, sql};
-    pub use super::{clipboard, frecency, http, opener};
+    pub use super::{assets, clipboard, frecency, http, opener};
 }
 
 // =========================================================
