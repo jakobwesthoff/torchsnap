@@ -54,6 +54,29 @@ pub struct WasmPluginBridge {
     /// materialized config here to survive disable/re-enable
     /// cycles without re-reading the plugin source.
     sql_config: SqlConfig,
+    /// Retained so `enable()` can stash it on `PluginState`
+    /// for the `assets::read` / `assets::exists` host
+    /// imports, which call into the source at runtime
+    /// (during guest `enable`, search, messaging) long after
+    /// bridge construction.
+    ///
+    /// Stored as `Arc<_>` because the same underlying source
+    /// is simultaneously retained by `wasm::protocol`'s
+    /// `PluginSourceRegistry` for frontend asset serving
+    /// (the `plugin://` custom protocol handler). Two
+    /// independent owners of the same source — shared
+    /// ownership = `Arc`. `Box` would force a double-open
+    /// (re-mmap'ing the zip for `ArchiveSource`) or break
+    /// the registry side of the contract.
+    ///
+    /// The `+ Send + Sync` bound is required by the dyn
+    /// type signature because the bridge crosses threads
+    /// via the scheduler tokio tasks. The `PluginSource`
+    /// trait itself is already declared
+    /// `pub trait PluginSource: Send + Sync`, so every impl
+    /// already qualifies — the bound here is purely a
+    /// compile-time assertion.
+    plugin_source: Arc<dyn PluginSource + Send + Sync>,
     /// Permitted URL schemes for `opener::open-url`. Extracted
     /// from `[permissions.opener].schemes` at construction;
     /// empty means the plugin has no opener access.
@@ -130,7 +153,7 @@ impl WasmPluginBridge {
         manifest: Manifest,
         runtime: Arc<WasmRuntime>,
         log_sender: LogSender,
-        source: &dyn PluginSource,
+        source: Arc<dyn PluginSource + Send + Sync>,
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
         let plugin_id = manifest.plugin.id.as_str().to_string();
@@ -219,6 +242,7 @@ impl WasmPluginBridge {
             plugin_id,
             runtime,
             sql_config,
+            plugin_source: source,
             opener_schemes,
             http_origins,
             instance: Mutex::new(None),
@@ -806,14 +830,16 @@ mod tests {
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<WasmPluginBridge> {
         let fixture_path = std::path::Path::new(FIXTURE_ROOT).join(fixture);
-        let source = DirectorySource::open(&fixture_path)
-            .with_context(|| format!("open fixture `{fixture}`"))?;
+        let source: Arc<dyn PluginSource + Send + Sync> = Arc::new(
+            DirectorySource::open(&fixture_path)
+                .with_context(|| format!("open fixture `{fixture}`"))?,
+        );
         let manifest = source.manifest().clone();
         WasmPluginBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data_dir,
         )
     }
@@ -847,7 +873,8 @@ icon = "heroicons:x-mark"
         std::fs::write(bad_plugin_dir.join("bad.wasm"), b"not a wasm file at all")
             .expect("write bad wasm");
 
-        let source = DirectorySource::open(&bad_plugin_dir).expect("open directory");
+        let source: Arc<dyn PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(&bad_plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
@@ -855,7 +882,7 @@ icon = "heroicons:x-mark"
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data.path(),
         );
         assert!(result.is_err());
@@ -890,7 +917,8 @@ migrations = ["migrations/001_init.sql"]
         )
         .expect("write manifest");
 
-        let source = DirectorySource::open(&plugin_dir).expect("open directory");
+        let source: Arc<dyn PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
@@ -898,7 +926,7 @@ migrations = ["migrations/001_init.sql"]
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data.path(),
         );
         let err = result.err().expect("missing migration file must error");
@@ -1032,13 +1060,14 @@ migrations = ["migrations/001_init.sql"]
         .expect("write manifest");
 
         let app_data = tempfile::tempdir().expect("app data tempdir");
-        let source = DirectorySource::open(&plugin_dir).expect("open directory");
+        let source: Arc<dyn PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let bridge = WasmPluginBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data.path(),
         )
         .expect("bridge construction");
@@ -1109,13 +1138,14 @@ migrations = ["migrations/001_init.sql"]
         )
         .expect("write manifest");
 
-        let source = DirectorySource::open(&plugin_dir).expect("open directory");
+        let source: Arc<dyn PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         WasmPluginBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data_dir,
         )
     }
@@ -1231,13 +1261,14 @@ schedule = "*/5 * * * *"
         .expect("write manifest");
 
         let app_data = tempfile::tempdir().expect("tempdir");
-        let source = DirectorySource::open(&plugin_dir).expect("open directory");
+        let source: Arc<dyn PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let bridge = WasmPluginBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
-            &source,
+            source,
             app_data.path(),
         )
         .expect("bridge construction");
