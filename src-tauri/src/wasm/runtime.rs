@@ -129,6 +129,14 @@ pub struct PluginState {
     /// lifetime; the `http::fetch` host import returns an error
     /// in that case.
     http_client: Option<Arc<crate::network::Http>>,
+    /// The plugin's own source handle, stashed by the bridge
+    /// on `enable()` so the `assets::read` / `assets::exists`
+    /// host imports can read files bundled inside the plugin
+    /// archive (or development directory) without re-opening
+    /// it. `None` outside an enable lifetime — the host
+    /// imports return an `io-error` in that case, matching
+    /// the contract of the other capability stashes.
+    plugin_source: Option<Arc<dyn super::source::PluginSource + Send + Sync>>,
 }
 
 /// Closure type for the clipboard write capability.
@@ -757,27 +765,81 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
     }
 }
 
-// Stub impl to satisfy the `plugin` world's `import assets;`
-// binding. Real wire-up (path validation, source stash,
-// read/exists dispatch) arrives in the next commit alongside
-// the `PluginSource::file_exists` trait method.
+// =========================================================
+// Assets host import
+//
+// Routes guest `assets::read` / `assets::exists` calls through
+// the plugin's own `PluginSource` (stashed on the bridge on
+// `enable`). Path validation runs on the host side BEFORE
+// touching the source, producing the `InvalidPath` variant
+// directly; that lets us skip error-string matching on the
+// `anyhow::Error` the trait returns.
+//
+// `NotFound` is surfaced differently in each direction:
+// - `read`: pre-probe with `file_exists`. Only call `read_file`
+//   on hit, so the "missing" path is reported structurally.
+// - `exists`: the source's `file_exists` returns `Ok(false)` on
+//   miss, which maps directly to `Ok(false)` in WIT.
+//
+// Any remaining error from the source — filesystem, archive
+// lookup, unexpected zip variant — collapses to `IoError`.
+// =========================================================
+
+/// Map a `PluginSource` error to the `assets::io-error`
+/// variant. Pure function, unit-testable without wasmtime.
+fn into_assets_io_error(
+    e: anyhow::Error,
+) -> bindings::torchsnap::plugin::assets::AssetsError {
+    bindings::torchsnap::plugin::assets::AssetsError::IoError(format!("{e:#}"))
+}
+
 impl bindings::torchsnap::plugin::assets::Host for PluginState {
     fn read(
         &mut self,
-        _path: String,
+        path: String,
     ) -> Result<Vec<u8>, bindings::torchsnap::plugin::assets::AssetsError> {
-        Err(bindings::torchsnap::plugin::assets::AssetsError::IoError(
-            "assets interface not yet wired".into(),
-        ))
+        use bindings::torchsnap::plugin::assets::AssetsError;
+
+        // Validate first so a structured `InvalidPath`
+        // variant is returned without having to grep the
+        // trait's `anyhow::Error` for a guard message.
+        if let Err(e) = super::source::validate_plugin_path(&path) {
+            return Err(AssetsError::InvalidPath(format!("{e:#}")));
+        }
+
+        let source = self.plugin_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("assets not initialized".into())
+        })?;
+
+        // Pre-probe so the "missing" case becomes a
+        // structural `NotFound` variant; the alternative —
+        // attempting the read and matching on the error
+        // string — would be fragile across filesystem /
+        // archive backends.
+        match source.file_exists(&path) {
+            Ok(true) => {}
+            Ok(false) => return Err(AssetsError::NotFound),
+            Err(e) => return Err(into_assets_io_error(e)),
+        }
+
+        source.read_file(&path).map_err(into_assets_io_error)
     }
 
     fn exists(
         &mut self,
-        _path: String,
+        path: String,
     ) -> Result<bool, bindings::torchsnap::plugin::assets::AssetsError> {
-        Err(bindings::torchsnap::plugin::assets::AssetsError::IoError(
-            "assets interface not yet wired".into(),
-        ))
+        use bindings::torchsnap::plugin::assets::AssetsError;
+
+        if let Err(e) = super::source::validate_plugin_path(&path) {
+            return Err(AssetsError::InvalidPath(format!("{e:#}")));
+        }
+
+        let source = self.plugin_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("assets not initialized".into())
+        })?;
+
+        source.file_exists(&path).map_err(into_assets_io_error)
     }
 }
 
@@ -965,6 +1027,12 @@ impl WasmRuntime {
             opener_writer: None,
             http_origins: Vec::new(),
             http_client: None,
+            // Stashed by the bridge on `enable()` via
+            // `WasmPluginInstance::set_plugin_source`. The
+            // `assets::*` host imports return `io-error`
+            // until then, matching the capability-stash
+            // contract of `http_client` / `clipboard_writer`.
+            plugin_source: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -1169,6 +1237,28 @@ impl WasmPluginInstance {
         store.data_mut().http_client = None;
     }
 
+    /// Stash the plugin's own `PluginSource` handle. Called
+    /// by the bridge on `enable()`. The `assets::*` host
+    /// imports use this Arc to read the plugin's bundled
+    /// files on demand. Same lifecycle contract as
+    /// `set_http_client`.
+    pub fn set_plugin_source(
+        &self,
+        source: Arc<dyn super::source::PluginSource + Send + Sync>,
+    ) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().plugin_source = Some(source);
+    }
+
+    /// Drop the plugin source on `disable()`. Eager release
+    /// so the underlying `ArchiveSource` file handle (or
+    /// the `DirectorySource` path) doesn't linger across
+    /// enable cycles.
+    pub fn clear_plugin_source(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().plugin_source = None;
+    }
+
     /// Call the guest's `enable` export.
     pub fn enable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("enable").start();
@@ -1346,6 +1436,7 @@ impl PluginState {
             opener_writer: None,
             http_origins: Vec::new(),
             http_client: None,
+            plugin_source: None,
         }
     }
 }
@@ -1924,5 +2015,256 @@ mod tests {
 
         let err = result.expect_err("guest should return Err for blocked origin");
         assert!(err.contains("PermissionDenied"), "unexpected error: {err}");
+    }
+
+    // =========================================================
+    // Assets host import — unit tests
+    //
+    // These drive the `assets::Host` impl directly against a
+    // `PluginState` built with `default_for_test` and a
+    // `DirectorySource` stashed on `plugin_source`. They cover
+    // each variant of `AssetsError` plus the happy paths for
+    // both `read` and `exists`. The fixture-driven integration
+    // tests (step 1f) exercise the same paths through a real
+    // WASM guest call.
+    // =========================================================
+
+    fn make_plugin_source_dir() -> (tempfile::TempDir, Arc<dyn super::super::source::PluginSource + Send + Sync>) {
+        use super::super::source::DirectorySource;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        std::fs::write(
+            root.join("manifest.toml"),
+            r#"
+[plugin]
+id = "assets-unit-plugin"
+name = "Assets Unit Plugin"
+description = "Fixture for runtime unit tests"
+version = "0.0.0"
+wasm = "plugin.wasm"
+icon = "heroicons:beaker"
+"#,
+        )
+        .expect("write manifest");
+        std::fs::write(root.join("plugin.wasm"), b"wasm").expect("write wasm");
+        std::fs::write(root.join("greeting.txt"), b"hello from the fixture\n")
+            .expect("write greeting");
+        std::fs::create_dir_all(root.join("data")).expect("mkdir data");
+        std::fs::write(root.join("data/payload.bin"), [0u8, 1, 2, 3, 255])
+            .expect("write payload");
+
+        let src: Arc<dyn super::super::source::PluginSource + Send + Sync> =
+            Arc::new(DirectorySource::open(root).expect("open"));
+        (dir, src)
+    }
+
+    fn state_with_source(
+        src: Arc<dyn super::super::source::PluginSource + Send + Sync>,
+    ) -> PluginState {
+        PluginState {
+            plugin_source: Some(src),
+            ..PluginState::default_for_test()
+        }
+    }
+
+    #[test]
+    fn assets_read_returns_bytes_for_existing_file() {
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let bytes = state
+            .read("greeting.txt".to_string())
+            .expect("read succeeds");
+        assert_eq!(bytes, b"hello from the fixture\n");
+    }
+
+    #[test]
+    fn assets_read_preserves_binary_content() {
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let bytes = state
+            .read("data/payload.bin".to_string())
+            .expect("read succeeds");
+        assert_eq!(bytes, [0u8, 1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn assets_read_returns_not_found_for_missing_file() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state
+            .read("not-here.json".to_string())
+            .expect_err("missing file returns Err");
+        assert!(
+            matches!(err, AssetsError::NotFound),
+            "expected NotFound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn assets_read_rejects_traversal_path() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state
+            .read("../../../etc/passwd".to_string())
+            .expect_err("traversal rejected");
+        match err {
+            AssetsError::InvalidPath(msg) => assert!(
+                msg.contains("escapes"),
+                "InvalidPath message should mention escape (got: {msg})"
+            ),
+            other => panic!("expected InvalidPath, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assets_read_rejects_absolute_path() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state
+            .read("/etc/passwd".to_string())
+            .expect_err("absolute rejected");
+        match err {
+            AssetsError::InvalidPath(msg) => assert!(
+                msg.contains("relative"),
+                "InvalidPath message should mention relative (got: {msg})"
+            ),
+            other => panic!("expected InvalidPath, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assets_read_rejects_empty_path() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state.read("".to_string()).expect_err("empty rejected");
+        assert!(matches!(err, AssetsError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn assets_read_rejects_nul_byte_path() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state
+            .read("data\0hidden".to_string())
+            .expect_err("NUL rejected");
+        assert!(matches!(err, AssetsError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn assets_read_without_plugin_source_returns_io_error() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        // Default state has `plugin_source: None` — mirrors
+        // calling an asset import outside an enable lifetime.
+        let mut state = PluginState::default_for_test();
+        let err = state
+            .read("greeting.txt".to_string())
+            .expect_err("uninitialized returns Err");
+        match err {
+            AssetsError::IoError(msg) => assert!(
+                msg.contains("not initialized"),
+                "expected `not initialized` message, got: {msg}"
+            ),
+            other => panic!("expected IoError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assets_exists_returns_true_when_present() {
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        assert!(
+            state
+                .exists("greeting.txt".to_string())
+                .expect("probe succeeds")
+        );
+    }
+
+    #[test]
+    fn assets_exists_returns_false_when_absent() {
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        assert!(
+            !state
+                .exists("not-here.json".to_string())
+                .expect("probe succeeds")
+        );
+    }
+
+    #[test]
+    fn assets_exists_rejects_traversal_path() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let (_dir, src) = make_plugin_source_dir();
+        let mut state = state_with_source(src);
+
+        let err = state
+            .exists("../../../etc/passwd".to_string())
+            .expect_err("traversal rejected");
+        assert!(matches!(err, AssetsError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn assets_exists_without_plugin_source_returns_io_error() {
+        use bindings::torchsnap::plugin::assets::AssetsError;
+        use bindings::torchsnap::plugin::assets::Host;
+
+        let mut state = PluginState::default_for_test();
+        let err = state
+            .exists("greeting.txt".to_string())
+            .expect_err("uninitialized returns Err");
+        assert!(matches!(err, AssetsError::IoError(_)));
+    }
+
+    #[test]
+    fn assets_into_io_error_includes_full_chain() {
+        // `anyhow::Error::chain` — make sure the `{e:#}`
+        // formatting captures the `.context()` prefix so
+        // host logs stay diagnostic.
+        let err = anyhow::anyhow!("root cause").context("while doing X");
+        let mapped = into_assets_io_error(err);
+        match mapped {
+            bindings::torchsnap::plugin::assets::AssetsError::IoError(msg) => {
+                assert!(msg.contains("while doing X"), "missing context: {msg}");
+                assert!(msg.contains("root cause"), "missing root: {msg}");
+            }
+            other => panic!("expected IoError, got {other:?}"),
+        }
     }
 }
