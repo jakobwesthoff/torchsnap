@@ -111,9 +111,38 @@ export interface PluginViewRef {
 // Mirrors `SearchMessage` in `src-tauri/src/search/mod.rs`.
 // =========================================================
 
+/**
+ * Identifies which logical layer of the search pipeline
+ * produced a `searchResults` batch. The launcher's
+ * per-source accumulator keys off this so a plugin that
+ * transitions from results to empty between keystrokes can
+ * evict its prior contribution from the merged view.
+ *
+ * - `{ type: "plugin", id }` — a single query or prefix plugin.
+ * - `{ type: "catalog" }` — the aggregated catalog batch, which
+ *   mixes entries from multiple catalog-providing plugins and
+ *   conceptually replaces the catalog layer wholesale.
+ *
+ * Discriminated union mirroring the Rust `ResultSource` enum.
+ */
+export type ResultSource = { type: "plugin"; id: string } | { type: "catalog" };
+
+/**
+ * Stable string key for `ResultSource`. Used as the key in the
+ * launcher's per-source `Map`. Catalog maps to `"catalog"`;
+ * plugin sources prefix the id with `"plugin:"` so a
+ * plugin happening to be named `"catalog"` could never collide
+ * with the catalog layer.
+ */
+export function resultSourceKey(source: ResultSource): string {
+  return source.type === "catalog" ? "catalog" : `plugin:${source.id}`;
+}
+
 export type SearchMessage =
   | {
       type: "searchResults";
+      /** Which logical layer emitted this batch. */
+      source: ResultSource;
       entries: SourcedEntry[];
       /** View reference when the plugin requested custom UI. */
       customPluginView: PluginViewRef | null;

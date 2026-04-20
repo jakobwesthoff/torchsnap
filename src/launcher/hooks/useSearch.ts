@@ -19,9 +19,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { command } from "../../lib/command";
-import { sortedMerge } from "../../lib/sortedMerge";
 import { compareEntries } from "../compareEntries";
-import type { PluginViewRef, SourcedEntry, SearchMessage } from "../../types";
+import {
+  resultSourceKey,
+  type PluginViewRef,
+  type SearchMessage,
+  type SourcedEntry,
+} from "../../types";
 
 interface UseSearchResult {
   results: SourcedEntry[];
@@ -42,9 +46,18 @@ export function useSearch(query: string): UseSearchResult {
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
-  // Accumulator ref — holds the current merged result array so
-  // the channel callback can merge into it without stale closures.
-  const accumulatorRef = useRef<SourcedEntry[]>([]);
+  // Per-source accumulator — each `searchResults` message
+  // replaces (not merges) the entries for its `source`. A plugin
+  // transitioning from results to empty on a subsequent keystroke
+  // emits an empty batch that evicts its prior contribution here,
+  // which is the mechanism that fixes stale bang entries from
+  // lingering after the trigger is backspaced away.
+  //
+  // Keyed by `resultSourceKey(message.source)` rather than the
+  // raw discriminated union — a string key is what `Map` expects,
+  // and the helper guarantees plugin/catalog keys can never
+  // collide.
+  const accumulatorRef = useRef<Map<string, SourcedEntry[]>>(new Map());
 
   // =========================================================
   // View ref generation tracking
@@ -111,7 +124,7 @@ export function useSearch(query: string): UseSearchResult {
     // stale refs without a null gap.
     if (!query) {
       // eslint-disable-next-line react-hooks/refs
-      accumulatorRef.current = [];
+      accumulatorRef.current = new Map();
       setResults([]);
       setCustomPluginView(null);
       setInlinePluginView(null);
@@ -122,12 +135,13 @@ export function useSearch(query: string): UseSearchResult {
   useEffect(() => {
     const generation = ++generationRef.current;
 
-    // Reset the entry accumulator for the new query. We do NOT
-    // reset view refs here — see the generation tracking comment
-    // above for why. Resetting them here would cause a null gap
-    // (effect runs → view refs null → plugin unmounts → message
-    // arrives → view refs set → plugin remounts = visible flash).
-    accumulatorRef.current = [];
+    // Reset the per-source accumulator for the new query. We do
+    // NOT reset view refs here — see the generation tracking
+    // comment above for why. Resetting them here would cause a
+    // null gap (effect runs → view refs null → plugin unmounts
+    // → message arrives → view refs set → plugin remounts =
+    // visible flash).
+    accumulatorRef.current = new Map();
 
     // Track whether this generation has delivered its first
     // message yet. Used to decide between "unconditional
@@ -143,10 +157,42 @@ export function useSearch(query: string): UseSearchResult {
 
       switch (message.type) {
         case "searchResults": {
-          // Merge incoming pre-sorted entries into the accumulator.
-          const merged = sortedMerge(accumulatorRef.current, message.entries, compareEntries);
-          accumulatorRef.current = merged;
-          setResults(merged);
+          // Per-source replacement: the batch replaces (not
+          // merges with) whatever this source contributed on the
+          // previous message for this query. That lets a plugin
+          // evict its prior entries by emitting an empty batch.
+          const key = resultSourceKey(message.source);
+          const prev = accumulatorRef.current.get(key) ?? [];
+          const next = message.entries;
+          const entriesChanged = !(prev.length === 0 && next.length === 0);
+
+          if (entriesChanged) {
+            if (next.length === 0) {
+              accumulatorRef.current.delete(key);
+            } else {
+              accumulatorRef.current.set(key, next);
+            }
+
+            // Recompute the flat sorted list across every
+            // source. The per-source batches arrive pre-sorted
+            // within themselves, but sources are independent,
+            // so we sort the flattened view. At launcher scale
+            // (tens of entries per source, ≤10 sources) this
+            // is well under a millisecond; a k-way merge would
+            // only matter if either bound grew substantially.
+            const flat: SourcedEntry[] = [];
+            for (const batch of accumulatorRef.current.values()) {
+              flat.push(...batch);
+            }
+            flat.sort(compareEntries);
+            setResults(flat);
+          }
+          // Empty-to-empty short-circuits the `setResults`
+          // call — no state change, no re-render. The
+          // view-ref update still runs below because an
+          // empty-entries batch can still carry a view
+          // reference (e.g., a plugin that surfaces its UI
+          // via `inline-ui` with no list entries).
 
           // -------------------------------------------------
           // View ref update logic
