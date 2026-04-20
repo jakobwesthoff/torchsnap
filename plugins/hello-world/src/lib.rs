@@ -16,7 +16,6 @@
 use std::cell::RefCell;
 
 use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 
 mod petnames;
 

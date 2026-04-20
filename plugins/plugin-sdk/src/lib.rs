@@ -99,10 +99,12 @@ pub mod prelude {
     //!
     //! `use torchsnap_plugin_sdk::prelude::*;` pulls in the
     //! four guest traits, the search record / variant types
-    //! plugins work with every file, and the SDK's helper
-    //! modules. Host import modules (`assets`, `clipboard`,
-    //! `frecency`, `http`, `opener`) are also surfaced so
-    //! plugin code can call them without an extra `use`.
+    //! plugins work with every file, the SDK's helper
+    //! modules, and the `define_plugin!` / `impl_noop_*!`
+    //! macros plugins use to wire themselves up. Host
+    //! import modules (`assets`, `clipboard`, `frecency`,
+    //! `http`, `opener`) are also surfaced so plugin code
+    //! can call them without an extra `use`.
     pub use super::{LifecycleGuest, MessagingGuest, SearchGuest, TasksGuest};
     pub use super::{
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
@@ -110,6 +112,10 @@ pub mod prelude {
     };
     pub use super::{logging, messaging, settings, sql};
     pub use super::{assets, clipboard, frecency, http, opener};
+    // Macros re-exported through the prelude so a single
+    // `use torchsnap_plugin_sdk::prelude::*;` is enough to
+    // write a minimal plugin.
+    pub use super::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 }
 
 // =========================================================
