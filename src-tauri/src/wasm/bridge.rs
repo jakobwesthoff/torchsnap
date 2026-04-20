@@ -595,6 +595,13 @@ impl Plugin for WasmPluginBridge {
 
         instance.set_http_client(Arc::new(crate::network::Http::new()));
 
+        // Assets: stash a clone of the source `Arc` the
+        // bridge already holds. No permission allowlist —
+        // plugins can always read their own bundled files;
+        // the guarantee is spatial (validate_plugin_path
+        // confines reads to the plugin root).
+        instance.set_plugin_source(Arc::clone(&self.plugin_source));
+
         // Materialize the SQL database before the guest's
         // enable() runs. Failure here leaves the guest in a
         // bad state (any `sql::connection()` call would
@@ -642,6 +649,7 @@ impl Plugin for WasmPluginBridge {
         instance.clear_clipboard_writer();
         instance.clear_opener_writer();
         instance.clear_http_client();
+        instance.clear_plugin_source();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {
