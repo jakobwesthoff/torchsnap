@@ -34,7 +34,6 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Deserialize;
 use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::{define_plugin, impl_noop_messaging, impl_noop_tasks};
 
 struct EmojiPickerPlugin;
 define_plugin!(EmojiPickerPlugin);
