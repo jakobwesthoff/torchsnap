@@ -35,7 +35,6 @@
 // =========================================================
 
 use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::define_plugin;
 
 struct TemplatePlugin;
 define_plugin!(TemplatePlugin);
