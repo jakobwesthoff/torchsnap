@@ -713,14 +713,10 @@ impl Plugin for WasmPluginBridge {
             return None;
         };
         match instance.search(query, matched_prefix) {
-            // Keep `Some(Results(vec![]))` distinct from `None`
-            // at this layer: an empty result set means "plugin
-            // is healthy but contributes nothing this query",
-            // which the host's per-source accumulator needs to
-            // see so a transition from results → empty can evict
-            // stale entries from the frontend view. `None` is
-            // reserved for "plugin not participating at all"
-            // (disabled / errored).
+            // `None` is reserved for "plugin not participating"
+            // (disabled / errored); an empty Results must pass
+            // through so the host can forward it and evict stale
+            // per-source entries on the frontend.
             Ok(response) => Some(response),
             Err(e) => {
                 self.log(LogLevel::Error, format!("search() failed: {e:#}"));

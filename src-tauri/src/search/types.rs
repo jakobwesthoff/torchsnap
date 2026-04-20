@@ -278,12 +278,9 @@ pub enum SearchMessage {
     /// fields within variants. Fields need explicit renaming.
     #[serde(rename_all = "camelCase")]
     SearchResults {
-        /// Identifies which logical layer produced this
-        /// batch. The frontend keys its per-layer
-        /// accumulator by this so a plugin transitioning
-        /// from results to empty on a subsequent keystroke
-        /// can evict its prior contribution rather than
-        /// having it linger in the merged list.
+        /// The frontend keys its per-source accumulator off
+        /// this so a source going from results to empty on a
+        /// later keystroke can evict its prior entries.
         source: ResultSource,
         entries: Vec<SourcedEntry>,
         /// When a query plugin requested custom UI, this contains
@@ -302,43 +299,15 @@ pub enum SearchMessage {
     Done,
 }
 
-/// Identifies which logical layer of the search pipeline a
-/// `SearchResults` batch came from. The frontend's per-source
-/// accumulator keys off this so a plugin whose contribution
-/// shrinks or disappears between keystrokes can cleanly evict
-/// its prior entries.
-///
-/// Two variants:
-///
-/// - `Plugin(id)` — results from a single query or prefix
-///   plugin. The id matches `Plugin::id()`.
-/// - `Catalog` — the single aggregated batch of fuzzy-matched
-///   catalog entries collected from every catalog-providing
-///   plugin. Conceptually replaces the catalog layer as a
-///   whole even though it mixes per-row `SourcedEntry::source`
-///   values from multiple plugins.
-///
-/// Serialized as a discriminated union
-/// (`{"type":"plugin","id":"bangs"}` /
-/// `{"type":"catalog"}`) so the frontend can match variants
-/// directly rather than parsing a string sentinel.
+/// `Catalog` is one aggregated batch mixing rows from every
+/// catalog-providing plugin — it replaces the catalog layer
+/// wholesale, not per-plugin.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ResultSource {
     Plugin { id: String },
     Catalog,
 }
-
-// =========================================================
-// ResultSource wire-format tests
-//
-// The frontend's `useSearch` hook pattern-matches on
-// `message.source.type === "plugin" | "catalog"` and reads
-// `source.id` for the plugin case. Serialization drift would
-// silently break the launcher's per-source accumulator
-// without any compile-time signal, so the wire shape is
-// pinned down by these tests.
-// =========================================================
 
 #[cfg(test)]
 mod result_source_tests {
@@ -361,9 +330,6 @@ mod result_source_tests {
 
     #[test]
     fn plugin_id_round_trips_special_characters() {
-        // Plugin ids can contain hyphens and dots in the
-        // current manifest grammar; make sure the JSON
-        // encoding doesn't mangle them.
         let json = serde_json::to_value(ResultSource::Plugin {
             id: "my-weird.plugin-id".to_string(),
         })
