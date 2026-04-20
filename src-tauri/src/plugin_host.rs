@@ -40,7 +40,8 @@ use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::search::types::{
-    ActionId, PluginResponse, PluginViewRef, PostAction, ScoredEntry, SearchMessage, SourcedEntry,
+    ActionId, PluginResponse, PluginViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
+    SourcedEntry,
 };
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::unicode::Utf16Positions;
@@ -499,6 +500,7 @@ impl PluginHost {
             }
 
             let _ = on_results.send(SearchMessage::SearchResults {
+                source: ResultSource::Plugin { id: source.clone() },
                 entries,
                 custom_plugin_view,
                 inline_plugin_view,
@@ -531,14 +533,16 @@ impl PluginHost {
         .await
         .expect("catalog search task not panicked");
 
-        if !catalog_results.is_empty() {
-            let _ = on_results.send(SearchMessage::SearchResults {
-                entries: catalog_results,
-                custom_plugin_view: None,
-                inline_plugin_view: None,
-                matched_prefix: None,
-            });
-        }
+        // Always emit — the frontend keys its accumulator by
+        // `source`, so an empty catalog batch is how it learns
+        // to drop the previous query's catalog entries.
+        let _ = on_results.send(SearchMessage::SearchResults {
+            source: ResultSource::Catalog,
+            entries: catalog_results,
+            custom_plugin_view: None,
+            inline_plugin_view: None,
+            matched_prefix: None,
+        });
 
         // Phase 2: query plugins — spawn concurrently, deliver
         // results to the frontend as each plugin completes.
@@ -591,14 +595,20 @@ impl PluginHost {
                 _ => None,
             };
 
-            if !entries.is_empty() || inline_plugin_view.is_some() {
-                let _ = on_results.send(SearchMessage::SearchResults {
-                    entries,
-                    custom_plugin_view: None,
-                    inline_plugin_view,
-                    matched_prefix: None,
-                });
-            }
+            // Always emit — a plugin transitioning from
+            // results → empty between keystrokes relies on
+            // this batch (with empty `entries`) reaching the
+            // frontend so the per-source accumulator can evict
+            // its prior contribution. Skipping the emit for
+            // empty entries would silently strand the stale
+            // entries in the merged view.
+            let _ = on_results.send(SearchMessage::SearchResults {
+                source: ResultSource::Plugin { id: source },
+                entries,
+                custom_plugin_view: None,
+                inline_plugin_view,
+                matched_prefix: None,
+            });
         }
 
         let _ = on_results.send(SearchMessage::Done);
