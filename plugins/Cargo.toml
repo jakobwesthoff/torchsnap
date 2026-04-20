@@ -21,6 +21,7 @@ members = [
     "plugin-sdk",
     "hello-world",
     "calculator",
+    "bangs",
     "emoji-picker",
     "template",
 ]
