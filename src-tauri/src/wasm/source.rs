@@ -333,11 +333,13 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
     // Windows author still fails on macOS/Linux.
     let mut bytes = path.bytes();
     if let (Some(first), Some(second)) = (bytes.next(), bytes.next())
-        && first.is_ascii_alphabetic() && second == b':' {
-            anyhow::bail!(
-                "plugin file path `{path}` looks like a Windows absolute path — paths must be plugin-relative"
-            );
-        }
+        && first.is_ascii_alphabetic()
+        && second == b':'
+    {
+        anyhow::bail!(
+            "plugin file path `{path}` looks like a Windows absolute path — paths must be plugin-relative"
+        );
+    }
 
     // Walk the components in order, tracking the running
     // depth. A path that drops below zero at any point is
@@ -471,9 +473,7 @@ impl PluginSource for ArchiveSource {
         match archive.by_name(&normalized_str) {
             Ok(_) => Ok(true),
             Err(zip::result::ZipError::FileNotFound) => Ok(false),
-            Err(e) => Err(anyhow::anyhow!(
-                "archive lookup for `{path}` failed: {e}"
-            )),
+            Err(e) => Err(anyhow::anyhow!("archive lookup for `{path}` failed: {e}")),
         }
     }
 }
@@ -1404,10 +1404,7 @@ mod tests {
     fn archive_file_exists_handles_nested_entry() {
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[
-                ("plugin.wasm", b"wasm"),
-                ("a/b/c/d/deep.txt", b"deep"),
-            ],
+            &[("plugin.wasm", b"wasm"), ("a/b/c/d/deep.txt", b"deep")],
         );
         let source = ArchiveSource::open(&path).expect("open");
         assert!(source.file_exists("a/b/c/d/deep.txt").expect("probe ok"));

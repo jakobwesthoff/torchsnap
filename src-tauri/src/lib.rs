@@ -188,15 +188,14 @@ fn show_auxiliary_window(app: &tauri::AppHandle, config: &AuxiliaryWindowConfig)
     }
 
     // Build the window hidden — the frontend will signal readiness.
-    let builder =
-        WebviewWindowBuilder::new(app, config.label, WebviewUrl::App(config.url.into()))
-            .title(config.title)
-            .inner_size(config.width, config.height)
-            .min_inner_size(config.min_width, config.min_height)
-            .resizable(true)
-            .visible(false)
-            .focused(false)
-            .center();
+    let builder = WebviewWindowBuilder::new(app, config.label, WebviewUrl::App(config.url.into()))
+        .title(config.title)
+        .inner_size(config.width, config.height)
+        .min_inner_size(config.min_width, config.min_height)
+        .resizable(true)
+        .visible(false)
+        .focused(false)
+        .center();
 
     // Shadowed on macOS to extend the builder without requiring `mut`
     // on platforms where the extension does not apply.

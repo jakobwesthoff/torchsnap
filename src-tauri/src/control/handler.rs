@@ -42,8 +42,7 @@ impl ControlError {
 
     pub fn message(&self) -> &str {
         match self {
-            ControlError::InvalidState { message }
-            | ControlError::Internal { message } => message,
+            ControlError::InvalidState { message } | ControlError::Internal { message } => message,
         }
     }
 

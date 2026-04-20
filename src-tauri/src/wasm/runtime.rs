@@ -787,9 +787,7 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
 
 /// Map a `PluginSource` error to the `assets::io-error`
 /// variant. Pure function, unit-testable without wasmtime.
-fn into_assets_io_error(
-    e: anyhow::Error,
-) -> bindings::torchsnap::plugin::assets::AssetsError {
+fn into_assets_io_error(e: anyhow::Error) -> bindings::torchsnap::plugin::assets::AssetsError {
     bindings::torchsnap::plugin::assets::AssetsError::IoError(format!("{e:#}"))
 }
 
@@ -807,9 +805,10 @@ impl bindings::torchsnap::plugin::assets::Host for PluginState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let source = self.plugin_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("assets not initialized".into())
-        })?;
+        let source = self
+            .plugin_source
+            .as_ref()
+            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
 
         // Pre-probe so the "missing" case becomes a
         // structural `NotFound` variant; the alternative —
@@ -835,9 +834,10 @@ impl bindings::torchsnap::plugin::assets::Host for PluginState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let source = self.plugin_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("assets not initialized".into())
-        })?;
+        let source = self
+            .plugin_source
+            .as_ref()
+            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
 
         source.file_exists(&path).map_err(into_assets_io_error)
     }
@@ -1242,10 +1242,7 @@ impl WasmPluginInstance {
     /// imports use this Arc to read the plugin's bundled
     /// files on demand. Same lifecycle contract as
     /// `set_http_client`.
-    pub fn set_plugin_source(
-        &self,
-        source: Arc<dyn super::source::PluginSource + Send + Sync>,
-    ) {
+    pub fn set_plugin_source(&self, source: Arc<dyn super::source::PluginSource + Send + Sync>) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().plugin_source = Some(source);
     }
@@ -2035,7 +2032,10 @@ mod tests {
     // WASM guest call.
     // =========================================================
 
-    fn make_plugin_source_dir() -> (tempfile::TempDir, Arc<dyn super::super::source::PluginSource + Send + Sync>) {
+    fn make_plugin_source_dir() -> (
+        tempfile::TempDir,
+        Arc<dyn super::super::source::PluginSource + Send + Sync>,
+    ) {
         use super::super::source::DirectorySource;
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -2058,8 +2058,7 @@ icon = "heroicons:beaker"
         std::fs::write(root.join("greeting.txt"), b"hello from the fixture\n")
             .expect("write greeting");
         std::fs::create_dir_all(root.join("data")).expect("mkdir data");
-        std::fs::write(root.join("data/payload.bin"), [0u8, 1, 2, 3, 255])
-            .expect("write payload");
+        std::fs::write(root.join("data/payload.bin"), [0u8, 1, 2, 3, 255]).expect("write payload");
 
         let src: Arc<dyn super::super::source::PluginSource + Send + Sync> =
             Arc::new(DirectorySource::open(root).expect("open"));
@@ -2301,11 +2300,10 @@ icon = "heroicons:beaker"
     /// the bridge does in production: `DirectorySource::open`
     /// on the plugin root, wrapped in an `Arc`, then stashed
     /// on the instance via `set_plugin_source`.
-    fn assets_fixture_source() -> Arc<dyn super::super::source::PluginSource + Send + Sync>
-    {
+    fn assets_fixture_source() -> Arc<dyn super::super::source::PluginSource + Send + Sync> {
         use super::super::source::DirectorySource;
-        let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/assets-plugin");
+        let fixture_root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/assets-plugin");
         Arc::new(DirectorySource::open(fixture_root).expect("open assets fixture"))
     }
 
@@ -2340,11 +2338,12 @@ icon = "heroicons:beaker"
             .expect("dispatch succeeded")
             .expect("guest returned Ok");
 
-        let expected_len =
-            std::fs::metadata(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/assets-plugin/data/payload.bin"))
-            .expect("stat fixture")
-            .len();
+        let expected_len = std::fs::metadata(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/assets-plugin/data/payload.bin"),
+        )
+        .expect("stat fixture")
+        .len();
 
         assert_eq!(result, format!("len:{expected_len}"));
     }
@@ -2414,7 +2413,10 @@ icon = "heroicons:beaker"
             .handle_message("assets.read", "/etc/passwd")
             .expect("dispatch succeeded");
         let err = result.expect_err("absolute must error");
-        assert!(err.contains("InvalidPath"), "expected InvalidPath, got: {err}");
+        assert!(
+            err.contains("InvalidPath"),
+            "expected InvalidPath, got: {err}"
+        );
     }
 
     #[test]
