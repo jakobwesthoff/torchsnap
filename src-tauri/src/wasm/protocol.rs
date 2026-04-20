@@ -214,6 +214,10 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("file not found: {path}"))
         }
+
+        fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
+            Ok(self.files.contains_key(path))
+        }
     }
 
     fn test_manifest() -> Manifest {

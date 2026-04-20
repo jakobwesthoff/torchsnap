@@ -84,6 +84,22 @@ pub trait PluginSource: Send + Sync {
     /// the paths used in `manifest.toml`).
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>>;
 
+    /// Check whether a file exists at `path` without
+    /// reading its bytes.
+    ///
+    /// Used by the `assets::exists` host import so plugins
+    /// can probe optional assets cheaply. `path` is
+    /// validated with the same `validate_plugin_path` guard
+    /// as `read_file` — traversal, absolute paths, etc. are
+    /// rejected as errors (not `Ok(false)`) so callers can
+    /// tell "invalid path" apart from "valid path, file
+    /// absent".
+    ///
+    /// No default impl: the directory and archive backends
+    /// need different code to answer without paying the
+    /// cost of a full read.
+    fn file_exists(&self, path: &str) -> anyhow::Result<bool>;
+
     /// Read the WASM component binary.
     ///
     /// Convenience wrapper around `read_file` using the
@@ -173,6 +189,49 @@ impl PluginSource for DirectorySource {
         );
 
         std::fs::read(&canonical).with_context(|| format!("reading plugin file `{path}`"))
+    }
+
+    fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
+        // Same lexical guard as `read_file`: traversal,
+        // absolute paths, backslashes, etc. surface as
+        // errors (Err), not as "valid path, missing file"
+        // (Ok(false)).
+        validate_plugin_path(path)?;
+
+        let full_path = self.root.join(path);
+
+        let canonical_root = self
+            .root
+            .canonicalize()
+            .context("resolving plugin root directory")?;
+
+        // If the file doesn't exist, `validate_plugin_path`
+        // above has already established that the lexical
+        // path sits inside the plugin root. There is no
+        // symlink target to inspect in the "doesn't exist"
+        // branch, so we don't need a canonicalization-based
+        // root check here (doing one is fragile: on macOS
+        // the plugin root's canonical form is
+        // `/private/var/...` while the lexical join yields
+        // `/var/...`, producing false-negative "escapes"
+        // errors). Return `Ok(false)` directly.
+        let canonical = match full_path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => return Ok(false),
+        };
+
+        // Canonicalize succeeded — the entry exists. Verify
+        // it didn't resolve outside the root via a symlink
+        // that `validate_plugin_path` couldn't see.
+        anyhow::ensure!(
+            canonical.starts_with(&canonical_root),
+            "plugin file path `{path}` escapes the plugin directory"
+        );
+
+        // Require a regular file so `file_exists("some-subdir")`
+        // reports `false` for directories rather than
+        // misleading callers.
+        Ok(canonical.is_file())
     }
 }
 
@@ -394,6 +453,28 @@ impl PluginSource for ArchiveSource {
             .with_context(|| format!("decompressing plugin file `{path}`"))?;
 
         Ok(buf)
+    }
+
+    fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
+        // Same validation contract as `read_file`: invalid
+        // paths are errors, not `Ok(false)`.
+        let normalized = validate_plugin_path(path)?;
+        let normalized_str = normalized.to_string_lossy();
+
+        let mut archive = self.archive.lock().expect("archive mutex not poisoned");
+
+        // Distinguish "valid lookup, no such entry" (`Ok(false)`)
+        // from genuine archive errors (propagated). The zip
+        // crate's `by_name` surfaces a missing entry as
+        // `ZipError::FileNotFound`; anything else (IO,
+        // corruption) is a real problem for the caller.
+        match archive.by_name(&normalized_str) {
+            Ok(_) => Ok(true),
+            Err(zip::result::ZipError::FileNotFound) => Ok(false),
+            Err(e) => Err(anyhow::anyhow!(
+                "archive lookup for `{path}` failed: {e}"
+            )),
+        }
     }
 }
 
@@ -1049,5 +1130,309 @@ mod tests {
     fn archive_nonexistent_path() {
         let result = ArchiveSource::open("/nonexistent/path/to/plugin.torchsnap");
         assert!(result.is_err(), "should fail for nonexistent archive");
+    }
+
+    // =====================================================
+    // file_exists — DirectorySource
+    //
+    // Coverage target: the full happy / missing matrix plus
+    // every rejection category `validate_plugin_path` can
+    // surface. `file_exists` must share the same lexical
+    // guard as `read_file`; the tests assert behavioral
+    // parity for the guard paths so a future divergence
+    // (e.g. someone forgetting to call the guard) breaks
+    // here first.
+    // =====================================================
+
+    #[test]
+    fn file_exists_returns_true_for_existing_directory_file() {
+        let (_dir, root) = make_plugin_dir(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm"), ("data/bangs.json", b"[]")],
+        );
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(
+            source
+                .file_exists("data/bangs.json")
+                .expect("probe succeeds")
+        );
+    }
+
+    #[test]
+    fn file_exists_returns_false_for_missing_directory_file() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(
+            !source
+                .file_exists("not-here.json")
+                .expect("probe succeeds even for missing")
+        );
+    }
+
+    #[test]
+    fn file_exists_returns_false_for_directory_entry() {
+        // `file_exists` reports true only for regular files.
+        // A subdirectory returns `Ok(false)` so callers
+        // don't treat it as a readable asset.
+        let (_dir, root) = make_plugin_dir(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm"), ("assets/thing.txt", b"hi")],
+        );
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(
+            !source
+                .file_exists("assets")
+                .expect("probe succeeds for dir"),
+            "directory entries are not files"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_traversal_path() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .file_exists("../../../etc/passwd")
+            .expect_err("traversal must error");
+        assert!(
+            err.to_string().contains("escapes"),
+            "error should match read_file's traversal message (got: {err})"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_absolute_path() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .file_exists("/etc/passwd")
+            .expect_err("absolute must error");
+        assert!(
+            err.to_string().contains("relative"),
+            "error should mention relative (got: {err})"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_backslash_path() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .file_exists("frontend\\launcher.js")
+            .expect_err("backslash must error");
+        assert!(
+            err.to_string().contains("backslash"),
+            "error should mention backslash (got: {err})"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_empty_path() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source.file_exists("").expect_err("empty must error");
+        assert!(
+            err.to_string().contains("empty"),
+            "error should mention empty (got: {err})"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_nul_byte_path() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .file_exists("data\0hidden")
+            .expect_err("NUL must error");
+        assert!(
+            err.to_string().contains("NUL"),
+            "error should mention NUL (got: {err})"
+        );
+    }
+
+    #[test]
+    fn file_exists_rejects_windows_drive_letter() {
+        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .file_exists("C:/Windows/System32/config/SAM")
+            .expect_err("drive letter must error");
+        let msg = err.to_string();
+        // The guard rejects via either the Windows-drive
+        // branch or the backslash-rule depending on the
+        // normalizer; both paths count as a rejection.
+        assert!(
+            msg.contains("Windows") || msg.contains("relative") || msg.contains("backslash"),
+            "error should identify the path as absolute/windows (got: {msg})"
+        );
+    }
+
+    #[test]
+    fn file_exists_handles_dot_segments_within_bounds() {
+        let (_dir, root) = make_plugin_dir(
+            MINIMAL_MANIFEST,
+            &[
+                ("plugin.wasm", b"wasm"),
+                ("frontend/launcher.js", b"js content"),
+            ],
+        );
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(
+            source
+                .file_exists("frontend/../frontend/launcher.js")
+                .expect("dot segments in bounds are fine")
+        );
+    }
+
+    #[test]
+    fn file_exists_returns_false_after_file_removed() {
+        let (dir, root) = make_plugin_dir(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm"), ("transient.txt", b"will go")],
+        );
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(source.file_exists("transient.txt").expect("present"));
+        std::fs::remove_file(dir.path().join("transient.txt")).expect("rm");
+        assert!(
+            !source
+                .file_exists("transient.txt")
+                .expect("absent is not an error"),
+            "file should be gone after removal"
+        );
+    }
+
+    #[test]
+    fn file_exists_returns_true_for_deeply_nested_file() {
+        let (_dir, root) = make_plugin_dir(
+            MINIMAL_MANIFEST,
+            &[
+                ("plugin.wasm", b"wasm"),
+                ("a/b/c/d/deep.txt", b"deep content"),
+            ],
+        );
+        let source = DirectorySource::open(&root).expect("open");
+        assert!(
+            source
+                .file_exists("a/b/c/d/deep.txt")
+                .expect("deep probe ok")
+        );
+    }
+
+    // =====================================================
+    // file_exists — ArchiveSource
+    //
+    // The zip crate surfaces a missing entry as
+    // `ZipError::FileNotFound`. The `archive_file_exists_*`
+    // tests lock in that branch so a future zip crate
+    // upgrade that renames the variant (or the
+    // implementation that stops matching on it) trips here
+    // before plugins regress.
+    // =====================================================
+
+    #[test]
+    fn archive_file_exists_returns_true_for_existing_entry() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm"), ("data/bangs.json", b"[]")],
+        );
+        let source = ArchiveSource::open(&path).expect("open");
+        assert!(source.file_exists("data/bangs.json").expect("probe ok"));
+    }
+
+    #[test]
+    fn archive_file_exists_returns_false_for_missing_entry() {
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = ArchiveSource::open(&path).expect("open");
+        assert!(
+            !source
+                .file_exists("not-in-archive.txt")
+                .expect("missing entry is Ok(false), not Err")
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_rejects_traversal_path() {
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = ArchiveSource::open(&path).expect("open");
+        let err = source
+            .file_exists("../../../etc/passwd")
+            .expect_err("traversal must error");
+        assert!(
+            err.to_string().contains("escapes"),
+            "error should mention escaping (got: {err})"
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_rejects_absolute_path() {
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = ArchiveSource::open(&path).expect("open");
+        let err = source
+            .file_exists("/etc/passwd")
+            .expect_err("absolute must error");
+        assert!(
+            err.to_string().contains("relative"),
+            "error should mention relative (got: {err})"
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_rejects_backslash_path() {
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = ArchiveSource::open(&path).expect("open");
+        let err = source
+            .file_exists("frontend\\launcher.js")
+            .expect_err("backslash must error");
+        assert!(
+            err.to_string().contains("backslash"),
+            "error should mention backslash (got: {err})"
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_rejects_empty_path() {
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let source = ArchiveSource::open(&path).expect("open");
+        let err = source.file_exists("").expect_err("empty must error");
+        assert!(
+            err.to_string().contains("empty"),
+            "error should mention empty (got: {err})"
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_handles_nested_entry() {
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[
+                ("plugin.wasm", b"wasm"),
+                ("a/b/c/d/deep.txt", b"deep"),
+            ],
+        );
+        let source = ArchiveSource::open(&path).expect("open");
+        assert!(source.file_exists("a/b/c/d/deep.txt").expect("probe ok"));
+        assert!(
+            !source
+                .file_exists("a/b/c/d/not-there.txt")
+                .expect("missing nested is Ok(false)")
+        );
+    }
+
+    #[test]
+    fn archive_file_exists_survives_multiple_probes() {
+        // Regression guard: probing the archive must not
+        // consume or corrupt the shared mutex-protected
+        // reader. Run several reads / probes in sequence
+        // and verify both shapes of call continue to work.
+        let (_dir, path) = make_archive(
+            MINIMAL_MANIFEST,
+            &[("plugin.wasm", b"wasm"), ("a.txt", b"a"), ("b.txt", b"b")],
+        );
+        let source = ArchiveSource::open(&path).expect("open");
+        assert!(source.file_exists("a.txt").expect("a"));
+        assert_eq!(source.read_file("a.txt").expect("read a"), b"a");
+        assert!(source.file_exists("b.txt").expect("b"));
+        assert!(!source.file_exists("c.txt").expect("c missing"));
+        assert_eq!(source.read_file("b.txt").expect("read b"), b"b");
     }
 }
