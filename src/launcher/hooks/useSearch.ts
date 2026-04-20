@@ -3,17 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Search hook — calls the Rust search command on every query change
- * and streams results via a Tauri channel.
+ * Search hook — streams results from the Rust search pipeline
+ * via a Tauri channel, one `searchResults` message per source
+ * (catalog layer + each query plugin).
  *
- * Results arrive progressively: catalog results first, then query
- * plugin results as each plugin completes. Each `searchResults`
- * message is merged into the accumulated sorted array using a
- * sorted merge (entries arrive pre-sorted from the backend).
+ * Each message replaces that source's entries in a per-source
+ * Map; the displayed list is always the flattened sorted view
+ * of the Map. A source emitting an empty batch evicts its
+ * prior contribution — that's how a plugin transitioning from
+ * results to empty (e.g. bangs losing its trigger mid-query)
+ * disappears from the list atomically.
  *
- * A generation counter guards against stale results: if the query
- * changes before the previous search completes, the old results are
- * discarded.
+ * A generation counter discards messages from superseded
+ * queries.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -46,82 +48,39 @@ export function useSearch(query: string): UseSearchResult {
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
-  // Per-source accumulator — each `searchResults` message
-  // replaces (not merges) the entries for its `source`. A plugin
-  // transitioning from results to empty on a subsequent keystroke
-  // emits an empty batch that evicts its prior contribution here,
-  // which is the mechanism that fixes stale bang entries from
-  // lingering after the trigger is backspaced away.
-  //
-  // Keyed by `resultSourceKey(message.source)` rather than the
-  // raw discriminated union — a string key is what `Map` expects,
-  // and the helper guarantees plugin/catalog keys can never
-  // collide.
+  // Per-source accumulator: each `searchResults` replaces its
+  // source's batch. The displayed list is always the flattened
+  // sorted view of these values.
   const accumulatorRef = useRef<Map<string, SourcedEntry[]>>(new Map());
 
   // =========================================================
   // View ref generation tracking
   //
   // View refs (customPluginView, inlinePluginView, matchedPrefix)
-  // need different handling than entries:
-  //
-  // WITHIN a generation (multiple messages for one query):
-  //   First non-null wins. Catalog results arrive first with null
-  //   views, then a query plugin may arrive with an inline view.
-  //   We don't want the catalog's null to overwrite a pending
-  //   inline view that hasn't arrived yet.
-  //
-  // ACROSS generations (new keystroke / query change):
-  //   The old view refs are stale and must be replaced. But we
-  //   must NOT eagerly reset to null — that would cause a visible
-  //   flash (plugin view unmounts for one frame, then remounts
-  //   when the new message arrives).
-  //
-  // Solution: track the generation that last wrote each view ref.
-  // On the first message of a new generation, unconditionally
-  // overwrite (even with null — handles transitions like prefix
-  // mode → non-prefix mode). On subsequent messages within the
-  // same generation, only overwrite if the current value is null
-  // (first-non-null-wins).
-  //
-  // This gives us:
-  // - Prefix mode: first (and only) message carries the updated
-  //   custom view → overwrites immediately, no null gap, no flash.
-  // - Non-prefix mode: catalog message is first → clears stale
-  //   custom view. Query plugin message arrives later → first-
-  //   non-null sets inline view.
-  // - Transition from prefix to non-prefix: catalog message is
-  //   first → correctly clears the stale custom view (different
-  //   generation, unconditional overwrite).
-  // - Query cleared: the synchronous !query reset below handles
-  //   this case before any effect runs — no stale views persist.
+  // need different handling than entries — entries get replaced
+  // atomically from the accumulator on every message, but view
+  // refs accumulate "first non-null wins" within a generation
+  // so the catalog's null views don't clobber a pending inline
+  // view from a later plugin message. The `isFirstMessageOfGeneration`
+  // flag flips that rule for the first message, which
+  // unconditionally overwrites even with null so stale refs
+  // from the previous generation don't leak through.
   // =========================================================
 
-  // Signal loading=true as soon as the query changes, during the same
-  // render that receives the new query. This is separated from the
-  // effect below because setting state inside a useEffect would cause
-  // an extra render cycle (render → effect → setState → render again).
-  // The effect is still responsible for clearing loading=false once
-  // the backend sends a "done" message.
+  // Signal loading=true during render to avoid the extra
+  // render cycle a useEffect-based setState would cost.
   const [prevQuery, setPrevQuery] = useState(query);
   if (prevQuery !== query) {
     setPrevQuery(query);
     setLoading(true);
 
-    // ESLINT: When the query is cleared (e.g. goBack / Escape),
-    // synchronously reset ALL state so plugin views unmount on the same
-    // render. Without this, stale plugin views remain mounted until the
-    // async search result arrives, and their effects can re-inject
-    // partial state (like a matched prefix) into the display query.
-    // Moving this ref write to a useEffect would reintroduce that
-    // visual glitch — there would be a render frame where the query is
-    // empty but stale results are still visible.
-    //
-    // This is the only place where we eagerly null out view refs.
-    // For non-empty query changes (typing within prefix mode), we
-    // intentionally do NOT reset view refs here — the generation-
-    // aware logic in the channel handler takes care of replacing
-    // stale refs without a null gap.
+    // Empty query (Escape / goBack) needs a synchronous reset
+    // so plugin view components unmount on the same render and
+    // their effects don't re-inject a matched-prefix echo into
+    // the display query. For non-empty query changes the
+    // channel handler replaces the accumulator atomically on
+    // the first message, so no synchronous clear is needed
+    // there (and avoiding one prevents a flash frame).
     if (!query) {
       // eslint-disable-next-line react-hooks/refs
       accumulatorRef.current = new Map();
@@ -134,107 +93,45 @@ export function useSearch(query: string): UseSearchResult {
 
   useEffect(() => {
     const generation = ++generationRef.current;
-
-    // Reset the per-source accumulator for the new query. We do
-    // NOT reset view refs here — see the generation tracking
-    // comment above for why. Resetting them here would cause a
-    // null gap (effect runs → view refs null → plugin unmounts
-    // → message arrives → view refs set → plugin remounts =
-    // visible flash).
     accumulatorRef.current = new Map();
-
-    // Track whether this generation has delivered its first
-    // message yet. Used to decide between "unconditional
-    // overwrite" (first message) and "first-non-null wins"
-    // (subsequent messages).
     let isFirstMessageOfGeneration = true;
 
     const channel = new Channel<SearchMessage>();
 
     channel.onmessage = (message) => {
-      // Discard results from a superseded query.
       if (generationRef.current !== generation) return;
 
       switch (message.type) {
         case "searchResults": {
-          // Per-source replacement: the batch replaces (not
-          // merges with) whatever this source contributed on the
-          // previous message for this query. That lets a plugin
-          // evict its prior entries by emitting an empty batch.
           const key = resultSourceKey(message.source);
-          const prev = accumulatorRef.current.get(key) ?? [];
-          const next = message.entries;
-          const entriesChanged = !(prev.length === 0 && next.length === 0);
-
-          if (entriesChanged) {
-            if (next.length === 0) {
-              accumulatorRef.current.delete(key);
-            } else {
-              accumulatorRef.current.set(key, next);
-            }
+          if (message.entries.length === 0) {
+            accumulatorRef.current.delete(key);
+          } else {
+            accumulatorRef.current.set(key, message.entries);
           }
 
-          // Force a `setResults` call on the first message of
-          // every new generation. Without this, a generation
-          // whose first message happens to be empty-to-empty
-          // would short-circuit the setResults call below and
-          // leave the previous generation's results visible in
-          // React state — the Map is already fresh/empty so
-          // `prev` is `[]` for every source at the boundary,
-          // which made every first message spuriously qualify
-          // for the short-circuit.
-          //
-          // Within a generation, subsequent empty-to-empty
-          // messages still skip the setResults to avoid
-          // spurious re-renders for no-op deltas.
-          if (entriesChanged || isFirstMessageOfGeneration) {
-            // Recompute the flat sorted list across every
-            // source. The per-source batches arrive pre-sorted
-            // within themselves, but sources are independent,
-            // so we sort the flattened view. At launcher scale
-            // (tens of entries per source, ≤10 sources) this
-            // is well under a millisecond; a k-way merge would
-            // only matter if either bound grew substantially.
-            const flat: SourcedEntry[] = [];
-            for (const batch of accumulatorRef.current.values()) {
-              flat.push(...batch);
-            }
-            flat.sort(compareEntries);
-            setResults(flat);
+          // OPTIMIZATION POTENTIAL: flatten + full sort on
+          // every message is O(n log n) in total entry count
+          // per message, where n can realistically reach
+          // thousands (emoji-picker, app-launcher catalogs).
+          // Each incoming batch is already pre-sorted, and
+          // only one source's batch changes per message, so a
+          // k-way merge across the Map's sorted batches would
+          // cut this to O(n). Swap it in if the render path
+          // shows up in profiling.
+          const flat: SourcedEntry[] = [];
+          for (const batch of accumulatorRef.current.values()) {
+            flat.push(...batch);
           }
-
-          // -------------------------------------------------
-          // View ref update logic
-          //
-          // On the first message of a new generation: always
-          // overwrite, even with null. This handles:
-          //   - Prefix mode: replaces stale data from the
-          //     previous keystroke with fresh data.
-          //   - Transition to non-prefix: catalog message has
-          //     null views, correctly clearing the old prefix
-          //     view.
-          //
-          // On subsequent messages within the same generation:
-          // only set if currently null (first-non-null wins).
-          // This handles:
-          //   - Non-prefix mode: catalog (null views) arrives
-          //     first, then query plugin (inline view) arrives
-          //     second. The plugin's view is not clobbered by
-          //     the catalog's null.
-          // -------------------------------------------------
+          flat.sort(compareEntries);
+          setResults(flat);
 
           if (isFirstMessageOfGeneration) {
-            // Unconditional overwrite — replace whatever the
-            // previous generation left behind.
             setCustomPluginView(message.customPluginView);
             setInlinePluginView(message.inlinePluginView);
             setMatchedPrefix(message.matchedPrefix);
-
             isFirstMessageOfGeneration = false;
           } else {
-            // Within-generation accumulation: first non-null
-            // wins. Only overwrite if the current value is
-            // null (hasn't been set yet this generation).
             if (message.customPluginView != null) {
               setCustomPluginView((prev) => prev ?? message.customPluginView);
             }
@@ -255,9 +152,6 @@ export function useSearch(query: string): UseSearchResult {
 
     command("search", { query, onResults: channel });
 
-    // When the query changes, silence the old channel so its closure
-    // (and the state setters it captures) can be garbage-collected
-    // once the backend finishes sending on it.
     return () => {
       channel.onmessage = () => {};
     };

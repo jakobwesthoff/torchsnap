@@ -533,9 +533,9 @@ impl PluginHost {
         .await
         .expect("catalog search task not panicked");
 
-        // Always emit — the frontend keys its accumulator by
-        // `source`, so an empty catalog batch is how it learns
-        // to drop the previous query's catalog entries.
+        // Always emit — the frontend uses the catalog batch as
+        // the canonical "new generation, recompute" signal, so
+        // an empty catalog must still cross the wire.
         let _ = on_results.send(SearchMessage::SearchResults {
             source: ResultSource::Catalog,
             entries: catalog_results,
@@ -595,13 +595,8 @@ impl PluginHost {
                 _ => None,
             };
 
-            // Always emit — a plugin transitioning from
-            // results → empty between keystrokes relies on
-            // this batch (with empty `entries`) reaching the
-            // frontend so the per-source accumulator can evict
-            // its prior contribution. Skipping the emit for
-            // empty entries would silently strand the stale
-            // entries in the merged view.
+            // Always emit; a plugin going from results to empty
+            // relies on this message to evict its prior entries.
             let _ = on_results.send(SearchMessage::SearchResults {
                 source: ResultSource::Plugin { id: source },
                 entries,
