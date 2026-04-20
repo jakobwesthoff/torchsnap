@@ -255,6 +255,50 @@ interface http {
   fetch: func(request: http-request) -> result<http-response, http-error>;
 }
 
+/// Per-plugin asset access.
+///
+/// Every WASM plugin can read files from inside its own `.torchsnap`
+/// archive (or development directory) via this interface. Plugins do
+/// NOT opt in — there is no `[permissions.assets]` section. The
+/// guarantee is spatial: paths are validated by the same
+/// `validate-plugin-path` guard that governs every other plugin-file
+/// read on the host side, so the interface can only reach files
+/// already inside the plugin root.
+///
+/// Bytes cross the WIT boundary in full on every `read` call — the
+/// host holds no cached handle. Plugins that need to retain an asset
+/// should keep one copy in their own linear memory after reading.
+///
+/// Typical use: load a bundled JSON database at `enable()` time.
+/// ```
+/// let bytes = assets::read("data/bangs.json")?;
+/// ```
+interface assets {
+  /// Error variants for `read` and `exists`. The shape mirrors
+  /// `http-error`: one variant per semantic category, no catch-all.
+  variant assets-error {
+    /// The path is outside the plugin root, or syntactically invalid
+    /// (absolute, backslash-separated, contains `..` traversal, NUL
+    /// byte, Windows drive letter, or empty). Message includes the
+    /// offending path.
+    invalid-path(string),
+    /// The path validates but no such file exists inside the plugin.
+    not-found,
+    /// The host's filesystem (or archive) layer reported an error
+    /// while reading. Permission problems, corrupt archives, etc.
+    io-error(string),
+  }
+
+  /// Read a file inside the plugin. `path` is relative to the plugin
+  /// root, same convention as `manifest.toml` path fields.
+  read: func(path: string) -> result<list<u8>, assets-error>;
+
+  /// Check whether a file exists inside the plugin without reading
+  /// its bytes. Useful for optional assets (e.g. a bundled fallback
+  /// that may or may not ship depending on the build).
+  exists: func(path: string) -> result<bool, assets-error>;
+}
+
 /// ─── Guest exports (implemented by plugins) ─────────────
 interface lifecycle {
   enable: func();
@@ -432,12 +476,13 @@ interface tasks {
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
-  import settings;
-  import sql;
   import clipboard;
+  import sql;
   import frecency;
+  import settings;
   import opener;
   import http;
+  import assets;
 
   export lifecycle;
   export search;

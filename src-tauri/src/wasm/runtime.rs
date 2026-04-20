@@ -757,6 +757,30 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
     }
 }
 
+// Stub impl to satisfy the `plugin` world's `import assets;`
+// binding. Real wire-up (path validation, source stash,
+// read/exists dispatch) arrives in the next commit alongside
+// the `PluginSource::file_exists` trait method.
+impl bindings::torchsnap::plugin::assets::Host for PluginState {
+    fn read(
+        &mut self,
+        _path: String,
+    ) -> Result<Vec<u8>, bindings::torchsnap::plugin::assets::AssetsError> {
+        Err(bindings::torchsnap::plugin::assets::AssetsError::IoError(
+            "assets interface not yet wired".into(),
+        ))
+    }
+
+    fn exists(
+        &mut self,
+        _path: String,
+    ) -> Result<bool, bindings::torchsnap::plugin::assets::AssetsError> {
+        Err(bindings::torchsnap::plugin::assets::AssetsError::IoError(
+            "assets interface not yet wired".into(),
+        ))
+    }
+}
+
 // =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
