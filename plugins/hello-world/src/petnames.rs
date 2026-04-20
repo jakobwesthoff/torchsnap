@@ -177,7 +177,12 @@ pub fn generate_petnames(count: usize) -> Vec<String> {
 // =========================================================
 
 pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
-    let mut matcher = Matcher::new(Config::DEFAULT);
+    // `prefer_prefix` nudges matches that start at the
+    // beginning of the name above interior matches — the
+    // autocompletion bias we want for short query strings.
+    let mut config = Config::DEFAULT;
+    config.prefer_prefix = true;
+    let mut matcher = Matcher::new(config);
     let pattern = Atom::new(query, CaseMatching::Ignore, Normalization::Smart, AtomKind::Fuzzy, false);
 
     let mut buf = Vec::new();

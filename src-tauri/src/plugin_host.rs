@@ -630,7 +630,13 @@ impl PluginHost {
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<SourcedEntry> {
-        let mut matcher = Matcher::new(Config::DEFAULT);
+        // `prefer_prefix` biases scoring toward matches that
+        // start near the beginning of the haystack — the
+        // autocompletion feel we want everywhere the user is
+        // typing to narrow down a known title.
+        let mut config = Config::DEFAULT;
+        config.prefer_prefix = true;
+        let mut matcher = Matcher::new(config);
         let pattern = Pattern::parse(query, CaseMatching::Smart, Normalization::Smart);
 
         let mut results = Vec::new();
