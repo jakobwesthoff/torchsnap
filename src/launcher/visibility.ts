@@ -107,21 +107,23 @@ export async function dismissLauncher(): Promise<void> {
 }
 
 export async function setupLauncherVisibilityChoreography(): Promise<void> {
+  if (!isLinux) {
+    return;
+  }
+
   const root = document.getElementById("root");
   if (root === null) {
     return;
   }
 
   // Externally-initiated dismisses (hotkey toggle, Control API
-  // `dismiss`). Frontend-initiated dismisses call `dismissLauncher()`
-  // directly and do not rely on this event.
+  // `dismiss`). Only emitted by Rust on Linux — see
+  // `request_launcher_dismiss` in `src-tauri/src/lib.rs`.
+  // Frontend-initiated dismisses call `dismissLauncher()` directly
+  // and do not rely on this event.
   await win.listen("launcher-dismiss-requested", () => {
     void dismissLauncher();
   });
-
-  if (!isLinux) {
-    return;
-  }
 
   // Restore `#root` to visible after the window has been shown and
   // given WebKit time to compose a fresh frame from the current DOM
