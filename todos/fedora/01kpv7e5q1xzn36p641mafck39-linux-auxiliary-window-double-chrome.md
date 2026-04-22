@@ -8,8 +8,9 @@ The result is double chrome: a native GNOME title bar and a second
 title strip reserved by the React layout underneath it.
 
 The launcher window is unaffected — it is built with
-`.transparent(true).decorations(false)` (`src-tauri/src/lib.rs:815`)
-and has no auxiliary-window issue.
+`.transparent(true).decorations(false)` (see the launcher
+`WebviewWindowBuilder` in `src-tauri/src/lib.rs`) and has no
+auxiliary-window issue.
 
 ## Why it happens
 
