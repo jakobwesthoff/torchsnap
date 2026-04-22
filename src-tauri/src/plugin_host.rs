@@ -943,7 +943,7 @@ fn show_launcher_with_plugin(
     };
     crate::position_launcher_on_cursor_monitor(app, &layout);
 
-    if let Err(e) = PlatformLauncherPanel::show(app) {
+    if let Err(e) = crate::show_launcher(app) {
         eprintln!("shortcut: failed to show launcher: {e:#}");
         return;
     }

@@ -13,6 +13,7 @@ import { initPluginSdk } from "../lib/sdk";
 import { registerAllWasmPlugins } from "../plugins/wasmPluginLoader";
 import { Launcher } from "./Launcher";
 import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
+import { setupLauncherVisibilityChoreography } from "./visibility";
 import "../index.css";
 
 // The settings store must be loaded before React mounts so that
@@ -22,6 +23,11 @@ import "../index.css";
 // on the frontend.
 async function main() {
   await initStore();
+
+  // Register the Linux visibility-choreography listeners as early as
+  // possible so a dismiss request that races with startup still finds
+  // a handler. On macOS / Windows the hook is a no-op.
+  void setupLauncherVisibilityChoreography();
 
   // Initialize the plugin SDK global before any plugin code loads.
   initPluginSdk();
