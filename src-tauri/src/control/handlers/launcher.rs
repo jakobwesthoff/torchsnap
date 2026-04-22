@@ -21,7 +21,7 @@ use tauri::Manager;
 use crate::LauncherLayoutState;
 use crate::control::ControlCommand;
 use crate::control::handler::{ControlError, Handler};
-use crate::hide_launcher;
+use crate::{hide_launcher, request_launcher_dismiss, show_launcher};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 
 /// Run a closure on the main thread and block until it completes,
@@ -64,7 +64,7 @@ impl Handler for ShowHandler {
         let handle = app.clone();
         on_main_thread(app, move || {
             crate::position_launcher_on_cursor_monitor(&handle, &layout);
-            PlatformLauncherPanel::show(&handle)
+            show_launcher(&handle)
         })?
         .map_err(|e| ControlError::Internal {
             message: format!("{e:#}"),
@@ -110,10 +110,10 @@ impl Handler for ToggleHandler {
 // dismiss — Reset frontend state and hide
 //
 // Pushes a Dismiss command through the control channel so
-// the frontend clears its query/selection, then hides the
-// window. The channel message is buffered and will be
-// processed before the next show — even if the JS event
-// loop hasn't drained it by the time hide completes.
+// the frontend clears its query/selection, then asks the
+// platform dismiss path to hide the window. On Linux the
+// hide is driven by the frontend after it blanks its root
+// element; on macOS / Windows the hide happens synchronously.
 // =========================================================
 
 pub struct DismissHandler;
@@ -124,7 +124,7 @@ impl Handler for DismissHandler {
         channel_state.send(ControlCommand::Dismiss);
 
         let handle = app.clone();
-        on_main_thread(app, move || hide_launcher(&handle))?;
+        on_main_thread(app, move || request_launcher_dismiss(&handle))?;
 
         Ok(serde_json::json!({ "ok": true }))
     }

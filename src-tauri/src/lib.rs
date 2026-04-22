@@ -23,7 +23,7 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
 use tauri::{
-    Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
+    Emitter, Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
     webview::WebviewWindowBuilder,
 };
 
@@ -348,12 +348,72 @@ pub(crate) fn hide_launcher(app: &tauri::AppHandle) {
     shrink_launcher_window(app);
 }
 
+/// Initiate a launcher dismiss.
+///
+/// On macOS / Windows the launcher can be hidden immediately:
+/// `WKWebView` / `WebView2` keep compositing while their host
+/// window is invisible, so the next show simply reveals a buffer
+/// that already matches the current DOM.
+///
+/// On Linux / WebKitGTK that is not the case — an unmapped
+/// `GtkWindow`'s webview does not produce new frames, so the
+/// swapchain presents the pre-hide frame on re-map. If the
+/// frontend has not had a chance to blank its content first, the
+/// user sees a flash of the previous launcher state (old query,
+/// stale results, previous mascot) before React's post-show
+/// commit reaches the screen.
+///
+/// To cooperate with that constraint we emit a
+/// `launcher-dismiss-requested` event and let the frontend drive
+/// the hide itself via the `launcher_hide` command after it has
+/// made the last composited frame blank. See
+/// `src/launcher/visibility.ts` for the frontend side.
+pub(crate) fn request_launcher_dismiss(app: &tauri::AppHandle) {
+    #[cfg(not(target_os = "linux"))]
+    {
+        hide_launcher(app);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = app.emit("launcher-dismiss-requested", ()) {
+            // If the event bus itself is broken the frontend will
+            // never hide the launcher. Fall back to an immediate
+            // hide so the window does not get stuck open — the
+            // stale-frame flash is preferable to a launcher that
+            // won't close.
+            eprintln!("failed to emit launcher-dismiss-requested: {e:#}");
+            hide_launcher(app);
+        }
+    }
+}
+
 /// Tauri command so the frontend can hide the launcher through
 /// the same path as the hotkey toggle and control API, ensuring
 /// the window shrink always happens.
 #[tauri::command]
 fn launcher_hide(app: tauri::AppHandle) {
     hide_launcher(&app);
+}
+
+/// Show the launcher and, on Linux, tell the frontend it happened.
+///
+/// The `launcher-shown` event is the deterministic "the launcher
+/// is now visible" signal the frontend uses to restore `#root`'s
+/// visibility after the WebKitGTK blanking dance. `tauri://focus`
+/// alone is unreliable because Mutter's focus-stealing prevention
+/// can deny a programmatic `set_focus` on Wayland — the window
+/// shows up but the focus event never fires, leaving the launcher
+/// stuck with `visibility: hidden`.
+pub(crate) fn show_launcher(app: &tauri::AppHandle) -> anyhow::Result<()> {
+    PlatformLauncherPanel::show(app)?;
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = app.emit("launcher-shown", ()) {
+            eprintln!("failed to emit launcher-shown: {e:#}");
+        }
+    }
+    Ok(())
 }
 
 /// Tauri command called by the frontend after React mounts to
@@ -385,7 +445,7 @@ fn launcher_set_layout(
     // it now that the window is ready.
     if state.take_pending_show() {
         position_launcher_on_cursor_monitor(&app, &layout);
-        if let Err(e) = PlatformLauncherPanel::show(&app) {
+        if let Err(e) = show_launcher(&app) {
             eprintln!("failed to show launcher (deferred): {e:#}");
         }
     }
@@ -395,7 +455,7 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
     let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
 
     if is_visible {
-        hide_launcher(app);
+        request_launcher_dismiss(app);
         return;
     }
 
@@ -409,7 +469,7 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 
     position_launcher_on_cursor_monitor(app, &layout);
 
-    if let Err(e) = PlatformLauncherPanel::show(app) {
+    if let Err(e) = show_launcher(app) {
         eprintln!("failed to show launcher: {e:#}");
     }
 }
@@ -811,16 +871,32 @@ pub fn run() {
             // Preload windows
             // =========================================================
 
-            let launcher_win =
+            // The launcher window is normally built hidden and stays
+            // hidden until the hotkey or control API asks for it.
+            // That relies on the webview running JavaScript while the
+            // host window is unmapped — which WKWebView does on macOS
+            // but WebKitGTK does not: on Linux a hidden GtkWindow
+            // never realizes the webview, so React never mounts and
+            // the `launcher_set_layout` handshake that gates every
+            // show path can never complete. Starting visible on
+            // Linux side-steps the deadlock; once the user dismisses
+            // the launcher the first time, the webview has been
+            // realized and normal hide/show cycling works for the
+            // rest of the session.
+            let launcher_builder =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("launcher.html".into()))
                     .transparent(true)
                     .decorations(false)
                     .shadow(false)
-                    .visible(false)
                     .focused(false)
-                    .title("")
-                    .build()
-                    .context("create launcher window")?;
+                    .title("");
+
+            #[cfg(not(target_os = "linux"))]
+            let launcher_builder = launcher_builder.visible(false);
+
+            let launcher_win = launcher_builder
+                .build()
+                .context("create launcher window")?;
 
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;

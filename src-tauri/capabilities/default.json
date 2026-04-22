@@ -25,6 +25,7 @@
     "core:app:allow-app-show",
     "clipboard-manager:allow-write-text",
     "os:allow-locale",
+    "os:allow-platform",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",

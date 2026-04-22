@@ -10,8 +10,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { command } from "../../lib/command";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { dismissLauncher } from "../visibility";
 
 const appWindow = getCurrentWebviewWindow();
 
@@ -31,10 +31,15 @@ export function useWindowLifecycle({
   const dismiss = useCallback(() => {
     setVisible(false);
     resetState();
-    // Route through the Rust-side `launcher_hide` command rather than
-    // `appWindow.hide()` so that the window is also shrunk to 1×1 px,
-    // prompting WebKit to release its backing stores. See ADR 0020.
-    command("launcher_hide");
+    // Always go through `dismissLauncher()` — on Linux it blanks
+    // `#root` and waits one frame before invoking `launcher_hide`
+    // so the swapchain's last composited buffer is empty rather
+    // than a screenshot of the previous session's UI state (see
+    // `src/launcher/visibility.ts`). On macOS / Windows it falls
+    // straight through to the Rust command, which also shrinks
+    // the window to 1×1 so WebKit releases its backing stores
+    // (ADR 0020).
+    void dismissLauncher();
   }, [resetState]);
 
   useEffect(() => {
