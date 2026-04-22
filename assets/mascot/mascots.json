@@ -522,5 +522,93 @@
   "lightning-bolt-scarlet-2": {
     "alt": "Snappy mid-stride at impossible speed -- still the fastest launcher alive.",
     "nsfw": false
+  },
+  "ghost-witch-hat-candy": {
+    "alt": "Snappy haunting the doorstep -- trick, treat, or launch.",
+    "nsfw": false
+  },
+  "ghost-candy-corn-horn": {
+    "alt": "Snappy on the All-Hallows rounds -- one more doorbell, one more launch.",
+    "nsfw": false
+  },
+  "pac-dome-suit": {
+    "alt": "Snappy chasing the high score -- wakka-wakka, pellet, launch.",
+    "nsfw": false
+  },
+  "zombie-brain-buffet-nsfw": {
+    "alt": "Snappy risen hungry -- braaains... and launcheeees...",
+    "nsfw": true
+  },
+  "obsidian-panther": {
+    "alt": "Snappy of the hidden kingdom -- forever, forever, and every launch.",
+    "nsfw": false
+  },
+  "dino-kigurumi": {
+    "alt": "Snappy gone prehistoric -- life, uh, finds a way to launch.",
+    "nsfw": false
+  },
+  "scale-king-trident-nsfw": {
+    "alt": "Snappy ruler of the deep -- the seven seas launch on command.",
+    "nsfw": true
+  },
+  "pinstripe-zf1-nsfw": {
+    "alt": "Snappy the weapons magnate -- dahling, a little destruction encourages a lot of launches.",
+    "nsfw": true
+  },
+  "retro-chrome-centurion": {
+    "alt": "Snappy as the original toaster -- by your command, and every command that followed.",
+    "nsfw": false
+  },
+  "frilly-clown-balloon": {
+    "alt": "Snappy calling up from the drain -- we all launch down here.",
+    "nsfw": false
+  },
+  "frilly-clown-balloon-nsfw": {
+    "alt": "Snappy grinning from the drain -- time to launch, Georgie.",
+    "nsfw": true
+  },
+  "shrinking-red-helmet": {
+    "alt": "Snappy shrunk to antsize -- the smallest command, the biggest launch.",
+    "nsfw": false
+  },
+  "chrome-officer-visor": {
+    "alt": "Snappy on Detroit patrol -- serve, protect, launch. Prime directive.",
+    "nsfw": false
+  },
+  "chrome-officer-visor-nsfw": {
+    "alt": "Snappy locked on a perp -- dead or alive, the app is launching with me.",
+    "nsfw": true
+  },
+  "morpheus-pill-choice": {
+    "alt": "Snappy offering the choice -- this is your last chance. Red launches, blue keeps you searching.",
+    "nsfw": false
+  },
+  "red-horns-billies-nsfw": {
+    "alt": "Snappy the man without fear -- every launch heard, no app ever missed.",
+    "nsfw": true
+  },
+  "gold-pepper-pot": {
+    "alt": "Snappy as a pepper pot with a plan -- EXTERMINATE every command that won't launch.",
+    "nsfw": false
+  },
+  "fur-barbarian-blade-nsfw": {
+    "alt": "Snappy sworn to Crom -- what is best in life? To launch your apps and hear their icons bounce.",
+    "nsfw": true
+  },
+  "liquid-metal-blade-nsfw": {
+    "alt": "Snappy as the next-model hunter -- the launcher can't be bargained with, can't be reasoned with, and absolutely will not stop.",
+    "nsfw": true
+  },
+  "multipass-supreme": {
+    "alt": "Snappy the supreme being -- launcher-Dallas-multipass, big ba-da boom.",
+    "nsfw": false
+  },
+  "winged-helm-hammer-nsfw": {
+    "alt": "Snappy the rightful wielder -- whosoever be worthy shall launch the apps.",
+    "nsfw": true
+  },
+  "time-wanderer-orange-coat": {
+    "alt": "Snappy as an ever-changing time traveller -- fifteen minutes of fame, dancing through every launch.",
+    "nsfw": false
   }
 }
