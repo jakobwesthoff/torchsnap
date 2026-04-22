@@ -126,21 +126,54 @@ asset-app-icons:
     src="assets/mascot/snappy-original-1024.png"
     icons="src-tauri/icons"
     source_icon="$icons/app-icon-source.png"
-    if [ -f "$source_icon" ] && [ "$source_icon" -nt "$src" ]; then
-        echo "App icons: up to date."
-        exit 0
+
+    # The recipe runs in two stages: first compose the 1024x1024
+    # source icon from the mascot and the brand gradient, then invoke
+    # `tauri icon` to fan it out into every platform-specific format.
+    # Each stage is checked independently so a partial failure in
+    # stage 2 re-runs only stage 2 on the next invocation, rather than
+    # locking in a half-populated icons/ directory.
+
+    # Stage 1: (re)build the composite source icon when missing or
+    # older than the mascot source.
+    if [ ! -f "$source_icon" ] || [ "$src" -nt "$source_icon" ]; then
+        echo "Composing app icon source..."
+        # The mascot sits at ~78% of the 1024px canvas for padding on
+        # top of a warm orange-to-amber torch-theme gradient. 8-bit
+        # depth is forced because Tauri rejects 16-bit PNGs.
+        magick -size 1024x1024 gradient:'#f97316'-'#d97706' \
+            \( "$src" -filter Lanczos -resize 799x799 \) \
+            -gravity center -composite \
+            -depth 8 -define png:color-type=6 "$source_icon"
     fi
-    echo "Generating app icons..."
-    # Create a 1024x1024 gradient canvas with the mascot centered at ~78%
-    # size for padding. Force 8-bit depth (Tauri rejects 16-bit PNGs).
-    # Uses a warm orange-to-amber gradient matching the torch theme.
-    magick -size 1024x1024 gradient:'#f97316'-'#d97706' \
-        \( "$src" -filter Lanczos -resize 799x799 \) \
-        -gravity center -composite \
-        -depth 8 -define png:color-type=6 "$source_icon"
-    # Let Tauri's icon generator handle all platform-specific formats
-    # (icns, correct sizes, squircle treatment, etc.)
-    bunx tauri icon "$source_icon"
+
+    # Stage 2: regenerate platform-specific icons when any output
+    # declared in tauri.conf.json is missing or older than the source.
+    # That file is the authoritative contract with the bundler — keep
+    # the list below in sync with its `bundle.icon` entry.
+    required_icons=(
+        "$icons/32x32.png"
+        "$icons/128x128.png"
+        "$icons/128x128@2x.png"
+        "$icons/icon.icns"
+        "$icons/icon.ico"
+    )
+    needs_regen=false
+    for icon in "${required_icons[@]}"; do
+        if [ ! -f "$icon" ] || [ "$source_icon" -nt "$icon" ]; then
+            needs_regen=true
+            break
+        fi
+    done
+
+    if [ "$needs_regen" = true ]; then
+        echo "Generating app icons..."
+        # Let Tauri's icon generator handle all platform-specific
+        # formats (icns, correct sizes, squircle treatment, etc.)
+        bunx tauri icon "$source_icon"
+    else
+        echo "App icons: up to date."
+    fi
 
 # Generate the menubar tray icon as a macOS template alpha mask (incremental)
 asset-tray-icon:
