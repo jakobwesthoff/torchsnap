@@ -107,13 +107,13 @@ export async function dismissLauncher(): Promise<void> {
 }
 
 export async function setupLauncherVisibilityChoreography(): Promise<void> {
-  // macOS `WKWebView` and Windows `WebView2` continue compositing
-  // into their host window's swapchain across hide/show cycles, so
-  // the first frame post-reveal already matches the current DOM —
-  // no blanking dance is needed and none of the listeners below
-  // have anything to do. The early return keeps the `launcher_hide`
-  // fast path in `dismissLauncher` as the only cross-platform
-  // code path and prevents dead listeners on non-Linux.
+  // The blanking dance below exists only to compensate for
+  // WebKitGTK's unmap-drops-compositing behaviour. On macOS,
+  // `WKWebView` keeps the swapchain alive across hide/show so the
+  // first frame post-reveal already matches the current DOM —
+  // no dance is needed there, and the listeners below would
+  // have no events to receive because Rust only emits the
+  // corresponding events on Linux.
   if (!isLinux) {
     return;
   }
