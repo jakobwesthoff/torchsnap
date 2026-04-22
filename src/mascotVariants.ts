@@ -184,6 +184,7 @@ export const Variants = {
     "time-wanderer-rainbow-stripe-2",
     "time-wanderer-rainbow-stripe-3",
     "time-wanderer-rainbow-stripe-4",
+    "time-wanderer-orange-coat",
   ],
 
   // =========================================================
@@ -199,14 +200,21 @@ export const Variants = {
   SciFi: [
     "battle-scarred-cyborg",
     "battle-scarred-cyborg-nsfw",
+    "liquid-metal-blade-nsfw",
+    "chrome-officer-visor",
+    "chrome-officer-visor-nsfw",
     "iron-circuit",
     "chrome-centurion",
     "chrome-centurion-nsfw",
+    "retro-chrome-centurion",
+    "gold-pepper-pot",
     "retro-computer-head",
     "brave-little-astromech",
     "hooded-force-wanderer",
     "multipass-cabbie",
     "multipass-cabbie-nsfw",
+    "multipass-supreme",
+    "pinstripe-zf1-nsfw",
     "boldly-go-gold",
     "boldly-go-gold-nsfw",
     "engage-crimson",
@@ -215,6 +223,7 @@ export const Variants = {
     "cosmic-surfer-silver",
     "cosmic-surfer-silver-2",
     "red-pill-blue-pill",
+    "morpheus-pill-choice",
     "black-coat-shades",
     "black-coat-shades-2",
     "black-coat-shades-3",
@@ -246,6 +255,11 @@ export const Variants = {
     "horned-trickster-2",
     "adamantium-claw-berserker-nsfw",
     "infinity-gauntlet-titan-nsfw",
+    "obsidian-panther",
+    "shrinking-red-helmet",
+    "winged-helm-hammer-nsfw",
+    "scale-king-trident-nsfw",
+    "red-horns-billies-nsfw",
   ],
 
   // =========================================================
@@ -262,6 +276,9 @@ export const Variants = {
     "remember-remember",
     "remember-remember-nsfw",
     "daywalker-blade-nsfw",
+    "frilly-clown-balloon",
+    "frilly-clown-balloon-nsfw",
+    "zombie-brain-buffet-nsfw",
   ],
 
   // =========================================================
@@ -274,6 +291,7 @@ export const Variants = {
     "flame-paladin-nsfw",
     "forest-tunic-hero-nsfw",
     "hooded-blade-bearer-nsfw",
+    "fur-barbarian-blade-nsfw",
   ],
 
   // =========================================================
@@ -285,19 +303,26 @@ export const Variants = {
     "banana-goggle-minion",
     "yellow-chomping-ghost",
     "yellow-chomping-ghost-2",
+    "pac-dome-suit",
     "pixel-gamer-king",
     "dashing-captain",
     "dashing-captain-nsfw",
     "daywalker-shades",
     "oversized-dark-helmet",
     "ninja-nsfw",
+    "dino-kigurumi",
   ],
 
   // =========================================================
   // Seasonal & Holiday
   // =========================================================
 
-  Halloween: ["halloween-witch-lantern", "halloween-witch-pumpkins"],
+  Halloween: [
+    "halloween-witch-lantern",
+    "halloween-witch-pumpkins",
+    "ghost-witch-hat-candy",
+    "ghost-candy-corn-horn",
+  ],
   Christmas: ["santa"],
   Easter: ["easter-bunny-flowers", "easter-bunny-nest", "easter-bunny-wreath"],
   NewYear: ["party"],
