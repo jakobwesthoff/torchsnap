@@ -19,6 +19,7 @@
 
 pub mod assets;
 pub mod clipboard;
+pub mod command;
 pub mod frecency;
 pub mod http;
 pub mod logging;
