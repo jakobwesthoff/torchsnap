@@ -68,7 +68,7 @@ impl MessagingGuest for OpenerHttpPlugin {
     fn handle_message(method: String, payload: String) -> Result<String, String> {
         match method.as_str() {
             "opener.open-url" => {
-                open_url(&payload).map_err(|e| e)?;
+                open_url(&payload).map_err(|e| format!("{e:?}"))?;
                 Ok("ok".to_string())
             }
             "http.get" => {

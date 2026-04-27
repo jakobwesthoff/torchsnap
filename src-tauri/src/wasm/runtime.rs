@@ -567,29 +567,152 @@ impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
 // wasmtime instance.
 // =========================================================
 
+/// Outcome of a scheme-permission check on a URL passed to
+/// `open-url`. Distinct error cases let the Host impl map
+/// each into the right `OpenerError` variant for the WIT
+/// boundary.
+#[derive(Debug)]
+enum OpenerSchemeCheckError {
+    /// The URL string did not parse.
+    InvalidUrl,
+    /// The URL parsed but its scheme is not in `allowed`.
+    SchemeNotPermitted(String),
+}
+
 /// Verify that `url`'s scheme is in `allowed`.
 ///
 /// `allowed` strings are compared case-insensitively against
 /// the scheme extracted by the `url` crate (which always
 /// lowercases it per RFC 3986).
-fn check_opener_scheme(allowed: &[String], url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url).map_err(|_| format!("invalid URL: {url}"))?;
+fn check_opener_scheme(allowed: &[String], url: &str) -> Result<(), OpenerSchemeCheckError> {
+    let parsed = url::Url::parse(url).map_err(|_| OpenerSchemeCheckError::InvalidUrl)?;
     let scheme = parsed.scheme();
     if allowed.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
         Ok(())
     } else {
-        Err(format!("scheme not permitted: {scheme}"))
+        Err(OpenerSchemeCheckError::SchemeNotPermitted(scheme.to_string()))
     }
 }
 
 impl bindings::torchsnap::plugin::opener::Host for PluginState {
-    fn open_url(&mut self, url: String) -> Result<(), String> {
-        check_opener_scheme(&self.opener_schemes, &url)?;
+    fn open_url(
+        &mut self,
+        url: String,
+    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
+        use bindings::torchsnap::plugin::opener::OpenerError;
+
+        match check_opener_scheme(&self.opener_schemes, &url) {
+            Ok(()) => {}
+            Err(OpenerSchemeCheckError::InvalidUrl) => {
+                return Err(OpenerError::InvalidUrl(url));
+            }
+            Err(OpenerSchemeCheckError::SchemeNotPermitted(scheme)) => {
+                return Err(OpenerError::PermissionDenied(format!(
+                    "scheme not permitted: {scheme}"
+                )));
+            }
+        }
+
         let writer = self
             .opener_writer
             .as_ref()
-            .ok_or_else(|| "opener not initialized".to_string())?;
-        writer(&url)
+            .ok_or_else(|| OpenerError::BackendFailure("opener not initialized".into()))?;
+        writer(&url).map_err(OpenerError::BackendFailure)
+    }
+
+    fn open_path(
+        &mut self,
+        _path: String,
+    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
+        // Wired in Phase E. The capability gate and the
+        // Tauri `OpenerExt::open_path` delegation land
+        // together with the bridge-side `open_path_writer`
+        // stashing.
+        Err(bindings::torchsnap::plugin::opener::OpenerError::PermissionDenied(
+            "open-path not yet implemented".into(),
+        ))
+    }
+
+    fn reveal_path(
+        &mut self,
+        _path: String,
+    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
+        // Wired in Phase E alongside `open_path`.
+        Err(bindings::torchsnap::plugin::opener::OpenerError::PermissionDenied(
+            "reveal-path not yet implemented".into(),
+        ))
+    }
+}
+
+// =========================================================
+// Command, Platform, Paths host imports — Phase D stubs
+//
+// The WIT additions in Phase D require Host trait impls so
+// `Plugin::add_to_linker` accepts `PluginState`. The full
+// implementations land in Phase E (process spawn,
+// PathContext stashing, runtime substitution); these
+// scaffolds keep the build green in the meantime.
+//
+// `platform` is small enough that the "stub" is the real
+// thing — there is no plugin-state-dependent work for
+// returning the host's OS or architecture.
+// =========================================================
+
+impl bindings::torchsnap::plugin::command::Host for PluginState {
+    fn run(
+        &mut self,
+        _binary: String,
+        _options: bindings::torchsnap::plugin::command::CommandOptions,
+    ) -> Result<
+        bindings::torchsnap::plugin::command::CommandResult,
+        bindings::torchsnap::plugin::command::CommandError,
+    > {
+        Err(
+            bindings::torchsnap::plugin::command::CommandError::PermissionDenied(
+                "command::run not yet wired to host runtime".into(),
+            ),
+        )
+    }
+}
+
+impl bindings::torchsnap::plugin::platform::Host for PluginState {
+    fn current_os(&mut self) -> bindings::torchsnap::plugin::platform::Os {
+        use bindings::torchsnap::plugin::platform::Os;
+
+        if cfg!(target_os = "macos") {
+            Os::Macos
+        } else if cfg!(target_os = "linux") {
+            Os::Linux
+        } else if cfg!(target_os = "windows") {
+            Os::Windows
+        } else {
+            Os::Other(std::env::consts::OS.to_string())
+        }
+    }
+
+    fn current_arch(&mut self) -> bindings::torchsnap::plugin::platform::Arch {
+        use bindings::torchsnap::plugin::platform::Arch;
+
+        if cfg!(target_arch = "x86_64") {
+            Arch::X8664
+        } else if cfg!(target_arch = "aarch64") {
+            Arch::Aarch64
+        } else {
+            Arch::Other(std::env::consts::ARCH.to_string())
+        }
+    }
+}
+
+impl bindings::torchsnap::plugin::paths::Host for PluginState {
+    fn resolve(
+        &mut self,
+        _template: String,
+    ) -> Result<String, bindings::torchsnap::plugin::paths::ResolveError> {
+        Err(
+            bindings::torchsnap::plugin::paths::ResolveError::Unterminated(
+                "paths::resolve not yet wired to host runtime".into(),
+            ),
+        )
     }
 }
 
@@ -1598,7 +1721,10 @@ mod tests {
     #[test]
     fn opener_forbidden_scheme_blocked() {
         let err = check_opener_scheme(&strs(&["https"]), "ftp://example.com").unwrap_err();
-        assert!(err.contains("scheme not permitted: ftp"), "got: {err}");
+        match err {
+            OpenerSchemeCheckError::SchemeNotPermitted(scheme) => assert_eq!(scheme, "ftp"),
+            other => panic!("expected SchemeNotPermitted, got {other:?}"),
+        }
     }
 
     #[test]
