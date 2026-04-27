@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::permission_vars::validate_variable_references;
 use super::source::validate_plugin_path;
 
 // =========================================================
@@ -569,17 +570,11 @@ pub enum ArgvConstraint {
     },
 }
 
-/// Substitution variables recognized in `literal`, `enum`,
-/// `path-under`, and per-rule `cwd` fields. Recognized at
-/// parse time, substituted at bridge construction time
-/// when the actual values are known.
-pub(crate) const RECOGNIZED_PERMISSION_VARIABLES: &[&str] = &[
-    "plugin-data",
-    "plugin-archive",
-    "home",
-    "xdg-config",
-    "xdg-data",
-];
+// Substitution variables recognized in `literal`, `enum`,
+// `path-under`, and per-rule `cwd` fields are defined in
+// `super::permission_vars` and shared with the runtime
+// `paths::resolve` host import. See that module for the
+// list and the parser/substituter implementations.
 
 // =========================================================
 // Scheduled tasks
@@ -2789,40 +2784,6 @@ fn validate_argv_constraint(
 /// manifest parse time rather than silently leaving an
 /// unresolved `${...}` in a path that will then never
 /// match anything at runtime.
-fn validate_variable_references(
-    s: &str,
-    field: &str,
-    rule_index: usize,
-) -> anyhow::Result<()> {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            let start = i + 2;
-            let Some(end_offset) = bytes[start..].iter().position(|&b| b == b'}') else {
-                anyhow::bail!(
-                    "rule {rule_index} {field}: unterminated `${{...}}` in `{s}`"
-                );
-            };
-            let end = start + end_offset;
-            // SAFETY: byte indices land on the same boundaries
-            // as the original UTF-8 since `$`, `{`, `}` are all
-            // ASCII; the slice is valid UTF-8.
-            let name = &s[start..end];
-            if !RECOGNIZED_PERMISSION_VARIABLES.contains(&name) {
-                anyhow::bail!(
-                    "rule {rule_index} {field}: unknown variable `${{{name}}}` in `{s}`; \
-                     recognized variables are {RECOGNIZED_PERMISSION_VARIABLES:?}"
-                );
-            }
-            i = end + 1;
-        } else {
-            i += 1;
-        }
-    }
-    Ok(())
-}
-
 /// Parse a 5-field POSIX cron expression
 /// (`minute hour day month weekday`) into a
 /// `cron::Schedule`.

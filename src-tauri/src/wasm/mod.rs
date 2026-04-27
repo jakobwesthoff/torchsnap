@@ -18,11 +18,13 @@
 // =========================================================
 
 mod bindings;
+pub mod argv_matcher;
 pub mod bridge;
 pub mod discovery;
 pub mod logging;
 pub mod manifest;
 pub mod path_safety;
+pub mod permission_vars;
 pub mod protocol;
 pub mod runtime;
 pub mod source;
