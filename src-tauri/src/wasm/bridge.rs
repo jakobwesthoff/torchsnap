@@ -91,6 +91,13 @@ pub struct WasmPluginBridge {
     /// means the plugin has no HTTP access; `"*"` means
     /// trust-all.
     http_origins: Vec<String>,
+    /// Raw `[[permissions.command]]` rules pre-extracted from
+    /// the manifest. Compiled against the per-instance
+    /// `PathContext` at every `enable()` (variable substitution
+    /// can change between enable cycles if the host data dirs
+    /// move under the plugin). Empty when the manifest declares
+    /// no rules.
+    command_rules_raw: Vec<super::manifest::CommandPermissionDef>,
     /// Resolved `${plugin-data}` for this plugin —
     /// `<app_data_dir>/plugin-home/<plugin-id>/`. Re-stashed
     /// on every fresh instance so per-call `paths::resolve`
@@ -233,6 +240,12 @@ impl WasmPluginBridge {
             .map(|h| h.origins.clone())
             .unwrap_or_default();
 
+        let command_rules_raw = manifest
+            .permissions
+            .as_ref()
+            .map(|p| p.command.clone())
+            .unwrap_or_default();
+
         // Pre-resolve the host filesystem paths the
         // `paths::resolve` host import (and, in the next
         // sub-phase, command-rule compilation) will need.
@@ -277,6 +290,7 @@ impl WasmPluginBridge {
             opener_open_path,
             opener_reveal_path,
             http_origins,
+            command_rules_raw,
             plugin_data,
             plugin_archive,
             instance: Mutex::new(None),
@@ -698,13 +712,51 @@ impl Plugin for WasmPluginBridge {
         // `xdg-config`, and `xdg-data`; on macOS and Windows
         // the XDG names are mapped to the closest equivalent
         // (Application Support / AppData).
-        match build_path_context(app, &self.plugin_data, &self.plugin_archive) {
-            Ok(ctx) => instance.set_path_context(ctx),
-            Err(e) => self.log(
-                LogLevel::Warn,
-                format!("paths::resolve unavailable for `{}`: {e:#}", self.plugin_id),
-            ),
-        }
+        let ctx_for_rules = match build_path_context(app, &self.plugin_data, &self.plugin_archive)
+        {
+            Ok(ctx) => {
+                instance.set_path_context(ctx.clone());
+                Some(ctx)
+            }
+            Err(e) => {
+                self.log(
+                    LogLevel::Warn,
+                    format!("paths::resolve unavailable for `{}`: {e:#}", self.plugin_id),
+                );
+                None
+            }
+        };
+
+        // Compile the raw `[[permissions.command]]` rules
+        // against the resolved PathContext. Variable
+        // substitution + regex/glob compilation happen here;
+        // the matcher then operates on the compiled forms at
+        // call time. A plugin without a PathContext gets an
+        // empty rule set — every `command::run` call will
+        // return `permission-denied`, matching the deny-by-
+        // default contract.
+        let compiled_rules: Vec<super::argv_matcher::CompiledCommandRule> =
+            if let Some(ctx) = ctx_for_rules.as_ref() {
+                let mut compiled = Vec::with_capacity(self.command_rules_raw.len());
+                for (index, raw) in self.command_rules_raw.iter().enumerate() {
+                    match super::argv_matcher::compile_rule(raw, index, ctx) {
+                        Ok(rule) => compiled.push(rule),
+                        Err(e) => {
+                            self.log(
+                                LogLevel::Error,
+                                format!(
+                                    "compiling command rule {index} for `{}`: {e:#}",
+                                    self.plugin_id
+                                ),
+                            );
+                        }
+                    }
+                }
+                compiled
+            } else {
+                Vec::new()
+            };
+        instance.set_command_rules(compiled_rules);
 
         instance.set_http_client(Arc::new(crate::network::Http::new()));
 
@@ -764,6 +816,7 @@ impl Plugin for WasmPluginBridge {
         instance.clear_open_path_writer();
         instance.clear_reveal_path_writer();
         instance.clear_path_context();
+        instance.clear_command_rules();
         instance.clear_http_client();
         instance.clear_plugin_source();
     }
