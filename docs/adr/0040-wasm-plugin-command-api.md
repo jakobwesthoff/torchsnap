@@ -223,11 +223,22 @@ scheme allowlist. This ADR extends it:
 
 ```wit
 interface opener {
-    open-url:    func(url: string)  -> result<_, string>;   // existing
-    open-path:   func(path: string) -> result<_, string>;   // new
-    reveal-path: func(path: string) -> result<_, string>;   // new
+    variant opener-error {
+        permission-denied(string),
+        invalid-url(string),
+        backend-failure(string),
+    }
+    open-url:    func(url: string)  -> result<_, opener-error>;
+    open-path:   func(path: string) -> result<_, opener-error>;
+    reveal-path: func(path: string) -> result<_, opener-error>;
 }
 ```
+
+The shared `opener-error` variant replaces the original `result<_,
+string>` shape so plugins switch on a typed error value instead of
+string-matching free-form messages, matching the pattern of
+`http-error` and `command-error`. `invalid-url` is only emitted by
+`open-url` (the path operations have no equivalent parse step).
 
 Each new function is gated by a boolean in `[permissions.opener]`:
 

@@ -166,28 +166,76 @@ interface settings {
   get: func(key: string) -> option<string>;
 }
 
-/// Opens a URL in the OS default handler (browser, mail client, etc.).
+/// Opens URLs and filesystem paths via the OS default handler chain
+/// (browser, mail client, registered application, file manager).
 ///
-/// WASM plugins have no direct access to Tauri's opener APIs. This interface
-/// exposes a single `open-url` operation — the only case WASM plugins need
-/// today. `reveal-path` (Show in Finder/Explorer) is tracked separately and
-/// deferred until the `app-launcher` conversion is underway.
+/// WASM plugins have no direct access to Tauri's opener APIs. This
+/// interface exposes three operations:
 ///
-/// Plugins declare which URL schemes they are allowed to open under
-/// `[permissions.opener]` in `manifest.toml`. The host enforces this at
-/// call time — any scheme not listed returns `err("scheme not permitted:
-/// {scheme}")`. Omitting `[permissions.opener]` entirely means the plugin
-/// has no `open-url` access (deny by default).
+/// - `open-url`     — open a URL with the registered scheme handler.
+/// - `open-path`    — open a filesystem path with the registered
+///                    application (Finder/Explorer/xdg-mime resolution).
+/// - `reveal-path`  — reveal a filesystem path in the OS file manager.
+///
+/// Plugins declare each capability under `[permissions.opener]` in
+/// `manifest.toml`. The host enforces declarations at call time. Omitting
+/// the section entirely (or declaring it with no granted capability)
+/// means the plugin has no opener access (deny by default).
 ///
 /// ```toml
 /// [permissions.opener]
-/// schemes = ["https", "http"]
+/// schemes      = ["https", "http"]   # for open-url
+/// open-path    = true                # for open-path
+/// reveal-path  = true                # for reveal-path
 /// ```
+///
+/// The boolean gates intentionally do not constrain *which* paths the
+/// plugin may target. A path-root allowlist would not narrow the
+/// malicious-author threat (the malicious payload can ship inside the
+/// plugin archive itself), and the legitimate use cases require broad
+/// access. The trust signal is at the manifest-declaration level: a
+/// plugin that can `open-path` is trusted to launch arbitrary registered
+/// handlers; a plugin that cannot, cannot.
 interface opener {
-  /// Open `url` in the OS default handler. Returns `err(string)` if the
-  /// scheme is not in the plugin's declared allowlist, or if the host's
-  /// opener backend reports a failure.
-  open-url: func(url: string) -> result<_, string>;
+  /// Error variants shared by every `opener` operation. The shape
+  /// mirrors `http-error` and `command-error`: one variant per
+  /// semantic category, no catch-all.
+  variant opener-error {
+    /// The plugin's manifest does not grant the required capability:
+    /// the URL's scheme is not in `[permissions.opener] schemes` for
+    /// `open-url`, `open-path = false` for `open-path`, or
+    /// `reveal-path = false` for `reveal-path`. The string describes
+    /// the missing capability so plugin authors can fix their
+    /// manifest.
+    permission-denied(string),
+
+    /// The URL passed to `open-url` failed to parse. Only emitted by
+    /// `open-url`. The string is the offending URL.
+    invalid-url(string),
+
+    /// The host's opener / reveal backend reported a failure (no
+    /// registered handler for the URL scheme or path type, file
+    /// inaccessible, platform-specific failure mode). The string
+    /// carries the backend's diagnostic message.
+    backend-failure(string),
+  }
+
+  /// Open `url` in the OS default handler. Returns
+  /// `permission-denied` if the scheme is not in the plugin's
+  /// declared allowlist, `invalid-url` if `url` is not parseable,
+  /// or `backend-failure` if the OS-level opener call fails.
+  open-url: func(url: string) -> result<_, opener-error>;
+
+  /// Open `path` with the OS-registered application for that path's
+  /// type (LaunchServices on macOS, GIO on Linux, ShellExecute on
+  /// Windows). Requires `open-path = true` in the plugin's
+  /// `[permissions.opener]` block.
+  open-path: func(path: string) -> result<_, opener-error>;
+
+  /// Reveal `path` in the OS file manager (Show in Finder, Show in
+  /// Files, Show in Explorer). Requires `reveal-path = true` in the
+  /// plugin's `[permissions.opener]` block.
+  reveal-path: func(path: string) -> result<_, opener-error>;
 }
 
 /// Minimal synchronous HTTP client for WASM plugins.
@@ -297,6 +345,186 @@ interface assets {
   /// its bytes. Useful for optional assets (e.g. a bundled fallback
   /// that may or may not ship depending on the build).
   exists: func(path: string) -> result<bool, assets-error>;
+}
+
+/// Run a system process and capture its output.
+///
+/// Plugins declare repeated `[[permissions.command]]` rules in
+/// `manifest.toml`. Each rule names a `binary` plus per-position argv
+/// constraints; a `command::run` call must match exactly one rule or
+/// the host returns `permission-denied(string)`. The matcher is
+/// pure and the manifest validator rejects any pair of rules whose
+/// argv shapes could both accept the same call, so a permission
+/// decision can never silently depend on rule ordering.
+///
+/// Constraints are defense-in-depth: they restrict the *shape* of
+/// invocations, not the consequences of running a binary. A plugin
+/// granted `git` will inherit whatever `git` reads from
+/// `~/.gitconfig` and `/etc/gitconfig`. Argv constraints meaningfully
+/// defend against unintentional misuse and against compositional
+/// attacks where a plugin with `http::fetch` would otherwise pull
+/// arbitrary paths from a remote response. They do not make a
+/// determined malicious plugin author safe; that is a
+/// distribution-time problem (see ADR 0036).
+///
+/// No shell. Argv goes directly to `Command::new(binary).args(args)`;
+/// there is no shell tokenization step and no `/bin/sh -c` wrapping.
+/// No streaming, no PTY, no persistent process handles. The host's
+/// store lock means at most one `run` call is in flight per plugin
+/// at a time.
+///
+/// ```toml
+/// [[permissions.command]]
+/// binary = "mdfind"
+/// argv   = [
+///   { kind = "literal", value = "kMDItemContentType == 'com.apple.application-bundle'" },
+/// ]
+///
+/// [[permissions.command]]
+/// binary = "git"
+/// argv   = [
+///   { kind = "literal", value = "log" },
+///   { kind = "rest", constraint = { kind = "any-string" } },
+/// ]
+/// ```
+interface command {
+  /// Per-call options. All fields except `args` are optional; omitted
+  /// fields fall back to the rule's `[[permissions.command]]` defaults
+  /// or the host's hard ceilings.
+  record command-options {
+    /// Argument vector. Each element is matched per-position against
+    /// the rule's argv constraints.
+    args: list<string>,
+
+    /// Working directory. When omitted, the host substitutes
+    /// `<plugin-data>/exec-cwd/`, lazily created.
+    cwd: option<string>,
+
+    /// Additional environment variables. Layered on top of the host
+    /// process env (with credential-leakage variables stripped).
+    env: list<tuple<string, string>>,
+
+    /// Bytes written to the child's stdin. Bounded by the host
+    /// `max-stdin-bytes` ceiling and the per-rule `max-stdin-bytes`
+    /// override if declared.
+    stdin: option<list<u8>>,
+
+    /// Wall-clock timeout in milliseconds. Bounded by the host
+    /// default and the per-rule `timeout-ms-max` override if declared.
+    timeout-ms: option<u32>,
+
+    /// Maximum captured output bytes (sum of stdout and stderr).
+    /// Bounded by the host default and per-rule `max-output-bytes`.
+    max-output-bytes: option<u64>,
+  }
+
+  /// Result of a successful spawn.
+  record command-result {
+    /// Process exit code. `none` means the process was killed by a
+    /// signal (`signal` carries the signal name).
+    exit-code: option<s32>,
+
+    /// Signal name (e.g. `"TERM"`) if the process was signaled.
+    signal: option<string>,
+
+    /// `true` if the host fired the timeout (always paired with a
+    /// non-`none` `signal`).
+    timed-out: bool,
+
+    /// Captured stdout bytes (up to `max-output-bytes`).
+    stdout: list<u8>,
+
+    /// Captured stderr bytes (up to `max-output-bytes`).
+    stderr: list<u8>,
+  }
+
+  /// Error variants for `run`.
+  variant command-error {
+    /// No `[[permissions.command]]` rule accepted this `(binary, argv)`.
+    /// The string carries diagnostic context.
+    permission-denied(string),
+
+    /// `Command::new(...).spawn()` failed before the child was running
+    /// — binary-not-found, permission-denied at the OS layer, etc.
+    spawn-failed(string),
+
+    /// The configured timeout fired and the child was killed.
+    timeout,
+
+    /// The configured output cap was reached. The child is killed; the
+    /// captured `(stdout, stderr)` bytes up to the cap are returned for
+    /// debugging.
+    output-too-large(tuple<list<u8>, list<u8>>),
+  }
+
+  /// Spawn `binary` with `options.args`, wait for completion (or
+  /// timeout), and return the captured result. See the interface-level
+  /// docs for the trust model and the manifest declaration syntax.
+  run: func(binary: string, options: command-options) -> result<command-result, command-error>;
+}
+
+/// Runtime OS and CPU architecture detection.
+///
+/// WASI does not expose either to guests. Plugins making
+/// platform-conditional decisions (different binaries on different
+/// OSes, different default paths, OS-gated features) need this signal.
+/// No permission is required: the values are informational and do not
+/// widen the sandbox.
+interface platform {
+  variant os {
+    macos,
+    linux,
+    windows,
+    other(string),
+  }
+
+  variant arch {
+    x86-64,
+    aarch64,
+    other(string),
+  }
+
+  /// The host's operating system.
+  current-os: func() -> os;
+
+  /// The host's CPU architecture.
+  current-arch: func() -> arch;
+}
+
+/// Resolve manifest substitution variables at runtime.
+///
+/// Plugins declare `${...}` substitution variables in
+/// `[[permissions.command]]` `path-under` roots, `literal` values, and
+/// per-rule `cwd`. The host resolves them at bridge construction time.
+/// To construct argv strings that satisfy a `path-under` constraint
+/// referencing host-resolved paths, the plugin needs the same resolved
+/// values — that is what this interface provides.
+///
+/// Recognized variables match the manifest set:
+/// `plugin-data`, `plugin-archive`, `home`, `xdg-config`, `xdg-data`.
+///
+/// No permission is required: the values are informational, and the
+/// recognized list is closed (the host controls it).
+///
+/// ```
+/// let helper = paths::resolve("${plugin-archive}/bin/helper")?;
+/// command::run(&helper, opts)?;
+/// ```
+interface paths {
+  variant resolve-error {
+    /// A `${name}` token's `name` is not in the recognized list.
+    /// The string is the offending name.
+    unknown-variable(string),
+    /// A `${` was not closed by `}` before the end of the template.
+    /// The string is the partial token (everything after the `${`)
+    /// for diagnostic display.
+    unterminated(string),
+  }
+
+  /// Substitute every `${name}` token in `template` with the
+  /// corresponding host-resolved path. Plain text passes through
+  /// unchanged.
+  resolve: func(template: string) -> result<string, resolve-error>;
 }
 
 /// ─── Guest exports (implemented by plugins) ─────────────
@@ -483,6 +711,9 @@ world plugin {
   import opener;
   import http;
   import assets;
+  import command;
+  import platform;
+  import paths;
 
   export lifecycle;
   export search;
