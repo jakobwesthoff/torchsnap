@@ -35,6 +35,10 @@ use wasmtime::component::{Component, HasSelf, Linker, Resource, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
+pub mod host;
+
+pub(crate) use host::clipboard::ClipboardState;
+
 use super::bindings;
 use super::logging::channel::LogSender;
 // reqwest is a direct dependency used for HTTP method construction and
@@ -55,18 +59,18 @@ use reqwest;
 // =========================================================
 
 pub struct PluginState {
-    plugin_id: String,
-    wasi: WasiCtx,
-    wasi_table: ResourceTable,
-    log_sender: LogSender,
-    span_registry: Arc<SpanRegistry>,
+    pub(crate) plugin_id: String,
+    pub(crate) wasi: WasiCtx,
+    pub(crate) wasi_table: ResourceTable,
+    pub(crate) log_sender: LogSender,
+    pub(crate) span_registry: Arc<SpanRegistry>,
     /// Per-plugin namespaced settings reader. `None` until the
     /// bridge stashes the `PluginContext.settings` handle on
     /// `enable()`. The settings host import (`settings::get`)
     /// errors gracefully if accessed before that happens —
     /// which it shouldn't, since the host always calls
     /// `enable()` before any guest code runs.
-    settings: Option<PluginSettings>,
+    pub(crate) settings: Option<PluginSettings>,
     /// Per-plugin namespaced frecency reader. Same lifecycle
     /// as `settings`: stashed by the bridge on `enable()` from
     /// the `PluginContext.frecency` handle and cleared on
@@ -75,7 +79,7 @@ pub struct PluginState {
     /// `search()` — this handle is only for plugins that
     /// need to read frecency state directly (e.g. to drive an
     /// empty-query browse mode).
-    frecency: Option<PluginFrecency>,
+    pub(crate) frecency: Option<PluginFrecency>,
     /// The plugin's own source handle, stashed by the bridge
     /// on `enable()` so the `assets::read` / `assets::exists`
     /// host imports can read files bundled inside the plugin
@@ -83,7 +87,7 @@ pub struct PluginState {
     /// it. `None` outside an enable lifetime — the host
     /// imports return an `io-error` in that case, matching
     /// the contract of the other capability stashes.
-    plugin_source: Option<Arc<dyn super::source::PluginSource + Send + Sync>>,
+    pub(crate) plugin_source: Option<Arc<dyn super::source::PluginSource + Send + Sync>>,
     /// Resolved `${...}` substitution variables for this plugin
     /// instance. Populated by the bridge on `enable()`; consumed
     /// by `paths::resolve` and by `command::run` rule
@@ -91,16 +95,16 @@ pub struct PluginState {
     /// `paths::resolve` returns `unterminated` in that case as
     /// a placeholder for "interface not initialized" since the
     /// variant has no dedicated "uninitialized" arm.
-    path_context: Option<super::permission_vars::PathContext>,
+    pub(crate) path_context: Option<super::permission_vars::PathContext>,
     /// Per-capability state grouped by host import. Each
     /// sub-struct owns the bridge-stashed data plus any
     /// permission flags / allowlists for one WIT interface.
     /// See the per-struct docs for the lifecycle contract.
-    sql: SqlState,
-    clipboard: ClipboardState,
-    opener: OpenerState,
-    http: HttpState,
-    command: CommandState,
+    pub(crate) sql: SqlState,
+    pub(crate) clipboard: ClipboardState,
+    pub(crate) opener: OpenerState,
+    pub(crate) http: HttpState,
+    pub(crate) command: CommandState,
 }
 
 // =========================================================
@@ -148,22 +152,6 @@ impl Default for SqlState {
             handle_reps: Vec::new(),
         }
     }
-}
-
-/// Clipboard state — currently a single closure. Wrapped in
-/// a struct for symmetry with the other capabilities so a
-/// future `clipboard::read-text` (or any other clipboard
-/// capability) lands as a new field rather than a separate
-/// flat field on `PluginState`.
-#[derive(Default)]
-pub(crate) struct ClipboardState {
-    /// Closure that writes a string to the system clipboard.
-    /// Stashed by the bridge from the `tauri::AppHandle` on
-    /// `enable()` so the `clipboard::write-text` host import
-    /// can resolve without `PluginState` itself depending on
-    /// the Tauri AppHandle type. `None` between enable
-    /// cycles.
-    pub(crate) writer: Option<ClipboardWriter>,
 }
 
 /// Opener state. Aggregates the URL scheme allowlist, the
@@ -224,15 +212,6 @@ pub(crate) struct CommandState {
     pub(crate) rules: Vec<super::argv_matcher::CompiledCommandRule>,
 }
 
-/// Closure type for the clipboard write capability.
-///
-/// Boxed and stored on `PluginState` instead of holding a
-/// `tauri::AppHandle` directly so the runtime layer stays
-/// decoupled from Tauri-specific types. The bridge
-/// constructs the closure from its own `AppHandle` and
-/// stashes it on `enable()`.
-pub type ClipboardWriter = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
-
 /// Closure type for the opener `open-url` capability.
 ///
 /// Follows the same decoupling pattern as `ClipboardWriter`: the bridge
@@ -288,181 +267,12 @@ impl WasiView for PluginState {
 // Host Import Implementations
 //
 // Each WIT `import` interface generates a trait that we
-// implement on PluginState. wasmtime calls these when the
-// guest invokes an imported function.
+// implement on PluginState. The trait impls live in
+// `host/<capability>.rs`; this module re-exports nothing
+// from them — the impls flow into the wasmtime linker via
+// the bindgen-generated `add_to_linker` regardless of which
+// file they're declared in.
 // =========================================================
-
-impl bindings::torchsnap::plugin::logging::Host for PluginState {
-    fn log(
-        &mut self,
-        level: bindings::torchsnap::plugin::logging::LogLevel,
-        message: String,
-        metadata: Vec<(String, String)>,
-        span: Option<u64>,
-    ) {
-        let log_level = match level {
-            bindings::torchsnap::plugin::logging::LogLevel::Trace => LogLevel::Trace,
-            bindings::torchsnap::plugin::logging::LogLevel::Debug => LogLevel::Debug,
-            bindings::torchsnap::plugin::logging::LogLevel::Info => LogLevel::Info,
-            bindings::torchsnap::plugin::logging::LogLevel::Warn => LogLevel::Warn,
-            bindings::torchsnap::plugin::logging::LogLevel::Error => LogLevel::Error,
-        };
-
-        self.log_sender.send(LogItem {
-            seq: 0,
-            timestamp: SystemTime::now(),
-            source: LogSource::Plugin(self.plugin_id.clone()),
-            kind: LogItemKind::Message {
-                level: log_level,
-                message,
-                metadata,
-                span_id: span,
-            },
-        });
-    }
-
-    fn span_start(
-        &mut self,
-        name: String,
-        parent: Option<u64>,
-        metadata: Vec<(String, String)>,
-    ) -> u64 {
-        let name_for_item = name.clone();
-        let meta_for_item = metadata.clone();
-
-        match self.span_registry.start(
-            name,
-            parent,
-            LogSource::Plugin(self.plugin_id.clone()),
-            metadata,
-        ) {
-            Some((id, depth)) => {
-                // Emit span-start log item so the frontend can
-                // track open spans in real time.
-                self.log_sender.send(LogItem {
-                    seq: 0,
-                    timestamp: SystemTime::now(),
-                    source: LogSource::Plugin(self.plugin_id.clone()),
-                    kind: LogItemKind::SpanStart {
-                        span_id: id,
-                        name: name_for_item,
-                        parent_id: parent,
-                        depth,
-                        metadata: meta_for_item,
-                    },
-                });
-                id
-            }
-            // If nesting depth exceeded, return 0 as a sentinel.
-            // The guest can still pass this to span_end, which
-            // will be a no-op (ID not found in registry).
-            None => 0,
-        }
-    }
-
-    fn span_end(&mut self, span_id: u64, metadata: Vec<(String, String)>) {
-        if let Some(completed) = self.span_registry.end(span_id, metadata) {
-            self.log_sender.send(LogItem {
-                seq: 0,
-                timestamp: SystemTime::now(),
-                source: completed.source.clone(),
-                kind: completed.into(),
-            });
-        }
-    }
-}
-
-// =========================================================
-// Settings host import
-//
-// Routes guest `settings::get(key)` calls through the
-// per-plugin `PluginSettings` handle stashed on
-// `PluginState`. The plugin namespace prefix
-// (`plugins.<id>.`) is added by `PluginSettings::get_raw`
-// itself, so plugins can never escape their own bucket.
-// =========================================================
-
-impl bindings::torchsnap::plugin::settings::Host for PluginState {
-    fn get(&mut self, key: String) -> Option<String> {
-        // The bridge stashes `PluginSettings` BEFORE
-        // calling the guest's `enable()`, so any guest
-        // call (which can only run after `enable()`
-        // returns) should always find the handle present.
-        // The `debug_assert` documents that invariant and
-        // fires loudly during development if the lifecycle
-        // ever changes; in release builds we still
-        // gracefully degrade to "unset" so a stale
-        // `settings::get` (e.g. between disable and a
-        // re-enable cycle that hasn't restashed yet)
-        // returns `None` instead of panicking the guest.
-        debug_assert!(
-            self.settings.is_some(),
-            "settings::get called before bridge stashed PluginSettings — lifecycle invariant broken",
-        );
-        let settings = self.settings.as_ref()?;
-        settings.get_raw(&key)
-    }
-}
-
-// =========================================================
-// Frecency host import
-//
-// Routes guest `frecency::is-enabled` / `frecency::top-items`
-// calls through the per-plugin `PluginFrecency` handle
-// stashed on `PluginState`. Same "degrade gracefully when
-// the handle is missing" contract as the settings import:
-// an accidental call outside an enable lifetime returns
-// empty results rather than trapping.
-//
-// Record and boost are intentionally NOT exposed here —
-// the host already records selections before `execute()`
-// dispatches and applies score bonuses to `search()` results
-// before they reach the frontend, so plugins never need to
-// touch those paths directly.
-// =========================================================
-
-impl bindings::torchsnap::plugin::frecency::Host for PluginState {
-    fn is_enabled(&mut self) -> bool {
-        self.frecency.as_ref().is_some_and(|f| f.is_enabled())
-    }
-
-    fn top_items(
-        &mut self,
-        limit: u32,
-    ) -> Vec<bindings::torchsnap::plugin::frecency::FrecencyItem> {
-        let Some(frecency) = self.frecency.as_ref() else {
-            return Vec::new();
-        };
-        frecency
-            .top_items(limit as usize)
-            .into_iter()
-            .map(Into::into)
-            .collect()
-    }
-}
-
-// =========================================================
-// Clipboard host import
-//
-// Routes guest `clipboard::write-text(text)` calls through
-// the closure stashed by the bridge on `enable()`. The
-// closure wraps `tauri_plugin_clipboard_manager` so this
-// module never depends on the Tauri AppHandle directly.
-//
-// Read access is intentionally not exposed by the WIT
-// interface — see the doc comment on the `clipboard`
-// interface in `torchsnap-plugin.wit`.
-// =========================================================
-
-impl bindings::torchsnap::plugin::clipboard::Host for PluginState {
-    fn write_text(&mut self, text: String) -> Result<(), String> {
-        let writer = self.clipboard.writer.as_ref().ok_or_else(|| {
-            "clipboard writer not initialized — clipboard::write-text called outside enable lifetime"
-                .to_string()
-        })?;
-        writer(&text)
-    }
-}
 
 // =========================================================
 // SQL host import
@@ -1270,59 +1080,6 @@ fn emit_command_audit(
     });
 }
 
-impl bindings::torchsnap::plugin::platform::Host for PluginState {
-    fn current_os(&mut self) -> bindings::torchsnap::plugin::platform::Os {
-        use bindings::torchsnap::plugin::platform::Os;
-
-        if cfg!(target_os = "macos") {
-            Os::Macos
-        } else if cfg!(target_os = "linux") {
-            Os::Linux
-        } else if cfg!(target_os = "windows") {
-            Os::Windows
-        } else {
-            Os::Other(std::env::consts::OS.to_string())
-        }
-    }
-
-    fn current_arch(&mut self) -> bindings::torchsnap::plugin::platform::Arch {
-        use bindings::torchsnap::plugin::platform::Arch;
-
-        if cfg!(target_arch = "x86_64") {
-            Arch::X8664
-        } else if cfg!(target_arch = "aarch64") {
-            Arch::Aarch64
-        } else {
-            Arch::Other(std::env::consts::ARCH.to_string())
-        }
-    }
-}
-
-impl bindings::torchsnap::plugin::paths::Host for PluginState {
-    fn resolve(
-        &mut self,
-        template: String,
-    ) -> Result<String, bindings::torchsnap::plugin::paths::ResolveError> {
-        use super::permission_vars::{substitute_variables, ResolveError};
-        use bindings::torchsnap::plugin::paths::ResolveError as WitResolveError;
-
-        let Some(ctx) = self.path_context.as_ref() else {
-            // Mirrors the contract of other capability stashes
-            // (`http_client`, `clipboard_writer`): if the
-            // bridge has not stashed the context yet, surface
-            // it as an error rather than panicking.
-            return Err(WitResolveError::Unterminated(
-                "paths interface not initialized for this plugin instance".into(),
-            ));
-        };
-
-        substitute_variables(&template, ctx).map_err(|e| match e {
-            ResolveError::UnknownVariable(name) => WitResolveError::UnknownVariable(name),
-            ResolveError::Unterminated(rest) => WitResolveError::Unterminated(rest),
-        })
-    }
-}
-
 // =========================================================
 // HTTP host import
 //
@@ -1524,62 +1281,6 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
 
 /// Map a `PluginSource` error to the `assets::io-error`
 /// variant. Pure function, unit-testable without wasmtime.
-fn into_assets_io_error(e: anyhow::Error) -> bindings::torchsnap::plugin::assets::AssetsError {
-    bindings::torchsnap::plugin::assets::AssetsError::IoError(format!("{e:#}"))
-}
-
-impl bindings::torchsnap::plugin::assets::Host for PluginState {
-    fn read(
-        &mut self,
-        path: String,
-    ) -> Result<Vec<u8>, bindings::torchsnap::plugin::assets::AssetsError> {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-
-        // Validate first so a structured `InvalidPath`
-        // variant is returned without having to grep the
-        // trait's `anyhow::Error` for a guard message.
-        if let Err(e) = super::source::validate_plugin_path(&path) {
-            return Err(AssetsError::InvalidPath(format!("{e:#}")));
-        }
-
-        let source = self
-            .plugin_source
-            .as_ref()
-            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
-
-        // Pre-probe so the "missing" case becomes a
-        // structural `NotFound` variant; the alternative —
-        // attempting the read and matching on the error
-        // string — would be fragile across filesystem /
-        // archive backends.
-        match source.file_exists(&path) {
-            Ok(true) => {}
-            Ok(false) => return Err(AssetsError::NotFound),
-            Err(e) => return Err(into_assets_io_error(e)),
-        }
-
-        source.read_file(&path).map_err(into_assets_io_error)
-    }
-
-    fn exists(
-        &mut self,
-        path: String,
-    ) -> Result<bool, bindings::torchsnap::plugin::assets::AssetsError> {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-
-        if let Err(e) = super::source::validate_plugin_path(&path) {
-            return Err(AssetsError::InvalidPath(format!("{e:#}")));
-        }
-
-        let source = self
-            .plugin_source
-            .as_ref()
-            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
-
-        source.file_exists(&path).map_err(into_assets_io_error)
-    }
-}
-
 // =========================================================
 // WasmRuntime — shared across all plugins
 // =========================================================
@@ -1783,32 +1484,24 @@ impl WasmRuntime {
 /// guest calls go through the Mutex-protected Store to
 /// satisfy `Send + Sync` requirements.
 pub struct WasmPluginInstance {
-    store: Mutex<Store<PluginState>>,
-    plugin: bindings::Plugin,
-    logger: Logger,
+    pub(crate) store: Mutex<Store<PluginState>>,
+    pub(crate) plugin: bindings::Plugin,
+    pub(crate) logger: Logger,
 }
 
 impl WasmPluginInstance {
-    /// Stash a per-plugin `PluginSettings` handle on the
-    /// store data so the `settings::get` host import can
-    /// resolve reads. Called by the bridge from `enable()`
-    /// before the guest's own `enable()` runs.
-    ///
-    /// Replacing an existing handle is allowed (re-enable
-    /// after disable hands in a fresh `PluginContext`).
-    pub fn set_settings(&self, settings: PluginSettings) {
+    /// Apply a closure to a mutable reference to the plugin's
+    /// `PluginState`, holding the store lock for its duration.
+    /// The single chokepoint every capability setter routes
+    /// through, so the lock-acquire / `data_mut()` pattern
+    /// lives in one place rather than 30 setters.
+    pub(crate) fn with_state_mut<R>(&self, f: impl FnOnce(&mut PluginState) -> R) -> R {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().settings = Some(settings);
+        f(store.data_mut())
     }
+}
 
-    /// Drop the stashed `PluginSettings` handle. Called by
-    /// the bridge from `disable()` so the host import
-    /// reverts to "unset" between enable cycles.
-    pub fn clear_settings(&self) {
-        let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().settings = None;
-    }
-
+impl WasmPluginInstance {
     /// Install the SQL storage configuration on the store
     /// data. Called once by the bridge at construction time
     /// (before any guest call) — the migration strings have
@@ -1881,41 +1574,6 @@ impl WasmPluginInstance {
             let _ = data.wasi_table.delete(resource);
         }
         data.sql.storage = None;
-    }
-
-    /// Install a closure that writes a string to the system
-    /// clipboard. Called by the bridge on `enable()` from a
-    /// closure that captures the `tauri::AppHandle`.
-    pub fn set_clipboard_writer(&self, writer: ClipboardWriter) {
-        let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().clipboard.writer = Some(writer);
-    }
-
-    /// Drop the stashed clipboard writer on `disable()` so
-    /// any post-disable `clipboard::write-text` call (which
-    /// shouldn't happen) errors loudly instead of silently
-    /// using a stale closure.
-    pub fn clear_clipboard_writer(&self) {
-        let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().clipboard.writer = None;
-    }
-
-    /// Stash a per-plugin `PluginFrecency` handle on the store
-    /// data so the `frecency::*` host imports can resolve
-    /// reads. Called by the bridge from `enable()` before the
-    /// guest's own `enable()` runs — same contract as
-    /// `set_settings`.
-    pub fn set_frecency(&self, frecency: PluginFrecency) {
-        let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().frecency = Some(frecency);
-    }
-
-    /// Drop the stashed frecency handle on `disable()`. The
-    /// host import reverts to "disabled / empty" between
-    /// enable cycles, matching the `settings` lifecycle.
-    pub fn clear_frecency(&self) {
-        let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().frecency = None;
     }
 
     /// Stash the URL scheme allowlist for `opener::open-url`.
@@ -2235,7 +1893,7 @@ mod tests {
     /// implements every WIT export as a no-op. See that
     /// directory's README for rebuild instructions.
     const MINIMAL_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../tests/fixtures/minimal-plugin/minimal_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/minimal-plugin/minimal_plugin.wasm");
 
     /// Construct a bare `WasmRuntime` for tests. Uses a
     /// discarding `LogSender` and a fresh `SpanRegistry` so
@@ -2349,20 +2007,20 @@ mod tests {
     /// Exercises the `opener` and `http` host interfaces via
     /// `messaging::handle-message` dispatch.
     const OPENER_HTTP_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm");
 
     /// Bytes of the committed `assets-plugin` fixture.
     /// Exercises the `assets` host interface via
     /// `messaging::handle-message` dispatch.
     const ASSETS_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../tests/fixtures/assets-plugin/assets_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/assets-plugin/assets_plugin.wasm");
 
     /// Bytes of the committed `command-plugin` fixture.
     /// Exercises the `command` host interface via
     /// `messaging::handle-message` dispatch.
     #[cfg(unix)]
     const COMMAND_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../tests/fixtures/command-plugin/command_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/command-plugin/command_plugin.wasm");
 
     // =========================================================
     // Unit tests for opener/http pure functions
@@ -3068,7 +2726,7 @@ icon = "heroicons:beaker"
         // formatting captures the `.context()` prefix so
         // host logs stay diagnostic.
         let err = anyhow::anyhow!("root cause").context("while doing X");
-        let mapped = into_assets_io_error(err);
+        let mapped = host::assets::into_assets_io_error(err);
         match mapped {
             bindings::torchsnap::plugin::assets::AssetsError::IoError(msg) => {
                 assert!(msg.contains("while doing X"), "missing context: {msg}");
