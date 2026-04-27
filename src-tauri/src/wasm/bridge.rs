@@ -34,7 +34,8 @@ use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::permission_vars::PathContext;
-use super::runtime::{SqlConfig, UrlOpenerFn, WasmPluginInstance, WasmRuntime};
+use super::runtime::host::opener::UrlOpenerFn;
+use super::runtime::{SqlConfig, WasmPluginInstance, WasmRuntime};
 use super::source::PluginSource;
 
 // =========================================================
