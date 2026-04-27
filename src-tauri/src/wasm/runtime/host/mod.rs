@@ -26,3 +26,4 @@ pub mod opener;
 pub mod paths;
 pub mod platform;
 pub mod settings;
+pub mod sql;
