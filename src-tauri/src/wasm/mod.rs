@@ -11,9 +11,10 @@
 // (backend) and optional frontend bundles.
 //
 // This module provides:
-// - `manifest`  — typed representation of `manifest.toml`
-// - `source`    — abstraction over how plugin files are read
-// - `discovery` — enumerates plugin search roots and entries
+// - `manifest`    — typed representation of `manifest.toml`
+// - `source`      — abstraction over how plugin files are read
+// - `discovery`   — enumerates plugin search roots and entries
+// - `path_safety` — canonical-under-root path resolution
 // =========================================================
 
 mod bindings;
@@ -21,6 +22,7 @@ pub mod bridge;
 pub mod discovery;
 pub mod logging;
 pub mod manifest;
+pub mod path_safety;
 pub mod protocol;
 pub mod runtime;
 pub mod source;
