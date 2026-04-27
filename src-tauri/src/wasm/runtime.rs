@@ -933,10 +933,7 @@ async fn run_child_with_caps(
     // a future improvement; tokio's `Child::kill` already
     // sends `TerminateProcess`, which is sufficient for v1.
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    command.process_group(0);
 
     let mut child = command
         .spawn()
@@ -2328,6 +2325,13 @@ mod tests {
     const ASSETS_PLUGIN_WASM: &[u8] =
         include_bytes!("../../tests/fixtures/assets-plugin/assets_plugin.wasm");
 
+    /// Bytes of the committed `command-plugin` fixture.
+    /// Exercises the `command` host interface via
+    /// `messaging::handle-message` dispatch.
+    #[cfg(unix)]
+    const COMMAND_PLUGIN_WASM: &[u8] =
+        include_bytes!("../../tests/fixtures/command-plugin/command_plugin.wasm");
+
     // =========================================================
     // Unit tests for opener/http pure functions
     //
@@ -3226,5 +3230,146 @@ icon = "heroicons:beaker"
             .expect("dispatch succeeded");
         let err = result.expect_err("uninit must error");
         assert!(err.contains("IoError"), "expected IoError, got: {err}");
+    }
+
+    // =========================================================
+    // Command host import — integration tests
+    //
+    // These drive the full `command::run` impl through the
+    // `command-plugin` fixture, which dispatches the test
+    // scenarios from its `messaging::handle-message` impl.
+    // Unix-only: the fixture's manifest grants `/bin/echo` and
+    // `/bin/sh -c <script>` rules, both of which require Unix
+    // utilities. A Windows port would need its own fixture
+    // with rules over `cmd.exe` / PowerShell.
+    // =========================================================
+
+    #[cfg(unix)]
+    fn compile_command_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance, tempfile::TempDir) {
+        use super::super::argv_matcher::{CompiledArgvConstraint, CompiledCommandRule};
+        use super::super::permission_vars::PathContext;
+
+        let runtime = test_runtime();
+        runtime
+            .compile("command-plugin", COMMAND_PLUGIN_WASM)
+            .expect("compile command fixture");
+        let instance = runtime
+            .instantiate("command-plugin")
+            .expect("instantiate command fixture");
+
+        // Stash a path context so the default cwd resolution
+        // (`<plugin-data>/exec-cwd/`) has somewhere real to
+        // create. The tempdir lives on so the test's child
+        // process actually has a valid cwd at spawn time.
+        let scratch = tempfile::TempDir::new().expect("scratch tempdir");
+        instance.set_path_context(PathContext {
+            plugin_data: scratch.path().to_path_buf(),
+            plugin_archive: scratch.path().to_path_buf(),
+            home: scratch.path().to_path_buf(),
+            xdg_config: scratch.path().to_path_buf(),
+            xdg_data: scratch.path().to_path_buf(),
+        });
+
+        // Compile rules matching the fixture's manifest:
+        //   /bin/echo with [{any-string}]
+        //   /bin/sh   with [{literal:"-c"}, {any-string}]
+        // The fixture's `handle-message` dispatches into
+        // these via the four test methods.
+        instance.set_command_rules(vec![
+            CompiledCommandRule {
+                binary: "/bin/echo".to_string(),
+                argv: vec![CompiledArgvConstraint::AnyString],
+            },
+            CompiledCommandRule {
+                binary: "/bin/sh".to_string(),
+                argv: vec![
+                    CompiledArgvConstraint::Literal("-c".to_string()),
+                    CompiledArgvConstraint::AnyString,
+                ],
+            },
+        ]);
+
+        (runtime, instance, scratch)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_allowed_call_returns_stdout() {
+        let (_runtime, instance, _scratch) = compile_command_fixture();
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("echo", "hello")
+            .expect("handle_message call succeeded")
+            .expect("guest returned Ok");
+
+        // /bin/echo emits the argument plus a trailing newline.
+        assert_eq!(result.trim(), "hello");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_denied_binary_returns_permission_denied() {
+        let (_runtime, instance, _scratch) = compile_command_fixture();
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("deny:/bin/cat", "")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should return Err for unlisted binary");
+        assert!(
+            err.contains("PermissionDenied"),
+            "expected permission-denied, got: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_timeout_returns_timeout_variant() {
+        let (_runtime, instance, _scratch) = compile_command_fixture();
+        instance.enable().expect("enable");
+
+        // Fixture sends `/bin/sh -c "sleep 5"` with a 150ms
+        // timeout. The host should kill the child via
+        // SIGTERM/SIGKILL on the process group and surface
+        // `Timeout`. Anything longer than ~1s would mean the
+        // grace period failed.
+        let started = std::time::Instant::now();
+        let result = instance
+            .handle_message("sleep:5", "")
+            .expect("handle_message call succeeded");
+        let elapsed = started.elapsed();
+
+        let err = result.expect_err("guest should return Err on timeout");
+        assert!(
+            err.contains("Timeout"),
+            "expected Timeout variant, got: {err}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "kill grace took too long: {elapsed:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_output_overflow_returns_too_large() {
+        let (_runtime, instance, _scratch) = compile_command_fixture();
+        instance.enable().expect("enable");
+
+        // Fixture sends `/bin/sh -c "head -c 1024 /dev/zero"`
+        // with a 64-byte output cap. The host should kill the
+        // child and surface `OutputTooLarge` carrying the
+        // bytes captured up to the cap.
+        let result = instance
+            .handle_message("flood:1024", "")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should return Err on output overflow");
+        assert!(
+            err.contains("OutputTooLarge"),
+            "expected OutputTooLarge variant, got: {err}"
+        );
     }
 }
