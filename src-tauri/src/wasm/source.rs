@@ -107,6 +107,22 @@ pub trait PluginSource: Send + Sync {
     fn read_wasm(&self) -> anyhow::Result<Vec<u8>> {
         self.read_file(&self.manifest().plugin.wasm)
     }
+
+    /// Filesystem path that backs this source — the directory
+    /// for `DirectorySource`, the `.torchsnap` archive file for
+    /// `ArchiveSource`. Used to populate the `${plugin-archive}`
+    /// substitution variable so command rules and runtime
+    /// `paths::resolve` calls can refer to it.
+    ///
+    /// For `ArchiveSource` the returned path is the archive
+    /// file itself (not its contents), so paths constructed as
+    /// `${plugin-archive}/foo` will not canonicalize to a real
+    /// file under it. That is correct: archive contents are
+    /// reachable via `assets::read`, not via filesystem paths.
+    /// Bundled-binary support (deferred — see
+    /// `todos/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-...md`) will
+    /// extract archives on install and update this contract.
+    fn root_path(&self) -> &Path;
 }
 
 // =========================================================
@@ -215,6 +231,10 @@ impl PluginSource for DirectorySource {
             Some(canonical) => Ok(canonical.is_file()),
             None => Ok(false),
         }
+    }
+
+    fn root_path(&self) -> &Path {
+        &self.root
     }
 }
 
@@ -375,6 +395,10 @@ pub struct ArchiveSource {
     /// the underlying file).
     archive: Mutex<zip::ZipArchive<std::fs::File>>,
     manifest: Manifest,
+    /// Path to the `.torchsnap` archive file on disk. Returned
+    /// by `root_path()` for the `${plugin-archive}` variable
+    /// substitution (see PluginSource trait docs).
+    archive_path: PathBuf,
 }
 
 impl ArchiveSource {
@@ -409,6 +433,7 @@ impl ArchiveSource {
         Ok(Self {
             archive: Mutex::new(archive),
             manifest,
+            archive_path: path.to_path_buf(),
         })
     }
 }
@@ -458,6 +483,10 @@ impl PluginSource for ArchiveSource {
             Err(zip::result::ZipError::FileNotFound) => Ok(false),
             Err(e) => Err(anyhow::anyhow!("archive lookup for `{path}` failed: {e}")),
         }
+    }
+
+    fn root_path(&self) -> &Path {
+        &self.archive_path
     }
 }
 
