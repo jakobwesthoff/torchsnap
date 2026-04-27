@@ -139,14 +139,16 @@ unambiguous manifests and keeps "first-match-wins" out of the
 trust model: a permission decision can never silently depend on
 rule ordering.
 
-### Opener-class binaries are denied in `[[permissions.command]]`
+### Opener-class binaries are not denied in command rules
 
-`open`, `xdg-open`, `start` and a small denylist of equivalents are
-hard-rejected as `binary` in command rules. Plugins that want
-"open this with the registered application" use the extended
-`opener` interface (see below). This isolates the high-impact
-"trigger arbitrary registered handler" verb in a single, narrow
-capability rather than letting it leak in via process exec.
+`open`, `xdg-open`, `start` and similar registered-handler launchers
+are *not* hard-rejected as `binary` in command rules. The extended
+`opener` interface (see below) is the preferred path for "open this
+with the registered application", but plugin authors may still
+declare the launcher binaries as command rules if they have a
+specific reason. The trust decision belongs to the plugin author and
+the manifest reviewer, not to the host enforcing a paternalistic
+denylist.
 
 ### Argv constraints are defense-in-depth, not soundness
 
@@ -263,6 +265,34 @@ Independently useful and unblocks the bundled-executables work
 deferred below. No permission required: this is read-only
 information that doesn't widen the sandbox.
 
+### A `paths` interface for resolving manifest variables at runtime
+
+`[[permissions.command]]` rules use substitution variables
+(`${plugin-data}`, `${plugin-archive}`, `${home}`,
+`${xdg-config}`, `${xdg-data}`) in `path-under`, `literal`, and
+per-rule `cwd` fields. The host resolves them at bridge
+construction time. Plugins constructing argv strings that need to
+satisfy a `path-under` constraint must be able to discover the
+same resolved values — otherwise an `${plugin-archive}/helper`
+constraint is unreachable from plugin code.
+
+```wit
+interface paths {
+    variant resolve-error {
+        unknown-variable(string),
+        unterminated(string),
+    }
+    resolve: func(template: string) -> result<string, resolve-error>;
+}
+```
+
+Single function, identical template syntax to the manifest. A plugin
+declaring `path-under = "${plugin-archive}/repos"` in its manifest
+calls `paths::resolve("${plugin-archive}/repos")` in code; both
+sides walk the same recognized-variable list and produce the same
+resolved path. No permission required — purely informational, no
+I/O, the variables it can substitute are bounded.
+
 ### Audit logging
 
 Every `command::run` call emits a structured `logging::log`
@@ -327,6 +357,18 @@ documented in the SDK docs.
   the archive, so root-shape constraints don't narrow the
   malicious-author threat. Boolean capability flags preserve
   the auditable signal without false precision.
+
+* **Hard-rejecting opener-class binaries (`open`, `xdg-open`,
+  `start`, …) in `[[permissions.command]]`** — considered
+  during design, rejected. The intent was to force these
+  registered-handler launchers through the `opener` interface
+  exclusively. In practice it would have been paternalism: the
+  manifest reviewer can see `binary = "xdg-open"` in a command
+  rule just as clearly as `open-path = true` under `opener`,
+  and a plugin author with a specific reason to invoke the
+  launcher directly should not be blocked. The `opener`
+  interface remains the *preferred* path; the host does not
+  enforce it.
 
 * **Async / streaming output / persistent process handles** —
   rejected for v1. WIT resource handles for processes are
