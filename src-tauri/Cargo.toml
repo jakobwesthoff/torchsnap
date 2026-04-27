@@ -48,6 +48,8 @@ tokio = { version = "1.50.0", default-features = false, features = [
     "time",
     "net",
     "io-util",
+    "process",
+    "rt",
 ] }
 tauri-plugin-autostart = "2.5.1"
 evalexpr = "13.1.0"
@@ -97,6 +99,9 @@ objc2-foundation = { version = "0.3.2", features = [
     "NSData",
     "NSGeometry",
 ] }
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.186"
 
 [profile.release]
 strip = true
