@@ -47,6 +47,7 @@ wit_bindgen::generate!({
     default_bindings_module: "::torchsnap_plugin_sdk",
 });
 
+pub mod command;
 pub mod logging;
 pub mod messaging;
 pub mod settings;
@@ -90,7 +91,8 @@ pub use exports::torchsnap::plugin::search::{
 // higher-level `settings` helper module. The same applies to
 // `logging_host`.
 // =========================================================
-pub use torchsnap::plugin::{assets, clipboard, frecency, http, opener};
+pub use torchsnap::plugin::{assets, clipboard, frecency, http, opener, paths, platform};
+pub use torchsnap::plugin::command as command_host;
 pub use torchsnap::plugin::logging as logging_host;
 pub use torchsnap::plugin::settings as settings_host;
 
@@ -110,8 +112,8 @@ pub mod prelude {
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{logging, messaging, settings, sql};
-    pub use super::{assets, clipboard, frecency, http, opener};
+    pub use super::{command, logging, messaging, settings, sql};
+    pub use super::{assets, clipboard, frecency, http, opener, paths, platform};
     // Macros re-exported through the prelude so a single
     // `use torchsnap_plugin_sdk::prelude::*;` is enough to
     // write a minimal plugin.
