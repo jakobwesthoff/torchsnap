@@ -21,6 +21,7 @@ pub mod assets;
 pub mod clipboard;
 pub mod frecency;
 pub mod logging;
+pub mod opener;
 pub mod paths;
 pub mod platform;
 pub mod settings;
