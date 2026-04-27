@@ -33,6 +33,7 @@ use crate::settings::SettingsInit;
 use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
+use super::permission_vars::PathContext;
 use super::runtime::{SqlConfig, UrlOpenerFn, WasmPluginInstance, WasmRuntime};
 use super::source::PluginSource;
 
@@ -81,11 +82,26 @@ pub struct WasmPluginBridge {
     /// from `[permissions.opener].schemes` at construction;
     /// empty means the plugin has no opener access.
     opener_schemes: Vec<String>,
+    /// Whether the manifest grants `opener::open-path`.
+    opener_open_path: bool,
+    /// Whether the manifest grants `opener::reveal-path`.
+    opener_reveal_path: bool,
     /// Permitted origins for `http::fetch`. Extracted from
     /// `[permissions.http].origins` at construction; empty
     /// means the plugin has no HTTP access; `"*"` means
     /// trust-all.
     http_origins: Vec<String>,
+    /// Resolved `${plugin-data}` for this plugin —
+    /// `<app_data_dir>/plugin-home/<plugin-id>/`. Re-stashed
+    /// on every fresh instance so per-call `paths::resolve`
+    /// substitutions go through one source of truth.
+    plugin_data: PathBuf,
+    /// Resolved `${plugin-archive}` for this plugin — the
+    /// directory root for `DirectorySource`, or the
+    /// `.torchsnap` archive file for `ArchiveSource`. See the
+    /// `PluginSource::root_path` docs for the per-source
+    /// contract.
+    plugin_archive: PathBuf,
     /// Live guest instance, or `None` while disabled.
     ///
     /// **Lock discipline**: never call into the guest while
@@ -200,12 +216,15 @@ impl WasmPluginBridge {
         // Extract permission allowlists from the manifest.
         // Each list defaults to empty (deny all) when the
         // corresponding `[permissions.*]` sub-table is absent.
-        let opener_schemes = manifest
+        let opener_def = manifest
             .permissions
             .as_ref()
-            .and_then(|p| p.opener.as_ref())
+            .and_then(|p| p.opener.as_ref());
+        let opener_schemes = opener_def
             .map(|o| o.schemes.clone())
             .unwrap_or_default();
+        let opener_open_path = opener_def.map(|o| o.open_path).unwrap_or(false);
+        let opener_reveal_path = opener_def.map(|o| o.reveal_path).unwrap_or(false);
 
         let http_origins = manifest
             .permissions
@@ -213,6 +232,17 @@ impl WasmPluginBridge {
             .and_then(|p| p.http.as_ref())
             .map(|h| h.origins.clone())
             .unwrap_or_default();
+
+        // Pre-resolve the host filesystem paths the
+        // `paths::resolve` host import (and, in the next
+        // sub-phase, command-rule compilation) will need.
+        // Plugin-archive comes from the source's filesystem
+        // root; plugin-data is the per-plugin host-managed
+        // state directory under `<app_data_dir>/plugin-home/`.
+        let plugin_data = app_data_dir
+            .join("plugin-home")
+            .join(plugin_id.as_str());
+        let plugin_archive = source.root_path().to_path_buf();
 
         // Pre-parse every `[[tasks]]` schedule. The manifest
         // loader has already validated that they're well-
@@ -244,7 +274,11 @@ impl WasmPluginBridge {
             sql_config,
             plugin_source: source,
             opener_schemes,
+            opener_open_path,
+            opener_reveal_path,
             http_origins,
+            plugin_data,
+            plugin_archive,
             instance: Mutex::new(None),
             log_sender,
             parsed_tasks,
@@ -462,6 +496,43 @@ async fn scheduler_loop(
     }
 }
 
+/// Build a [`PathContext`] resolving the five `${...}`
+/// substitution variables (`plugin-data`, `plugin-archive`,
+/// `home`, `xdg-config`, `xdg-data`) for one plugin
+/// instance. Called from `enable()` once per re-enable
+/// cycle. The plugin-data and plugin-archive paths come
+/// from the bridge (the bridge already has them); the
+/// XDG-style paths come from Tauri's path resolver, which
+/// produces platform-correct values (`Application Support`
+/// on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME`
+/// with fallback on Linux).
+fn build_path_context(
+    app: &tauri::AppHandle,
+    plugin_data: &PathBuf,
+    plugin_archive: &PathBuf,
+) -> anyhow::Result<PathContext> {
+    use tauri::Manager;
+
+    let path_resolver = app.path();
+    let home = path_resolver
+        .home_dir()
+        .context("resolve home directory")?;
+    let xdg_config = path_resolver
+        .config_dir()
+        .context("resolve config directory")?;
+    let xdg_data = path_resolver
+        .data_dir()
+        .context("resolve data directory")?;
+
+    Ok(PathContext {
+        plugin_data: plugin_data.clone(),
+        plugin_archive: plugin_archive.clone(),
+        home,
+        xdg_config,
+        xdg_data,
+    })
+}
+
 fn log_task_error(log_sender: &LogSender, plugin_id: &str, task_id: &str, error: &str) {
     log_sender.send(LogItem {
         seq: 0,
@@ -581,6 +652,7 @@ impl Plugin for WasmPluginBridge {
         // clipboard writer above. The HTTP client is a fresh
         // `Http` instance per enable cycle.
         instance.set_opener_schemes(self.opener_schemes.clone());
+        instance.set_opener_path_capabilities(self.opener_open_path, self.opener_reveal_path);
         instance.set_http_origins(self.http_origins.clone());
 
         let opener_handle = app.clone();
@@ -592,6 +664,47 @@ impl Plugin for WasmPluginBridge {
                 .map_err(|e| e.to_string())
         });
         instance.set_opener_writer(opener_fn);
+
+        // The Tauri opener crate's `open_path` invokes the
+        // OS-registered application for the given path —
+        // LaunchServices on macOS, GIO on Linux, ShellExecute
+        // on Windows. The host doesn't need to know which
+        // platform-specific path it routes through; that's
+        // Tauri's responsibility.
+        let open_path_handle = app.clone();
+        let open_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            open_path_handle
+                .opener()
+                .open_path(path, None::<&str>)
+                .map_err(|e| e.to_string())
+        });
+        instance.set_open_path_writer(open_path_fn);
+
+        let reveal_path_handle = app.clone();
+        let reveal_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            reveal_path_handle
+                .opener()
+                .reveal_item_in_dir(path)
+                .map_err(|e| e.to_string())
+        });
+        instance.set_reveal_path_writer(reveal_path_fn);
+
+        // Build and stash the substitution context for
+        // `paths::resolve` (and, in the next sub-phase,
+        // command-rule compilation). Tauri's path resolver
+        // produces the platform-correct values for `home`,
+        // `xdg-config`, and `xdg-data`; on macOS and Windows
+        // the XDG names are mapped to the closest equivalent
+        // (Application Support / AppData).
+        match build_path_context(app, &self.plugin_data, &self.plugin_archive) {
+            Ok(ctx) => instance.set_path_context(ctx),
+            Err(e) => self.log(
+                LogLevel::Warn,
+                format!("paths::resolve unavailable for `{}`: {e:#}", self.plugin_id),
+            ),
+        }
 
         instance.set_http_client(Arc::new(crate::network::Http::new()));
 
@@ -648,6 +761,9 @@ impl Plugin for WasmPluginBridge {
         instance.clear_sql_storage();
         instance.clear_clipboard_writer();
         instance.clear_opener_writer();
+        instance.clear_open_path_writer();
+        instance.clear_reveal_path_writer();
+        instance.clear_path_context();
         instance.clear_http_client();
         instance.clear_plugin_source();
     }

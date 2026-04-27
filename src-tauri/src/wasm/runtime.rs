@@ -137,6 +137,29 @@ pub struct PluginState {
     /// imports return an `io-error` in that case, matching
     /// the contract of the other capability stashes.
     plugin_source: Option<Arc<dyn super::source::PluginSource + Send + Sync>>,
+    /// Whether the plugin's manifest grants `open-path`. Drives
+    /// the `opener::open-path` host import gate; the actual
+    /// host-side delegation goes through `open_path_writer`.
+    opener_open_path: bool,
+    /// Whether the plugin's manifest grants `reveal-path`. Drives
+    /// the `opener::reveal-path` host import gate.
+    opener_reveal_path: bool,
+    /// Closure that opens a filesystem path with the OS-registered
+    /// application. Same lifecycle and decoupling contract as
+    /// `opener_writer`: the bridge constructs this from its
+    /// `AppHandle` on `enable()` and clears it on `disable()`.
+    open_path_writer: Option<UrlOpenerFn>,
+    /// Closure that reveals a filesystem path in the OS file
+    /// manager. Same shape and lifecycle as `open_path_writer`.
+    reveal_path_writer: Option<UrlOpenerFn>,
+    /// Resolved `${...}` substitution variables for this plugin
+    /// instance. Populated by the bridge on `enable()`; consumed
+    /// by `paths::resolve` and (in a later phase) by
+    /// `command::run` rule compilation. `None` outside an enable
+    /// lifetime — `paths::resolve` returns `unterminated` in that
+    /// case as a placeholder for "interface not initialized" since
+    /// the variant has no dedicated "uninitialized" arm.
+    path_context: Option<super::permission_vars::PathContext>,
 }
 
 /// Closure type for the clipboard write capability.
@@ -622,25 +645,38 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
 
     fn open_path(
         &mut self,
-        _path: String,
+        path: String,
     ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
-        // Wired in Phase E. The capability gate and the
-        // Tauri `OpenerExt::open_path` delegation land
-        // together with the bridge-side `open_path_writer`
-        // stashing.
-        Err(bindings::torchsnap::plugin::opener::OpenerError::PermissionDenied(
-            "open-path not yet implemented".into(),
-        ))
+        use bindings::torchsnap::plugin::opener::OpenerError;
+
+        if !self.opener_open_path {
+            return Err(OpenerError::PermissionDenied(
+                "open-path not granted: set `[permissions.opener] open-path = true`".into(),
+            ));
+        }
+        let writer = self
+            .open_path_writer
+            .as_ref()
+            .ok_or_else(|| OpenerError::BackendFailure("open-path not initialized".into()))?;
+        writer(&path).map_err(OpenerError::BackendFailure)
     }
 
     fn reveal_path(
         &mut self,
-        _path: String,
+        path: String,
     ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
-        // Wired in Phase E alongside `open_path`.
-        Err(bindings::torchsnap::plugin::opener::OpenerError::PermissionDenied(
-            "reveal-path not yet implemented".into(),
-        ))
+        use bindings::torchsnap::plugin::opener::OpenerError;
+
+        if !self.opener_reveal_path {
+            return Err(OpenerError::PermissionDenied(
+                "reveal-path not granted: set `[permissions.opener] reveal-path = true`".into(),
+            ));
+        }
+        let writer = self
+            .reveal_path_writer
+            .as_ref()
+            .ok_or_else(|| OpenerError::BackendFailure("reveal-path not initialized".into()))?;
+        writer(&path).map_err(OpenerError::BackendFailure)
     }
 }
 
@@ -706,13 +742,25 @@ impl bindings::torchsnap::plugin::platform::Host for PluginState {
 impl bindings::torchsnap::plugin::paths::Host for PluginState {
     fn resolve(
         &mut self,
-        _template: String,
+        template: String,
     ) -> Result<String, bindings::torchsnap::plugin::paths::ResolveError> {
-        Err(
-            bindings::torchsnap::plugin::paths::ResolveError::Unterminated(
-                "paths::resolve not yet wired to host runtime".into(),
-            ),
-        )
+        use super::permission_vars::{substitute_variables, ResolveError};
+        use bindings::torchsnap::plugin::paths::ResolveError as WitResolveError;
+
+        let Some(ctx) = self.path_context.as_ref() else {
+            // Mirrors the contract of other capability stashes
+            // (`http_client`, `clipboard_writer`): if the
+            // bridge has not stashed the context yet, surface
+            // it as an error rather than panicking.
+            return Err(WitResolveError::Unterminated(
+                "paths interface not initialized for this plugin instance".into(),
+            ));
+        };
+
+        substitute_variables(&template, ctx).map_err(|e| match e {
+            ResolveError::UnknownVariable(name) => WitResolveError::UnknownVariable(name),
+            ResolveError::Unterminated(rest) => WitResolveError::Unterminated(rest),
+        })
     }
 }
 
@@ -1155,6 +1203,10 @@ impl WasmRuntime {
             // (deny-all) and the writer/client are `None`.
             opener_schemes: Vec::new(),
             opener_writer: None,
+            opener_open_path: false,
+            opener_reveal_path: false,
+            open_path_writer: None,
+            reveal_path_writer: None,
             http_origins: Vec::new(),
             http_client: None,
             // Stashed by the bridge on `enable()` via
@@ -1163,6 +1215,7 @@ impl WasmRuntime {
             // until then, matching the capability-stash
             // contract of `http_client` / `clipboard_writer`.
             plugin_source: None,
+            path_context: None,
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -1343,6 +1396,56 @@ impl WasmPluginInstance {
     pub fn clear_opener_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         store.data_mut().opener_writer = None;
+    }
+
+    /// Stash the `open-path` / `reveal-path` capability flags from
+    /// `[permissions.opener]`. Called by the bridge at `enable()`.
+    pub fn set_opener_path_capabilities(&self, open_path: bool, reveal_path: bool) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        let state = store.data_mut();
+        state.opener_open_path = open_path;
+        state.opener_reveal_path = reveal_path;
+    }
+
+    /// Install the closure that opens a filesystem path via the
+    /// OS-registered application. Called by the bridge at
+    /// `enable()`.
+    pub fn set_open_path_writer(&self, writer: UrlOpenerFn) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().open_path_writer = Some(writer);
+    }
+
+    /// Drop the `open-path` closure on `disable()`.
+    pub fn clear_open_path_writer(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().open_path_writer = None;
+    }
+
+    /// Install the closure that reveals a filesystem path in the
+    /// OS file manager. Called by the bridge at `enable()`.
+    pub fn set_reveal_path_writer(&self, writer: UrlOpenerFn) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().reveal_path_writer = Some(writer);
+    }
+
+    /// Drop the `reveal-path` closure on `disable()`.
+    pub fn clear_reveal_path_writer(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().reveal_path_writer = None;
+    }
+
+    /// Stash the resolved `${...}` substitution context.
+    /// Called by the bridge at `enable()` after computing the
+    /// per-plugin paths.
+    pub fn set_path_context(&self, ctx: super::permission_vars::PathContext) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().path_context = Some(ctx);
+    }
+
+    /// Drop the substitution context on `disable()`.
+    pub fn clear_path_context(&self) {
+        let mut store = self.store.lock().expect("store not poisoned");
+        store.data_mut().path_context = None;
     }
 
     /// Stash the origin allowlist for `http::fetch`. Called by
@@ -1561,9 +1664,14 @@ impl PluginState {
             frecency: None,
             opener_schemes: Vec::new(),
             opener_writer: None,
+            opener_open_path: false,
+            opener_reveal_path: false,
+            open_path_writer: None,
+            reveal_path_writer: None,
             http_origins: Vec::new(),
             http_client: None,
             plugin_source: None,
+            path_context: None,
         }
     }
 }

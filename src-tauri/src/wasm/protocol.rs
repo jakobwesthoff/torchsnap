@@ -218,6 +218,14 @@ mod tests {
         fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
             Ok(self.files.contains_key(path))
         }
+
+        fn root_path(&self) -> &std::path::Path {
+            // Test-only memory source; the path is unused by
+            // anything that drives the protocol layer in the
+            // suite. A leaked-static `/` keeps the trait
+            // satisfied without paying a `PathBuf` allocation.
+            std::path::Path::new("/")
+        }
     }
 
     fn test_manifest() -> Manifest {
