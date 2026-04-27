@@ -67,36 +67,6 @@ pub struct PluginState {
     /// which it shouldn't, since the host always calls
     /// `enable()` before any guest code runs.
     settings: Option<PluginSettings>,
-    /// Per-plugin SQL storage configuration. Populated by
-    /// the bridge at construction time from the manifest's
-    /// `[storage.sql]` block (`SqlConfig::None` when the
-    /// plugin declares no SQL storage). The bridge's
-    /// `enable()` materializes the actual database into
-    /// `sql_storage` below; `sql::connection()` then hands
-    /// out handles backed by the same `Arc<SqlStorage>`.
-    sql_config: SqlConfig,
-    sql_storage: Option<Arc<SqlStorage>>,
-    /// Resource reps for every `SqlHandleEntry` currently
-    /// live in `wasi_table`. Pushed on `sql::connection()`,
-    /// removed on the WIT-driven `drop()` of an individual
-    /// handle, and drained-and-deleted on
-    /// `clear_sql_storage()` so that disable cleanly
-    /// releases every outstanding `Arc<SqlStorage>`
-    /// reference. Without this list, a plugin that opened
-    /// a handle and never explicitly dropped it would leak
-    /// the rusqlite `Connection` until the
-    /// `WasmPluginInstance` itself is dropped (i.e. until
-    /// app shutdown).
-    sql_handle_reps: Vec<u32>,
-    /// Closure that writes a string to the system clipboard.
-    /// Stashed by the bridge from the `tauri::AppHandle` on
-    /// `enable()` so the `clipboard::write-text` host import
-    /// can resolve without `PluginState` itself depending on
-    /// the Tauri AppHandle type. `None` between enable
-    /// cycles; the host import returns an error if accessed
-    /// outside an enable lifetime (which should never
-    /// happen — every guest call runs inside one).
-    clipboard_writer: Option<ClipboardWriter>,
     /// Per-plugin namespaced frecency reader. Same lifecycle
     /// as `settings`: stashed by the bridge on `enable()` from
     /// the `PluginContext.frecency` handle and cleared on
@@ -106,29 +76,6 @@ pub struct PluginState {
     /// need to read frecency state directly (e.g. to drive an
     /// empty-query browse mode).
     frecency: Option<PluginFrecency>,
-    /// URL schemes this plugin is permitted to open. Populated
-    /// by the bridge from `[permissions.opener].schemes` in the
-    /// manifest. Empty means deny-all. Compared
-    /// case-insensitively against the scheme extracted from the
-    /// URL at call time by `opener::open-url`.
-    opener_schemes: Vec<String>,
-    /// Closure that opens a URL in the OS default handler.
-    /// Same lifecycle and decoupling contract as
-    /// `clipboard_writer`: the bridge constructs this from its
-    /// `AppHandle` on `enable()` and clears it on `disable()`.
-    opener_writer: Option<UrlOpenerFn>,
-    /// Origins this plugin is permitted to fetch. Populated by
-    /// the bridge from `[permissions.http].origins` in the
-    /// manifest and already normalized to
-    /// `ascii_serialization()` form. Empty means deny-all;
-    /// `["*"]` means trust-all. Compared against the
-    /// ASCII-serialized origin of the request URL at call time.
-    http_origins: Vec<String>,
-    /// HTTP client for this plugin, created on `enable()` and
-    /// cleared on `disable()`. `None` outside an enable
-    /// lifetime; the `http::fetch` host import returns an error
-    /// in that case.
-    http_client: Option<Arc<crate::network::Http>>,
     /// The plugin's own source handle, stashed by the bridge
     /// on `enable()` so the `assets::read` / `assets::exists`
     /// host imports can read files bundled inside the plugin
@@ -137,35 +84,144 @@ pub struct PluginState {
     /// imports return an `io-error` in that case, matching
     /// the contract of the other capability stashes.
     plugin_source: Option<Arc<dyn super::source::PluginSource + Send + Sync>>,
-    /// Whether the plugin's manifest grants `open-path`. Drives
-    /// the `opener::open-path` host import gate; the actual
-    /// host-side delegation goes through `open_path_writer`.
-    opener_open_path: bool,
-    /// Whether the plugin's manifest grants `reveal-path`. Drives
-    /// the `opener::reveal-path` host import gate.
-    opener_reveal_path: bool,
-    /// Closure that opens a filesystem path with the OS-registered
-    /// application. Same lifecycle and decoupling contract as
-    /// `opener_writer`: the bridge constructs this from its
-    /// `AppHandle` on `enable()` and clears it on `disable()`.
-    open_path_writer: Option<UrlOpenerFn>,
-    /// Closure that reveals a filesystem path in the OS file
-    /// manager. Same shape and lifecycle as `open_path_writer`.
-    reveal_path_writer: Option<UrlOpenerFn>,
     /// Resolved `${...}` substitution variables for this plugin
     /// instance. Populated by the bridge on `enable()`; consumed
-    /// by `paths::resolve` and (in a later phase) by
-    /// `command::run` rule compilation. `None` outside an enable
-    /// lifetime — `paths::resolve` returns `unterminated` in that
-    /// case as a placeholder for "interface not initialized" since
-    /// the variant has no dedicated "uninitialized" arm.
+    /// by `paths::resolve` and by `command::run` rule
+    /// compilation. `None` outside an enable lifetime —
+    /// `paths::resolve` returns `unterminated` in that case as
+    /// a placeholder for "interface not initialized" since the
+    /// variant has no dedicated "uninitialized" arm.
     path_context: Option<super::permission_vars::PathContext>,
-    /// Compiled `[[permissions.command]]` rules for this plugin.
-    /// Built by the bridge from the raw manifest rules + the
-    /// resolved `PathContext` at `enable()`. Empty means the
-    /// plugin has no `command::run` access — every call returns
+    /// Per-capability state grouped by host import. Each
+    /// sub-struct owns the bridge-stashed data plus any
+    /// permission flags / allowlists for one WIT interface.
+    /// See the per-struct docs for the lifecycle contract.
+    sql: SqlState,
+    clipboard: ClipboardState,
+    opener: OpenerState,
+    http: HttpState,
+    command: CommandState,
+}
+
+// =========================================================
+// Per-capability state sub-structs
+//
+// One struct per host capability that owns multi-field
+// state. Single-field capabilities (`settings`, `frecency`,
+// `plugin_source`, `path_context`) stay flat on
+// `PluginState` — wrapping a single `Option` adds ceremony
+// without cohesion benefit.
+//
+// Each sub-struct has a `Default` impl producing the
+// disabled / empty state. The bridge's `enable()` path
+// populates fields directly; `disable()` resets via
+// `*self = Self::default()`.
+// =========================================================
+
+/// SQL storage state. `config` is set once at bridge
+/// construction from the manifest; `storage` and
+/// `handle_reps` track per-enable-cycle runtime state.
+pub(crate) struct SqlState {
+    /// Storage configuration materialized from the manifest's
+    /// `[storage.sql]` block. `SqlConfig::None` when the
+    /// plugin declares no SQL storage.
+    pub(crate) config: SqlConfig,
+    /// The materialized storage handle. The bridge's
+    /// `enable()` opens the database and stashes it here;
+    /// `sql::connection()` hands out resource handles backed
+    /// by the same `Arc<SqlStorage>`.
+    pub(crate) storage: Option<Arc<SqlStorage>>,
+    /// Resource reps for every `SqlHandleEntry` currently
+    /// live in `wasi_table`. Pushed on `sql::connection()`,
+    /// removed on the WIT-driven `drop()` of an individual
+    /// handle, and drained-and-deleted on `disable()` so
+    /// that release cleanly tears down every outstanding
+    /// `Arc<SqlStorage>` reference.
+    pub(crate) handle_reps: Vec<u32>,
+}
+
+impl Default for SqlState {
+    fn default() -> Self {
+        Self {
+            config: SqlConfig::None,
+            storage: None,
+            handle_reps: Vec::new(),
+        }
+    }
+}
+
+/// Clipboard state — currently a single closure. Wrapped in
+/// a struct for symmetry with the other capabilities so a
+/// future `clipboard::read-text` (or any other clipboard
+/// capability) lands as a new field rather than a separate
+/// flat field on `PluginState`.
+#[derive(Default)]
+pub(crate) struct ClipboardState {
+    /// Closure that writes a string to the system clipboard.
+    /// Stashed by the bridge from the `tauri::AppHandle` on
+    /// `enable()` so the `clipboard::write-text` host import
+    /// can resolve without `PluginState` itself depending on
+    /// the Tauri AppHandle type. `None` between enable
+    /// cycles.
+    pub(crate) writer: Option<ClipboardWriter>,
+}
+
+/// Opener state. Aggregates the URL scheme allowlist, the
+/// `open-path` / `reveal-path` capability flags, and the
+/// three writer closures. The largest capability surface in
+/// the runtime, and the primary motivation for the per-
+/// capability grouping.
+#[derive(Default)]
+pub(crate) struct OpenerState {
+    /// URL schemes this plugin is permitted to open via
+    /// `opener::open-url`. Populated by the bridge from
+    /// `[permissions.opener].schemes` in the manifest. Empty
+    /// means deny-all. Compared case-insensitively against
+    /// the scheme extracted by the `url` crate (which always
+    /// lowercases per RFC 3986).
+    pub(crate) schemes: Vec<String>,
+    /// Whether the plugin's manifest grants
+    /// `opener::open-path`. Drives the gate; the actual
+    /// host-side delegation goes through `open_path_writer`.
+    pub(crate) open_path: bool,
+    /// Whether the plugin's manifest grants
+    /// `opener::reveal-path`. Same shape as `open_path`.
+    pub(crate) reveal_path: bool,
+    /// Closure that opens a URL in the OS default handler.
+    /// Bridge constructs from `tauri::AppHandle` on
+    /// `enable()` and clears on `disable()`.
+    pub(crate) open_url_writer: Option<UrlOpenerFn>,
+    /// Closure that opens a filesystem path with the
+    /// OS-registered application.
+    pub(crate) open_path_writer: Option<UrlOpenerFn>,
+    /// Closure that reveals a filesystem path in the OS
+    /// file manager.
+    pub(crate) reveal_path_writer: Option<UrlOpenerFn>,
+}
+
+/// HTTP state. Origin allowlist + the per-plugin client.
+#[derive(Default)]
+pub(crate) struct HttpState {
+    /// Origins this plugin is permitted to fetch. Already
+    /// normalized to `ascii_serialization()` at manifest
+    /// parse. Empty means deny-all; `["*"]` means trust-all.
+    pub(crate) origins: Vec<String>,
+    /// HTTP client for this plugin, created on `enable()`
+    /// and cleared on `disable()`.
+    pub(crate) client: Option<Arc<crate::network::Http>>,
+}
+
+/// Command state. Compiled `[[permissions.command]]` rules
+/// + (future) handle to a currently-running child for
+/// disable-time termination.
+#[derive(Default)]
+pub(crate) struct CommandState {
+    /// Compiled rules for this plugin instance. Built by the
+    /// bridge from the raw manifest rules + the resolved
+    /// `PathContext` at `enable()`. Empty means the plugin
+    /// has no `command::run` access — every call returns
     /// `permission-denied`.
-    command_rules: Vec<super::argv_matcher::CompiledCommandRule>,
+    pub(crate) rules: Vec<super::argv_matcher::CompiledCommandRule>,
 }
 
 /// Closure type for the clipboard write capability.
@@ -400,7 +456,7 @@ impl bindings::torchsnap::plugin::frecency::Host for PluginState {
 
 impl bindings::torchsnap::plugin::clipboard::Host for PluginState {
     fn write_text(&mut self, text: String) -> Result<(), String> {
-        let writer = self.clipboard_writer.as_ref().ok_or_else(|| {
+        let writer = self.clipboard.writer.as_ref().ok_or_else(|| {
             "clipboard writer not initialized — clipboard::write-text called outside enable lifetime"
                 .to_string()
         })?;
@@ -441,7 +497,7 @@ impl bindings::torchsnap::plugin::sql::Host for PluginState {
         // without declaring storage — that's a bug, so we
         // trap rather than returning a Result the guest would
         // have to handle on every call.
-        let storage = self.sql_storage.as_ref().expect(
+        let storage = self.sql.storage.as_ref().expect(
             "sql::connection() called but no SQL storage is initialized — \
                      declare [storage.sql] in manifest.toml",
         );
@@ -465,7 +521,7 @@ impl bindings::torchsnap::plugin::sql::Host for PluginState {
         // leaked handle would keep the rusqlite connection
         // alive until the entire WasmPluginInstance is
         // dropped (effectively until app shutdown).
-        self.sql_handle_reps.push(handle.rep());
+        self.sql.handle_reps.push(handle.rep());
 
         handle
     }
@@ -525,7 +581,7 @@ impl bindings::torchsnap::plugin::sql::HostSqlHandle for PluginState {
         // currently-outstanding handles, which for any
         // sensible plugin is a small number.
         let rep = handle.rep();
-        self.sql_handle_reps.retain(|&r| r != rep);
+        self.sql.handle_reps.retain(|&r| r != rep);
 
         // Removing the entry drops just this resource's
         // clone of the master Arc. The underlying
@@ -630,7 +686,7 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
     ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
         use bindings::torchsnap::plugin::opener::OpenerError;
 
-        match check_opener_scheme(&self.opener_schemes, &url) {
+        match check_opener_scheme(&self.opener.schemes, &url) {
             Ok(()) => {}
             Err(OpenerSchemeCheckError::InvalidUrl) => {
                 return Err(OpenerError::InvalidUrl(url));
@@ -643,7 +699,8 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
         }
 
         let writer = self
-            .opener_writer
+            .opener
+            .open_url_writer
             .as_ref()
             .ok_or_else(|| OpenerError::BackendFailure("opener not initialized".into()))?;
         writer(&url).map_err(OpenerError::BackendFailure)
@@ -655,12 +712,13 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
     ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
         use bindings::torchsnap::plugin::opener::OpenerError;
 
-        if !self.opener_open_path {
+        if !self.opener.open_path {
             return Err(OpenerError::PermissionDenied(
                 "open-path not granted: set `[permissions.opener] open-path = true`".into(),
             ));
         }
         let writer = self
+            .opener
             .open_path_writer
             .as_ref()
             .ok_or_else(|| OpenerError::BackendFailure("open-path not initialized".into()))?;
@@ -673,12 +731,13 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
     ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
         use bindings::torchsnap::plugin::opener::OpenerError;
 
-        if !self.opener_reveal_path {
+        if !self.opener.reveal_path {
             return Err(OpenerError::PermissionDenied(
                 "reveal-path not granted: set `[permissions.opener] reveal-path = true`".into(),
             ));
         }
         let writer = self
+            .opener
             .reveal_path_writer
             .as_ref()
             .ok_or_else(|| OpenerError::BackendFailure("reveal-path not initialized".into()))?;
@@ -716,7 +775,7 @@ impl bindings::torchsnap::plugin::command::Host for PluginState {
         //    guarantees at most one rule matches; matching is
         //    pure (no I/O) and runs first so a denied call
         //    never spawns a process.
-        if match_rule(&self.command_rules, &binary, &options.args).is_err() {
+        if match_rule(&self.command.rules, &binary, &options.args).is_err() {
             return Err(WitErr::PermissionDenied(format!(
                 "no `[[permissions.command]]` rule accepts `{binary}` with the given argv"
             )));
@@ -1389,11 +1448,11 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
         use bindings::torchsnap::plugin::http::HttpError as WitHttpError;
         use bindings::torchsnap::plugin::http::HttpResponse as WitHttpResponse;
 
-        check_http_origin(&self.http_origins, &request.url).map_err(WitHttpError::from)?;
+        check_http_origin(&self.http.origins, &request.url).map_err(WitHttpError::from)?;
 
         let method = wit_method_to_reqwest(request.method).map_err(WitHttpError::from)?;
 
-        let client = self.http_client.as_ref().ok_or_else(|| {
+        let client = self.http.client.as_ref().ok_or_else(|| {
             WitHttpError::from(WasmHttpError::Network("http client not initialized".into()))
         })?;
 
@@ -1673,50 +1732,31 @@ impl WasmRuntime {
             // then; the bridge always sets it before the
             // first guest call into `enable()`.
             settings: None,
-            // Re-applied on every instantiation by the
-            // bridge's `ensure_instance` helper. The
-            // materialized `SqlConfig` lives on the bridge
-            // (built once from the manifest at bridge
-            // construction) and is copied onto each fresh
-            // `PluginState` so migration strings and the
-            // database path survive disable/re-enable
-            // cycles without re-reading the plugin source.
-            sql_config: SqlConfig::None,
-            sql_storage: None,
-            sql_handle_reps: Vec::new(),
-            // Stashed by the bridge on `enable()` via
-            // `WasmPluginInstance::set_clipboard_writer`,
-            // built from the AppHandle. `None` outside an
-            // enable lifetime; the host import returns an
-            // error in that case.
-            clipboard_writer: None,
             // Stashed by the bridge on `enable()` via
             // `WasmPluginInstance::set_frecency`. The
             // `frecency::*` host imports gracefully degrade
             // to "disabled / empty" when the handle is
             // missing — same contract as `settings`.
             frecency: None,
-            // Both scheme/origin lists and the opener/http
-            // capabilities are stashed by the bridge on
-            // `enable()`. Calls outside an enable lifetime
-            // degrade gracefully: permission lists are empty
-            // (deny-all) and the writer/client are `None`.
-            opener_schemes: Vec::new(),
-            opener_writer: None,
-            opener_open_path: false,
-            opener_reveal_path: false,
-            open_path_writer: None,
-            reveal_path_writer: None,
-            http_origins: Vec::new(),
-            http_client: None,
             // Stashed by the bridge on `enable()` via
             // `WasmPluginInstance::set_plugin_source`. The
             // `assets::*` host imports return `io-error`
             // until then, matching the capability-stash
-            // contract of `http_client` / `clipboard_writer`.
+            // contract of the per-capability sub-structs.
             plugin_source: None,
             path_context: None,
-            command_rules: Vec::new(),
+            // Per-capability sub-structs default to their
+            // disabled state. The bridge populates each one
+            // on `enable()` via the corresponding
+            // `WasmPluginInstance::set_*` setters; permission
+            // lists are empty (deny-all) and writer / client
+            // closures are `None` outside an enable lifetime,
+            // so calls degrade gracefully.
+            sql: SqlState::default(),
+            clipboard: ClipboardState::default(),
+            opener: OpenerState::default(),
+            http: HttpState::default(),
+            command: CommandState::default(),
         };
 
         let mut store = Store::new(&self.engine, state);
@@ -1777,7 +1817,7 @@ impl WasmPluginInstance {
     /// I/O.
     pub fn set_sql_config(&self, config: SqlConfig) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().sql_config = config;
+        store.data_mut().sql.config = config;
     }
 
     /// Create the database file, configure pragmas, and run
@@ -1790,7 +1830,7 @@ impl WasmPluginInstance {
         let mut store = self.store.lock().expect("store not poisoned");
         let data = store.data_mut();
 
-        let (db_path, migrations) = match &data.sql_config {
+        let (db_path, migrations) = match &data.sql.config {
             SqlConfig::None => return Ok(()),
             SqlConfig::Configured {
                 db_path,
@@ -1798,10 +1838,10 @@ impl WasmPluginInstance {
             } => (db_path.clone(), Arc::clone(migrations)),
         };
 
-        if data.sql_storage.is_none() {
+        if data.sql.storage.is_none() {
             let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
             let storage = SqlStorage::open(db_path, &migration_strs).context("open SQL storage")?;
-            data.sql_storage = Some(Arc::new(storage));
+            data.sql.storage = Some(Arc::new(storage));
         }
 
         Ok(())
@@ -1828,7 +1868,7 @@ impl WasmPluginInstance {
     pub fn clear_sql_storage(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
         let data = store.data_mut();
-        let reps = std::mem::take(&mut data.sql_handle_reps);
+        let reps = std::mem::take(&mut data.sql.handle_reps);
         for rep in reps {
             // `Resource::new_own(rep)` reconstructs an owned
             // resource handle from the raw rep so we can
@@ -1840,7 +1880,7 @@ impl WasmPluginInstance {
             let resource: Resource<SqlHandleEntry> = Resource::new_own(rep);
             let _ = data.wasi_table.delete(resource);
         }
-        data.sql_storage = None;
+        data.sql.storage = None;
     }
 
     /// Install a closure that writes a string to the system
@@ -1848,7 +1888,7 @@ impl WasmPluginInstance {
     /// closure that captures the `tauri::AppHandle`.
     pub fn set_clipboard_writer(&self, writer: ClipboardWriter) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().clipboard_writer = Some(writer);
+        store.data_mut().clipboard.writer = Some(writer);
     }
 
     /// Drop the stashed clipboard writer on `disable()` so
@@ -1857,7 +1897,7 @@ impl WasmPluginInstance {
     /// using a stale closure.
     pub fn clear_clipboard_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().clipboard_writer = None;
+        store.data_mut().clipboard.writer = None;
     }
 
     /// Stash a per-plugin `PluginFrecency` handle on the store
@@ -1883,20 +1923,20 @@ impl WasmPluginInstance {
     /// `[permissions.opener].schemes` list.
     pub fn set_opener_schemes(&self, schemes: Vec<String>) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().opener_schemes = schemes;
+        store.data_mut().opener.schemes = schemes;
     }
 
     /// Install the closure that opens a URL via the OS default
     /// handler. Called by the bridge at `enable()`.
     pub fn set_opener_writer(&self, writer: UrlOpenerFn) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().opener_writer = Some(writer);
+        store.data_mut().opener.open_url_writer = Some(writer);
     }
 
     /// Drop the opener closure on `disable()`.
     pub fn clear_opener_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().opener_writer = None;
+        store.data_mut().opener.open_url_writer = None;
     }
 
     /// Stash the `open-path` / `reveal-path` capability flags from
@@ -1904,8 +1944,8 @@ impl WasmPluginInstance {
     pub fn set_opener_path_capabilities(&self, open_path: bool, reveal_path: bool) {
         let mut store = self.store.lock().expect("store not poisoned");
         let state = store.data_mut();
-        state.opener_open_path = open_path;
-        state.opener_reveal_path = reveal_path;
+        state.opener.open_path = open_path;
+        state.opener.reveal_path = reveal_path;
     }
 
     /// Install the closure that opens a filesystem path via the
@@ -1913,26 +1953,26 @@ impl WasmPluginInstance {
     /// `enable()`.
     pub fn set_open_path_writer(&self, writer: UrlOpenerFn) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().open_path_writer = Some(writer);
+        store.data_mut().opener.open_path_writer = Some(writer);
     }
 
     /// Drop the `open-path` closure on `disable()`.
     pub fn clear_open_path_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().open_path_writer = None;
+        store.data_mut().opener.open_path_writer = None;
     }
 
     /// Install the closure that reveals a filesystem path in the
     /// OS file manager. Called by the bridge at `enable()`.
     pub fn set_reveal_path_writer(&self, writer: UrlOpenerFn) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().reveal_path_writer = Some(writer);
+        store.data_mut().opener.reveal_path_writer = Some(writer);
     }
 
     /// Drop the `reveal-path` closure on `disable()`.
     pub fn clear_reveal_path_writer(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().reveal_path_writer = None;
+        store.data_mut().opener.reveal_path_writer = None;
     }
 
     /// Stash the resolved `${...}` substitution context.
@@ -1955,13 +1995,13 @@ impl WasmPluginInstance {
     /// `PathContext`.
     pub fn set_command_rules(&self, rules: Vec<super::argv_matcher::CompiledCommandRule>) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().command_rules = rules;
+        store.data_mut().command.rules = rules;
     }
 
     /// Drop the compiled command rules on `disable()`.
     pub fn clear_command_rules(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().command_rules.clear();
+        store.data_mut().command.rules.clear();
     }
 
     /// Stash the origin allowlist for `http::fetch`. Called by
@@ -1969,21 +2009,21 @@ impl WasmPluginInstance {
     /// `[permissions.http].origins` list (already normalized).
     pub fn set_http_origins(&self, origins: Vec<String>) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().http_origins = origins;
+        store.data_mut().http.origins = origins;
     }
 
     /// Install the HTTP client. Called by the bridge at
     /// `enable()`.
     pub fn set_http_client(&self, client: Arc<crate::network::Http>) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().http_client = Some(client);
+        store.data_mut().http.client = Some(client);
     }
 
     /// Drop the HTTP client on `disable()` so the connection
     /// pool is released between enable cycles.
     pub fn clear_http_client(&self) {
         let mut store = self.store.lock().expect("store not poisoned");
-        store.data_mut().http_client = None;
+        store.data_mut().http.client = None;
     }
 
     /// Stash the plugin's own `PluginSource` handle. Called
@@ -2173,22 +2213,14 @@ impl PluginState {
             log_sender: LogSender::test_sender(),
             span_registry: Arc::new(SpanRegistry::new()),
             settings: None,
-            sql_config: SqlConfig::None,
-            sql_storage: None,
-            sql_handle_reps: Vec::new(),
-            clipboard_writer: None,
             frecency: None,
-            opener_schemes: Vec::new(),
-            opener_writer: None,
-            opener_open_path: false,
-            opener_reveal_path: false,
-            open_path_writer: None,
-            reveal_path_writer: None,
-            http_origins: Vec::new(),
-            http_client: None,
             plugin_source: None,
             path_context: None,
-            command_rules: Vec::new(),
+            sql: SqlState::default(),
+            clipboard: ClipboardState::default(),
+            opener: OpenerState::default(),
+            http: HttpState::default(),
+            command: CommandState::default(),
         }
     }
 }
@@ -2542,8 +2574,10 @@ mod tests {
         };
 
         let mut state = PluginState {
-            http_origins: vec!["*".into()],
-            http_client: Some(Arc::new(client)),
+            http: HttpState {
+                origins: vec!["*".into()],
+                client: Some(Arc::new(client)),
+            },
             ..PluginState::default_for_test()
         };
 
@@ -2575,8 +2609,10 @@ mod tests {
         };
 
         let mut state = PluginState {
-            http_origins: vec!["*".into()],
-            http_client: Some(Arc::new(client)),
+            http: HttpState {
+                origins: vec!["*".into()],
+                client: Some(Arc::new(client)),
+            },
             ..PluginState::default_for_test()
         };
 
@@ -2608,8 +2644,10 @@ mod tests {
         };
 
         let mut state = PluginState {
-            http_origins: vec!["*".into()],
-            http_client: Some(Arc::new(client)),
+            http: HttpState {
+                origins: vec!["*".into()],
+                client: Some(Arc::new(client)),
+            },
             ..PluginState::default_for_test()
         };
 
@@ -2645,8 +2683,10 @@ mod tests {
         };
 
         let mut state = PluginState {
-            http_origins: vec!["*".into()],
-            http_client: Some(Arc::new(client)),
+            http: HttpState {
+                origins: vec!["*".into()],
+                client: Some(Arc::new(client)),
+            },
             ..PluginState::default_for_test()
         };
 
