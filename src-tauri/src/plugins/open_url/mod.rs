@@ -27,7 +27,9 @@ use anyhow::Context;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::network::website_metadata::{MetadataResult, WebsiteMetadataService};
+use crate::network::website_metadata::{
+    LookupMode, LookupResult, WebsiteMetadataService,
+};
 use crate::search::types::{
     Action, ActionId, ActionKeybinding, EntryIcon, PluginResponse, PostAction, ScoredEntry,
 };
@@ -202,22 +204,35 @@ impl Plugin for OpenUrlPlugin {
         let detected = detect_url(query)?;
 
         // Blocking metadata lookup — the service handles caching,
-        // negative caching, and network fetches internally.
-        let metadata_result = self.metadata_service.get(&detected.domain);
+        // negative caching, and network fetches internally. We pass
+        // `Blocking` because the bare-domain branch needs a definitive
+        // answer this cycle: showing/hiding the entry must not flicker
+        // between keystrokes.
+        let metadata_result = match self
+            .metadata_service
+            .lookup(&detected.domain, LookupMode::Blocking)
+        {
+            Ok(r) => r,
+            // `detect_url` already filtered out malformed inputs, so
+            // an `InvalidDomain` here is a defensive guard rather than
+            // an expected path. Suppress the entry rather than surfacing
+            // the error.
+            Err(_) => return None,
+        };
 
         // Decide whether to show a result and how to present it.
         // Title shows the page title when available, domain otherwise.
         // Subtitle always shows "Open {url}" to communicate the action.
         let (title, icon) = match metadata_result {
-            MetadataResult::Found(meta) => {
+            LookupResult::Hit(meta) => {
                 let title = meta.title.unwrap_or_else(|| detected.domain.clone());
                 (title, meta.favicon)
             }
-            MetadataResult::ReachableNoData => (
+            LookupResult::ReachableNoData => (
                 detected.domain.clone(),
                 EntryIcon::HeroIcon("globe-alt".to_string()),
             ),
-            MetadataResult::Unreachable => {
+            LookupResult::Unreachable => {
                 if detected.has_explicit_scheme {
                     // Explicit URL — show a fallback entry even if
                     // the domain is unreachable. The user deliberately
@@ -233,6 +248,10 @@ impl Plugin for OpenUrlPlugin {
                     return None;
                 }
             }
+            // `Blocking` mode never returns `Pending`; the service
+            // either hits the cache, blocks on the network, or
+            // coalesces with an in-flight fetch.
+            LookupResult::Pending => unreachable!("Blocking mode never returns Pending"),
         };
 
         // Stash the full URL for execute() to retrieve.
