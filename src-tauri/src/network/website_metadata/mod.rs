@@ -74,22 +74,59 @@ pub struct WebsiteMetadata {
     pub favicon: EntryIcon,
 }
 
-/// Three-state result from a metadata lookup.
+/// Internal three-state result of a network fetch.
 ///
-/// Plugins use this to decide how to render results:
-/// - `Found` → show enriched result with favicon and title
-/// - `ReachableNoData` → domain responded but no useful metadata
-///   (show a globe icon or similar)
-/// - `Unreachable` → couldn't reach the domain at all
-///   (keep the default plugin icon)
+/// Used between `fetch_coalesced` and the public API. The public
+/// `LookupResult` adds a `Pending` variant for the non-blocking path;
+/// `MetadataResult` deliberately excludes it so the leader/subscriber
+/// machinery has a tighter type that cannot represent "not yet tried".
 #[derive(Clone)]
-pub enum MetadataResult {
+enum MetadataResult {
     /// Successfully extracted some metadata (fields may be partial).
     Found(WebsiteMetadata),
     /// HTTP response was received, but nothing extractable.
     ReachableNoData,
     /// DNS failure, timeout, connection refused, or similar.
     Unreachable,
+}
+
+/// Selects whether `lookup` blocks on the network or returns
+/// immediately on cache miss.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LookupMode {
+    /// Cache-first; never blocks. On cold miss returns `Pending` and
+    /// schedules a background fetch — the next call sees `Hit` (or
+    /// the appropriate other variant). Use in latency-sensitive paths.
+    Cached,
+    /// Cache-first; on cold miss blocks until the fetch completes
+    /// or coalesces with any in-flight request for the same domain.
+    /// Use when the result is load-bearing for the current render.
+    Blocking,
+}
+
+/// Public result of a `lookup` call.
+///
+/// Identical to `MetadataResult` plus a `Pending` variant returned
+/// only by `LookupMode::Cached` on cold misses.
+#[derive(Clone)]
+pub enum LookupResult {
+    Hit(WebsiteMetadata),
+    ReachableNoData,
+    Unreachable,
+    /// Only ever returned in `Cached` mode. A background fetch has
+    /// been scheduled (or coalesced with an existing in-flight one);
+    /// callers should retry on the next user-input cycle.
+    Pending,
+}
+
+/// Errors returned by `lookup` for client-side mistakes that the
+/// host can detect without touching the network.
+#[derive(Debug, Clone)]
+pub enum LookupError {
+    /// Domain string is empty, oversized (>253 bytes per RFC 1035),
+    /// or contains characters that are not valid in a bare domain
+    /// (scheme separator `://`, path `/`, port `:`, whitespace, etc.).
+    InvalidDomain(String),
 }
 
 // =========================================================
@@ -310,49 +347,50 @@ impl WebsiteMetadataService {
     // Public API
     // ---------------------------------------------------------
 
-    /// Fetch metadata for a domain, blocking until complete.
+    /// Look up metadata for a registrable domain, with mode-controlled
+    /// blocking semantics.
     ///
-    /// Checks the cache first. On cache miss, runs the fetch through
-    /// `fetch_coalesced` so concurrent calls for the same domain
-    /// share a single network request. Failed fetches are recorded
-    /// in the negative cache by the leader.
-    pub fn get(&self, domain: &str) -> MetadataResult {
-        // 1. Check negative cache.
+    /// Pipeline:
+    /// 1. Validate `domain` syntactically (no scheme, path, port, or
+    ///    whitespace; non-empty; ≤253 bytes per RFC 1035).
+    /// 2. Negative-cache hit → `Unreachable`.
+    /// 3. SQLite cache hit → `Hit` / `ReachableNoData`.
+    /// 4. Cache miss: branch on `mode`.
+    ///    - `Blocking` → `fetch_coalesced` (waits or coalesces).
+    ///    - `Cached` → spawn a background fetch via `spawn_blocking`
+    ///      and return `Pending` immediately. Coalescing inside
+    ///      `fetch_coalesced` deduplicates concurrent background
+    ///      fetches and any in-flight blocking fetch.
+    pub fn lookup(
+        self: &Arc<Self>,
+        domain: &str,
+        mode: LookupMode,
+    ) -> Result<LookupResult, LookupError> {
+        validate_domain(domain)?;
+
         if self.is_negatively_cached(domain) {
-            return MetadataResult::Unreachable;
+            return Ok(LookupResult::Unreachable);
         }
 
-        // 2. Check SQLite cache.
         let ttl_days = self.cache_ttl_days.load(Ordering::Relaxed).max(1);
         if let Some(entry) = cache::lookup(&self.db, domain, ttl_days) {
-            return self.cached_entry_to_result(entry);
+            return Ok(metadata_to_lookup(self.cached_entry_to_result(entry)));
         }
 
-        // 3. Fetch from network — single-flight coalesced.
-        self.fetch_coalesced(domain)
-    }
-
-    /// Return cached metadata immediately, or `Unreachable` with a
-    /// background fetch triggered on cache miss.
-    ///
-    /// Non-blocking: the caller always gets an immediate response.
-    /// On cache miss, a background thread is spawned to fetch the
-    /// domain. The result will be available on the next call.
-    pub fn try_cached(self: &Arc<Self>, domain: &str) -> MetadataResult {
-        // 1. Check negative cache.
-        if self.is_negatively_cached(domain) {
-            return MetadataResult::Unreachable;
+        match mode {
+            LookupMode::Blocking => Ok(metadata_to_lookup(self.fetch_coalesced(domain))),
+            LookupMode::Cached => {
+                // Schedule the fetch on the blocking pool; coalescing
+                // makes this a no-op if a leader is already running
+                // for the same domain.
+                let svc = Arc::clone(self);
+                let d = domain.to_string();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = svc.fetch_coalesced(&d);
+                });
+                Ok(LookupResult::Pending)
+            }
         }
-
-        // 2. Check SQLite cache.
-        let ttl_days = self.cache_ttl_days.load(Ordering::Relaxed).max(1);
-        if let Some(entry) = cache::lookup(&self.db, domain, ttl_days) {
-            return self.cached_entry_to_result(entry);
-        }
-
-        // 3. Cache miss — spawn background fetch if not already in-flight.
-        self.spawn_background_fetch(domain);
-        MetadataResult::Unreachable
     }
 
     /// Gather cache statistics for the settings UI.
@@ -671,21 +709,50 @@ impl WebsiteMetadataService {
         )
     }
 
-    /// Spawn a background thread to fetch metadata for a domain.
-    ///
-    /// Coalescing is handled inside `fetch_coalesced`: if a leader is
-    /// already running for the domain (foreground or background), the
-    /// spawned thread joins as a subscriber and exits without issuing
-    /// a duplicate request.
-    fn spawn_background_fetch(self: &Arc<Self>, domain: &str) {
-        let service = Arc::clone(self);
-        let domain_owned = domain.to_string();
+}
 
-        // Must use spawn_blocking (not std::thread::spawn) because
-        // the HTTP client internally calls block_on(), which requires
-        // the Tokio reactor to be available on the current thread.
-        tauri::async_runtime::spawn_blocking(move || {
-            let _ = service.fetch_coalesced(&domain_owned);
-        });
+// =========================================================
+// Helpers
+// =========================================================
+
+/// Validate a domain string for syntactic correctness without
+/// touching the network. PSL/eTLD+1 validation is the caller's
+/// responsibility — the host is concerned only with rejecting
+/// inputs that are clearly not bare domains.
+fn validate_domain(domain: &str) -> Result<(), LookupError> {
+    if domain.is_empty() {
+        return Err(LookupError::InvalidDomain("empty".into()));
+    }
+    // RFC 1035 caps total domain length at 253 octets. Anything
+    // longer is definitely malformed.
+    if domain.len() > 253 {
+        return Err(LookupError::InvalidDomain(format!(
+            "exceeds 253 bytes ({} given)",
+            domain.len()
+        )));
+    }
+    // Reject obvious non-domain shapes: schemes, paths, ports,
+    // whitespace, leading/trailing dots, or null bytes.
+    if domain.contains("://")
+        || domain.contains('/')
+        || domain.contains(':')
+        || domain.contains(' ')
+        || domain.contains('\t')
+        || domain.contains('\n')
+        || domain.contains('\0')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+    {
+        return Err(LookupError::InvalidDomain(domain.to_string()));
+    }
+    Ok(())
+}
+
+/// Project an internal `MetadataResult` onto the public `LookupResult`.
+fn metadata_to_lookup(r: MetadataResult) -> LookupResult {
+    match r {
+        MetadataResult::Found(m) => LookupResult::Hit(m),
+        MetadataResult::ReachableNoData => LookupResult::ReachableNoData,
+        MetadataResult::Unreachable => LookupResult::Unreachable,
     }
 }

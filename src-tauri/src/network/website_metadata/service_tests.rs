@@ -15,7 +15,7 @@ use httpmock::MockServer;
 use httpmock::prelude::*;
 use tempfile::TempDir;
 
-use super::{MetadataResult, WebsiteMetadataService};
+use super::{LookupError, LookupMode, LookupResult, WebsiteMetadataService};
 use crate::settings_notifier::SettingsNotifier;
 
 // =========================================================
@@ -84,32 +84,29 @@ pub(super) fn html_with_metadata(title: &str, desc: &str, favicon_path: &str) ->
     )
 }
 
-/// Run `service.get(domain)` on the tokio blocking pool.
+/// Run `service.lookup(domain, Blocking)` on the tokio blocking pool.
 ///
 /// `Http::send()` calls `Handle::block_on` internally, which panics
 /// when called from a tokio worker thread. Production callers are
 /// always on `spawn_blocking` tasks; tests need the same dispatch.
-pub(super) async fn blocking_get(
+pub(super) async fn blocking_lookup(
     service: &Arc<WebsiteMetadataService>,
     domain: &str,
-) -> MetadataResult {
+) -> LookupResult {
     let svc = Arc::clone(service);
     let domain = domain.to_string();
-    tokio::task::spawn_blocking(move || svc.get(&domain))
+    tokio::task::spawn_blocking(move || svc.lookup(&domain, LookupMode::Blocking))
         .await
         .expect("blocking task panicked")
+        .expect("valid domain")
 }
 
 // =========================================================
-// Smoke tests against the current `get` / `try_cached` API
-//
-// These confirm the harness wiring works. Coalescing tests
-// land alongside the in-flight refactor (Phase 1.2); the API
-// migration tests land with the `lookup` refactor (Phase 1.3).
+// Happy-path lookup tests
 // =========================================================
 
 #[tokio::test(flavor = "multi_thread")]
-async fn get_returns_hit_for_complete_metadata() {
+async fn lookup_blocking_returns_hit_for_complete_metadata() {
     let env = new_test_env();
     let domain = "example.test";
 
@@ -128,10 +125,10 @@ async fn get_returns_hit_for_complete_metadata() {
         then.status(200).header("content-type", "image/png").body(make_png_bytes());
     });
 
-    let result = blocking_get(&env.service, domain).await;
+    let result = blocking_lookup(&env.service, domain).await;
 
     let meta = match result {
-        MetadataResult::Found(m) => m,
+        LookupResult::Hit(m) => m,
         other => panic!("expected Found, got {other:?}"),
     };
     assert_eq!(meta.title.as_deref(), Some("Example Title"));
@@ -139,7 +136,7 @@ async fn get_returns_hit_for_complete_metadata() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn get_returns_unreachable_for_failed_fetch() {
+async fn lookup_blocking_returns_unreachable_or_no_data_for_failed_fetch() {
     let env = new_test_env();
     let domain = "broken.test";
 
@@ -151,17 +148,17 @@ async fn get_returns_unreachable_for_failed_fetch() {
         then.status(500);
     });
 
-    match blocking_get(&env.service, domain).await {
+    match blocking_lookup(&env.service, domain).await {
         // 500 with no content-type → fetch_page_metadata succeeds at the
         // HTTP layer (returns NotHtml), so we hit the fallback-favicon
         // path. With no favicons registered either, ReachableNoData.
-        MetadataResult::ReachableNoData | MetadataResult::Unreachable => {}
+        LookupResult::ReachableNoData | LookupResult::Unreachable => {}
         other => panic!("expected ReachableNoData/Unreachable, got {other:?}"),
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn get_caches_result_so_second_call_skips_network() {
+async fn lookup_caches_result_so_second_call_skips_network() {
     let env = new_test_env();
     let domain = "cached.test";
 
@@ -176,8 +173,8 @@ async fn get_caches_result_so_second_call_skips_network() {
         then.status(200).header("content-type", "image/png").body(make_png_bytes());
     });
 
-    let _ = blocking_get(&env.service, domain).await;
-    let _ = blocking_get(&env.service, domain).await;
+    let _ = blocking_lookup(&env.service, domain).await;
+    let _ = blocking_lookup(&env.service, domain).await;
 
     // Page should have been fetched exactly once — the second call
     // is served from the SQLite cache.
@@ -185,7 +182,7 @@ async fn get_caches_result_so_second_call_skips_network() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn get_caches_reachable_no_data_response() {
+async fn lookup_caches_reachable_no_data_response() {
     let env = new_test_env();
     let domain = "noisy.test";
 
@@ -197,8 +194,8 @@ async fn get_caches_reachable_no_data_response() {
         then.status(200).header("content-type", "text/plain").body("nope");
     });
 
-    let _ = blocking_get(&env.service, domain).await;
-    let _ = blocking_get(&env.service, domain).await;
+    let _ = blocking_lookup(&env.service, domain).await;
+    let _ = blocking_lookup(&env.service, domain).await;
 
     page_mock.assert_calls(1);
 }
@@ -238,15 +235,18 @@ async fn concurrent_blocking_lookups_for_same_domain_issue_one_request() {
     for _ in 0..8 {
         let svc = Arc::clone(&env.service);
         let d = domain.to_string();
-        handles.push(tokio::task::spawn_blocking(move || svc.get(&d)));
+        handles.push(tokio::task::spawn_blocking(move || {
+            svc.lookup(&d, LookupMode::Blocking)
+                .expect("valid domain")
+        }));
     }
     for h in handles {
         let result = h.await.expect("task panicked");
         match result {
-            MetadataResult::Found(m) => {
+            LookupResult::Hit(m) => {
                 assert_eq!(m.title.as_deref(), Some("Title"));
             }
-            other => panic!("expected Found, got {other:?}"),
+            other => panic!("expected Hit, got {other:?}"),
         }
     }
 
@@ -286,21 +286,25 @@ async fn different_domains_do_not_coalesce() {
 
     let svc_a = Arc::clone(&env.service);
     let svc_b = Arc::clone(&env.service);
-    let task_a = tokio::task::spawn_blocking(move || svc_a.get("a.test"));
-    let task_b = tokio::task::spawn_blocking(move || svc_b.get("b.test"));
+    let task_a = tokio::task::spawn_blocking(move || {
+        svc_a.lookup("a.test", LookupMode::Blocking).expect("valid")
+    });
+    let task_b = tokio::task::spawn_blocking(move || {
+        svc_b.lookup("b.test", LookupMode::Blocking).expect("valid")
+    });
 
     let result_a = task_a.await.expect("task a panicked");
     let result_b = task_b.await.expect("task b panicked");
 
-    assert!(matches!(result_a, MetadataResult::Found(_)));
-    assert!(matches!(result_b, MetadataResult::Found(_)));
+    assert!(matches!(result_a, LookupResult::Hit(_)));
+    assert!(matches!(result_b, LookupResult::Hit(_)));
 
     mock_a.assert_calls(1);
     mock_b.assert_calls(1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn try_cached_during_in_flight_blocking_coalesces() {
+async fn cached_lookup_during_in_flight_blocking_coalesces() {
     let env = new_test_env();
     let domain = "shared2.test";
 
@@ -320,15 +324,20 @@ async fn try_cached_during_in_flight_blocking_coalesces() {
 
     let svc1 = Arc::clone(&env.service);
     let svc2 = Arc::clone(&env.service);
-    let leader = tokio::task::spawn_blocking(move || svc1.get(domain));
+    let leader = tokio::task::spawn_blocking(move || {
+        svc1.lookup(domain, LookupMode::Blocking).expect("valid")
+    });
 
     // Wait briefly so the leader registers in `in_flight` before the
     // background fetch is triggered.
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
 
-    // Trigger a non-blocking background fetch — coalesces via
-    // `fetch_coalesced` and exits without a second network call.
-    let _ = svc2.try_cached(domain);
+    // Cached-mode lookup spawns a background fetch — coalescing inside
+    // `fetch_coalesced` joins the in-flight leader as a subscriber and
+    // exits without a second network call. The caller still gets
+    // `Pending` immediately (no SQLite row exists yet).
+    let cached_result = svc2.lookup(domain, LookupMode::Cached).expect("valid");
+    assert!(matches!(cached_result, LookupResult::Pending));
 
     let _ = leader.await.expect("leader panicked");
 
@@ -350,15 +359,21 @@ async fn leader_panic_unblocks_subscribers_with_unreachable() {
         .set_test_panic_after(domain, std::time::Duration::from_millis(100));
 
     let svc1 = Arc::clone(&env.service);
-    let leader = tokio::task::spawn_blocking(move || svc1.get(domain));
+    let leader = tokio::task::spawn_blocking(move || {
+        svc1.lookup(domain, LookupMode::Blocking).expect("valid")
+    });
 
     // Wait for the leader to register before launching subscribers.
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
 
     let svc2 = Arc::clone(&env.service);
     let svc3 = Arc::clone(&env.service);
-    let sub_a = tokio::task::spawn_blocking(move || svc2.get(domain));
-    let sub_b = tokio::task::spawn_blocking(move || svc3.get(domain));
+    let sub_a = tokio::task::spawn_blocking(move || {
+        svc2.lookup(domain, LookupMode::Blocking).expect("valid")
+    });
+    let sub_b = tokio::task::spawn_blocking(move || {
+        svc3.lookup(domain, LookupMode::Blocking).expect("valid")
+    });
 
     // Leader's spawn_blocking task surfaces the panic as a JoinError.
     let leader_outcome = leader.await;
@@ -371,8 +386,8 @@ async fn leader_panic_unblocks_subscribers_with_unreachable() {
     let sub_a_result = sub_a.await.expect("subscriber a should not panic");
     let sub_b_result = sub_b.await.expect("subscriber b should not panic");
 
-    assert!(matches!(sub_a_result, MetadataResult::Unreachable));
-    assert!(matches!(sub_b_result, MetadataResult::Unreachable));
+    assert!(matches!(sub_a_result, LookupResult::Unreachable));
+    assert!(matches!(sub_b_result, LookupResult::Unreachable));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -391,7 +406,7 @@ async fn coalescing_clears_in_flight_after_completion() {
     });
 
     // First call writes a ReachableNoData row to SQLite.
-    let _ = blocking_get(&env.service, domain).await;
+    let _ = blocking_lookup(&env.service, domain).await;
 
     // The second call hits SQLite and never enters fetch_coalesced.
     // What we actually verify here is that in_flight is empty after
@@ -410,15 +425,174 @@ async fn coalescing_clears_in_flight_after_completion() {
     page_mock.assert_calls(1);
 }
 
-// MetadataResult has no `#[derive(Debug)]` so panic-message formatting
+// =========================================================
+// Cached-mode tests
+// =========================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cached_lookup_returns_pending_on_cold_miss_then_hit() {
+    let env = new_test_env();
+    let domain = "warm.test";
+
+    let _page_mock = env.server.mock(|when, then| {
+        when.method(GET).path(format!("/{domain}/"));
+        then.status(200)
+            .header("content-type", "text/html")
+            .body(html_with_metadata("Title", "Desc", "/i.png"));
+    });
+    let _icon_mock = env.server.mock(|when, then| {
+        when.method(GET).path(format!("/{domain}/i.png"));
+        then.status(200)
+            .header("content-type", "image/png")
+            .body(make_png_bytes());
+    });
+
+    // Cold miss → Pending; the background fetch is now in flight.
+    let first = env.service.lookup(domain, LookupMode::Cached).expect("valid");
+    assert!(matches!(first, LookupResult::Pending));
+
+    // Wait for the background fetch to populate the SQLite cache.
+    // 500 ms is generous for a localhost mock; tighten if flaky.
+    let svc = Arc::clone(&env.service);
+    let domain_owned = domain.to_string();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let r = svc.lookup(&domain_owned, LookupMode::Cached).expect("valid");
+            if matches!(r, LookupResult::Hit(_)) {
+                return r;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("Cached lookup never resolved to Hit");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cached_lookup_returns_hit_immediately_when_cached() {
+    // Pre-populate the cache via a Blocking lookup, then a Cached
+    // lookup must short-circuit to Hit without spawning anything.
+    let env = new_test_env();
+    let domain = "preheated.test";
+
+    let page_mock = env.server.mock(|when, then| {
+        when.method(GET).path(format!("/{domain}/"));
+        then.status(200)
+            .header("content-type", "text/html")
+            .body(html_with_metadata("T", "D", "/i.png"));
+    });
+    let _icon_mock = env.server.mock(|when, then| {
+        when.method(GET).path(format!("/{domain}/i.png"));
+        then.status(200)
+            .header("content-type", "image/png")
+            .body(make_png_bytes());
+    });
+
+    let _ = blocking_lookup(&env.service, domain).await;
+    let cached = env.service.lookup(domain, LookupMode::Cached).expect("valid");
+    assert!(matches!(cached, LookupResult::Hit(_)));
+
+    // Only one network round-trip happened.
+    page_mock.assert_calls(1);
+}
+
+// =========================================================
+// Domain validation tests
+//
+// These exercise `validate_domain` via the public API. The
+// underlying helper is private; testing through `lookup` keeps
+// the validation contract observable from the public surface.
+// =========================================================
+
+fn assert_invalid(env: &TestEnv, input: &str) {
+    let err = env.service.lookup(input, LookupMode::Blocking).unwrap_err();
+    match err {
+        LookupError::InvalidDomain(_) => {}
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_empty_domain() {
+    let env = new_test_env();
+    assert_invalid(&env, "");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_oversized_domain() {
+    let env = new_test_env();
+    let too_long: String = "a".repeat(254);
+    assert_invalid(&env, &too_long);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_domain_with_scheme_separator() {
+    let env = new_test_env();
+    assert_invalid(&env, "https://example.com");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_domain_with_path() {
+    let env = new_test_env();
+    assert_invalid(&env, "example.com/path");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_domain_with_port() {
+    let env = new_test_env();
+    assert_invalid(&env, "example.com:8080");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_domain_with_whitespace() {
+    let env = new_test_env();
+    assert_invalid(&env, "example .com");
+    assert_invalid(&env, "example.com\n");
+    assert_invalid(&env, "\texample.com");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_domain_with_null_byte() {
+    let env = new_test_env();
+    assert_invalid(&env, "example\0.com");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_rejects_leading_or_trailing_dot() {
+    let env = new_test_env();
+    assert_invalid(&env, ".example.com");
+    assert_invalid(&env, "example.com.");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lookup_accepts_idn_punycode() {
+    // Punycode domains are pure ASCII; the host should accept them
+    // as it does any other syntactically valid bare domain. The
+    // network mock doesn't have a route for this name — we only
+    // verify that validation passes, not that the fetch succeeds.
+    let env = new_test_env();
+    let domain = "xn--bcher-kva.example";
+
+    // Wrap in spawn_blocking because the Blocking lookup ultimately
+    // calls `Http::send` → `Handle::block_on`, which must not run on
+    // a tokio worker thread.
+    let svc = Arc::clone(&env.service);
+    let d = domain.to_string();
+    let r = tokio::task::spawn_blocking(move || svc.lookup(&d, LookupMode::Blocking))
+        .await
+        .expect("task panicked");
+    assert!(r.is_ok(), "punycode domain rejected: {r:?}");
+}
+
+// `LookupResult` has no `#[derive(Debug)]` so panic-message formatting
 // uses this manual impl. Kept here (test-only) to avoid leaking Debug
 // into the production type.
-impl std::fmt::Debug for MetadataResult {
+impl std::fmt::Debug for LookupResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MetadataResult::Found(_) => write!(f, "Found(..)"),
-            MetadataResult::ReachableNoData => write!(f, "ReachableNoData"),
-            MetadataResult::Unreachable => write!(f, "Unreachable"),
+            LookupResult::Hit(_) => write!(f, "Hit(..)"),
+            LookupResult::ReachableNoData => write!(f, "ReachableNoData"),
+            LookupResult::Unreachable => write!(f, "Unreachable"),
+            LookupResult::Pending => write!(f, "Pending"),
         }
     }
 }
