@@ -92,6 +92,10 @@ pub struct WasmPluginBridge {
     /// means the plugin has no HTTP access; `"*"` means
     /// trust-all.
     http_origins: Vec<String>,
+    /// Whether the manifest grants access to the shared
+    /// `website-metadata` host import. The actual service
+    /// handle is read from `runtime.metadata_service`.
+    website_metadata_enabled: bool,
     /// Raw `[[permissions.command]]` rules pre-extracted from
     /// the manifest. Compiled against the per-instance
     /// `PathContext` at every `enable()` (variable substitution
@@ -241,6 +245,12 @@ impl WasmPluginBridge {
             .map(|h| h.origins.clone())
             .unwrap_or_default();
 
+        let website_metadata_enabled = manifest
+            .permissions
+            .as_ref()
+            .map(|p| p.website_metadata)
+            .unwrap_or(false);
+
         let command_rules_raw = manifest
             .permissions
             .as_ref()
@@ -291,6 +301,7 @@ impl WasmPluginBridge {
             opener_open_path,
             opener_reveal_path,
             http_origins,
+            website_metadata_enabled,
             command_rules_raw,
             plugin_data,
             plugin_archive,
@@ -670,6 +681,15 @@ impl Plugin for WasmPluginBridge {
         instance.set_opener_path_capabilities(self.opener_open_path, self.opener_reveal_path);
         instance.set_http_origins(self.http_origins.clone());
 
+        // Plug in the shared website-metadata service when the
+        // manifest opts in *and* the runtime carries a service
+        // handle (production always does; tests omit it unless
+        // they specifically exercise this capability).
+        instance.set_website_metadata(
+            self.website_metadata_enabled && self.runtime.metadata_service.is_some(),
+            self.runtime.metadata_service.clone(),
+        );
+
         let opener_handle = app.clone();
         let opener_fn: UrlOpenerFn = Box::new(move |url: &str| {
             use tauri_plugin_opener::OpenerExt;
@@ -819,6 +839,7 @@ impl Plugin for WasmPluginBridge {
         instance.clear_path_context();
         instance.clear_command_rules();
         instance.clear_http_client();
+        instance.clear_website_metadata();
         instance.clear_plugin_source();
     }
 
@@ -997,7 +1018,7 @@ mod tests {
     const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
     fn test_runtime() -> Arc<WasmRuntime> {
-        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()))
+        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()), None)
             .expect("runtime construction succeeds")
     }
 

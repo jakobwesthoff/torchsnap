@@ -37,6 +37,7 @@ use super::host::command::CommandState;
 use super::host::http::HttpState;
 use super::host::opener::OpenerState;
 use super::host::sql::SqlState;
+use super::host::website_metadata::WebsiteMetadataState;
 
 pub struct PluginState {
     pub(crate) plugin_id: String,
@@ -85,6 +86,7 @@ pub struct PluginState {
     pub(crate) opener: OpenerState,
     pub(crate) http: HttpState,
     pub(crate) command: CommandState,
+    pub(crate) website_metadata: WebsiteMetadataState,
 }
 
 impl PluginState {
@@ -114,6 +116,7 @@ impl PluginState {
             opener: OpenerState::default(),
             http: HttpState::default(),
             command: CommandState::default(),
+            website_metadata: WebsiteMetadataState::default(),
         }
     }
 }

@@ -19,6 +19,7 @@ use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::WasiCtxBuilder;
 
+use crate::network::website_metadata::WebsiteMetadataService;
 use crate::wasm::bindings;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::{Logger, SpanRegistry};
@@ -46,6 +47,11 @@ pub struct WasmRuntime {
     /// for a future hot-reload path, not wired up by any
     /// current code path.
     pub(crate) components: Mutex<HashMap<String, Component>>,
+    /// Shared website-metadata service distributed to plugins
+    /// whose manifest declares `permissions.website-metadata = true`.
+    /// `None` in tests that don't need it; production always
+    /// supplies a real service.
+    pub(crate) metadata_service: Option<Arc<WebsiteMetadataService>>,
 }
 
 impl WasmRuntime {
@@ -57,6 +63,7 @@ impl WasmRuntime {
     pub fn new(
         log_sender: LogSender,
         span_registry: Arc<SpanRegistry>,
+        metadata_service: Option<Arc<WebsiteMetadataService>>,
     ) -> anyhow::Result<Arc<Self>> {
         let mut config = Config::new();
         config.wasm_component_model(true);
@@ -68,6 +75,7 @@ impl WasmRuntime {
             log_sender,
             span_registry,
             components: Mutex::new(HashMap::new()),
+            metadata_service,
         }))
     }
 

@@ -91,7 +91,10 @@ mod tests {
     /// discarding `LogSender` and a fresh `SpanRegistry` so
     /// tests do not depend on a running logging task.
     fn test_runtime() -> Arc<WasmRuntime> {
-        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()))
+        // No metadata service in the default test runtime — tests
+        // exercising the website-metadata host import construct one
+        // and pass it explicitly via a dedicated helper.
+        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()), None)
             .expect("WasmRuntime::new should succeed with default config")
     }
 
