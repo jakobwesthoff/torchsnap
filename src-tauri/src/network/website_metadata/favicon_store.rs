@@ -199,3 +199,173 @@ fn ext_from_content_type(content_type: &str) -> String {
         _ => "bin".to_string(),
     }
 }
+
+// =========================================================
+// Tests
+// =========================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Build a tiny solid-colour PNG at runtime via the `image` crate.
+    /// We don't use a hand-rolled byte literal because the WebP encoder
+    /// path requires a `DynamicImage` that survives `resize` and
+    /// `write_to(WebP)` — easiest to start from a real image rather
+    /// than a hand-crafted minimal stream.
+    fn make_png_bytes() -> Vec<u8> {
+        use image::{ImageBuffer, ImageFormat, Rgba};
+        let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+            ImageBuffer::from_pixel(16, 16, Rgba([255, 0, 0, 255]));
+        let mut bytes: Vec<u8> = Vec::new();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
+            .expect("encode test PNG");
+        bytes
+    }
+
+    const SVG_BYTES: &[u8] = b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'/>";
+
+    fn store(tmp: &TempDir) -> FaviconStore {
+        FaviconStore::new(tmp.path().to_path_buf())
+    }
+
+    #[test]
+    fn store_converts_png_to_webp() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let stored = s
+            .store("https://example.test/icon.png", &make_png_bytes(), "image/png")
+            .expect("png stored");
+        assert_eq!(stored.ext, "webp");
+        // The on-disk file exists at the resolved path.
+        assert!(std::path::Path::new(&stored.path).exists());
+    }
+
+    #[test]
+    fn store_keeps_svg_as_is_when_decode_fails() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let stored = s
+            .store(
+                "https://example.test/icon.svg",
+                SVG_BYTES,
+                "image/svg+xml",
+            )
+            .expect("svg stored");
+        assert_eq!(stored.ext, "svg");
+        assert!(std::path::Path::new(&stored.path).exists());
+    }
+
+    #[test]
+    fn store_uses_extension_from_unknown_content_type() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        // Bytes that the image crate cannot decode and that aren't SVG.
+        let blob = b"not an image at all";
+        let stored = s
+            .store("https://example.test/x", blob, "application/octet-stream")
+            .expect("raw stored");
+        assert_eq!(stored.ext, "bin");
+    }
+
+    #[test]
+    fn store_is_idempotent_for_same_url() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let first = s
+            .store("https://example.test/i.png", &make_png_bytes(), "image/png")
+            .expect("first store");
+        let second = s
+            .store("https://example.test/i.png", &make_png_bytes(), "image/png")
+            .expect("second store");
+        assert_eq!(first.key, second.key);
+        assert_eq!(first.path, second.path);
+    }
+
+    #[test]
+    fn resolve_returns_path_for_stored_favicon() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let stored = s
+            .store("https://example.test/i.png", &make_png_bytes(), "image/png")
+            .expect("stored");
+        let resolved = s.resolve(&stored.key, &stored.ext).expect("resolved");
+        assert_eq!(resolved, stored.path);
+    }
+
+    #[test]
+    fn resolve_returns_none_for_missing_favicon() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        // Valid 64-char hex but never stored.
+        let key = "0".repeat(64);
+        assert!(s.resolve(&key, "webp").is_none());
+    }
+
+    #[test]
+    fn cleanup_removes_files_not_in_valid_set() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let keep = s
+            .store("https://example.test/keep.png", &make_png_bytes(), "image/png")
+            .expect("keep stored");
+        let drop = s
+            .store("https://example.test/drop.svg", SVG_BYTES, "image/svg+xml")
+            .expect("drop stored");
+
+        s.cleanup(&[keep.key.clone()]);
+
+        assert!(s.resolve(&keep.key, &keep.ext).is_some());
+        assert!(s.resolve(&drop.key, &drop.ext).is_none());
+    }
+
+    #[test]
+    fn disk_usage_reflects_total_bytes() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        assert_eq!(s.disk_usage(), 0);
+        s.store("https://example.test/a.png", &make_png_bytes(), "image/png")
+            .expect("stored");
+        s.store("https://example.test/b.svg", SVG_BYTES, "image/svg+xml")
+            .expect("stored");
+        assert!(s.disk_usage() > 0);
+    }
+
+    #[test]
+    fn clear_empties_directory() {
+        let tmp = TempDir::new().expect("temp dir");
+        let s = store(&tmp);
+        let stored = s
+            .store("https://example.test/a.png", &make_png_bytes(), "image/png")
+            .expect("stored");
+        assert!(s.resolve(&stored.key, &stored.ext).is_some());
+
+        s.clear();
+        assert!(s.resolve(&stored.key, &stored.ext).is_none());
+        assert_eq!(s.disk_usage(), 0);
+    }
+
+    // =========================================================
+    // ext_from_content_type — pure mapping, exhaustively covered.
+    // =========================================================
+
+    #[test]
+    fn ext_from_content_type_known_types() {
+        assert_eq!(ext_from_content_type("image/svg+xml"), "svg");
+        assert_eq!(ext_from_content_type("image/png"), "png");
+        assert_eq!(ext_from_content_type("image/x-icon"), "ico");
+        assert_eq!(ext_from_content_type("image/vnd.microsoft.icon"), "ico");
+        assert_eq!(ext_from_content_type("image/jpeg"), "jpg");
+        assert_eq!(ext_from_content_type("image/gif"), "gif");
+        assert_eq!(ext_from_content_type("image/webp"), "webp");
+    }
+
+    #[test]
+    fn ext_from_content_type_unknown_falls_back_to_bin() {
+        assert_eq!(ext_from_content_type("image/heic"), "bin");
+        assert_eq!(ext_from_content_type("application/json"), "bin");
+        assert_eq!(ext_from_content_type(""), "bin");
+    }
+}
