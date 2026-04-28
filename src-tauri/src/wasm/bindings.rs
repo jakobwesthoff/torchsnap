@@ -34,6 +34,20 @@ wasmtime::component::bindgen!({
 });
 
 // =========================================================
+// Empty `Host` impl for the types-only interface
+// =========================================================
+//
+// `interface types` exposes only variant/record definitions,
+// no functions. wasmtime bindgen still generates a `Host`
+// trait for it (with no methods) and the world's
+// `add_to_linker` pass requires every imported interface to
+// have an impl. One-line empty impl satisfies the trait.
+
+use crate::wasm::runtime::PluginState;
+
+impl torchsnap::plugin::types::Host for PluginState {}
+
+// =========================================================
 // Type Conversions: WIT types → native types
 // =========================================================
 
@@ -73,6 +87,17 @@ impl From<wit::EntryIcon> for native::EntryIcon {
             wit::EntryIcon::DataUrl(data) => native::EntryIcon::DataUrl(data),
             wit::EntryIcon::AssetIcon(path) => native::EntryIcon::AssetIcon(path),
             wit::EntryIcon::Emoji(emoji) => native::EntryIcon::Emoji(emoji),
+        }
+    }
+}
+
+impl From<native::EntryIcon> for wit::EntryIcon {
+    fn from(icon: native::EntryIcon) -> Self {
+        match icon {
+            native::EntryIcon::HeroIcon(name) => wit::EntryIcon::HeroIcon(name),
+            native::EntryIcon::DataUrl(data) => wit::EntryIcon::DataUrl(data),
+            native::EntryIcon::AssetIcon(path) => wit::EntryIcon::AssetIcon(path),
+            native::EntryIcon::Emoji(emoji) => wit::EntryIcon::Emoji(emoji),
         }
     }
 }

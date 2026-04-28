@@ -19,7 +19,6 @@ use std::sync::Arc;
 use crate::network::website_metadata::{
     LookupError, LookupMode, LookupResult, WebsiteMetadataService,
 };
-use crate::search::types as native_icon;
 use crate::wasm::bindings;
 
 use super::super::{PluginState, WasmPluginInstance};
@@ -101,27 +100,15 @@ fn native_to_wit(
         LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
             title: meta.title,
             description: meta.description,
-            favicon: native_icon_to_wit(meta.favicon),
+            // `entry-icon` lives in `interface types` and is `use`d
+            // by both `search` and `website-metadata`, so the
+            // bindings-level `From<native::EntryIcon>` conversion
+            // works for both sites.
+            favicon: meta.favicon.into(),
         }),
         LookupResult::ReachableNoData => WitResult::ReachableNoData,
         LookupResult::Unreachable => WitResult::Unreachable,
         LookupResult::Pending => WitResult::Pending,
-    }
-}
-
-/// Map the host's `EntryIcon` onto this interface's mirror variant.
-/// Kept local because the WIT interface defines its own copy of
-/// `entry-icon` rather than importing the one from `search` (see
-/// the WIT comment for the rationale).
-fn native_icon_to_wit(
-    icon: native_icon::EntryIcon,
-) -> bindings::torchsnap::plugin::website_metadata::EntryIcon {
-    use bindings::torchsnap::plugin::website_metadata::EntryIcon as WitIcon;
-    match icon {
-        native_icon::EntryIcon::HeroIcon(s) => WitIcon::HeroIcon(s),
-        native_icon::EntryIcon::DataUrl(s) => WitIcon::DataUrl(s),
-        native_icon::EntryIcon::AssetIcon(s) => WitIcon::AssetIcon(s),
-        native_icon::EntryIcon::Emoji(s) => WitIcon::Emoji(s),
     }
 }
 

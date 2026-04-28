@@ -545,7 +545,17 @@ interface lifecycle {
   on-setting-changed: func(key: string, value: string);
 }
 
-interface search {
+/// Shared types referenced by multiple imports/exports.
+///
+/// Pulled out into a dedicated interface so cross-direction
+/// `use` declarations resolve to the same generated Rust type.
+/// wasmtime bindgen treats types defined inside an *exported*
+/// interface as guest-side; if a host *import* tries to `use`
+/// them, the binding generator drags the whole interface in as
+/// an import too. The fix is to define the shared variants in
+/// a third interface that lives at package level and is `use`d
+/// by both sides.
+interface types {
   variant entry-icon {
     hero-icon(string),
     data-url(string),
@@ -569,6 +579,10 @@ interface search {
     id: action-id,
     label: string,
   }
+}
+
+interface search {
+  use types.{entry-icon, action-id, action};
 
   record catalog-entry {
     id: string,
@@ -712,17 +726,7 @@ interface tasks {
 /// Gated by `[permissions]\nwebsite-metadata = true` in the manifest.
 /// Without that flag every `lookup` returns `permission-denied`.
 interface website-metadata {
-  /// Mirror of `search.entry-icon` — duplicated rather than imported
-  /// because `search` is an export of the plugin world, and bindgen
-  /// rejects mixing import-side `use` with export-side definitions.
-  /// Plugins should treat the two variants as interchangeable (the
-  /// host converts between them transparently).
-  variant entry-icon {
-    hero-icon(string),
-    data-url(string),
-    asset-icon(string),
-    emoji(string),
-  }
+  use types.{entry-icon};
 
   /// Selects whether `lookup` blocks on the network or returns
   /// immediately on cache miss.
