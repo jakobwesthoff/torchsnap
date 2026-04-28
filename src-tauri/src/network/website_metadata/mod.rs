@@ -38,6 +38,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use serde_json::Value;
+use url::Url;
 
 use crate::network::Http;
 use crate::search::types::EntryIcon;
@@ -46,6 +47,9 @@ use crate::storage::SqlStorage;
 
 use self::favicon_store::FaviconStore;
 use self::fetch::FetchError;
+
+#[cfg(test)]
+mod service_tests;
 
 // =========================================================
 // Constants
@@ -108,6 +112,11 @@ pub struct WebsiteMetadataService {
 
     retention_condvar: Arc<Condvar>,
     retention_shutdown: Arc<Mutex<bool>>,
+
+    /// Constructs absolute URLs for fetching page metadata and favicons.
+    /// Production default builds `https://{domain}{path}`. Tests override
+    /// to point at an httpmock server (HTTP-only) via `with_url_builder`.
+    url_for_path: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
 }
 
 impl WebsiteMetadataService {
@@ -155,7 +164,19 @@ impl WebsiteMetadataService {
             cache_ttl_days,
             retention_condvar: Arc::new(Condvar::new()),
             retention_shutdown: Arc::new(Mutex::new(false)),
+            url_for_path: Box::new(|domain, path| format!("https://{domain}{path}")),
         })
+    }
+
+    /// Override the URL builder. Test-only: lets fetches target an
+    /// httpmock server bound to localhost:port instead of `https://`.
+    #[cfg(test)]
+    pub(crate) fn with_url_builder(
+        mut self,
+        builder: impl Fn(&str, &str) -> String + Send + Sync + 'static,
+    ) -> Self {
+        self.url_for_path = Box::new(builder);
+        self
     }
 
     // ---------------------------------------------------------
@@ -332,9 +353,9 @@ impl WebsiteMetadataService {
         domain: &str,
     ) -> (Option<String>, Option<String>, Option<String>, EntryIcon) {
         let candidates = [
-            format!("https://{domain}/favicon.svg"),
-            format!("https://{domain}/favicon.png"),
-            format!("https://{domain}/favicon.ico"),
+            (self.url_for_path)(domain, "/favicon.svg"),
+            (self.url_for_path)(domain, "/favicon.png"),
+            (self.url_for_path)(domain, "/favicon.ico"),
         ];
 
         for favicon_url in &candidates {
@@ -359,8 +380,19 @@ impl WebsiteMetadataService {
     /// Fetch metadata and favicon from the network, store in cache,
     /// and return the result.
     fn fetch_and_cache(&self, domain: &str) -> MetadataResult {
+        // Build the page URL via the service's URL constructor — production
+        // points at https; tests redirect to a mock HTTP server.
+        let page_url_string = (self.url_for_path)(domain, "/");
+        let base_url = match Url::parse(&page_url_string) {
+            Ok(u) => u,
+            Err(_) => {
+                self.record_negative(domain);
+                return MetadataResult::Unreachable;
+            }
+        };
+
         // Fetch page metadata.
-        let page_metadata = match fetch::fetch_page_metadata(&self.http, domain) {
+        let page_metadata = match fetch::fetch_page_metadata(&self.http, &base_url) {
             Ok(meta) => meta,
             Err(FetchError::NotHtml { .. }) => {
                 // Domain is reachable but returned non-HTML content (e.g.,

@@ -62,7 +62,7 @@ pub enum FetchError {
 // Page metadata fetching
 // =========================================================
 
-/// Fetch the root page of a domain and extract metadata.
+/// Fetch the root page at `base_url` and extract metadata.
 ///
 /// Uses a two-phase streaming approach:
 /// 1. Read up to 256 KB or `</head>`/`<body` marker, try extraction.
@@ -70,13 +70,14 @@ pub enum FetchError {
 /// 2. Continue reading up to 512 KB total, re-extract with full content.
 ///
 /// Returns the best metadata we could extract, even if partial. The
-/// caller decides what to do with incomplete results.
-pub fn fetch_page_metadata(http: &Http, domain: &str) -> Result<PageMetadata, FetchError> {
-    let url_string = format!("https://{domain}/");
-    let base_url = Url::parse(&url_string).map_err(|e| FetchError::Http(e.into()))?;
+/// caller decides what to do with incomplete results. URL construction
+/// is the caller's responsibility — production code builds
+/// `https://{domain}/`; tests substitute a mock-server URL.
+pub fn fetch_page_metadata(http: &Http, base_url: &Url) -> Result<PageMetadata, FetchError> {
+    let url_string = base_url.as_str();
 
     let mut response = http
-        .get(&url_string)
+        .get(url_string)
         .timeout(FETCH_TIMEOUT)
         .max_size(MAX_DOWNLOAD_SIZE as u64)
         .send()
