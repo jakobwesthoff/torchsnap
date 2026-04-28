@@ -400,6 +400,13 @@ pub struct PermissionsDef {
     /// vector when no rules are declared (deny by default).
     #[serde(default)]
     pub command: Vec<CommandPermissionDef>,
+    /// `permissions.website-metadata` — read/write access to the
+    /// host-shared website metadata cache. Boolean rather than a
+    /// struct because there is no per-domain allowlist; the cache
+    /// is shared host-wide and rate-limiting / disk-pressure
+    /// concerns are absorbed by the cache layer itself.
+    #[serde(default, rename = "website-metadata")]
+    pub website_metadata: bool,
 }
 
 /// `[permissions.opener]` — declares the plugin's
@@ -2410,6 +2417,85 @@ mod tests {
             "error should mention the offending value: {msg}"
         );
     }
+
+    // =====================================================
+    // Permissions: website-metadata flag
+    // =====================================================
+
+    #[test]
+    fn website_metadata_perm_absent_when_no_permissions_section() {
+        let m = Manifest::parse(&minimal("")).expect("parses");
+        // No `[permissions]` section → `permissions` is `None`.
+        assert!(m.permissions.is_none());
+    }
+
+    #[test]
+    fn website_metadata_perm_defaults_to_false_when_other_perms_present() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("parses");
+        let perms = m.permissions.expect("permissions section present");
+        assert!(!perms.website_metadata);
+    }
+
+    #[test]
+    fn website_metadata_perm_true_when_set() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions]
+               website-metadata = true"#,
+        ))
+        .expect("parses");
+        let perms = m.permissions.expect("permissions section present");
+        assert!(perms.website_metadata);
+    }
+
+    #[test]
+    fn website_metadata_perm_explicit_false() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions]
+               website-metadata = false"#,
+        ))
+        .expect("parses");
+        let perms = m.permissions.expect("permissions section present");
+        assert!(!perms.website_metadata);
+    }
+
+    #[test]
+    fn website_metadata_perm_rejects_non_bool() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions]
+               website-metadata = "yes""#,
+        ))
+        .unwrap_err();
+        // Confirm parsing fails on a type mismatch rather than
+        // silently coercing the string to a bool.
+        let msg = err.to_string();
+        assert!(
+            msg.contains("website-metadata") || msg.contains("bool") || msg.contains("type"),
+            "expected type error for non-bool flag, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn website_metadata_perm_coexists_with_http_and_command() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions]
+               website-metadata = true
+
+               [permissions.http]
+               origins = ["https://api.example.com"]
+
+               [[permissions.command]]
+               binary = "git""#,
+        ))
+        .expect("parses");
+        let perms = m.permissions.expect("permissions section present");
+        assert!(perms.website_metadata);
+        assert!(perms.http.is_some());
+        assert_eq!(perms.command.len(), 1);
+    }
 }
 
 // =========================================================
@@ -2510,6 +2596,7 @@ fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<Permissio
         opener: permissions.opener,
         http,
         command: permissions.command,
+        website_metadata: permissions.website_metadata,
     })
 }
 
@@ -2909,4 +2996,5 @@ mod task_validation_tests {
         let err = validate_task_definitions(&[task("bad", "@daily")]).unwrap_err();
         assert!(err.to_string().contains("5-field"), "{err}");
     }
+
 }

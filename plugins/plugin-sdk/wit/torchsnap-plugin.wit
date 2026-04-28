@@ -701,6 +701,77 @@ interface tasks {
   run-task: func(task-id: string) -> result<_, string>;
 }
 
+/// Shared host service that fetches, caches, and serves per-domain
+/// website metadata (title, description, favicon).
+///
+/// The cache is shared across plugins — a favicon fetched for one
+/// domain by plugin A is immediately available to plugin B. Favicon
+/// images are stored as host-owned files; plugins receive an
+/// `entry-icon` ready to embed in search results.
+///
+/// Gated by `[permissions]\nwebsite-metadata = true` in the manifest.
+/// Without that flag every `lookup` returns `permission-denied`.
+interface website-metadata {
+  /// Mirror of `search.entry-icon` — duplicated rather than imported
+  /// because `search` is an export of the plugin world, and bindgen
+  /// rejects mixing import-side `use` with export-side definitions.
+  /// Plugins should treat the two variants as interchangeable (the
+  /// host converts between them transparently).
+  variant entry-icon {
+    hero-icon(string),
+    data-url(string),
+    asset-icon(string),
+    emoji(string),
+  }
+
+  /// Selects whether `lookup` blocks on the network or returns
+  /// immediately on cache miss.
+  variant lookup-mode {
+    /// Cache-first; never blocks. On cold miss returns `pending`
+    /// and schedules a background fetch — the next call will see
+    /// the populated cache. Use in latency-sensitive paths.
+    cached,
+    /// Cache-first; on cold miss blocks until the fetch completes
+    /// or coalesces with any in-flight request for the same domain.
+    /// Use when the result is load-bearing for the current render.
+    blocking,
+  }
+
+  /// Result of a lookup. `pending` is only ever returned in
+  /// `cached` mode — `blocking` always resolves to one of the
+  /// other three variants (or an error).
+  variant lookup-result {
+    hit(cache-entry),
+    reachable-no-data,
+    unreachable,
+    pending,
+  }
+
+  /// Cached metadata payload.
+  record cache-entry {
+    title: option<string>,
+    description: option<string>,
+    favicon: entry-icon,
+  }
+
+  variant website-metadata-error {
+    /// The plugin manifest does not declare
+    /// `[permissions]\nwebsite-metadata = true`.
+    permission-denied(string),
+    /// Domain string is empty, oversized, or contains characters
+    /// that aren't valid in a bare domain (scheme, path, port,
+    /// whitespace, ...). PSL validation is the plugin's job.
+    invalid-domain(string),
+  }
+
+  /// Look up metadata for a registrable domain. `domain` must be
+  /// a bare host string — no scheme, path, port, or query.
+  lookup: func(
+    domain: string,
+    mode: lookup-mode,
+  ) -> result<lookup-result, website-metadata-error>;
+}
+
 /// ─── The plugin world ───────────────────────────────────
 world plugin {
   import logging;
@@ -714,6 +785,7 @@ world plugin {
   import command;
   import platform;
   import paths;
+  import website-metadata;
 
   export lifecycle;
   export search;

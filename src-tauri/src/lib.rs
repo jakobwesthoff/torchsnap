@@ -751,6 +751,7 @@ pub fn run() {
                 &plugin_source_registry,
                 &app_data_dir,
                 resource_dir.as_deref(),
+                Arc::clone(&metadata_service),
             ) {
                 Ok(count) => {
                     if count > 0 {
@@ -966,9 +967,13 @@ fn load_wasm_plugins(
     source_registry: &wasm::protocol::PluginSourceRegistry,
     app_data_dir: &std::path::Path,
     resource_dir: Option<&std::path::Path>,
+    metadata_service: Arc<network::website_metadata::WebsiteMetadataService>,
 ) -> anyhow::Result<usize> {
-    let runtime: Arc<wasm::runtime::WasmRuntime> =
-        wasm::runtime::WasmRuntime::new(log_sender.clone(), Arc::clone(span_registry))?;
+    let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new(
+        log_sender.clone(),
+        Arc::clone(span_registry),
+        Some(metadata_service),
+    )?;
 
     let roots = wasm::discovery::enumerate_search_roots(resource_dir, app_data_dir);
 
