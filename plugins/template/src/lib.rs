@@ -32,6 +32,15 @@
 //   `manifest.toml` and the `tasks::run-task` guest export.
 //   The host runs a per-plugin tokio scheduler that fires
 //   the export at the cron-scheduled time
+//
+// Optional capabilities (see usage snippets at the bottom of
+// this file):
+//
+// - `website-metadata::lookup` — host-shared website metadata
+//   cache. Resolves a domain to its title, description, and
+//   favicon (cached and coalesced across all plugins). Opt in
+//   via `[permissions]\nwebsite-metadata = true` in
+//   `manifest.toml`.
 // =========================================================
 
 use torchsnap_plugin_sdk::prelude::*;
@@ -241,4 +250,69 @@ impl SearchGuest for TemplatePlugin {
         );
         Ok(PostAction::Dismiss)
     }
+}
+
+// =========================================================
+// Snippet: website-metadata host import
+//
+// Reference example for plugins that surface websites in
+// their results. Not wired into this template's runtime
+// search path — copy into your `search()` body when you
+// want enriched URL entries.
+//
+// Manifest opt-in (uncomment in `manifest.toml`):
+//
+// ```toml
+// [permissions]
+// website-metadata = true
+// ```
+//
+// Without that flag every `lookup` call returns
+// `permission-denied` — the host enforces the gate before
+// touching the cache.
+//
+// `entry-icon` is the same Rust type whether it comes from
+// `website_metadata::lookup` or appears on a `ScoredEntry`,
+// so the favicon plugs straight into a result with no
+// conversion.
+// =========================================================
+#[allow(dead_code)]
+fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
+    use website_metadata::{lookup, LookupMode, LookupResult};
+
+    // `Blocking` waits for the cache or network and is appropriate
+    // for `search()` calls where the result decides what to render
+    // this cycle. For latency-sensitive paths (catalog scans,
+    // per-keystroke enrichment), pass `LookupMode::Cached` and
+    // handle `Pending` by skipping the entry — it'll be ready on
+    // the next render.
+    let result = lookup(domain, LookupMode::Blocking).ok()?;
+
+    let (title, icon) = match result {
+        LookupResult::Hit(meta) => {
+            let title = meta.title.unwrap_or_else(|| domain.to_string());
+            (title, meta.favicon)
+        }
+        LookupResult::ReachableNoData => {
+            (domain.to_string(), EntryIcon::HeroIcon("globe-alt".into()))
+        }
+        // The host couldn't reach the domain — suppress the entry.
+        LookupResult::Unreachable => return None,
+        // `Blocking` mode never returns `Pending`.
+        LookupResult::Pending => return None,
+    };
+
+    Some(ScoredEntry {
+        id: domain.to_string(),
+        title,
+        subtitle: Some(format!("Open {domain}")),
+        icon: Some(icon),
+        score: 500,
+        title_highlight_positions: vec![],
+        subtitle_highlight_positions: vec![],
+        actions: vec![Action {
+            id: ActionId::Open,
+            label: "Open in Browser".into(),
+        }],
+    })
 }

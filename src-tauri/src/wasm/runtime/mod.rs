@@ -198,6 +198,12 @@ mod tests {
             .expect("second instance untouched by operations on the first");
     }
 
+    /// Bytes of the committed `website-metadata-plugin` fixture.
+    /// See the fixture crate's README for rebuild instructions.
+    const WEBSITE_METADATA_PLUGIN_WASM: &[u8] = include_bytes!(
+        "../../../tests/fixtures/website-metadata-plugin/website_metadata_plugin.wasm"
+    );
+
     /// Bytes of the committed `opener-http-plugin` fixture.
     /// Exercises the `opener` and `http` host interfaces via
     /// `messaging::handle-message` dispatch.
@@ -663,6 +669,153 @@ mod tests {
             .expect("guest returned Ok");
 
         assert_eq!(result, "status:200");
+    }
+
+    // =========================================================
+    // WASM integration tests for the website-metadata host import
+    //
+    // The committed `website-metadata-plugin` fixture exposes
+    // `lookup-blocking` and `lookup-cached` messaging methods.
+    // Tests below stand up a real `WebsiteMetadataService`
+    // pointed at an httpmock server, install it on the plugin
+    // instance via `set_website_metadata`, and verify the WIT
+    // boundary round-trip end-to-end.
+    // =========================================================
+
+    fn build_test_metadata_service(
+        server: &httpmock::MockServer,
+    ) -> (Arc<crate::network::website_metadata::WebsiteMetadataService>, tempfile::TempDir, crate::settings_notifier::SettingsNotifier) {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let notifier = crate::settings_notifier::SettingsNotifier::new();
+        let server_base = server.base_url();
+        let svc =
+            crate::network::website_metadata::WebsiteMetadataService::new(
+                tmp.path().to_path_buf(),
+                &notifier,
+                30,
+            )
+            .expect("construct service");
+        let svc = Arc::new(
+            svc.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}")),
+        );
+        (svc, tmp, notifier)
+    }
+
+    fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+        let runtime = test_runtime();
+        runtime
+            .compile("website-metadata-plugin", WEBSITE_METADATA_PLUGIN_WASM)
+            .expect("compile website-metadata fixture");
+        let instance = runtime
+            .instantiate("website-metadata-plugin")
+            .expect("instantiate website-metadata fixture");
+        (runtime, instance)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn website_metadata_blocking_lookup_returns_hit() {
+        use httpmock::prelude::*;
+        use httpmock::MockServer;
+
+        let server = MockServer::start();
+        let domain = "ws.test";
+        let _page = server.mock(|when, then| {
+            when.method(GET).path(format!("/{domain}/"));
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(format!(
+                    r#"<!doctype html><html><head>
+                        <title>WS Title</title>
+                        <meta name="description" content="WS Desc" />
+                        <link rel="icon" type="image/png" href="icon.png" />
+                    </head></html>"#
+                ));
+        });
+        let _icon = server.mock(|when, then| {
+            when.method(GET).path(format!("/{domain}/icon.png"));
+            then.status(200)
+                .header("content-type", "image/png")
+                .body({
+                    use image::{ImageBuffer, ImageFormat, Rgba};
+                    let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+                        ImageBuffer::from_pixel(16, 16, Rgba([10, 20, 30, 255]));
+                    let mut buf: Vec<u8> = Vec::new();
+                    image::DynamicImage::ImageRgba8(img)
+                        .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
+                        .expect("encode test PNG");
+                    buf
+                });
+        });
+
+        let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
+        let (_runtime, instance) = compile_website_metadata_fixture();
+        instance.set_website_metadata(true, Some(svc));
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("lookup-blocking", domain)
+            .expect("handle_message call succeeded")
+            .expect("guest returned Ok");
+
+        assert_eq!(result, "hit:WS Title:WS Desc:asset-icon");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn website_metadata_cached_lookup_returns_pending_on_cold_miss() {
+        use httpmock::prelude::*;
+        use httpmock::MockServer;
+
+        let server = MockServer::start();
+        let domain = "wait.test";
+        let _page = server.mock(|when, then| {
+            when.method(GET).path(format!("/{domain}/"));
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html><head><title>x</title></head></html>");
+        });
+
+        let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
+        let (_runtime, instance) = compile_website_metadata_fixture();
+        instance.set_website_metadata(true, Some(svc));
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("lookup-cached", domain)
+            .expect("handle_message call succeeded")
+            .expect("guest returned Ok");
+
+        assert_eq!(result, "pending");
+    }
+
+    #[test]
+    fn website_metadata_lookup_without_permission_returns_permission_denied() {
+        let (_runtime, instance) = compile_website_metadata_fixture();
+        // Intentionally do NOT call set_website_metadata: state defaults
+        // to disabled with no service installed.
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("lookup-blocking", "any.test")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should see PermissionDenied");
+        assert!(err.contains("PermissionDenied"), "unexpected error: {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn website_metadata_invalid_domain_returns_invalid_domain_error() {
+        let server = httpmock::MockServer::start();
+        let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
+        let (_runtime, instance) = compile_website_metadata_fixture();
+        instance.set_website_metadata(true, Some(svc));
+        instance.enable().expect("enable");
+
+        let result = instance
+            .handle_message("lookup-blocking", "https://example.com")
+            .expect("handle_message call succeeded");
+
+        let err = result.expect_err("guest should see InvalidDomain");
+        assert!(err.contains("InvalidDomain"), "unexpected error: {err}");
     }
 
     #[test]

@@ -91,7 +91,9 @@ pub use exports::torchsnap::plugin::search::{
 // higher-level `settings` helper module. The same applies to
 // `logging_host`.
 // =========================================================
-pub use torchsnap::plugin::{assets, clipboard, frecency, http, opener, paths, platform};
+pub use torchsnap::plugin::{
+    assets, clipboard, frecency, http, opener, paths, platform, website_metadata,
+};
 pub use torchsnap::plugin::command as command_host;
 pub use torchsnap::plugin::logging as logging_host;
 pub use torchsnap::plugin::settings as settings_host;
@@ -113,7 +115,9 @@ pub mod prelude {
         ViewResponse,
     };
     pub use super::{command, logging, messaging, settings, sql};
-    pub use super::{assets, clipboard, frecency, http, opener, paths, platform};
+    pub use super::{
+        assets, clipboard, frecency, http, opener, paths, platform, website_metadata,
+    };
     // Macros re-exported through the prelude so a single
     // `use torchsnap_plugin_sdk::prelude::*;` is enough to
     // write a minimal plugin.

@@ -1,0 +1,16 @@
+[package]
+name = "torchsnap-test-website-metadata-plugin"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Test-only fixture crate. Targets wasm32-wasip2 and is built via the
+# `just build-test-fixtures` recipe. Not part of any workspace; not
+# compiled by `cargo test` — the committed `website_metadata_plugin.wasm`
+# artifact alongside this Cargo.toml is the canonical test input.
+
+[dependencies]
+wit-bindgen = "0.54"
+
+[lib]
+crate-type = ["cdylib"]
