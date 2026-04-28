@@ -30,7 +30,7 @@ mod fetch;
 mod html_fields;
 mod metadata;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -67,6 +67,7 @@ const RETENTION_INTERVAL: Duration = Duration::from_secs(30 * 60);
 // =========================================================
 
 /// Metadata about a website, ready for display in search results.
+#[derive(Clone)]
 pub struct WebsiteMetadata {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -81,6 +82,7 @@ pub struct WebsiteMetadata {
 ///   (show a globe icon or similar)
 /// - `Unreachable` → couldn't reach the domain at all
 ///   (keep the default plugin icon)
+#[derive(Clone)]
 pub enum MetadataResult {
     /// Successfully extracted some metadata (fields may be partial).
     Found(WebsiteMetadata),
@@ -88,6 +90,65 @@ pub enum MetadataResult {
     ReachableNoData,
     /// DNS failure, timeout, connection refused, or similar.
     Unreachable,
+}
+
+// =========================================================
+// Single-flight coalescing primitive
+// =========================================================
+
+/// Shared state between a fetch leader and its subscribers.
+///
+/// The leader runs the network fetch exactly once. Concurrent
+/// callers for the same domain register as subscribers and
+/// `wait` on the condvar until the leader publishes via
+/// `notify_all`. The result is cloned to each subscriber.
+struct FetchInFlight {
+    /// `None` while the fetch is in progress; `Some(_)` after
+    /// the leader publishes. Subscribers spin in a `wait` loop
+    /// until this becomes `Some` (handles spurious wakeups).
+    result: Mutex<Option<MetadataResult>>,
+    done: Condvar,
+}
+
+/// Drop guard for the fetch leader.
+///
+/// If the leader's body panics or returns early without publishing,
+/// the guard fills the result slot with `Unreachable`, notifies
+/// any parked subscribers, and removes the entry from `in_flight`.
+/// This prevents subscribers from blocking forever on a leader
+/// that never finishes.
+struct LeaderGuard<'a> {
+    domain: &'a str,
+    handle: Arc<FetchInFlight>,
+    in_flight: &'a Mutex<HashMap<String, Arc<FetchInFlight>>>,
+    /// Set to `true` after a successful publish so the `Drop`
+    /// impl knows the cleanup has already happened.
+    published: bool,
+}
+
+impl Drop for LeaderGuard<'_> {
+    fn drop(&mut self) {
+        // Always evict the entry from `in_flight`, even on panic —
+        // a leftover entry would block all future lookups for the
+        // domain forever.
+        if let Ok(mut map) = self.in_flight.lock() {
+            map.remove(self.domain);
+        }
+
+        if self.published {
+            return;
+        }
+
+        // Leader unwound without publishing. Substitute Unreachable
+        // so subscribers get a definitive answer instead of parking
+        // indefinitely.
+        if let Ok(mut slot) = self.handle.result.lock() {
+            if slot.is_none() {
+                *slot = Some(MetadataResult::Unreachable);
+            }
+        }
+        self.handle.done.notify_all();
+    }
 }
 
 // =========================================================
@@ -103,9 +164,14 @@ pub struct WebsiteMetadataService {
     /// attempts for unreachable hosts. Cleared on app restart.
     negative_cache: Mutex<HashMap<String, Instant>>,
 
-    /// Domains currently being fetched in background threads
-    /// (triggered by `try_cached`). Prevents duplicate spawns.
-    in_flight: Mutex<HashSet<String>>,
+    /// Single-flight coalescing map.
+    ///
+    /// The first caller for a domain becomes the leader and runs
+    /// the actual fetch; concurrent callers for the same domain
+    /// register as subscribers and park on the shared `Condvar`
+    /// until the leader publishes. This is a kernel-level wait
+    /// (futex on Linux, ulock on macOS) — no busy-spinning.
+    in_flight: Mutex<HashMap<String, Arc<FetchInFlight>>>,
 
     /// Cache TTL in days, updated reactively from settings.
     cache_ttl_days: Arc<AtomicU32>,
@@ -117,6 +183,12 @@ pub struct WebsiteMetadataService {
     /// Production default builds `https://{domain}{path}`. Tests override
     /// to point at an httpmock server (HTTP-only) via `with_url_builder`.
     url_for_path: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
+
+    /// Test-only hooks. Lets tests inject a delayed panic into
+    /// `fetch_and_cache_inner` so the leader unwinds while subscribers
+    /// are parked, exercising `LeaderGuard`'s panic-recovery path.
+    #[cfg(test)]
+    test_panic_after: Mutex<HashMap<String, Duration>>,
 }
 
 impl WebsiteMetadataService {
@@ -160,12 +232,25 @@ impl WebsiteMetadataService {
             favicons,
             http,
             negative_cache: Mutex::new(HashMap::new()),
-            in_flight: Mutex::new(HashSet::new()),
+            in_flight: Mutex::new(HashMap::new()),
             cache_ttl_days,
             retention_condvar: Arc::new(Condvar::new()),
             retention_shutdown: Arc::new(Mutex::new(false)),
             url_for_path: Box::new(|domain, path| format!("https://{domain}{path}")),
+            #[cfg(test)]
+            test_panic_after: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Configure `fetch_and_cache_inner` to sleep for `after` and then
+    /// panic when invoked for `domain`. Used to exercise leader-panic
+    /// recovery in the coalescing layer.
+    #[cfg(test)]
+    pub(crate) fn set_test_panic_after(&self, domain: &str, after: Duration) {
+        self.test_panic_after
+            .lock()
+            .expect("test_panic_after not poisoned")
+            .insert(domain.to_string(), after);
     }
 
     /// Override the URL builder. Test-only: lets fetches target an
@@ -227,9 +312,10 @@ impl WebsiteMetadataService {
 
     /// Fetch metadata for a domain, blocking until complete.
     ///
-    /// Checks the cache first. On cache miss, fetches from the
-    /// network and stores the result before returning. Failed
-    /// fetches are recorded in the negative cache.
+    /// Checks the cache first. On cache miss, runs the fetch through
+    /// `fetch_coalesced` so concurrent calls for the same domain
+    /// share a single network request. Failed fetches are recorded
+    /// in the negative cache by the leader.
     pub fn get(&self, domain: &str) -> MetadataResult {
         // 1. Check negative cache.
         if self.is_negatively_cached(domain) {
@@ -242,8 +328,8 @@ impl WebsiteMetadataService {
             return self.cached_entry_to_result(entry);
         }
 
-        // 3. Fetch from network.
-        self.fetch_and_cache(domain)
+        // 3. Fetch from network — single-flight coalesced.
+        self.fetch_coalesced(domain)
     }
 
     /// Return cached metadata immediately, or `Unreachable` with a
@@ -377,9 +463,89 @@ impl WebsiteMetadataService {
         )
     }
 
-    /// Fetch metadata and favicon from the network, store in cache,
-    /// and return the result.
-    fn fetch_and_cache(&self, domain: &str) -> MetadataResult {
+    /// Coalesced network fetch.
+    ///
+    /// The first caller for a given domain becomes the *leader* and runs
+    /// `fetch_and_cache_inner` synchronously. Concurrent callers for the
+    /// same domain become *subscribers*, parking on the leader's
+    /// `Condvar` until the result is published. Subscribers receive a
+    /// clone of the leader's result — no second network request fires.
+    ///
+    /// Coalescing applies even across modes (e.g. a background fetch
+    /// triggered by `try_cached` and a foreground `get` for the same
+    /// domain produce one HTTP call total).
+    fn fetch_coalesced(&self, domain: &str) -> MetadataResult {
+        // Phase 1: register as either leader or subscriber.
+        let (handle, is_leader) = {
+            let mut map = self.in_flight.lock().expect("in_flight not poisoned");
+            if let Some(existing) = map.get(domain) {
+                (Arc::clone(existing), false)
+            } else {
+                let h = Arc::new(FetchInFlight {
+                    result: Mutex::new(None),
+                    done: Condvar::new(),
+                });
+                map.insert(domain.to_string(), Arc::clone(&h));
+                (h, true)
+            }
+        };
+
+        if is_leader {
+            // Drop guard ensures `in_flight` is cleared and subscribers
+            // are unblocked even if `fetch_and_cache_inner` panics.
+            let mut guard = LeaderGuard {
+                domain,
+                handle: Arc::clone(&handle),
+                in_flight: &self.in_flight,
+                published: false,
+            };
+
+            let result = self.fetch_and_cache_inner(domain);
+
+            // Publish the result and wake subscribers BEFORE dropping
+            // the guard so the guard's Drop sees `published = true`
+            // and skips the panic-fallback path.
+            {
+                let mut slot = handle.result.lock().expect("result mutex not poisoned");
+                *slot = Some(result.clone());
+            }
+            handle.done.notify_all();
+            guard.published = true;
+
+            result
+        } else {
+            // Subscriber: park on the condvar until the leader publishes.
+            // The `while` loop guards against spurious wakeups (the kernel
+            // may wake parked threads without a matching `notify_all`).
+            let mut slot = handle.result.lock().expect("result mutex not poisoned");
+            while slot.is_none() {
+                slot = handle.done.wait(slot).expect("condvar wait not poisoned");
+            }
+            slot.as_ref().expect("set above the loop exit").clone()
+        }
+    }
+
+    /// Inner fetch — performs the actual network work and writes to the
+    /// cache. Called exactly once per concurrent burst by the leader in
+    /// `fetch_coalesced`.
+    fn fetch_and_cache_inner(&self, domain: &str) -> MetadataResult {
+        // Test-only: optionally sleep then panic, to exercise the
+        // `LeaderGuard` panic-recovery path with a window for
+        // subscribers to register before the leader unwinds.
+        #[cfg(test)]
+        {
+            let after = self
+                .test_panic_after
+                .lock()
+                .expect("test_panic_after not poisoned")
+                .get(domain)
+                .copied();
+            if let Some(d) = after {
+                std::thread::sleep(d);
+                panic!("test-induced panic for {domain}");
+            }
+        }
+
         // Build the page URL via the service's URL constructor — production
         // points at https; tests redirect to a mock HTTP server.
         let page_url_string = (self.url_for_path)(domain, "/");
@@ -507,17 +673,11 @@ impl WebsiteMetadataService {
 
     /// Spawn a background thread to fetch metadata for a domain.
     ///
-    /// Deduplicates: if the domain is already being fetched, this
-    /// is a no-op. The thread removes the domain from `in_flight`
-    /// on completion (success or failure).
+    /// Coalescing is handled inside `fetch_coalesced`: if a leader is
+    /// already running for the domain (foreground or background), the
+    /// spawned thread joins as a subscriber and exits without issuing
+    /// a duplicate request.
     fn spawn_background_fetch(self: &Arc<Self>, domain: &str) {
-        let mut in_flight = self.in_flight.lock().expect("in_flight not poisoned");
-        if in_flight.contains(domain) {
-            return;
-        }
-        in_flight.insert(domain.to_string());
-        drop(in_flight);
-
         let service = Arc::clone(self);
         let domain_owned = domain.to_string();
 
@@ -525,13 +685,7 @@ impl WebsiteMetadataService {
         // the HTTP client internally calls block_on(), which requires
         // the Tokio reactor to be available on the current thread.
         tauri::async_runtime::spawn_blocking(move || {
-            service.fetch_and_cache(&domain_owned);
-
-            service
-                .in_flight
-                .lock()
-                .expect("in_flight not poisoned")
-                .remove(&domain_owned);
+            let _ = service.fetch_coalesced(&domain_owned);
         });
     }
 }
