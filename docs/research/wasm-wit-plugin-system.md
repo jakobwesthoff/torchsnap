@@ -1,5 +1,35 @@
 # WASM Plugin System via WIT + Component Model
 
+> **Status as of 2026-04-30 — research adopted, with refinements**
+>
+> The core proposal (WASI Preview 2 + WIT + Component Model on wasmtime,
+> over extism / wasip1) was adopted and now ships on `main`. Subsequent
+> design work refined the contract significantly:
+>
+> - **Toolchain change:** `cargo-component` was rejected. Plugins build
+>   with plain `cargo build --release` against the `wasm32-wasip2`
+>   target; `wit_bindgen::generate!` lives in `torchsnap-plugin-sdk`
+>   and plugin crates register via `define_plugin!`. See project
+>   `CLAUDE.md` ("`cargo-component` is NOT used") and
+>   `plugins/plugin-sdk/`.
+> - **Live WIT contract:** the speculative `world plugin` sketch in
+>   this document does not match production. The authoritative WIT is
+>   `plugins/plugin-sdk/wit/torchsnap-plugin.wit`; the host runtime
+>   lives under `src-tauri/src/wasm/`.
+> - **Open design questions all resolved:**
+>   - Tauri-API surface → ADRs 0029 (settings), 0030 (messaging),
+>     0031 (sql), 0032 (scheduled tasks), 0037 (opener), 0038 (http),
+>     0039 (assets), 0040 (command).
+>   - Sandboxing / lifecycle → ADR 0033 (compile-at-load,
+>     instantiate-on-enable), ADR 0025 (host-managed enable/disable).
+>   - Distribution → ADR 0035 (`.torchsnap` archives, bundled +
+>     user-installable), ADR 0036 (trust model and deferred signing).
+>   - Async — handled per-API via wasmtime's async support; not a
+>     single global decision.
+> - Plugin component contract on the frontend side: ADR 0028.
+>
+> Current architecture overview: `docs/Plugin-Architecture/01-overview.md`.
+
 ## Decision
 
 Use the **WIT (Wasm Interface Type) + Component Model** approach over extism or
@@ -58,6 +88,8 @@ work but the DX is rougher.
 
 - **`cargo-component`** — Cargo subcommand for building Wasm components from
   Rust. Handles wit-bindgen automatically.
+  *Not used by Torchsnap — the project uses plain `cargo build` with
+  `wit_bindgen::generate!` in the SDK crate. See project CLAUDE.md.*
 - **`wit-bindgen`** — generates language-specific bindings from WIT files.
   Usually invoked indirectly through cargo-component or build plugins.
 - **`wasm-tools`** — Swiss army knife for inspecting, validating, and composing
@@ -202,13 +234,22 @@ let actions = plugin.call_handle_event(&mut store, &Event {
 
 ## Open Design Questions
 
+*All four questions below were resolved after this note was written; see
+the status block at the top of the file for ADR references.*
+
 - **Which Tauri APIs to expose via WIT?** Plugins need access to windows,
   system tray, notifications, clipboard, etc. None of this is in standard WASI —
   custom WIT interfaces that proxy through the host are needed. This is the main
   design work.
+  *Resolved per-API in ADRs 0029, 0030, 0031, 0032, 0037, 0038, 0039, 0040.*
 - **Plugin sandboxing granularity** — per-plugin capability grants (e.g., plugin
   X gets clipboard access but not filesystem)?
+  *Resolved via host-managed enable/disable (ADR 0025) and the
+  compile-at-load / instantiate-on-enable lifecycle (ADR 0033).*
 - **Async** — how to handle async host functions (e.g., HTTP requests from
   plugins)? WASI async proposals are still in flux.
+  *Handled per-API via wasmtime's async runtime; HTTP specifically in ADR 0038.*
 - **Plugin discovery and distribution** — registry, local directory scanning, or
   both?
+  *Resolved by ADR 0035 (`.torchsnap` archives, bundled + user-installable)
+  and ADR 0036 (trust model).*
