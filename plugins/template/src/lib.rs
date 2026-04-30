@@ -314,7 +314,7 @@ fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
         // or denied permission) — suppress the entry rather than
         // showing a placeholder. `lookup_cached` has already
         // scheduled the background fetch if one is warranted.
-        Metadata::Empty | Metadata::Pending => return None,
+        Metadata::NoData | Metadata::Unreachable | Metadata::Pending => return None,
     };
 
     Some(ScoredEntry {

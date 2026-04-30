@@ -6,25 +6,26 @@
 //!
 //! The raw WIT exposes
 //! `lookup(domain, mode) -> Result<LookupResult, WebsiteMetadataError>`
-//! where `LookupResult` is a four-variant enum (`Hit` /
-//! `ReachableNoData` / `Unreachable` / `Pending`) and the error
-//! type carries two variants that are programmer bugs rather than
-//! recoverable runtime conditions (`PermissionDenied` is a missing
-//! manifest grant, `InvalidDomain` is bad input). Real call sites
-//! collapse all of that to "do I have something to show, yes/no/
-//! ask-again", so this module wraps the WIT into:
+//! where the error type carries two variants that are programmer
+//! bugs rather than recoverable runtime conditions
+//! (`PermissionDenied` is a missing manifest grant, `InvalidDomain`
+//! is bad input). The double-layer match plus per-call-site error
+//! handling adds noise without adding expressive power, so this
+//! module wraps the WIT into:
 //!
-//! - A flat [`Metadata`] enum (`Found` / `Empty` / `Pending`) where
-//!   "no data" and "unreachable" merge into `Empty`.
+//! - A flat [`Metadata`] enum that mirrors the WIT's `LookupResult`
+//!   variants 1:1 (`Found` / `NoData` / `Unreachable` / `Pending`)
+//!   minus the outer `Result` layer.
 //! - [`lookup_cached`] / [`lookup_blocking`] returning [`Metadata`],
 //!   with the WIT's two error variants logged via the host's
-//!   `logging` interface and folded into `Empty`.
+//!   `logging` interface and folded into `Unreachable` (errors
+//!   are not "the host reached the domain," so `Unreachable` is
+//!   the closer fold than `NoData`).
 //! - [`favicon_or`], the one-line idiom for the most common case:
 //!   "give me the cached favicon, or this fallback icon."
 //!
-//! The flatten loses the distinction between `ReachableNoData` and
-//! `Unreachable`, and discards the underlying error string. Plugins
-//! that need either can call [`website_metadata_host::lookup`]
+//! The error string is discarded after logging. Plugins that need
+//! to surface it should call [`website_metadata_host::lookup`]
 //! directly — the raw module stays accessible through the SDK
 //! prelude under that name.
 //!
@@ -52,25 +53,27 @@ pub use crate::website_metadata_host::CacheEntry;
 
 /// Outcome of a metadata lookup.
 ///
-/// Collapses the WIT's `LookupResult` (`Hit` / `ReachableNoData` /
-/// `Unreachable` / `Pending`) and `WebsiteMetadataError` variants
-/// into the three states a typical plugin actually distinguishes
-/// at the call site.
+/// Mirrors the WIT's `LookupResult` variants 1:1 minus the
+/// outer `Result` / `WebsiteMetadataError` layer, which the
+/// wrapper logs and folds into `Unreachable`.
 pub enum Metadata {
     /// Host returned cached metadata for the domain.
     Found(CacheEntry),
-    /// Host has no usable data for this domain. Merges the WIT's
-    /// `ReachableNoData` and `Unreachable` cases — plugins that
-    /// need to tell them apart should call
-    /// [`website_metadata_host::lookup`] directly. Errors
-    /// (`PermissionDenied`, `InvalidDomain`) also collapse here
-    /// after being logged, since they are programmer bugs that
-    /// won't resolve by retrying.
-    Empty,
+    /// Host reached the domain but extracted no usable metadata
+    /// (no `<title>`, no parseable Open Graph, etc.). Mirrors
+    /// the WIT `reachable-no-data` variant.
+    NoData,
+    /// Host could not reach the domain (DNS failure, connection
+    /// refused, network down, ...). Mirrors the WIT `unreachable`
+    /// variant. The wrapper also folds `PermissionDenied` and
+    /// `InvalidDomain` errors here after logging, since they are
+    /// programmer bugs that won't resolve by retrying.
+    Unreachable,
     /// Cold cache, background fetch scheduled. Only ever returned
     /// from [`lookup_cached`]; [`lookup_blocking`] waits for the
     /// fetch and never returns this. The next call after the
-    /// fetch completes will return `Found` (or `Empty`).
+    /// fetch completes will return `Found`, `NoData`, or
+    /// `Unreachable`.
     Pending,
 }
 
@@ -109,7 +112,7 @@ pub fn lookup_blocking(domain: &str) -> Metadata {
 pub fn favicon_or(domain: &str, fallback: EntryIcon) -> EntryIcon {
     match lookup_cached(domain) {
         Metadata::Found(entry) => entry.favicon,
-        Metadata::Empty | Metadata::Pending => fallback,
+        Metadata::NoData | Metadata::Unreachable | Metadata::Pending => fallback,
     }
 }
 
@@ -120,14 +123,18 @@ pub fn favicon_or(domain: &str, fallback: EntryIcon) -> EntryIcon {
 // at runtime — `PermissionDenied` means the plugin's manifest
 // is missing the grant, `InvalidDomain` means the plugin
 // passed a malformed domain string. We log loudly via the
-// host so the bug surfaces in the host's log view, then
-// collapse to `Empty` so call sites don't have to plumb error
-// handling through every result construction.
+// host so the bug surfaces in the host's log view, then fold
+// to `Unreachable` so call sites don't have to plumb error
+// handling through every result construction. `Unreachable`
+// (rather than `NoData`) is the closer fold: errors are not
+// "the host reached the domain successfully and found
+// nothing," they are "the lookup never produced an answer."
 // =========================================================
 fn dispatch(domain: &str, mode: LookupMode) -> Metadata {
     match website_metadata_host::lookup(domain, mode) {
         Ok(LookupResult::Hit(entry)) => Metadata::Found(entry),
-        Ok(LookupResult::ReachableNoData) | Ok(LookupResult::Unreachable) => Metadata::Empty,
+        Ok(LookupResult::ReachableNoData) => Metadata::NoData,
+        Ok(LookupResult::Unreachable) => Metadata::Unreachable,
         Ok(LookupResult::Pending) => Metadata::Pending,
         Err(WebsiteMetadataError::PermissionDenied(reason)) => {
             crate::log_error!(
@@ -135,7 +142,7 @@ fn dispatch(domain: &str, mode: LookupMode) -> Metadata {
                 "domain" => domain,
                 "reason" => reason,
             );
-            Metadata::Empty
+            Metadata::Unreachable
         }
         Err(WebsiteMetadataError::InvalidDomain(reason)) => {
             crate::log_warn!(
@@ -143,7 +150,7 @@ fn dispatch(domain: &str, mode: LookupMode) -> Metadata {
                 "domain" => domain,
                 "reason" => reason,
             );
-            Metadata::Empty
+            Metadata::Unreachable
         }
     }
 }
