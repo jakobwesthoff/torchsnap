@@ -132,13 +132,41 @@ impl From<native::ActionId> for wit::ActionId {
 
 impl From<wit::Action> for native::Action {
     fn from(action: wit::Action) -> Self {
+        let id: native::ActionId = action.id.into();
+        // Keybindings for well-known `ActionId`s are filled by the
+        // host. Without this, secondary actions on WASM plugin
+        // entries are invisible in the launcher footer (the footer
+        // filters out actions without a keybinding) and unreachable
+        // by keyboard (`useKeyboardNavigation` only registers
+        // handlers for actions that carry one).
+        let keybinding = default_keybinding_for(&id);
         native::Action {
-            id: action.id.into(),
+            id,
             label: action.label,
-            // Keybindings are host-managed — plugins don't set them.
-            keybinding: None,
+            keybinding,
         }
     }
+}
+
+/// Default keybinding assignment for the well-known [`native::ActionId`]
+/// variants. `Open` stays unbound — the launcher wires Enter to the
+/// selected entry's primary action separately. `Custom` actions are
+/// plugin-specific and get no host-side default.
+fn default_keybinding_for(id: &native::ActionId) -> Option<native::ActionKeybinding> {
+    use native::{ActionId, ActionKeybinding};
+    let (mods, key): (&[&str], &str) = match id {
+        ActionId::Open => return None,
+        ActionId::Copy => (&["Meta"], "c"),
+        ActionId::Reveal => (&["Meta", "Shift"], "r"),
+        ActionId::OpenWith => (&["Meta", "Shift"], "o"),
+        ActionId::Delete => (&["Meta"], "Backspace"),
+        ActionId::OpenSettings => (&["Meta"], ","),
+        ActionId::Custom(_) => return None,
+    };
+    Some(ActionKeybinding {
+        modifiers: mods.iter().map(|s| (*s).to_string()).collect(),
+        key: key.to_string(),
+    })
 }
 
 impl From<wit::CatalogEntry> for native::CatalogEntry {
