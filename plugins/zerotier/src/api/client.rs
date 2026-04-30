@@ -30,6 +30,7 @@ const ACTION_TIMEOUT_MS: u32 = 2_000;
 
 const BASE_URL: &str = "http://localhost:9993";
 
+#[derive(Clone)]
 pub struct Client {
     token: String,
 }
