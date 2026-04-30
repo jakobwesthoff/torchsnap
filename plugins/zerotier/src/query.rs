@@ -14,7 +14,7 @@
 //!   "Connect to network <id>" entry).
 //!
 //! * **Match scoring.** `match_networks` runs the launcher's
-//!   nucleo matcher against names + ID prefixes and assembles
+//!   nucleo matcher against network names and assembles
 //!   `ScoredEntry`s with state-tier-aware base scores so
 //!   connected networks rank above stored-only candidates.
 //!
@@ -39,10 +39,13 @@ pub enum Intent {
     None,
     /// Bare 16-hex-char input. Matched against history first;
     /// if absent, the entry-builder produces a synthetic
-    /// "Connect to network <id>" entry.
+    /// "Join ZeroTier Network: <id>" entry.
     JoinById(String),
-    /// Fuzzy-match against known networks by name and id
-    /// prefix.
+    /// Fuzzy-match against known networks by name. Partial-id
+    /// matching is intentionally not supported — short queries
+    /// would otherwise hit every 16-char hex id and pollute
+    /// the result list. Full-id queries take the `JoinById`
+    /// path and find the row by exact match instead.
     Match(String),
 }
 
@@ -124,14 +127,21 @@ pub fn parse_entry_id(entry_id: &str) -> Option<String> {
 }
 
 /// Match a query against the supplied rows and return one
-/// scored entry per match. Rows that don't match drop out;
-/// matches keep their network state in the score so callers
-/// can sort by total without re-grouping.
+/// scored entry per match. Rows whose name doesn't match drop
+/// out; matches keep their network state in the score so
+/// callers can sort by total without re-grouping.
 ///
-/// Matching uses `nucleo_matcher::Pattern` with `Smart` case
-/// and normalization — same configuration the host catalog
-/// path uses, kept in lockstep so plugin and host scoring
-/// behave identically.
+/// Matching is name-only. Partial-id queries do not match here
+/// — full-id queries take the `JoinById` intent path and find
+/// the row by exact match. Allowing partial-id fuzzy matching
+/// pollutes the result list because nucleo's smart matching is
+/// permissive against 16-char hex ids and short queries hit
+/// nearly every row.
+///
+/// Uses `nucleo_matcher::Pattern` with `Smart` case and
+/// normalization — same configuration the host catalog path
+/// uses, kept in lockstep so plugin and host scoring behave
+/// identically.
 pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
     use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
     use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -141,32 +151,20 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
 
     let mut out = Vec::new();
     let mut name_buf: Vec<char> = Vec::new();
-    let mut id_buf: Vec<char> = Vec::new();
     let mut indices_buf: Vec<u32> = Vec::new();
 
     for row in rows {
         name_buf.clear();
         name_buf.extend(row.name.chars());
-        id_buf.clear();
-        id_buf.extend(row.id.chars());
         indices_buf.clear();
 
         let name_haystack = Utf32Str::new(&row.name, &mut name_buf);
-        let name_score = pattern.indices(name_haystack, &mut matcher, &mut indices_buf);
-
-        let (nucleo_score, highlight_positions) = match name_score {
-            Some(score) => (score, std::mem::take(&mut indices_buf)),
-            None => {
-                // Fall back to matching against the id (so
-                // typing a partial id finds the network).
-                indices_buf.clear();
-                let id_haystack = Utf32Str::new(&row.id, &mut id_buf);
-                match pattern.score(id_haystack, &mut matcher) {
-                    Some(score) => (score, Vec::new()),
-                    None => continue,
-                }
-            }
+        let Some(nucleo_score) =
+            pattern.indices(name_haystack, &mut matcher, &mut indices_buf)
+        else {
+            continue;
         };
+        let highlight_positions = std::mem::take(&mut indices_buf);
 
         let total = base_score_for(row.state).saturating_add(nucleo_score);
         out.push(ScoredMatch {
@@ -185,7 +183,7 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
 
 /// One result of [`match_networks`]. Carries the matched row,
 /// the combined score, and the highlight positions on the
-/// title (empty if the match was on the id fallback).
+/// (name) title.
 #[derive(Debug, Clone)]
 pub struct ScoredMatch {
     pub row: NetworkRow,
@@ -307,18 +305,17 @@ mod tests {
     }
 
     #[test]
-    fn id_prefix_match_falls_back_when_name_does_not_match() {
+    fn partial_id_query_does_not_match_when_name_does_not_match() {
         let rows = vec![live_row(
             "abcdef0123456789",
             "homenet",
             NetworkState::Connected,
         )];
-        // Query doesn't appear in the name, but is a prefix of the id.
+        // Query is a prefix of the id but doesn't appear in the
+        // name. Partial-id matching is intentionally not
+        // supported — full-id queries take the `JoinById` path.
         let matches = match_networks("abcdef", &rows);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].row.id, "abcdef0123456789");
-        // Title highlights are empty when match falls back to id.
-        assert!(matches[0].title_highlight_positions.is_empty());
+        assert!(matches.is_empty());
     }
 
     #[test]

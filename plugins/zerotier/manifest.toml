@@ -4,7 +4,9 @@ name = "ZeroTier"
 description = "Manage ZeroTier networks from the launcher."
 version = "0.1.0"
 wasm = "zerotier_plugin.wasm"
-icon = "heroicons:globe-alt"
+# Bundled brand icon — see `assets/ATTRIBUTIONS.md` for the
+# CC0 source and modification notes.
+icon = "assets/icon.svg"
 
 [settings]
 # Manual auth-token override. Used when auto-detection across
