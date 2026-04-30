@@ -1,0 +1,104 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow", "numpy"]
+# ///
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Detect mascot PNGs that carry leftover semi-transparent fringe pixels along
+# one or more canvas edges — residue from the original transparency cutout.
+#
+# A clean mascot has a fully transparent margin all the way to the canvas
+# border. Any non-zero alpha pixel inside a thin border strip is therefore
+# suspect. We count such pixels per edge and flag files where any one edge
+# exceeds a small tolerance.
+#
+# Output (TSV on stdout, sorted by total fringe pixel count, worst first):
+#
+#   <total>\t<filename>\ttop=<n> right=<n> bottom=<n> left=<n>
+#
+# Usage:
+#   tools/detect-mascot-borders [mascot dir]
+#
+# Defaults to `assets/mascot` if no directory is given.
+#
+
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+# Thickness of the edge band we inspect. Wide enough to catch the typical
+# 1–3 px cutout fringe, narrow enough that a mascot which legitimately reaches
+# close to the canvas edge does not trigger a false positive.
+STRIP_PX = 4
+
+# Alpha values up to this are treated as "effectively transparent". Some PNG
+# encoders leave a halo of single-digit alpha values around fully transparent
+# regions; ignoring them avoids noise without missing real fringe pixels which
+# typically sit well above 30.
+ALPHA_MIN = 8
+
+# Per-edge slack — number of stray opaque pixels we tolerate before flagging
+# the edge. Catches genuine fringes (which run into the hundreds or
+# thousands) while ignoring lone stray pixels from compression artefacts.
+PIXEL_TOLER = 5
+
+
+def analyze(path: Path) -> dict[str, int] | None:
+    """Return per-edge opaque-pixel counts, or None if the file is clean."""
+    with Image.open(path) as im:
+        if im.mode != "RGBA":
+            im = im.convert("RGBA")
+        alpha = np.asarray(im.split()[-1])
+
+    opaque = alpha > ALPHA_MIN
+
+    # Corners are counted in both adjoining edges. That's intentional —
+    # these numbers exist to rank severity and direct the cleanup step at
+    # the right edge, not to be summed into a precise pixel total.
+    counts = {
+        "top":    int(opaque[:STRIP_PX, :].sum()),
+        "bottom": int(opaque[-STRIP_PX:, :].sum()),
+        "left":   int(opaque[:, :STRIP_PX].sum()),
+        "right":  int(opaque[:, -STRIP_PX:].sum()),
+    }
+
+    if max(counts.values()) <= PIXEL_TOLER:
+        return None
+    return counts
+
+
+def main() -> int:
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("assets/mascot")
+    if not root.is_dir():
+        print(f"Error: {root} is not a directory", file=sys.stderr)
+        return 1
+
+    pngs = sorted(root.glob("*.png"))
+    findings: list[tuple[int, str, dict[str, int]]] = []
+    for png in pngs:
+        result = analyze(png)
+        if result is not None:
+            findings.append((sum(result.values()), png.name, result))
+
+    findings.sort(reverse=True)
+
+    for total, name, c in findings:
+        edges = " ".join(f"{e}={c[e]}" for e in ("top", "right", "bottom", "left"))
+        print(f"{total}\t{name}\t{edges}")
+
+    print(
+        f"\n{len(findings)} of {len(pngs)} files flagged "
+        f"(strip={STRIP_PX}px, alpha>{ALPHA_MIN}, tolerance>{PIXEL_TOLER})",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
