@@ -246,7 +246,7 @@ impl WebsiteMetadataService {
         let favicons = FaviconStore::new(cache_dir.join("favicons"));
 
         let http = Http::builder()
-            .default_timeout(Duration::from_secs(10))
+            .default_timeout(Duration::from_secs(2))
             .max_size(512 * 1024)
             .build()
             .context("build website metadata HTTP client")?;

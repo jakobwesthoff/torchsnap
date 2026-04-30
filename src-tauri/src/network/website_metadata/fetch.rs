@@ -32,8 +32,12 @@ const EARLY_CHECK_SIZE: usize = 256 * 1024;
 /// this limit we use whatever metadata we have — no further reading.
 const MAX_DOWNLOAD_SIZE: usize = 512 * 1024;
 
-/// Request timeout for page and favicon fetches.
-const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+/// Request timeout for page and favicon fetches. Covers the
+/// whole request (connect + headers + body), so an unreachable
+/// or slow host fails after this bound. Tight on purpose: the
+/// open-url plugin runs this synchronously per-keystroke and
+/// anything longer noticeably stalls the search UI.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Maximum size for a favicon image download.
 const MAX_FAVICON_SIZE: u64 = 256 * 1024;
