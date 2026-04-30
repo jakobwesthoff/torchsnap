@@ -21,6 +21,7 @@
 // through.
 // =========================================================
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use wasmtime::Store;
@@ -37,10 +38,27 @@ use super::state::PluginState;
 /// Wraps the wasmtime Store and typed Plugin bindings. All
 /// guest calls go through the Mutex-protected Store to
 /// satisfy `Send + Sync` requirements.
+///
+/// `search_generation` powers a per-instance "latest-wins"
+/// elision pattern around the store mutex. WASM components
+/// are single-threaded by spec, so search calls serialize on
+/// `store.lock()`. When a guest's host import blocks for
+/// seconds (e.g. `website-metadata::lookup` in `Blocking`
+/// mode), every later keystroke's search call queues on
+/// the mutex behind it. Without elision, FIFO drains every
+/// queued call after the slow one releases — wasting compute
+/// on results the frontend would discard by generation
+/// anyway, and delaying the user's *current* query's call
+/// behind a chain of stale ones. Each `search()` entry
+/// monotonically increments this counter and re-reads it
+/// after acquiring the mutex; if a newer call registered
+/// during the wait, the older one short-circuits with an
+/// empty result instead of running.
 pub struct WasmPluginInstance {
     pub(crate) store: Mutex<Store<PluginState>>,
     pub(crate) plugin: bindings::Plugin,
     pub(crate) logger: Logger,
+    pub(crate) search_generation: AtomicU64,
 }
 
 impl WasmPluginInstance {
@@ -56,6 +74,7 @@ impl WasmPluginInstance {
             store: Mutex::new(store),
             plugin,
             logger,
+            search_generation: AtomicU64::new(0),
         }
     }
 
@@ -229,13 +248,32 @@ impl WasmPluginInstance {
     }
 
     /// Call the guest's `search` export and convert to native types.
+    ///
+    /// Implements the latest-wins elision described on
+    /// [`WasmPluginInstance`]: each call registers its own
+    /// generation, then re-checks after acquiring the store
+    /// mutex. When a newer call has overtaken us during the
+    /// wait — typical when a previous call is mid-way through
+    /// a long blocking host import — we return an empty
+    /// `Results` payload instead of executing the stale guest
+    /// call. The frontend's per-search generation check
+    /// (`useSearch.ts`) would discard our result anyway, so
+    /// the work would be pure waste and would block the
+    /// user's actually-current query from progressing.
     pub fn search(
         &self,
         query: &str,
         matched_prefix: Option<&str>,
     ) -> anyhow::Result<crate::search::types::PluginResponse> {
+        let my_gen = self.search_generation.fetch_add(1, Ordering::AcqRel) + 1;
+
         let _span = self.logger.span("search").meta("query", query).start();
         let mut store = self.store.lock().expect("store not poisoned");
+
+        if self.search_generation.load(Ordering::Acquire) > my_gen {
+            return Ok(crate::search::types::PluginResponse::Results(vec![]));
+        }
+
         let response = self
             .plugin
             .torchsnap_plugin_search()
