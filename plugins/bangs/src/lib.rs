@@ -185,19 +185,21 @@ impl SearchGuest for BangsPlugin {
         // since a helper crate isn't available in the guest.
         let title_highlight_positions = utf16_positions_for_substring(&title, &bang.service_name);
 
+        // Cache-first favicon lookup. On a cold cache we fall
+        // back to the generic external-link hero icon and let
+        // the host's background fetch warm the cache for
+        // subsequent keystrokes — blocking on the network in a
+        // per-keystroke search loop would be wrong.
+        let icon = website_metadata::favicon_or(
+            &bang.domain,
+            EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
+        );
+
         let entry = ScoredEntry {
             id: format!("!{bang_trigger}"),
             title,
             subtitle: Some(resolved_url),
-            // Favicon enrichment is deferred — the
-            // `website-metadata` WIT interface does not
-            // exist yet (tracked by todo
-            // 01kpkt8mfs679ghhs9s7c7q0g1). Every bang
-            // result uses a generic external-link hero icon
-            // until that interface lands.
-            icon: Some(EntryIcon::HeroIcon(
-                "arrow-top-right-on-square".to_string(),
-            )),
+            icon: Some(icon),
             score: BANG_SCORE,
             title_highlight_positions,
             subtitle_highlight_positions: Vec::new(),
