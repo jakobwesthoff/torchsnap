@@ -22,6 +22,7 @@
 use torchsnap_plugin_sdk::prelude::*;
 
 mod api;
+mod auth;
 
 struct ZeroTierPlugin;
 define_plugin!(ZeroTierPlugin);
