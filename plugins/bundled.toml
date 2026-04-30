@@ -15,4 +15,5 @@ plugins = [
     "emoji-picker",
     "bangs",
     "open-url",
+    "zerotier",
 ]
