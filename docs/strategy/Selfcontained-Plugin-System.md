@@ -26,45 +26,59 @@ Decision already made in `docs/research/wasm-wit-plugin-system.md`:
 
 ## 3. Current System Inventory
 
-### 3.1 Plugin Trait (unified)
+### 3.1 Plugin Trait (historical, pre-WASM)
 
-Single `Plugin` trait in `src-tauri/src/plugins/mod.rs` covering catalog,
-query, and hybrid modes. Key methods:
+> **Historical.** This subsection captures the native `Plugin` trait
+> as it existed when the WASM plan was drafted. The trait still exists
+> in `src-tauri/src/plugins/mod.rs` for the few host-internal plugins
+> that stay native (see §11.4), but the `&self` / `tauri::AppHandle` /
+> `ResultChannel` shape has been refactored: `search()` is call-return
+> (no streaming), lifecycle is `enable/disable/setting_changed`, and
+> WASM plugins reach the host exclusively through the WIT contract in
+> `plugins/plugin-sdk/wit/torchsnap-plugin.wit`.
 
 | Method | WASM-relevant notes |
 |---|---|
 | `id()` | Trivial string export |
 | `entries()` | Returns `Vec<CatalogEntry>` — serializable, crosses boundary cleanly |
-| `search(query, prefix, results, cancel)` | `ResultChannel` and `CancellationToken` need host-side proxying |
-| `execute(entry_id, action_id, app)` | `AppHandle` does NOT cross WASM — must be replaced with capability calls |
-| `handle_message(method, payload, channel)` | JSON in/out + streaming channel — needs host-side channel proxy |
-| `setup(app, ctx)` | `PluginContext` (settings, notifier, frecency) must become host imports |
-| `initialize_settings(settings)` | Declarative — could become a manifest field instead of code |
-| `shortcuts()` | Returns static data — manifest or simple export |
-| `handle_shortcut(id, app)` | Same `AppHandle` problem as `execute` |
-| `teardown()` | Simple signal |
+| `search(query, prefix, results, cancel)` | Migrated to call-return `search() -> search-response`; no `ResultChannel` |
+| `execute(entry_id, action_id, app)` | `AppHandle` replaced by WIT host imports (`clipboard`, `opener`, `http`, …) |
+| `handle_message(method, payload, channel)` | WASM gets request/response only via `messaging::handle-message` (no streaming) |
+| `setup(app, ctx)` | Replaced by `lifecycle::enable` plus host imports (`settings`, `frecency`, `sql`, …) |
+| `initialize_settings(settings)` | Declarative `[settings]` table in `manifest.toml` |
+| `shortcuts()` | Currently host-managed only for native plugins; WASM exposes no shortcut export yet |
+| `handle_shortcut(id, app)` | Not part of the WIT contract — open question |
+| `teardown()` | Replaced by `lifecycle::disable` |
 
 ### 3.2 Host Capabilities Used by Plugins
 
-Analysis of what each plugin actually needs from the host:
+Analysis of what each plugin actually needs from the host. The
+right-most column tracks current state against the WIT contract in
+`plugins/plugin-sdk/wit/torchsnap-plugin.wit` — the candidate
+interface name (which informed the as-built name) and the status:
 
-| Capability | Used by | WIT interface candidate |
-|---|---|---|
-| SQL storage (open, execute, query) | calculator, clipboard, bangs | `torchsnap:storage/sql` |
-| File blob storage (store, load, delete) | clipboard | `torchsnap:storage/blob` |
-| Clipboard read/write | calculator, emoji, bangs, open-url, clipboard | `torchsnap:platform/clipboard` |
-| Open URL in browser | bangs, open-url | `torchsnap:platform/opener` |
-| HTTP GET/POST | bangs (DDG bang fetch) | `torchsnap:network/http` |
-| Website metadata (title, favicon) | bangs, open-url | `torchsnap:network/metadata` |
-| Settings read | all with settings | `torchsnap:settings/read` |
-| Settings watch/subscribe | calculator, clipboard, bangs | `torchsnap:settings/watch` |
-| Frecency scoring | emoji | `torchsnap:frecency` |
-| App discovery + launch | app-launcher | `torchsnap:platform/apps` |
-| System preferences discovery | system-preferences | `torchsnap:platform/system-prefs` |
-| Subprocess execution | system-commands | `torchsnap:platform/subprocess` |
-| App exit / show settings window | commands (built-in) | Likely stays native-only |
-| Icon cache | app-launcher, system-preferences | `torchsnap:platform/icons` |
-| Logging | all | `torchsnap:logging` |
+| Capability | Used by | WIT interface | Status |
+|---|---|---|---|
+| Logging + spans | all | `logging` | Done |
+| SQL storage | calculator, bangs, clipboard | `sql` | Done (ADR 0031) |
+| Per-plugin asset reads | template, bangs, emoji-picker | `assets` | Done (ADR 0039) |
+| Clipboard write | calculator, emoji, bangs, open-url, clipboard | `clipboard` | Done (write-only; read deliberately omitted) |
+| Open URL / path / reveal | bangs, open-url, zerotier | `opener` | Done (ADR 0037) |
+| HTTP fetch | bangs, zerotier | `http` | Done (ADR 0038) |
+| Filesystem reads (manifest-gated) | zerotier, future plugins | `fs` | Done |
+| Subprocess execution (manifest-gated) | zerotier, future plugins | `command` | Done (ADR 0040) |
+| Platform/arch detection | zerotier | `platform` | Done |
+| Manifest path resolution | zerotier | `paths` | Done |
+| Website metadata (title, favicon) | bangs, open-url | `website-metadata` | Done |
+| Settings read | all with settings | `settings` | Done (ADR 0029) |
+| Settings reactivity | calculator, clipboard, bangs | `lifecycle::on-setting-changed` | Done (callback, ADR 0026/0029) |
+| Frecency read | emoji-picker | `frecency` | Done (read-only — host records writes automatically) |
+| Scheduled background tasks | clipboard retention, future | `tasks` (cron) | Done (ADR 0032) |
+| Custom RPC frontend↔plugin | clipboard, calculator UI | `messaging::handle-message` | Done (request/response only, ADR 0030) |
+| Blob (large binary) storage | clipboard | `storage/blob` | Not yet — sibling dirs under `plugin-home/<id>/` planned (ADR 0018/0035) |
+| App discovery + launch | app-launcher | — | Stays native (see §11.4) |
+| System preferences discovery | system-preferences | — | Stays native |
+| App exit / show settings window | `commands` built-in | — | Stays native |
 
 ### 3.3 Frontend Plugin Surface
 
@@ -341,6 +355,35 @@ interface search {
 
 ### 5.3 Host Imports (what the host provides)
 
+> **Sketch only.** The shapes below were the original strategy
+> sketches. The authoritative contract lives in
+> `plugins/plugin-sdk/wit/torchsnap-plugin.wit` and differs in
+> several places:
+>
+> - `sql` uses a typed `sql-value` variant (null/integer/real/text/blob)
+>   plus a `sql-handle` resource — not stringly-typed JSON. Plugins call
+>   `sql::connection()` once; the host pre-creates the database file
+>   under `<app_data_dir>/plugin-home/<id>/sql/storage.sqlite3` and
+>   applies migrations declared in `[storage.sql]` before `enable()`
+>   runs (ADR 0031).
+> - `frecency` is **read-only** — `is-enabled()` and `top-items(limit)`.
+>   The host records selections automatically before dispatching
+>   `execute()`, so plugins never call `record()`. Score-bonus
+>   application happens host-side after `search()` returns.
+> - `opener` exposes `open-url`, `open-path`, and `reveal-path`, gated
+>   by per-capability declarations under `[permissions.opener]`
+>   (ADR 0037).
+> - `http` is `fetch(http-request) -> result<http-response, http-error>`
+>   with method/headers/body/timeout/max-body-size/insecure-tls,
+>   gated by `[permissions.http] origins = […]` (ADR 0038).
+> - `logging::log` carries structured metadata and an optional span
+>   handle; spans are opened/closed via `span-start`/`span-end`.
+> - `settings::get` takes a key relative to the plugin's namespace and
+>   returns a JSON-encoded string (ADR 0029). Reactivity is a guest
+>   export (`lifecycle::on-setting-changed`), not a host import.
+>
+> The original sketches are retained below for design context.
+
 ```wit
 // torchsnap:host/storage
 interface storage {
@@ -355,7 +398,7 @@ interface storage {
 // torchsnap:host/clipboard
 interface clipboard {
     write-text: func(text: string) -> result<_, string>;
-    // read-text: func() -> result<string, string>;  // future
+    // read-text intentionally omitted (privacy footgun)
 }
 
 // torchsnap:host/opener
@@ -379,9 +422,8 @@ interface settings {
     // watch is harder — see open question below
 }
 
-// torchsnap:host/frecency
+// torchsnap:host/frecency (sketch — actual interface is read-only)
 interface frecency {
-    record: func(item-id: string);
     score: func(item-id: string) -> u32;
     top-items: func(limit: u32) -> list<frecency-item>;
 
@@ -435,39 +477,47 @@ Key mappings:
 - `wasm::CatalogEntry` → `search::types::CatalogEntry`
 - `wasm::PostAction` → `search::types::PostAction`
 - `wasm::ActionId` → `search::types::ActionId`
-- `wasm::EntryIcon` → `search::types::EntryIcon`
-- `wasm::Action` → `search::types::Action` (keybinding is `None` — host-managed)
+- `wasm::EntryIcon` → `search::types::EntryIcon` (`asset-icon` paths are
+  relative to the plugin archive root and served via `torchsnap-plugin://`)
+- `wasm::Action` → `search::types::Action` (no `keybinding` field — keybindings
+  for well-known `ActionId`s are filled by the host)
 
-The WIT `action-id` variant mirrors the native `ActionId` enum exactly
-(open, copy, reveal, open-with, delete, custom). Type-safe across the boundary.
+The WIT `action-id` variant mirrors the native `ActionId` enum
+(open, copy, reveal, open-with, delete, open-settings, custom). Type-safe
+across the boundary.
 
-Native types that have no WIT equivalent yet (e.g., `PostAction::ShowCustomUI`,
-`ActionKeybinding`) are handled when the WIT is extended for real plugins.
+Custom-UI display is reachable from WASM via the `search-response::custom-ui`
+and `inline-ui` variants of the WIT `search-response` (see §5.7) — the
+host mounts a frontend view component referenced by name. The
+`PostAction::ShowCustomUI` host-only path still exists for native
+plugins; WASM plugins use the search-response route instead.
 
 ### 5.6 Open Questions — WIT Design
 
-1. **Settings reactivity (decided: callback):** The host calls the guest export
-   `on-setting-changed(key, value)` whenever any of the plugin's settings
-   change. Already part of the `torchsnap:core/lifecycle` interface. Simple,
-   no polling, fits WASM's call-in model naturally.
+1. **Settings reactivity (resolved):** The host calls the guest export
+   `lifecycle::on-setting-changed(key, value)` whenever any of the plugin's
+   settings change (ADR 0029). Coalescing happens host-side via
+   `CoalescingDispatcher` (ADR 0026) so rapid writes deduplicate to the
+   most recent value.
 
-2. **Cancellation in `search()`:** `CancellationToken` is a Tokio type. In WASM,
-   options:
-   - Cooperative polling: `is-cancelled() -> bool` host import, plugin checks periodically
-   - Fuel-based: wasmtime fuel metering to abort runaway plugins
-   - Both (belt and suspenders)
+2. **Cancellation in `search()` (resolved):** Stale `search()` calls are
+   elided host-side — newer queries supersede older ones at the bridge
+   boundary. Plugins do not see a cancellation token. `Mutex<Store>`
+   serialization (§9) plus call-return semantics (§5.7) make per-keystroke
+   cancellation a host-side concern, not a guest concern.
 
-3. **Async host calls:** HTTP requests from within `search()` are blocking in
-   native plugins (they run on `spawn_blocking`). In WASM, the host function
-   implementation can use async wasmtime to suspend the WASM instance while
-   the actual HTTP request runs on Tokio. This is the cleanest path but requires
-   wasmtime's `async` support (stable, behind a feature flag).
+3. **Async host calls (resolved):** Blocking host imports run on a
+   dedicated tokio blocking pool — `search`/`execute` are dispatched there
+   so the guest can issue synchronous HTTP/SQL/command calls without
+   stalling the launcher's async runtime.
 
-4. **Binary data in results:** `EntryIcon::DataUrl` passes base64 strings.
-   `EntryIcon::AssetIcon` passes file paths. Both work across WASM. But large
-   clipboard entries (images) in the clipboard plugin use `FileStorage` — WASM
-   plugins would need blob storage host imports. Already sketched as
-   `torchsnap:host/storage` but needs `blob-store` / `blob-load` additions.
+4. **Binary data in results (partially resolved):** `entry-icon::data-url`
+   passes base64 strings; `entry-icon::asset-icon` passes paths relative
+   to the plugin archive root, served via the `torchsnap-plugin://`
+   protocol. Large in-archive blobs are reachable through the `assets`
+   interface (ADR 0039). Mutable per-plugin blob storage (large clipboard
+   images, etc.) — a sibling directory to `plugin-home/<id>/sql/` — is
+   still TODO.
 
 ### 5.7 Simplified Search Model — Call-Return, No Streaming
 
@@ -503,10 +553,12 @@ If progressive streaming is ever needed in the future (e.g., a plugin that
 fetches results from a slow network API), it can be added as an *additional*
 opt-in interface. But the default path should be the simpler call-return model.
 
-### 5.8 Hello-World WIT (Minimal Subset)
+### 5.8 Hello-World WIT (Minimal Subset, historical)
 
-The first WIT definition covers just what the hello-world needs. We expand
-it as real plugins are converted.
+> **Historical.** This was the very first WIT definition shipped to
+> validate the end-to-end pipeline. The current contract is much
+> larger — see `plugins/plugin-sdk/wit/torchsnap-plugin.wit` for the
+> authoritative version. Preserved here as design history.
 
 ```wit
 package torchsnap:plugin@0.1.0;
@@ -738,14 +790,17 @@ delegating to the real Tauri APIs.
 
 ### 6.3 Frontend Asset Loading
 
-When a `.torchsnap` archive is loaded:
-1. Extract `frontend/` contents to `$APPDATA/torchsnap/plugin-cache/<id>/`
-2. Register the extracted JS paths in the plugin registry
-3. Frontend loads them via `asset://` protocol (already scoped to `$APPDATA`)
-4. The dynamic `import()` factory in `pluginComponent.tsx` gets the asset URL
+Resolved differently from the original sketch: archives are **not**
+extracted to disk. The host registers a custom `torchsnap-plugin://`
+URI scheme (`src-tauri/src/wasm/protocol.rs`) that streams files
+directly out of the archive (or development directory) on demand,
+with CORS and content-type set per request. Frontend dynamic
+`import()` factories in `src/plugins/wasmPluginLoader.ts` resolve
+to URLs of the form
+`torchsnap-plugin://localhost/<plugin-id>/<path>`.
 
-**Open question:** Cache invalidation. Compare archive mtime or a hash in the
-manifest against the extracted cache. Only re-extract on change.
+This eliminates the cache-invalidation question entirely: the
+archive on disk is the only source of truth.
 
 ## 7. Frontend Plugin SDK
 
@@ -757,12 +812,16 @@ Plugin authors need a way to write React/TypeScript components that:
 - Externalize the SDK imports (they're provided by the host app at runtime)
 
 This calls for a **plugin template project** (Rust-based) with:
-- A `cargo-component` Rust crate for the WASM backend
-- WIT bindings auto-generated from the torchsnap plugin WIT definitions
+- A plain Rust crate for the WASM backend, built with
+  `cargo build --release --target wasm32-wasip2` (the `plugins/` virtual
+  workspace defaults the target via `plugins/.cargo/config.toml`).
+  `cargo-component` is **not** used — the SDK crate owns
+  `wit_bindgen::generate!`, plugin crates consume the bindings through
+  `torchsnap_plugin_sdk::prelude::*` and `define_plugin!`.
 - A `tsconfig.json` pointing at SDK type declarations
 - A Vite/rolldown config that bundles each view into a standalone ES module with
   externalized SDK imports
-- A build script that produces the final `.torchsnap` zip
+- A `just package-plugin` recipe that produces the final `.torchsnap` zip
 
 The official template targets **Rust** as the primary plugin language. Plugin
 authors using other WASM-targeting languages (Go, C, etc.) can write their own
@@ -820,9 +879,10 @@ Start with a hello-world proof-of-concept, then convert real plugins simplest-fi
 
 1. **Define/extend WIT interfaces** needed by this plugin
 2. **Implement host-side imports** in the `WasmPlugin` adapter
-3. **Create the WASM guest crate** (cargo-component project)
+3. **Create the WASM guest crate** under `plugins/<id>/`, built with plain
+   `cargo build --release` (no `cargo-component`)
 4. **Port the plugin logic** from the native implementation
-5. **Bundle frontend assets** into the `.tsplugin` archive
+5. **Bundle frontend assets** into the `.torchsnap` archive
 6. **Integration test** — both native and WASM versions active, verify identical behavior
 7. **Remove the native implementation** once the WASM version is validated
 8. **Clean up** — remove any host code that was only needed by the native version
@@ -885,12 +945,12 @@ forcing function that proves each piece works end-to-end.
    - Host imports: `logging` only (simplest possible host function, proves
      bidirectional communication: host→guest calls AND guest→host calls)
 
-2. **Hello-world guest crate** — a cargo-component Rust project in `plugins/`
+2. **Hello-world guest crate** — a plain `cargo build` Rust project in `plugins/`
    - Implements the WIT world
    - Calls `log(info, "Hello from WASM!")` in `enable()`
    - Returns one hardcoded catalog entry from `entries()`
    - Logs and returns `Dismiss` from `execute()`
-   - Validates that `cargo component build` produces a valid `.wasm` component
+   - Validates that `cargo build --release --target wasm32-wasip2` produces a valid `.wasm` component
 
 3. **WASM host runtime** — `wasmtime` integration in the Tauri app
    - Add `wasmtime` dependency with `component-model` feature
@@ -916,8 +976,8 @@ forcing function that proves each piece works end-to-end.
    - Frontend asset extraction to cache directory (deferred until needed)
 
 7. **Plugin template** — formalize the hello-world into a reusable template
-   - cargo-component project structure
-   - WIT bindings, build scripts
+   - Plain `cargo build` project structure (no `cargo-component`)
+   - WIT bindings via the SDK crate, build scripts
    - Archive packaging script (produces `.torchsnap`)
    - Future: add frontend Vite config when frontend plugins are tackled
 
@@ -961,7 +1021,7 @@ it's not unprecedented, but worth measuring early.
 
 WASM compilation on first load can be slow. Wasmtime supports ahead-of-time
 compilation to native code (`Engine::precompile_component`), producing a
-`.cwasm` file. The host can cache this alongside the `.tsplugin` archive and
+`.cwasm` file. The host can cache this alongside the `.torchsnap` archive and
 only recompile on archive change.
 
 ### 9.3 Performance
@@ -1024,55 +1084,69 @@ WASM debugging is harder than native Rust. Plugin authors will need:
 
 ## 12. Implementation Status
 
-> Last updated: 2026-04-05
+> Last updated: 2026-04-30
 
 ### Done
 
 | Component | Location | Notes |
 |---|---|---|
-| WIT contract | `plugins/plugin-sdk/wit/torchsnap-plugin.wit` | `logging` + `types` (host imports), `lifecycle` + `search` (guest exports) |
-| WASM runtime | `src-tauri/src/wasm/runtime.rs` | `WasmRuntime` (shared `Engine` + compiled-`Component` cache, split `compile()`/`instantiate()` API) + `WasmPluginInstance` (`Mutex<Store>`) |
-| WasmPluginBridge | `src-tauri/src/wasm/bridge.rs` | Host-side representation of a WASM plugin. Owns the compile-at-load / instantiate-on-enable / drop-on-disable lifecycle and implements the native `Plugin` trait. |
+| WIT contract | `plugins/plugin-sdk/wit/torchsnap-plugin.wit` | Full surface — see §3.2 table for the per-interface map |
+| WASM runtime | `src-tauri/src/wasm/runtime/` | `WasmRuntime` (shared `Engine` + compiled-`Component` cache) + per-instance `Mutex<Store>` |
+| WasmPluginBridge | `src-tauri/src/wasm/bridge.rs` | Compile-at-load / instantiate-on-enable lifecycle (ADR 0033); implements the native `Plugin` trait |
 | Plugin sources | `src-tauri/src/wasm/source.rs` | `DirectorySource` (dev) + `ArchiveSource` (production) |
-| Asset protocol | `src-tauri/src/wasm/protocol.rs` | `torchsnap-plugin://localhost/<id>/<path>` with CORS + content-type |
-| Manifest parsing | `src-tauri/src/wasm/manifest.rs` | Full `manifest.toml` validation with cross-field checks |
-| Structured logging | `src-tauri/src/wasm/logging/` | Channel, spans, ring-buffer storage, DevTools commands |
+| Plugin discovery | `src-tauri/src/wasm/discovery.rs` | Three roots: bundled System, repo-relative Dev (debug), user-installed User (ADR 0035) |
+| Path safety | `src-tauri/src/wasm/path_safety.rs` | `validate-plugin-path` guard for assets/protocol/archive reads |
+| Asset protocol | `src-tauri/src/wasm/protocol.rs` | `torchsnap-plugin://localhost/<id>/<path>` streams from archive, CORS + content-type |
+| Manifest parsing | `src-tauri/src/wasm/manifest.rs` | Full `manifest.toml` validation incl. permission tables |
+| Structured logging + spans | `src-tauri/src/wasm/logging/` | Channel, spans, ring-buffer storage, DevTools commands |
 | Type conversions | `src-tauri/src/wasm/bindings.rs` | WIT ↔ native type `From` impls |
+| SQL storage | WIT `sql` interface | ADR 0031. DB at `<app_data_dir>/plugin-home/<id>/sql/storage.sqlite3`; migrations applied before `enable()` |
+| Settings read + reactivity | WIT `settings` + `lifecycle::on-setting-changed` | ADR 0029 |
+| Custom RPC | WIT `messaging::handle-message` | ADR 0030 (request/response only; no streaming) |
+| Scheduled tasks | WIT `tasks::run-task` + manifest cron | ADR 0032 |
+| Opener (URL/path/reveal) | WIT `opener` interface | ADR 0037 |
+| HTTP fetch | WIT `http` interface | ADR 0038 |
+| Per-plugin asset reads | WIT `assets` interface | ADR 0039 |
+| Subprocess execution | WIT `command` interface | ADR 0040 |
+| Filesystem reads (manifest-gated) | WIT `fs` interface | Glob allowlist + canonicalization |
+| Frecency (read-only) | WIT `frecency` interface | Host records writes automatically; `top-items`/`is-enabled` for UI |
+| Website metadata service | WIT `website-metadata` interface | Shared cross-plugin cache; `cached`/`blocking` lookup modes |
+| Platform/arch + path resolution | WIT `platform` + `paths` | Informational, no permission required |
+| Distribution | `plugins/bundled.toml` + `stage-bundled-plugins` recipe | ADR 0035; `target/bundled-plugins/` consumed by Tauri `resources` |
+| Trust model | — | ADR 0036 (deferred signing) |
 | Hello-world plugin | `plugins/hello-world/` | Catalog + query search + custom frontend view + spans |
-| Build tooling | `just/plugins.just` | `build-plugin`, `check-plugin`, `package-plugin`, `check-wit`, `fmt-wit` |
+| Calculator plugin | `plugins/calculator/` | Migrated — exercises SQL + clipboard + settings + custom UI |
+| Open-url plugin | `plugins/open-url/` | Migrated — exercises HTTP + opener + website-metadata |
+| Bangs plugin | `plugins/bangs/` | Migrated — exercises HTTP + SQL + opener + assets |
+| Emoji-picker plugin | `plugins/emoji-picker/` | Migrated — exercises frecency-read + assets |
+| Zerotier plugin | `plugins/zerotier/` | Migrated — exercises command + http + fs + paths (ADR 0041); see todos for known issues |
+| Build tooling | `just/plugins.just` | `build-plugin`, `check-plugin`, `package-plugin`, `check-wit`, `fmt-wit`, `stage-bundled-plugins` |
 | Plugin trait refactor | `src-tauri/src/plugins/mod.rs` | `enable()`/`disable()`/`setting_changed()` lifecycle |
-| Host-managed lifecycle | `src-tauri/src/plugin_host.rs` | `PluginSlot` with `AtomicBool` + `CoalescingDispatcher` |
+| Host-managed lifecycle | `src-tauri/src/plugin_host.rs` | `PluginSlot` with `AtomicBool` + `CoalescingDispatcher` (ADR 0026) |
 | Frontend dynamic loading | `src/plugins/wasmPluginLoader.ts` | `initPluginSdk()`, manifest-driven registration, CSS scoping |
+| Plugin template | `plugins/template/` | Reusable starting point with Vite + TSX + Tailwind frontend |
 
-### In Progress
+### Not Yet Implemented
 
-- Plugin template directory with frontend build pipeline (Vite + TSX + Tailwind)
-- Plugin SDK shims for host-provided dependencies (`react`, `@torchsnap/*`)
-
-### Not Yet Implemented — Host Capability Imports
-
-| Capability | WIT interface | Needed by |
-|---|---|---|
-| SQL storage | `torchsnap:storage/sql` | calculator, bangs, clipboard |
-| Blob storage | `torchsnap:storage/blob` | clipboard |
-| Clipboard read/write | `torchsnap:platform/clipboard` | calculator, emoji, bangs, open-url, clipboard |
-| Open URL in browser | `torchsnap:platform/opener` | bangs, open-url |
-| HTTP GET/POST | `torchsnap:network/http` | bangs |
-| Website metadata | `torchsnap:network/metadata` | bangs, open-url |
-| Settings read | `torchsnap:settings/read` | all with settings |
-| Settings watch | `torchsnap:settings/watch` | calculator, clipboard, bangs |
-| Frecency scoring | `torchsnap:frecency` | emoji |
-
-These will be added on-demand as each plugin is migrated (decision 2026-04-05).
+- **Mutable blob storage** — large per-plugin binary blobs (e.g. clipboard
+  images). Planned as a sibling directory to `plugin-home/<id>/sql/`.
+- **`handle-shortcut` for WASM** — manifest-declared global shortcuts are
+  not yet routed to WASM guests.
+- **Clipboard plugin migration** — biggest remaining migration; blocked
+  primarily on blob storage.
+- **`api-version` field** — deferred until 1.0.0 stability.
+- **Plugin signing / trust UX** — deferred per ADR 0036.
 
 ### What Stays Native
 
 - **`commands`** — calls `app.exit()`, window management (host operations)
-- **`system_commands`** — subprocess execution (platform-specific, security-sensitive)
+- **`system_commands`** — subprocess execution that pre-dates the `command`
+  WIT interface; may be migratable now via ADR 0040
 - **`app_launcher`** — AppKit app discovery + icon extraction (deep macOS API)
 - **`system_preferences`** — plist parsing, macOS System Settings integration
 
 ### Next Milestone
 
-Calculator plugin migration — requires `torchsnap:storage/sql`,
-`torchsnap:platform/clipboard`, and `torchsnap:settings/read` host imports.
+Clipboard plugin migration — requires the still-missing blob storage host
+import; calculator/open-url/bangs/emoji-picker have already validated the
+SQL/HTTP/opener/frecency surfaces.

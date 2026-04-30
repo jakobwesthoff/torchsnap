@@ -1,5 +1,36 @@
 # Forcing Garbage Collection in a Tauri Webview
 
+> **Status as of 2026-04-30 — superseded by a non-GC fix on macOS**
+>
+> The macOS-specific memory problem that motivated this research was
+> resolved without forcing GC. ADR 0020 ("Size launcher webview to
+> content and shrink on hide") sized the launcher window to its content
+> bounds (~808×830) instead of the full monitor, then shrinks it to 1×1
+> after hide. This turned the WebContent memory profile from a staircase
+> into a sawtooth: average footprint dropped 145 MB → 55 MB and final
+> idle 148 MB → 39 MB, with no need to invoke any GC API.
+> *Implementation: `src-tauri/src/lib.rs`, `src-tauri/src/platform/macos/launcher_panel.rs`,
+> `src-tauri/src/platform/fallback/launcher_panel.rs`.*
+>
+> Conclusions adopted:
+> - JS-side cleanup discipline (unlisten every `listen()`, revoke Blob
+>   URLs, null large refs) is still the cross-platform baseline.
+>
+> Conclusions deferred / not implemented:
+> - Windows `TrySuspend()` / `MemoryUsageTargetLevel` — not yet wired up;
+>   Torchsnap currently ships only macOS, so this remains a future
+>   item if/when Windows support lands.
+> - Linux `webkit_web_context_garbage_collect_javascript_objects()` —
+>   same: deferred until Linux support.
+> - `--js-flags=--expose-gc` / CDP `HeapProfiler.collectGarbage` — not
+>   needed, the shrink-on-hide reclaim was sufficient.
+> - Inspector-protocol-based `Heap.gc` — explicitly rejected as
+>   non-production.
+>
+> The "destroy-on-hide / navigate-to-blank / DOM cleanup" alternatives
+> noted in ADR 0020's consequences section remain available if the
+> residual ~39 MB idle footprint ever becomes a concern.
+
 ## Motivation
 
 Torchsnap uses a launcher-style UI: the webview is shown temporarily, then
