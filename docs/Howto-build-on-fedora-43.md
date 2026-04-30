@@ -108,8 +108,11 @@ are usually already present — install anything missing.
 sudo dnf install zip ImageMagick jq libwebp-tools shellcheck
 ```
 
-`just doctor` treats every tool in this list as required and exits
-non-zero if any are absent.
+`just doctor` treats `cargo`, `bun`, `zip`, `wasm-tools`, the
+`wasm32-wasip2` Rust target, `magick`, `oxipng`, and `cwebp` as
+required and exits non-zero if any are absent. `shellcheck` is listed
+as optional — it is only invoked by the quality recipes — but install
+it anyway if you intend to run the linters.
 
 ## 2. Rust toolchain
 
