@@ -39,19 +39,11 @@ import { resolve } from "path";
 // entry to build.
 // =========================================================
 
-// Determine which entry point to build. The build script sets
-// PLUGIN_ENTRY to "launcher" or "settings".
-const entryName = process.env.PLUGIN_ENTRY ?? "launcher";
-
-const entries: Record<string, string> = {
-  launcher: resolve(__dirname, "src/views/DemoView.tsx"),
-  settings: resolve(__dirname, "src/settings/DemoSettings.tsx"),
-};
-
-const entry = entries[entryName];
-if (!entry) {
-  throw new Error(`Unknown PLUGIN_ENTRY: ${entryName}. Expected one of: ${Object.keys(entries).join(", ")}`);
-}
+// ZeroTier ships only a settings panel — the plugin surfaces
+// results through the standard `ScoredEntry` path with no
+// custom launcher view, so there is one entry point.
+const entryName = "settings";
+const entry = resolve(__dirname, "src/settings/ZeroTierSettings.tsx");
 
 export default defineConfig({
   plugins: [torchsnap(), react(), tailwindcss()],
@@ -61,19 +53,15 @@ export default defineConfig({
       entry: { [entryName]: entry },
       formats: ["es"],
     },
-    // Single entry per build — no code splitting needed.
     rolldownOptions: {
       output: {
         codeSplitting: false,
-        // Name the CSS file after the entry point so the manifest
-        // can reference launcher.css and settings.css distinctly.
+        // Settings CSS distinct from any future launcher CSS.
         assetFileNames: `${entryName}.[ext]`,
       },
     },
     cssCodeSplit: false,
     outDir: "dist",
-    // Only clear dist on the first build (launcher). The settings
-    // build appends to the existing dist directory.
-    emptyOutDir: entryName === "launcher",
+    emptyOutDir: true,
   },
 });
