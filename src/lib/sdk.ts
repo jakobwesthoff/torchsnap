@@ -29,6 +29,7 @@ import { useKeyBindings } from "../keybindings/useKeyBindings";
 import { LAYER } from "../keybindings/matching";
 import { Switch } from "../components/Switch";
 import { Slider } from "../components/Slider";
+import { List } from "../components/List";
 import { Section } from "../settings/Section";
 import { Entry } from "../settings/Entry";
 import { highlightText } from "./highlightText";
@@ -70,6 +71,7 @@ declare global {
       Slider: typeof Slider;
       Section: typeof Section;
       Entry: typeof Entry;
+      List: typeof List;
     };
     utils: {
       highlightText: typeof highlightText;
@@ -109,6 +111,7 @@ export function initPluginSdk(): void {
       Slider,
       Section,
       Entry,
+      List,
     },
     utils: {
       highlightText,
