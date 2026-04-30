@@ -174,7 +174,28 @@ struct AuxiliaryWindowConfig {
 /// Build an on-demand auxiliary window that stays hidden until the
 /// frontend emits `"react-ready"`. If the window already exists it
 /// is simply brought to front.
-fn show_auxiliary_window(app: &tauri::AppHandle, config: &AuxiliaryWindowConfig) {
+///
+/// All work hops to the main thread: window construction
+/// (`WebviewWindowBuilder::build`), activation-policy changes, and
+/// AppKit-side window manipulation in `present_auxiliary_window` all
+/// require the main thread on macOS, and Tauri's `app.show()` does
+/// too. Callers can be on any thread — the launcher dispatches
+/// `search_execute` on a Tokio blocking worker, the tray menu fires
+/// on the main thread itself, and other call sites may follow.
+/// Hopping unconditionally inside this function keeps the contract
+/// simple instead of asking every caller to remember.
+fn show_auxiliary_window(app: &tauri::AppHandle, config: &'static AuxiliaryWindowConfig) {
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        show_auxiliary_window_main_thread(&app, config);
+    });
+}
+
+/// Body of `show_auxiliary_window` running on the main thread.
+fn show_auxiliary_window_main_thread(
+    app: &tauri::AppHandle,
+    config: &'static AuxiliaryWindowConfig,
+) {
     #[cfg(target_os = "macos")]
     {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
