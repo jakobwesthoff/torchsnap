@@ -36,17 +36,29 @@ pub async fn search(
 /// Execute an action on a specific entry, routing to the plugin
 /// that owns it. Returns the plugin's `PostAction` so the frontend
 /// can decide whether to dismiss the launcher.
+///
+/// `async fn` + `spawn_blocking` is required, not stylistic: a
+/// synchronous `#[tauri::command]` runs on Tauri's IPC blocking
+/// thread, which has no Tokio runtime context. Plugin actions can
+/// reach the `http::fetch` host import, which requires
+/// `Handle::current()` for reqwest's internal machinery.
+/// `spawn_blocking` puts the call on a Tokio worker that satisfies
+/// that precondition. See the comment on `PluginHost::execute`.
 #[tauri::command]
-pub fn search_execute(
+pub async fn search_execute(
     source: String,
     entry_id: String,
     action_id: ActionId,
     state: State<'_, Arc<PluginHost>>,
     app: tauri::AppHandle,
 ) -> Result<PostAction, String> {
-    state
-        .execute(&source, &entry_id, &action_id, &app)
-        .map_err(|e| format!("{e:#}"))
+    let host = Arc::clone(&state);
+    tokio::task::spawn_blocking(move || {
+        host.execute(&source, &entry_id, &action_id, &app)
+            .map_err(|e| format!("{e:#}"))
+    })
+    .await
+    .expect("search_execute task must not panic")
 }
 
 /// Send a custom message to a plugin and optionally receive
