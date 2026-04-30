@@ -1,127 +1,184 @@
 # Logging System
 
-The Torchsnap logging system provides structured, non-blocking logging and
-timing spans for WASM plugins, host-side Rust code, and frontend React
-components. All log items flow into an in-memory ring buffer and stream live
-to the Developer Tools console window. The console supports both a flat
-chronological view and a tree view that groups log messages under their parent
-spans.
+Torchsnap's logging system is a single, unified pipeline for structured log
+messages and timing spans produced by WASM plugins, host-side Rust code, and
+the React frontend. There is one destination: an in-memory ring buffer that
+broadcasts items live to the Developer Tools console window.
 
-This guide covers three perspectives:
+The system is intentionally narrow:
 
-- **Plugin authors** who want to emit logs and measure performance from WASM
-  guest code via the WIT logging interface.
-- **Frontend developers** who want to log from plugin React views or app
-  components using the `Logger` class.
-- **Host developers** who work on the Rust backend and need to instrument
-  runtime operations, add new subsystems, or extend the logging infrastructure.
+- No `tracing` / `tracing-subscriber` integration on the host.
+- No log file on disk, no log rotation, no `stderr` writer.
+- No browser-console fan-out from the frontend logger.
+
+Everything that wants to be visible flows through the ring buffer and the
+DevTools window. If the DevTools window is closed, items still accumulate
+and can be inspected when it is opened.
 
 ## Contents
 
-- [Overview](#overview)
-- [For Plugin Authors](#for-plugin-authors)
-  - [Logging Messages](#logging-messages)
-  - [Structured Metadata](#structured-metadata)
-  - [Timing with Spans](#timing-with-spans)
-  - [Nested Spans](#nested-spans)
-  - [Complete Plugin Example](#complete-plugin-example)
-- [For Frontend Developers](#for-frontend-developers)
-  - [Getting a Logger (Frontend)](#getting-a-logger-frontend)
-  - [Logging Messages (Frontend)](#logging-messages-frontend)
-  - [Spans (Frontend)](#spans-frontend)
-  - [Using the React Hook](#using-the-react-hook)
-  - [How the Log Worker Works](#how-the-log-worker-works)
-- [For Host Developers](#for-host-developers)
-  - [Getting a Logger](#getting-a-logger)
-  - [Logging Messages (Host)](#logging-messages-host)
-  - [Spans with RAII Guards](#spans-with-raii-guards)
-  - [Nested Spans (Host)](#nested-spans-host)
-  - [Using LogSender Directly](#using-logsender-directly)
 - [Architecture](#architecture)
-  - [Data Flow](#data-flow)
-  - [Core Types](#core-types)
-  - [Non-Blocking Guarantees](#non-blocking-guarantees)
-  - [Ring Buffer and Eviction](#ring-buffer-and-eviction)
-  - [Span Registry](#span-registry)
+- [Log Item Model](#log-item-model)
+- [Plugin Authors (WASM Guest)](#plugin-authors-wasm-guest)
+- [Host Developers (Rust)](#host-developers-rust)
+- [Frontend Developers (React)](#frontend-developers-react)
 - [Developer Tools Console](#developer-tools-console)
-  - [Tauri Commands](#tauri-commands)
-  - [Live Streaming Protocol](#live-streaming-protocol)
-- [Constants and Tuning](#constants-and-tuning)
+- [Tauri Commands](#tauri-commands)
+- [Constants](#constants)
 
 ---
 
-## Overview
+## Architecture
 
 ```
-WASM Plugin (guest)     Host Code (Rust)      Frontend (React)
-  │                       │                     │
-  │ logging::log(...)     │ logger.log(...)     │ logger.info(...)
-  │ logging::span_start() │ logger.span().start()│ logger.spanStart()
-  │ logging::span_end()   │   // SpanGuard drop │ logger.spanEnd()
-  │                       │                     │
-  └───────────┬───────────┘                     │
-              │                                 │ log worker queue
-              ▼                                 │ (async, sequential)
-        LogSender::send(LogItem)                │
-              │                 logger_emit ◄────┘
-              │                 logger_span_start
-              │                 logger_span_end
-              ▼ bounded mpsc channel (1024 items)
-              │
-        Logging Task (async, background)
-              ├── assigns monotonic seq numbers
-              ├── stores in RingBufferStorage (10k items)
-              └── broadcasts to live subscribers
-                       │
-                       ▼
-              Developer Tools Console
-              (flat view or tree view)
+WASM Plugin                Host Rust                 Frontend (React)
+  guest call                Logger / SpanGuard         Logger.info / .spanStart
+       │                          │                          │
+       ▼                          │                          ▼
+PluginState::log / span_start ────┤                  log worker (singleton)
+PluginState::span_end             │                  - allocates local span IDs
+       │                          │                  - awaits backend ID
+       │                          │                  - serializes IPC
+       ▼                          ▼                          ▼
+                 LogSender::send(LogItem)  ◄── logger_emit / logger_span_start /
+                          │                    logger_span_end Tauri commands
+                          ▼
+              bounded mpsc channel (CHANNEL_CAPACITY = 1024)
+                          │
+                          ▼
+               logging task (single async task)
+               - assigns monotonic seq numbers
+               - pushes into RingBufferStorage (10k items)
+               - broadcasts to subscribers
+                          │
+                          ▼
+              tokio::sync::broadcast (BROADCAST_CAPACITY = 256)
+                          │
+                          ▼
+               devtools_log_subscribe (per DevTools window)
+               - 16ms batch window, max 500 items per batch
+               - emits DevToolsMessage::Entries / ::Dropped
+                          │
+                          ▼
+                  Developer Tools window
 ```
 
-Every log item — whether from a plugin or the host — follows the same path:
-into a `LogSender`, through a bounded channel, into the ring buffer, and out
-to any connected Developer Tools windows. Items are one of three kinds:
-messages, span-starts, or span-ends.
+All producers — WASM guest calls, host `Logger`, frontend `logger_*` Tauri
+commands — converge on a single `LogSender` that performs `try_send` on a
+bounded mpsc. If the channel is full, the item is dropped silently and a
+counter is incremented. Logging never blocks the caller.
+
+The host does not own a `tracing` subscriber. Native `tracing::info!` calls
+do not appear in the DevTools console — instrumented host code uses the
+`Logger` API directly.
+
+Source files:
+
+- `src-tauri/src/wasm/logging/mod.rs` — types and constants
+- `src-tauri/src/wasm/logging/channel.rs` — `LogSender`, `LoggingSystem`,
+  background task
+- `src-tauri/src/wasm/logging/spans.rs` — `SpanRegistry`, `Logger`,
+  `SpanBuilder`, `SpanGuard`
+- `src-tauri/src/wasm/logging/storage.rs` — `LogStorage` trait and
+  `RingBufferStorage`
+- `src-tauri/src/wasm/logging/commands.rs` — Tauri commands
+- `src-tauri/src/wasm/runtime/host/logging.rs` — WIT host-import bridge
+- `plugins/plugin-sdk/src/logging.rs` — plugin SDK facade and macros
+- `plugins/plugin-sdk/wit/torchsnap-plugin.wit` — WIT `logging` interface
+- `src/lib/logger.ts`, `src/lib/logWorker.ts` — frontend `Logger` and worker
 
 ---
 
-## For Plugin Authors
+## Log Item Model
 
-The logging interface is available to every WASM plugin as a host import. The
-`wit_bindgen` macro generates Rust wrappers that you call as free functions
-in the `torchsnap::plugin::logging` module.
+Every entry in the stream is a `LogItem` with a shared envelope and a
+discriminated payload (`LogItemKind`).
 
-### Logging Messages
+Envelope:
 
-The simplest usage — emit a log message with a severity level:
+| Field | Type | Notes |
+|-------|------|-------|
+| `seq` | `u64` | Assigned by the logging task, strictly increasing across the lifetime of the system. Producers send `0`. |
+| `timestamp` | `SystemTime` | Wall-clock time, serialized as milliseconds since Unix epoch. |
+| `source` | `LogSource` | `Plugin(<id>)` or `Host`. |
+| `kind` | `LogItemKind` | One of `Message`, `SpanStart`, `SpanEnd`. |
 
-```rust
-use torchsnap::plugin::logging;
+Payloads:
 
-logging::log(
-    logging::LogLevel::Info,
-    "Plugin initialized successfully",
-    &[],    // no metadata
-    None,   // no span association
-);
+- `Message` — `level`, `message`, `metadata: Vec<(String, String)>`,
+  `span_id: Option<u64>` (associates the message with an active span).
+- `SpanStart` — `span_id`, `name`, `parent_id`, `depth`, `metadata` (start
+  metadata only, captured when the span opens).
+- `SpanEnd` — `span_id`, `name`, `parent_id`, `depth`, `duration_us`,
+  `metadata` (start- and end-metadata merged; end wins on key collision).
+
+Levels are `Trace`, `Debug`, `Info`, `Warn`, `Error`.
+
+### Span lifecycle
+
+A span produces two items in the stream: one `SpanStart` when it opens and
+one `SpanEnd` when it closes. The `SpanStart` carries the depth (computed
+from walking the parent chain) so the frontend doesn't need to resolve it.
+The `SpanEnd` carries the wall-clock duration and the merged metadata.
+
+The `SpanRegistry` (a `Mutex<HashMap<u64, OpenSpan>>` plus an `AtomicU64`
+ID generator) is shared via `Arc` between WASM hosts, the frontend command
+handlers, and host-side `Logger` instances. WASM-, host-, and frontend-
+originated spans coexist in the same registry and share the same ID space.
+
+Maximum nesting depth is `MAX_SPAN_NESTING = 32`. A `span_start` that would
+exceed the limit returns `None` on the host side and `0` to the WASM/frontend
+caller. A subsequent `span_end` for that ID is a no-op (ID not found in the
+registry).
+
+---
+
+## Plugin Authors (WASM Guest)
+
+Plugins talk to the `logging` WIT interface (defined in
+`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
+
+```wit
+interface logging {
+  enum log-level { trace, debug, info, warn, error }
+  type metadata-entry = tuple<string, string>;
+
+  log: func(level: log-level, message: string,
+            metadata: list<metadata-entry>, span: option<u64>);
+  span-start: func(name: string, parent: option<u64>,
+                   metadata: list<metadata-entry>) -> u64;
+  span-end: func(span-id: u64, metadata: list<metadata-entry>);
+}
 ```
 
-**Log levels**, from least to most severe:
+The plugin SDK re-exports the generated bindings as `logging` (functions and
+the `LogLevel` enum) and provides convenience macros for the common case.
 
-| Level | Use for |
-|-------|---------|
-| `Trace` | Very fine-grained diagnostic output (usually disabled in the console) |
-| `Debug` | Internal state useful during development |
-| `Info` | Normal operational events worth noting |
-| `Warn` | Unexpected conditions that don't prevent operation |
-| `Error` | Failures that affect functionality |
-
-### Structured Metadata
-
-Attach key-value pairs to any log message for structured filtering and
-inspection in the Developer Tools console:
+### Macros (preferred for plain messages)
 
 ```rust
+use torchsnap_plugin_sdk::prelude::*;
+
+log_info!("Plugin initialized");
+log_warn!("Network slow", "host" => "example.com", "rtt_ms" => 1234);
+log_error!("Failed to load index", "error" => err);
+log_debug!("Cache miss", "key" => key);
+log_trace!("Tick", "n" => counter);
+```
+
+The `key => value` pairs are converted via `ToString`, so scalars
+(`i32`, `bool`, `&str`, `String`) all work without explicit conversion.
+The macros deliberately do not forward span handles — span-scoped logging
+is opt-in via the direct API.
+
+### Direct API (full WIT surface)
+
+Use the direct call when you need a `span` handle, or when you already
+have the metadata as a slice:
+
+```rust
+use torchsnap_plugin_sdk::prelude::*;
+
 logging::log(
     logging::LogLevel::Info,
     "Search completed",
@@ -129,177 +186,179 @@ logging::log(
         ("query".into(), query.clone()),
         ("result_count".into(), results.len().to_string()),
     ],
-    None,
+    None,                  // no parent span
 );
 ```
 
-Metadata appears in the console as expandable `key=value` pairs below the
-message when you click a log entry row.
-
-> **Note:** Metadata keys and values are `String` in the WIT-generated
-> bindings. Use `.into()` or `.to_string()` to convert from `&str` or numeric
-> types.
-
-### Timing with Spans
-
-Spans measure the wall-clock duration of an operation. Start a span, do work,
-end the span — the host records how long it took.
-
-```rust
-// Start a span — returns an opaque handle (u64).
-let span = logging::span_start("fuzzy-search", None, &[]);
-
-// ... do the expensive work ...
-
-// End the span — the host computes the duration and emits
-// a timing entry to the Developer Tools console.
-logging::span_end(span, &[]);
-```
-
-Both `span_start` and `span_end` emit log items to the console. The span-start
-item appears immediately with an in-progress indicator, and the span-end item
-carries the computed duration. In the console, span entries appear with a
-"SPAN" label. Span-end entries include a color-coded duration badge (green for
-fast, amber for medium, red for slow). In tree view, spans are collapsible
-nodes that group their child log messages and nested spans.
-
-#### Attaching Metadata to Spans
-
-Spans accept metadata at both start and end. This is useful for recording
-inputs when the span opens and outputs when it closes:
+### Spans
 
 ```rust
 let span = logging::span_start(
     "fuzzy-search",
-    None,
-    &[("query".into(), query.clone())],  // start metadata: inputs
+    None,                                // parent
+    &[("query".into(), query.clone())],  // start metadata
 );
 
 let results = do_fuzzy_search(&query);
 
+logging::log(
+    logging::LogLevel::Debug,
+    "Scoring complete",
+    &[],
+    Some(span),  // associate this message with the span
+);
+
 logging::span_end(
     span,
-    &[("result_count".into(), results.len().to_string())],  // end metadata: outputs
+    &[("result_count".into(), results.len().to_string())],
 );
 ```
 
-If both start and end metadata contain the same key, the end value wins. The
-merged metadata is visible in the console when you expand the span entry.
+End-metadata is merged with start-metadata; on key collision, end wins.
 
-### Nested Spans
-
-Spans can be nested by passing a parent handle. This creates a parent-child
-relationship visible in the Developer Tools console:
+Nesting is explicit — pass the parent handle:
 
 ```rust
 let outer = logging::span_start("search", None, &[]);
-
-// The inner span references the outer span as its parent.
-let inner = logging::span_start("score-candidates", Some(outer), &[]);
-// ... scoring work ...
+let inner = logging::span_start("score", Some(outer), &[]);
 logging::span_end(inner, &[]);
-
 logging::span_end(outer, &[]);
 ```
 
-Nesting is explicit — you control the parent by passing the handle. There is
-no implicit "current span" stack. This keeps the API simple and predictable
-in single-threaded WASM execution.
+There is no implicit "current span" stack. WASM guest execution is
+single-threaded per instance, so the caller-managed handle is unambiguous
+and avoids the cost of thread-local lookups.
 
-The maximum nesting depth is 32. Spans exceeding this limit are silently
-skipped (the `span_start` call returns 0, and the corresponding `span_end`
-is a no-op).
-
-### Associating Log Messages with Spans
-
-Pass a span handle as the last argument to `log()` to associate a message
-with an active span:
-
-```rust
-let span = logging::span_start("enable", None, &[]);
-
-logging::log(
-    logging::LogLevel::Info,
-    "Loading 50,000 petnames into memory",
-    &[],
-    Some(span),  // this message belongs to the "enable" span
-);
-
-// ... do work ...
-
-logging::span_end(span, &[]);
-```
-
-### Complete Plugin Example
-
-This example from the `hello-world` plugin demonstrates logging, spans, and
-metadata together:
-
-```rust
-use torchsnap::plugin::logging;
-
-fn enable() {
-    let span = logging::span_start("enable", None, &[]);
-
-    let names = generate_petnames(50_000);
-
-    logging::log(
-        logging::LogLevel::Info,
-        &format!("Plugin enabled with {} petnames", names.len()),
-        &[],
-        Some(span),
-    );
-
-    PETNAMES.with(|cell| *cell.borrow_mut() = names);
-
-    logging::span_end(span, &[("petname_count".into(), "50000".into())]);
-}
-
-fn search(query: String) -> SearchResponse {
-    let span = logging::span_start(
-        "fuzzy-search",
-        None,
-        &[("query".into(), query.clone())],
-    );
-
-    let results = fuzzy_search(&query);
-    let count = results.len();
-
-    logging::span_end(
-        span,
-        &[("result_count".into(), count.to_string())],
-    );
-
-    if results.is_empty() {
-        SearchResponse::Nothing
-    } else {
-        SearchResponse::Results(results)
-    }
-}
-
-fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
-    logging::log(
-        logging::LogLevel::Info,
-        &format!("Executed: {entry_id}"),
-        &[("entry_id".into(), entry_id.clone())],
-        None,
-    );
-    Ok(PostAction::Dismiss)
-}
-```
+If `span_start` would exceed the depth limit it returns `0`. Passing `0` to
+`span_end` is a safe no-op.
 
 ---
 
-## For Frontend Developers
+## Host Developers (Rust)
 
-Frontend code (plugin React views, settings components, app UI) uses a
-`Logger` class that writes into the same log stream as the backend. Every
-logger method is fire-and-forget — calls return synchronously while a
-background worker handles the Tauri IPC asynchronously.
+Host code uses the `Logger` struct from `wasm::logging::spans`. It bundles a
+`LogSender`, a shared `Arc<SpanRegistry>`, and a `LogSource` so callers don't
+have to thread these through manually.
 
-### Getting a Logger (Frontend)
+```rust
+use crate::wasm::logging::{LogLevel, LogSource};
+use crate::wasm::logging::spans::Logger;
 
-Plugin views receive a pre-bound `logger` via props:
+let logger = Logger::new(
+    logging_system.sender(),
+    Arc::clone(&span_registry),
+    LogSource::Host,                  // or LogSource::Plugin("id".into())
+);
+```
+
+`Logger` is `Clone` — clone freely into subsystems. The runtime constructs
+a per-plugin `Logger` with `LogSource::Plugin(<id>)` for use by host-side
+code that operates on behalf of that plugin (compilation, instantiation,
+bridge errors).
+
+### Messages
+
+```rust
+logger.log(LogLevel::Info, "Plugin loaded");
+
+logger.log_with_meta(
+    LogLevel::Debug,
+    "Cache miss",
+    vec![("key".into(), "favicon-example.com".into())],
+);
+
+logger.log_in_span(LogLevel::Debug, "Scoring candidates", span_id);
+```
+
+### Spans (RAII)
+
+`SpanGuard` ensures the matching `SpanEnd` is always emitted, even on early
+return or panic. `start()` returns `Option<SpanGuard>` — `None` only when
+the nesting limit is exceeded.
+
+```rust
+let span = logger.span("compile")
+    .meta("plugin_id", plugin_id)
+    .start()
+    .expect("compile span within nesting limit");
+
+let bytes = compile_component(source);
+
+// Consume the guard to attach end-metadata. Without this call the guard
+// ends with empty end-metadata on drop.
+span.end_with_meta(vec![
+    ("artifact_size".into(), bytes.len().to_string()),
+]);
+```
+
+`SpanGuard::child()` produces a `SpanBuilder` that auto-parents:
+
+```rust
+let load = logger.span("load").start();
+
+if let Some(load) = load.as_ref() {
+    let _compile = load.child("compile").start();
+    compile_component(source);
+    // _compile drops here, emitting SpanEnd
+}
+
+// load drops at end of scope, encompassing the child's duration
+```
+
+`SpanGuard::log(level, message)` emits a message that is automatically
+associated with that span's ID:
+
+```rust
+let span = logger.span("search").start().expect("nesting");
+span.log(LogLevel::Debug, "Phase 1: candidate generation");
+// ...
+span.log(LogLevel::Debug, "Phase 2: scoring");
+```
+
+### Direct LogSender
+
+For low-level call sites that don't have a `Logger` (the WIT host-import
+implementation in `wasm::runtime::host::logging` and the bridge-level error
+log in `wasm::bridge`), construct `LogItem` values directly:
+
+```rust
+log_sender.send(LogItem {
+    seq: 0,                          // assigned by the logging task
+    timestamp: SystemTime::now(),
+    source: LogSource::Plugin(plugin_id.clone()),
+    kind: LogItemKind::Message {
+        level: LogLevel::Info,
+        message: "...".into(),
+        metadata: vec![],
+        span_id: None,
+    },
+});
+```
+
+Prefer `Logger` for everything else.
+
+### WIT host-import bridge
+
+`PluginState` carries `log_sender: LogSender` and
+`span_registry: Arc<SpanRegistry>` as foundational fields set at instance
+construction. The `bindings::torchsnap::plugin::logging::Host` impl in
+`wasm/runtime/host/logging.rs` translates the WIT enum into the host
+`LogLevel`, tags every item with `LogSource::Plugin(<plugin_id>)`, and
+forwards to the registry / sender. `span_start` emits the `SpanStart` item
+and returns the registry-assigned ID; `span_end` returns silently if the ID
+is unknown (already ended, or a sentinel `0` from a depth-rejected start).
+
+---
+
+## Frontend Developers (React)
+
+Frontend code uses the `Logger` class from `src/lib/logger.ts`. Every method
+is fire-and-forget — calls return synchronously while a singleton worker
+drains an internal queue and performs the Tauri IPC.
+
+### Acquiring a logger
+
+Plugin views receive a pre-bound logger via props:
 
 ```typescript
 function ClipboardView({ logger, sendMessage, ...props }: PluginViewProps) {
@@ -307,10 +366,12 @@ function ClipboardView({ logger, sendMessage, ...props }: PluginViewProps) {
 }
 ```
 
-For deep component trees, the logger is also available via React context:
+Deeper components in a plugin tree can use the `useLogger()` hook —
+plugin views are wrapped in `<LoggerProvider source={pluginId}>` by the
+host:
 
 ```typescript
-import { useLogger } from "../lib/LoggerContext";
+import { useLogger } from "../hooks/useLogger";
 
 function DeepChild() {
   const logger = useLogger();
@@ -318,410 +379,120 @@ function DeepChild() {
 }
 ```
 
-Non-plugin code creates its own logger:
+Non-plugin (host) UI code creates its own logger directly:
 
 ```typescript
 import { createLogger } from "../lib/logger";
-
 const logger = createLogger("host");
-logger.info("App initialized");
 ```
 
-### Logging Messages (Frontend)
+The string `"host"` is the only special source value — `commands::resolve_source`
+maps it to `LogSource::Host`. Any other string is wrapped as
+`LogSource::Plugin(<string>)`.
 
-Level methods match the backend's log levels:
-
-```typescript
-logger.trace("Very fine-grained diagnostic output");
-logger.debug("Internal state useful during development");
-logger.info("Normal operational events");
-logger.warn("Unexpected conditions");
-logger.error("Failures that affect functionality");
-```
-
-Attach structured metadata as key-value pairs:
+### Messages and spans
 
 ```typescript
 logger.info("Search completed", [
   ["query", query],
-  ["resultCount", results.length.toString()],
-]);
-```
-
-### Spans (Frontend)
-
-Spans measure wall-clock duration. `spanStart()` returns a local span ID
-immediately — no `await` needed. The backend allocates the real span ID
-asynchronously:
-
-```typescript
-const span = logger.spanStart("fuzzy-search", undefined, [
-  ["query", query],
+  ["resultCount", String(results.length)],
 ]);
 
+const span = logger.spanStart("fuzzy-search", undefined, [["query", query]]);
 const results = await doSearch(query);
+logger.spanEnd(span, [["resultCount", String(results.length)]]);
 
-logger.spanEnd(span, [["resultCount", results.length.toString()]]);
-```
-
-Nested spans use the parent ID:
-
-```typescript
-const outer = logger.spanStart("search");
-const inner = logger.spanStart("score-candidates", outer);
-// ... scoring work ...
+// Nesting: pass the parent's local ID
+const inner = logger.spanStart("score", span);
 logger.spanEnd(inner);
-logger.spanEnd(outer);
 ```
 
-Associate log messages with an active span:
-
-```typescript
-const span = logger.spanStart("enable");
-logger.info("Loading data into memory", [], span);
-// ... work ...
-logger.spanEnd(span);
-```
-
-### Using the React Hook
-
-The `useLogger()` hook reads from a `LoggerProvider` context. Plugin views
-are automatically wrapped in a `LoggerProvider` by the host — no setup
-needed:
-
-```typescript
-import { useLogger } from "../lib/LoggerContext";
-
-function SettingsPanel() {
-  const logger = useLogger();
-
-  const handleSave = () => {
-    logger.info("Settings saved", [["theme", selectedTheme]]);
-  };
-
-  return <button onClick={handleSave}>Save</button>;
-}
-```
-
-### How the Log Worker Works
-
-All `Logger` instances share a singleton async worker (`src/lib/logWorker.ts`)
-that processes commands sequentially:
-
-1. Logger methods enqueue commands into a shared queue.
-2. The worker drains the queue one at a time, calling the appropriate Tauri
-   command (`logger_emit`, `logger_span_start`, `logger_span_end`).
-3. For spans, the worker maintains a `localId → backendId` mapping:
-   - `spanStart()` allocates a local ID (incrementing counter) and returns it.
-   - The worker calls `logger_span_start` (async) and stores the returned
-     backend ID.
-   - Subsequent `log()` and `spanEnd()` calls referencing the local ID are
-     resolved to the backend ID before sending.
-
-This design ensures all calls are fire-and-forget from the caller's
-perspective while preserving correct ordering and using the backend's
-canonical span IDs.
-
----
-
-## For Host Developers
-
-Host-side code uses the `Logger` struct, which provides an ergonomic Rust API
-with RAII-based span management. You never construct `LogItem` values
-directly — `Logger` handles that.
-
-### Getting a Logger
-
-A `Logger` is created from a `LogSender`, a shared `SpanRegistry`, and a
-`LogSource` that identifies who is logging:
-
-```rust
-use crate::wasm::logging::spans::Logger;
-use crate::wasm::logging::LogSource;
-
-// Typically obtained from the LoggingSystem during setup:
-let logger = Logger::new(
-    logging_system.sender(),
-    Arc::clone(&span_registry),
-    LogSource::Plugin("my-plugin".into()),  // or LogSource::Host
-);
-```
-
-In practice, loggers are created during initialization and passed to
-subsystems. The `WasmRuntime` creates a per-plugin logger for each plugin
-instance. Host subsystems can create their own with `LogSource::Host`.
-
-`Logger` is `Clone` — clone it freely to pass into different code paths.
-
-### Logging Messages (Host)
-
-```rust
-// Simple message.
-logger.log(LogLevel::Info, "Plugin loaded successfully");
-
-// Message with structured metadata.
-logger.log_with_meta(
-    LogLevel::Debug,
-    "Cache miss",
-    vec![("key".into(), "favicon-example.com".into())],
-);
-
-// Message associated with a span (by ID).
-logger.log_in_span(LogLevel::Debug, "Scoring candidates", span_id);
-```
-
-### Spans with RAII Guards
-
-The `SpanGuard` pattern ensures spans are always properly ended, even when
-the code returns early or panics. When `start()` is called, a `SpanStart`
-item is emitted immediately so the frontend can track the span in real time.
-When the guard is dropped (or `end_with_meta()` is called), a `SpanEnd` item
-is emitted with the computed duration:
-
-```rust
-// Start a span — returns Option<SpanGuard>.
-// Returns None only if nesting depth exceeds 32 (very unlikely).
-// Emits a SpanStart log item immediately.
-let _span = logger.span("search")
-    .meta("query", &query)
-    .start();
-
-// ... do work ...
-
-// The span ends automatically when `_span` is dropped.
-// Emits a SpanEnd log item with the duration.
-```
-
-To attach end-metadata, consume the guard explicitly:
-
-```rust
-let span = logger.span("compile")
-    .meta("plugin_id", plugin_id)
-    .start()
-    .expect("span within nesting limit");
-
-let result = compile_component(bytes);
-
-span.end_with_meta(vec![
-    ("artifact_size".into(), result.len().to_string()),
-]);
-// Guard is consumed — no double-end on drop.
-```
-
-### Nested Spans (Host)
-
-Use `child()` on a `SpanGuard` to create a nested span that auto-parents:
-
-```rust
-let load_span = logger.span("load")
-    .meta("plugin_id", plugin_id)
-    .start();
-
-// child() auto-sets parent_id to load_span's ID.
-{
-    let _compile = load_span.as_ref()
-        .and_then(|s| s.child("compile").start());
-    compile_component(bytes);
-}
-// compile span ended on drop here.
-
-{
-    let _instantiate = load_span.as_ref()
-        .and_then(|s| s.child("instantiate").start());
-    instantiate_component(&component);
-}
-// instantiate span ended on drop here.
-
-drop(load_span);
-// load span ended — its duration encompasses both children.
-```
-
-### Logging Within a Span Guard
-
-The guard has a `log()` method that automatically associates messages with its
-span:
-
-```rust
-let span = logger.span("search").start().expect("span");
-
-span.log(LogLevel::Debug, "Starting candidate scoring");
-// ... scoring work ...
-span.log(LogLevel::Debug, "Scoring complete");
-
-// span ends on drop
-```
-
-### Using LogSender Directly
-
-For low-level use cases (e.g., inside a `PluginState` host import where you
-don't have a `Logger`), you can send raw `LogItem` values:
-
-```rust
-log_sender.send(LogItem {
-    seq: 0,  // always 0 — the logging task assigns the real value
-    timestamp: SystemTime::now(),
-    source: LogSource::Plugin(plugin_id.clone()),
-    kind: LogItemKind::Message {
-        level: LogLevel::Info,
-        message: "Something happened".into(),
-        metadata: vec![],
-        span_id: None,
-    },
-});
-```
-
-This is what the WIT host import implementations do internally. Prefer
-`Logger` when possible — it's less error-prone.
-
----
-
-## Architecture
-
-### Data Flow
-
-1. **Producers** (WASM plugins via WIT imports, host Rust code via `Logger`,
-   frontend React code via `logger_emit`/`logger_span_start`/`logger_span_end`
-   Tauri commands) create `LogItem` values and hand them to a `LogSender`.
-
-2. **LogSender** uses `try_send` on a bounded mpsc channel. If the channel is
-   full, the item is silently dropped and a counter is incremented. This
-   guarantees that logging never blocks plugin execution.
-
-3. **The logging task** (a single async task spawned at startup) receives
-   items, assigns monotonically increasing sequence numbers, stores them in
-   the ring buffer, and broadcasts them to any live subscribers.
-
-4. **The ring buffer** (`RingBufferStorage`) holds up to 10,000 items. When
-   full, the oldest item is evicted on each push.
-
-5. **Subscribers** (Developer Tools windows) receive items via a
-   `tokio::sync::broadcast` channel. If a subscriber falls behind, it receives
-   a `Lagged(n)` error and can catch up via the `entries_after` query on the
-   storage.
-
-### Core Types
-
-| Type | Purpose |
-|------|---------|
-| `LogItem` | Universal log stream element — envelope (seq, timestamp, source) + `LogItemKind` payload |
-| `LogItemKind` | Discriminated payload: `Message`, `SpanStart`, or `SpanEnd` |
-| `LogLevel` | Severity: Trace, Debug, Info, Warn, Error |
-| `LogSource` | Origin: `Plugin("name")` or `Host` |
-| `CompletedSpan` | Internal (non-serialized) return from `SpanRegistry::end()` — converts to `LogItemKind::SpanEnd` via `From` |
-| `LogSender` | Cloneable, non-blocking item producer |
-| `LoggingSystem` | Central coordinator: owns storage, broadcast, sender |
-| `SpanRegistry` | Thread-safe open-span tracker: start → (ID, depth), end → `CompletedSpan` |
-| `Logger` | Per-subsystem handle bundling sender + registry + source |
-| `SpanGuard` | RAII span lifecycle — emits `SpanStart` on creation, `SpanEnd` on drop |
-
-### Non-Blocking Guarantees
-
-The logging system is designed to never impact plugin latency:
-
-- `LogSender::send()` uses `try_send()` — it returns immediately whether or
-  not the channel has capacity. No mutex, no allocation on the hot path
-  (beyond the `LogItem` construction itself).
-- If the channel is full, the item is dropped and `dropped_count` is
-  incremented. The Developer Tools console displays a warning when drops occur.
-- The `SpanRegistry` uses a `Mutex<HashMap>`, but contention is minimal:
-  plugins run serialized per-instance (the wasmtime `Store` mutex), and
-  span start/end are fast operations.
-
-### Ring Buffer and Eviction
-
-The `RingBufferStorage` uses a `VecDeque` with a fixed capacity (default
-10,000 items). When full, `push` evicts the oldest item via `pop_front`.
-
-The `entries_after(after_seq, limit)` method uses binary search on the
-monotonically increasing `seq` field for O(log n) seek time. This is the
-primary query used by the frontend when reconnecting after a lag.
-
-`total_pushed` is a lifetime counter that is not reset by `clear()`. It
-enables the frontend to detect and report evicted items.
-
-### Span Registry
-
-The `SpanRegistry` is a thread-safe `HashMap<u64, OpenSpan>` behind a mutex,
-with an `AtomicU64` for ID generation.
-
-- **Start**: generates a unique ID, computes nesting depth by walking the
-  parent chain (capped at 32), records `Instant::now()` for duration
-  measurement. Returns `(span_id, depth)`. The caller (SpanBuilder or
-  runtime host import) then emits a `SpanStart` log item.
-- **End**: removes the open span, computes `duration_us` from the elapsed
-  `Instant`, merges start and end metadata (end wins on key collision),
-  returns a `CompletedSpan` (which converts to `LogItemKind::SpanEnd` via `From`).
-
-The registry is shared between all plugins and host code via `Arc`. Plugin
-spans and host spans coexist in the same registry, enabling the Developer
-Tools console to show a unified view.
+`logger.info(msg, metadata, spanId)` accepts a span ID for span-scoped
+messages.
+
+### How the worker maps span IDs
+
+`spanStart()` must return synchronously, but the backend ID is allocated
+asynchronously. The worker (`src/lib/logWorker.ts`) solves this with a
+local-to-backend mapping:
+
+1. `spanStart()` allocates a local ID from a frontend counter and returns it
+   to the caller immediately.
+2. The worker enqueues a `spanStart` command. When it fires, it `await`s
+   `logger_span_start` and stores the returned backend ID in
+   `localToBackendId: Map<number, number>`.
+3. Subsequent `message` and `spanEnd` commands referencing the local ID are
+   resolved to the backend ID before the IPC. Commands are processed in the
+   order they were enqueued, so by the time a child or message references a
+   parent, the parent's mapping is established.
+4. If `logger_span_start` returns `0` (depth exceeded), no mapping is stored
+   — subsequent `spanEnd` calls for that local ID are silently dropped.
+
+Worker errors are caught and logged via `console.warn`; the logging system
+is diagnostic and must not crash the UI.
 
 ---
 
 ## Developer Tools Console
 
-The Developer Tools window is opened from the system tray menu ("Developer
-Tools..."). It displays a live, filterable, virtualized log of all items in
-two view modes:
+The DevTools window is opened from the system tray menu. It shows a live,
+filterable, virtualized log of every `LogItem` in the ring buffer in two
+view modes:
 
-- **Flat view**: chronological stream with depth-based indentation for nested
-  spans and their associated log messages.
-- **Tree view**: spans are collapsible nodes that group their children. Each
-  span header shows the span name, duration (or in-progress indicator), and a
-  child count badge when collapsed.
+- **Flat view** — chronological stream with depth-based indentation.
+- **Tree view** — spans are collapsible nodes that group their child
+  messages and nested spans.
 
-### Tauri Commands
+Span rows show the duration (or an in-progress indicator) and the
+parent/child relationships derived from `parent_id` and `depth`.
 
-Seven commands expose the logging system to the frontend. The first four
-are for the Developer Tools console; the last three are for frontend code
-to emit logs and spans:
+### Live streaming
 
-| Command | Parameters | Returns | Purpose |
-|---------|-----------|---------|---------|
-| `devtools_log_history` | `after_seq: u64, limit: usize` | `Vec<LogItem>` | Fetch items for initial load |
-| `devtools_log_subscribe` | `channel: Channel<DevToolsMessage>` | — | Start live streaming |
-| `devtools_log_clear` | — | — | Clear the ring buffer |
-| `devtools_log_stats` | — | `LogStats` | Item count, dropped count, total pushed |
-| `logger_emit` | `source, level, message, metadata, span_id` | — | Emit a log message from frontend code |
-| `logger_span_start` | `source, name, parent_id, metadata` | `u64` | Start a span, returns backend span ID |
-| `logger_span_end` | `span_id, metadata` | — | End a span with optional end-metadata |
-
-> **Note:** Frontend code should not call `logger_*` commands directly.
-> Use the `Logger` class (`src/lib/logger.ts`) which handles the async
-> worker, span ID mapping, and source binding automatically.
-
-### Live Streaming Protocol
-
-1. The frontend calls `devtools_log_history(0, 10000)` on mount to load
-   existing items.
+1. On mount, the frontend calls `devtools_log_history(0, 10000)` to load
+   existing items from the ring buffer.
 2. It then calls `devtools_log_subscribe(channel)` to start receiving live
    updates.
-3. The backend spawns a task that reads from the broadcast channel, batches
-   items over a 16ms window (one frame), and sends them as
-   `DevToolsMessage::Entries { entries }`.
-4. If the subscriber falls behind, it receives
-   `DevToolsMessage::Dropped { count }` and the frontend displays a warning
-   banner.
-5. Batches are capped at 500 items to prevent oversized IPC messages.
-6. When the frontend disconnects (window closed), the channel send fails and
-   the task exits.
+3. The backend spawns a per-window task that reads from the broadcast
+   channel, batches items over a 16ms window (one frame, capped at 500
+   items per batch), and sends them as `DevToolsMessage::Entries`.
+4. If the subscriber falls behind by more than `BROADCAST_CAPACITY` items,
+   `RecvError::Lagged(n)` is converted into `DevToolsMessage::Dropped { n }`
+   and the frontend can fetch missed items via `devtools_log_history`.
+5. When the DevTools window is destroyed the channel send fails and the
+   task exits.
 
 ---
 
-## Constants and Tuning
+## Tauri Commands
 
-All constants are defined in `src-tauri/src/wasm/logging/mod.rs` and can be
-adjusted as needed:
+Registered in `src-tauri/src/lib.rs`:
 
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `DEFAULT_RING_BUFFER_CAPACITY` | 10,000 | Max items before eviction |
-| `MAX_SPAN_NESTING` | 32 | Max parent-chain depth |
-| `CHANNEL_CAPACITY` | 1,024 | Bounded mpsc between producers and logging task |
-| `BROADCAST_CAPACITY` | 256 | Broadcast channel for live subscribers |
+| Command | Parameters | Returns | Purpose |
+|---------|-----------|---------|---------|
+| `devtools_log_history` | `after_seq: u64, limit: usize` | `Vec<LogItem>` | Initial load for DevTools |
+| `devtools_log_subscribe` | `channel: Channel<DevToolsMessage>` | — | Begin live streaming |
+| `devtools_log_clear` | — | — | Clear the ring buffer |
+| `devtools_log_stats` | — | `LogStats` | `count`, `dropped`, `total_pushed` |
+| `logger_emit` | `source, level, message, metadata, spanId` | — | Frontend message emission |
+| `logger_span_start` | `source, name, parentId, metadata` | `u64` | Frontend span start; `0` on depth-limit reject |
+| `logger_span_end` | `spanId, metadata` | — | Frontend span end |
 
-The current defaults are sized for interactive debugging. If profiling shows
-that the channel is frequently full (high `dropped_count`), increase
-`CHANNEL_CAPACITY`. If the console needs more scrollback history, increase
-`DEFAULT_RING_BUFFER_CAPACITY` (each item is roughly 200–500 bytes in
-memory).
+Frontend code should not call `logger_*` directly — use the `Logger` class
+so span ID allocation, ordering, and source binding are handled correctly.
+
+---
+
+## Constants
+
+Defined in `src-tauri/src/wasm/logging/mod.rs`:
+
+| Constant | Default | Effect |
+|----------|---------|--------|
+| `DEFAULT_RING_BUFFER_CAPACITY` | 10,000 | Items retained before eviction |
+| `MAX_SPAN_NESTING` | 32 | Maximum parent-chain depth for spans |
+| `CHANNEL_CAPACITY` | 1,024 | Bounded mpsc between producers and the logging task |
+| `BROADCAST_CAPACITY` | 256 | Live broadcast channel; subscribers exceeding this lag |
+
+Each `LogItem` is roughly 200–500 bytes. If `dropped` is consistently
+non-zero in `LogStats`, increase `CHANNEL_CAPACITY`. If the DevTools console
+needs longer scrollback, increase `DEFAULT_RING_BUFFER_CAPACITY`.
