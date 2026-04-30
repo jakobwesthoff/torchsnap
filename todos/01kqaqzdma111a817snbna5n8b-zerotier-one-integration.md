@@ -1,9 +1,8 @@
 # ZeroTier One Integration
 
-**Status: NEEDS FURTHER DISCUSSION BEFORE IMPLEMENTATION**
-
-Scope and design require alignment before code is written. Open questions
-listed at the bottom.
+**Status: DESIGN IN PROGRESS** — shipped as a dedicated WASM plugin
+behind one prerequisite (file-access WIT layer). Fetch WIT is already
+sufficient.
 
 ## Goal
 
@@ -20,7 +19,62 @@ from within Torchsnap:
   network, and join a brand-new network — the latter being added to
   Torchsnap's own history.
 
-Open question: host integration vs. dedicated plugin (see Open Questions).
+## Implementation kickoff
+
+When this work begins, **start by copying `plugins/template/` into a
+new `plugins/zerotier/` directory** and renaming the crate / plugin
+metadata accordingly. The template carries the canonical layout
+(Cargo manifest, `manifest.toml`, `define_plugin!` registration,
+SDK prelude wiring) and is the supported starting point for new
+plugins. Do not hand-roll plugin scaffolding from the SDK directly.
+
+After copying:
+
+1. Rename the crate (`Cargo.toml`), the plugin id and metadata
+   (`manifest.toml`), and the registered struct.
+2. Add the plugin entry to `plugins/bundled.toml` once the
+   implementation is mature enough for release bundles (per
+   CLAUDE.md's "Plugin build pipeline" section). During development
+   the debug loader picks it up automatically.
+3. Declare the runtime permissions described in this todo —
+   `[permissions.http]` with `origins = ["http://localhost:9993"]`,
+   and `[permissions.fs]` with the auth-token / saved-networks
+   path patterns once the fs WIT prerequisite lands.
+
+## Architecture decisions (settled)
+
+- **Dedicated WASM plugin**, not a host integration. Matches current
+  architectural direction; feature is self-contained.
+- **History storage:** SQLite via the existing plugin SQL host import.
+  Plugin-home pattern from CLAUDE.md / ADR 0035 already provides the
+  per-plugin sqlite location.
+- **`saved_networks.json` policy:** merge-once-per-session. On plugin
+  instantiation (start of a launcher session), read the file (macOS
+  only) and upsert any unknown entries into the plugin's own
+  history. Idempotent; no watcher needed; naturally picks up entries
+  created by the official UI between sessions. A manual re-import
+  button in plugin settings handles the mid-session case.
+  Torchsnap never writes back to that file.
+- **Plugin shape:** query-driven launcher plugin (not a panel app).
+  See "Launcher behavior model" below for query intents, entry
+  display, and cache strategy. Plugin settings (a separate UI
+  surface) hosts the manual-token config field and the
+  remembered-networks management view.
+- **Auth token UX:** auto-detect across all known per-OS paths on
+  plugin instantiation. If any path yields a readable token,
+  validate it once via `GET /status` and use it; disable the manual
+  config field with an "auto-detected" notice. If none work,
+  surface a manual-paste config field with an explanatory info box
+  describing where each OS stores the token and how to obtain it.
+  The pasted token is stored in plugin storage and used as the
+  override. Token is not re-resolved during a session unless the
+  user edits the config field.
+- **Multi-platform from v1.** macOS, Linux, Windows. Each is just a
+  different list of candidate paths feeding the same resolver, with
+  the same manual-paste fallback when none are readable.
+- **HTTP client approach:** hand-rolled `serde` types over the existing
+  fetch host import. Surface area is ~5 endpoints; a generator would
+  add more weight than it saves.
 
 ## Local service API summary
 
@@ -67,31 +121,32 @@ All come from a single element of `GET /network`:
 presence in the list — entries with status `REQUESTING_CONFIGURATION` or
 `ACCESS_DENIED` are joined but not connected.
 
-## Auth token resolution (per OS)
+## Auth token resolution
 
-The OpenAPI doc lists three canonical paths:
+Per-OS canonical paths (resolver tries each in order, first readable wins):
 
-- **macOS** — `/Library/Application Support/ZeroTier/One/authtoken.secret`
-  is `-rw------- root:wheel`, **not readable by unprivileged apps**.
-  The official UI reads the **user-side copy** at
-  `~/Library/Application Support/ZeroTier/One/authtoken.secret`
-  (root-owned but `0644`, world-readable). Resolver must try the user
-  path first, system path as fallback.
-- **Linux** — `/var/lib/zerotier-one/authtoken.secret` is `0600 root:root`.
-  Some distros provide a `zerotier-one` group; otherwise the user must
-  provide the token (manual paste, or one-time `sudo` install of a
-  user-readable copy into Torchsnap's data dir).
-- **Windows** — `C:\ProgramData\ZeroTier\One\authtoken.secret`,
-  admin-restricted.
+- **macOS**
+  1. `~/Library/Application Support/ZeroTier/One/authtoken.secret`
+     (root-owned but `0644`; world-readable; created by the official UI
+     on first run)
+  2. `/Library/Application Support/ZeroTier/One/authtoken.secret`
+     (`0600 root:wheel`, normally unreadable to user processes)
+- **Linux**
+  1. `/var/lib/zerotier-one/authtoken.secret` (`0600 root:root`;
+     readable only if the user is in a `zerotier-one` group on
+     distros that ship one)
+- **Windows**
+  1. `C:\ProgramData\ZeroTier\One\authtoken.secret` (admin-restricted)
 
-The resolver must therefore not assume the canonical path is readable.
-Fallback chain:
+Fallback chain on every plugin start:
 
-1. Torchsnap-configured override path (settings).
-2. User-supplied pasted token (stored in Torchsnap's secret store).
-3. OS-canonical path (read attempt — may fail with EACCES).
-
-Surface a clear error UX when no token is obtainable.
+1. Try every per-OS canonical path; first readable wins.
+2. If none readable, fall back to the user-supplied token from plugin
+   config. If that exists, use it. UI: config field disabled with
+   "auto-detected" notice when (1) succeeded; otherwise enabled with
+   an explanatory info box describing where to find the token.
+3. If neither produces a token, surface a clear error UX in the
+   plugin's main panel.
 
 ## History storage
 
@@ -123,174 +178,420 @@ Ownership: written by the user-mode macOS UI (lives under user
 equivalent file exists on Linux or Windows** — it is a macOS-UI-only
 artifact.
 
-Implication: Torchsnap must own its own history store. Proposed shape
-(open for discussion):
+### Torchsnap-owned history (SQLite)
 
+Schema sketch (refine during implementation):
+
+```sql
+CREATE TABLE networks (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    first_seen    INTEGER NOT NULL,  -- unix ms
+    last_seen     INTEGER NOT NULL,
+    last_status   TEXT,              -- last observed status enum
+    last_snapshot TEXT                -- last full Network JSON (nullable)
+);
 ```
-{
-  id: NetworkId,
-  name: String,
-  first_seen: Timestamp,
-  last_seen: Timestamp,
-  last_assigned_addresses: Vec<IpNet>,
-  last_status: Option<NetworkStatus>,
-  // optionally: cached full Network snapshot
-}
-```
 
-Backing store: still TBD — sled, SQLite (consistent with existing plugin
-SQL host), or a flat JSON file. Decision deferred to discussion.
+Backed by the per-plugin sqlite file in
+`<app_data_dir>/plugin-home/<plugin-id>/state.sqlite3`.
 
-### `saved_networks.json` interaction
+### `saved_networks.json` import
 
-Two reasonable modes; pick one per discussion:
+Mode: **merge once per plugin instantiation** (macOS only). When a
+new launcher session starts and the plugin is first instantiated:
 
-- **Import-once seed (preferred default).** On first run on macOS, if
-  the file exists, import every entry into Torchsnap's history. After
-  that, Torchsnap is the sole writer of its own history. Simple, no
-  ongoing coordination.
-- **Continuous monitoring (opt-in).** If the user runs the official
-  ZeroTier UI alongside Torchsnap, watch the file for changes and merge
-  new entries. Adds complexity (file watcher, conflict resolution if
-  both sides edit) and is only meaningful when both UIs coexist.
+1. If the file exists and is readable, parse it.
+2. For each entry, `INSERT OR IGNORE` a row keyed by network ID.
+   Existing rows are not overwritten — Torchsnap's own observations
+   are authoritative once we've seen a network live.
+3. No write-back to `saved_networks.json` ever.
 
-Torchsnap **does not** write back to `saved_networks.json` in either
-mode — that file is the official UI's private cache.
+Linux / Windows skip this step entirely. The settings panel exposes
+a manual "Re-import from ZeroTier UI" button (see Settings UI
+section) for users who add networks via the official UI and want to
+pick them up without ending the launcher session.
 
-## State model exposed to Torchsnap UI
+## Launcher behavior model
 
-For each network ID, three possible states (union of live state and
-history):
+The plugin is query-driven. Each user keystroke triggers a query
+invocation; the plugin returns zero or more entries that the launcher
+ranks alongside other plugins' results. State (history table, daemon
+response cache, resolved auth token) persists across query
+invocations within a single launcher session.
+
+### Internal state per network ID
+
+For each known network, the plugin tracks one of three states (union
+of live daemon response and history table):
 
 - **connected** — in live `GET /network` with `status == "OK"`.
 - **joined-but-offline** — in live `GET /network` with any other status.
-- **known-but-not-joined** — in Torchsnap history only, not in live.
+- **known-but-not-joined** — in history only, not in live.
 
-Refresh model: poll `GET /network` on UI cadence (debounce / on-open is
-likely enough; no need for high-frequency polling). Status changes are
-visible only via the API; there is no push/event channel.
+### Query intents
 
-## Action commands and their wire mappings
+Two intents fire from a query, possibly together. Both rely on
+substring / prefix matching against name and ID — no special keyword
+required. Intent B fires on input shape alone.
 
-| User action | API operation | History side-effect |
+**Intent A — match existing networks.** Fuzzy-match the query against
+the merged set (live + history) by network name and by ID prefix.
+Each match returns one entry with a state badge and action set.
+
+**Intent B — surface a "Connect" action for an unknown ID.** Fires
+when the input is exactly 16 hexadecimal characters (case-insensitive,
+separators stripped). If the resulting ID already exists in
+history, Intent A's entry takes precedence — no duplicate "Connect"
+entry. Otherwise produce a synthetic entry "Connect to network
+`<id>`" whose action is `POST /network/{id}` followed by a history
+insert.
+
+Optional convenience: a leading `zt` / `zerotier` / `join` keyword
+followed by a partial ID also fires Intent B for ID prefixes shorter
+than 16 chars. Stretch goal — confirm useful in practice before
+implementing.
+
+### Entry display per state
+
+| State | Badge | Primary action | Secondary action (Forget) |
+|---|---|---|---|
+| Connected (`OK`) | "● Connected" + assigned IPs | **Disconnect** (`DELETE`) | **Forget** — `DELETE` then drop history row |
+| Joined, requesting config | "○ Connecting…" | **Disconnect** | **Forget** |
+| Joined, access denied | "⚠ Access denied" | **Disconnect** | **Forget** |
+| Joined, auth required | "⚠ Auth required" | **Disconnect** | **Forget** |
+| Joined, port error | "⚠ Port error" | **Disconnect** | **Forget** |
+| Joined, not found by daemon | "⚠ Network not found" | **Disconnect** | **Forget** |
+| Known, not joined | "Stored" + last-seen | **Connect** (`POST`) | **Forget** (drop history row) |
+| Synthetic Intent B (unknown ID) | "Connect to network `<id>`" | **Connect** + history insert | — |
+
+Vocabulary follows the official ZeroTier UI: **Connect / Disconnect**
+at the user-facing layer, even though the wire calls are POST/DELETE
+("join / leave"). "Forget" is always history-side; on currently
+joined networks it implies Disconnect first.
+
+### Wire-call recap
+
+- **Connect** (any state): `POST /network/{id}`, empty body.
+  Daemon makes no distinction between "new" and "known" — the only
+  difference is whether the plugin already has a history row.
+- **Disconnect**: `DELETE /network/{id}`. History row stays
+  (downgrades to "known, not joined").
+- **Forget**: drop the history row. If the network is currently
+  joined, do `DELETE /network/{id}` first.
+
+### Failure-state entries
+
+When the daemon or auth isn't reachable, the plugin returns a single
+synthetic entry under Intent A so the user sees something actionable.
+These only fire when at least one ZT-shaped match would otherwise
+have been produced (i.e. the user typed something that resolves to
+ZT context); they don't pollute unrelated queries.
+
+| Condition | Entry | Action |
 |---|---|---|
-| Connect to known network (in history, not currently joined) | `POST /network/{id}` (empty / default body) | upsert `last_seen` |
-| Join brand-new network (not in history) | `POST /network/{id}` (empty body) | insert new history entry |
-| Leave a currently-joined network | `DELETE /network/{id}` | keep history entry (downgrade to "known-but-not-joined") |
-| Forget a known network | (no API call) | delete history entry |
-| Force reconnect | `DELETE` followed by `POST` | upsert |
+| Daemon unreachable (connection-refused on `/status`) | "⚠ ZeroTier daemon not running" | (none) |
+| No auth token resolved | "⚠ ZeroTier token not configured" | open plugin settings |
+| Token rejected (401 on validation) | "⚠ ZeroTier authentication failed" | open plugin settings |
 
-Critical: from the daemon's perspective, **"connect to known" and "join
-new" are the same call**. The distinction is purely a Torchsnap UI/UX
-label driven by whether the ID exists in history. There is no separate
-"reconnect to a known network without re-joining" semantic on the wire.
+## Cache and rate-limiting
 
-## Crate / approach choice (open)
+The plugin caches the last `GET /network` (and `GET /status`)
+response and rate-limits refresh:
 
-For the HTTP client itself, options previously discussed:
+- TTL: **1 second** (const, easily bumped). Implemented as
+  rate-limiting, **not** debounce: cached values are returned for
+  up to TTL since the *last fetch*; the timer does not reset on each
+  keystroke. The launcher stays snappy and the daemon is hit at
+  most once per second per session.
+- Cache constructor takes the TTL parameter so tests / tuning can
+  override.
+- Mutating actions (Connect / Disconnect / Forget) **invalidate the
+  cache immediately** so the next query reflects post-action state
+  without waiting for TTL.
+- No timer-driven background refresh. Refresh happens only as a
+  side effect of a query that finds an expired cache.
 
-1. **`progenitor`** — generate a typed client from the OpenAPI YAML at
-   build time. Fits a small, clean spec like this. Adds a build-time
-   dep on `progenitor-impl`.
-2. **`openapi-generator-cli`** — broader feature coverage but uglier
-   Rust output and a Java toolchain to regenerate.
-3. **Hand-rolled `reqwest` + `serde`** — only ~5 endpoints needed (one
-   really, plus join/leave/status). For this surface area, hand-rolled
-   is probably less code than wiring a generator and keeps the
-   dependency footprint small.
+## Auth resolver lifecycle
 
-Recommendation pending discussion: **hand-rolled** unless we want
-broader coverage later. Decision deferred.
+- **On plugin instantiation (start of launcher session):**
+  1. Walk the per-OS candidate paths and the manual-paste config
+     value; pick the first readable token.
+  2. Validate with a single `GET /status` request.
+  3. Cache the resolved token for the rest of the session.
+- **Runtime invalidation triggers:**
+  - User edits the manual-paste field in settings → resolver runs
+    again.
+  - (Not needed: ZeroTier writes the token once at install and
+    does not rotate it. We do not poll for changes.)
+- A 401 mid-session is treated as a configuration error
+  (token-rejected failure-state entry above), not a re-resolve
+  trigger — the token didn't change, the daemon's view of it did.
 
-## Plugin-side WIT prerequisites
+## Prerequisite status
 
-If this is implemented as a WASM plugin (see open question 1 below),
-the following host-import surface does not yet exist or may not be
-sufficient and **must be addressed before the integration itself can
-be tackled**:
+### Fetch WIT layer — VALIDATED for ZeroTier, but enhancements proposed
 
-1. **File access WIT layer — does not exist yet.** Plugins currently
-   have no way to read files from the host filesystem. ZeroTier
-   integration needs:
-   - Reading `authtoken.secret` from a per-OS canonical path (see auth
-     section above) or from a user-configured override path.
-   - Reading `saved_networks.json` (macOS only) for the import-once
-     seed.
+Investigated against the existing implementation:
 
-   A new host import for filesystem access is therefore a hard
-   prerequisite. Scope of that layer (read-only? path allow-list?
-   sandbox model? per-plugin grants?) is a separate design discussion
-   and should be settled before this todo is unblocked.
+- **WIT:** `plugins/plugin-sdk/wit/torchsnap-plugin.wit` lines 241-303
+  (`interface http`).
+- **Host:** `src-tauri/src/wasm/runtime/host/http.rs` (entry point,
+  origin check, method translation) and `src-tauri/src/network/http.rs`
+  (reqwest wrapper).
+- **ADR:** `docs/adr/0038-wasm-plugin-http-api.md` (accepted 2026-04-19).
 
-2. **File watching — open design question for the file-access layer.**
-   `saved_networks.json` continuous-monitoring mode (see "Continuous
-   monitoring" above) needs change notifications. Two options:
+Confirmed sufficient for ZeroTier:
 
-   - Bake watch semantics directly into the new file-access WIT layer
-     (`watch(path) -> stream<event>` style). Pro: one cohesive layer,
-     no second host import. Con: pulls reactive/streaming semantics
-     into what would otherwise be a simple read API.
-   - Keep the file-access layer purely synchronous read/write and
-     introduce a separate `host:fs-watch` import later. Pro: cleaner
-     separation. Con: two imports to grant for one feature.
+- Arbitrary request headers — `headers: list<tuple<string, string>>` is
+  passed verbatim to reqwest at `host/http.rs:159-161`. No allowlist.
+  `X-ZT1-Auth` and `Content-Type: application/json` work without change.
+- Request body — `body: option<list<u8>>`. POST with body, empty-body
+  POST (`body: none`), and DELETE without body all supported
+  (`host/http.rs:162-164`).
+- Response body — full `list<u8>` returned to guest; plugin
+  serde-parses JSON itself.
+- Plain HTTP loopback — **no scheme allowlist, no loopback rejection**.
+  `check_http_origin` (`host/http.rs:104`) is the only gate; it
+  string-compares the URL's serialized origin against the manifest
+  allowlist. `http://localhost:9993` produces origin
+  `http://localhost:9993` which passes when declared.
+- Methods — GET, POST, DELETE all native variants
+  (`torchsnap-plugin.wit:259-267`).
 
-   Decision deferred — needs discussion when the file-access layer is
-   designed. Note also that file watching is only useful if we choose
-   the continuous-monitoring policy for `saved_networks.json`; if we
-   stick with import-once, watching is not required at all and can be
-   dropped from the file-access layer's v1 scope.
+**Action required for ZeroTier specifically:** the plugin's
+`manifest.toml` must declare:
 
-3. **Fetch WIT layer JSON validation.** ZeroTier's API is JSON-only
-   for both request bodies (`POST /network/{id}` takes a `Network`
-   JSON body) and responses. Before this todo is implementable we
-   must verify that the existing fetch host import supports:
-   - Setting arbitrary request headers (specifically `X-ZT1-Auth`
-     and `Content-Type: application/json`).
-   - Sending a JSON request body on `POST` (and `DELETE` without
-     body).
-   - Receiving and exposing JSON response bodies cleanly to the
-     plugin (raw bytes are fine; plugin can serde-parse).
-   - Talking to `http://localhost:9993` — i.e. plain HTTP loopback,
-     not just HTTPS, and no CORS / origin restrictions that would
-     block local-loopback requests.
+```toml
+[permissions.http]
+origins = ["http://localhost:9993"]
+```
 
-   If any of these is missing, the fetch WIT layer must be adapted
-   first. Validation task: read `runtime/host/http.rs` and the
-   corresponding WIT to confirm — capture findings here before
-   moving on.
+#### Fetch WIT enhancements — implementable separately, ahead of ZeroTier
 
-## Open questions (need answers before plan)
+These are not strictly required by ZeroTier, but the work is cheap,
+benefits every future plugin, and is easier to fold in while we're
+already opening the WIT for the fs layer. They form a self-contained
+prerequisite that can ship before the ZeroTier plugin without
+blocking it.
 
-1. **Host vs. plugin.** Does this live in the Tauri host (always
-   available, surfaces in the main UI) or as a dedicated WASM plugin
-   (consistent with current architecture direction, but plugins don't
-   have direct filesystem / network access — would need new host
-   capabilities for both auth-token reading and arbitrary HTTP to
-   `localhost:9993`)?
-2. **History backing store.** SQLite via the plugin SQL host?
-   Standalone sled? Plain JSON file? Tied to question 1.
-3. **`saved_networks.json` policy.** Import-once seed only, or opt-in
-   continuous monitoring?
-4. **Auth token UX.** Auto-detect with hard fail when unreadable, or
-   always offer a manual paste path as first-class UX?
-5. **Disconnect semantics in the UI.** Three plausible meanings of
-   "disconnect" (leave entirely / forget / force reconnect cycle) —
-   which one(s) does Torchsnap expose, and how are they labelled?
-6. **Polling cadence.** On-open only? Background poll while the UI is
-   visible? Long-lived background poll for status changes when hidden?
-7. **HTTP client approach.** Hand-rolled vs. progenitor — depends partly
-   on whether we expect to use more of the API in future.
-8. **Multi-platform priority.** Is macOS the only target for v1, or do
-   we need Linux/Windows path resolution and token-permission UX from
-   the start?
-9. **File-access WIT layer scope.** Read-only or read+write? Path
-   allow-listing model? Per-plugin permission grants? Whether file
-   watching is part of this layer or a separate one (see prerequisite
-   2 above).
-10. **Fetch WIT layer adaptation.** What, if anything, in the existing
-    fetch host import needs to change to support arbitrary headers,
-    JSON request bodies, and plain-HTTP loopback (see prerequisite 3
-    above)?
+**1. Per-request timeout.** Add to `http-request`:
+
+```wit
+record http-request {
+    // ... existing fields ...
+    timeout-ms: option<u32>,   // None = host default
+}
+```
+
+Host applies a default of **10 seconds** when `timeout-ms` is `none`.
+Plugin can override per-request. Host caps the upper bound (e.g. 5
+minutes) so a misbehaving plugin can't disable timeouts entirely.
+
+**2. Richer connection-class error variants.** Replace the current
+`http-error` with a transport-level error variant. Critical
+invariant: **any HTTP response with status 100–599 is delivered as
+`Ok(http-response)`**, including 4xx/5xx — those are not errors at
+the transport layer. `http-error` covers only the cases where no
+HTTP response exists.
+
+```wit
+variant http-error {
+    connection-refused,
+    timeout,
+    dns-failed(string),
+    tls-failed(string),
+    invalid-url,
+    permission-denied,
+    other(string),
+}
+```
+
+`http-response.status` (already present) carries the HTTP status code
+on every successful response, so plugins distinguish 200 / 401 / 404
+/ 5xx in their domain logic without string-matching.
+
+**3. Per-request insecure-TLS flag.** Some local daemons expose APIs
+over self-signed HTTPS (e.g. Docker over TLS, k3s API). Per-request
+flag only — no manifest gate:
+
+```wit
+record http-request {
+    // ...
+    insecure-tls: bool,   // default false
+}
+```
+
+Rationale: the origin allowlist already gates *which* endpoint the
+plugin reaches. Whether to verify the cert when talking to that
+specific endpoint is a transport detail, not a separate capability.
+A hostile plugin could declare any manifest flag anyway, and the
+user already trusts the plugin enough to grant the origin.
+
+Host implementation: a parallel `reqwest::Client` built with
+`danger_accept_invalid_certs(true)` is selected when the per-request
+flag is `true`. Not relevant to ZeroTier (plain HTTP loopback), but
+trivial to add once and avoids future WIT churn.
+
+**4. Streaming responses.** **Deferred.** ADR 0038 already defers
+this. Real cost: streaming WIT type, backpressure, plugin-side
+cancellation — not justified by ZeroTier or any near-term plugin
+idea. Re-open when the first plugin requiring SSE / chunked event
+streams is concretely scoped.
+
+**5. Unix domain socket transport.** **Deferred to its own todo
+(`01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md`).** Not
+required by ZeroTier; not architecturally locked-in by deferring.
+Re-open when a plugin needing it (Docker, podman, systemd, pueue,
+…) is concretely scoped.
+
+### File-access WIT layer — DOES NOT EXIST, blocking prerequisite
+
+A new host import is required. Proposed shape (open for refinement):
+
+#### Capability model
+
+- **Read-only in v1.** ZeroTier needs no writes; defer the write
+  permission discussion until a plugin actually requires it.
+- **Manifest-declared path allowlist with glob support**, mirroring
+  the existing `[permissions.http]` shape:
+
+  ```toml
+  [permissions.fs]
+  read = [
+      "{user-config}/ZeroTier/One/authtoken.secret",
+      "{system-config}/ZeroTier/One/authtoken.secret",
+      "/var/lib/zerotier-one/authtoken.secret",
+      "{user-config}/ZeroTier/saved_networks.json",
+  ]
+  ```
+
+  Patterns may use `*` (matches a single path segment) and `**`
+  (matches across segments). `?`, character classes, and brace
+  alternation are **not** part of the v1 syntax — keep the surface
+  small and unambiguous.
+
+- **Placeholder set (minimal v1):**
+  - `{user-config}` — `~/Library/Application Support` (macOS),
+    `$XDG_CONFIG_HOME` or `~/.config` (Linux), `%APPDATA%` (Windows).
+  - `{system-config}` — `/Library/Application Support` (macOS),
+    `/etc` (Linux), `%PROGRAMDATA%` (Windows).
+  - `{user-home}` — included only if a real use case appears.
+- **Plugin-home is out of scope for this layer.** No `plugin-home`
+  accessor in the fs interface. Plugins that need persistent
+  per-plugin storage use the existing SQL host import (this plugin
+  does). If a future plugin actually needs filesystem-shaped
+  per-plugin storage, design a separate `plugin-storage` interface
+  then.
+
+#### Glob safety — implementation strategy
+
+The matcher itself is not the security boundary; **path
+normalization order** is. Proposed pipeline:
+
+**Library:** [`globset`](https://docs.rs/globset) — battle-tested
+(ripgrep, cargo, watchexec), compiles a pattern set to an automaton,
+configurable so `*` does not cross `/`. Build with
+`GlobBuilder::new(pattern).literal_separator(true).build()` and
+combine into a `GlobSet`.
+
+**Manifest load time:**
+
+1. Expand placeholders to absolute paths.
+2. Reject patterns containing `..` segments outright. No legitimate
+   use case; allowing creates ambiguous semantics.
+3. Compile each into a `Glob` with `literal_separator(true)`; combine
+   into a `GlobSet`.
+
+**Per fs request:**
+
+1. Reject the requested path string if it contains `..`, `.`, or
+   double-slash segments (i.e. require already-canonical input).
+2. `std::fs::canonicalize` the path — this resolves symlinks.
+3. Match the **canonicalized** result against the `GlobSet`. If it
+   doesn't match, reject with `permission-denied`.
+
+The critical invariant: matching happens **after** symlink
+resolution. A symlink located inside an allowed pattern that points
+outside the allow set is rejected because the resolved path no
+longer matches. This is what makes "follow symlinks" safe.
+
+TOCTOU between `canonicalize` and `read` is acknowledged and
+accepted — our threat model is a user-installed plugin reading
+local files, not a hostile-attacker-with-write-access scenario.
+
+#### Symlink policy
+
+**Follow symlinks**, with the post-canonicalization re-check
+described above. The combined rule: a path is readable iff its
+fully-resolved real path matches the manifest allowlist.
+
+#### WIT sketch
+
+```wit
+interface fs {
+    variant fs-error {
+        permission-denied,
+        not-found,
+        io(string),
+    }
+
+    record file-metadata {
+        size: u64,
+        modified-unix-ms: u64,
+        is-symlink: bool,
+    }
+
+    read-file: func(path: string) -> result<list<u8>, fs-error>;
+    file-exists: func(path: string) -> bool;
+    file-metadata: func(path: string) -> result<file-metadata, fs-error>;
+}
+```
+
+`file-exists` returns `false` for both "absent" and "denied" — the
+auth-token resolver walks a candidate list and only cares "can I use
+this path?". Settled: boolean is sufficient.
+
+#### File watching
+
+Out of scope for v1. The merge-on-activation policy for
+`saved_networks.json` removes the only known reason to need it. If a
+future plugin needs change notifications, add a separate
+`fs-watch` interface then.
+
+## Settings UI — "Remembered networks" panel
+
+The plugin's settings page exposes a management surface for the
+plugin-owned history table:
+
+- **List view** of every row in the history table — network ID, nice
+  name, last-seen timestamp, last observed status.
+- **Per-row "Forget"** action — deletes the row. No API call. Confirms
+  with a small dialog only for currently-joined networks (which would
+  reappear on next refresh anyway, but the user should know that).
+- **"Clear all"** action — empties the history table. Destructive,
+  confirmation dialog required.
+- **"Re-import from ZeroTier UI"** action — manually triggers the
+  `saved_networks.json` merge logic ad-hoc. Visible only on macOS, and
+  only when the file is readable. Useful when the user added networks
+  via the official UI mid-session.
+
+**Not** in settings:
+
+- "Add by ID without joining" — too niche, creates rows with no
+  observed status / snapshot, and duplicates the main panel's
+  "Join network" entry point. Joining is the canonical way to enter
+  a new network ID.
+
+## Open questions
+
+All previously-listed open questions are now settled. Remaining
+items move to implementation-time decisions:
+
+- Final wording / iconography of state badges (UX polish).
+- Whether the keyword-prefixed partial-ID Intent B variant
+  (`zt <prefix>` for prefixes shorter than 16 chars) is worth
+  implementing on top of the bare-16-char trigger.
 
 ## Tests / docs (to be filled in once design is settled)
 
@@ -298,12 +599,16 @@ be tackled**:
   `Network` status variant; integration test gated on `zerotier-one`
   being installed.
 - Auth resolver: per-OS path resolution tests with tempdirs;
-  permission-error fallback paths.
+  permission-error fallback paths; manual-paste override path.
 - History store: round-trip + migration tests; `saved_networks.json`
-  importer tests against fixtures (including the sample captured during
-  this discussion).
+  importer tests against fixtures (including the sample captured
+  during this discussion); merge-on-activation idempotence test.
 - State model: tests for the three-way classification (connected /
   offline-joined / known-only) given combinations of live + history.
-- Documentation: ADR for the integration shape (host vs. plugin,
-  storage choice, auth UX), plus user-facing docs for the Linux/Windows
-  permission story.
+- fs WIT layer: placeholder expansion per OS, glob match against
+  canonicalized paths, `..` rejection at manifest load and at request
+  time, symlink-resolution-then-recheck path, denied-vs-not-found
+  conflation in `file-exists`.
+- Documentation: ADR for the integration shape (plugin, sqlite
+  storage, auth UX), plus the file-access WIT layer's own ADR
+  (capability model, placeholder set, v1-scope boundaries).
