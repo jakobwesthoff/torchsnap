@@ -237,89 +237,122 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 }
 
 // =========================================================
-// Plugin-relative AssetIcon resolution
+// Plugin-emitted AssetIcon resolution
 //
-// `EntryIcon::AssetIcon` carries a path that the frontend
-// hands to `convertFileSrc`. Host-emitted icons (e.g. cached
-// favicons from the website-metadata service) carry absolute
-// filesystem paths and work as-is. Plugin-emitted icons can
-// only sensibly carry plugin-relative paths (`assets/icon.svg`)
-// — the plugin has no way to learn the host-side absolute
-// archive path, and the manifest validator already rejects
-// absolute paths in any plugin path field.
+// Plugins must reference their bundled assets via plugin-
+// relative paths (`assets/icon.svg`). We rewrite those into
+// fully-qualified `torchsnap-plugin://localhost/<plugin-id>/
+// <path>` URLs so the existing plugin asset URI scheme
+// (`wasm/protocol.rs`) serves them to the launcher.
 //
-// We rewrite plugin-emitted relative paths to fully-qualified
-// `torchsnap-plugin://localhost/<plugin-id>/<path>` URLs so
-// they hit the existing `torchsnap-plugin` URI scheme handler
-// (`wasm/protocol.rs`) which already serves any file from any
-// plugin's archive with proper content-type detection. The
-// frontend `Icon` component recognises fully-qualified URLs
-// and bypasses `convertFileSrc` for them.
+// Anything that *isn't* a plugin-relative path — absolute
+// filesystem paths, fully-qualified URLs — is rejected: the
+// icon is dropped (`None`) and a warning is recorded for the
+// caller to log. Rationale:
 //
-// Discrimination between "plugin-relative" and "leave alone"
-// is conservative: any path containing `://` is treated as a
-// fully-qualified URL, any path beginning with `/` or matching
-// the Windows drive-letter shape is treated as absolute, and
-// the rest is rewritten.
+// 1. The manifest validator already rejects absolute paths in
+//    every other plugin path field; this enforces the same
+//    rule for icons.
+// 2. Host-emitted icons (e.g. website-metadata cached
+//    favicons) construct `native::EntryIcon::AssetIcon`
+//    directly without going through this resolver, so they
+//    keep their absolute paths.
+// 3. A plugin handing a fully-qualified URL through
+//    `AssetIcon` could otherwise reference another plugin's
+//    archive via the protocol scheme. The exposure is small
+//    today (only source files are served, not runtime state),
+//    but layering across plugin boundaries should not depend
+//    on what isn't reachable elsewhere in the protocol.
 // =========================================================
 
 /// Rewrite plugin-relative `AssetIcon` paths in a search result
-/// payload. Called by the bridge after `instance.search()` returns,
-/// once per plugin invocation.
+/// payload. Returns warning messages for any rejected icons —
+/// the caller (bridge) is responsible for routing them to the
+/// plugin's log.
+#[must_use = "warnings should be surfaced to the plugin's log"]
 pub fn resolve_search_response_asset_icons(
     response: &mut native::PluginResponse,
     plugin_id: &str,
-) {
+) -> Vec<String> {
     let entries = match response {
         native::PluginResponse::Results(r) => r.as_mut_slice(),
         native::PluginResponse::CustomUI { results, .. } => results.as_mut_slice(),
         native::PluginResponse::InlineUI { results, .. } => results.as_mut_slice(),
     };
+    let mut warnings = Vec::new();
     for entry in entries {
-        if let Some(icon) = entry.icon.as_mut() {
-            resolve_asset_icon(icon, plugin_id);
-        }
+        resolve_entry_icon(&mut entry.icon, plugin_id, &mut warnings);
     }
+    warnings
 }
 
 /// Rewrite plugin-relative `AssetIcon` paths in catalog entries.
-/// Called by the bridge after `instance.entries()` returns, once
-/// per plugin enable cycle.
+/// Returns warning messages — see [`resolve_search_response_asset_icons`].
+#[must_use = "warnings should be surfaced to the plugin's log"]
 pub fn resolve_catalog_entries_asset_icons(
     entries: &mut [native::CatalogEntry],
     plugin_id: &str,
-) {
+) -> Vec<String> {
+    let mut warnings = Vec::new();
     for entry in entries {
-        if let Some(icon) = entry.icon.as_mut() {
-            resolve_asset_icon(icon, plugin_id);
+        resolve_entry_icon(&mut entry.icon, plugin_id, &mut warnings);
+    }
+    warnings
+}
+
+fn resolve_entry_icon(
+    slot: &mut Option<native::EntryIcon>,
+    plugin_id: &str,
+    warnings: &mut Vec<String>,
+) {
+    let Some(native::EntryIcon::AssetIcon(path)) = slot.as_mut() else {
+        return;
+    };
+    match classify_plugin_asset_path(path) {
+        AssetPathClass::Relative => {
+            *path = format!("torchsnap-plugin://localhost/{plugin_id}/{path}");
+        }
+        AssetPathClass::AbsolutePath => {
+            warnings.push(format!(
+                "AssetIcon path `{path}` is absolute; plugins must reference \
+                 bundled assets with a relative path (e.g. `assets/icon.svg`). \
+                 Dropping icon."
+            ));
+            *slot = None;
+        }
+        AssetPathClass::QualifiedUrl => {
+            warnings.push(format!(
+                "AssetIcon path `{path}` is a fully-qualified URL; plugins \
+                 must reference bundled assets with a relative path (e.g. \
+                 `assets/icon.svg`). Dropping icon."
+            ));
+            *slot = None;
         }
     }
 }
 
-fn resolve_asset_icon(icon: &mut native::EntryIcon, plugin_id: &str) {
-    let native::EntryIcon::AssetIcon(path) = icon else {
-        return;
-    };
-    // Fully-qualified URL — host-emitted (e.g. cached favicon) or
-    // plugin already supplied one explicitly. Pass through.
+enum AssetPathClass {
+    Relative,
+    AbsolutePath,
+    QualifiedUrl,
+}
+
+fn classify_plugin_asset_path(path: &str) -> AssetPathClass {
     if path.contains("://") {
-        return;
+        return AssetPathClass::QualifiedUrl;
     }
-    // Absolute Unix path — host-emitted, pass through.
     if path.starts_with('/') {
-        return;
+        return AssetPathClass::AbsolutePath;
     }
-    // Absolute Windows path (`C:\…` or `C:/…`) — same treatment.
     let bytes = path.as_bytes();
     if bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && (bytes[2] == b'\\' || bytes[2] == b'/')
     {
-        return;
+        return AssetPathClass::AbsolutePath;
     }
-    // Plugin-relative path: rewrite to the protocol URL.
-    *path = format!("torchsnap-plugin://localhost/{plugin_id}/{path}");
+    AssetPathClass::Relative
 }
 
 // =========================================================
@@ -488,61 +521,65 @@ mod tests {
     }
 
     // =====================================================
-    // resolve_asset_icon
+    // resolve_entry_icon
     // =====================================================
 
     #[test]
     fn relative_asset_path_is_rewritten_to_protocol_url() {
-        let mut icon = native::EntryIcon::AssetIcon("assets/icon.svg".into());
-        resolve_asset_icon(&mut icon, "zerotier");
-        match icon {
-            native::EntryIcon::AssetIcon(p) => {
+        let mut slot = Some(native::EntryIcon::AssetIcon("assets/icon.svg".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        match slot {
+            Some(native::EntryIcon::AssetIcon(p)) => {
                 assert_eq!(p, "torchsnap-plugin://localhost/zerotier/assets/icon.svg");
             }
             other => panic!("expected AssetIcon, got {other:?}"),
         }
+        assert!(warnings.is_empty(), "no warnings expected, got {warnings:?}");
     }
 
     #[test]
-    fn absolute_unix_path_passes_through() {
-        let mut icon = native::EntryIcon::AssetIcon("/var/cache/favicon.png".into());
-        resolve_asset_icon(&mut icon, "any-plugin");
-        match icon {
-            native::EntryIcon::AssetIcon(p) => assert_eq!(p, "/var/cache/favicon.png"),
-            other => panic!("expected AssetIcon, got {other:?}"),
-        }
+    fn absolute_unix_path_drops_icon_and_warns() {
+        let mut slot = Some(native::EntryIcon::AssetIcon("/var/cache/favicon.png".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+        assert!(slot.is_none(), "absolute path must drop the icon");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("/var/cache/favicon.png"));
+        assert!(warnings[0].contains("absolute"));
     }
 
     #[test]
-    fn absolute_windows_path_passes_through() {
-        let mut icon = native::EntryIcon::AssetIcon("C:\\cache\\fav.png".into());
-        resolve_asset_icon(&mut icon, "any-plugin");
-        match icon {
-            native::EntryIcon::AssetIcon(p) => assert_eq!(p, "C:\\cache\\fav.png"),
-            other => panic!("expected AssetIcon, got {other:?}"),
-        }
+    fn absolute_windows_path_drops_icon_and_warns() {
+        let mut slot = Some(native::EntryIcon::AssetIcon("C:\\cache\\fav.png".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+        assert!(slot.is_none(), "absolute path must drop the icon");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("C:\\cache\\fav.png"));
     }
 
     #[test]
-    fn already_qualified_url_passes_through() {
-        // Defensive: if a plugin or host import ever produces a
-        // fully-qualified URL directly, we must not double-rewrite.
-        let mut icon = native::EntryIcon::AssetIcon(
-            "torchsnap-plugin://localhost/foo/bar.svg".into(),
-        );
-        resolve_asset_icon(&mut icon, "zerotier");
-        match icon {
-            native::EntryIcon::AssetIcon(p) => {
-                assert_eq!(p, "torchsnap-plugin://localhost/foo/bar.svg");
-            }
-            other => panic!("expected AssetIcon, got {other:?}"),
-        }
+    fn already_qualified_url_drops_icon_and_warns() {
+        // Layering: plugins must not reach across to other
+        // plugins' archives by hand-crafting protocol URLs.
+        let mut slot = Some(native::EntryIcon::AssetIcon(
+            "torchsnap-plugin://localhost/other/secret.svg".into(),
+        ));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        assert!(slot.is_none());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("torchsnap-plugin://"));
+        assert!(warnings[0].contains("URL"));
     }
 
     #[test]
     fn non_asset_icon_variants_are_untouched() {
-        let mut icon = native::EntryIcon::HeroIcon("globe-alt".into());
-        resolve_asset_icon(&mut icon, "zerotier");
-        assert!(matches!(&icon, native::EntryIcon::HeroIcon(s) if s == "globe-alt"));
+        let mut slot = Some(native::EntryIcon::HeroIcon("globe-alt".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        assert!(matches!(&slot, Some(native::EntryIcon::HeroIcon(s)) if s == "globe-alt"));
+        assert!(warnings.is_empty());
     }
 }

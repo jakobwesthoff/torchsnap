@@ -907,10 +907,13 @@ impl Plugin for WasmPluginBridge {
         };
         match instance.entries() {
             Ok(mut entries) => {
-                super::bindings::resolve_catalog_entries_asset_icons(
+                let warnings = super::bindings::resolve_catalog_entries_asset_icons(
                     &mut entries,
                     &self.plugin_id,
                 );
+                for w in warnings {
+                    self.log(LogLevel::Warn, w);
+                }
                 entries
             }
             Err(e) => {
@@ -944,10 +947,13 @@ impl Plugin for WasmPluginBridge {
             // through so the host can forward it and evict stale
             // per-source entries on the frontend.
             Ok(mut response) => {
-                super::bindings::resolve_search_response_asset_icons(
+                let warnings = super::bindings::resolve_search_response_asset_icons(
                     &mut response,
                     &self.plugin_id,
                 );
+                for w in warnings {
+                    self.log(LogLevel::Warn, w);
+                }
                 Some(response)
             }
             Err(e) => {
