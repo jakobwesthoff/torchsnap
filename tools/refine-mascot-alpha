@@ -1,0 +1,312 @@
+#!/usr/bin/env bun
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//
+// Re-process mascot PNGs through Pixian.AI's background-removal API to
+// regenerate a clean alpha matte, eliminating the dark transparency-cutout
+// fringe that `tools/detect-mascot-borders` flagged.
+//
+// Auth is taken from the environment so credentials never live in the repo:
+//
+//   PIXIAN_API_ID      — API id (basic-auth username)
+//   PIXIAN_API_SECRET  — API secret (basic-auth password)
+//
+// Mode defaults to `test` (free, watermarked output) so accidental runs do
+// not burn paid credits. Pass `--production` to spend real credits.
+//
+// Inputs are file paths, given as positional arguments or as one path per
+// line on stdin. With `--input-dir <dir>`, bare names that don't resolve in
+// the cwd are looked up inside that directory — convenient for piping the
+// detector's basename column straight in.
+//
+// Idiomatic pipeline:
+//
+//   tools/detect-mascot-borders \
+//     | cut -f2 \
+//     | tools/refine-mascot-alpha --input-dir assets/mascot -o cleaned/
+//
+// Outputs land in `<output_dir>/<basename>` so you can diff, eyeball, or
+// `mv` them over the originals once you're satisfied.
+//
+// Usage:
+//   tools/refine-mascot-alpha -o <output_dir> [--input-dir <dir>] \
+//                             [--production] [files...]
+//
+
+import { existsSync, readFileSync } from "fs";
+import { mkdir, writeFile } from "fs/promises";
+import { basename, join } from "path";
+
+// =========================================================
+// API constants
+// =========================================================
+
+const API_URL = "https://api.pixian.ai/api/v2/remove-background";
+
+// Pixian's docs ask for an idle timeout of at least 180 seconds. Bun's
+// `fetch` has no default timeout; we wire one up via AbortController so a
+// hung connection eventually fails instead of stalling the whole batch.
+const REQUEST_TIMEOUT_MS = 200_000;
+
+// Linear backoff on 429 Too Many Requests, per the docs:
+// first retry waits 5s, second 10s, third 15s, etc.
+const BACKOFF_BASE_MS = 5_000;
+const MAX_RETRIES = 5;
+
+// =========================================================
+// Argument parsing
+// =========================================================
+
+interface Args {
+  outputDir: string | null;
+  inputDir: string | null;
+  production: boolean;
+  files: string[];
+}
+
+function parseArgs(): Args {
+  const argv = process.argv.slice(2);
+  const out: Args = {
+    outputDir: null,
+    inputDir: null,
+    production: false,
+    files: [],
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    switch (a) {
+      case "-o":
+      case "--output-dir":
+        out.outputDir = argv[++i] ?? null;
+        break;
+      case "--input-dir":
+        out.inputDir = argv[++i] ?? null;
+        break;
+      case "--production":
+        out.production = true;
+        break;
+      case "-h":
+      case "--help":
+        printUsage(process.stdout);
+        process.exit(0);
+      // eslint-disable-next-line no-fallthrough
+      default:
+        if (a.startsWith("-")) {
+          process.stderr.write(`Unknown option: ${a}\n`);
+          printUsage(process.stderr);
+          process.exit(2);
+        }
+        out.files.push(a);
+    }
+  }
+
+  // No positional files → read newline-separated paths from stdin. This is
+  // the natural mode when piping from `detect-mascot-borders | cut -f2`.
+  if (out.files.length === 0 && !process.stdin.isTTY) {
+    const stdin = readFileSync(0, "utf-8");
+    for (const line of stdin.split("\n")) {
+      const t = line.trim();
+      if (t) out.files.push(t);
+    }
+  }
+
+  return out;
+}
+
+function printUsage(stream: NodeJS.WriteStream) {
+  stream.write(
+    "Usage: tools/refine-mascot-alpha -o <output_dir> " +
+      "[--input-dir <dir>] [--production] [files...]\n" +
+      "       (paths can also be piped on stdin, one per line)\n",
+  );
+}
+
+// =========================================================
+// File path resolution
+// =========================================================
+
+// Accept either a path that exists as-is, or a bare name resolvable inside
+// `--input-dir`. Returns null if neither works so the caller can report a
+// clean per-file error and keep going on the rest of the batch.
+function resolveInput(file: string, inputDir: string | null): string | null {
+  if (existsSync(file)) return file;
+  if (inputDir !== null) {
+    const candidate = join(inputDir, file);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+// =========================================================
+// HTTP request — single attempt
+// =========================================================
+
+async function postOnce(
+  filepath: string,
+  production: boolean,
+  auth: string,
+): Promise<Response> {
+  const bytes = readFileSync(filepath);
+  const form = new FormData();
+  form.append("image", new Blob([bytes]), basename(filepath));
+  if (!production) form.append("test", "true");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(API_URL, {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}` },
+      body: form,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// =========================================================
+// HTTP request — with rate-limit backoff
+// =========================================================
+
+interface ProcessResult {
+  outPath: string;
+  creditsCharged: string | null;
+}
+
+async function processFile(
+  filepath: string,
+  outputDir: string,
+  production: boolean,
+  auth: string,
+): Promise<ProcessResult> {
+  let attempt = 0;
+  while (true) {
+    const res = await postOnce(filepath, production, auth);
+
+    if (res.status === 429 && attempt < MAX_RETRIES) {
+      attempt += 1;
+      const wait = BACKOFF_BASE_MS * attempt;
+      process.stderr.write(
+        `    rate-limited, backing off ${wait / 1000}s ` +
+          `(retry ${attempt}/${MAX_RETRIES})\n`,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+
+    if (!res.ok) {
+      // Pixian returns a JSON error body on 4xx/5xx; surface its message
+      // so the user sees the *why*, not just the status code.
+      let detail = `HTTP ${res.status} ${res.statusText}`;
+      try {
+        const json = (await res.json()) as { error?: { message?: string } };
+        if (json?.error?.message) {
+          detail = `HTTP ${res.status}: ${json.error.message}`;
+        }
+      } catch {
+        // Non-JSON error body — keep the status-line detail.
+      }
+      throw new Error(detail);
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer());
+    const outPath = join(outputDir, basename(filepath));
+    await writeFile(outPath, buf);
+
+    return {
+      outPath,
+      creditsCharged: res.headers.get("X-Credits-Charged"),
+    };
+  }
+}
+
+// =========================================================
+// Main
+// =========================================================
+
+async function main(): Promise<number> {
+  const args = parseArgs();
+
+  if (args.outputDir === null) {
+    process.stderr.write("Error: -o <output_dir> is required\n");
+    printUsage(process.stderr);
+    return 2;
+  }
+  if (args.files.length === 0) {
+    process.stderr.write("Error: no input files supplied\n");
+    printUsage(process.stderr);
+    return 2;
+  }
+
+  const id = process.env.PIXIAN_API_ID;
+  const secret = process.env.PIXIAN_API_SECRET;
+  if (!id || !secret) {
+    process.stderr.write(
+      "Error: PIXIAN_API_ID and PIXIAN_API_SECRET must be set in the " +
+        "environment.\n",
+    );
+    return 2;
+  }
+  const auth = Buffer.from(`${id}:${secret}`).toString("base64");
+
+  await mkdir(args.outputDir, { recursive: true });
+
+  // Banner — make the test/production distinction loud and impossible to
+  // miss before any network call happens.
+  if (args.production) {
+    process.stderr.write(
+      `PRODUCTION mode — will spend credits on ${args.files.length} file(s).\n`,
+    );
+  } else {
+    process.stderr.write(
+      `TEST mode — results will be watermarked. ` +
+        `Pass --production to spend credits.\n`,
+    );
+  }
+  process.stderr.write(`Writing results to: ${args.outputDir}\n\n`);
+
+  let succeeded = 0;
+  let failed = 0;
+  let totalCredits = 0;
+
+  for (const file of args.files) {
+    const resolved = resolveInput(file, args.inputDir);
+    if (resolved === null) {
+      process.stderr.write(`ERR ${file}: not found\n`);
+      failed += 1;
+      continue;
+    }
+
+    try {
+      const { outPath, creditsCharged } = await processFile(
+        resolved,
+        args.outputDir,
+        args.production,
+        auth,
+      );
+      const credits = creditsCharged ?? "?";
+      if (creditsCharged) {
+        const n = parseFloat(creditsCharged);
+        if (!Number.isNaN(n)) totalCredits += n;
+      }
+      process.stderr.write(`OK  ${resolved} -> ${outPath} (credits=${credits})\n`);
+      succeeded += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`ERR ${resolved}: ${message}\n`);
+      failed += 1;
+    }
+  }
+
+  process.stderr.write(
+    `\nDone: ${succeeded} succeeded, ${failed} failed. ` +
+      `Credits charged: ${totalCredits.toFixed(3)}.\n`,
+  );
+  return failed > 0 ? 1 : 0;
+}
+
+process.exit(await main());
