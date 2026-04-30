@@ -1,156 +1,241 @@
-# Plugin Messaging (Custom IPC)
+# Plugin Messaging
 
 ## Overview
 
-Beyond the search pipeline, plugins can communicate bidirectionally with their
-frontend views via `handle_message()`. This is a separate channel from the
-search result flow.
+Plugin messaging is the custom RPC channel between a plugin's frontend
+view and its backend handler. It runs *parallel* to the search pipeline
+— a search query never travels through this path, and a custom
+message never travels through the search path.
 
-## Backend
+End-to-end shape:
 
-### Tauri Command
+```
+plugin frontend
+    │   sendMessage(method, payload, onMessage?)
+    ▼
+@torchsnap/plugin-sdk/hooks (shim → window.__torchsnap)
+    │
+    ▼
+src/lib/pluginMessage.ts → invoke("plugin_message", { source, method, payload, channel })
+    │
+    ▼
+src-tauri search::plugin_message  (Tauri command, async, spawn_blocking)
+    │
+    ▼
+PluginHost::handle_message(source, method, payload, channel)
+    │   match by plugin id (source)
+    ▼
+Plugin::handle_message(method, payload, channel)
+    │
+    ├── native impl  → may use channel for streaming
+    └── WasmPluginBridge::handle_message  → discards channel,
+                                            calls WIT messaging::handle-message
+```
 
-`search/mod.rs` exposes:
+## Tauri Command
+
+`src-tauri/src/search/mod.rs::plugin_message`:
+
 ```rust
-pub fn plugin_message(source, method, payload, channel: Channel<Value>, state)
-    -> Result<Value, String>
+#[tauri::command]
+pub async fn plugin_message(
+    source: String,
+    method: String,
+    payload: serde_json::Value,
+    channel: tauri::ipc::Channel<serde_json::Value>,
+    state: State<'_, Arc<PluginHost>>,
+) -> Result<serde_json::Value, String>
 ```
 
-Routes to the matching plugin's `handle_message(method, payload, channel)`.
-The method returns a `Value` (the response), and the `channel` allows
-streaming push updates before the promise resolves.
+Async because plugin handlers run on `tokio::task::spawn_blocking`
+(handlers may issue `reqwest` HTTP calls that need a Tokio runtime
+context). Only the outermost error is formatted into the rejection
+string — the full `anyhow` chain stays in host logs.
 
-### Plugin Trait Method
+## Host Routing
+
+`PluginHost::handle_message` (`plugin_host.rs`) walks the registered
+`PluginSlot`s and dispatches to the slot whose `plugin.id() == source`.
+Unknown ids return `anyhow!("unknown plugin source: {source}")`.
+
+The host does no payload validation. Both `payload` and the return
+value are arbitrary `serde_json::Value`; meaning is opaque to the
+host.
+
+## Plugin Trait
+
+`Plugin::handle_message` in `src-tauri/src/plugins/mod.rs`:
 
 ```rust
-fn handle_message(&self, method: &str, payload: Value, channel: Channel<Value>)
-    -> Result<Value, Error>
+fn handle_message(
+    &self,
+    _method: &str,
+    _payload: serde_json::Value,
+    _channel: tauri::ipc::Channel<serde_json::Value>,
+) -> anyhow::Result<serde_json::Value> {
+    anyhow::bail!("plugin does not handle custom messages")
+}
 ```
 
-Default implementation returns `json!({})`.
+The default rejects everything; plugins opt in by overriding. The
+return value is the resolved Promise on the frontend side. The
+`channel` allows pushing zero or more streamed updates *before* the
+return value resolves (native plugins only).
 
-## Frontend
+## WASM Bridge
 
-### sendPluginMessage
+`WasmPluginBridge::handle_message` (`src-tauri/src/wasm/bridge.rs`)
+re-encodes the `serde_json::Value` payload as a JSON string, calls the
+guest's `messaging::handle-message` export, and parses the JSON-string
+response back to `Value`. The streaming `_channel` is intentionally
+ignored.
 
-`src/lib/pluginMessage.ts`
+Errors split into three categories with explicit identities in logs:
 
-```typescript
-function sendPluginMessage<TPayload, TResult, TStream>(
-  source: string,
-  method: string,
-  payload: TPayload,
-  onMessage?: (msg: TStream) => void,
-): Promise<TResult>
-```
+- **Plugin-reported** — inner `err(string)` arm of the WIT `result`.
+  Wrapped as `"plugin error: <string>"`.
+- **Bridge-level** — wasmtime trap, payload serialization, malformed
+  response JSON. Wrapped via `anyhow::Context` with strings like
+  `"serialize handle_message payload"`,
+  `"invoke guest handle-message"`,
+  `"parse guest handle-message response"`.
+- **Disabled-plugin guard** — `handle_message()` called while the
+  instance slot is empty. Logged via `log_dispatched_while_disabled`,
+  returns `"handle_message() called on disabled plugin"`.
 
-Creates a `Channel<TStream>` internally. If `onMessage` is provided, it
-becomes `channel.onmessage`. Returns a promise that resolves with the Tauri
-command's return value.
-
-### usePluginStream Hook
-
-`src/hooks/usePluginStream.ts`
-
-Wraps `sendPluginMessage` in `useSyncExternalStore`. Exposes:
-
-```typescript
-{ established: boolean, result: TResult | null, snapshot: TStream | null }
-```
-
-- `snapshot` — updates via channel messages (streaming)
-- `result` — updates when the promise resolves (final)
-
-These two data paths are strictly separated.
-
-## WASM Plugins (ADR 0030)
-
-WASM plugins reach the same Tauri command (`plugin_message`) as
-native plugins, but the bridge to the actual handler runs through
-the WIT `messaging` guest export instead of the trait method:
+### WIT contract
 
 ```wit
 interface messaging {
-  /// Handle a custom message from the plugin's frontend.
   handle-message: func(method: string, payload: string)
       -> result<string, string>;
 }
 ```
 
-`WasmPluginBridge::handle_message` overrides the default trait
-impl, re-encodes the incoming `serde_json::Value` payload as a
-JSON string, calls the guest export, and parses the response
-back into a `Value` for the Tauri command return. The native
-trait's `channel: Channel<Value>` parameter is intentionally
-ignored — **WASM plugins are strictly request/response**.
+`payload` and the success arm are JSON-encoded strings — same
+convention as `settings::get`. The guest parses with
+`serde_json::from_str` and serializes the response with
+`serde_json::to_string`.
 
-### Error propagation
+### Why no streaming for WASM
 
-Errors flow through three layers, each with a clear identity in
-logs:
+WASM guests run inside wasmtime with no Tauri runtime access — they
+cannot hold a `Channel<Value>` across async boundaries. The bridge
+silently drops the channel rather than forwarding it; plugins that
+genuinely need streaming must stay native or wait for an additive
+`messaging-stream` sub-interface.
 
-- **Plugin-reported errors** — the inner `err(string)` arm of
-  the WIT `result`. The bridge wraps these with the prefix
-  `"plugin error: "` so log readers can distinguish them from
-  bridge-level failures.
-- **Bridge-level failures** — wasmtime traps, payload
-  serialization issues, malformed JSON in the plugin's response.
-  Wrapped via `anyhow::Context` with explicit context strings
-  (`serialize handle_message payload`,
-  `invoke guest handle-message`,
-  `parse guest handle-message response`).
-- **Trait-level failures** — bubble up to the Tauri command and
-  reject the frontend's `sendMessage` promise.
+## Rust SDK helpers
 
-### Why WASM cannot stream
+`plugins/plugin-sdk/src/messaging.rs`:
 
-WASM plugins live inside a wasmtime sandbox with no access to
-the Tauri runtime, which means they can't hold a `Channel<Value>`
-across multiple async events. The `_channel` parameter on the
-bridge's override is intentionally ignored, not silently
-forwarded — accidental forwarding would crash on the first send.
-
-If a future plugin genuinely needs streaming, the path is to add
-a separate `messaging-stream` sub-interface to the WIT world,
-ideally piggybacking on whatever the channel-lifecycle todo
-(see `todos/01kn30th27x0arv9a5cekkwgpw…`) lands as the general
-solution. Adding such an interface is purely additive and
-breaks nothing.
-
-### No SDK helper crate yet
-
-Plugins parse / serialize JSON inline via `serde_json::from_str`
-and `serde_json::to_string`. Helper functions like
-`parse_payload<T: DeserializeOwned>` and `to_response<T: Serialize>`
-would trim two lines per method but aren't worth a dedicated
-crate until there are multiple WASM plugins to share them.
-
-## Reactive Subscription Pattern (Clipboard)
-
-The clipboard plugin uses `handle_message` to implement a long-lived reactive
-subscription. The `"search"` method stores the frontend's `Channel` as the
-`ActiveQuery` in `SharedState`. When clipboard data changes (watcher captures
-new content, user deletes/pastes/clears), `refresh_active_query()` re-runs the
-stored query and pushes new results through the stored channel.
-
-This means one `Channel` lives for the duration of a frontend search session,
-receiving multiple updates — unlike the typical request/response pattern.
-
-## Control Channel (External IPC)
-
-`src-tauri/src/control/mod.rs`
-
-A separate Unix domain socket server (`control.sock`) speaks JSON-RPC 2.0 over
-newline-delimited JSON. Gated by `controlChannel.enabled` setting.
-
-Commands:
 ```rust
-pub enum ControlCommand {
-    Dismiss,
-    SetQuery { text: String },
+pub fn parse_payload<T: DeserializeOwned>(payload: &str) -> Result<T, String>
+pub fn to_response<T: Serialize>(value: &T) -> Result<String, String>
+```
+
+Both fold the `serde_json` diagnostic into the error string so log
+readers can distinguish a malformed payload from a plugin-level
+rejection.
+
+Plugins that don't expose RPC implement the noop stub via
+`impl_noop_messaging!(MyPlugin)`. The stub returns
+`Err(format!("plugin does not handle messages: {method}"))` so
+misrouted calls still surface in logs.
+
+### Plugin-side example
+
+From `plugins/zerotier/src/lib.rs`:
+
+```rust
+impl MessagingGuest for ZeroTierPlugin {
+    fn handle_message(method: String, payload: String) -> Result<String, String> {
+        match method.as_str() {
+            "refresh"  => { /* ... */ Ok(r#"{"ok":true}"#.into()) }
+            "reimport" => { /* ... */ }
+            "forget"   => {
+                #[derive(serde::Deserialize)] struct Req { id: String }
+                let req: Req = serde_json::from_str(&payload)
+                    .map_err(|e| format!("parse payload: {e}"))?;
+                /* ... */
+            }
+            other => Err(format!("unknown method: {other}")),
+        }
+    }
 }
 ```
 
-The frontend `useControlChannel` hook receives these via a Tauri channel and
-calls `resetState()` or `setQuery()` accordingly. This allows CLI or external
-automation to drive the launcher.
+## Frontend Side
+
+### `sendPluginMessage` (`src/lib/pluginMessage.ts`)
+
+```ts
+export function sendPluginMessage<TPayload, TResult, TStream = never>(
+  source: string,
+  method: string,
+  payload: TPayload,
+  onMessage?: (msg: TStream) => void,
+): Promise<TResult>;
+```
+
+Always allocates an internal `Channel<TStream>` (Tauri requires the
+parameter even when unused) and wires `channel.onmessage` to
+`onMessage` when provided. Calls the `plugin_message` Tauri command.
+
+### Plugin runtime hook
+
+Plugin frontends do not call `sendPluginMessage` directly. They consume
+`PluginRuntime` from `@torchsnap/plugin-sdk/hooks`:
+
+```ts
+const { sendMessage, logger } = usePluginRuntime();
+await sendMessage<RefreshReq, RefreshResp>("refresh", { force: true });
+```
+
+`sendMessage` is bound to the plugin id of the surrounding
+`PluginContextProvider` — plugins cannot address each other. The
+provider in `src/launcher/Launcher.tsx` constructs the bound function
+by partial-applying `sendPluginMessage` with the context's plugin id.
+
+The `onMessage` parameter is part of the type signature for symmetry
+with native plugins, but the WASM bridge silently drops channel pushes.
+Frontend code that runs against a WASM plugin must treat the resolved
+Promise as the only data path.
+
+### `usePluginStream` (`src/hooks/usePluginStream.ts`)
+
+Wraps `sendMessage` in `useSyncExternalStore` and returns three
+strictly separate states:
+
+```ts
+{ established: boolean,
+  result: TResult | undefined,
+  snapshot: TSnapshot | undefined }
+```
+
+- `snapshot` updates on every channel push (native streaming plugins).
+- `result` updates once when the Promise resolves.
+- `established` flips true alongside `result`.
+
+Re-issues the command when `method` or `payload` identity changes; on
+unmount the channel is dropped and the backend is expected to detect
+the close and stop pushing. With WASM plugins `snapshot` stays
+`undefined` for the lifetime of the call.
+
+## Long-lived subscriptions (native only)
+
+The native clipboard plugin reuses the channel as a long-lived
+subscription: its `"search"` method stashes the frontend's `Channel`
+in `SharedState::ActiveQuery`. When clipboard contents change, the
+plugin re-runs the stashed query and pushes results through the
+stored channel — one channel covers an entire session of result
+updates. This pattern depends on holding `Channel<Value>` across
+async events and is therefore not available to WASM plugins.
+
+## Control Channel (out of scope)
+
+The Unix-domain `control.sock` JSON-RPC server in
+`src-tauri/src/control/` is unrelated to plugin messaging. It exists
+for external automation (CLI driving the launcher) and routes
+`Dismiss` / `SetQuery` commands through a separate Tauri channel
+consumed by the launcher's `useControlChannel` hook.
