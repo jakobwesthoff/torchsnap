@@ -2046,6 +2046,69 @@ mod tests {
     }
 
     // =====================================================
+    // Permissions: fs
+    // =====================================================
+
+    #[test]
+    fn fs_pattern_with_substitution_token_passes_metachar_check() {
+        // Regression: the `${xdg-config}` token's literal `{`
+        // and `}` must not trip the unsupported-glob-metachar
+        // scan. The check should ignore characters inside
+        // `${...}` substitutions.
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["${xdg-config}/ZeroTier/One/authtoken.secret"]"#,
+        ))
+        .expect("should parse");
+        let fs = m.permissions.unwrap().fs.unwrap();
+        assert_eq!(fs.read.len(), 1);
+    }
+
+    #[test]
+    fn fs_pattern_rejects_empty_read_list() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = []"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `read` list"));
+    }
+
+    #[test]
+    fn fs_pattern_rejects_traversal() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["/etc/../etc/hosts"]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("traversal segment"));
+    }
+
+    #[test]
+    fn fs_pattern_rejects_unknown_substitution_variable() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["${nope}/foo"]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown variable"));
+    }
+
+    #[test]
+    fn fs_pattern_accepts_glob_metachars_star_and_doublestar() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = [
+                   "${xdg-config}/myapp/*.toml",
+                   "${xdg-data}/myapp/**/*.json",
+               ]"#,
+        ))
+        .expect("should parse");
+        let fs = m.permissions.unwrap().fs.unwrap();
+        assert_eq!(fs.read.len(), 2);
+    }
+
+    // =====================================================
     // Permissions: command rules
     // =====================================================
 
@@ -2648,9 +2711,13 @@ fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<Permissio
 }
 
 /// Parse-time syntactic validation of a `[permissions.fs]
-/// read = [...]` entry. Rejects empty patterns, `..` traversal
-/// segments, unsupported glob metacharacters, and malformed
-/// `${...}` tokens.
+/// read = [...]` entry. Covers the checks that depend only on
+/// the literal string the user typed: non-empty, no `..`
+/// traversal segments, well-formed `${...}` substitution
+/// tokens. The unsupported-glob-metacharacter check lives in
+/// `host::fs::compile_fs_patterns`, where it runs against the
+/// post-substitution pattern — substitution variable braces
+/// are then naturally distinguishable from glob braces.
 fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
     if pattern.is_empty() {
         anyhow::bail!(
@@ -2665,18 +2732,6 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
                 "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
                  contains a `..` traversal segment; declare absolute \
                  paths only"
-            );
-        }
-    }
-
-    // `?`, character classes, and brace alternation are not part
-    // of the supported glob surface.
-    for ch in ['?', '[', ']', '{', '}'] {
-        if pattern.contains(ch) {
-            anyhow::bail!(
-                "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
-                 uses unsupported glob metacharacter `{ch}`; only `*` \
-                 (single segment) and `**` (multi-segment) are accepted"
             );
         }
     }
