@@ -25,6 +25,7 @@ members = [
     "emoji-picker",
     "open-url",
     "template",
+    "zerotier",
 ]
 resolver = "3"
 

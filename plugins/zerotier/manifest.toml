@@ -1,0 +1,51 @@
+[plugin]
+id = "zerotier"
+name = "ZeroTier"
+description = "Manage ZeroTier networks from the launcher."
+version = "0.1.0"
+wasm = "zerotier_plugin.wasm"
+icon = "heroicons:globe-alt"
+
+[settings]
+# Manual auth-token override. Used when auto-detection across
+# the per-OS canonical paths fails (most often on Linux without
+# a `zerotier-one` group, or macOS users who have never run the
+# official UI). Empty string means "no override".
+manualToken = ""
+
+[storage.sql]
+migrations = [
+    "migrations/001_init.sql",
+]
+
+[permissions.http]
+# `zerotier-one` listens on this loopback HTTP port. The host's
+# fetch import has no plain-HTTP or loopback restriction beyond
+# the origin allowlist.
+origins = ["http://localhost:9993"]
+
+[permissions.fs]
+# Auth-token candidate paths per OS, plus the macOS UI's
+# saved-networks store. The runtime only attempts paths that
+# exist on the host OS; redundant entries on other OSes are
+# inert.
+read = [
+    # macOS user-side copy created by the official UI (root-owned 0644).
+    "${xdg-config}/ZeroTier/One/authtoken.secret",
+    # macOS system path: 0600 root:wheel — usually unreadable.
+    "/Library/Application Support/ZeroTier/One/authtoken.secret",
+    # Linux daemon path: 0600 root:root — readable on distros
+    # with a `zerotier-one` group.
+    "/var/lib/zerotier-one/authtoken.secret",
+    # Windows admin-restricted path.
+    "C:\\ProgramData\\ZeroTier\\One\\authtoken.secret",
+    # macOS UI's saved-networks list (user `~/Library`).
+    "${xdg-config}/ZeroTier/saved_networks.json",
+]
+
+[frontend]
+settings-bundle = "frontend/dist/settings.js"
+settings-css = "frontend/dist/settings.css"
+
+[frontend.settings]
+component = "ZeroTierSettings"
