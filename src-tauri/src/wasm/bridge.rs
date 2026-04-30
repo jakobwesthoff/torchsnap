@@ -92,6 +92,13 @@ pub struct WasmPluginBridge {
     /// means the plugin has no HTTP access; `"*"` means
     /// trust-all.
     http_origins: Vec<String>,
+    /// Raw `[permissions.fs] read = [...]` patterns from the
+    /// manifest. `${...}` tokens still in place — the bridge
+    /// substitutes against the per-instance `PathContext` and
+    /// compiles into a `GlobSet` at `enable()`. `None` when
+    /// the manifest has no `[permissions.fs]` section, which
+    /// makes every fs call return `permission-denied`.
+    fs_patterns_raw: Option<Vec<String>>,
     /// Whether the manifest grants access to the shared
     /// `website-metadata` host import. The actual service
     /// handle is read from `runtime.metadata_service`.
@@ -232,9 +239,7 @@ impl WasmPluginBridge {
             .permissions
             .as_ref()
             .and_then(|p| p.opener.as_ref());
-        let opener_schemes = opener_def
-            .map(|o| o.schemes.clone())
-            .unwrap_or_default();
+        let opener_schemes = opener_def.map(|o| o.schemes.clone()).unwrap_or_default();
         let opener_open_path = opener_def.map(|o| o.open_path).unwrap_or(false);
         let opener_reveal_path = opener_def.map(|o| o.reveal_path).unwrap_or(false);
 
@@ -244,6 +249,12 @@ impl WasmPluginBridge {
             .and_then(|p| p.http.as_ref())
             .map(|h| h.origins.clone())
             .unwrap_or_default();
+
+        let fs_patterns_raw = manifest
+            .permissions
+            .as_ref()
+            .and_then(|p| p.fs.as_ref())
+            .map(|fs| fs.read.clone());
 
         let website_metadata_enabled = manifest
             .permissions
@@ -263,9 +274,7 @@ impl WasmPluginBridge {
         // Plugin-archive comes from the source's filesystem
         // root; plugin-data is the per-plugin host-managed
         // state directory under `<app_data_dir>/plugin-home/`.
-        let plugin_data = app_data_dir
-            .join("plugin-home")
-            .join(plugin_id.as_str());
+        let plugin_data = app_data_dir.join("plugin-home").join(plugin_id.as_str());
         let plugin_archive = source.root_path().to_path_buf();
 
         // Pre-parse every `[[tasks]]` schedule. The manifest
@@ -301,6 +310,7 @@ impl WasmPluginBridge {
             opener_open_path,
             opener_reveal_path,
             http_origins,
+            fs_patterns_raw,
             website_metadata_enabled,
             command_rules_raw,
             plugin_data,
@@ -540,15 +550,11 @@ fn build_path_context(
     use tauri::Manager;
 
     let path_resolver = app.path();
-    let home = path_resolver
-        .home_dir()
-        .context("resolve home directory")?;
+    let home = path_resolver.home_dir().context("resolve home directory")?;
     let xdg_config = path_resolver
         .config_dir()
         .context("resolve config directory")?;
-    let xdg_data = path_resolver
-        .data_dir()
-        .context("resolve data directory")?;
+    let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
 
     Ok(PathContext {
         plugin_data: plugin_data.clone(),
@@ -733,8 +739,7 @@ impl Plugin for WasmPluginBridge {
         // `xdg-config`, and `xdg-data`; on macOS and Windows
         // the XDG names are mapped to the closest equivalent
         // (Application Support / AppData).
-        let ctx_for_rules = match build_path_context(app, &self.plugin_data, &self.plugin_archive)
-        {
+        let ctx_for_rules = match build_path_context(app, &self.plugin_data, &self.plugin_archive) {
             Ok(ctx) => {
                 instance.set_path_context(ctx.clone());
                 Some(ctx)
@@ -778,6 +783,29 @@ impl Plugin for WasmPluginBridge {
                 Vec::new()
             };
         instance.set_command_rules(compiled_rules);
+
+        // Compile the `[permissions.fs]` allowlist against the
+        // resolved PathContext. Substitution + GlobSet
+        // assembly happen here; the matcher then tests
+        // canonicalized request paths at call time. Without a
+        // PathContext, no allowlist is installed and every fs
+        // call returns `permission-denied`.
+        let fs_allowlist = match (self.fs_patterns_raw.as_ref(), ctx_for_rules.as_ref()) {
+            (Some(patterns), Some(ctx)) => {
+                match super::runtime::host::fs::compile_fs_patterns(patterns, ctx) {
+                    Ok(allow) => Some(Arc::new(allow)),
+                    Err(e) => {
+                        self.log(
+                            LogLevel::Error,
+                            format!("compiling fs allowlist for `{}`: {e:#}", self.plugin_id),
+                        );
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+        instance.set_fs_allowlist(fs_allowlist);
 
         instance.set_http_client(Arc::new(crate::network::Http::new()));
 
@@ -838,6 +866,7 @@ impl Plugin for WasmPluginBridge {
         instance.clear_reveal_path_writer();
         instance.clear_path_context();
         instance.clear_command_rules();
+        instance.clear_fs_allowlist();
         instance.clear_http_client();
         instance.clear_website_metadata();
         instance.clear_plugin_source();
@@ -1018,8 +1047,12 @@ mod tests {
     const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
     fn test_runtime() -> Arc<WasmRuntime> {
-        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()), None)
-            .expect("runtime construction succeeds")
+        WasmRuntime::new(
+            LogSender::test_sender(),
+            Arc::new(SpanRegistry::new()),
+            None,
+        )
+        .expect("runtime construction succeeds")
     }
 
     /// Build a bridge from a committed fixture directory.

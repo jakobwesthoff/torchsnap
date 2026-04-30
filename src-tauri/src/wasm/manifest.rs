@@ -395,6 +395,10 @@ pub struct PermissionsDef {
     pub opener: Option<OpenerPermissionsDef>,
     /// `[permissions.http]` — HTTP fetch capability.
     pub http: Option<HttpPermissionsDef>,
+    /// `[permissions.fs]` — read-only filesystem access via
+    /// the `fs::read-file` / `file-exists` / `metadata` host
+    /// imports.
+    pub fs: Option<FsPermissionsDef>,
     /// `[[permissions.command]]` rules — process-execution
     /// capability with per-rule argv constraints. Empty
     /// vector when no rules are declared (deny by default).
@@ -466,6 +470,31 @@ pub struct HttpPermissionsDef {
     /// Stored as normalized `ascii_serialization()` origins,
     /// except for the literal `"*"` which is preserved as-is.
     pub origins: Vec<String>,
+}
+
+/// `[permissions.fs]` — declares read-only filesystem paths
+/// the plugin may access via the `fs` host import.
+///
+/// ```toml
+/// [permissions.fs]
+/// read = [
+///     "${xdg-config}/myapp/config.toml",
+///     "/var/lib/myapp/data/*.json",
+/// ]
+/// ```
+///
+/// Patterns accept `${...}` substitution tokens from
+/// [`RECOGNIZED_PERMISSION_VARIABLES`] and the glob
+/// metacharacters `*` (single segment) and `**` (multi-segment).
+///
+/// An empty `read` list is a manifest authoring error.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FsPermissionsDef {
+    /// Patterns the plugin may read from. `${...}` tokens are
+    /// preserved verbatim — substitution and glob compilation
+    /// happen at bridge construction, when the per-instance
+    /// `PathContext` is available.
+    pub read: Vec<String>,
 }
 
 // =========================================================
@@ -2192,9 +2221,11 @@ mod tests {
 
     #[test]
     fn manifest_without_command_section_has_empty_command_vec() {
-        let m = Manifest::parse(&minimal(r#"[permissions.http]
-               origins = ["*"]"#))
-            .expect("should parse");
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("should parse");
         assert!(m.permissions.unwrap().command.is_empty());
     }
 
@@ -2543,8 +2574,7 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
 ///   nested `rest`, unknown variable references).
 fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<PermissionsDef> {
     if let Some(ref opener) = permissions.opener {
-        let any_capability =
-            !opener.schemes.is_empty() || opener.open_path || opener.reveal_path;
+        let any_capability = !opener.schemes.is_empty() || opener.open_path || opener.reveal_path;
         if !any_capability {
             anyhow::bail!(
                 "`[permissions.opener]` declared without granting any capability — \
@@ -2586,6 +2616,22 @@ fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<Permissio
         })
         .transpose()?;
 
+    let fs = permissions
+        .fs
+        .map(|fs| -> anyhow::Result<FsPermissionsDef> {
+            if fs.read.is_empty() {
+                anyhow::bail!(
+                    "`[permissions.fs]` declared with an empty `read` list — \
+                     either add at least one path pattern or remove the section"
+                );
+            }
+            for (index, pattern) in fs.read.iter().enumerate() {
+                validate_fs_pattern(pattern, index)?;
+            }
+            Ok(fs)
+        })
+        .transpose()?;
+
     for (index, rule) in permissions.command.iter().enumerate() {
         validate_command_rule(rule, index)?;
     }
@@ -2595,9 +2641,49 @@ fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<Permissio
     Ok(PermissionsDef {
         opener: permissions.opener,
         http,
+        fs,
         command: permissions.command,
         website_metadata: permissions.website_metadata,
     })
+}
+
+/// Parse-time syntactic validation of a `[permissions.fs]
+/// read = [...]` entry. Rejects empty patterns, `..` traversal
+/// segments, unsupported glob metacharacters, and malformed
+/// `${...}` tokens.
+fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
+    if pattern.is_empty() {
+        anyhow::bail!(
+            "`[permissions.fs]` read[{index}]: empty pattern; \
+             remove the entry or supply a real path"
+        );
+    }
+
+    for segment in pattern.split('/') {
+        if segment == ".." {
+            anyhow::bail!(
+                "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
+                 contains a `..` traversal segment; declare absolute \
+                 paths only"
+            );
+        }
+    }
+
+    // `?`, character classes, and brace alternation are not part
+    // of the supported glob surface.
+    for ch in ['?', '[', ']', '{', '}'] {
+        if pattern.contains(ch) {
+            anyhow::bail!(
+                "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
+                 uses unsupported glob metacharacter `{ch}`; only `*` \
+                 (single segment) and `**` (multi-segment) are accepted"
+            );
+        }
+    }
+
+    validate_variable_references(pattern, &format!("permissions.fs.read[{index}]"), index)?;
+
+    Ok(())
 }
 
 /// Reject any pair of `[[permissions.command]]` rules whose
@@ -2655,7 +2741,9 @@ fn argv_shapes_can_overlap(a: &[ArgvConstraint], b: &[ArgvConstraint]) -> bool {
             if a.len() != b.len() {
                 return false;
             }
-            a.iter().zip(b.iter()).all(|(ca, cb)| position_overlaps(ca, cb))
+            a.iter()
+                .zip(b.iter())
+                .all(|(ca, cb)| position_overlaps(ca, cb))
         }
         (true, false) => fixed_compatible_with_rest_rule(b, a),
         (false, true) => fixed_compatible_with_rest_rule(a, b),
@@ -2699,10 +2787,7 @@ fn argv_shapes_can_overlap(a: &[ArgvConstraint], b: &[ArgvConstraint]) -> bool {
 /// shared prefix must overlap pairwise, and every
 /// remaining fixed position must overlap with the
 /// rest-rule's inner constraint.
-fn fixed_compatible_with_rest_rule(
-    fixed: &[ArgvConstraint],
-    rest_rule: &[ArgvConstraint],
-) -> bool {
+fn fixed_compatible_with_rest_rule(fixed: &[ArgvConstraint], rest_rule: &[ArgvConstraint]) -> bool {
     let rest_prefix_len = rest_rule.len() - 1;
     if fixed.len() < rest_prefix_len {
         return false;
@@ -2777,9 +2862,7 @@ fn validate_command_rule(rule: &CommandPermissionDef, index: usize) -> anyhow::R
         anyhow::bail!("`[[permissions.command]]` rule {index} has empty `binary`");
     }
     if rule.binary.contains('\0') {
-        anyhow::bail!(
-            "`[[permissions.command]]` rule {index} `binary` contains a NUL byte"
-        );
+        anyhow::bail!("`[[permissions.command]]` rule {index} `binary` contains a NUL byte");
     }
 
     let mut saw_rest = false;
@@ -2820,11 +2903,7 @@ fn validate_argv_constraint(
                 anyhow::bail!("{where_} `enum` constraint has empty `values` list");
             }
             for v in values {
-                validate_variable_references(
-                    v,
-                    &format!("{where_}.values"),
-                    rule_index,
-                )?;
+                validate_variable_references(v, &format!("{where_}.values"), rule_index)?;
             }
         }
         ArgvConstraint::Glob { pattern } => {
@@ -2838,9 +2917,7 @@ fn validate_argv_constraint(
             // will use at runtime.
             let anchored = format!("^(?:{pattern})$");
             regex::Regex::new(&anchored).map_err(|e| {
-                anyhow::anyhow!(
-                    "{where_} `regex` pattern `{pattern}` does not compile: {e}"
-                )
+                anyhow::anyhow!("{where_} `regex` pattern `{pattern}` does not compile: {e}")
             })?;
         }
         ArgvConstraint::PathUnder { root } => {
@@ -2996,5 +3073,4 @@ mod task_validation_tests {
         let err = validate_task_definitions(&[task("bad", "@daily")]).unwrap_err();
         assert!(err.to_string().contains("5-field"), "{err}");
     }
-
 }

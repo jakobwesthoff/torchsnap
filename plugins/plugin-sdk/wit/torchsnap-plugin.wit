@@ -208,11 +208,9 @@ interface opener {
     /// the missing capability so plugin authors can fix their
     /// manifest.
     permission-denied(string),
-
     /// The URL passed to `open-url` failed to parse. Only emitted by
     /// `open-url`. The string is the offending URL.
     invalid-url(string),
-
     /// The host's opener / reveal backend reported a failure (no
     /// registered handler for the URL scheme or path type, file
     /// inaccessible, platform-specific failure mode). The string
@@ -301,6 +299,100 @@ interface http {
   /// Execute an HTTP request and return the full response. The call blocks
   /// until the response body is fully received or an error occurs.
   fetch: func(request: http-request) -> result<http-response, http-error>;
+}
+
+/// Read-only access to host filesystem paths declared in the plugin's
+/// manifest.
+///
+/// Plugins declare an exact-or-glob allowlist under
+/// `[permissions.fs]` in `manifest.toml`. The host expands
+/// `${home}` / `${xdg-config}` / `${xdg-data}` substitutions (same
+/// vocabulary as `[[permissions.command]]` and `paths::resolve`),
+/// canonicalizes the resulting patterns to resolve OS-level symlinks
+/// (`/var → /private/var` on macOS, etc.), compiles them into a
+/// `GlobSet`, and stores it on the per-plugin instance.
+///
+/// ```toml
+/// [permissions.fs]
+/// read = [
+///     "${xdg-config}/myapp/config.toml",
+///     "/var/lib/myapp/data/*.json",
+/// ]
+/// ```
+///
+/// Glob syntax: `*` matches a single path segment; `**` matches
+/// across segments. `?`, character classes, and brace alternation
+/// are intentionally not supported — a smaller surface area is
+/// easier to audit, and exact paths cover the common case.
+///
+/// At call time the host:
+/// 1. Rejects requested paths containing `..`, `.`, or `//` segments.
+/// 2. Canonicalizes the path via `std::fs::canonicalize`, which
+///    resolves symlinks all the way to the real target.
+/// 3. Matches the canonicalized real path against the manifest's
+///    canonicalized `GlobSet`. A match means "allowed"; anything
+///    else is `permission-denied`.
+///
+/// The canonicalization step is what makes "follow symlinks" safe:
+/// a symlink located inside an allowed pattern that points outside
+/// the allow set is rejected because the resolved real path is no
+/// longer covered.
+///
+/// Each call blocks the guest until the host returns. WASM guests
+/// have no async runtime, and the host scheduler keeps other
+/// plugins responsive while one plugin waits on a read.
+interface fs {
+  /// Error variants for `read-file` and `file-metadata`. One variant
+  /// per semantic category; no catch-all.
+  variant fs-error {
+    /// The request path validates and exists, but is not covered by
+    /// the plugin's manifest allowlist. Message is the request path
+    /// (post-canonicalization) for diagnostics.
+    permission-denied(string),
+    /// The request path was syntactically rejected before I/O —
+    /// non-absolute, contained `..`/`.`/`//` segments, was empty,
+    /// or contained a NUL byte. Message includes the offending
+    /// path for diagnostics.
+    invalid-path(string),
+    /// The request path is well-formed but no such file exists.
+    not-found,
+    /// The host's filesystem layer reported an error while reading
+    /// (permission failure on the underlying file, I/O error,
+    /// canonicalization failure that wasn't `not-found`). Message
+    /// captures the OS-level diagnostic.
+    io(string),
+  }
+
+  /// Metadata about a file. `size` is the on-disk byte length;
+  /// `modified-unix-ms` is the modification time as Unix epoch
+  /// milliseconds; `is-symlink` reports whether the requested
+  /// path is itself a symlink — observed *before* symlink
+  /// resolution, so a plugin can tell when its allowlist let
+  /// it through a symlink rather than a real file.
+  record file-metadata {
+    size: u64,
+    modified-unix-ms: u64,
+    is-symlink: bool,
+  }
+
+  /// Read the full contents of `path`. Resolves symlinks; the real
+  /// target must also match the manifest allowlist. Plugins that
+  /// need a string interpret the returned bytes themselves
+  /// (`String::from_utf8_lossy` etc.).
+  read-file: func(path: string) -> result<list<u8>, fs-error>;
+
+  /// Probe whether `path` is readable by this plugin. Returns
+  /// `true` when the path exists and is covered by the manifest
+  /// allowlist; `false` for *all* other reasons (path missing,
+  /// path denied, syntactically invalid, I/O error). The conflated
+  /// `false` is intentional — it lets a plugin walk a list of
+  /// candidate paths and pick the first usable one without
+  /// branching on error variants.
+  file-exists: func(path: string) -> bool;
+
+  /// Return metadata for `path`. Same allowlist gate as
+  /// `read-file`.
+  metadata: func(path: string) -> result<file-metadata, fs-error>;
 }
 
 /// Per-plugin asset access.
@@ -395,24 +487,19 @@ interface command {
     /// Argument vector. Each element is matched per-position against
     /// the rule's argv constraints.
     args: list<string>,
-
     /// Working directory. When omitted, the host substitutes
     /// `<plugin-data>/exec-cwd/`, lazily created.
     cwd: option<string>,
-
     /// Additional environment variables. Layered on top of the host
     /// process env (with credential-leakage variables stripped).
     env: list<tuple<string, string>>,
-
     /// Bytes written to the child's stdin. Bounded by the host
     /// `max-stdin-bytes` ceiling and the per-rule `max-stdin-bytes`
     /// override if declared.
     stdin: option<list<u8>>,
-
     /// Wall-clock timeout in milliseconds. Bounded by the host
     /// default and the per-rule `timeout-ms-max` override if declared.
     timeout-ms: option<u32>,
-
     /// Maximum captured output bytes (sum of stdout and stderr).
     /// Bounded by the host default and per-rule `max-output-bytes`.
     max-output-bytes: option<u64>,
@@ -423,17 +510,13 @@ interface command {
     /// Process exit code. `none` means the process was killed by a
     /// signal (`signal` carries the signal name).
     exit-code: option<s32>,
-
     /// Signal name (e.g. `"TERM"`) if the process was signaled.
     signal: option<string>,
-
     /// `true` if the host fired the timeout (always paired with a
     /// non-`none` `signal`).
     timed-out: bool,
-
     /// Captured stdout bytes (up to `max-output-bytes`).
     stdout: list<u8>,
-
     /// Captured stderr bytes (up to `max-output-bytes`).
     stderr: list<u8>,
   }
@@ -443,14 +526,11 @@ interface command {
     /// No `[[permissions.command]]` rule accepted this `(binary, argv)`.
     /// The string carries diagnostic context.
     permission-denied(string),
-
     /// `Command::new(...).spawn()` failed before the child was running
     /// — binary-not-found, permission-denied at the OS layer, etc.
     spawn-failed(string),
-
     /// The configured timeout fired and the child was killed.
     timeout,
-
     /// The configured output cap was reached. The child is killed; the
     /// captured `(stdout, stderr)` bytes up to the cap are returned for
     /// debugging.
@@ -741,6 +821,13 @@ interface website-metadata {
     blocking,
   }
 
+  /// Cached metadata payload.
+  record cache-entry {
+    title: option<string>,
+    description: option<string>,
+    favicon: entry-icon,
+  }
+
   /// Result of a lookup. `pending` is only ever returned in
   /// `cached` mode — `blocking` always resolves to one of the
   /// other three variants (or an error).
@@ -749,13 +836,6 @@ interface website-metadata {
     reachable-no-data,
     unreachable,
     pending,
-  }
-
-  /// Cached metadata payload.
-  record cache-entry {
-    title: option<string>,
-    description: option<string>,
-    favicon: entry-icon,
   }
 
   variant website-metadata-error {
@@ -770,10 +850,7 @@ interface website-metadata {
 
   /// Look up metadata for a registrable domain. `domain` must be
   /// a bare host string — no scheme, path, port, or query.
-  lookup: func(
-    domain: string,
-    mode: lookup-mode,
-  ) -> result<lookup-result, website-metadata-error>;
+  lookup: func(domain: string, mode: lookup-mode) -> result<lookup-result, website-metadata-error>;
 }
 
 /// ─── The plugin world ───────────────────────────────────
@@ -785,10 +862,12 @@ world plugin {
   import settings;
   import opener;
   import http;
+  import fs;
   import assets;
   import command;
   import platform;
   import paths;
+  import types;
   import website-metadata;
 
   export lifecycle;
