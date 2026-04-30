@@ -52,6 +52,7 @@ pub mod logging;
 pub mod messaging;
 pub mod settings;
 pub mod sql;
+pub mod website_metadata;
 
 // =========================================================
 // Flat trait re-exports
@@ -92,11 +93,12 @@ pub use exports::torchsnap::plugin::search::{
 // `logging_host`.
 // =========================================================
 pub use torchsnap::plugin::{
-    assets, clipboard, frecency, http, opener, paths, platform, website_metadata,
+    assets, clipboard, frecency, http, opener, paths, platform,
 };
 pub use torchsnap::plugin::command as command_host;
 pub use torchsnap::plugin::logging as logging_host;
 pub use torchsnap::plugin::settings as settings_host;
+pub use torchsnap::plugin::website_metadata as website_metadata_host;
 
 pub mod prelude {
     //! Common glob import for plugin authors.
@@ -114,9 +116,9 @@ pub mod prelude {
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{command, logging, messaging, settings, sql};
+    pub use super::{command, logging, messaging, settings, sql, website_metadata};
     pub use super::{
-        assets, clipboard, frecency, http, opener, paths, platform, website_metadata,
+        assets, clipboard, frecency, http, opener, paths, platform, website_metadata_host,
     };
     // Macros re-exported through the prelude so a single
     // `use torchsnap_plugin_sdk::prelude::*;` is enough to
