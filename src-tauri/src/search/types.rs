@@ -62,6 +62,10 @@ pub enum ActionId {
     Reveal,
     OpenWith,
     Delete,
+    /// Jump to the originating plugin's settings panel.
+    /// Useful as the primary action on synthetic
+    /// "configuration required" entries.
+    OpenSettings,
     Custom(String),
 }
 

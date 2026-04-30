@@ -720,6 +720,22 @@ impl PluginHost {
         // regardless of whether the action succeeds.
         self.frecency.record(source, entry_id);
 
+        // `OpenSettings` is a host-managed action: regardless of which
+        // plugin emitted the entry, navigation to the settings panel is
+        // the host's responsibility, and the plugin has nothing useful
+        // to do with the action. Short-circuit before dispatching so
+        // every plugin gets the behaviour for free without each
+        // implementing the same routing.
+        if matches!(action_id, ActionId::OpenSettings) {
+            if let Err(e) = app.emit(
+                "open-plugin-settings",
+                serde_json::json!({ "pluginId": source }),
+            ) {
+                eprintln!("emit open-plugin-settings failed: {e:#}");
+            }
+            return Ok(PostAction::Dismiss);
+        }
+
         if let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == source) {
             return slot.plugin.execute(entry_id, action_id, app);
         }

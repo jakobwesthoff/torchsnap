@@ -336,9 +336,9 @@ mod tests {
     }
 
     #[test]
-    fn http_unparseable_url_returns_network_error() {
+    fn http_unparseable_url_returns_invalid_url_error() {
         let err = check_http_origin(&strs(&["https://example.com"]), "not-a-url").unwrap_err();
-        assert!(matches!(err, WasmHttpError::Network(_)));
+        assert!(matches!(err, WasmHttpError::InvalidUrl(_)));
     }
 
     #[test]
@@ -374,10 +374,10 @@ mod tests {
     }
 
     #[test]
-    fn wit_method_other_invalid_string_returns_network_error() {
+    fn wit_method_other_invalid_string_returns_other_error() {
         use bindings::torchsnap::plugin::http::HttpMethod;
         let err = wit_method_to_reqwest(HttpMethod::Other("has space".into())).unwrap_err();
-        assert!(matches!(err, WasmHttpError::Network(_)));
+        assert!(matches!(err, WasmHttpError::Other(_)));
     }
 
     // ---- WasmHttpError → HttpError conversion ---------------
@@ -390,10 +390,26 @@ mod tests {
                 WasmHttpError::PermissionDenied("origin".into()),
                 HttpError::PermissionDenied("origin".into()),
             ),
+            (
+                WasmHttpError::ConnectionRefused("connect".into()),
+                HttpError::ConnectionRefused("connect".into()),
+            ),
             (WasmHttpError::Timeout, HttpError::Timeout),
             (
-                WasmHttpError::Network("oops".into()),
-                HttpError::Network("oops".into()),
+                WasmHttpError::DnsFailed("dns".into()),
+                HttpError::DnsFailed("dns".into()),
+            ),
+            (
+                WasmHttpError::TlsFailed("tls".into()),
+                HttpError::TlsFailed("tls".into()),
+            ),
+            (
+                WasmHttpError::InvalidUrl("url".into()),
+                HttpError::InvalidUrl("url".into()),
+            ),
+            (
+                WasmHttpError::Other("other".into()),
+                HttpError::Other("other".into()),
             ),
         ];
         for (input, expected) in cases {
@@ -434,12 +450,14 @@ mod tests {
             body: None,
             timeout_ms: None,
             max_body_size: None,
+            insecure_tls: false,
         };
 
         let mut state = PluginState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
             ..PluginState::default_for_test()
         };
@@ -469,12 +487,14 @@ mod tests {
             body: Some(b"hello".to_vec()),
             timeout_ms: None,
             max_body_size: None,
+            insecure_tls: false,
         };
 
         let mut state = PluginState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
             ..PluginState::default_for_test()
         };
@@ -504,12 +524,14 @@ mod tests {
             body: None,
             timeout_ms: None,
             max_body_size: None,
+            insecure_tls: false,
         };
 
         let mut state = PluginState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
             ..PluginState::default_for_test()
         };
@@ -543,12 +565,14 @@ mod tests {
             body: None,
             timeout_ms: None,
             max_body_size: None,
+            insecure_tls: false,
         };
 
         let mut state = PluginState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
             ..PluginState::default_for_test()
         };
