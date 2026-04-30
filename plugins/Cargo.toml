@@ -23,6 +23,7 @@ members = [
     "calculator",
     "bangs",
     "emoji-picker",
+    "open-url",
     "template",
 ]
 resolver = "3"
