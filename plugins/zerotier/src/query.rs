@@ -96,7 +96,7 @@ impl NetworkRow {
 
 /// Base score per state tier. Combined additively with the
 /// per-match nucleo score.
-fn base_score(state: NetworkState) -> u32 {
+pub fn base_score_for(state: NetworkState) -> u32 {
     match state {
         NetworkState::Connected => 750,
         NetworkState::JoinedOffline(_) => 450,
@@ -168,7 +168,7 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
             }
         };
 
-        let total = base_score(row.state).saturating_add(nucleo_score);
+        let total = base_score_for(row.state).saturating_add(nucleo_score);
         out.push(ScoredMatch {
             row: row.clone(),
             score: total,
@@ -352,9 +352,9 @@ mod tests {
 
     #[test]
     fn base_scores_form_strict_descending_tiers() {
-        let connected = base_score(NetworkState::Connected);
-        let joined = base_score(NetworkState::JoinedOffline(NetworkStatus::Ok));
-        let known = base_score(NetworkState::KnownOnly);
+        let connected = base_score_for(NetworkState::Connected);
+        let joined = base_score_for(NetworkState::JoinedOffline(NetworkStatus::Ok));
+        let known = base_score_for(NetworkState::KnownOnly);
         assert!(connected > joined && joined > known);
         assert!(known > SYNTHETIC_CONNECT_SCORE);
     }
