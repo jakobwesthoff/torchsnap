@@ -475,6 +475,24 @@ fn lookup_name_hint(runtime: &Runtime, id: &str) -> String {
 struct AuthStateResponse {
     state: &'static str,
     source: &'static str,
+    /// `true` on macOS so the settings UI can show the
+    /// "Re-import from ZeroTier UI" button only on the
+    /// platform where `saved_networks.json` exists.
+    is_macos: bool,
+}
+
+#[derive(Serialize)]
+struct KnownNetwork {
+    id: String,
+    name: String,
+    last_seen: i64,
+    last_status: Option<String>,
+    /// `connected`, `joined-offline`, or `known-only`.
+    /// Resolved by joining the history row against the
+    /// cached live state — keeps the per-row status badge
+    /// consistent between the launcher results and the
+    /// settings list.
+    state: &'static str,
 }
 
 impl MessagingGuest for ZeroTierPlugin {
@@ -540,8 +558,44 @@ impl MessagingGuest for ZeroTierPlugin {
                     Some(TokenSource::ManualPaste) => "manual",
                     _ => "none",
                 };
-                serde_json::to_string(&AuthStateResponse { state, source })
-                    .map_err(|e| e.to_string())
+                let is_macos = matches!(
+                    torchsnap_plugin_sdk::platform::current_os(),
+                    Os::Macos
+                );
+                serde_json::to_string(&AuthStateResponse {
+                    state,
+                    source,
+                    is_macos,
+                })
+                .map_err(|e| e.to_string())
+            }),
+
+            "list_known" => RUNTIME.with(|cell| {
+                let runtime = cell.borrow();
+                let live = current_live_state(&runtime);
+                let known = load_known_rows();
+                let mut by_id = std::collections::HashMap::new();
+                for net in &live {
+                    by_id.insert(net.id.clone(), net);
+                }
+                let networks: Vec<KnownNetwork> = known
+                    .iter()
+                    .map(|row| {
+                        let state = match by_id.get(&row.id) {
+                            Some(net) if net.status == NetworkStatus::Ok => "connected",
+                            Some(_) => "joined-offline",
+                            None => "known-only",
+                        };
+                        KnownNetwork {
+                            id: row.id.clone(),
+                            name: row.name.clone(),
+                            last_seen: row.last_seen,
+                            last_status: row.last_status.clone(),
+                            state,
+                        }
+                    })
+                    .collect();
+                serde_json::to_string(&networks).map_err(|e| e.to_string())
             }),
 
             other => Err(format!("unknown method: {other}")),

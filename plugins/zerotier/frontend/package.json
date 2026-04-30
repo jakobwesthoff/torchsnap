@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "PLUGIN_ENTRY=launcher vite build && PLUGIN_ENTRY=settings vite build",
+    "build": "vite build",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
