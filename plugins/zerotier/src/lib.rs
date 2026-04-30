@@ -224,6 +224,17 @@ impl SearchGuest for ZeroTierPlugin {
             return Err(format!("not a network entry: {entry_id}"));
         };
 
+        // Copy is independent of the daemon, network cache,
+        // and history table — handle it before reaching for
+        // the runtime borrow so it works even when auth isn't
+        // configured (the user can still copy an id from a
+        // synthetic-Join entry, for example).
+        if matches!(action_id, ActionId::Copy) {
+            torchsnap_plugin_sdk::clipboard::write_text(&network_id)
+                .map_err(|e| format!("clipboard write: {e}"))?;
+            return Ok(PostAction::Dismiss);
+        }
+
         RUNTIME.with(|cell| -> Result<PostAction, String> {
             let mut runtime = cell.borrow_mut();
             let Some(client) = runtime.client.as_ref() else {
@@ -363,10 +374,16 @@ fn synthetic_connect_entry(id: &str) -> ScoredEntry {
         score: query::SYNTHETIC_CONNECT_SCORE,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
-        actions: vec![Action {
-            id: ActionId::Open,
-            label: "Join".to_string(),
-        }],
+        actions: vec![
+            Action {
+                id: ActionId::Open,
+                label: "Join".to_string(),
+            },
+            Action {
+                id: ActionId::Copy,
+                label: "Copy network id".to_string(),
+            },
+        ],
     }
 }
 
@@ -423,6 +440,10 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
             Action {
                 id: ActionId::Open,
                 label: primary_label.to_string(),
+            },
+            Action {
+                id: ActionId::Copy,
+                label: "Copy network id".to_string(),
             },
             Action {
                 id: ActionId::Delete,
