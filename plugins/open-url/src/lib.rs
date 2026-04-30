@@ -114,6 +114,20 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
         return None;
     }
 
+    // Reject inputs that *are* a public suffix with nothing
+    // below it. The PSL contains single-label gTLDs (`google`,
+    // `app`, `dev`, …) and multi-label suffixes (`co.uk`),
+    // and `parse_domain_name` happily accepts a query that
+    // matches one of them — so `google` and `google.` would
+    // both pass `has_known_suffix` despite having no
+    // registrable name. `root()` returns `Some` only when
+    // there is at least one label below the suffix, which is
+    // the actual signal we want for "this is a real bare
+    // domain candidate".
+    if domain_name.root().is_none() {
+        return None;
+    }
+
     Some(DetectedUrl {
         full_url: candidate,
         domain: host.to_string(),
@@ -284,6 +298,27 @@ mod tests {
     #[test]
     fn bare_domain_with_invalid_tld() {
         assert!(detect_url("hello.notarealtld").is_none());
+    }
+
+    #[test]
+    fn bare_suffix_alone_rejected() {
+        // `google` is a single-label gTLD on the PSL — the suffix
+        // matches but there is no registrable name below it.
+        assert!(detect_url("google").is_none());
+    }
+
+    #[test]
+    fn bare_suffix_with_trailing_dot_rejected() {
+        // `addr` strips the trailing dot before parsing, so this
+        // collapses to the same case as `bare_suffix_alone_rejected`.
+        assert!(detect_url("google.").is_none());
+    }
+
+    #[test]
+    fn bare_multilabel_suffix_alone_rejected() {
+        // `co.uk` is itself a public suffix; without a registrable
+        // label below it there is no real domain to open.
+        assert!(detect_url("co.uk").is_none());
     }
 
     #[test]
