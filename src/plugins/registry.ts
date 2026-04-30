@@ -84,12 +84,6 @@ registerPlugin("clipboard-manager", {
   settings: settingsComponent(() => import("./clipboard/ClipboardSettings")),
 });
 
-registerPlugin("open-url", {
-  label: "Open URL",
-  description: "Detect and open URLs typed in the search bar",
-  icon: "heroicons:globe-alt",
-});
-
 // =========================================================
 // Public API
 // =========================================================

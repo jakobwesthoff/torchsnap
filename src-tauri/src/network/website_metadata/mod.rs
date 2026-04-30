@@ -8,14 +8,17 @@
 // Host-level shared service that fetches, caches, and serves
 // website metadata (title, description, favicon) to plugins.
 //
-// Two access patterns:
+// Two access modes via `lookup(domain, mode)`:
 //
-// - `get(domain)` — synchronous, blocks until fetched or failed.
-//   Used by plugins where the user expects a brief wait (open-url).
+// - `LookupMode::Blocking` — waits until the host has an
+//   answer (cache hit, fresh fetch, or coalesced in-flight
+//   request). Used where the result gates result existence
+//   or rendering decisions for the current cycle.
 //
-// - `try_cached(domain)` — returns cached data instantly or
-//   triggers a background fetch. Used by plugins where blocking
-//   is unacceptable (bangs, catalog entries).
+// - `LookupMode::Cached` — returns cached data instantly,
+//   or `Pending` after scheduling a background fetch. Used
+//   on hot paths like per-keystroke search where a network
+//   round-trip is unacceptable.
 //
 // Favicon images are stored as files via `FaviconStore` (rasters
 // converted to WebP, SVGs stored as-is). Page metadata is cached

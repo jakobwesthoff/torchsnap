@@ -708,13 +708,6 @@ pub fn run() {
             );
             metadata_service.start_retention();
 
-            host.register(
-                Box::new(plugins::open_url::OpenUrlPlugin::new(Arc::clone(
-                    &metadata_service,
-                ))),
-                wasm::source::PluginSourceKind::Builtin,
-            );
-
             // =========================================================
             // Logging system
             //

@@ -1,0 +1,15 @@
+[package]
+name = "open-url-plugin"
+version = "0.1.0"
+edition = "2024"
+
+# This crate targets wasm32-wasip2 and is built with
+# `cargo build --target wasm32-wasip2`, not the host target.
+
+[dependencies]
+torchsnap-plugin-sdk = { path = "../plugin-sdk" }
+url = "2"
+addr = "0.15"
+
+[lib]
+crate-type = ["cdylib"]

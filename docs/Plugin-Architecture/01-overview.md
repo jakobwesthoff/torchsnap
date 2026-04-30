@@ -60,8 +60,6 @@ uncommon but supported; the host collects results from both paths.
 | `BuiltInCommandsPlugin` | Catalog |
 | `EmojiPickerPlugin` | Query |
 | `CalculatorPlugin` | Query (prefix `"="`) |
-| `BangsPlugin` | Query |
-| `OpenUrlPlugin` | Query |
 | `WasmPluginBridge` | Query (delegates to WASM guest) |
 
 ## Lifecycle

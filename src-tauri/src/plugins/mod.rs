@@ -22,7 +22,6 @@
 pub mod app_launcher;
 pub mod clipboard;
 pub mod commands;
-pub mod open_url;
 pub mod system_commands;
 pub mod system_preferences;
 
