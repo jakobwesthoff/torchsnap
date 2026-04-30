@@ -237,6 +237,92 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 }
 
 // =========================================================
+// Plugin-relative AssetIcon resolution
+//
+// `EntryIcon::AssetIcon` carries a path that the frontend
+// hands to `convertFileSrc`. Host-emitted icons (e.g. cached
+// favicons from the website-metadata service) carry absolute
+// filesystem paths and work as-is. Plugin-emitted icons can
+// only sensibly carry plugin-relative paths (`assets/icon.svg`)
+// — the plugin has no way to learn the host-side absolute
+// archive path, and the manifest validator already rejects
+// absolute paths in any plugin path field.
+//
+// We rewrite plugin-emitted relative paths to fully-qualified
+// `torchsnap-plugin://localhost/<plugin-id>/<path>` URLs so
+// they hit the existing `torchsnap-plugin` URI scheme handler
+// (`wasm/protocol.rs`) which already serves any file from any
+// plugin's archive with proper content-type detection. The
+// frontend `Icon` component recognises fully-qualified URLs
+// and bypasses `convertFileSrc` for them.
+//
+// Discrimination between "plugin-relative" and "leave alone"
+// is conservative: any path containing `://` is treated as a
+// fully-qualified URL, any path beginning with `/` or matching
+// the Windows drive-letter shape is treated as absolute, and
+// the rest is rewritten.
+// =========================================================
+
+/// Rewrite plugin-relative `AssetIcon` paths in a search result
+/// payload. Called by the bridge after `instance.search()` returns,
+/// once per plugin invocation.
+pub fn resolve_search_response_asset_icons(
+    response: &mut native::PluginResponse,
+    plugin_id: &str,
+) {
+    let entries = match response {
+        native::PluginResponse::Results(r) => r.as_mut_slice(),
+        native::PluginResponse::CustomUI { results, .. } => results.as_mut_slice(),
+        native::PluginResponse::InlineUI { results, .. } => results.as_mut_slice(),
+    };
+    for entry in entries {
+        if let Some(icon) = entry.icon.as_mut() {
+            resolve_asset_icon(icon, plugin_id);
+        }
+    }
+}
+
+/// Rewrite plugin-relative `AssetIcon` paths in catalog entries.
+/// Called by the bridge after `instance.entries()` returns, once
+/// per plugin enable cycle.
+pub fn resolve_catalog_entries_asset_icons(
+    entries: &mut [native::CatalogEntry],
+    plugin_id: &str,
+) {
+    for entry in entries {
+        if let Some(icon) = entry.icon.as_mut() {
+            resolve_asset_icon(icon, plugin_id);
+        }
+    }
+}
+
+fn resolve_asset_icon(icon: &mut native::EntryIcon, plugin_id: &str) {
+    let native::EntryIcon::AssetIcon(path) = icon else {
+        return;
+    };
+    // Fully-qualified URL — host-emitted (e.g. cached favicon) or
+    // plugin already supplied one explicitly. Pass through.
+    if path.contains("://") {
+        return;
+    }
+    // Absolute Unix path — host-emitted, pass through.
+    if path.starts_with('/') {
+        return;
+    }
+    // Absolute Windows path (`C:\…` or `C:/…`) — same treatment.
+    let bytes = path.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return;
+    }
+    // Plugin-relative path: rewrite to the protocol URL.
+    *path = format!("torchsnap-plugin://localhost/{plugin_id}/{path}");
+}
+
+// =========================================================
 // Tests
 // =========================================================
 
@@ -399,5 +485,64 @@ mod tests {
     fn parse_optional_json_malformed() {
         let result = parse_optional_json(Some("broken".to_string()));
         assert!(result.is_none());
+    }
+
+    // =====================================================
+    // resolve_asset_icon
+    // =====================================================
+
+    #[test]
+    fn relative_asset_path_is_rewritten_to_protocol_url() {
+        let mut icon = native::EntryIcon::AssetIcon("assets/icon.svg".into());
+        resolve_asset_icon(&mut icon, "zerotier");
+        match icon {
+            native::EntryIcon::AssetIcon(p) => {
+                assert_eq!(p, "torchsnap-plugin://localhost/zerotier/assets/icon.svg");
+            }
+            other => panic!("expected AssetIcon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absolute_unix_path_passes_through() {
+        let mut icon = native::EntryIcon::AssetIcon("/var/cache/favicon.png".into());
+        resolve_asset_icon(&mut icon, "any-plugin");
+        match icon {
+            native::EntryIcon::AssetIcon(p) => assert_eq!(p, "/var/cache/favicon.png"),
+            other => panic!("expected AssetIcon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absolute_windows_path_passes_through() {
+        let mut icon = native::EntryIcon::AssetIcon("C:\\cache\\fav.png".into());
+        resolve_asset_icon(&mut icon, "any-plugin");
+        match icon {
+            native::EntryIcon::AssetIcon(p) => assert_eq!(p, "C:\\cache\\fav.png"),
+            other => panic!("expected AssetIcon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn already_qualified_url_passes_through() {
+        // Defensive: if a plugin or host import ever produces a
+        // fully-qualified URL directly, we must not double-rewrite.
+        let mut icon = native::EntryIcon::AssetIcon(
+            "torchsnap-plugin://localhost/foo/bar.svg".into(),
+        );
+        resolve_asset_icon(&mut icon, "zerotier");
+        match icon {
+            native::EntryIcon::AssetIcon(p) => {
+                assert_eq!(p, "torchsnap-plugin://localhost/foo/bar.svg");
+            }
+            other => panic!("expected AssetIcon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn non_asset_icon_variants_are_untouched() {
+        let mut icon = native::EntryIcon::HeroIcon("globe-alt".into());
+        resolve_asset_icon(&mut icon, "zerotier");
+        assert!(matches!(&icon, native::EntryIcon::HeroIcon(s) if s == "globe-alt"));
     }
 }

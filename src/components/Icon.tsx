@@ -11,8 +11,11 @@
  *   e.g. `"heroicons:cog-6-tooth"`)
  * - `emoji:<character>` — renders the emoji character as text
  * - `data:<url>` — data URL rendered as an `<img>`
- * - `asset:<path>` — filesystem asset rendered via Tauri's
- *   `convertFileSrc`
+ * - `asset:<path-or-url>` — either an absolute filesystem
+ *   path (run through Tauri's `convertFileSrc`) or a fully-
+ *   qualified URL such as `torchsnap-plugin://...` produced
+ *   by the WASM bridge for plugin-relative `AssetIcon`s; URLs
+ *   are passed through to `<img src>` directly.
  *
  * Sizing and color are controlled via `className` — the component
  * renders no wrapper div, just the icon element itself.
@@ -67,10 +70,15 @@ export function Icon({ icon, className }: IconProps) {
     return <img src={icon} alt="" className={className} draggable={false} />;
   }
 
-  // asset:<path> (filesystem path via Tauri convertFileSrc)
+  // asset:<path-or-url>
+  // Fully-qualified URLs (e.g. `torchsnap-plugin://...` produced
+  // by the WASM bridge for plugin-relative AssetIcons) bypass
+  // `convertFileSrc` — they're already resolvable as `<img src>`.
+  // Bare filesystem paths still go through Tauri's asset protocol.
   if (icon.startsWith("asset:")) {
-    const path = icon.slice("asset:".length);
-    return <img src={convertFileSrc(path)} alt="" className={className} draggable={false} />;
+    const value = icon.slice("asset:".length);
+    const src = value.includes("://") ? value : convertFileSrc(value);
+    return <img src={src} alt="" className={className} draggable={false} />;
   }
 
   // Fallback: treat as unknown, render default icon
