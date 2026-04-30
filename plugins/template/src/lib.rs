@@ -255,7 +255,7 @@ impl SearchGuest for TemplatePlugin {
 // =========================================================
 // Snippet: website-metadata host import
 //
-// Reference example for plugins that surface websites in
+// Reference examples for plugins that surface websites in
 // their results. Not wired into this template's runtime
 // search path — copy into your `search()` body when you
 // want enriched URL entries.
@@ -267,39 +267,54 @@ impl SearchGuest for TemplatePlugin {
 // website-metadata = true
 // ```
 //
-// Without that flag every `lookup` call returns
-// `permission-denied` — the host enforces the gate before
-// touching the cache.
+// Without that flag every lookup logs an error and falls
+// back to the supplied default — the host enforces the gate
+// before touching the cache.
 //
 // `entry-icon` is the same Rust type whether it comes from
-// `website_metadata::lookup` or appears on a `ScoredEntry`,
-// so the favicon plugs straight into a result with no
-// conversion.
+// `website_metadata::Metadata::Found` or appears on a
+// `ScoredEntry`, so the favicon plugs straight into a result
+// with no conversion.
+//
+// Two demos below: `favicon_or` covers the one-line
+// "give me a favicon or this fallback" case, and
+// `website_metadata_demo` shows the full `Metadata` match
+// for plugins that also want title/description. The raw
+// WIT bindings remain available under `website_metadata_host`
+// when a plugin needs to distinguish `ReachableNoData` from
+// `Unreachable` or surface the underlying error string.
 // =========================================================
+
+/// Cache-first favicon-or-fallback — the canonical idiom for a
+/// per-keystroke search loop.
+#[allow(dead_code)]
+fn website_metadata_favicon_demo(domain: &str) -> EntryIcon {
+    website_metadata::favicon_or(domain, EntryIcon::HeroIcon("globe-alt".into()))
+}
+
+/// Title- and favicon-rich metadata lookup using the wrapper's
+/// flattened `Metadata` enum.
+///
+/// Uses [`website_metadata::lookup_cached`] so the call never
+/// blocks the search loop. On a cold cache `Pending` is
+/// treated the same as "no data yet" — the result is suppressed
+/// for this render, and the next keystroke will see the
+/// populated cache. Plugins that genuinely need to wait for the
+/// fetch should swap in [`website_metadata::lookup_blocking`].
 #[allow(dead_code)]
 fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
-    use website_metadata::{lookup, LookupMode, LookupResult};
+    use website_metadata::Metadata;
 
-    // `Blocking` waits for the cache or network and is appropriate
-    // for `search()` calls where the result decides what to render
-    // this cycle. For latency-sensitive paths (catalog scans,
-    // per-keystroke enrichment), pass `LookupMode::Cached` and
-    // handle `Pending` by skipping the entry — it'll be ready on
-    // the next render.
-    let result = lookup(domain, LookupMode::Blocking).ok()?;
-
-    let (title, icon) = match result {
-        LookupResult::Hit(meta) => {
-            let title = meta.title.unwrap_or_else(|| domain.to_string());
-            (title, meta.favicon)
+    let (title, icon) = match website_metadata::lookup_cached(domain) {
+        Metadata::Found(entry) => {
+            let title = entry.title.unwrap_or_else(|| domain.to_string());
+            (title, entry.favicon)
         }
-        LookupResult::ReachableNoData => {
-            (domain.to_string(), EntryIcon::HeroIcon("globe-alt".into()))
-        }
-        // The host couldn't reach the domain — suppress the entry.
-        LookupResult::Unreachable => return None,
-        // `Blocking` mode never returns `Pending`.
-        LookupResult::Pending => return None,
+        // No cached data yet (cold cache, no metadata, unreachable,
+        // or denied permission) — suppress the entry rather than
+        // showing a placeholder. `lookup_cached` has already
+        // scheduled the background fetch if one is warranted.
+        Metadata::Empty | Metadata::Pending => return None,
     };
 
     Some(ScoredEntry {
