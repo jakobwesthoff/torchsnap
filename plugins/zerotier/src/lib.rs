@@ -23,6 +23,7 @@ use torchsnap_plugin_sdk::prelude::*;
 
 mod api;
 mod auth;
+mod cache;
 mod history;
 
 struct ZeroTierPlugin;
