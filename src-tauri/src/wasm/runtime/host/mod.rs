@@ -21,6 +21,7 @@ pub mod assets;
 pub mod clipboard;
 pub mod command;
 pub mod frecency;
+pub mod fs;
 pub mod http;
 pub mod logging;
 pub mod opener;

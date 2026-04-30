@@ -34,6 +34,7 @@ use crate::wasm::source::PluginSource;
 
 use super::host::clipboard::ClipboardState;
 use super::host::command::CommandState;
+use super::host::fs::FsState;
 use super::host::http::HttpState;
 use super::host::opener::OpenerState;
 use super::host::sql::SqlState;
@@ -85,6 +86,7 @@ pub struct PluginState {
     pub(crate) clipboard: ClipboardState,
     pub(crate) opener: OpenerState,
     pub(crate) http: HttpState,
+    pub(crate) fs: FsState,
     pub(crate) command: CommandState,
     pub(crate) website_metadata: WebsiteMetadataState,
 }
@@ -115,6 +117,7 @@ impl PluginState {
             clipboard: ClipboardState::default(),
             opener: OpenerState::default(),
             http: HttpState::default(),
+            fs: FsState::default(),
             command: CommandState::default(),
             website_metadata: WebsiteMetadataState::default(),
         }
