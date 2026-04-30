@@ -346,17 +346,18 @@ fn network_icon() -> EntryIcon {
     EntryIcon::AssetIcon("assets/icon.svg".into())
 }
 
-// The verb leads the title so a column of result entries reads
-// as a column of actions ("Disconnect …", "Connect to …",
-// "Join …") instead of a column of identical-looking network
-// names with the action context buried in the subtitle.
-const PREFIX_DISCONNECT: &str = "Disconnect ZeroTier Network: ";
-const PREFIX_CONNECT: &str = "Connect to ZeroTier Network: ";
+// Title shape: `<network-name> · <ZeroTier action>`. The name
+// leads so fuzzy-match highlights stay at the start and the
+// network identity is what the user scans for; the action
+// suffix disambiguates rows of the same name in different
+// states (Connected vs. Stored).
+const SUFFIX_DISCONNECT: &str = " · Disconnect ZeroTier Network";
+const SUFFIX_CONNECT: &str = " · Connect to ZeroTier Network";
 
 fn synthetic_connect_entry(id: &str) -> ScoredEntry {
     ScoredEntry {
         id: query::entry_id(id),
-        title: format!("Join ZeroTier Network: {id}"),
+        title: format!("{id} · Join ZeroTier Network"),
         subtitle: Some("Not yet known — will join on activation".to_string()),
         icon: Some(network_icon()),
         score: query::SYNTHETIC_CONNECT_SCORE,
@@ -371,7 +372,7 @@ fn synthetic_connect_entry(id: &str) -> ScoredEntry {
 
 fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
     let row = &m.row;
-    let (subtitle, primary_label, prefix) = match row.state {
+    let (subtitle, primary_label, suffix) = match row.state {
         NetworkState::Connected => {
             let addrs = row.assigned_addresses.join(", ");
             let subtitle = if addrs.is_empty() {
@@ -379,7 +380,7 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
             } else {
                 format!("Connected · {addrs}")
             };
-            (subtitle, "Disconnect", PREFIX_DISCONNECT)
+            (subtitle, "Disconnect", SUFFIX_DISCONNECT)
         }
         NetworkState::JoinedOffline(status) => {
             let badge = match status {
@@ -391,34 +392,28 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
                 NetworkStatus::Unknown => "Unknown status",
                 NetworkStatus::Ok => "Connected",
             };
-            (badge.to_string(), "Disconnect", PREFIX_DISCONNECT)
+            (badge.to_string(), "Disconnect", SUFFIX_DISCONNECT)
         }
-        NetworkState::KnownOnly => ("Stored".to_string(), "Connect", PREFIX_CONNECT),
+        NetworkState::KnownOnly => ("Stored".to_string(), "Connect", SUFFIX_CONNECT),
     };
 
-    // Anonymous networks (no name set in Central) substitute
-    // the id so the title never renders with a trailing colon
-    // and a void after it.
+    // Anonymous networks (no name set in Central, or first
+    // sighting before the daemon fetched config) substitute
+    // the id so the title never renders with a leading
+    // separator and a void before it.
     let display_name: &str = if row.name.is_empty() {
         &row.id
     } else {
         &row.name
     };
 
-    // Highlight offsets came from matching against `row.name`.
-    // Hoisting a fixed prefix into the title means the indices
-    // need to shift by the prefix's length in UTF-16 code units —
-    // the same unit `title-highlight-positions` carries.
-    let prefix_offset = prefix.encode_utf16().count() as u32;
-    let title_highlight_positions: Vec<u32> = m
-        .title_highlight_positions
-        .iter()
-        .map(|p| p + prefix_offset)
-        .collect();
+    // Highlights came from matching `row.name`, which now
+    // sits at the head of the title — no offset shift needed.
+    let title_highlight_positions = m.title_highlight_positions.clone();
 
     ScoredEntry {
         id: query::entry_id(&row.id),
-        title: format!("{prefix}{display_name}"),
+        title: format!("{display_name}{suffix}"),
         subtitle: Some(format!("{} · {}", subtitle, row.id)),
         icon: Some(network_icon()),
         score: m.score,
@@ -446,10 +441,25 @@ fn current_live_state(runtime: &Runtime) -> Vec<Network> {
         return Vec::new();
     };
     let client = client.clone();
+    // The closure runs only on cache miss (TTL = 1s), so the
+    // SQL upserts below fire at most once per second per
+    // session — not per keystroke. `upsert_observed` itself
+    // preserves any previously-captured name when the current
+    // observation has no name yet, so calling it on every
+    // observation is safe: it captures the name on whatever
+    // refresh first carries one.
     let result = runtime.network_cache.get_or_fetch(move || {
-        client
+        let outcome = client
             .list_networks()
-            .map_err(|e| format!("list_networks: {e}"))
+            .map_err(|e| format!("list_networks: {e}"));
+        if let Ok(nets) = &outcome {
+            let db = history::connection();
+            let now = now_ms();
+            for net in nets {
+                let _ = history::upsert_observed(&db, net, now);
+            }
+        }
+        outcome
     });
     result.unwrap_or_default()
 }

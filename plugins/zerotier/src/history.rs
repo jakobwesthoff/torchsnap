@@ -42,12 +42,23 @@ pub fn upsert_observed(db: &SqlHandle, net: &Network, now_ms: i64) -> Result<(),
     // `INSERT ... ON CONFLICT(id) DO UPDATE` keeps `first_seen`
     // pinned to the original timestamp and rolls forward only
     // the live-state columns.
+    // The `CASE` on `name` preserves a previously-captured
+    // name when the current observation carries an empty one
+    // (typical right after a first-time Connect, when the
+    // daemon is still in `RequestingConfiguration` and hasn't
+    // pulled the network's config from the controller yet).
+    // Without it, every empty-name observation would erase a
+    // name we'd already learned, forcing the user back to
+    // searching by id.
     db.execute(
         "INSERT INTO networks
          (id, name, first_seen, last_seen, last_status, last_snapshot)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-             name          = excluded.name,
+             name          = CASE WHEN excluded.name = ''
+                                  THEN name
+                                  ELSE excluded.name
+                             END,
              last_seen     = excluded.last_seen,
              last_status   = excluded.last_status,
              last_snapshot = excluded.last_snapshot",
