@@ -119,6 +119,21 @@ pub(crate) fn compile_fs_patterns(
             anyhow::anyhow!("`[permissions.fs]` pattern `{pattern}` substitution failed: {e}")
         })?;
 
+        // Reject unsupported glob shapes against the
+        // post-substitution form so the check sees the actual
+        // characters the GlobSet would compile, with no
+        // `${...}` tokens to work around.
+        if let Some(ch) = substituted
+            .chars()
+            .find(|c| matches!(c, '?' | '[' | ']' | '{' | '}'))
+        {
+            anyhow::bail!(
+                "`[permissions.fs]` pattern `{pattern}` uses unsupported glob \
+                 metacharacter `{ch}`; only `*` (single segment) and `**` \
+                 (multi-segment) are accepted"
+            );
+        }
+
         let canonical = canonicalize_pattern(&substituted);
         let glob = GlobBuilder::new(&canonical)
             .literal_separator(true)
@@ -484,6 +499,40 @@ mod tests {
         let ctx = ctx_for(&tmp);
         let err = compile_fs_patterns(&["${nope}/x".into()], &ctx).expect_err("should fail");
         assert!(err.to_string().contains("substitution failed"));
+    }
+
+    #[test]
+    fn compile_fs_patterns_rejects_unsupported_glob_metacharacter() {
+        // Brace alternation, `?`, and character classes are
+        // not part of the supported glob surface — only `*`
+        // and `**`. The check runs after substitution so a
+        // legitimate `${xdg-config}` token never trips it.
+        let tmp = TempDir::new().expect("tempdir");
+        let ctx = ctx_for(&tmp);
+        for pattern in ["/etc/{a,b}.conf", "/etc/h?st", "/etc/[abc].conf"] {
+            let err = compile_fs_patterns(&[pattern.into()], &ctx)
+                .expect_err(&format!("expected rejection for `{pattern}`"));
+            assert!(
+                err.to_string().contains("unsupported glob metacharacter"),
+                "pattern `{pattern}`: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn compile_fs_patterns_accepts_substitution_token_braces() {
+        // Regression: a `${xdg-config}` token must not trip
+        // the metacharacter check — the braces there belong
+        // to the substitution syntax, and after substitution
+        // they're gone entirely.
+        let tmp = TempDir::new().expect("tempdir");
+        let ctx = ctx_for(&tmp);
+        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg-config");
+        compile_fs_patterns(
+            &["${xdg-config}/ZeroTier/One/authtoken.secret".into()],
+            &ctx,
+        )
+        .expect("compile should succeed for substitution-only pattern");
     }
 
     // ─── resolve_request ───────────────────────────────────
