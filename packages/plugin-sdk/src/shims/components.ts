@@ -61,6 +61,26 @@ export interface EntryProps {
   children: ReactNode;
 }
 
+export interface ListAction {
+  label: string;
+  onClick: () => void;
+  variant?: "default" | "danger";
+  disabled?: boolean;
+}
+
+export interface ListItem {
+  key: string;
+  primary: ReactNode;
+  secondary?: ReactNode;
+  actions?: ListAction[];
+}
+
+export interface ListProps {
+  items: ListItem[];
+  emptyState?: ReactNode;
+  className?: string;
+}
+
 // ---------------------------------------------------------
 // Ambient global
 // ---------------------------------------------------------
@@ -75,6 +95,7 @@ declare global {
       Slider: ComponentType<SliderProps>;
       Section: ComponentType<SectionProps>;
       Entry: ComponentType<EntryProps>;
+      List: ComponentType<ListProps>;
     };
   }
 }
@@ -106,3 +127,5 @@ export const Section: ComponentType<SectionProps> = (props) =>
   createElement(hostComponents().Section, props);
 export const Entry: ComponentType<EntryProps> = (props) =>
   createElement(hostComponents().Entry, props);
+export const List: ComponentType<ListProps> = (props) =>
+  createElement(hostComponents().List, props);
