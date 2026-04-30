@@ -185,6 +185,25 @@ pub fn fetch_favicon_image(http: &Http, favicon_url: &str) -> Result<FaviconImag
 
     let bytes = response.bytes().map_err(FetchError::Http)?;
 
+    // Defence in depth: detect compressed payloads that slipped past
+    // the HTTP layer. The reqwest client is configured to decode
+    // `Content-Encoding: gzip|br|deflate|zstd` transparently, but a
+    // misconfigured CDN can still hand us a compressed body without
+    // advertising it (or with a stale cache header), in which case
+    // the bytes would land on disk under an `image/*` extension and
+    // render as a broken image. Reject loudly so the regression is
+    // visible instead of being silently cached.
+    if let Some(encoding) = looks_compressed(&bytes) {
+        eprintln!(
+            "favicon at {favicon_url} looks {encoding}-compressed \
+             (server content-type: {server_content_type:?}); \
+             rejecting to avoid caching unreadable bytes"
+        );
+        return Err(FetchError::NotImage {
+            content_type: server_content_type,
+        });
+    }
+
     // Strategy 1: Trust the server if it explicitly declares an image type.
     if server_content_type.starts_with("image/") {
         return Ok(FaviconImageData {
@@ -218,4 +237,49 @@ pub fn fetch_favicon_image(http: &Http, favicon_url: &str) -> Result<FaviconImag
     Err(FetchError::NotImage {
         content_type: server_content_type,
     })
+}
+
+/// Detect whether `bytes` start with a known compressed-stream magic
+/// number. Returns the encoding name when matched.
+///
+/// Brotli is intentionally absent — it has no fixed magic prefix and
+/// can't be reliably distinguished from arbitrary binary input. Relying
+/// on the `brotli` reqwest feature for transparent decoding is the only
+/// option there.
+fn looks_compressed(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        Some("gzip")
+    } else if bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
+        Some("zstd")
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn looks_compressed_detects_gzip_magic() {
+        assert_eq!(looks_compressed(&[0x1f, 0x8b, 0x08, 0x00]), Some("gzip"));
+    }
+
+    #[test]
+    fn looks_compressed_detects_zstd_magic() {
+        assert_eq!(
+            looks_compressed(&[0x28, 0xb5, 0x2f, 0xfd, 0x00]),
+            Some("zstd")
+        );
+    }
+
+    #[test]
+    fn looks_compressed_passes_through_real_image_bytes() {
+        // PNG signature
+        assert_eq!(looks_compressed(&[0x89, b'P', b'N', b'G']), None);
+        // SVG ASCII prefix
+        assert_eq!(looks_compressed(b"<svg "), None);
+        // Empty body
+        assert_eq!(looks_compressed(&[]), None);
+    }
 }
