@@ -559,6 +559,7 @@ fn try_import_from_network(db: &SqlHandle) -> Result<(), String> {
         // API responses, so we override both here.
         timeout_ms: Some(30_000),
         max_body_size: Some(10 * 1024 * 1024),
+        insecure_tls: false,
     };
 
     let response = http::fetch(&request).map_err(|e| format!("fetch bang.js: {e:?}"))?;

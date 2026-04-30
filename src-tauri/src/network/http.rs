@@ -79,6 +79,7 @@ impl Http {
             timeout: DEFAULT_TIMEOUT,
             max_size: DEFAULT_MAX_SIZE,
             user_agent: DEFAULT_USER_AGENT.to_string(),
+            accept_invalid_certs: false,
         }
     }
 
@@ -127,6 +128,7 @@ pub struct HttpBuilder {
     timeout: Duration,
     max_size: u64,
     user_agent: String,
+    accept_invalid_certs: bool,
 }
 
 impl HttpBuilder {
@@ -151,11 +153,22 @@ impl HttpBuilder {
         self
     }
 
+    /// Disable TLS certificate verification on the underlying
+    /// reqwest client. Used to construct a parallel "insecure"
+    /// client for plugins that need to talk to local daemons
+    /// shipped with self-signed certificates (e.g. Docker over
+    /// TLS, k3s API server).
+    pub fn accept_invalid_certs(mut self, accept: bool) -> Self {
+        self.accept_invalid_certs = accept;
+        self
+    }
+
     /// Build the `Http` client. Fails if the underlying reqwest
     /// client cannot be constructed (e.g. invalid TLS config).
     pub fn build(self) -> Result<Http> {
         let client = reqwest::Client::builder()
             .user_agent(&self.user_agent)
+            .danger_accept_invalid_certs(self.accept_invalid_certs)
             .build()
             .context("build HTTP client")?;
 

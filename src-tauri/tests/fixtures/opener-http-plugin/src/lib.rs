@@ -79,6 +79,7 @@ impl MessagingGuest for OpenerHttpPlugin {
                     body: None,
                     timeout_ms: None,
                     max_body_size: None,
+                    insecure_tls: false,
                 };
                 let resp = fetch(&request).map_err(|e| format!("{e:?}"))?;
                 Ok(format!("status:{}", resp.status))

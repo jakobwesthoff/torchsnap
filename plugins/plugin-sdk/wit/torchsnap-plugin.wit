@@ -268,6 +268,10 @@ interface http {
   ///
   /// `timeout-ms: none` delegates to the host default. `max-body-size: none`
   /// delegates to the host default (guards against unbounded downloads).
+  /// `insecure-tls: true` disables TLS certificate verification for the
+  /// request — required for talking to local daemons that ship a
+  /// self-signed certificate (Docker over TLS, k3s, ...). The origin
+  /// allowlist still gates which endpoint the plugin can reach.
   record http-request {
     url: string,
     method: http-method,
@@ -275,25 +279,44 @@ interface http {
     body: option<list<u8>>,
     timeout-ms: option<u32>,
     max-body-size: option<u64>,
+    insecure-tls: bool,
   }
 
-  /// The HTTP response returned to a WASM plugin.
+  /// The HTTP response returned to a WASM plugin. Status `100`–`599`
+  /// is a successful round-trip — `4xx` and `5xx` are application-level
+  /// outcomes, not errors. `http-error` covers only cases where no HTTP
+  /// response was produced.
   record http-response {
     status: u16,
     headers: list<tuple<string, string>>,
     body: list<u8>,
   }
 
-  /// Error variants for `fetch`. There are exactly three categories;
-  /// any real transport failure fits `network`.
+  /// Transport-level errors for `fetch`. Each variant covers a single
+  /// category so plugins can produce precise UX (e.g. distinguishing
+  /// "daemon not running" from "auth failure" without string-matching).
   variant http-error {
-    /// The request URL's origin is not in the plugin's declared allowlist.
+    /// The request URL's origin is not in the plugin's declared
+    /// allowlist. Message is the rejected origin.
     permission-denied(string),
-    /// A connection-level failure: DNS, TLS, refused connection, invalid
-    /// method string, or any other transport error.
-    network(string),
+    /// TCP / Unix-socket connect failed before any HTTP exchange —
+    /// daemon not listening, port closed. Message is the underlying
+    /// OS-level diagnostic.
+    connection-refused(string),
     /// The request exceeded the configured or host-default timeout.
     timeout,
+    /// DNS resolution failed for the request URL's host.
+    dns-failed(string),
+    /// TLS handshake / certificate validation failed. Set
+    /// `insecure-tls: true` on the request to bypass certificate
+    /// validation when talking to a self-signed local endpoint.
+    tls-failed(string),
+    /// The URL string did not parse, or the HTTP method string was
+    /// rejected before the request was sent.
+    invalid-url(string),
+    /// A transport-level failure that doesn't fit the categories
+    /// above. Message captures the underlying diagnostic.
+    other(string),
   }
 
   /// Execute an HTTP request and return the full response. The call blocks
@@ -646,12 +669,19 @@ interface types {
   /// Well-known action identifiers. Plugins use these for
   /// standard actions so the host can assign default keybindings
   /// and icons. Use `custom` for plugin-specific actions.
+  ///
+  /// `open-settings` jumps to the originating plugin's own
+  /// settings panel — useful as a primary action on synthetic
+  /// "configuration required" entries (e.g. "API token missing —
+  /// configure plugin"). The host routes the action to the
+  /// settings page scoped to the plugin id that returned the entry.
   variant action-id {
     open,
     copy,
     reveal,
     open-with,
     delete,
+    open-settings,
     custom(string),
   }
 

@@ -110,6 +110,7 @@ impl From<wit::ActionId> for native::ActionId {
             wit::ActionId::Reveal => native::ActionId::Reveal,
             wit::ActionId::OpenWith => native::ActionId::OpenWith,
             wit::ActionId::Delete => native::ActionId::Delete,
+            wit::ActionId::OpenSettings => native::ActionId::OpenSettings,
             wit::ActionId::Custom(s) => native::ActionId::Custom(s),
         }
     }
@@ -123,6 +124,7 @@ impl From<native::ActionId> for wit::ActionId {
             native::ActionId::Reveal => wit::ActionId::Reveal,
             native::ActionId::OpenWith => wit::ActionId::OpenWith,
             native::ActionId::Delete => wit::ActionId::Delete,
+            native::ActionId::OpenSettings => wit::ActionId::OpenSettings,
             native::ActionId::Custom(s) => wit::ActionId::Custom(s),
         }
     }
