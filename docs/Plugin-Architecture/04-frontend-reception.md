@@ -1,177 +1,347 @@
 # Frontend Reception and Rendering
 
-## useSearch Hook
+How plugin output reaches the launcher webview, gets merged into the
+result list, and is rendered as either standard rows, an inline
+component above the list, or a full plugin-claimed view.
 
-`src/launcher/hooks/useSearch.ts`
+## Streaming results — `useSearch`
 
-### Channel Management
+`src/launcher/hooks/useSearch.ts`.
 
-Each query change creates a new `Channel<SearchMessage>`. The previous
-channel's `onmessage` is set to a no-op for cleanup. Messages are processed
-via the channel callback.
+Each query change opens a fresh `Channel<SearchMessage>` (Tauri's
+typed channel API) and invokes the `search` command with it. The
+backend pushes one `searchResults` message per source — the catalog
+layer plus every query plugin — and a final `done` message. The
+channel mirrors the `SearchMessage` union from `src/types.ts`, which
+itself mirrors `src-tauri/src/search/mod.rs`.
 
-### Generation Tracking
+### Per-source accumulator
 
-A `generationRef` counter increments on each effect run. Every incoming message
-checks `generationRef.current !== generation` and discards stale messages from
-superseded queries.
+Entries are kept in a `Map<sourceKey, SourcedEntry[]>` ref, keyed via
+`resultSourceKey(message.source)`:
 
-A separate `viewRefGenerationRef` records which generation last wrote view
-refs. This ref is currently **written but never read** — it appears to be
-vestigial infrastructure from an earlier design.
+- `catalog` for the aggregated catalog layer (one batch covering all
+  catalog-providing plugins),
+- `plugin:<id>` for each query plugin.
 
-### View Ref Update Logic
+Every incoming `searchResults` replaces that source's batch
+wholesale. An empty batch evicts the source's entry from the Map —
+that is how a plugin transitioning from results to empty (e.g.
+`bangs` losing its trigger mid-query) disappears atomically without
+explicit clear messages.
 
-The first message of a new generation unconditionally overwrites both
-`customPluginView` and `inlinePluginView` (even if null). This handles
-prefix-to-non-prefix transitions cleanly. Subsequent messages within the same
-generation use "first non-null wins" semantics, so catalog results (which
-carry null view refs) don't clobber a pending inline view from a query plugin.
+After each message the displayed list is rebuilt by flattening every
+batch and re-sorting via `compareEntries`. The hook acknowledges this
+is `O(n log n)` per message and notes a k-way merge as the obvious
+optimisation if profiling shows it.
 
-### Incremental Merge
+### Generation gate
 
-Incoming `ScoredEntry` arrays are merged into an accumulator via
-`sortedMerge()` using binary-search insertion. This relies on both the backend
-and frontend sharing the same sort comparator.
+A `generationRef` counter increments on every `useEffect` run.
+Channel callbacks check `generationRef.current !== generation` and
+discard messages from superseded queries. The previous channel's
+`onmessage` is also reset to a no-op on cleanup.
 
-### Query Change Synchronization
+### View ref handling
 
-Uses a `prevQuery` / `setPrevQuery` "derived state during render" pattern to
-trigger `setLoading(true)` synchronously on the same render as the query
-change. This avoids a flash of the previous loading state. Empty query changes
-synchronously reset all state including view refs.
+`customPluginView`, `inlinePluginView` and `matchedPrefix` each
+arrive on every `searchResults` message. They follow a different
+rule than entries:
 
-## Launcher Component
+- The first message of a generation overwrites unconditionally
+  (including with `null`) so stale view refs from a previous query
+  cannot leak through.
+- Subsequent messages of the same generation use "first non-null
+  wins" semantics — the catalog batch carries `null` view refs and
+  must not clobber a pending inline/custom view from a slower plugin
+  message.
 
-`src/launcher/Launcher.tsx`
+Empty queries reset entries and view refs synchronously during
+render via the `prevQuery` derived-state pattern, so plugin
+components unmount on the same render and their effects cannot
+re-inject stale display-query state.
 
-### Dual Query State
+The hook returns `{ results, customPluginView, inlinePluginView,
+matchedPrefix, loading }`.
 
-Two query strings are maintained:
-- `displayQuery` — shown in the input field
-- `searchQuery` — drives `useSearch`
+## `Launcher` component
 
-`setQuery()` updates both; `setDisplayQuery()` updates only the display. This
-lets plugins visually modify the query without triggering a search re-run.
+`src/launcher/Launcher.tsx` orchestrates input, search, and the five
+content states.
 
-Known gap: `handleGoBack` clears both to empty string instead of restoring the
-pre-plugin query state (documented TODO).
+### Dual query state
 
-### Execute vs Search Plugin Views
+Two strings:
 
-Two independent sources of custom plugin UI:
+- `displayQuery` — what the input renders.
+- `searchQuery` — what `useSearch` consumes.
 
-1. **`searchPluginView`** — from search results (`PluginViewRef` with explicit
-   view name)
-2. **`executePluginView`** — from `execute()` returning `ShowCustomUI` (bare
-   plugin ID string)
+`setQuery()` writes both. `setDisplayQuery()` (passed into plugins
+via `LauncherActions`) writes only the display, letting a plugin
+adjust the visible text without retriggering search. The next user
+keystroke resyncs both. `handleGoBack` currently clears both to the
+empty string — there is a TODO to snapshot/restore the pre-plugin
+query.
 
-These are merged at render time:
+### Two custom-view sources
+
+A plugin-claimed view can come from either:
+
+1. **`searchPluginView`** — the `customPluginView: PluginViewRef`
+   from `useSearch`, set when an enabled plugin returned `CustomUI`
+   for the current query.
+2. **`executePluginView`** — set locally when:
+   - `search_execute` returns `PostAction::ShowCustomUI { view, data
+     }` (the entry's `source` becomes the plugin id), or
+   - the backend emits the `activate-plugin-custom-ui` Tauri event
+     because a global shortcut handler returned `ShowCustomUI`. The
+     payload carries `{ pluginId, view, data }`.
+
+Resolution: `executePluginView ?? searchPluginView`. Both sides are
+full `PluginViewRef` values with an explicit `view` name and
+optional opaque `data` — there is no implicit `"default"` fallback.
+
+### Inline view
+
+`inlinePluginView` from `useSearch` is rendered above the result
+list when no custom view is active (`customPluginView == null`).
+The inline slot occupies index 0 of the keyboard navigation model
+— the result list's logical index becomes `selectedIndex - 1` and
+its total nav count becomes `results.length + 1`. `selected` is
+threaded into the inline component as a prop so it can render its
+own selected state.
+
+### Five content states
+
+Selected by an if/else chain in `Launcher.tsx`:
+
+1. **Measurement dummy** — initial render reports the card's real
+   dimensions to the backend before the first show.
+2. **Empty** — no inline view and no results: only the search input
+   renders; no content section, no footer.
+3. **Plugin custom view** — `PluginViewContainer` mounts the
+   registered React component. The standard list is hidden and
+   keyboard navigation is disabled (`enabled: customPluginView ===
+   null`).
+4. **Inline + list** — `InlineViewContainer` above `ResultList`.
+   Inline slot participates in nav at index 0.
+5. **List only** — `ResultList` only.
+
+### Action execution and `PostAction`
+
+List-mode `executeEntry` invokes the `search_execute` command and
+matches the returned `PostAction`:
+
+- `"Dismiss"` — dismiss the launcher.
+- `"Nothing"` / `"KeepOpen"` — explicit no-op.
+- `{ ShowCustomUI: { view, data } }` — switch to that plugin view
+  and clear the query.
+
+Plugin- and inline-view execute paths (`handlePluginExecute`,
+`handleInlineExecute`) only handle `"Dismiss"` since `ShowCustomUI`
+is not meaningful from within a plugin-owned surface.
+
+### Footer priority
+
+`pluginFooter` (custom view) > `inlineFooter` (when inline slot is
+selected) > footer derived from `results[listSelectedIndex].actions`.
+Plugins set their footer through the `onFooterChange` action exposed
+on `LauncherActions`.
+
+## Result list rendering
+
+`src/launcher/ResultList.tsx` and `ResultRow.tsx`.
+
+`ResultList` is windowed via `useWindowedList`: only `PAGE_SIZE`
+rows are mounted at any time, the window shifts via keyboard
+selection or mouse-wheel events, and there is no native scroll
+container. `ResultRow` renders icon + highlighted title (positions
+from `titlePositions`) + optional subtitle (`subtitlePositions`),
+both highlighted by `highlightText`.
+
+### Icons (ADR 0027)
+
+Icons travel as a tagged `EntryIcon` union from Rust:
+`heroIcon | dataUrl | assetIcon | emoji`. `ResultRow` flattens this
+into the prefix-string protocol consumed by the shared `Icon`
+component (`src/components/Icon.tsx`):
+
+- `heroicons:<kebab-name>` — resolved by name lookup against
+  `@heroicons/react/24/outline` (kebab-to-PascalCase + `Icon`
+  suffix). Unknown names fall back to `CommandLineIcon`.
+- `emoji:<char>` — rendered as a `<span>`.
+- `data:<url>` — rendered as `<img>`.
+- `asset:<path>` — filesystem path through Tauri's
+  `convertFileSrc`.
+
+The same protocol is used for plugin-registry icons (`icon:` field
+on `PluginRegistryEntry`).
+
+## Plugin view registry — named view resolution (ADR 0022)
+
+`src/plugins/registry.ts` is a runtime `Map<pluginId,
+PluginRegistryEntry>` populated from two sources:
+
+- **Internal plugins** registered at module load time at the bottom
+  of `registry.ts` (`app-launcher`, `system-preferences`,
+  `clipboard-manager`).
+- **WASM plugins** registered at startup by
+  `registerAllWasmPlugins()` (`src/plugins/wasmPluginLoader.ts`)
+  after the host queries the backend for loaded manifests.
+
 ```ts
-const customPluginView = executePluginView
-  ? { pluginId: executePluginView, view: "default" }
-  : searchPluginView;
-```
-
-The string `"default"` is a magic constant — not declared in types or the
-registry.
-
-### Five Rendering States
-
-The render output is an if/else chain:
-
-1. **Measurement dummy** — first render to report dimensions to backend
-2. **Empty** — no results, no content section
-3. **Plugin custom UI** — `PluginViewContainer` mounts the registered React
-   component; standard result list is hidden
-4. **Inline + list** — `InlineViewContainer` above `ResultList`; inline view
-   participates in keyboard navigation at index 0
-5. **List only** — `ResultList` only
-
-### PostAction Handling
-
-`PostAction` arrives as a raw string from Rust serialization. Matched via bare
-string equality (`"Dismiss"`, `"ShowCustomUI"`). No TypeScript union type
-exists. `"Nothing"` and `"KeepOpen"` are unhandled — `KeepOpen` accidentally
-does the right thing (nothing) but is not type-checked.
-
-## Plugin View Registry
-
-`src/plugins/registry.ts`
-
-Dynamic `registry` map associates plugin IDs with their component bundles:
-
-```typescript
 interface PluginRegistryEntry {
   label: string;
   description?: string;
-  icon?: string;   // e.g. "heroicons:clipboard-document-list"
+  icon?: string;                                          // Icon protocol string
   views?: Record<string, ComponentType<PluginViewProps>>;
   inlineViews?: Record<string, ComponentType<InlineViewProps>>;
   settings?: ComponentType<PluginSettingsProps>;
 }
 ```
 
-View and settings components are lazy-loaded via `launcherComponent()` /
-`settingsComponent()` wrappers. The `PluginViewRef.view` field from the
-backend is the key into `views` / `inlineViews`.
+`PluginViewRef.view` from the backend is the key into `views` /
+`inlineViews`. Lookup helpers `getPluginView(pluginId, viewName)`
+and `getPluginInlineView(pluginId, viewName)` return `undefined`
+for misses; the containers render `null` when that happens.
 
-## Plugin Component Contract (ADR 0028)
+### WASM plugin component loading
 
-Plugin components — view, inline, and settings — receive **only**
-per-render data through their props (`results`, `data`, `query`,
-`matchedPrefix`, `selected`). Everything else flows through the React
-context defined in `src/contexts/`.
+For each WASM plugin `registerWasmPlugin()` builds dynamic
+`import()` factories (wrapped through `launcherComponent` /
+`settingsComponent` for `Suspense` + lazy semantics) targeting URLs
+under the custom protocol scheme:
+
+```
+torchsnap-plugin://localhost/<pluginId>/<bundleFile>
+```
+
+Each declared view name maps to an export name on that bundle. The
+bundle is fetched only when the view is first mounted. Scoped CSS
+declared in the manifest (`launcherCss` / `settingsCss`) is
+injected via `injectPluginCss` for the matching webview only.
+
+## Plugin component contract (ADR 0028)
+
+Plugin components receive **only per-render data** through props
+(`results`, `data`, `query`, `matchedPrefix`, `selected`).
+Everything else flows through React context.
 
 ### Provider placement
 
-`PluginViewContainer` and `InlineViewContainer` in
-`src/launcher/Launcher.tsx`, plus `PluginSectionContent` in
-`src/settings/SettingsPanel.tsx`, each wrap their plugin component
-mount in a `<PluginContextProvider>` carrying:
+Two containers in `Launcher.tsx` plus `PluginSectionContent` in
+`src/settings/SettingsPanel.tsx` wrap their plugin component mount
+in a `<PluginContextProvider>`:
 
-- `info`: `{ id, enabled }` — identity plus reactive enabled flag
-  read from `enabled.<plugin-id>`
-- `runtime`: `{ sendMessage, logger }` — capabilities the host
-  provides to every plugin
-- `launcher` (only inside the launcher tree): `{ goBack, dismiss,
-  onExecute, onFooterChange, setDisplayQuery, mouseActiveRef }`
+- `PluginViewContainer` — full custom view (`PluginViewProps` + view
+  name).
+- `InlineViewContainer` — inline view (`InlineViewProps` + view
+  name).
+- Settings panel — `PluginSettingsProps` (empty struct), no launcher
+  slice.
 
-The provider also drives the legacy `LoggerContext` so any code
-reading via `useLogger()` continues to work unchanged.
+The provider carries three slices:
+
+- `info: { id, enabled }` — plugin id plus reactive `enabled` flag,
+  read from setting `enabled.<plugin-id>` via
+  `useOptionalPluginEnabled`.
+- `runtime: { sendMessage, logger }` — capabilities every plugin
+  gets. `sendMessage` is bound to the active plugin's id;
+  `logger` is created per active plugin via `createLogger(id)`.
+- `launcher: { goBack, dismiss, onExecute, onFooterChange,
+  setDisplayQuery, mouseActiveRef }` — only present inside the
+  launcher tree. Inline views receive a slice with no-op `goBack` /
+  `setDisplayQuery` (with dev-mode warnings) since neither makes
+  sense above the result list.
+
+`PluginContextProvider` also drives the legacy `LoggerContext` so
+host code reading via `useLogger()` keeps working.
 
 ### Hooks
 
-Plugin components — and any sub-component nested arbitrarily deep —
-read what they need via four hooks (in `src/contexts/`):
+In `src/contexts/`:
 
 - `usePluginInfo()` — info slice. Available everywhere.
 - `usePluginRuntime()` — runtime slice. Available everywhere.
-- `useLauncher()` — launcher slice. Throws if called outside the
-  launcher tree (settings panels have no launcher actions).
-- `usePluginSetting<T>(key)` — reactive accessor for the active
-  plugin's namespace. Returns `[value, setValue]`. The plugin id is
-  derived from the surrounding provider, so call sites only deal
-  with short relative key names.
+- `useLauncher()` — launcher slice. Throws outside the launcher
+  tree.
+- `usePluginSetting<T>(key)` — reactive accessor scoped to the
+  active plugin's namespace. Resolves to setting key
+  `plugins.<id>.<key>`. Returns `[value, setValue]`.
 
-### WASM plugin SDK exposure
+Per-render data stays as props because hoisting it would invalidate
+the context value on every keystroke.
 
-Out-of-tree WASM plugins reach the same hooks via the
-`@torchsnap/plugin-sdk/hooks` subpath, which resolves at build time
-to `packages/plugin-sdk/src/shims/hooks.ts`. The shim re-reads from
-`window.__torchsnap.hooks`, populated by the host's `initPluginSdk()`
-in `src/lib/sdk.ts`.
+## Live updates from plugins (ADR 0016)
 
-This is the same `window.__torchsnap` shim mechanism already in use
-for `react` and `react/jsx-runtime`. The host source files are the
-single source of truth; plugin bundles ship import statements only.
+Plugins push real-time updates to their mounted component through
+the same `sendMessage` channel that handles request/response
+calls. The frontend signature:
 
-### Why not props?
+```ts
+sendMessage<TPayload, TResult, TStream>(
+  method: string,
+  payload: TPayload,
+  onMessage?: (msg: TStream) => void,
+): Promise<TResult>;
+```
 
-The props-based contract that preceded ADR 0028 forced every
-sub-component to thread `pluginId`, `usePluginSetting`, `sendMessage`,
-`logger`, and the launcher actions explicitly through every level.
-Adding a new ambient capability was a breaking change for every
-plugin. Per-render data still travels as props because hoisting it
-into context would invalidate the context value on every keystroke
-and force every consumer to re-render.
+`sendPluginMessage` (`src/lib/pluginMessage.ts`) wraps the
+`plugin_message` Tauri command, allocating a `Channel<TStream>`
+and wiring `onMessage`. The plugin's backend `handle_message`
+receives that channel, returns an initial payload through the
+promise, and stores the channel handle for its background thread
+to push subsequent items into. When the component unmounts the
+channel reference is dropped — the backend detects the closed
+channel on its next send and discards it; no explicit
+unsubscribe.
+
+**WASM plugins do not support streaming.** The WASM bridge silently
+drops the streaming channel; `onMessage` is part of the public
+signature only for symmetry with native plugins. The shim
+documents this and points at ADR 0030's future
+`messaging-stream` sub-interface.
+
+## TypeScript SDK package — `@torchsnap/plugin-sdk`
+
+`packages/plugin-sdk/` is a private, source-only npm package
+consumed via `file:` protocol with a custom exports map (see
+`packages/plugin-sdk/package.json`):
+
+| Subpath        | Purpose                                                  |
+| -------------- | -------------------------------------------------------- |
+| `.`            | Public type exports — `PluginViewProps`, `InlineViewProps`, `PluginSettingsProps`, `SourcedEntry`, `Action`, `EntryIcon`, `FooterState`, `Logger`, etc. (`src/types/`) |
+| `/hooks`       | Runtime shim exposing `usePluginInfo`, `usePluginRuntime`, `useLauncher`, `usePluginSetting`, `useWindowedList` |
+| `/components`  | Shared UI primitives shim (`Switch`, `Slider`, `Section`, `Entry`, `List`) |
+| `/keybindings` | `useKeyBindings`, `LAYER` shim |
+| `/utils`       | Utilities shim (`highlightText`) |
+| `/testing`     | Test harness (`MockPluginContextProvider`, setup) |
+| `/vite`        | Vite plugin/config helpers for plugin builds |
+| `/theme.css`   | Shared theme CSS |
+
+The shims do not bundle implementations. Each one declares a slice
+on the ambient `TorchsnapGlobal` interface and lazily resolves to
+`window.__torchsnap.<slice>` at call time. TypeScript merges the
+slice declarations across files, so a plugin's compiled view of
+`__torchsnap` is exactly the union of slices its imports pull in.
+
+The host's `initPluginSdk()` (`src/lib/sdk.ts`) populates
+`window.__torchsnap` once at startup, before any plugin bundle is
+fetched, with the real implementations:
+
+```ts
+window.__torchsnap = {
+  React, jsxRuntime,
+  hooks: { usePluginInfo, usePluginRuntime, useLauncher,
+           usePluginSetting, useWindowedList },
+  keybindings: { useKeyBindings, LAYER },
+  components: { Switch, Slider, Section, Entry, List },
+  utils: { highlightText },
+};
+```
+
+`react` and `react/jsx-runtime` are aliased at build time (Vite) to
+the SDK's React shims, so plugin bundles ship import statements
+only; the host owns React, the context, the hook implementations
+and the shared components. This keeps plugin bundles small and
+guarantees a single React instance across host and plugins.

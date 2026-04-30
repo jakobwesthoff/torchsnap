@@ -2,135 +2,182 @@
 
 ## Overview
 
-Plugin settings are stored via `tauri-plugin-store` (JSON file). The frontend
-writes settings; the backend reacts through two separate paths depending on
-which key changed.
+Plugin settings are persisted in the `tauri-plugin-store` JSON file
+(`settings.json`). Writes always originate from a frontend webview;
+the host listens for the resulting Tauri event and routes the change
+through three independent paths: an in-process watch-channel notifier
+for non-plugin subsystems, a per-plugin coalescing dispatcher for
+plugin reactivity, and a shortcut-reactor signal for global hotkey
+re-registration.
 
-## Flow
+Cross-window propagation (ADR 0006), per-plugin coalescing (ADR 0026),
+and the WASM `settings` / `lifecycle::on-setting-changed` interfaces
+(ADR 0029) are the three load-bearing mechanisms.
 
-1. Frontend writes to the Tauri store.
-2. The `"settings-changed"` Tauri event fires.
-3. The listener in `lib.rs` does two things in parallel:
-   - Calls `notifier.notify(key, value)` — propagates to internal
-     `SettingsWatch` subscribers (see below).
-   - Calls `host.handle_setting_changed(key, value, app)` — routes the change
-     to the affected plugin.
+## Key Layout
 
-### Host routing
+| Key                              | Owner                     | Purpose                              |
+| -------------------------------- | ------------------------- | ------------------------------------ |
+| `enabled.<plugin-id>`            | host                      | plugin enable toggle                 |
+| `plugins.<plugin-id>.<setting>`  | plugin                    | plugin's own settings namespace      |
+| `<top-level-key>`                | host / non-plugin systems | global app settings                  |
 
-`handle_setting_changed` inspects the key prefix:
+The enabled toggle lives at top level (`enabled.<id>`), *outside*
+the `plugins.<id>.*` namespace. Plugins never observe their own
+enabled-state writes — only the host acts on that key.
 
-- **`enabled.<plugin-id>`** — toggles `PluginSlot.enabled` (an `AtomicBool`),
-  then calls `plugin.enable(ctx)` or `plugin.disable()` as appropriate.
+## Cross-Window Store (ADR 0006)
 
-- **`plugins.<plugin-id>.<key>`** — passes the change to the plugin's
-  `CoalescingDispatcher`, which eventually calls
-  `plugin.setting_changed(relative_key, value)`.
+`src/settingsStore.ts` is a singleton wrapper around
+`tauri-plugin-store` shared by every webview (launcher and settings
+window). Each webview has its own JS `Store` `rid`; the underlying
+Rust store is a singleton per file path, so a write in one window is
+already visible to reads in another. Notification is the only piece
+the wrapper adds:
 
-## Plugin-facing API: `setting_changed()`
+1. `setSetting(key, value)` calls `store.set` + `store.save`, then
+   `emit("settings-changed", { key })`.
+2. `initStore()` registers a `listen("settings-changed", …)` that
+   refetches the value from the store, updates an in-memory cache,
+   and notifies local subscribers.
+3. `getSettingSync<T>(key)` returns the cached value synchronously —
+   the store is loaded fully before React mounts so first-render reads
+   never see `undefined`.
 
-Plugins react to settings changes by implementing:
+`useSetting<T>(key)` (`src/hooks/useSetting.ts`) sits on top:
+`useState` seeded from the cache, `subscribe` for updates,
+`setSetting` for writes. `usePluginSetting<T>(key)`
+(`src/contexts/usePluginSetting.ts`) prepends `plugins.<id>.` derived
+from the surrounding `PluginContextProvider`.
+
+## Backend Listener
+
+`src-tauri/src/lib.rs` registers a single listener for
+`"settings-changed"`:
 
 ```rust
-fn setting_changed(&self, key: &str, value: &Value) { … }
+app.listen("settings-changed", move |event| {
+    let payload: { key } = ...;
+    let value = store.get(&payload.key).unwrap_or(Value::Null);
+
+    notifier.notify(&payload.key, value.clone());
+    host.handle_setting_changed(&payload.key, value, &app);
+
+    if host.is_key_watched(&payload.key) {
+        host.notify_shortcut_change();
+    }
+});
 ```
 
-`key` is the relative key within the plugin's namespace — e.g. `"retentionDays"`,
-not `"plugins.clipboard.retentionDays"`. The plugin does not receive changes
-to `enabled.<plugin-id>`; those are handled entirely by the host.
+The three callees are independent:
 
-### CoalescingDispatcher
+- `SettingsNotifier::notify` — feeds `tokio::sync::watch` channels
+  consumed by non-plugin subsystems via `SettingsWatch<T>`.
+- `PluginHost::handle_setting_changed` — routes to the affected plugin
+  through its `CoalescingDispatcher`.
+- `notify_shortcut_change` — wakes the shortcut reactor so global
+  hotkeys are re-registered.
 
-Setting changes are routed through a `CoalescingDispatcher` per plugin before
-reaching `setting_changed()`:
+## Host Routing — `handle_setting_changed`
 
-- **Deduplication** — if the same key is written multiple times before the
-  dispatcher has a chance to deliver it, only the latest value is delivered.
-  This prevents redundant work when the frontend writes rapidly (e.g. a slider
-  being dragged).
-- **Ordering** — changes to *different* keys are delivered in the order they
-  arrived, so relative ordering across distinct settings is preserved.
+`src-tauri/src/plugin_host.rs`. Two prefix branches:
 
-## SettingsWatch\<T\> — Internal Infrastructure Only
+**Path 1 — `enabled.<plugin-id>`**
 
-`src-tauri/src/settings_notifier.rs` still contains `SettingsWatch<T>`, which
-wraps a `tokio::sync::watch::Receiver<Value>` and deserialises on `.get()`.
+The dispatcher is reused as a serialization point even for the
+enable/disable toggle. The callback flips
+`PluginSlot::enabled: AtomicBool` and, on a real transition, calls
+`plugin.enable(app, &PluginContext { settings, frecency })` or
+`plugin.disable()`. Always signals shortcut re-registration before
+returning.
 
-This is **no longer part of the plugin-facing API**. Plugins use
-`setting_changed()` instead. `SettingsWatch<T>` remains in use by internal
-subsystems that need to observe settings outside the plugin host:
+**Path 2 — `plugins.<plugin-id>.<setting-key>`**
 
-- `FrecencyStore` — watches its own persistence settings
-- Control socket — watches the socket path setting
-- `WebsiteMetadataService` — watches cache / network settings
+Splits at the first `.` after the prefix, looks up the slot, and
+enqueues the relative `setting-key` into the slot's
+`CoalescingDispatcher`. The callback simply forwards
+`(key, value)` to `plugin.setting_changed(key, value)`. Plugins see
+relative keys (`"retentionDays"`), never the full path.
 
-If you see `SettingsWatch` in the codebase, it belongs to one of these
-non-plugin subsystems, not to plugin settings reactivity.
+## CoalescingDispatcher (ADR 0026)
 
-## Enable / Disable Key Placement
+`src-tauri/src/coalescing_dispatcher.rs`. One per plugin slot. Two
+mutexes:
 
-The enabled toggle lives at `enabled.<plugin-id>` — a top-level key, not
-under `plugins.<id>.*`. This means it is outside the namespace that
-`setting_changed()` receives, and plugins cannot accidentally react to their
-own enable state. Only the host acts on that key.
+- `pending: Mutex<Vec<(String, Value)>>` — the queue.
+  `enqueue(key, value)` does `retain(|(k,_)| k != &key); push(...)`,
+  so same-key updates are deduplicated to the latest value while
+  preserving chronological order across distinct keys.
+- `work: Mutex<()>` — held for the duration of dispatch.
+  `dispatch()` uses `try_lock`; if another dispatch is already
+  running, this call returns immediately and the active loop will
+  pick up newly enqueued items in its next iteration.
 
-## WASM Plugins (ADR 0029)
+The dispatch loop drains the queue with `mem::take`, processes the
+batch, and re-checks for items that arrived during processing.
+Threading model:
 
-WASM plugins use the same pipeline as native plugins — the host's
-`CoalescingDispatcher` (above) sits in front of every plugin slot
-regardless of whether it's a native or a WASM bridge. The bridge
-just adapts the trait method into a call across the wasmtime
-boundary.
+- `enqueue` is called from the Tauri event listener (main thread),
+  briefly holding `pending`.
+- `dispatch` runs the callback inline. For Path 2 the callback is
+  `plugin.setting_changed(k, v.clone())`, which for native plugins
+  is whatever the plugin implements and for WASM plugins crosses the
+  wasmtime boundary.
 
-### Reading settings: `settings::get`
+`pending` is always released before the callback runs, so the two
+mutexes never nest.
 
-WASM plugins import the `settings` interface from the WIT world:
+## Native Plugin API
+
+`Plugin` trait (`src-tauri/src/plugins/mod.rs`):
+
+```rust
+fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
+fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
+```
+
+`initialize_settings` runs once at startup, before `enable()`. It
+receives a `SettingsInit` already loaded from the store under the
+plugin's prefix; the plugin chains `.ensure(key, default)` calls to
+fill missing keys without overwriting user values.
+
+`setting_changed` is the runtime hook, called by the dispatcher with
+relative keys.
+
+## WASM Plugin API (ADR 0029)
+
+### Bridge wiring
+
+`WasmPluginBridge` (`src-tauri/src/wasm/bridge.rs`):
+
+- `initialize_settings` reads `[settings]` from the manifest
+  (`manifest.toml`) and calls `settings.ensure(key, json_value)` for
+  every entry, converting TOML values to JSON.
+- `enable()` clones `ctx.settings` (a `PluginSettings`) and stashes
+  it on the wasmtime store data via `instance.set_settings(...)`
+  *before* invoking the guest's `enable()`, so the guest can call
+  `settings::get` from within its own initialization.
+- `disable()` calls `instance.clear_settings()` so subsequent host
+  imports see the unset/no-op behavior.
+- `setting_changed` re-encodes the `serde_json::Value` to a JSON
+  string and calls `instance.on_setting_changed(key, &json)`. By the
+  time this fires, the `CoalescingDispatcher` has already collapsed
+  rapid same-key writes.
+
+`PluginSettings` (`src-tauri/src/settings.rs`) carries the
+`Arc<Store>` plus a `plugins.<id>.` prefix. `get_raw(key)` returns the
+raw JSON-encoded string for the WIT crossing; guests cannot escape
+their bucket regardless of the key string they pass.
+
+### WIT contracts
 
 ```wit
 interface settings {
-  /// Returns the JSON-encoded value for `key`, or `none` if unset.
+  /// Returns JSON-encoded value for `key`, or `none` if unset.
   /// `key` is relative to the plugin's namespace.
   get: func(key: string) -> option<string>;
 }
-```
 
-The host implementation routes the call through the per-plugin
-`PluginSettings` handle that the bridge stashes on the wasmtime
-store data when `enable()` is called. The handle adds the
-`plugins.<id>.` namespace prefix, so guests cannot escape their
-own bucket no matter what key string they pass.
-
-Values cross the boundary as JSON-encoded strings (`true`, `42`,
-`"hello"`, `{"a":1}`) — WIT has no opaque value type. The SDK's
-`settings` module wraps that encoding so plugin code deals in
-typed values directly. A typical read looks like:
-
-```rust
-use torchsnap_plugin_sdk::prelude::*;
-
-let verbose: bool = settings::get_or("verbose", false);
-```
-
-`settings::get_or::<T>(key, default)` handles the `Option<String>`
-return, JSON parsing, and type coercion in one call.
-`settings::get::<T>(key)` is available when the caller needs to
-distinguish "unset" from "set to default". Plugins that need to
-reach the raw WIT import can still use the unwrapped
-`settings_host::get` re-export, but the typed helpers are the
-intended path.
-
-The underlying WIT `settings::get` returns `none` only when the
-key has never been set in the store — neither by the manifest's
-`[settings]` defaults nor by a runtime write. Plugins typically
-fall back to a hard-coded default in that case (the same default
-that lives in `manifest.toml`), which is why `get_or` is usually
-the right helper.
-
-### Reacting to changes: `lifecycle::on-setting-changed`
-
-The lifecycle interface gains a third method:
-
-```wit
 interface lifecycle {
   enable: func();
   disable: func();
@@ -138,26 +185,97 @@ interface lifecycle {
 }
 ```
 
-The host's `WasmPluginBridge::setting_changed` override re-encodes
-the `serde_json::Value` from the dispatcher to a JSON string and
-calls the guest export. By the time the bridge fires, the
-`CoalescingDispatcher` has already deduplicated rapid same-key
-writes — plugin code never sees flapping intermediate values
-during a slider drag.
+Values cross the boundary as JSON-encoded strings (`"true"`, `"42"`,
+`"\"hello\""`, `"{\"a\":1}"`) — WIT has no opaque value type. `none`
+means the key has never been set in the store, neither by manifest
+defaults nor by a runtime write.
 
-### Bridge wiring
+### SDK helpers
 
-`WasmPluginBridge::enable()` clones `ctx.settings` and stashes it
-on `PluginState` *before* invoking the guest's `enable()` so that
-the guest can call `settings::get` from inside its own
-initialization. `WasmPluginBridge::disable()` clears the stashed
-handle so subsequent host imports revert to the "unset" no-op
-behavior.
+`plugins/plugin-sdk/src/settings.rs`:
 
-### Manifest defaults
+```rust
+pub fn get<T: DeserializeOwned>(key: &str) -> Option<T>
+pub fn get_or<T: DeserializeOwned>(key: &str, default: T) -> T
+pub fn get_or_else<T: DeserializeOwned>(key: &str, f: impl FnOnce() -> T) -> T
+```
 
-`[settings]` defaults declared in `manifest.toml` are wired into
-the store by `WasmPluginBridge::initialize_settings()` via
-`settings.ensure(key, json_value)` — same path as before D2 of
-the migration. The new WIT interfaces only cover **runtime reads**
-and **reactive updates**.
+`get` returns `None` for both "unset" and "present but failed to
+deserialize"; callers that need to distinguish use the lower-level
+`settings_host::get` re-export.
+
+Typical guest code:
+
+```rust
+use torchsnap_plugin_sdk::prelude::*;
+
+let manual: String = settings::get_or_else("manualToken", String::new);
+```
+
+### Reacting to changes
+
+```rust
+impl LifecycleGuest for ZeroTierPlugin {
+    fn on_setting_changed(key: String, _value: String) {
+        if key == "manualToken" {
+            // re-resolve token, invalidate caches, etc.
+        }
+    }
+}
+```
+
+`value` is the new JSON-encoded string. Plugins typically re-read
+through the typed `settings::get_or` helper rather than parsing
+`value` inline — the WIT argument exists so the guest doesn't have to
+cross the boundary again, but type-safe access is more ergonomic.
+
+## Manifest Defaults
+
+`plugins/<id>/manifest.toml`:
+
+```toml
+[settings]
+manualToken = ""
+retentionDays = 30
+```
+
+The bridge converts each value with `serde_json::to_value(toml_value)`
+and feeds it to `SettingsInit::ensure`. Defaults never overwrite
+existing user values.
+
+## SettingsWatch (non-plugin only)
+
+`src-tauri/src/settings_notifier.rs` keeps `SettingsWatch<T>`, a typed
+wrapper over `tokio::sync::watch::Receiver<Value>`. Subscribers obtain
+one via `SettingsNotifier::watch_with_initial(key, initial)` and call
+`.get()`, `.changed().await`, or `.blocking_changed()`.
+
+This is **not** part of the plugin-facing API; plugins use
+`setting_changed` / `on-setting-changed`. `SettingsWatch` survives
+for non-plugin subsystems that observe global settings:
+
+- `FrecencyStore` — watches its own retention / enable settings.
+- `control` — watches the `controlChannel.*` keys to start/stop
+  the Unix socket server.
+- `WebsiteMetadataService` — watches cache / network settings.
+
+## Frontend Settings UI
+
+The Settings window builds plugin panels by importing each plugin's
+React settings component. Components consume `usePluginSetting<T>`:
+
+```tsx
+const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+const [bringToFront, setBringToFront]  = usePluginSetting<boolean>("bringToFrontOnPaste");
+```
+
+Writes go through `setSetting` → `emit("settings-changed", { key })` →
+the backend listener fires the three-path fan-out described above.
+The originating window receives the same event (no special-casing of
+self-emitted events), so its own `useSetting` cache stays consistent
+with the rest of the app through one code path.
+
+The host also routes the `OpenSettings` action variant: when a search
+result triggers `ActionId::OpenSettings`, `PluginHost::execute_action`
+emits `"open-plugin-settings"` with the originating plugin id so the
+settings window can jump straight to that plugin's panel.

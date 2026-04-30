@@ -1,127 +1,263 @@
 # Plugin Architecture Overview
 
-This document describes the plugin system as of 2026-04-05. It covers the
-single unified `Plugin` trait, the three search modes, the lifecycle methods,
-and the `PluginContext` available to each plugin.
+Torchsnap plugins are sandboxed WebAssembly components conforming to the
+`torchsnap:plugin@0.1.0` world defined in
+`plugins/plugin-sdk/wit/torchsnap-plugin.wit`. The host (Rust + Tauri)
+loads them at runtime, mediates every capability they reach for, and
+streams their search results into the launcher UI.
 
-## Single Plugin Trait
+A small number of capabilities (clipboard, app launcher, system
+preferences, system commands) still ship as **Builtin** native Rust
+plugins compiled into the host binary. Everything new is WASM. Both
+kinds implement the same `Plugin` trait
+(`src-tauri/src/plugins/mod.rs`) — for WASM plugins that trait is
+implemented by `WasmPluginBridge` (`src-tauri/src/wasm/bridge.rs`),
+which forwards every call across the WIT boundary.
 
-All plugins implement one trait defined in `src-tauri/src/plugins/mod.rs`:
+## Component model
 
-```rust
-pub trait Plugin: Send + Sync {
-    fn id(&self) -> &str;
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
-    fn disable(&self) {}
-    fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
-    fn execute(&self, entry_id: &str, action_id: &ActionId,
-        app: &tauri::AppHandle) -> anyhow::Result<PostAction>;
-    fn shortcuts(&self) -> Vec<PluginShortcut> { vec![] }
-    fn handle_shortcut(&self, _shortcut_id: &str,
-        _app: &tauri::AppHandle) -> anyhow::Result<PostAction> { ... }
-    fn handle_message(&self, _method: &str, _payload: serde_json::Value,
-        _channel: tauri::ipc::Channel<serde_json::Value>)
-        -> anyhow::Result<serde_json::Value> { ... }
+- **Target:** `wasm32-wasip2`. The `plugins/` directory is a virtual
+  workspace whose default target is set in `plugins/.cargo/config.toml`.
+- **No `cargo-component`.** Plugins build with plain
+  `cargo build --release`. The single `wit_bindgen::generate!` call
+  lives in the `torchsnap-plugin-sdk` crate
+  (`plugins/plugin-sdk/src/lib.rs`); plugin crates pull the generated
+  bindings through `use torchsnap_plugin_sdk::prelude::*;` and register
+  their type with `define_plugin!(MyPlugin)`.
+- **Engine:** `wasmtime` with the component model. A single
+  `WasmRuntime` (`src-tauri/src/wasm/runtime/engine.rs`) owns the
+  shared `Engine` and a per-plugin `Component` cache.
 
-    // Search mode — implement one or both:
-    fn search_prefixes(&self) -> &[String] { &[] }
-    fn entries(&self) -> Vec<CatalogEntry> { vec![] }
-    fn search(&self, query: &str, matched_prefix: Option<&str>)
-        -> Option<PluginResponse> { None }
+## The `plugin` world
+
+A plugin imports host capabilities and exports the four guest
+interfaces the host calls into. The full set, from
+`torchsnap-plugin.wit`:
+
+```
+world plugin {
+  import logging;
+  import clipboard;
+  import sql;
+  import frecency;
+  import settings;
+  import opener;
+  import http;
+  import fs;
+  import assets;
+  import command;
+  import platform;
+  import paths;
+  import types;
+  import website-metadata;
+
+  export lifecycle;   // enable / disable / on-setting-changed
+  export search;      // entries / search / execute
+  export messaging;   // handle-message (frontend RPC)
+  export tasks;       // run-task (cron-scheduled)
 }
 ```
 
-## Search Modes
+Plugins that don't use messaging or scheduled tasks emit no-op
+implementations via `impl_noop_messaging!` / `impl_noop_tasks!` from
+the SDK — both exports are world-mandated.
 
-A plugin participates in search by implementing `entries()`, `search()`, or
-both:
+## Distribution
 
-**Catalog mode** — the plugin returns a finite, pre-known list via `entries()`.
-The host runs nucleo fuzzy matching on that list; the plugin never sees the
-raw query. Suitable for app launchers, system preferences, clipboard history.
+Plugins ship as `.torchsnap` zip archives, or live as plain
+directories during development. Discovery
+(`src-tauri/src/wasm/discovery.rs`) walks three precedence-ordered
+roots:
 
-**Query mode** — the plugin receives the raw query via `search()` and returns
-pre-scored results itself. It can optionally register exclusive-routing prefixes
-via `search_prefixes()` (e.g. `":"` for bangs, `"="` for calculator). When a
-query starts with a registered prefix, only that plugin's `search()` is called.
+1. **System** — `<resource_dir>/plugins/`. Populated from
+   `target/bundled-plugins/` by the `stage-bundled-plugins` Just
+   recipe at build time. Only plugins whitelisted in
+   `plugins/bundled.toml` end up here. Not uninstallable at runtime.
+2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/` in debug builds only,
+   stripped from release artifacts via `cfg(debug_assertions)`. Tagged
+   `PluginSourceKind::Dev` for the settings UI badge.
+3. **User** — `<app_data_dir>/plugins/`. Install target for
+   user-dropped `.torchsnap` archives. Uninstallable.
 
-**Hybrid** — a plugin may implement both `entries()` and `search()`. This is
-uncommon but supported; the host collects results from both paths.
+Within a single root, an archive shadows a sibling directory of the
+same stem. Across roots, the earlier root wins and the collision is
+logged. Source kinds (`Builtin`, `System`, `User`, `Dev`) are tracked
+on `PluginSourceKind` (`src-tauri/src/wasm/source.rs:52`) and
+serialized to the frontend for badging and uninstall gating. See
+ADR 0035 for the full distribution flow and ADR 0036 for the trust
+model.
 
-### Current implementors
+The `PluginSource` trait abstracts directory vs. archive reads.
+`DirectorySource` and `ArchiveSource` are the two implementations; the
+rest of the host treats them interchangeably.
 
-| Plugin | Mode |
-|---|---|
-| `AppLauncherPlugin` | Catalog |
-| `SystemPreferencesPlugin` | Catalog |
-| `ClipboardPlugin` | Catalog |
-| `SystemCommandsPlugin` | Catalog |
-| `BuiltInCommandsPlugin` | Catalog |
-| `EmojiPickerPlugin` | Query |
-| `CalculatorPlugin` | Query (prefix `"="`) |
-| `WasmPluginBridge` | Query (delegates to WASM guest) |
+## Plugin layout
 
-## Lifecycle
+A plugin (whether archived or a directory) contains:
 
-Plugins move through the following phases:
+- `manifest.toml` — typed by `wasm::manifest::Manifest`. Declares
+  `[plugin]` metadata, `[settings]` defaults, `[shortcuts]`,
+  `[frontend]`, `[storage.sql]` migrations, `[[tasks]]`, and the
+  per-capability `[permissions.*]` blocks.
+- The compiled WASM component referenced by `[plugin] wasm = "..."`.
+- Optional frontend bundles (referenced from `[frontend]`).
+- Optional bundled assets readable through the `assets` host
+  interface.
 
-1. **`initialize_settings(settings)`** — called once at startup before any
-   plugin is enabled. Declares default values into the settings store so
-   the frontend can render controls even before the user has changed anything.
+## Storage layout
 
-2. **`enable(app, ctx)`** — called when the plugin is activated (at startup
-   for enabled plugins, and later if the user toggles the plugin on).
-   Receives an `AppHandle` and a `PluginContext`. This is where background
-   tasks are started and resources are acquired.
+Code and host-managed state are split:
 
-3. **`setting_changed(relative_key, value)`** — called whenever a
-   `plugins.<id>.<key>` setting changes. Receives only the relative key (e.g.
-   `"retentionDays"`, not the full path). See
-   [06-settings-reactivity.md](06-settings-reactivity.md) for the full flow.
+- **Code:** `<app_data_dir>/plugins/<plugin-id>/` (User-installed) or
+  `<resource_dir>/plugins/<plugin-id>/` (System).
+- **Host-managed state:** `<app_data_dir>/plugin-home/<plugin-id>/`.
+  Contains the SQLite database at `sql/storage.sqlite3` and reserves
+  sibling slots for future blob / cache / files storage.
 
-4. **`disable()`** — called when the user disables the plugin. Background
-   tasks should be stopped here; the plugin may be re-enabled later.
+The `${plugin-data}` substitution variable resolves to the plugin's
+`plugin-home` directory; `${plugin-archive}` resolves to the plugin's
+code root. See ADR 0018 (SQL storage) and ADR 0035 for the layout
+contract.
 
-5. **`execute(entry_id, action_id, app)`** — called when the user activates
-   a result from this plugin. Returns a `PostAction` telling the host what
-   to do next (dismiss, keep open, show custom UI, etc.).
+## Lifecycle (ADR 0033)
 
-## Enable / Disable Gating
+The host splits load and run into two phases so disabled plugins cost
+only a cached `Component`, not a live store.
 
-The host wraps each plugin in a `PluginSlot` that owns:
+1. **Compile at load.** `WasmPluginBridge::new`
+   (`src-tauri/src/wasm/bridge.rs`) reads the manifest, reads the
+   plugin's WASM bytes via the `PluginSource`, and calls
+   `WasmRuntime::compile`. Broken components fail fast at startup
+   rather than on first enable.
+2. **Instantiate on enable.** When the plugin is enabled — at startup
+   if its `enabled.<plugin-id>` setting is true, or later when the
+   user toggles it on — the bridge calls `WasmRuntime::instantiate`
+   to build a fresh `WasmPluginInstance`
+   (`src-tauri/src/wasm/runtime/instance.rs`) with its own wasmtime
+   `Store`, materializes the SQL database (creating files and running
+   `[storage.sql]` migrations the first time), wires up host
+   capability state on the instance from manifest permissions, then
+   invokes the guest's `lifecycle::enable`.
+3. **Disable** drops the instance, reclaiming the store and all
+   guest linear memory. The cached `Component` stays so a later
+   re-enable doesn't re-compile.
+4. **Setting changes** flow through a host-side
+   `CoalescingDispatcher` (ADR 0026) that deduplicates rapid writes
+   to the same key, then call `lifecycle::on-setting-changed(key,
+   json)` on the live instance. `key` is namespace-relative (the
+   `plugins.<id>.` prefix is stripped).
+5. **Execute** is invoked when the user activates a result; it
+   returns a `post-action` (`nothing` / `dismiss` / `keep-open`)
+   plus, on the host trait surface, an optional `ShowCustomUI`
+   variant.
+6. **Scheduled tasks.** If the manifest declares `[[tasks]]`, the
+   bridge spawns a tokio scheduler loop that walks every parsed cron
+   expression and invokes `tasks::run-task(task-id)` on the live
+   instance. The loop is co-operatively shut down via an
+   `AtomicBool` flag on disable.
 
-- an `AtomicBool` for the enabled state
-- a `CoalescingDispatcher` for serialising `setting_changed` calls
+## Enable / disable gating
 
-The enabled key lives at `enabled.<plugin-id>` in the top-level settings
-namespace — outside the `plugins.<id>.*` prefix and inaccessible to the
-plugin itself. The host intercepts changes to that key and calls `enable()`
-or `disable()` directly.
+The host owns the enabled state (ADR 0025). Each plugin is wrapped in
+a `PluginSlot` that holds an `AtomicBool` for the enabled flag plus
+the `CoalescingDispatcher` for `on-setting-changed`. The enabled key
+lives at `enabled.<plugin-id>` in the top-level settings namespace —
+outside the `plugins.<id>.*` prefix and unreachable from the plugin
+itself. The host intercepts changes to that key and drives
+`enable()` / `disable()` directly.
 
-## PluginContext
+## Search dispatch
 
-`PluginContext` is handed to a plugin at `enable()` time and provides scoped
-access to two subsystems:
+Three modes coexist (ADR 0023, ADR 0024):
 
-- **`settings: PluginSettings`** — read access to the plugin's settings
-  namespace (`plugins.<id>.*`).
-- **`frecency: PluginFrecency`** — scoped frecency scoring handle for ranking
-  results by past user selection.
+- **Catalog.** The plugin returns a finite list of `catalog-entry`
+  values from `search::entries`. The host runs nucleo fuzzy matching
+  against `title + keywords`. Suitable for app launchers, system
+  preferences, clipboard history.
+- **Query.** Every keystroke calls `search::search(query,
+  matched-prefix)`. The plugin scores its own results and returns a
+  `search-response`.
+- **Prefix-routed query.** A query plugin can declare exclusive
+  prefixes (e.g. `=` for the calculator, `!` for bangs). When the
+  query starts with one, only that plugin's `search` runs and the
+  matched prefix is forwarded so the plugin sees the original
+  trigger character (ADR 0012).
 
-## Discovery and distribution
+Results stream over a Tauri channel as `SearchMessage`s
+(`src-tauri/src/search/types.rs`). The frontend merges per-source
+batches into a single sorted list using the same `cmp_sort_key`
+ordering as the Rust side. Catalog and query results share the
+`SearchResults` variant; `Done` terminates the stream. The two-tier
+display (custom-ui replacing the result list, inline-ui above it,
+both gated to a single plugin per search) is ADR 0008 + ADR 0021.
 
-Native plugins (`Builtin`) are compiled into the host binary and
-registered manually in `lib.rs` during setup. WASM plugins are
-discovered at startup from three precedence-ordered search roots
-(resource-bundled System, repo-relative Dev in debug builds,
-user-installed User), each plugin tagged with its
-`PluginSourceKind`. The full rules — including the per-root
-archive-over-directory precedence, cross-root collision handling,
-install/uninstall flow, and the `plugins/bundled.toml` whitelist —
-live in **[ADR 0035](../adr/0035-plugin-distribution-via-bundled-and-user-installable-archives.md)**.
+## Frontend integration
 
-Host-managed plugin state (SQLite databases, future blob storage)
-lives under `<app_data_dir>/plugin-home/<plugin-id>/`, separate
-from plugin code at `<app_data_dir>/plugins/`. See ADR 0018 and
-0019 for the storage shape.
+Plugins ship optional React frontends declared under `[frontend]` in
+the manifest. Custom and inline views are looked up by name from the
+plugin's component registry (ADR 0022 / ADR 0028). The frontend can
+make synchronous RPC calls back into the plugin via Tauri's invoke
+boundary, which routes to the WIT `messaging::handle-message` guest
+export — request/response only, no streaming, JSON-encoded payloads
+on both sides.
+
+## Host capabilities
+
+Every host import is gated by the manifest. A capability the
+manifest doesn't grant is unreachable; the host returns
+`permission-denied(...)` (or the interface's equivalent variant) at
+call time.
+
+| Interface | Manifest gate | Notes |
+|---|---|---|
+| `logging` | always | Structured logs + timing spans, routed to host logger. |
+| `clipboard` | always | Write-only (`write-text`). Read intentionally not exposed. |
+| `settings` | always | Scoped to `plugins.<id>.*`; JSON-encoded values. |
+| `frecency` | always | Read-only top-N by score; tracking happens automatically host-side. |
+| `assets` | always | Spatial guarantee: paths validated to stay inside the plugin root. |
+| `platform` | always | OS / arch detection. |
+| `paths` | always | `${...}` substitution against host-resolved paths. |
+| `sql` | `[storage.sql]` declared | Per-plugin SQLite at `plugin-home/<id>/sql/storage.sqlite3`. |
+| `opener` | `[permissions.opener]` | Per-capability flags: `schemes`, `open-path`, `reveal-path`. |
+| `http` | `[permissions.http] origins` | Origin allowlist or `"*"` for trust-all. |
+| `fs` | `[permissions.fs] read` | Globs canonicalized; symlinks resolved before match. |
+| `command` | `[[permissions.command]]` | Per-binary argv-shape rules; no shell wrapping. |
+| `website-metadata` | `[permissions] website-metadata = true` | Host-shared cache; favicons returned as `entry-icon`. |
+
+The `${plugin-data}`, `${plugin-archive}`, `${home}`,
+`${xdg-config}`, `${xdg-data}` substitution variables are recognized
+in `[permissions.command]` `path-under` roots, literal argv values,
+per-rule `cwd`, and `[permissions.fs] read` patterns. See the
+relevant ADR (0029–0032, 0037–0040) for each capability's design
+rationale.
+
+## SDK ergonomics
+
+`torchsnap-plugin-sdk` (`plugins/plugin-sdk/src/`) re-exports the
+generated bindings and adds higher-level helpers on top of the raw
+WIT interfaces:
+
+- `prelude::*` brings the four guest traits, the search records, the
+  flat host import aliases, and the `define_plugin!` /
+  `impl_noop_*!` macros into scope.
+- `settings::get` / `get_or` / `get_or_else` fold the JSON parse
+  into the lookup.
+- `sql::Row` plus `query_one` / `query_all` give typed column access
+  over the raw `Vec<Vec<sql-value>>` interface.
+- `command`, `messaging`, `logging`, `website_metadata` modules wrap
+  the raw imports with conveniences (typed builders, `tracing`-style
+  span helpers, etc.).
+
+A minimal plugin is roughly:
+
+```rust
+use torchsnap_plugin_sdk::prelude::*;
+
+struct MyPlugin;
+torchsnap_plugin_sdk::define_plugin!(MyPlugin);
+impl_noop_messaging!(MyPlugin);
+impl_noop_tasks!(MyPlugin);
+
+impl LifecycleGuest for MyPlugin { /* enable / disable / on_setting_changed */ }
+impl SearchGuest for MyPlugin { /* entries / search / execute */ }
+```
