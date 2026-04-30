@@ -198,8 +198,7 @@ These are returned by individual handlers.
 
 | Code | Meaning |
 |------|---------|
-| `-1` | Invalid state — a precondition is not met (e.g., the operation requires a specific launcher state) |
-| `-2` | Not found — a referenced entity does not exist |
+| `-1` | Invalid state — a precondition is not met or a required parameter is missing/invalid |
 | `-3` | Internal error — an unexpected failure in the handler |
 
 ## Multiple Clients
