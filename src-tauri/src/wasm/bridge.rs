@@ -906,7 +906,13 @@ impl Plugin for WasmPluginBridge {
             return vec![];
         };
         match instance.entries() {
-            Ok(entries) => entries,
+            Ok(mut entries) => {
+                super::bindings::resolve_catalog_entries_asset_icons(
+                    &mut entries,
+                    &self.plugin_id,
+                );
+                entries
+            }
             Err(e) => {
                 self.log(LogLevel::Error, format!("entries() failed: {e:#}"));
                 vec![]
@@ -937,7 +943,13 @@ impl Plugin for WasmPluginBridge {
             // (disabled / errored); an empty Results must pass
             // through so the host can forward it and evict stale
             // per-source entries on the frontend.
-            Ok(response) => Some(response),
+            Ok(mut response) => {
+                super::bindings::resolve_search_response_asset_icons(
+                    &mut response,
+                    &self.plugin_id,
+                );
+                Some(response)
+            }
             Err(e) => {
                 self.log(LogLevel::Error, format!("search() failed: {e:#}"));
                 None

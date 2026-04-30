@@ -662,6 +662,14 @@ interface types {
   variant entry-icon {
     hero-icon(string),
     data-url(string),
+    /// File asset reference. Pass a path relative to the plugin
+    /// archive root — `assets/icon.svg` resolves to that file
+    /// inside the plugin's `.torchsnap` archive (or the equivalent
+    /// directory under the debug loader). The launcher renders it
+    /// directly with content-type detected from the file. Absolute
+    /// paths are reserved for host-produced icons (e.g. cached
+    /// favicons returned by `website-metadata::lookup`); plugins
+    /// should always pass a relative path.
     asset-icon(string),
     emoji(string),
   }
