@@ -337,25 +337,41 @@ fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
     })
 }
 
+// Bundled ZeroTier brand glyph in `assets/icon.svg`. The host
+// bridge resolves this plugin-relative path to the launcher's
+// `torchsnap-plugin://` asset URL automatically; see the WIT
+// docs on `entry-icon::asset-icon`. The SVG itself is a CC0
+// derivative — see `assets/ATTRIBUTIONS.md`.
+fn network_icon() -> EntryIcon {
+    EntryIcon::AssetIcon("assets/icon.svg".into())
+}
+
+// The verb leads the title so a column of result entries reads
+// as a column of actions ("Disconnect …", "Connect to …",
+// "Join …") instead of a column of identical-looking network
+// names with the action context buried in the subtitle.
+const PREFIX_DISCONNECT: &str = "Disconnect ZeroTier Network: ";
+const PREFIX_CONNECT: &str = "Connect to ZeroTier Network: ";
+
 fn synthetic_connect_entry(id: &str) -> ScoredEntry {
     ScoredEntry {
         id: query::entry_id(id),
-        title: format!("Connect to network {id}"),
-        subtitle: Some("Join a new ZeroTier network".to_string()),
-        icon: Some(EntryIcon::HeroIcon("globe-alt".into())),
+        title: format!("Join ZeroTier Network: {id}"),
+        subtitle: Some("Not yet known — will join on activation".to_string()),
+        icon: Some(network_icon()),
         score: query::SYNTHETIC_CONNECT_SCORE,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
         actions: vec![Action {
             id: ActionId::Open,
-            label: "Connect".to_string(),
+            label: "Join".to_string(),
         }],
     }
 }
 
 fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
     let row = &m.row;
-    let (subtitle, primary_label) = match row.state {
+    let (subtitle, primary_label, prefix) = match row.state {
         NetworkState::Connected => {
             let addrs = row.assigned_addresses.join(", ");
             let subtitle = if addrs.is_empty() {
@@ -363,7 +379,7 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
             } else {
                 format!("Connected · {addrs}")
             };
-            (subtitle, "Disconnect")
+            (subtitle, "Disconnect", PREFIX_DISCONNECT)
         }
         NetworkState::JoinedOffline(status) => {
             let badge = match status {
@@ -375,18 +391,38 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
                 NetworkStatus::Unknown => "Unknown status",
                 NetworkStatus::Ok => "Connected",
             };
-            (badge.to_string(), "Disconnect")
+            (badge.to_string(), "Disconnect", PREFIX_DISCONNECT)
         }
-        NetworkState::KnownOnly => ("Stored".to_string(), "Connect"),
+        NetworkState::KnownOnly => ("Stored".to_string(), "Connect", PREFIX_CONNECT),
     };
+
+    // Anonymous networks (no name set in Central) substitute
+    // the id so the title never renders with a trailing colon
+    // and a void after it.
+    let display_name: &str = if row.name.is_empty() {
+        &row.id
+    } else {
+        &row.name
+    };
+
+    // Highlight offsets came from matching against `row.name`.
+    // Hoisting a fixed prefix into the title means the indices
+    // need to shift by the prefix's length in UTF-16 code units —
+    // the same unit `title-highlight-positions` carries.
+    let prefix_offset = prefix.encode_utf16().count() as u32;
+    let title_highlight_positions: Vec<u32> = m
+        .title_highlight_positions
+        .iter()
+        .map(|p| p + prefix_offset)
+        .collect();
 
     ScoredEntry {
         id: query::entry_id(&row.id),
-        title: row.name.clone(),
+        title: format!("{prefix}{display_name}"),
         subtitle: Some(format!("{} · {}", subtitle, row.id)),
-        icon: Some(EntryIcon::HeroIcon("globe-alt".into())),
+        icon: Some(network_icon()),
         score: m.score,
-        title_highlight_positions: m.title_highlight_positions.clone(),
+        title_highlight_positions,
         subtitle_highlight_positions: vec![],
         actions: vec![
             Action {
