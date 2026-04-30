@@ -709,6 +709,19 @@ impl PluginHost {
     // Execute / Message Routing
     // =========================================================
 
+    /// Dispatch a launcher action to the plugin that owns
+    /// `entry_id`.
+    ///
+    /// Tokio runtime precondition: callers must invoke this from a
+    /// thread that has a current Tokio runtime (a worker or a
+    /// `spawn_blocking` task on a multi-thread runtime). Plugin
+    /// `execute()` implementations can reach the `http::fetch` host
+    /// import, which calls `Handle::current()` inside reqwest's
+    /// internal machinery. Tauri's synchronous `#[tauri::command]`
+    /// dispatches on the IPC blocking thread, which does **not**
+    /// satisfy this precondition — Tauri commands routing to this
+    /// function must be `async fn` and wrap the call in
+    /// `tokio::task::spawn_blocking` (see `search_execute`).
     pub fn execute(
         &self,
         source: &str,
