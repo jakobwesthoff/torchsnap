@@ -25,6 +25,7 @@ mod api;
 mod auth;
 mod cache;
 mod history;
+mod query;
 
 struct ZeroTierPlugin;
 define_plugin!(ZeroTierPlugin);
