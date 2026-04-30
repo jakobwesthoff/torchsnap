@@ -11,6 +11,9 @@ migrations = [
     "migrations/001_init.sql",
 ]
 
+[permissions]
+website-metadata = true
+
 [permissions.opener]
 schemes = ["https", "http"]
 
