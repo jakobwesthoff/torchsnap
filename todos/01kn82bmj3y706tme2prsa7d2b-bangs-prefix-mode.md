@@ -39,7 +39,9 @@ from the original plan discussion.
 
 ## Notes
 
-- Consider whether the custom UI should show favicons once the favicon
-  fetching service is available (`01kn829tr1dp9jfnjta36xkzqy`)
+- The custom UI should render favicons per entry via the SDK helper
+  (`torchsnap_plugin_sdk::website_metadata::favicon_or`); the host's
+  metadata service and the wrapper are in place, the bangs plugin's
+  general-search path already uses them.
 - The fuzzy search within prefix mode could use nucleo matching on trigger +
   service_name, similar to how the emoji picker matches on shortcodes + labels
