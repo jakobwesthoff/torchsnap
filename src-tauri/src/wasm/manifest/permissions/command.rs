@@ -387,3 +387,385 @@ fn validate_argv_constraint(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::wasm::manifest::Manifest;
+    use crate::wasm::manifest::test_helpers::minimal;
+
+    // =====================================================
+    // Permissions: command rules
+    // =====================================================
+
+    #[test]
+    fn accept_minimal_command_rule() {
+        let m = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "mdfind""#,
+        ))
+        .expect("should parse");
+        let command = m.permissions.unwrap().command;
+        assert_eq!(command.len(), 1);
+        assert_eq!(command[0].binary, "mdfind");
+        assert!(command[0].argv.is_empty());
+    }
+
+    #[test]
+    fn accept_command_rule_with_full_argv_vocabulary() {
+        let m = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "enum", values = ["HEAD", "main"] },
+                   { kind = "glob", pattern = "refs/heads/*" },
+                   { kind = "regex", pattern = "[0-9a-f]{40}" },
+                   { kind = "path-under", root = "${plugin-data}/repos" },
+                   { kind = "any-string" },
+                   { kind = "rest", constraint = { kind = "any-string" } },
+               ]"#,
+        ))
+        .expect("should parse");
+        let command = m.permissions.unwrap().command;
+        assert_eq!(command[0].argv.len(), 7);
+    }
+
+    #[test]
+    fn reject_command_rule_with_empty_binary() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = """#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `binary`"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_nul_binary() {
+        let err = Manifest::parse(&minimal(
+            "[[permissions.command]]\nbinary = \"foo\\u0000bar\"\n",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("NUL byte"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_bad_regex() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "grep"
+               argv = [{ kind = "regex", pattern = "[unclosed" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("does not compile"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_empty_enum() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = [] }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `values`"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_empty_glob() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "glob", pattern = "" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `pattern`"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_empty_path_under_root() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "path-under", root = "" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `root`"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_unknown_variable() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "${plugin-typo}" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown variable"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_argv_after_rest() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "rest", constraint = { kind = "any-string" } },
+                   { kind = "literal", value = "trailing" },
+               ]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("after a `rest` constraint"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_nested_rest() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "rest", constraint = { kind = "rest", constraint = { kind = "any-string" } } },
+               ]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("nested inside another `rest`"));
+    }
+
+    #[test]
+    fn accept_recognized_variables_in_literal() {
+        for var in &[
+            "plugin-data",
+            "plugin-archive",
+            "home",
+            "xdg-config",
+            "xdg-data",
+        ] {
+            let toml_text = format!(
+                r#"[[permissions.command]]
+                   binary = "echo"
+                   argv = [{{ kind = "literal", value = "${{{var}}}/foo" }}]"#
+            );
+            Manifest::parse(&minimal(&toml_text))
+                .unwrap_or_else(|e| panic!("variable `{var}` should be accepted: {e}"));
+        }
+    }
+
+    #[test]
+    fn accept_multiple_command_rules() {
+        let m = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "mdfind"
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "rev-parse" }]"#,
+        ))
+        .expect("should parse");
+        let command = m.permissions.unwrap().command;
+        assert_eq!(command.len(), 2);
+        assert_eq!(command[0].binary, "mdfind");
+        assert_eq!(command[1].binary, "git");
+    }
+
+    #[test]
+    fn manifest_without_command_section_has_empty_command_vec() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("should parse");
+        assert!(m.permissions.unwrap().command.is_empty());
+    }
+
+    // =====================================================
+    // Permissions: command rule overlap
+    // =====================================================
+
+    #[test]
+    fn accept_rules_with_different_binaries() {
+        // Even though argv shapes are identical, distinct
+        // binaries means the rules cannot match the same call.
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "mdfind"
+
+               [[permissions.command]]
+               binary = "git""#,
+        ))
+        .expect("different binaries do not overlap");
+    }
+
+    #[test]
+    fn accept_rules_distinguished_by_literal_position() {
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "rev-parse" }]"#,
+        ))
+        .expect("different first-position literals do not overlap");
+    }
+
+    #[test]
+    fn reject_identical_rules() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("potentially-overlapping"));
+    }
+
+    #[test]
+    fn reject_literal_subsumed_by_enum() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = ["log", "show"] }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("potentially-overlapping"));
+    }
+
+    #[test]
+    fn reject_enums_with_intersection() {
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = ["log", "show"] }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = ["show", "diff"] }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("potentially-overlapping"));
+    }
+
+    #[test]
+    fn accept_enums_without_intersection() {
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = ["log", "show"] }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "enum", values = ["push", "pull"] }]"#,
+        ))
+        .expect("disjoint enums do not overlap");
+    }
+
+    #[test]
+    fn accept_rules_of_different_length_without_rest() {
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "literal", value = "HEAD" },
+               ]"#,
+        ))
+        .expect("different fixed lengths cannot match the same argv");
+    }
+
+    #[test]
+    fn reject_pattern_constraint_against_literal_at_same_length() {
+        // `glob` / `regex` / `path-under` are conservatively
+        // treated as overlapping with anything at the same
+        // position — authors must differentiate elsewhere.
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "regex", pattern = "[a-z]+" }]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("potentially-overlapping"));
+    }
+
+    #[test]
+    fn reject_rest_swallowing_fixed_rule() {
+        // Rule 1 accepts ["log", X*]; rule 2 accepts ["log", "HEAD"].
+        // Rule 1's rest-of-any-string trivially overlaps rule 2.
+        let err = Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "rest", constraint = { kind = "any-string" } },
+               ]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "literal", value = "HEAD" },
+               ]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("potentially-overlapping"));
+    }
+
+    #[test]
+    fn accept_rest_with_disjoint_prefix() {
+        // Rule 1's prefix is `log`; rule 2 starts with `show`.
+        // The prefixes don't overlap, so no argv tuple matches both.
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "rest", constraint = { kind = "any-string" } },
+               ]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "show" },
+                   { kind = "rest", constraint = { kind = "any-string" } },
+               ]"#,
+        ))
+        .expect("disjoint prefixes do not overlap even with rest on both");
+    }
+
+    #[test]
+    fn accept_fixed_rule_shorter_than_rest_prefix() {
+        // Rule 1 needs 2 fixed args + rest; rule 2 has only 1 fixed arg.
+        // Rule 2's call cannot satisfy rule 1's required-prefix length,
+        // so they do not overlap.
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [
+                   { kind = "literal", value = "log" },
+                   { kind = "literal", value = "HEAD" },
+                   { kind = "rest", constraint = { kind = "any-string" } },
+               ]
+
+               [[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "literal", value = "log" }]"#,
+        ))
+        .expect("fixed rule shorter than rest-rule prefix does not overlap");
+    }
+}

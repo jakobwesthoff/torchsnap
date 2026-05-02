@@ -62,3 +62,96 @@ impl HttpPermissionsDef {
         Ok(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::wasm::manifest::Manifest;
+    use crate::wasm::manifest::test_helpers::minimal;
+
+    // =====================================================
+    // Permissions: origin normalization
+    // =====================================================
+
+    #[test]
+    fn normalize_trailing_slash_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com/"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn normalize_uppercase_scheme_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["HTTPS://example.com"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn normalize_default_port_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com:443"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn preserve_non_default_port_in_origin() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["https://example.com:8443"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "https://example.com:8443");
+    }
+
+    #[test]
+    fn preserve_wildcard_as_is() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["*"]"#,
+        ))
+        .expect("should parse");
+        let origins = m.permissions.unwrap().http.unwrap().origins;
+        assert_eq!(origins[0], "*");
+    }
+
+    #[test]
+    fn reject_http_permission_with_empty_origins() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = []"#,
+        ))
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("permissions.http") && msg.contains("origins"),
+            "error should mention both fields: {msg}"
+        );
+    }
+
+    #[test]
+    fn reject_malformed_origin() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.http]
+               origins = ["not-a-url"]"#,
+        ))
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not-a-url"),
+            "error should mention the offending value: {msg}"
+        );
+    }
+}

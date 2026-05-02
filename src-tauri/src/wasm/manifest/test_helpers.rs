@@ -7,7 +7,7 @@
 /// Build a minimal valid manifest TOML, optionally appending extra
 /// sections. Used by every manifest sub-module's test suite to avoid
 /// repeating the full required-field boilerplate.
-pub(super) fn minimal(extra: &str) -> String {
+pub(crate) fn minimal(extra: &str) -> String {
     format!(
         r#"
         [plugin]
