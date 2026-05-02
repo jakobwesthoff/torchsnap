@@ -19,7 +19,10 @@ use serde::{Deserialize, Serialize};
 use super::source::validate_plugin_path;
 
 pub(crate) mod permissions;
-pub use permissions::{FsPermissionsDef, HttpPermissionsDef, OpenerPermissionsDef, PermissionsDef};
+pub use permissions::{
+    ArgvConstraint, CommandPermissionDef, FsPermissionsDef, HttpPermissionsDef,
+    OpenerPermissionsDef, PermissionsDef,
+};
 
 #[cfg(test)]
 mod test_helpers;
@@ -366,121 +369,6 @@ pub struct SqlStorageDef {
     #[serde(default)]
     pub migrations: Vec<String>,
 }
-
-// =========================================================
-// Command (process exec) permissions
-// =========================================================
-
-/// `[[permissions.command]]` rule — a single binary +
-/// argv-shape pattern the plugin is permitted to invoke
-/// via `command::run`.
-///
-/// ```toml
-/// [[permissions.command]]
-/// binary = "mdfind"
-/// argv = [
-///     { kind = "literal", value = "kMDItemContentType == 'com.apple.application-bundle'" },
-/// ]
-/// ```
-///
-/// The `binary` field is either an absolute path
-/// (`"/usr/bin/mdfind"`) or a `PATH`-resolved name
-/// (`"mdfind"`). Opener-class binaries (`open`, `xdg-open`,
-/// `start`, etc.) are rejected at manifest parse time —
-/// plugins wanting "open with the registered application"
-/// use `[permissions.opener] open-path = true` instead.
-///
-/// `argv` is a per-position constraint list. Each element
-/// declares what kind of argv value is accepted at that
-/// position. An empty `argv` list means the binary is
-/// invoked with no arguments. The `rest` constraint kind
-/// covers all remaining positions and may only appear at
-/// the trailing position.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CommandPermissionDef {
-    /// The binary the rule grants. Absolute path or
-    /// PATH-resolved name. Validated at manifest parse
-    /// time (no NUL bytes, not in opener-class denylist).
-    pub binary: String,
-
-    /// Per-position argv constraints. Empty means the
-    /// rule grants `binary` with zero arguments.
-    #[serde(default)]
-    pub argv: Vec<ArgvConstraint>,
-
-    /// Optional default working directory for invocations
-    /// matching this rule. Plugin can override per-call;
-    /// when omitted, the host falls back to the per-plugin
-    /// scratch directory at `${plugin-data}/exec-cwd/`.
-    pub cwd: Option<String>,
-
-    /// Hard ceiling on `command-options.timeout-ms` for
-    /// invocations matching this rule. Calls that request
-    /// a longer timeout are clamped down. `None` defers to
-    /// the host default.
-    #[serde(default, rename = "timeout-ms-max")]
-    pub timeout_ms_max: Option<u32>,
-
-    /// Hard ceiling on `command-options.max-output-bytes`
-    /// for invocations matching this rule. `None` defers
-    /// to the host default.
-    #[serde(default, rename = "max-output-bytes")]
-    pub max_output_bytes: Option<u64>,
-
-    /// Hard ceiling on `command-options.stdin` byte length
-    /// for invocations matching this rule. `None` defers
-    /// to the host default.
-    #[serde(default, rename = "max-stdin-bytes")]
-    pub max_stdin_bytes: Option<u64>,
-}
-
-/// One per-position argv constraint. Internally tagged via
-/// the `kind` discriminator.
-///
-/// Constraint kinds:
-///
-/// - `literal`     — exact byte match against `value`.
-/// - `enum`        — argv element must equal one of `values`.
-/// - `glob`        — argv element must match `pattern` as a glob.
-/// - `regex`       — argv element must match `pattern` (anchored).
-/// - `path-under`  — argv element parses as an absolute path that
-///                   canonicalizes under `root`. `root` may use the
-///                   substitution variables `${plugin-data}`,
-///                   `${plugin-archive}`, `${home}`, `${xdg-config}`,
-///                   `${xdg-data}`.
-/// - `any-string`  — argv element accepted unconditionally.
-/// - `rest`        — applies `constraint` to every remaining argv
-///                   element. May only appear at the trailing position.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum ArgvConstraint {
-    Literal {
-        value: String,
-    },
-    Enum {
-        values: Vec<String>,
-    },
-    Glob {
-        pattern: String,
-    },
-    Regex {
-        pattern: String,
-    },
-    #[serde(rename = "path-under")]
-    PathUnder {
-        root: String,
-    },
-    AnyString,
-    Rest {
-        constraint: Box<ArgvConstraint>,
-    },
-}
-
-// Substitution variables recognized in `literal`, `enum`,
-// `path-under`, and per-rule `cwd` fields are defined in
-// `super::permission_vars` and shared with the runtime
-// `paths::resolve` host import. See that module for the
-// list and the parser/substituter implementations.
 
 // =========================================================
 // Scheduled tasks
