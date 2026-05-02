@@ -433,8 +433,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // reset the query. For prefix-triggered plugins this deactivates
   // the plugin through the normal search flow; for execute-triggered
   // plugins it returns to the empty launcher state.
-  // TODO: Snapshot/restore the pre-plugin query state instead of
-  // always clearing to empty (see clipboard-plugin-settings todo).
+  // TODO(state-snapshot): see todos/plugins/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
   const handleGoBack = useCallback(() => {
     setExecutePluginView(null);
     setQuery("");
