@@ -304,8 +304,18 @@ mod tests {
             wit::LookupResult::Hit(entry) => {
                 assert_eq!(entry.title.as_deref(), Some("My Title"));
                 assert_eq!(entry.description.as_deref(), Some("Some desc"));
-                // Favicon decoded → cached → resolved to AssetIcon.
-                assert!(matches!(entry.favicon, wit::EntryIcon::AssetIcon(_)));
+                // Favicon decoded → cached → resolved to a
+                // `torchsnap-favicon://` URL the launcher renders
+                // through the host's protocol handler.
+                match &entry.favicon {
+                    wit::EntryIcon::AssetIcon(url) => {
+                        assert!(
+                            url.starts_with("torchsnap-favicon://localhost/"),
+                            "unexpected favicon URL: {url}"
+                        );
+                    }
+                    other => panic!("expected AssetIcon, got {other:?}"),
+                }
             }
             other => panic!("expected Hit, got {other:?}"),
         }

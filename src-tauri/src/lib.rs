@@ -621,6 +621,17 @@ pub fn run() {
     let builder =
         wasm::protocol::register_plugin_protocol(builder, Arc::clone(&plugin_source_registry));
 
+    // Host favicon URI scheme. Custom schemes must be registered
+    // on the builder before `.setup()` runs, but
+    // `WebsiteMetadataService` (which owns the favicon store) is
+    // constructed inside `.setup()` — the `OnceLock` registry
+    // bridges the gap, populated below once the service exists.
+    let favicon_registry = network::website_metadata::protocol::new_registry();
+    let builder = network::website_metadata::protocol::register_favicon_protocol(
+        builder,
+        Arc::clone(&favicon_registry),
+    );
+
     let app = builder
         .setup(move |app| {
             // =========================================================
@@ -726,6 +737,15 @@ pub fn run() {
                 .context("initialize website metadata service")?,
             );
             metadata_service.start_retention();
+
+            // Now that the service exists, hand its favicon store
+            // to the host-favicon protocol handler registered on
+            // the builder above. `OnceLock::set` only fails if
+            // already initialized — which can't happen here since
+            // `setup` runs exactly once.
+            favicon_registry
+                .set(metadata_service.favicon_store())
+                .map_err(|_| anyhow::anyhow!("favicon registry already populated"))?;
 
             // =========================================================
             // Logging system
