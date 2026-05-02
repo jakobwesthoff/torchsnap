@@ -35,7 +35,10 @@ pub use opener::OpenerPermissionsDef;
 pub(super) mod http;
 pub use http::HttpPermissionsDef;
 
-use super::{ArgvConstraint, CommandPermissionDef, FsPermissionsDef};
+pub(super) mod fs;
+pub use fs::FsPermissionsDef;
+
+use super::{ArgvConstraint, CommandPermissionDef};
 use crate::wasm::permission_vars::validate_variable_references;
 
 /// `[permissions]` block.
@@ -87,21 +90,7 @@ pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Resul
 
     let http = permissions.http.map(|h| h.validate()).transpose()?;
 
-    let fs = permissions
-        .fs
-        .map(|fs| -> anyhow::Result<FsPermissionsDef> {
-            if fs.read.is_empty() {
-                anyhow::bail!(
-                    "`[permissions.fs]` declared with an empty `read` list — \
-                     either add at least one path pattern or remove the section"
-                );
-            }
-            for (index, pattern) in fs.read.iter().enumerate() {
-                validate_fs_pattern(pattern, index)?;
-            }
-            Ok(fs)
-        })
-        .transpose()?;
+    let fs = permissions.fs.map(|f| f.validate()).transpose()?;
 
     for (index, rule) in permissions.command.iter().enumerate() {
         validate_command_rule(rule, index)?;
@@ -116,42 +105,6 @@ pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Resul
         command: permissions.command,
         website_metadata: permissions.website_metadata,
     })
-}
-
-// =========================================================
-// Fs pattern validation (private to this module until moved
-// to fs.rs in commit 6)
-// =========================================================
-
-/// Parse-time syntactic validation of a `[permissions.fs]
-/// read = [...]` entry. Covers the checks that depend only on
-/// the literal string the user typed: non-empty, no `..`
-/// traversal segments, well-formed `${...}` substitution
-/// tokens. The unsupported-glob-metacharacter check lives in
-/// `host::fs::compile_fs_patterns`, where it runs against the
-/// post-substitution pattern — substitution variable braces
-/// are then naturally distinguishable from glob braces.
-fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
-    if pattern.is_empty() {
-        anyhow::bail!(
-            "`[permissions.fs]` read[{index}]: empty pattern; \
-             remove the entry or supply a real path"
-        );
-    }
-
-    for segment in pattern.split('/') {
-        if segment == ".." {
-            anyhow::bail!(
-                "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
-                 contains a `..` traversal segment; declare absolute \
-                 paths only"
-            );
-        }
-    }
-
-    validate_variable_references(pattern, &format!("permissions.fs.read[{index}]"), index)?;
-
-    Ok(())
 }
 
 // =========================================================
