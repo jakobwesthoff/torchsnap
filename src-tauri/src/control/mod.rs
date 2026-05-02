@@ -33,7 +33,7 @@ use tokio::sync::watch as tokio_watch;
 
 use handler::HandlerRegistry;
 
-use crate::settings_notifier::{SettingsNotifier, SettingsWatch};
+use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 
 // =========================================================
 // ControlCommand — typed messages pushed to the frontend

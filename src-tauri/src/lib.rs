@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-mod coalescing_dispatcher;
 mod control;
 mod frecency;
 mod icons;
@@ -13,7 +12,6 @@ mod plugin_install;
 mod plugins;
 mod search;
 mod settings;
-mod settings_notifier;
 mod storage;
 mod unicode;
 mod wasm;
@@ -644,7 +642,7 @@ pub fn run() {
             // =========================================================
             // Settings notifier
             // =========================================================
-            let notifier = Arc::new(settings_notifier::SettingsNotifier::new());
+            let notifier = Arc::new(settings::notifier::SettingsNotifier::new());
 
             // =========================================================
             // Frecency store
