@@ -45,7 +45,7 @@ use url::Url;
 
 use crate::network::Http;
 use crate::search::types::EntryIcon;
-use crate::settings_notifier::SettingsNotifier;
+use crate::settings::notifier::SettingsNotifier;
 use crate::storage::SqlStorage;
 
 use self::favicon_store::FaviconStore;

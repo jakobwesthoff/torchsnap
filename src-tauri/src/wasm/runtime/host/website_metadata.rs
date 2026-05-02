@@ -163,7 +163,7 @@ mod tests {
     use httpmock::MockServer;
     use tempfile::TempDir;
 
-    use crate::settings_notifier::SettingsNotifier;
+    use crate::settings::notifier::SettingsNotifier;
     use crate::wasm::bindings::torchsnap::plugin::website_metadata as wit;
 
     /// Test harness: a per-test temp dir, mock server, and a

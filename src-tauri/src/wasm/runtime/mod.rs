@@ -708,9 +708,9 @@ mod tests {
 
     fn build_test_metadata_service(
         server: &httpmock::MockServer,
-    ) -> (Arc<crate::network::website_metadata::WebsiteMetadataService>, tempfile::TempDir, crate::settings_notifier::SettingsNotifier) {
+    ) -> (Arc<crate::network::website_metadata::WebsiteMetadataService>, tempfile::TempDir, crate::settings::notifier::SettingsNotifier) {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let notifier = crate::settings_notifier::SettingsNotifier::new();
+        let notifier = crate::settings::notifier::SettingsNotifier::new();
         let server_base = server.base_url();
         let svc =
             crate::network::website_metadata::WebsiteMetadataService::new(

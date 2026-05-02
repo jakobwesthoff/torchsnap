@@ -35,7 +35,7 @@ use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::coalescing_dispatcher::CoalescingDispatcher;
+use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};

@@ -16,7 +16,7 @@ use httpmock::prelude::*;
 use tempfile::TempDir;
 
 use super::{LookupError, LookupMode, LookupResult, WebsiteMetadataService};
-use crate::settings_notifier::SettingsNotifier;
+use crate::settings::notifier::SettingsNotifier;
 
 // =========================================================
 // Test harness

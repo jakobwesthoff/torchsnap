@@ -32,7 +32,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use tauri_plugin_store::Store;
 
-use crate::settings_notifier::{SettingsNotifier, SettingsWatch};
+use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 use crate::storage::{SqlStorage, SqlValue};
 
 // =========================================================
