@@ -52,10 +52,7 @@ use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
 // calls that overlap), this mechanism breaks silently —
 // execute() would open a stale or wrong URL.
 //
-// HACK/FIXME: This whole mechanism disappears once todo
-//   01kn7v6ynyf580ax9jyyt25jgc-plugin-execute-data-param.md
-// lands. The arbitrary-data parameter for execute will let
-// search() pass the resolved URL back directly.
+// HACK(plugin-execute-data-param): see todos/plugin-host/api/01kn7v6ynyf580ax9jyyt25jgc-plugin-execute-data-param.md — remove once execute() carries an arbitrary data parameter.
 //
 // `RefCell<Option<String>>` rather than `Cell<Option<String>>`
 // because `Option<String>` is not `Copy`. Calculator uses

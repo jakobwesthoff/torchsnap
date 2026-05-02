@@ -163,9 +163,9 @@ impl WasmRuntime {
         .map_err(|e| anyhow::anyhow!("linking plugin imports: {e}"))?;
 
         // Build the WASI context. Minimal sandbox: no filesystem,
-        // no network, no env vars. Stdout/stderr are inherited
-        // for now (plugin println! goes to the host's terminal).
-        // TODO: Redirect stdout/stderr to the logging system.
+        // no network, no env vars. Stdout/stderr are inherited so
+        // plugin println! reaches the host terminal.
+        // TODO(redirect-plugin-stdout): see todos/plugin-host/wasm/01kqmdf6rgavhar6m4mm8vhxeb-redirect-plugin-stdout-to-logger.md
         let wasi = WasiCtxBuilder::new()
             .inherit_stdout()
             .inherit_stderr()
