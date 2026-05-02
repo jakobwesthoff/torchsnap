@@ -10,6 +10,9 @@
 # shared `plugin-sdk` workspace member (which has a `Cargo.toml` but no
 # plugin manifest) is transparently skipped.
 
+WASM_BUILD_DIR := "plugins/target/wasm32-wasip2/release"
+BUNDLED_DIR := "target/bundled-plugins"
+
 # Build all WASM plugins
 build-plugins:
     #!/usr/bin/env bash
@@ -51,7 +54,7 @@ build-plugin name:
     # Cargo names the artifact after the crate name with
     # hyphens replaced by underscores.
     crate_name=$(tools/toml-get "$dir/Cargo.toml" package.name | tr '-' '_')
-    src="plugins/target/wasm32-wasip2/release/${crate_name}.wasm"
+    src="{{ WASM_BUILD_DIR }}/${crate_name}.wasm"
     if [ -f "$src" ]; then
         cp "$src" "$dir/$wasm_file"
         echo "Copied $src → $dir/$wasm_file"
@@ -166,7 +169,7 @@ stage-bundled-plugins:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    stage="target/bundled-plugins"
+    stage="{{ BUNDLED_DIR }}"
     mkdir -p "$stage"
     # Wipe stale archives from previous runs so a plugin
     # removed from `bundled.toml` is not silently bundled.
