@@ -78,3 +78,72 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::wasm::manifest::Manifest;
+    use crate::wasm::manifest::test_helpers::minimal;
+
+    // =====================================================
+    // Permissions: fs
+    // =====================================================
+
+    #[test]
+    fn fs_pattern_with_substitution_token_passes_metachar_check() {
+        // Regression: the `${xdg-config}` token's literal `{`
+        // and `}` must not trip the unsupported-glob-metachar
+        // scan. The check should ignore characters inside
+        // `${...}` substitutions.
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["${xdg-config}/ZeroTier/One/authtoken.secret"]"#,
+        ))
+        .expect("should parse");
+        let fs = m.permissions.unwrap().fs.unwrap();
+        assert_eq!(fs.read.len(), 1);
+    }
+
+    #[test]
+    fn fs_pattern_rejects_empty_read_list() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = []"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `read` list"));
+    }
+
+    #[test]
+    fn fs_pattern_rejects_traversal() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["/etc/../etc/hosts"]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("traversal segment"));
+    }
+
+    #[test]
+    fn fs_pattern_rejects_unknown_substitution_variable() {
+        let err = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = ["${nope}/foo"]"#,
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown variable"));
+    }
+
+    #[test]
+    fn fs_pattern_accepts_glob_metachars_star_and_doublestar() {
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.fs]
+               read = [
+                   "${xdg-config}/myapp/*.toml",
+                   "${xdg-data}/myapp/**/*.json",
+               ]"#,
+        ))
+        .expect("should parse");
+        let fs = m.permissions.unwrap().fs.unwrap();
+        assert_eq!(fs.read.len(), 2);
+    }
+}
