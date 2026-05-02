@@ -25,7 +25,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 
@@ -238,9 +238,13 @@ impl Plugin for AppLauncherPlugin {
 }
 
 /// Current unix timestamp in seconds.
+///
+/// Returns 0 on clock skew (system clock before the Unix epoch), which
+/// causes the affected entries to sort as if last-used in 1970 rather
+/// than panicking.
 fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock after unix epoch")
+        .unwrap_or(Duration::ZERO)
         .as_secs() as i64
 }
