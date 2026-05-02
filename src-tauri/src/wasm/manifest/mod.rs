@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::source::validate_plugin_path;
 
 pub(crate) mod permissions;
-pub use permissions::{HttpPermissionsDef, OpenerPermissionsDef, PermissionsDef};
+pub use permissions::{FsPermissionsDef, HttpPermissionsDef, OpenerPermissionsDef, PermissionsDef};
 
 #[cfg(test)]
 mod test_helpers;
@@ -365,31 +365,6 @@ pub struct SqlStorageDef {
     /// archive.
     #[serde(default)]
     pub migrations: Vec<String>,
-}
-
-/// `[permissions.fs]` — declares read-only filesystem paths
-/// the plugin may access via the `fs` host import.
-///
-/// ```toml
-/// [permissions.fs]
-/// read = [
-///     "${xdg-config}/myapp/config.toml",
-///     "/var/lib/myapp/data/*.json",
-/// ]
-/// ```
-///
-/// Patterns accept `${...}` substitution tokens from
-/// [`RECOGNIZED_PERMISSION_VARIABLES`] and the glob
-/// metacharacters `*` (single segment) and `**` (multi-segment).
-///
-/// An empty `read` list is a manifest authoring error.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FsPermissionsDef {
-    /// Patterns the plugin may read from. `${...}` tokens are
-    /// preserved verbatim — substitution and glob compilation
-    /// happen at bridge construction, when the per-instance
-    /// `PathContext` is available.
-    pub read: Vec<String>,
 }
 
 // =========================================================
