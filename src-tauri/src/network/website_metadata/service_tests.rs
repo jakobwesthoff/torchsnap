@@ -48,9 +48,8 @@ pub(super) fn new_test_env() -> TestEnv {
     let server_base = server.base_url();
     let service = WebsiteMetadataService::new(tmp.path().to_path_buf(), &notifier, 30)
         .expect("construct service");
-    let service = service.with_url_builder(move |domain, path| {
-        format!("{server_base}/{domain}{path}")
-    });
+    let service =
+        service.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}"));
 
     TestEnv {
         server,
@@ -122,7 +121,9 @@ async fn lookup_blocking_returns_hit_for_complete_metadata() {
     });
     let _icon_mock = env.server.mock(|when, then| {
         when.method(GET).path(format!("/{domain}/icon.png"));
-        then.status(200).header("content-type", "image/png").body(make_png_bytes());
+        then.status(200)
+            .header("content-type", "image/png")
+            .body(make_png_bytes());
     });
 
     let result = blocking_lookup(&env.service, domain).await;
@@ -170,7 +171,9 @@ async fn lookup_caches_result_so_second_call_skips_network() {
     });
     let _icon_mock = env.server.mock(|when, then| {
         when.method(GET).path(format!("/{domain}/i.png"));
-        then.status(200).header("content-type", "image/png").body(make_png_bytes());
+        then.status(200)
+            .header("content-type", "image/png")
+            .body(make_png_bytes());
     });
 
     let _ = blocking_lookup(&env.service, domain).await;
@@ -191,7 +194,9 @@ async fn lookup_caches_reachable_no_data_response() {
     // without another network request.
     let page_mock = env.server.mock(|when, then| {
         when.method(GET).path(format!("/{domain}/"));
-        then.status(200).header("content-type", "text/plain").body("nope");
+        then.status(200)
+            .header("content-type", "text/plain")
+            .body("nope");
     });
 
     let _ = blocking_lookup(&env.service, domain).await;
@@ -236,8 +241,7 @@ async fn concurrent_blocking_lookups_for_same_domain_issue_one_request() {
         let svc = Arc::clone(&env.service);
         let d = domain.to_string();
         handles.push(tokio::task::spawn_blocking(move || {
-            svc.lookup(&d, LookupMode::Blocking)
-                .expect("valid domain")
+            svc.lookup(&d, LookupMode::Blocking).expect("valid domain")
         }));
     }
     for h in handles {
@@ -448,7 +452,10 @@ async fn cached_lookup_returns_pending_on_cold_miss_then_hit() {
     });
 
     // Cold miss → Pending; the background fetch is now in flight.
-    let first = env.service.lookup(domain, LookupMode::Cached).expect("valid");
+    let first = env
+        .service
+        .lookup(domain, LookupMode::Cached)
+        .expect("valid");
     assert!(matches!(first, LookupResult::Pending));
 
     // Wait for the background fetch to populate the SQLite cache.
@@ -457,7 +464,9 @@ async fn cached_lookup_returns_pending_on_cold_miss_then_hit() {
     let domain_owned = domain.to_string();
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
-            let r = svc.lookup(&domain_owned, LookupMode::Cached).expect("valid");
+            let r = svc
+                .lookup(&domain_owned, LookupMode::Cached)
+                .expect("valid");
             if matches!(r, LookupResult::Hit(_)) {
                 return r;
             }
@@ -489,7 +498,10 @@ async fn cached_lookup_returns_hit_immediately_when_cached() {
     });
 
     let _ = blocking_lookup(&env.service, domain).await;
-    let cached = env.service.lookup(domain, LookupMode::Cached).expect("valid");
+    let cached = env
+        .service
+        .lookup(domain, LookupMode::Cached)
+        .expect("valid");
     assert!(matches!(cached, LookupResult::Hit(_)));
 
     // Only one network round-trip happened.

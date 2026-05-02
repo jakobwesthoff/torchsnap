@@ -38,7 +38,7 @@ use thiserror::Error;
 
 use super::manifest::{ArgvConstraint, CommandPermissionDef};
 use super::path_safety::{self, PathError};
-use super::permission_vars::{substitute_variables, PathContext, ResolveError};
+use super::permission_vars::{PathContext, ResolveError, substitute_variables};
 
 // =========================================================
 // Compiled rule representation
@@ -189,12 +189,11 @@ fn compile_constraint(
             Ok(CompiledArgvConstraint::Regex(compiled))
         }
         ArgvConstraint::PathUnder { root } => {
-            let resolved =
-                substitute_variables(root, ctx).map_err(|e| CompileError::Resolve {
-                    rule_index,
-                    field: format!("argv[{argv_index}].root"),
-                    source: e,
-                })?;
+            let resolved = substitute_variables(root, ctx).map_err(|e| CompileError::Resolve {
+                rule_index,
+                field: format!("argv[{argv_index}].root"),
+                source: e,
+            })?;
             Ok(CompiledArgvConstraint::PathUnder(PathBuf::from(resolved)))
         }
         ArgvConstraint::AnyString => Ok(CompiledArgvConstraint::AnyString),
@@ -513,8 +512,12 @@ mod tests {
 
         matches(&compiled, "git", &args(&["log"])).expect("rest may be empty");
         matches(&compiled, "git", &args(&["log", "HEAD"])).expect("rest of length 1");
-        matches(&compiled, "git", &args(&["log", "HEAD", "main", "feature/x"]))
-            .expect("rest of length 3");
+        matches(
+            &compiled,
+            "git",
+            &args(&["log", "HEAD", "main", "feature/x"]),
+        )
+        .expect("rest of length 3");
     }
 
     #[test]
@@ -573,10 +576,7 @@ mod tests {
         let inside = root_dir.path().join("subdir");
         fs::create_dir(&inside).unwrap();
 
-        let ctx = ctx_with(
-            PathBuf::from("/tmp/unused"),
-            root_dir.path().to_path_buf(),
-        );
+        let ctx = ctx_with(PathBuf::from("/tmp/unused"), root_dir.path().to_path_buf());
 
         let raw = rule(
             "ls",
@@ -595,10 +595,7 @@ mod tests {
         let root_dir = TempDir::new().unwrap();
         let outside_dir = TempDir::new().unwrap();
 
-        let ctx = ctx_with(
-            PathBuf::from("/tmp/unused"),
-            root_dir.path().to_path_buf(),
-        );
+        let ctx = ctx_with(PathBuf::from("/tmp/unused"), root_dir.path().to_path_buf());
 
         let raw = rule(
             "ls",
@@ -609,7 +606,12 @@ mod tests {
         let compiled = vec![compile_rule(&raw, 0, &ctx).unwrap()];
 
         assert!(
-            matches(&compiled, "ls", &args(&[outside_dir.path().to_str().unwrap()])).is_err(),
+            matches(
+                &compiled,
+                "ls",
+                &args(&[outside_dir.path().to_str().unwrap()])
+            )
+            .is_err(),
             "path outside root should not match"
         );
     }
@@ -617,10 +619,7 @@ mod tests {
     #[test]
     fn matches_path_under_rejects_relative_path() {
         let root_dir = TempDir::new().unwrap();
-        let ctx = ctx_with(
-            PathBuf::from("/tmp/unused"),
-            root_dir.path().to_path_buf(),
-        );
+        let ctx = ctx_with(PathBuf::from("/tmp/unused"), root_dir.path().to_path_buf());
 
         let raw = rule(
             "ls",

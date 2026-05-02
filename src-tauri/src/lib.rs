@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod commands;
 mod control;
 mod frecency;
 mod icons;
@@ -10,7 +11,6 @@ mod platform;
 mod plugin_host;
 mod plugin_install;
 mod plugins;
-mod commands;
 mod settings;
 mod storage;
 mod unicode;
@@ -907,9 +907,7 @@ pub fn run() {
             #[cfg(not(target_os = "linux"))]
             let launcher_builder = launcher_builder.visible(false);
 
-            let launcher_win = launcher_builder
-                .build()
-                .context("create launcher window")?;
+            let launcher_win = launcher_builder.build().context("create launcher window")?;
 
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;

@@ -236,7 +236,11 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let s = store(&tmp);
         let stored = s
-            .store("https://example.test/icon.png", &make_png_bytes(), "image/png")
+            .store(
+                "https://example.test/icon.png",
+                &make_png_bytes(),
+                "image/png",
+            )
             .expect("png stored");
         assert_eq!(stored.ext, "webp");
         // The on-disk file exists at the resolved path.
@@ -248,11 +252,7 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let s = store(&tmp);
         let stored = s
-            .store(
-                "https://example.test/icon.svg",
-                SVG_BYTES,
-                "image/svg+xml",
-            )
+            .store("https://example.test/icon.svg", SVG_BYTES, "image/svg+xml")
             .expect("svg stored");
         assert_eq!(stored.ext, "svg");
         assert!(std::path::Path::new(&stored.path).exists());
@@ -309,7 +309,11 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let s = store(&tmp);
         let keep = s
-            .store("https://example.test/keep.png", &make_png_bytes(), "image/png")
+            .store(
+                "https://example.test/keep.png",
+                &make_png_bytes(),
+                "image/png",
+            )
             .expect("keep stored");
         let drop = s
             .store("https://example.test/drop.svg", SVG_BYTES, "image/svg+xml")

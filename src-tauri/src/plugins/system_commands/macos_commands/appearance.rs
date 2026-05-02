@@ -10,9 +10,9 @@
 // which avoids osascript roundtrips on every keystroke.
 // =========================================================
 
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::platform::macos::osascript;
 use crate::plugins::system_commands::SystemCommand;
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 // =========================================================
 // Toggle Dark / Light Mode

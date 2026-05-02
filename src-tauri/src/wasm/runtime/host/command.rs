@@ -525,11 +525,9 @@ fn emit_command_audit(
             "-".to_string(),
             "-".to_string(),
         ),
-        Err(WitErr::SpawnFailed(_)) => (
-            "spawn-failed".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-        ),
+        Err(WitErr::SpawnFailed(_)) => {
+            ("spawn-failed".to_string(), "-".to_string(), "-".to_string())
+        }
         Err(WitErr::Timeout) => ("timeout".to_string(), "-".to_string(), "-".to_string()),
         Err(WitErr::OutputTooLarge((stdout, stderr))) => (
             "output-too-large".to_string(),

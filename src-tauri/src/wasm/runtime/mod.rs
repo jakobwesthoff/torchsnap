@@ -94,8 +94,12 @@ mod tests {
         // No metadata service in the default test runtime — tests
         // exercising the website-metadata host import construct one
         // and pass it explicitly via a dedicated helper.
-        WasmRuntime::new(LogSender::test_sender(), Arc::new(SpanRegistry::new()), None)
-            .expect("WasmRuntime::new should succeed with default config")
+        WasmRuntime::new(
+            LogSender::test_sender(),
+            Arc::new(SpanRegistry::new()),
+            None,
+        )
+        .expect("WasmRuntime::new should succeed with default config")
     }
 
     #[test]
@@ -236,7 +240,7 @@ mod tests {
 
     // ---- check_opener_scheme --------------------------------
 
-    use super::host::opener::{check_opener_scheme, OpenerSchemeCheckError};
+    use super::host::opener::{OpenerSchemeCheckError, check_opener_scheme};
 
     #[test]
     fn opener_permitted_scheme_passes() {
@@ -276,7 +280,7 @@ mod tests {
 
     // ---- check_http_origin ----------------------------------
 
-    use super::host::http::{check_http_origin, wit_method_to_reqwest, WasmHttpError};
+    use super::host::http::{WasmHttpError, check_http_origin, wit_method_to_reqwest};
 
     #[test]
     fn http_exact_origin_match_passes() {
@@ -708,17 +712,20 @@ mod tests {
 
     fn build_test_metadata_service(
         server: &httpmock::MockServer,
-    ) -> (Arc<crate::network::website_metadata::WebsiteMetadataService>, tempfile::TempDir, crate::settings::notifier::SettingsNotifier) {
+    ) -> (
+        Arc<crate::network::website_metadata::WebsiteMetadataService>,
+        tempfile::TempDir,
+        crate::settings::notifier::SettingsNotifier,
+    ) {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let notifier = crate::settings::notifier::SettingsNotifier::new();
         let server_base = server.base_url();
-        let svc =
-            crate::network::website_metadata::WebsiteMetadataService::new(
-                tmp.path().to_path_buf(),
-                &notifier,
-                30,
-            )
-            .expect("construct service");
+        let svc = crate::network::website_metadata::WebsiteMetadataService::new(
+            tmp.path().to_path_buf(),
+            &notifier,
+            30,
+        )
+        .expect("construct service");
         let svc = Arc::new(
             svc.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}")),
         );
@@ -738,8 +745,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn website_metadata_blocking_lookup_returns_hit() {
-        use httpmock::prelude::*;
         use httpmock::MockServer;
+        use httpmock::prelude::*;
 
         let server = MockServer::start();
         let domain = "ws.test";
@@ -757,18 +764,16 @@ mod tests {
         });
         let _icon = server.mock(|when, then| {
             when.method(GET).path(format!("/{domain}/icon.png"));
-            then.status(200)
-                .header("content-type", "image/png")
-                .body({
-                    use image::{ImageBuffer, ImageFormat, Rgba};
-                    let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
-                        ImageBuffer::from_pixel(16, 16, Rgba([10, 20, 30, 255]));
-                    let mut buf: Vec<u8> = Vec::new();
-                    image::DynamicImage::ImageRgba8(img)
-                        .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
-                        .expect("encode test PNG");
-                    buf
-                });
+            then.status(200).header("content-type", "image/png").body({
+                use image::{ImageBuffer, ImageFormat, Rgba};
+                let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+                    ImageBuffer::from_pixel(16, 16, Rgba([10, 20, 30, 255]));
+                let mut buf: Vec<u8> = Vec::new();
+                image::DynamicImage::ImageRgba8(img)
+                    .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
+                    .expect("encode test PNG");
+                buf
+            });
         });
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
@@ -786,8 +791,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn website_metadata_cached_lookup_returns_pending_on_cold_miss() {
-        use httpmock::prelude::*;
         use httpmock::MockServer;
+        use httpmock::prelude::*;
 
         let server = MockServer::start();
         let domain = "wait.test";

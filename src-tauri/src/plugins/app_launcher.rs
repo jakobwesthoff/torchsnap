@@ -29,11 +29,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 
-use crate::icons::IconCache;
-use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::commands::types::{
     Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction,
 };
+use crate::icons::IconCache;
+use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
 use super::{Plugin, PluginContext};

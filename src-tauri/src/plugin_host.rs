@@ -35,14 +35,14 @@ use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
-use crate::frecency::{FrecencyStore, PluginFrecency};
-use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
-use crate::plugins::{Plugin, PluginContext, PluginShortcut};
 use crate::commands::types::{
     ActionId, PluginResponse, PluginViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
     SourcedEntry,
 };
+use crate::frecency::{FrecencyStore, PluginFrecency};
+use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
+use crate::plugins::{Plugin, PluginContext, PluginShortcut};
+use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::settings::{PluginSettings, SettingsInit};
 use crate::unicode::Utf16Positions;
 use crate::wasm::source::PluginSourceKind;

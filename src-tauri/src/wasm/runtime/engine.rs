@@ -21,9 +21,9 @@ use wasmtime_wasi::WasiCtxBuilder;
 
 use crate::network::website_metadata::WebsiteMetadataService;
 use crate::wasm::bindings;
+use crate::wasm::logging::LogSource;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::{Logger, SpanRegistry};
-use crate::wasm::logging::LogSource;
 
 use super::instance::WasmPluginInstance;
 use super::state::PluginState;

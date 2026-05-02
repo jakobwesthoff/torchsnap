@@ -108,11 +108,7 @@ pub enum ResolveError {
 ///
 /// `field` and `rule_index` are diagnostic context for the
 /// returned error.
-pub fn validate_variable_references(
-    s: &str,
-    field: &str,
-    rule_index: usize,
-) -> anyhow::Result<()> {
+pub fn validate_variable_references(s: &str, field: &str, rule_index: usize) -> anyhow::Result<()> {
     for token in iter_variable_tokens(s) {
         match token {
             Ok(Token::Variable(name)) => {
@@ -279,8 +275,8 @@ mod tests {
     fn validate_rejects_first_unknown_variable_in_chain() {
         // First unrecognized name should be the one named in
         // the error — confirms we're tokenizing left-to-right.
-        let err =
-            validate_variable_references("${plugin-data}/${unknown}/${home}", "test", 0).unwrap_err();
+        let err = validate_variable_references("${plugin-data}/${unknown}/${home}", "test", 0)
+            .unwrap_err();
         assert!(err.to_string().contains("unknown"));
     }
 
@@ -301,11 +297,8 @@ mod tests {
 
     #[test]
     fn substitute_handles_multiple_variables() {
-        let resolved = substitute_variables(
-            "PRE_${plugin-data}_MID_${home}_END",
-            &ctx(),
-        )
-        .expect("should substitute");
+        let resolved = substitute_variables("PRE_${plugin-data}_MID_${home}_END", &ctx())
+            .expect("should substitute");
         assert_eq!(resolved, "PRE_/data/plug_MID_/home/jake_END");
     }
 

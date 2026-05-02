@@ -95,7 +95,9 @@ pub(crate) fn check_opener_scheme(
     if allowed.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
         Ok(())
     } else {
-        Err(OpenerSchemeCheckError::SchemeNotPermitted(scheme.to_string()))
+        Err(OpenerSchemeCheckError::SchemeNotPermitted(
+            scheme.to_string(),
+        ))
     }
 }
 

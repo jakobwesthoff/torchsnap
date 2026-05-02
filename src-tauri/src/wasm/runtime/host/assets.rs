@@ -77,6 +77,8 @@ impl bindings::torchsnap::plugin::assets::Host for PluginState {
             .as_ref()
             .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
 
-        plugin_source.file_exists(&path).map_err(into_assets_io_error)
+        plugin_source
+            .file_exists(&path)
+            .map_err(into_assets_io_error)
     }
 }

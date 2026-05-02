@@ -17,8 +17,8 @@
 // - `path_safety` — canonical-under-root path resolution
 // =========================================================
 
-mod bindings;
 pub mod argv_matcher;
+mod bindings;
 pub mod bridge;
 pub mod discovery;
 pub mod logging;

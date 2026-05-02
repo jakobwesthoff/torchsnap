@@ -40,8 +40,8 @@ use clipboard_rs::{
 use tauri::Manager;
 use tauri::ipc::Channel;
 
-use crate::platform::clipboard::ClipboardPlatform;
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::platform::clipboard::ClipboardPlatform;
 use crate::settings::SettingsInit;
 use crate::storage::{FileStorage, SqlStorage};
 

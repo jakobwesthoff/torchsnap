@@ -535,12 +535,17 @@ mod tests {
             }
             other => panic!("expected AssetIcon, got {other:?}"),
         }
-        assert!(warnings.is_empty(), "no warnings expected, got {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "no warnings expected, got {warnings:?}"
+        );
     }
 
     #[test]
     fn absolute_unix_path_drops_icon_and_warns() {
-        let mut slot = Some(native::EntryIcon::AssetIcon("/var/cache/favicon.png".into()));
+        let mut slot = Some(native::EntryIcon::AssetIcon(
+            "/var/cache/favicon.png".into(),
+        ));
         let mut warnings = Vec::new();
         resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
         assert!(slot.is_none(), "absolute path must drop the icon");
