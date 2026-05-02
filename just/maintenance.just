@@ -7,6 +7,9 @@
 # Remove all build artifacts
 clean:
     cargo clean --manifest-path src-tauri/Cargo.toml
+    cargo clean --manifest-path plugins/plugin-sdk/Cargo.toml
+    rm -rf plugins/target
+    rm -rf target/bundled-plugins
     rm -rf dist
     rm -rf node_modules
     rm -f *.tsbuildinfo
