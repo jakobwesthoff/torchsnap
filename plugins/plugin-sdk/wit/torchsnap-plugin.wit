@@ -433,7 +433,7 @@ interface fs {
 /// should keep one copy in their own linear memory after reading.
 ///
 /// Typical use: load a bundled JSON database at `enable()` time.
-/// ```
+/// ```ignore
 /// let bytes = assets::read("data/bangs.json")?;
 /// ```
 interface assets {
@@ -609,7 +609,7 @@ interface platform {
 /// No permission is required: the values are informational, and the
 /// recognized list is closed (the host controls it).
 ///
-/// ```
+/// ```ignore
 /// let helper = paths::resolve("${plugin-archive}/bin/helper")?;
 /// command::run(&helper, opts)?;
 /// ```
