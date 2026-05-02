@@ -29,10 +29,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-    ArgvConstraint, CommandPermissionDef, FsPermissionsDef, HttpPermissionsDef,
-    OpenerPermissionsDef,
-};
+pub(super) mod opener;
+pub use opener::OpenerPermissionsDef;
+
+use super::{ArgvConstraint, CommandPermissionDef, FsPermissionsDef, HttpPermissionsDef};
 use crate::wasm::permission_vars::validate_variable_references;
 
 /// `[permissions]` block.
@@ -80,15 +80,7 @@ pub struct PermissionsDef {
 ///   shape validation (bad regex, empty enum/glob/path-under,
 ///   nested `rest`, unknown variable references).
 pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<PermissionsDef> {
-    if let Some(ref opener) = permissions.opener {
-        let any_capability = !opener.schemes.is_empty() || opener.open_path || opener.reveal_path;
-        if !any_capability {
-            anyhow::bail!(
-                "`[permissions.opener]` declared without granting any capability — \
-                 add at least one scheme or set `open-path` / `reveal-path` to `true`"
-            );
-        }
-    }
+    let opener = permissions.opener.map(|o| o.validate()).transpose()?;
 
     let http = permissions
         .http
@@ -146,7 +138,7 @@ pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Resul
     detect_command_rule_overlap(&permissions.command)?;
 
     Ok(PermissionsDef {
-        opener: permissions.opener,
+        opener,
         http,
         fs,
         command: permissions.command,
