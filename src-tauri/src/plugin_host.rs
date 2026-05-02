@@ -39,7 +39,7 @@ use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::plugins::{Plugin, PluginContext, PluginShortcut};
-use crate::search::types::{
+use crate::commands::types::{
     ActionId, PluginResponse, PluginViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
     SourcedEntry,
 };
@@ -996,7 +996,7 @@ fn show_launcher_with_plugin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::types::CatalogEntry;
+    use crate::commands::types::CatalogEntry;
 
     // -------------------------------------------------------
     // Mock Plugin

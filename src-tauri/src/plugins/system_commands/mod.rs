@@ -13,7 +13,7 @@
 // =========================================================
 
 use crate::plugins::Plugin;
-use crate::search::types::{ActionId, CatalogEntry, PostAction};
+use crate::commands::types::{ActionId, CatalogEntry, PostAction};
 
 // =========================================================
 // SystemCommand Trait

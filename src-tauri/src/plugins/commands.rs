@@ -12,7 +12,7 @@
 // =========================================================
 
 use super::Plugin;
-use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
 pub struct BuiltInCommandsPlugin;
 

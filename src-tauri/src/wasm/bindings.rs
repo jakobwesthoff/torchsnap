@@ -15,7 +15,7 @@
 // - Typed records/enums mirroring the WIT definitions
 //
 // This module also provides `From` conversions between the
-// generated types and the native `search::types` used by
+// generated types and the native `commands::types` used by
 // the rest of the application.
 // =========================================================
 
@@ -57,7 +57,7 @@ impl torchsnap::plugin::types::Host for PluginState {}
 // host's perspective, its generated module lives under
 // `exports::torchsnap::plugin::search` instead of the
 // import-side path the old `types` interface used.
-use crate::search::types as native;
+use crate::commands::types as native;
 use exports::torchsnap::plugin::search as wit;
 
 // =========================================================

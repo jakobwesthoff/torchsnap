@@ -44,7 +44,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::network::Http;
-use crate::search::types::EntryIcon;
+use crate::commands::types::EntryIcon;
 use crate::settings::notifier::SettingsNotifier;
 use crate::storage::SqlStorage;
 
