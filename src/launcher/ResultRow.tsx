@@ -9,7 +9,7 @@
  * optional subtitle, and responds to mouse/keyboard selection.
  */
 
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 import { Icon } from "../components/Icon";
 import { cn } from "../lib/cn";
 import { highlightText } from "../lib/highlightText";
@@ -87,7 +87,10 @@ interface ResultRowProps {
   mouseActiveRef: RefObject<boolean>;
 }
 
-export function ResultRow({
+// onSelect and onExecute are inline arrow functions produced by ResultList on
+// each render, so memo eliminates re-renders only when ResultList itself
+// skips a render. Stabilising those callbacks is a separate concern.
+export const ResultRow = memo(function ResultRow({
   entry,
   selected,
   onSelect,
@@ -123,4 +126,4 @@ export function ResultRow({
       </div>
     </div>
   );
-}
+});
