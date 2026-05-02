@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { command } from "../../lib/command";
 import { useSetting } from "../../hooks/useSetting";
+import { createLogger } from "../../lib/logger";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { Entry } from "../Entry";
@@ -27,6 +28,8 @@ function formatAge(timestampMs: number): string {
   return `${months} months ago`;
 }
 
+const logger = createLogger("frecency");
+
 // =========================================================
 // Component
 // =========================================================
@@ -41,7 +44,7 @@ export function FrecencySection() {
   const refreshStats = useCallback(() => {
     command("frecency_stats")
       .then(setStats)
-      .catch((e: unknown) => console.error("frecency: fetch stats failed:", e));
+      .catch((e: unknown) => logger.error(`fetch stats failed: ${String(e)}`));
   }, []);
 
   // Fetch stats on mount.
@@ -60,7 +63,7 @@ export function FrecencySection() {
       await command("frecency_clear");
       refreshStats();
     } catch (e) {
-      console.error("frecency: clear failed:", e);
+      logger.error(`clear failed: ${String(e)}`);
     } finally {
       setClearing(false);
       setConfirmClear(false);

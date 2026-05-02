@@ -60,7 +60,7 @@ export default function ClipboardSettings() {
   // capabilities are provided by the surrounding
   // PluginContextProvider.
   const { enabled } = usePluginInfo();
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage, logger } = usePluginRuntime();
 
   const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
   const [bringToFrontOnPaste, setBringToFrontOnPaste] =
@@ -74,8 +74,8 @@ export default function ClipboardSettings() {
   const refreshStats = useCallback(() => {
     sendMessage<unknown, ClipboardStats>("stats", {})
       .then(setStats)
-      .catch((e) => console.error("clipboard: fetch stats failed:", e));
-  }, [sendMessage]);
+      .catch((e) => logger.error(`fetch stats failed: ${String(e)}`));
+  }, [sendMessage, logger]);
 
   // Fetch stats on mount.
   useEffect(() => {
@@ -93,12 +93,12 @@ export default function ClipboardSettings() {
       await sendMessage("clear_history", {});
       refreshStats();
     } catch (e) {
-      console.error("clipboard: clear history failed:", e);
+      logger.error(`clear history failed: ${String(e)}`);
     } finally {
       setClearing(false);
       setConfirmClear(false);
     }
-  }, [confirmClear, refreshStats, sendMessage]);
+  }, [confirmClear, refreshStats, sendMessage, logger]);
 
   // Reset confirmation when clicking elsewhere.
   const handleCancelClear = useCallback(() => {

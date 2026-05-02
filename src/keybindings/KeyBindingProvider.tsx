@@ -17,6 +17,9 @@ import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { KeyBindingContext, type KeyBindingContextValue } from "./KeyBindingContext";
 import { matchesCombo, isInputFocused, type KeyBindingDefinition, type KeyCombo } from "./matching";
 import { platform } from "./platform";
+import { createLogger } from "../lib/logger";
+
+const logger = createLogger("keybindings");
 
 export interface KeyBindingProviderProps {
   children: ReactNode;
@@ -78,8 +81,8 @@ function warnCtrlMetaCollisions(bindings: KeyBindingDefinition[]): void {
   for (const [layer, layerMap] of layers) {
     for (const [ck, { ctrl, meta }] of layerMap) {
       if (ctrl.length > 0 && meta.length > 0) {
-        console.warn(
-          `[keybindings] Ctrl/Meta collision on layer ${layer} for "${ck}": ` +
+        logger.warn(
+          `Ctrl/Meta collision on layer ${layer} for "${ck}": ` +
             `Ctrl bindings [${ctrl.join(", ")}] and Meta bindings [${meta.join(", ")}] ` +
             `are indistinguishable on Windows/Linux. The first match by order wins.`,
         );

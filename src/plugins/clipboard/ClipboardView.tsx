@@ -197,7 +197,7 @@ function DetailPreview({
 
 export default function ClipboardView({ query }: PluginViewProps) {
   const { goBack, dismiss, mouseActiveRef, onFooterChange } = useLauncher();
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage, logger } = usePluginRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -298,7 +298,7 @@ export default function ClipboardView({ query }: PluginViewProps) {
       },
       (err) => {
         if (cancelled) return;
-        console.error("load_full_entry failed:", err);
+        logger.error(`load_full_entry failed: ${String(err)}`);
         setDetail(null);
         setDetailLoading(false);
       },
@@ -307,7 +307,7 @@ export default function ClipboardView({ query }: PluginViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, sendMessage]);
+  }, [selectedId, sendMessage, logger]);
 
   // -------------------------------------------------------
   // Actions
