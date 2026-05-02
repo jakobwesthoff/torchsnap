@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { command } from "../../lib/command";
 import { useSetting } from "../../hooks/useSetting";
+import { createLogger } from "../../lib/logger";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { Slider } from "../../components/Slider";
@@ -25,6 +26,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+const logger = createLogger("website-metadata");
+
 // =========================================================
 // Component
 // =========================================================
@@ -39,7 +42,7 @@ export function WebsiteMetadataSection() {
   const refreshStats = useCallback(() => {
     command("website_metadata_stats")
       .then(setStats)
-      .catch((e: unknown) => console.error("website-metadata: fetch stats failed:", e));
+      .catch((e: unknown) => logger.error(`fetch stats failed: ${String(e)}`));
   }, []);
 
   useEffect(() => {
@@ -57,7 +60,7 @@ export function WebsiteMetadataSection() {
       await command("website_metadata_clear_cache");
       refreshStats();
     } catch (e) {
-      console.error("website-metadata: clear cache failed:", e);
+      logger.error(`clear cache failed: ${String(e)}`);
     } finally {
       setClearing(false);
       setConfirmClear(false);
