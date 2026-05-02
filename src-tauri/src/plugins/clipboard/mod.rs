@@ -149,21 +149,23 @@ fn start_watcher(
     lifecycle: &Arc<Mutex<WatcherLifecycle>>,
     retention_condvar: &Arc<Condvar>,
     retention_days: &Arc<AtomicU32>,
-) {
+) -> Result<()> {
     let mut lc = lifecycle.lock().expect("lifecycle not poisoned");
     if lc.running {
-        return;
+        return Ok(());
     }
 
     // ----- Clipboard watcher thread -----
     let mut watcher_ctx: ClipboardWatcherContext<WatcherHandler> =
-        ClipboardWatcherContext::new().expect("create clipboard watcher");
+        ClipboardWatcherContext::new()
+            .map_err(|e| anyhow::anyhow!("create clipboard watcher: {e}"))?;
 
     let handler = WatcherHandler {
         platform: Arc::clone(platform),
         state: Arc::clone(state),
         shutdown: Arc::clone(lifecycle),
-        clipboard: ClipboardContext::new().expect("clipboard context"),
+        clipboard: ClipboardContext::new()
+            .map_err(|e| anyhow::anyhow!("acquire clipboard context: {e}"))?,
     };
 
     watcher_ctx.add_handler(handler);
@@ -191,6 +193,8 @@ fn start_watcher(
             retention_days,
         );
     });
+
+    Ok(())
 }
 
 /// Stop the clipboard watcher and signal the retention thread
@@ -324,13 +328,15 @@ impl Plugin for ClipboardPlugin {
         }
 
         // ----- Start watcher + retention thread -----
-        start_watcher(
+        if let Err(e) = start_watcher(
             &self.platform,
             &shared,
             &self.lifecycle,
             &self.retention_condvar,
             &self.retention_days,
-        );
+        ) {
+            eprintln!("clipboard: failed to start watcher: {e:#}");
+        }
     }
 
     fn disable(&self) {
