@@ -32,6 +32,7 @@ mod favicon_store;
 mod fetch;
 mod html_fields;
 mod metadata;
+pub mod protocol;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -50,6 +51,7 @@ use crate::storage::SqlStorage;
 
 use self::favicon_store::FaviconStore;
 use self::fetch::FetchError;
+use self::protocol::host_favicon_url;
 
 #[cfg(test)]
 mod service_tests;
@@ -197,7 +199,10 @@ impl Drop for LeaderGuard<'_> {
 
 pub struct WebsiteMetadataService {
     db: SqlStorage,
-    favicons: FaviconStore,
+    /// Shared so the host's `torchsnap-favicon://` protocol
+    /// handler can serve images from the same store the
+    /// service writes to.
+    favicons: Arc<FaviconStore>,
     http: Http,
 
     /// Domains that recently failed — avoids repeated network
@@ -243,7 +248,7 @@ impl WebsiteMetadataService {
         let db = SqlStorage::open(cache_dir.join("metadata.sqlite3"), &[cache::MIGRATION_001])
             .context("open website metadata cache database")?;
 
-        let favicons = FaviconStore::new(cache_dir.join("favicons"));
+        let favicons = Arc::new(FaviconStore::new(cache_dir.join("favicons")));
 
         let http = Http::builder()
             .default_timeout(Duration::from_secs(2))
@@ -397,6 +402,13 @@ impl WebsiteMetadataService {
     }
 
     /// Gather cache statistics for the settings UI.
+    /// Shared handle to the favicon store. Used by the
+    /// `torchsnap-favicon://` Tauri protocol handler to read
+    /// cached favicon bytes on demand.
+    pub fn favicon_store(&self) -> Arc<FaviconStore> {
+        Arc::clone(&self.favicons)
+    }
+
     pub fn stats(&self) -> cache::CacheStats {
         let mut stats = cache::stats(&self.db);
         stats.favicon_bytes = self.favicons.disk_usage();
@@ -454,12 +466,15 @@ impl WebsiteMetadataService {
             return MetadataResult::ReachableNoData;
         }
 
+        // Build the renderable URL directly from `(key, ext)` —
+        // we don't need to resolve to a filesystem path here.
+        // The host-favicon protocol handler resolves the URL on
+        // demand when the launcher loads the `<img src>`. If the
+        // file no longer exists on disk (cleanup raced ahead of
+        // the cache row), the protocol handler returns 404 and
+        // the `<img>` falls back to the alt text.
         let favicon = match (&entry.favicon_key, &entry.favicon_ext) {
-            (Some(key), Some(ext)) => self
-                .favicons
-                .resolve(key, ext)
-                .map(EntryIcon::AssetIcon)
-                .unwrap_or_else(|| EntryIcon::HeroIcon("globe-alt".to_string())),
+            (Some(key), Some(ext)) => EntryIcon::AssetIcon(host_favicon_url(key, ext)),
             _ => EntryIcon::HeroIcon("globe-alt".to_string()),
         };
 
@@ -487,11 +502,12 @@ impl WebsiteMetadataService {
 
         for favicon_url in &candidates {
             if let Some(stored) = self.fetch_and_store_favicon(favicon_url) {
+                let icon = EntryIcon::AssetIcon(host_favicon_url(&stored.key, &stored.ext));
                 return (
                     Some(favicon_url.clone()),
                     Some(stored.key),
                     Some(stored.ext),
-                    EntryIcon::AssetIcon(stored.path),
+                    icon,
                 );
             }
         }
@@ -670,11 +686,11 @@ impl WebsiteMetadataService {
         let (favicon_key, favicon_ext, favicon) =
             if let Some(ref favicon_url) = page_metadata.favicon_url {
                 match self.fetch_and_store_favicon(favicon_url) {
-                    Some(stored) => (
-                        Some(stored.key),
-                        Some(stored.ext),
-                        EntryIcon::AssetIcon(stored.path),
-                    ),
+                    Some(stored) => {
+                        let icon =
+                            EntryIcon::AssetIcon(host_favicon_url(&stored.key, &stored.ext));
+                        (Some(stored.key), Some(stored.ext), icon)
+                    }
                     None => (None, None, EntryIcon::HeroIcon("globe-alt".to_string())),
                 }
             } else {

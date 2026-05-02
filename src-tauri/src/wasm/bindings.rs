@@ -237,33 +237,35 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 }
 
 // =========================================================
-// Plugin-emitted AssetIcon resolution
+// AssetIcon resolution on the response path
 //
-// Plugins must reference their bundled assets via plugin-
-// relative paths (`assets/icon.svg`). We rewrite those into
-// fully-qualified `torchsnap-plugin://localhost/<plugin-id>/
-// <path>` URLs so the existing plugin asset URI scheme
-// (`wasm/protocol.rs`) serves them to the launcher.
+// `AssetIcon` carries one of three things:
 //
-// Anything that *isn't* a plugin-relative path — absolute
-// filesystem paths, fully-qualified URLs — is rejected: the
-// icon is dropped (`None`) and a warning is recorded for the
-// caller to log. Rationale:
+// 1. Plugin-relative paths (`assets/icon.svg`). Plugins
+//    bundle assets inside their `.torchsnap` archive and
+//    reference them by relative path. We rewrite these into
+//    `torchsnap-plugin://localhost/<plugin-id>/<path>` URLs
+//    so the plugin asset URI scheme (`wasm/protocol.rs`)
+//    serves them to the launcher.
 //
-// 1. The manifest validator already rejects absolute paths in
-//    every other plugin path field; this enforces the same
-//    rule for icons.
-// 2. Host-emitted icons (e.g. website-metadata cached
-//    favicons) construct `native::EntryIcon::AssetIcon`
-//    directly without going through this resolver, so they
-//    keep their absolute paths.
-// 3. A plugin handing a fully-qualified URL through
-//    `AssetIcon` could otherwise reference another plugin's
-//    archive via the protocol scheme. The exposure is small
-//    today (only source files are served, not runtime state),
-//    but layering across plugin boundaries should not depend
-//    on what isn't reachable elsewhere in the protocol.
+// 2. `torchsnap-favicon://localhost/<key>.<ext>` URLs
+//    produced by `WebsiteMetadataService`. The host owns
+//    the scheme via `network::website_metadata::protocol`
+//    and serves bytes from the favicon cache. These travel
+//    host → guest → host (the plugin embeds the URL the
+//    host handed it back into the search response), so the
+//    resolver passes them through unchanged.
+//
+// 3. Anything else — absolute filesystem paths, arbitrary
+//    qualified URLs from plugins. Rejected: the icon is
+//    dropped (`None`) and a warning is recorded for the
+//    caller to log. Plugins have no business pointing
+//    `AssetIcon` at arbitrary host filesystem locations or
+//    cross-plugin protocol URLs; the host-favicon scheme is
+//    the one whitelisted exception.
 // =========================================================
+
+use crate::network::website_metadata::protocol::HOST_FAVICON_SCHEME;
 
 /// Rewrite plugin-relative `AssetIcon` paths in a search result
 /// payload. Returns warning messages for any rejected icons —
@@ -312,6 +314,11 @@ fn resolve_entry_icon(
         AssetPathClass::Relative => {
             *path = format!("torchsnap-plugin://localhost/{plugin_id}/{path}");
         }
+        AssetPathClass::HostFavicon => {
+            // Host-issued favicon URL. Passes through unchanged
+            // — the host owns the scheme and the cache root, so
+            // there is no plugin-issued payload to validate.
+        }
         AssetPathClass::AbsolutePath => {
             warnings.push(format!(
                 "AssetIcon path `{path}` is absolute; plugins must reference \
@@ -335,9 +342,15 @@ enum AssetPathClass {
     Relative,
     AbsolutePath,
     QualifiedUrl,
+    HostFavicon,
 }
 
 fn classify_plugin_asset_path(path: &str) -> AssetPathClass {
+    // Match the host-favicon scheme before the generic `://`
+    // arm so it doesn't fall through to `QualifiedUrl`.
+    if path.starts_with(HOST_FAVICON_SCHEME) {
+        return AssetPathClass::HostFavicon;
+    }
     if path.contains("://") {
         return AssetPathClass::QualifiedUrl;
     }
@@ -586,5 +599,34 @@ mod tests {
         resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
         assert!(matches!(&slot, Some(native::EntryIcon::HeroIcon(s)) if s == "globe-alt"));
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn host_favicon_url_passes_through_unchanged() {
+        // Regression: host-issued favicons travel as
+        // `torchsnap-favicon://localhost/<key>.<ext>` URLs from
+        // the website-metadata service through the plugin's
+        // search response back to the host. The resolver must
+        // pass these through unchanged — they're host-managed,
+        // not plugin-issued. Before this rule existed, the
+        // generic `://` arm classified them as `QualifiedUrl`
+        // and dropped the icon, leaving the launcher to render
+        // the `command-line` HeroIcon fallback for every URL/
+        // bang result.
+        let original = "torchsnap-favicon://localhost/abc123.webp";
+        let mut slot = Some(native::EntryIcon::AssetIcon(original.into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+
+        match &slot {
+            Some(native::EntryIcon::AssetIcon(p)) => assert_eq!(p, original),
+            other => panic!(
+                "host-favicon URL must survive as AssetIcon, got {other:?}"
+            ),
+        }
+        assert!(
+            warnings.is_empty(),
+            "host-favicon URL must not produce warnings, got: {warnings:?}",
+        );
     }
 }
