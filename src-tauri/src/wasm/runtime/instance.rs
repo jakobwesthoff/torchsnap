@@ -235,7 +235,7 @@ impl WasmPluginInstance {
     }
 
     /// Call the guest's `entries` export and convert to native types.
-    pub fn entries(&self) -> anyhow::Result<Vec<crate::search::types::CatalogEntry>> {
+    pub fn entries(&self) -> anyhow::Result<Vec<crate::commands::types::CatalogEntry>> {
         let _span = self.logger.span("entries").start();
         let mut store = self.store.lock().expect("store not poisoned");
         let wit_entries = self
@@ -264,14 +264,14 @@ impl WasmPluginInstance {
         &self,
         query: &str,
         matched_prefix: Option<&str>,
-    ) -> anyhow::Result<crate::search::types::PluginResponse> {
+    ) -> anyhow::Result<crate::commands::types::PluginResponse> {
         let my_gen = self.search_generation.fetch_add(1, Ordering::AcqRel) + 1;
 
         let _span = self.logger.span("search").meta("query", query).start();
         let mut store = self.store.lock().expect("store not poisoned");
 
         if self.search_generation.load(Ordering::Acquire) > my_gen {
-            return Ok(crate::search::types::PluginResponse::Results(vec![]));
+            return Ok(crate::commands::types::PluginResponse::Results(vec![]));
         }
 
         let response = self
@@ -287,8 +287,8 @@ impl WasmPluginInstance {
     pub fn execute(
         &self,
         entry_id: &str,
-        action_id: &crate::search::types::ActionId,
-    ) -> anyhow::Result<crate::search::types::PostAction> {
+        action_id: &crate::commands::types::ActionId,
+    ) -> anyhow::Result<crate::commands::types::PostAction> {
         let _span = self
             .logger
             .span("execute")

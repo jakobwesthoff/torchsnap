@@ -10,7 +10,7 @@ mod platform;
 mod plugin_host;
 mod plugin_install;
 mod plugins;
-mod search;
+mod commands;
 mod settings;
 mod storage;
 mod unicode;
@@ -577,9 +577,9 @@ pub fn run() {
         // adding, removing, or changing a command signature here,
         // update the `CommandMap` interface on the frontend as well.
         .invoke_handler(tauri::generate_handler![
-            search::search,
-            search::search_execute,
-            search::plugin_message,
+            commands::search,
+            commands::search_execute,
+            commands::plugin_message,
             control_subscribe,
             launcher_hide,
             launcher_set_layout,

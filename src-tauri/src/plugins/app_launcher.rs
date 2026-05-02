@@ -31,7 +31,7 @@ use anyhow::Context;
 
 use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
-use crate::search::types::{
+use crate::commands::types::{
     Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction,
 };
 use crate::storage::StorageKey;

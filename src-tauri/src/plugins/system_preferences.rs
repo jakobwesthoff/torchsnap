@@ -29,7 +29,7 @@ use anyhow::Context;
 
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
-use crate::search::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::StorageKey;
 
 use super::{Plugin, PluginContext};
