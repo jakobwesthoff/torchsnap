@@ -17,9 +17,7 @@
  * registration and `#[tauri::command]` signatures in
  * `src-tauri/src/lib.rs` and `src-tauri/src/search/mod.rs`.
  *
- * TODO: Replace `string` error payloads with structured error types
- * once the Rust side is migrated (see structured-rust-error-types
- * todo).
+ * TODO(structured-errors): see todos/backend/errors/01kn44hd21r2sv9y457dr9c11m-structured-rust-error-types.md
  */
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
