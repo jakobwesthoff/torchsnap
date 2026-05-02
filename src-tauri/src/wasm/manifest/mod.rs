@@ -16,13 +16,19 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::source::validate_plugin_path;
-
 pub(crate) mod permissions;
-pub use permissions::{
-    ArgvConstraint, CommandPermissionDef, FsPermissionsDef, HttpPermissionsDef,
-    OpenerPermissionsDef, PermissionsDef,
-};
+pub use permissions::{ArgvConstraint, CommandPermissionDef, PermissionsDef};
+
+pub(crate) mod tasks;
+pub use tasks::TaskDef;
+
+pub(crate) mod frontend;
+pub use frontend::FrontendDef;
+
+pub(crate) mod storage;
+pub use storage::StorageDef;
+
+mod paths;
 
 #[cfg(test)]
 mod test_helpers;
@@ -267,140 +273,6 @@ pub struct ShortcutDef {
 }
 
 // =========================================================
-// Frontend
-// =========================================================
-
-/// Frontend component declarations. The host extracts bundled
-/// JS files and loads them via dynamic `import()` in the
-/// appropriate webview.
-///
-/// Multi-word field names use dual `#[serde(rename(...))]`
-/// attributes for TOML kebab-case ↔ JSON camelCase conversion.
-/// See the `Manifest` module comment for the full naming strategy.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FrontendDef {
-    /// Path to the ES module bundle loaded in the launcher
-    /// webview. Contains view and inline-view components as
-    /// named exports.
-    #[serde(rename(deserialize = "launcher-bundle", serialize = "launcherBundle"))]
-    pub launcher_bundle: Option<String>,
-
-    /// Path to the ES module bundle loaded in the settings
-    /// webview. Contains the settings component as a named
-    /// export.
-    #[serde(rename(deserialize = "settings-bundle", serialize = "settingsBundle"))]
-    pub settings_bundle: Option<String>,
-
-    /// Maps view names to named exports from `launcher_bundle`.
-    /// (e.g., `{ "history" = "ClipboardView" }`).
-    #[serde(default)]
-    pub views: HashMap<String, String>,
-
-    /// Maps inline view names to named exports from
-    /// `launcher_bundle`.
-    #[serde(
-        default,
-        rename(deserialize = "inline-views", serialize = "inlineViews")
-    )]
-    pub inline_views: HashMap<String, String>,
-
-    /// Path to the CSS file loaded alongside the launcher
-    /// bundle. Served via `torchsnap-plugin://` and scoped to
-    /// the plugin's container with `@scope`.
-    #[serde(
-        default,
-        rename(deserialize = "launcher-css", serialize = "launcherCss")
-    )]
-    pub launcher_css: Option<String>,
-
-    /// Path to the CSS file loaded alongside the settings
-    /// bundle.
-    #[serde(
-        default,
-        rename(deserialize = "settings-css", serialize = "settingsCss")
-    )]
-    pub settings_css: Option<String>,
-
-    /// Settings panel component declaration.
-    pub settings: Option<FrontendSettingsDef>,
-}
-
-/// Settings component reference.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FrontendSettingsDef {
-    /// Named export from `settings_bundle` that provides
-    /// the settings React component.
-    pub component: String,
-}
-
-// =========================================================
-// Storage configuration
-//
-// Plugins opt into per-plugin storage by declaring a
-// `[storage]` table in their manifest. The host materializes
-// the requested backends on first use — plugins that never
-// touch their storage never get a database file on disk.
-// =========================================================
-
-/// `[storage]` block. Future expansion can add `[storage.kv]`,
-/// `[storage.files]`, etc. without breaking existing manifests.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StorageDef {
-    /// `[storage.sql]` — per-plugin SQLite database.
-    pub sql: Option<SqlStorageDef>,
-}
-
-/// `[storage.sql]` block.
-///
-/// Migrations are declared as a list of file paths relative
-/// to the plugin root. The host reads the file contents via
-/// `PluginSource::read_file` at plugin load time and applies
-/// them during `enable()` before the guest runs.
-///
-/// Single source of truth: the `.sql` files. Plugin tests can
-/// `include_str!` the same files the manifest references —
-/// no duplication, no drift.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SqlStorageDef {
-    /// Ordered list of migration file paths. Each path is
-    /// relative to the plugin root and should resolve to a
-    /// `.sql` text file inside the plugin's directory or
-    /// archive.
-    #[serde(default)]
-    pub migrations: Vec<String>,
-}
-
-// =========================================================
-// Scheduled tasks
-// =========================================================
-
-/// `[[tasks]]` entry — a single scheduled background task.
-///
-/// `schedule` is a 5-field POSIX cron expression
-/// (`minute hour day month weekday`). The host parses and
-/// validates it at manifest load time and stores the parsed
-/// `cron::Schedule` separately in the bridge — this struct
-/// only carries the raw user-facing fields so that
-/// (de)serialization stays straightforward.
-///
-/// Sub-minute scheduling is rejected — `cron`'s
-/// underlying syntax is 6/7-field, but plugins use the
-/// stricter 5-field POSIX form so the schedule space is
-/// predictable and there's no chance of accidentally
-/// scheduling a task at the second-resolution.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TaskDef {
-    /// Unique task identifier within the plugin. Passed
-    /// back to the guest via `tasks::run-task(task-id)`
-    /// when the cron schedule fires.
-    pub id: String,
-
-    /// 5-field POSIX cron expression
-    /// (`minute hour day month weekday`).
-    pub schedule: String,
-}
-
-// =========================================================
 // Parsing
 // =========================================================
 
@@ -414,7 +286,7 @@ impl Manifest {
         // cron expression or a duplicate id fails plugin
         // load instead of waiting for the scheduler to
         // crash at runtime.
-        validate_task_definitions(&manifest.tasks)?;
+        tasks::validate_task_definitions(&manifest.tasks)?;
 
         // Validate and normalize `[permissions]` entries.
         // `validate_permissions` consumes the raw value and returns a
@@ -430,7 +302,7 @@ impl Manifest {
         // guarantee load-bearing: no downstream code ever sees
         // an unvalidated path. See the "Plugin Path Guard"
         // comment in `source.rs` for the rationale.
-        validate_manifest_paths(&manifest)?;
+        paths::validate_manifest_paths(&manifest)?;
 
         // Validate that views/inline-views reference a launcher bundle.
         if let Some(ref frontend) = manifest.frontend {
@@ -455,64 +327,6 @@ impl Manifest {
 
         Ok(manifest)
     }
-}
-
-/// Walk every path-like field of a parsed manifest and run
-/// it through [`validate_plugin_path`]. Rejects any manifest
-/// that references an absolute path, a traversal, a Windows-
-/// style prefix, a backslash, or a NUL byte. Called from
-/// [`Manifest::parse`] — no caller needs to invoke it
-/// directly.
-///
-/// Fields covered:
-///
-/// - `plugin.wasm`
-/// - `plugin.icon` (Asset variant only — `heroicons:…` is
-///   not a path and is skipped).
-/// - `frontend.launcher_bundle`, `frontend.settings_bundle`,
-///   `frontend.launcher_css`, `frontend.settings_css`.
-/// - Every entry in `storage.sql.migrations`.
-///
-/// Not covered: `frontend.views` and `frontend.inline_views`
-/// values — those are JavaScript export names, not paths.
-fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
-    validate_plugin_path(&manifest.plugin.wasm)
-        .map_err(|e| anyhow::anyhow!("invalid `plugin.wasm`: {e}"))?;
-
-    if let PluginIcon::Asset(ref path) = manifest.plugin.icon {
-        validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `plugin.icon`: {e}"))?;
-    }
-
-    if let Some(ref frontend) = manifest.frontend {
-        if let Some(ref path) = frontend.launcher_bundle {
-            validate_plugin_path(path)
-                .map_err(|e| anyhow::anyhow!("invalid `frontend.launcher-bundle`: {e}"))?;
-        }
-        if let Some(ref path) = frontend.settings_bundle {
-            validate_plugin_path(path)
-                .map_err(|e| anyhow::anyhow!("invalid `frontend.settings-bundle`: {e}"))?;
-        }
-        if let Some(ref path) = frontend.launcher_css {
-            validate_plugin_path(path)
-                .map_err(|e| anyhow::anyhow!("invalid `frontend.launcher-css`: {e}"))?;
-        }
-        if let Some(ref path) = frontend.settings_css {
-            validate_plugin_path(path)
-                .map_err(|e| anyhow::anyhow!("invalid `frontend.settings-css`: {e}"))?;
-        }
-    }
-
-    if let Some(ref storage) = manifest.storage
-        && let Some(ref sql) = storage.sql
-    {
-        for path in &sql.migrations {
-            validate_plugin_path(path).map_err(|e| {
-                anyhow::anyhow!("invalid `storage.sql.migrations` entry `{path}`: {e}")
-            })?;
-        }
-    }
-
-    Ok(())
 }
 
 // =========================================================
@@ -2330,152 +2144,3 @@ mod tests {
     }
 }
 
-// =========================================================
-// Task definition validation
-// =========================================================
-
-/// Verify that every `[[tasks]]` entry parses as a valid
-/// 5-field POSIX cron expression and that no two tasks
-/// share the same id.
-///
-/// Both checks happen at manifest load time so that broken
-/// schedules surface as clean plugin-load errors instead of
-/// crashing the scheduler later.
-pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()> {
-    let mut seen_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for task in tasks {
-        if !seen_ids.insert(task.id.as_str()) {
-            anyhow::bail!("duplicate scheduled task id `{}`", task.id);
-        }
-        parse_cron_schedule(&task.schedule)
-            .map_err(|e| anyhow::anyhow!("invalid schedule for task `{}`: {e}", task.id))?;
-    }
-    Ok(())
-}
-
-/// Parse a 5-field POSIX cron expression
-/// (`minute hour day month weekday`) into a
-/// `cron::Schedule`.
-///
-/// The `cron` crate uses Quartz-style 6/7-field syntax
-/// (`sec min hour day month dow [year]`), so we wrap the
-/// user's 5 fields with `0` for seconds and `*` for year.
-/// A pre-check on the field count catches the most common
-/// authoring errors — wrong number of fields, Quartz macros
-/// like `@daily` — with a friendly message before delegating
-/// to `cron` for full validation.
-pub(crate) fn parse_cron_schedule(schedule: &str) -> anyhow::Result<cron::Schedule> {
-    use std::str::FromStr;
-
-    // Pre-check the field count so plugin authors who pass
-    // a 4/6/7-field expression get a clear "expected
-    // 5-field POSIX cron" message instead of an opaque
-    // Quartz-internal error from the `cron` crate. The
-    // wrapping below is still the actual validation
-    // mechanism — this check just catches the common
-    // failure modes early with a friendlier explanation.
-    let field_count = schedule.split_whitespace().count();
-    if field_count != 5 {
-        anyhow::bail!(
-            "expected 5-field POSIX cron `minute hour day month weekday`, got {field_count} field(s) — sub-minute scheduling and 6/7-field Quartz syntax are not supported"
-        );
-    }
-
-    // The `cron` crate uses Quartz-style 6/7-field syntax
-    // (`sec min hour day month dow [year]`), so we wrap the
-    // user's 5 fields with `0` for seconds and `*` for year.
-    // This wrapping is also a defensive validation: a valid
-    // 5-field POSIX expression becomes a valid 7-field
-    // Quartz expression that `cron::Schedule::from_str`
-    // accepts; a malformed expression that somehow has 5
-    // tokens but isn't valid POSIX cron becomes a malformed
-    // 7-field Quartz expression that the parser rejects
-    // with its own error.
-    let normalized = format!("0 {schedule} *");
-    cron::Schedule::from_str(&normalized).map_err(|e| anyhow::anyhow!("{e}"))
-}
-
-#[cfg(test)]
-mod task_validation_tests {
-    use super::*;
-
-    fn task(id: &str, schedule: &str) -> TaskDef {
-        TaskDef {
-            id: id.to_string(),
-            schedule: schedule.to_string(),
-        }
-    }
-
-    #[test]
-    fn empty_task_list_is_ok() {
-        validate_task_definitions(&[]).unwrap();
-    }
-
-    #[test]
-    fn valid_5_field_cron_accepted() {
-        validate_task_definitions(&[task("cleanup", "*/30 * * * *")]).unwrap();
-        validate_task_definitions(&[task("daily", "0 4 * * *")]).unwrap();
-    }
-
-    #[test]
-    fn six_field_cron_rejected() {
-        // Quartz-style 6-field input — explicitly out of
-        // scope so plugins don't accidentally schedule at
-        // second resolution. The cron crate's parser
-        // rejects the resulting 8-field intermediate.
-        let err = validate_task_definitions(&[task("bad", "0 */30 * * * *")]).unwrap_err();
-        assert!(err.to_string().contains("schedule"), "{err}");
-    }
-
-    #[test]
-    fn malformed_cron_rejected() {
-        let err = validate_task_definitions(&[task("bad", "not a cron")]).unwrap_err();
-        assert!(err.to_string().contains("schedule"), "{err}");
-    }
-
-    #[test]
-    fn duplicate_task_ids_rejected() {
-        let err = validate_task_definitions(&[
-            task("cleanup", "*/30 * * * *"),
-            task("cleanup", "0 0 * * *"),
-        ])
-        .unwrap_err();
-        assert!(err.to_string().contains("duplicate"), "{err}");
-    }
-
-    #[test]
-    fn empty_schedule_rejected() {
-        let err = validate_task_definitions(&[task("bad", "")]).unwrap_err();
-        assert!(err.to_string().contains("5-field"), "{err}");
-    }
-
-    #[test]
-    fn four_field_schedule_rejected() {
-        let err = validate_task_definitions(&[task("bad", "* * * *")]).unwrap_err();
-        assert!(err.to_string().contains("5-field"), "{err}");
-    }
-
-    #[test]
-    fn seven_field_schedule_rejected() {
-        let err = validate_task_definitions(&[task("bad", "0 */30 * * * * *")]).unwrap_err();
-        assert!(err.to_string().contains("5-field"), "{err}");
-    }
-
-    #[test]
-    fn all_wildcards_5_field_accepted() {
-        // The simplest legal POSIX cron expression — fires
-        // every minute. Confirms the base case parses.
-        validate_task_definitions(&[task("ok", "* * * * *")]).unwrap();
-    }
-
-    #[test]
-    fn quartz_macro_at_daily_rejected() {
-        // `@daily` is a Quartz alias for `0 0 * * *`, but
-        // it's a single-token whole-expression macro. After
-        // wrapping it becomes `0 @daily *` which the cron
-        // crate rejects. The friendlier error wrapper catches
-        // it as a 1-field input first.
-        let err = validate_task_definitions(&[task("bad", "@daily")]).unwrap_err();
-        assert!(err.to_string().contains("5-field"), "{err}");
-    }
-}
