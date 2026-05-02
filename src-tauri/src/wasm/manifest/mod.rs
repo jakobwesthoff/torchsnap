@@ -19,6 +19,9 @@ use serde::{Deserialize, Serialize};
 use super::permission_vars::validate_variable_references;
 use super::source::validate_plugin_path;
 
+#[cfg(test)]
+mod test_helpers;
+
 // =========================================================
 // Top-Level Manifest
 //
@@ -764,27 +767,7 @@ fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =====================================================
-    // Helpers
-    // =====================================================
-
-    /// Build a minimal valid manifest TOML, optionally
-    /// appending extra sections.
-    fn minimal(extra: &str) -> String {
-        format!(
-            r#"
-            [plugin]
-            id = "test-plugin"
-            name = "Test Plugin"
-            description = "A test plugin"
-            version = "0.1.0"
-            wasm = "test.wasm"
-            icon = "heroicons:beaker"
-            {extra}
-            "#
-        )
-    }
+    use super::test_helpers::minimal;
 
     // =====================================================
     // Manifest: happy paths
