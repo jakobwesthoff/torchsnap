@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::source::validate_plugin_path;
 
 pub(crate) mod permissions;
-pub use permissions::{OpenerPermissionsDef, PermissionsDef};
+pub use permissions::{HttpPermissionsDef, OpenerPermissionsDef, PermissionsDef};
 
 #[cfg(test)]
 mod test_helpers;
@@ -365,30 +365,6 @@ pub struct SqlStorageDef {
     /// archive.
     #[serde(default)]
     pub migrations: Vec<String>,
-}
-
-/// `[permissions.http]` — declares which origins the plugin
-/// is allowed to reach via `http::fetch`.
-///
-/// ```toml
-/// [permissions.http]
-/// origins = ["https://api.example.com"]
-///
-/// # or trust-all:
-/// origins = ["*"]
-/// ```
-///
-/// Origins must be valid `scheme + host` pairs
-/// (e.g. `"https://api.example.com"`). They are normalized
-/// to `ascii_serialization()` form at parse time. The
-/// special value `"*"` opts the plugin into trust-all mode.
-///
-/// An empty `origins` list is a manifest authoring error.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct HttpPermissionsDef {
-    /// Stored as normalized `ascii_serialization()` origins,
-    /// except for the literal `"*"` which is preserved as-is.
-    pub origins: Vec<String>,
 }
 
 /// `[permissions.fs]` — declares read-only filesystem paths

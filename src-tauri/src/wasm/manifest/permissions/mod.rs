@@ -32,7 +32,10 @@ use serde::{Deserialize, Serialize};
 pub(super) mod opener;
 pub use opener::OpenerPermissionsDef;
 
-use super::{ArgvConstraint, CommandPermissionDef, FsPermissionsDef, HttpPermissionsDef};
+pub(super) mod http;
+pub use http::HttpPermissionsDef;
+
+use super::{ArgvConstraint, CommandPermissionDef, FsPermissionsDef};
 use crate::wasm::permission_vars::validate_variable_references;
 
 /// `[permissions]` block.
@@ -82,38 +85,7 @@ pub struct PermissionsDef {
 pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Result<PermissionsDef> {
     let opener = permissions.opener.map(|o| o.validate()).transpose()?;
 
-    let http = permissions
-        .http
-        .map(|mut http| -> anyhow::Result<HttpPermissionsDef> {
-            if http.origins.is_empty() {
-                anyhow::bail!(
-                    "`[permissions.http]` declared with an empty `origins` list — \
-                     either add at least one origin (or `\"*\"`) or remove the section"
-                );
-            }
-
-            // Normalize each declared origin to ascii_serialization().
-            // Reject malformed entries immediately so authors discover
-            // errors at plugin-load time rather than at the first fetch.
-            let origins = http
-                .origins
-                .into_iter()
-                .map(|origin| {
-                    if origin == "*" {
-                        return Ok(origin);
-                    }
-                    let parsed = url::Url::parse(&origin).map_err(|e| {
-                        anyhow::anyhow!(
-                            "`[permissions.http]` origin `{origin}` is not a valid URL: {e}"
-                        )
-                    })?;
-                    Ok(parsed.origin().ascii_serialization())
-                })
-                .collect::<anyhow::Result<Vec<_>>>()?;
-            http.origins = origins;
-            Ok(http)
-        })
-        .transpose()?;
+    let http = permissions.http.map(|h| h.validate()).transpose()?;
 
     let fs = permissions
         .fs
