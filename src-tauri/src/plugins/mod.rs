@@ -25,8 +25,8 @@ pub mod commands;
 pub mod system_commands;
 pub mod system_preferences;
 
-use crate::frecency::PluginFrecency;
 use crate::commands::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
+use crate::frecency::PluginFrecency;
 use crate::settings::{PluginSettings, SettingsInit};
 
 // =========================================================

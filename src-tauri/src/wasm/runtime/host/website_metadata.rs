@@ -68,8 +68,7 @@ impl bindings::torchsnap::plugin::website_metadata::Host for PluginState {
         // The shim runs inside a tokio task (the bridge dispatches WIT
         // calls without `spawn_blocking`), so we move the current thread
         // out of the async pool while the synchronous fetch runs.
-        let result =
-            tokio::task::block_in_place(|| service.lookup(&domain, native_mode));
+        let result = tokio::task::block_in_place(|| service.lookup(&domain, native_mode));
 
         match result {
             Ok(r) => Ok(native_to_wit(r)),
@@ -159,8 +158,8 @@ impl WasmPluginInstance {
 mod tests {
     use super::*;
 
-    use httpmock::prelude::*;
     use httpmock::MockServer;
+    use httpmock::prelude::*;
     use tempfile::TempDir;
 
     use crate::settings::notifier::SettingsNotifier;
@@ -248,10 +247,12 @@ mod tests {
 
         let mock = env.server.mock(|when, then| {
             when.method(GET).path("/x.test/");
-            then.status(200).header("content-type", "text/html").body("ok");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("ok");
         });
 
-        let err = lookup_sync(&mut env.state,"x.test", wit::LookupMode::Blocking).unwrap_err();
+        let err = lookup_sync(&mut env.state, "x.test", wit::LookupMode::Blocking).unwrap_err();
         match err {
             wit::WebsiteMetadataError::PermissionDenied(_) => {}
             other => panic!("expected PermissionDenied, got {other:?}"),
@@ -264,7 +265,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn shim_rejects_invalid_domain() {
         let mut env = make_env(true);
-        let err = lookup_sync(&mut env.state,"https://example.com", wit::LookupMode::Blocking).unwrap_err();
+        let err = lookup_sync(
+            &mut env.state,
+            "https://example.com",
+            wit::LookupMode::Blocking,
+        )
+        .unwrap_err();
         match err {
             wit::WebsiteMetadataError::InvalidDomain(_) => {}
             other => panic!("expected InvalidDomain, got {other:?}"),
@@ -293,7 +299,7 @@ mod tests {
                 .body(png_bytes());
         });
 
-        let result = lookup_sync(&mut env.state,domain, wit::LookupMode::Blocking).expect("ok");
+        let result = lookup_sync(&mut env.state, domain, wit::LookupMode::Blocking).expect("ok");
         match result {
             wit::LookupResult::Hit(entry) => {
                 assert_eq!(entry.title.as_deref(), Some("My Title"));
@@ -323,7 +329,7 @@ mod tests {
                 .body(png_bytes());
         });
 
-        let first = lookup_sync(&mut env.state,domain, wit::LookupMode::Cached).unwrap();
+        let first = lookup_sync(&mut env.state, domain, wit::LookupMode::Cached).unwrap();
         assert!(matches!(first, wit::LookupResult::Pending));
     }
 
@@ -334,10 +340,12 @@ mod tests {
 
         let _page = env.server.mock(|when, then| {
             when.method(GET).path(format!("/{domain}/"));
-            then.status(200).header("content-type", "text/plain").body("nope");
+            then.status(200)
+                .header("content-type", "text/plain")
+                .body("nope");
         });
 
-        let result = lookup_sync(&mut env.state,domain, wit::LookupMode::Blocking).unwrap();
+        let result = lookup_sync(&mut env.state, domain, wit::LookupMode::Blocking).unwrap();
         assert!(matches!(result, wit::LookupResult::ReachableNoData));
     }
 
@@ -357,7 +365,7 @@ mod tests {
                 .body("<html><head><title>OnlyTitle</title></head></html>");
         });
 
-        let result = lookup_sync(&mut env.state,domain, wit::LookupMode::Blocking).unwrap();
+        let result = lookup_sync(&mut env.state, domain, wit::LookupMode::Blocking).unwrap();
         match result {
             wit::LookupResult::Hit(entry) => {
                 assert_eq!(entry.title.as_deref(), Some("OnlyTitle"));

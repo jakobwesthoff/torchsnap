@@ -20,7 +20,7 @@
 // =========================================================
 
 use crate::wasm::bindings;
-use crate::wasm::permission_vars::{substitute_variables, ResolveError};
+use crate::wasm::permission_vars::{ResolveError, substitute_variables};
 
 use super::super::PluginState;
 

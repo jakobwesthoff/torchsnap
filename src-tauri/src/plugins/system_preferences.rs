@@ -27,9 +27,9 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 use crate::storage::StorageKey;
 
 use super::{Plugin, PluginContext};

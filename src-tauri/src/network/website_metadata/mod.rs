@@ -43,8 +43,8 @@ use anyhow::Context;
 use serde_json::Value;
 use url::Url;
 
-use crate::network::Http;
 use crate::commands::types::EntryIcon;
+use crate::network::Http;
 use crate::settings::notifier::SettingsNotifier;
 use crate::storage::SqlStorage;
 
@@ -711,7 +711,6 @@ impl WebsiteMetadataService {
             &image_data.content_type,
         )
     }
-
 }
 
 // =========================================================

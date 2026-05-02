@@ -21,8 +21,8 @@ use tauri::Manager;
 use crate::LauncherLayoutState;
 use crate::control::ControlCommand;
 use crate::control::handler::{ControlError, Handler};
-use crate::{hide_launcher, request_launcher_dismiss, show_launcher};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
+use crate::{hide_launcher, request_launcher_dismiss, show_launcher};
 
 /// Run a closure on the main thread and block until it completes,
 /// returning its result. Needed because AppKit/NSPanel calls must

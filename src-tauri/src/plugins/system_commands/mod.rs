@@ -12,8 +12,8 @@
 // platform-specific factory function.
 // =========================================================
 
-use crate::plugins::Plugin;
 use crate::commands::types::{ActionId, CatalogEntry, PostAction};
+use crate::plugins::Plugin;
 
 // =========================================================
 // SystemCommand Trait
