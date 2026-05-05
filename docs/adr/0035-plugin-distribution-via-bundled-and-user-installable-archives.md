@@ -6,6 +6,8 @@ Date: 2026-04-17
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 The WASM plugin system reached a point where two distribution
@@ -16,7 +18,7 @@ concerns had to be solved together:
    to ship inside the application bundle so the out-of-the-box
    experience matches what users expect from a launcher — the host
    cannot wait for users to install core functionality.
-2. **User-installable plugins.** The whole point of a WASM plugin
+1. **User-installable plugins.** The whole point of a WASM plugin
    system is that third parties (or the user themselves) can ship
    their own plugins without rebuilding the host. Users need a way
    to install a `.torchsnap` archive they downloaded, and to
@@ -44,10 +46,10 @@ The loader scans three roots, in this precedence order:
    bundler from `target/bundled-plugins/`, which a new
    `stage-bundled-plugins` Just recipe fills based on
    `plugins/bundled.toml`. Tagged `PluginSourceKind::System`.
-2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/`. Debug builds only
+1. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/`. Debug builds only
    (`cfg(debug_assertions)`); the branch is compiled out of
    release artifacts entirely. Tagged `PluginSourceKind::Dev`.
-3. **User** — `<app_data_dir>/plugins/`. The install target for
+1. **User** — `<app_data_dir>/plugins/`. The install target for
    `.torchsnap` archives dropped through the Plugins settings
    panel. Tagged `PluginSourceKind::User`.
 
@@ -59,7 +61,7 @@ front so the fallback is defensive rather than routine.
 
 ### On-disk layout
 
-```
+````
 <resource_dir>/plugins/
     calculator.torchsnap            # system
 
@@ -72,7 +74,7 @@ front so the fallback is defensive rather than routine.
         sql/
             storage.sqlite3         # host-managed per-plugin state
         # future: files/, cache/, …
-```
+````
 
 Plugin **code** lives under `plugins/`; plugin **state** lives
 under `plugin-home/`. Splitting the two keeps the `plugins/`
@@ -122,28 +124,28 @@ is out of scope for v1; it is designed in
 
 ### What this enables
 
-- Release builds ship a curated set of plugins that Just Work out
+* Release builds ship a curated set of plugins that Just Work out
   of the box. `calculator` is the first; others can be added by
   editing one file.
-- Users can install third-party `.torchsnap` archives from the
+* Users can install third-party `.torchsnap` archives from the
   settings panel without rebuilding the host.
-- Plugin authors get a stable discovery story for dev
+* Plugin authors get a stable discovery story for dev
   (`CARGO_MANIFEST_DIR/../plugins`, zero config) and a predictable
   install target for release (`<app_data_dir>/plugins/`).
-- System vs user separation makes it trivial to reason about which
+* System vs user separation makes it trivial to reason about which
   plugins an upgrade will update and which ones survive.
 
 ### Trade-offs
 
-- **Restart-required for now.** Install/uninstall prompts a restart.
+* **Restart-required for now.** Install/uninstall prompts a restart.
   A hot path is follow-up work; the architectural shift — turning
   `PluginHost::register` into a runtime-callable API — is
   non-trivial and deserves its own ticket.
-- **First use of `cfg!(debug_assertions)` in the codebase.** The
+* **First use of `cfg!(debug_assertions)` in the codebase.** The
   dev path is gated on the debug-build profile. An env-var-based
   alternative is captured in a dedicated todo, to revisit when
   plugin authors actually hit the current design's limits.
-- **No override flow.** A user who wants to replace a bundled
+* **No override flow.** A user who wants to replace a bundled
   plugin with their own must rename the id. The tradeoff is
   preserving the forking use case (same id inherits DB and
   settings) against the potential confusion of silent shadowing.

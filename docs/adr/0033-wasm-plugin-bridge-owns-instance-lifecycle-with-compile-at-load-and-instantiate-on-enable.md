@@ -8,17 +8,19 @@ Accepted
 Amends [31. WASM plugin SQL storage API](0031-wasm-plugin-sql-storage-api.md)
 Amends [32. WASM plugin scheduled tasks via host-managed cron scheduler](0032-wasm-plugin-scheduled-tasks.md)
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 Before this ADR, the WASM plugin loader worked like this:
 
 1. `lib.rs::load_single_wasm_plugin` opens the plugin source.
-2. It reads the WASM bytes and calls `WasmRuntime::instantiate(&id, &bytes)`
+1. It reads the WASM bytes and calls `WasmRuntime::instantiate(&id, &bytes)`
    to compile the component and create a `WasmPluginInstance` in one step.
-3. It hands the finished instance to `WasmPluginBridge::new`, which
+1. It hands the finished instance to `WasmPluginBridge::new`, which
    stashes the manifest-derived SQL config on the live store and keeps
    an `Arc<WasmPluginInstance>` as a bridge field.
-4. The bridge's `disable()` calls the guest's `lifecycle::disable`, clears
+1. The bridge's `disable()` calls the guest's `lifecycle::disable`, clears
    settings / SQL / clipboard state, but leaves the instance allocated.
 
 This layout has two concrete problems:
@@ -58,12 +60,12 @@ wasmtime `Store` is reclaimed.
 compilation and instantiation in one step — is replaced by two separate
 entry points:
 
-```rust
+````rust
 impl WasmRuntime {
     pub fn compile(&self, plugin_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()>;
     pub fn instantiate(&self, plugin_id: &str) -> anyhow::Result<WasmPluginInstance>;
 }
-```
+````
 
 `compile` parses the component-model binary, validates it, and stores
 the resulting `wasmtime::Component` in a per-plugin cache
@@ -88,7 +90,7 @@ needs a handle for on-demand instantiation.
 `WasmPluginBridge::new` signature changes from accepting a finished
 `WasmPluginInstance` to accepting the ingredients needed to create one:
 
-```rust
+````rust
 pub fn new(
     manifest: Manifest,
     runtime: Arc<WasmRuntime>,
@@ -96,17 +98,17 @@ pub fn new(
     source: &dyn PluginSource,
     app_data_dir: &Path,
 ) -> anyhow::Result<Self>;
-```
+````
 
 The constructor does three things:
 
 1. Reads the WASM bytes from the source, calls `runtime.compile(...)`,
    drops the bytes. Broken components fail plugin load at this step.
-2. Reads SQL migration files from the source (the logic that ADR 0031
+1. Reads SQL migration files from the source (the logic that ADR 0031
    put in this constructor), materializes `SqlConfig`, and stores it
    as a bridge field. No live instance is involved here; the config is
    re-applied to every fresh `PluginState` later.
-3. Pre-parses cron schedules from `[[tasks]]`.
+1. Pre-parses cron schedules from `[[tasks]]`.
 
 It does **not** instantiate. The `instance` field is
 `Mutex<Option<Arc<WasmPluginInstance>>>` and starts as `None`. Disabled
@@ -172,14 +174,14 @@ returns.
 
 ## Alternatives considered
 
-- **Keep the existing layering; just add a "drop instance" path on
+* **Keep the existing layering; just add a "drop instance" path on
   disable.** Rejected. It still requires pulling the runtime handle
   and SQL config into the bridge to re-create the instance on re-enable,
   and the asymmetry between "instance created by `lib.rs`" and
   "instance recreated by the bridge" makes the lifecycle harder to
   reason about than if the bridge owns both sides.
 
-- **Drop the whole bridge on disable and rebuild it on re-enable.**
+* **Drop the whole bridge on disable and rebuild it on re-enable.**
   Considered (this was the first instinct during the planning
   discussion). Rejected because `PluginHost` holds bridges as
   `Box<dyn Plugin>` in a slot keyed by ID — unregistering and
@@ -190,7 +192,7 @@ returns.
   live `Store`; dropping just the instance captures ~99% of the
   benefit for a fraction of the code change.
 
-- **Compile lazily on first enable instead of at load time.** Rejected.
+* **Compile lazily on first enable instead of at load time.** Rejected.
   Compiling at load time surfaces broken plugins as clean load errors,
   which is more useful than discovering the breakage on first enable.
   The memory cost of a cached `Component` is small (native code for
@@ -198,7 +200,7 @@ returns.
   `Store`, so keeping the compiled component around for disabled
   plugins is worth the upfront cost for the early error surface alone.
 
-- **Cache the `Linker<PluginState>` alongside the `Component`.**
+* **Cache the `Linker<PluginState>` alongside the `Component`.**
   Considered. Rejected. Linker construction is microseconds — it
   inserts host function pointers into a map, no WASM compilation — and
   `instantiate` is not called in a hot loop. The added field and
@@ -206,31 +208,31 @@ returns.
 
 ## Consequences
 
-- **Disabled plugins no longer allocate a `Store`.** The 50k-petnames
+* **Disabled plugins no longer allocate a `Store`.** The 50k-petnames
   hello-world scenario drops from tens of megabytes to the compiled
   `Component` footprint alone (a few kilobytes).
-- **Toggle off → on is fast.** The cached `Component` means re-enable
+* **Toggle off → on is fast.** The cached `Component` means re-enable
   runs the instantiation path only, which is cheap enough to run on
   every user toggle without lag.
-- **Re-enable runs guest `enable()` on fresh state.** This is the
+* **Re-enable runs guest `enable()` on fresh state.** This is the
   intended semantic: a plugin that needs cross-disable persistence
   must use SQL storage (ADR 0031), not in-memory state on the guest
   side. Plugin authors who were relying on in-memory state surviving
   disable cycles would now see it reset; none of the shipped plugins
   depend on that behaviour.
-- **Guest `enable()` failures leave the host's `enabled` flag stale
+* **Guest `enable()` failures leave the host's `enabled` flag stale
   until the follow-up `Plugin::enable → Result` refactor lands.**
   Observable effect: a plugin that fails its own initialization shows
   as enabled in the settings UI but its trait methods no-op. This is
   worse than today's silent half-state because there is no ambiguity
   about what happened (the bridge logged a clear error), but the UI
   reconciliation is explicitly deferred.
-- **ADR 0031's migration-file reads still happen at bridge
+* **ADR 0031's migration-file reads still happen at bridge
   construction time**, just via the new constructor signature. The
   SQL config lives on the bridge now instead of being stashed on the
   first (and only) `PluginState`, which is the shape required to
   re-apply it on every fresh instance.
-- **ADR 0032's scheduler semantics are unchanged.** The scheduler
+* **ADR 0032's scheduler semantics are unchanged.** The scheduler
   still holds an `Arc<WasmPluginInstance>` and `stop_scheduler` still
   runs before the bridge drops its own clone on disable. The
   ordering invariant ADR 0032 documented — "stop the scheduler before
@@ -240,5 +242,5 @@ returns.
   reclamation. The existing `stop_scheduler` call at the top of
   `Plugin::disable` already enforces this; no code change in the
   scheduler itself.
-- **No changes to the WIT interface or guest-side contract.** This
+* **No changes to the WIT interface or guest-side contract.** This
   is an entirely host-side refactor.

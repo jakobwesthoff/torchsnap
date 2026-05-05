@@ -6,6 +6,8 @@ Date: 2026-04-05
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 When the host routes settings changes to plugins via `setting_changed()`,
@@ -20,9 +22,9 @@ overwhelm the plugin.
 Introduce a `CoalescingDispatcher` per plugin slot (see ADR 0025). It uses
 two mutexes:
 
-- `work: Mutex<()>` — serializes dispatch execution so only one dispatch loop
+* `work: Mutex<()>` — serializes dispatch execution so only one dispatch loop
   runs at a time.
-- `pending: Mutex<Vec<(String, Value)>>` — accumulates pending changes.
+* `pending: Mutex<Vec<(String, Value)>>` — accumulates pending changes.
 
 `enqueue(key, value)` performs a retain-and-push: it removes any existing
 entry with the same key and appends the new one at the end, preserving
@@ -36,12 +38,12 @@ are always picked up in the next iteration.
 
 ## Consequences
 
-- Rapid same-key changes coalesce to the latest value — plugins never see
+* Rapid same-key changes coalesce to the latest value — plugins never see
   intermediate slider positions during a drag gesture.
-- Different-key changes preserve order — a plugin sees `(retentionDays, 30)`
+* Different-key changes preserve order — a plugin sees `(retentionDays, 30)`
   then `(historyEnabled, false)` in the order they were enqueued.
-- No thread spawning per change — dispatch runs inline on the
+* No thread spawning per change — dispatch runs inline on the
   settings-changed listener thread.
-- If dispatch is already running when new changes arrive, those changes are
+* If dispatch is already running when new changes arrive, those changes are
   picked up by the existing loop rather than starting a parallel execution,
   preventing event storms under heavy settings churn.
