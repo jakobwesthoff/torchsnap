@@ -89,7 +89,7 @@ pub enum LogLevel {
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub enum LogSource {
     /// From a WASM plugin via the logging WIT import.
-    Plugin(String),
+    Gadget(String),
     /// From host-side code (runtime, bridge, loader, etc.).
     Host,
 }
@@ -254,9 +254,9 @@ mod tests {
 
     #[test]
     fn log_source_plugin_serialization() {
-        let source = LogSource::Plugin("hello-world".into());
+        let source = LogSource::Gadget("hello-world".into());
         let json = serde_json::to_value(&source).unwrap();
-        assert_eq!(json["type"], "plugin");
+        assert_eq!(json["type"], "gadget");
         assert_eq!(json["value"], "hello-world");
     }
 
@@ -361,7 +361,7 @@ mod tests {
         let item = LogItem {
             seq: 7,
             timestamp: SystemTime::UNIX_EPOCH,
-            source: LogSource::Plugin("test".into()),
+            source: LogSource::Gadget("test".into()),
             kind: LogItemKind::Message {
                 level: LogLevel::Error,
                 message: "fail".into(),
@@ -374,7 +374,7 @@ mod tests {
         // Envelope fields.
         assert_eq!(json["seq"], 7);
         assert_eq!(json["timestamp"], 0); // epoch = 0ms
-        assert_eq!(json["source"]["type"], "plugin");
+        assert_eq!(json["source"]["type"], "gadget");
         assert_eq!(json["source"]["value"], "test");
 
         // Kind is a nested object with discriminator.

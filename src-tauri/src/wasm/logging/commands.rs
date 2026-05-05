@@ -176,7 +176,7 @@ pub(crate) fn resolve_source(source: &str) -> LogSource {
     if source == "host" {
         LogSource::Host
     } else {
-        LogSource::Plugin(source.to_string())
+        LogSource::Gadget(source.to_string())
     }
 }
 
@@ -289,7 +289,7 @@ mod tests {
     fn resolve_source_plugin() {
         assert_eq!(
             resolve_source("hello-world"),
-            LogSource::Plugin("hello-world".into()),
+            LogSource::Gadget("hello-world".into()),
         );
     }
 
@@ -298,7 +298,7 @@ mod tests {
         // An empty string is not "host" — treated as a plugin
         // with an empty ID. Not a useful case, but the behavior
         // should be defined.
-        assert_eq!(resolve_source(""), LogSource::Plugin("".into()),);
+        assert_eq!(resolve_source(""), LogSource::Gadget("".into()),);
     }
 
     // ----- Frontend log emission (exercising the same code paths
@@ -322,7 +322,7 @@ mod tests {
         });
 
         let item = recv(&mut sub).await;
-        assert_eq!(item.source, LogSource::Plugin("my-plugin".into()));
+        assert_eq!(item.source, LogSource::Gadget("my-plugin".into()));
         match &item.kind {
             LogItemKind::Message {
                 level,
@@ -371,7 +371,7 @@ mod tests {
             .start(
                 "test-span".into(),
                 None,
-                LogSource::Plugin("p".into()),
+                LogSource::Gadget("p".into()),
                 vec![],
             )
             .expect("span should start");
@@ -460,7 +460,7 @@ mod tests {
             .start(
                 "timed-op".into(),
                 None,
-                LogSource::Plugin("p".into()),
+                LogSource::Gadget("p".into()),
                 vec![],
             )
             .expect("span should start");
@@ -576,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn span_start_depth_exceeded_returns_zero() {
         let registry = SpanRegistry::new();
-        let source = LogSource::Plugin("p".into());
+        let source = LogSource::Gadget("p".into());
 
         // Build a chain up to MAX_SPAN_NESTING.
         let mut current = None;

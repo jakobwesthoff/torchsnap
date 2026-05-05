@@ -40,7 +40,7 @@ impl bindings::torchsnap::gadget::logging::Host for GadgetState {
         self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            source: LogSource::Plugin(self.gadget_id.clone()),
+            source: LogSource::Gadget(self.gadget_id.clone()),
             kind: LogItemKind::Message {
                 level: log_level,
                 message,
@@ -62,7 +62,7 @@ impl bindings::torchsnap::gadget::logging::Host for GadgetState {
         match self.span_registry.start(
             name,
             parent,
-            LogSource::Plugin(self.gadget_id.clone()),
+            LogSource::Gadget(self.gadget_id.clone()),
             metadata,
         ) {
             Some((id, depth)) => {
@@ -71,7 +71,7 @@ impl bindings::torchsnap::gadget::logging::Host for GadgetState {
                 self.log_sender.send(LogItem {
                     seq: 0,
                     timestamp: SystemTime::now(),
-                    source: LogSource::Plugin(self.gadget_id.clone()),
+                    source: LogSource::Gadget(self.gadget_id.clone()),
                     kind: LogItemKind::SpanStart {
                         span_id: id,
                         name: name_for_item,

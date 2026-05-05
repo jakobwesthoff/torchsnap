@@ -668,13 +668,13 @@ mod tests {
             .start(
                 "test".into(),
                 None,
-                LogSource::Plugin("hello-world".into()),
+                LogSource::Gadget("hello-world".into()),
                 vec![],
             )
             .unwrap();
 
         let completed = registry.end(id, vec![]).unwrap();
-        assert_eq!(completed.source, LogSource::Plugin("hello-world".into()));
+        assert_eq!(completed.source, LogSource::Gadget("hello-world".into()));
     }
 
     #[test]

@@ -56,7 +56,7 @@ function SpanHeaderRow({ node, depth, collapsed, onToggleCollapse, index }: Span
   // Type narrowing — we know this is a spanStart item.
   if (startKind.type !== "spanStart") return null;
 
-  const gadgetId = node.spanStart.source.type === "plugin" ? node.spanStart.source.value : null;
+  const gadgetId = node.spanStart.source.type === "gadget" ? node.spanStart.source.value : null;
 
   const childCount = node.children.length;
 

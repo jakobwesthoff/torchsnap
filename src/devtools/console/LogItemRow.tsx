@@ -79,7 +79,7 @@ export const LogItemRow = memo(function LogItemRow({
   const metadata = kind.metadata;
   const hasMetadata = metadata.length > 0;
 
-  const gadgetId = item.source.type === "plugin" ? item.source.value : null;
+  const gadgetId = item.source.type === "gadget" ? item.source.value : null;
 
   const copyToClipboard = useCallback(
     (e: React.MouseEvent) => {

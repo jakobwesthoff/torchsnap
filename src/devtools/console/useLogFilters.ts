@@ -84,7 +84,7 @@ export function useLogFilters(items: LogItem[]): UseLogFiltersReturn {
   const knownSources = useMemo(() => {
     const seen = new Set<string>();
     for (const item of items) {
-      if (item.source.type === "plugin") {
+      if (item.source.type === "gadget") {
         seen.add(item.source.value);
       } else {
         seen.add("host");
@@ -134,7 +134,7 @@ export function useLogFilters(items: LogItem[]): UseLogFiltersReturn {
 
       // Source filter.
       if (sources !== "all") {
-        const sourceKey = item.source.type === "plugin" ? item.source.value : "host";
+        const sourceKey = item.source.type === "gadget" ? item.source.value : "host";
         if (!sources.has(sourceKey)) return false;
       }
 
