@@ -231,7 +231,7 @@ mod tests {
     fn test_manifest() -> Manifest {
         Manifest::parse(
             r#"
-            [plugin]
+            [gadget]
             id = "test-plugin"
             name = "Test Plugin"
             description = "A test plugin"
@@ -501,7 +501,7 @@ mod tests {
         let source_a = Arc::new(MemorySource {
             manifest: Manifest::parse(
                 r#"
-                [plugin]
+                [gadget]
                 id = "plugin-a"
                 name = "A"
                 description = "A"
@@ -517,7 +517,7 @@ mod tests {
         let source_b = Arc::new(MemorySource {
             manifest: Manifest::parse(
                 r#"
-                [plugin]
+                [gadget]
                 id = "plugin-b"
                 name = "B"
                 description = "B"
@@ -604,7 +604,7 @@ mod tests {
     use crate::wasm::source::DirectorySource;
 
     const FRONTEND_MANIFEST: &str = r#"
-        [plugin]
+        [gadget]
         id = "frontend-test"
         name = "Frontend Test"
         description = "Test plugin with frontend assets"
@@ -641,7 +641,7 @@ mod tests {
         }
 
         let source = Arc::new(DirectorySource::open(root).expect("open directory source"));
-        let plugin_id = source.manifest().plugin.id.to_string();
+        let plugin_id = source.manifest().gadget.id.to_string();
 
         let registry = new_registry();
         registry.write().expect("lock").insert(plugin_id, source);
@@ -732,7 +732,7 @@ mod tests {
     #[test]
     fn hello_world_manifest_with_frontend_parses() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "hello-world"
             name = "Hello World"
             description = "Test plugin"
@@ -750,7 +750,7 @@ mod tests {
         "#;
 
         let m = Manifest::parse(toml).expect("should parse");
-        assert_eq!(m.plugin.prefixes, vec!["!"]);
+        assert_eq!(m.gadget.prefixes, vec!["!"]);
 
         let fe = m.frontend.as_ref().expect("frontend");
         assert_eq!(fe.launcher_bundle.as_deref(), Some("frontend/launcher.js"));

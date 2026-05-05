@@ -24,10 +24,10 @@ use crate::wasm::source::validate_plugin_path;
 /// Not covered: `frontend.views` and `frontend.inline_views`
 /// values — those are JavaScript export names, not paths.
 pub(super) fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
-    validate_plugin_path(&manifest.plugin.wasm)
+    validate_plugin_path(&manifest.gadget.wasm)
         .map_err(|e| anyhow::anyhow!("invalid `plugin.wasm`: {e}"))?;
 
-    if let GadgetIcon::Asset(ref path) = manifest.plugin.icon {
+    if let GadgetIcon::Asset(ref path) = manifest.gadget.icon {
         validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `plugin.icon`: {e}"))?;
     }
 
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn reject_plugin_wasm_with_traversal() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn reject_plugin_wasm_absolute_path() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn reject_icon_asset_with_traversal() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn accept_heroicon_icon_reference() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "ok"
             name = "Ok"
             description = "Ok"
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn reject_launcher_bundle_with_traversal() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn reject_settings_bundle_with_backslash() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn reject_launcher_css_absolute_path() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn reject_settings_css_windows_drive_letter() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn reject_sql_migration_with_traversal() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Bad"
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn accept_views_with_dot_characters_in_export_names() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "ok"
             name = "Ok"
             description = "Ok"
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn accept_full_manifest_with_every_path_field_valid() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "ok"
             name = "Ok"
             description = "Ok"
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn reject_settings_css_without_settings_bundle() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "CSS without bundle"

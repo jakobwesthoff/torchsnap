@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn frontend_launcher_only() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn frontend_settings_only() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn frontend_with_views_and_inline_views() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn reject_views_without_launcher_bundle() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Missing launcher bundle"
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn reject_inline_views_without_launcher_bundle() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Missing launcher bundle"
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn reject_settings_component_without_settings_bundle() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "Missing settings bundle"
@@ -270,7 +270,7 @@ mod tests {
         // A [frontend] section with no bundles and no components
         // is valid — it's just a no-op.
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn frontend_with_launcher_css() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn frontend_with_settings_css() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn frontend_with_both_css_fields() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn frontend_css_fields_default_to_none() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn reject_launcher_css_without_launcher_bundle() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "bad"
             name = "Bad"
             description = "CSS without bundle"

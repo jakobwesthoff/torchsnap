@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "hello-world"
 name = "Hello World"
 description = "Minimal test plugin for validating the WASM plugin pipeline"

@@ -1030,7 +1030,7 @@ fn load_wasm_plugins(
             // Subsequent appearances are skipped with a warning
             // so an install-time collision bug surfaces visibly
             // instead of silently.
-            let plugin_id = source.manifest().plugin.id.as_str().to_string();
+            let plugin_id = source.manifest().gadget.id.as_str().to_string();
             if !loaded_ids.insert(plugin_id.clone()) {
                 log_sender.send(wasm::logging::LogItem {
                     seq: 0,
@@ -1145,7 +1145,7 @@ fn load_single_wasm_plugin(
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<String> {
-    let plugin_id = source.manifest().plugin.id.as_str().to_string();
+    let plugin_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmGadgetBridge::new(
         manifest,

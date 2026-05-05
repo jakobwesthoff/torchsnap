@@ -56,7 +56,7 @@ pub(crate) mod test_helpers;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
-    pub plugin: GadgetMeta,
+    pub gadget: GadgetMeta,
 
     /// Plugin-specific settings defaults. Each key-value pair
     /// is applied to the settings store on first load (existing
@@ -348,13 +348,13 @@ mod tests {
     #[test]
     fn parse_minimal_manifest() {
         let m = Manifest::parse(&minimal("")).expect("should parse");
-        assert_eq!(m.plugin.id.as_str(), "test-plugin");
-        assert_eq!(m.plugin.name, "Test Plugin");
-        assert_eq!(m.plugin.description, "A test plugin");
-        assert_eq!(m.plugin.version, "0.1.0");
-        assert_eq!(m.plugin.wasm, "test.wasm");
-        assert!(matches!(m.plugin.icon, GadgetIcon::HeroIcon(ref n) if n == "beaker"));
-        assert!(m.plugin.prefixes.is_empty());
+        assert_eq!(m.gadget.id.as_str(), "test-plugin");
+        assert_eq!(m.gadget.name, "Test Plugin");
+        assert_eq!(m.gadget.description, "A test plugin");
+        assert_eq!(m.gadget.version, "0.1.0");
+        assert_eq!(m.gadget.wasm, "test.wasm");
+        assert!(matches!(m.gadget.icon, GadgetIcon::HeroIcon(ref n) if n == "beaker"));
+        assert!(m.gadget.prefixes.is_empty());
         assert!(m.settings.is_empty());
         assert!(m.shortcuts.is_empty());
         assert!(m.frontend.is_none());
@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn parse_full_manifest() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "clipboard-manager"
             name = "Clipboard Manager"
             description = "Clipboard history with search and paste"
@@ -394,9 +394,9 @@ mod tests {
         "#;
 
         let m = Manifest::parse(toml).expect("should parse");
-        assert_eq!(m.plugin.id.as_str(), "clipboard-manager");
-        assert_eq!(m.plugin.version, "2.3.1");
-        assert_eq!(m.plugin.prefixes, vec![":"]);
+        assert_eq!(m.gadget.id.as_str(), "clipboard-manager");
+        assert_eq!(m.gadget.version, "2.3.1");
+        assert_eq!(m.gadget.prefixes, vec![":"]);
 
         assert_eq!(
             m.settings.get("retentionDays").and_then(|v| v.as_integer()),
@@ -502,8 +502,8 @@ mod tests {
     fn plugin_id_display_and_as_str() {
         let toml = minimal("");
         let m = Manifest::parse(&toml).expect("should parse");
-        assert_eq!(m.plugin.id.as_str(), "test-plugin");
-        assert_eq!(m.plugin.id.to_string(), "test-plugin");
+        assert_eq!(m.gadget.id.as_str(), "test-plugin");
+        assert_eq!(m.gadget.id.to_string(), "test-plugin");
     }
 
     #[test]
@@ -511,7 +511,7 @@ mod tests {
         let toml = minimal("");
         let m1 = Manifest::parse(&toml).expect("parse 1");
         let m2 = Manifest::parse(&toml).expect("parse 2");
-        assert_eq!(m1.plugin.id, m2.plugin.id);
+        assert_eq!(m1.gadget.id, m2.gadget.id);
     }
 
     // =====================================================
@@ -522,7 +522,7 @@ mod tests {
     fn parse_heroicon() {
         let toml = minimal("");
         let m = Manifest::parse(&toml).expect("should parse");
-        match &m.plugin.icon {
+        match &m.gadget.icon {
             GadgetIcon::HeroIcon(name) => assert_eq!(name, "beaker"),
             GadgetIcon::Asset(p) => panic!("expected HeroIcon, got Asset({p})"),
         }
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn parse_asset_icon_simple_path() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -540,7 +540,7 @@ mod tests {
             icon = "assets/icon.webp"
         "#;
         let m = Manifest::parse(toml).expect("should parse");
-        match &m.plugin.icon {
+        match &m.gadget.icon {
             GadgetIcon::Asset(path) => assert_eq!(path, "assets/icon.webp"),
             GadgetIcon::HeroIcon(n) => panic!("expected Asset, got HeroIcon({n})"),
         }
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn parse_asset_icon_bare_filename() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -558,13 +558,13 @@ mod tests {
             icon = "icon.webp"
         "#;
         let m = Manifest::parse(toml).expect("should parse");
-        assert!(matches!(&m.plugin.icon, GadgetIcon::Asset(p) if p == "icon.webp"));
+        assert!(matches!(&m.gadget.icon, GadgetIcon::Asset(p) if p == "icon.webp"));
     }
 
     #[test]
     fn reject_heroicons_prefix_without_name() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -586,19 +586,19 @@ mod tests {
     #[test]
     fn prefixes_default_to_empty() {
         let m = Manifest::parse(&minimal("")).expect("should parse");
-        assert!(m.plugin.prefixes.is_empty());
+        assert!(m.gadget.prefixes.is_empty());
     }
 
     #[test]
     fn parse_single_prefix() {
         let m = Manifest::parse(&minimal(r#"prefixes = [":"]"#)).expect("should parse");
-        assert_eq!(m.plugin.prefixes, vec![":"]);
+        assert_eq!(m.gadget.prefixes, vec![":"]);
     }
 
     #[test]
     fn parse_multiple_prefixes() {
         let m = Manifest::parse(&minimal(r#"prefixes = [":", "=", "!"]"#)).expect("should parse");
-        assert_eq!(m.plugin.prefixes, vec![":", "=", "!"]);
+        assert_eq!(m.gadget.prefixes, vec![":", "=", "!"]);
     }
 
     // =====================================================
@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn parse_settings_with_mixed_types() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn parse_multiple_shortcuts() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn reject_missing_id() {
         let toml = r#"
-            [plugin]
+            [gadget]
             name = "Test"
             description = "Test"
             version = "0.1.0"
@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn reject_missing_name() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             description = "Test"
             version = "0.1.0"
@@ -719,7 +719,7 @@ mod tests {
     #[test]
     fn reject_missing_description() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             version = "0.1.0"
@@ -732,7 +732,7 @@ mod tests {
     #[test]
     fn reject_missing_version() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -745,7 +745,7 @@ mod tests {
     #[test]
     fn reject_missing_wasm() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -758,7 +758,7 @@ mod tests {
     #[test]
     fn reject_missing_icon() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"
@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn ignore_unknown_fields_in_plugin_section() {
         let toml = r#"
-            [plugin]
+            [gadget]
             id = "test"
             name = "Test"
             description = "Test"

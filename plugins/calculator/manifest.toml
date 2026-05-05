@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "calculator"
 name = "Calculator"
 description = "Evaluate math expressions with history tracking"

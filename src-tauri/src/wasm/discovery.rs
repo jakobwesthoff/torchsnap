@@ -172,7 +172,7 @@ mod tests {
     fn make_dir_plugin(root: &Path, name: &str) {
         let dir = root.join(name);
         std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(dir.join("manifest.toml"), "[plugin]\n").expect("write manifest");
+        std::fs::write(dir.join("manifest.toml"), "[gadget]\n").expect("write manifest");
     }
 
     #[test]

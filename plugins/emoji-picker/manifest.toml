@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "emoji-picker"
 name = "Emoji Picker"
 description = "Search and insert emojis by shortcode"

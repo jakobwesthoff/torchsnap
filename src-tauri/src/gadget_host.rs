@@ -1315,7 +1315,7 @@ mod tests {
         let (view, entries) = process_plugin_response(response, "calc", true);
         let (kind, vr) = view.unwrap();
         assert!(matches!(kind, ViewKind::Custom));
-        assert_eq!(vr.plugin_id, "calc");
+        assert_eq!(vr.gadget_id, "calc");
         assert_eq!(vr.view, "history");
         assert!(vr.data.is_some());
         // Entries are still extracted alongside the view.

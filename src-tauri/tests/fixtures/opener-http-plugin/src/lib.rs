@@ -18,19 +18,19 @@
 
 wit_bindgen::generate!({
     path: "../../../../plugins/plugin-sdk/wit",
-    world: "plugin",
+    world: "gadget",
 });
 
-use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-use exports::torchsnap::plugin::search::{
+use exports::torchsnap::gadget::lifecycle::Guest as LifecycleGuest;
+use exports::torchsnap::gadget::messaging::Guest as MessagingGuest;
+use exports::torchsnap::gadget::search::{
     ActionId, CatalogEntry, Guest as SearchGuest, PostAction, SearchResponse,
 };
-use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
-use torchsnap::plugin::http::{
+use exports::torchsnap::gadget::tasks::Guest as TasksGuest;
+use torchsnap::gadget::http::{
     HttpMethod, HttpRequest, fetch,
 };
-use torchsnap::plugin::opener::open_url;
+use torchsnap::gadget::opener::open_url;
 
 struct OpenerHttpPlugin;
 

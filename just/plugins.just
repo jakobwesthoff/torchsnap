@@ -251,7 +251,7 @@ build-test-fixtures:
 
         # Read the wasm filename from the fixture's manifest so
         # the copy target matches whatever the fixture declares.
-        wasm_file=$(tools/toml-get "$dir/manifest.toml" plugin.wasm)
+        wasm_file=$(tools/toml-get "$dir/manifest.toml" gadget.wasm)
 
         if [ -f "$src" ]; then
             cp "$src" "$dir/$wasm_file"

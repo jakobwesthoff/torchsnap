@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "template"
 name = "Template Plugin"
 description = "Starting point for new Torchsnap plugins"
