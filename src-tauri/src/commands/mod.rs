@@ -71,7 +71,7 @@ pub async fn search_execute(
 /// Tokio runtime context (`Handle::current()`) for reqwest's
 /// internal async machinery.
 #[tauri::command]
-pub async fn plugin_message(
+pub async fn gadget_message(
     source: String,
     method: String,
     payload: Value,

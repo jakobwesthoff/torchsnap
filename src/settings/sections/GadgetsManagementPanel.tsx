@@ -62,7 +62,7 @@ export function GadgetsManagementPanel() {
   // guessed kind.
   useEffect(() => {
     let cancelled = false;
-    command("plugin_sources")
+    command("gadget_sources")
       .then((kinds) => {
         if (!cancelled) {
           setSourceKinds(kinds);
@@ -113,7 +113,7 @@ export function GadgetsManagementPanel() {
   // listener is registered for the lifetime of the mounted
   // component; the returned unlistener cleans up on unmount.
   // Dropped files arrive as absolute paths — exactly what
-  // `install_plugin_archive` expects.
+  // `install_gadget_archive` expects.
   // =========================================================
 
   useEffect(() => {
@@ -154,12 +154,12 @@ export function GadgetsManagementPanel() {
     };
   }, []);
 
-  const handleUninstall = useCallback(async (pluginId: string) => {
+  const handleUninstall = useCallback(async (gadgetId: string) => {
     try {
-      const result = await command("uninstall_user_plugin", { pluginId });
+      const result = await command("uninstall_user_gadget", { gadgetId });
       setBanner({
         kind: "success",
-        message: `Uninstalled gadget "${pluginId}".`,
+        message: `Uninstalled gadget "${gadgetId}".`,
         requiresRestart: result.requiresRestart,
       });
     } catch (e) {
@@ -210,7 +210,7 @@ function PluginRowView({
   onUninstall,
 }: {
   row: PluginRow;
-  onUninstall: (pluginId: string) => void;
+  onUninstall: (gadgetId: string) => void;
 }) {
   const [enabled, setEnabled] = useSetting<boolean>(`enabled.${row.id}`);
 
@@ -386,7 +386,7 @@ function BannerView({ banner, onDismiss }: { banner: Banner; onDismiss: () => vo
 
 async function runInstall(archivePath: string, setBanner: (banner: Banner) => void): Promise<void> {
   try {
-    const info = await command("install_plugin_archive", { archivePath });
+    const info = await command("install_gadget_archive", { archivePath });
     setBanner({
       kind: "success",
       message: `Installed ${info.name} ${info.version}.`,

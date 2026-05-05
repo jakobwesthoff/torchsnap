@@ -5,7 +5,7 @@
 /**
  * Send a message to a plugin's backend `handle_message` handler.
  *
- * Wraps the `plugin_message` Tauri command with automatic Channel
+ * Wraps the `gadget_message` Tauri command with automatic Channel
  * creation. Callers that don't need streaming can omit `onMessage`
  * — a no-op channel is created internally so the backend command
  * receives its required parameter.
@@ -25,10 +25,10 @@ export function sendGadgetMessage<TPayload = unknown, TResult = unknown, TStream
     channel.onmessage = onMessage;
   }
 
-  // The command registry types `plugin_message` as returning `unknown`
-  // because the actual return type varies per plugin. The caller's
+  // The command registry types `gadget_message` as returning `unknown`
+  // because the actual return type varies per gadget. The caller's
   // generic `TResult` narrows it at each call site.
-  return command("plugin_message", {
+  return command("gadget_message", {
     source,
     method,
     payload,

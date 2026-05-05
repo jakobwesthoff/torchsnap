@@ -21,7 +21,7 @@ async function main() {
   await initStore();
   initGadgetSdk();
 
-  const wasmGadgets = await command("wasm_plugins");
+  const wasmGadgets = await command("wasm_gadgets");
   registerAllWasmGadgets(wasmGadgets, "settings");
 
   preloadSettingsComponents();

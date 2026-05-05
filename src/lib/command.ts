@@ -50,7 +50,7 @@ interface CommandMap {
     params: { channel: Channel<ControlCommand> };
     result: void;
   };
-  plugin_message: {
+  gadget_message: {
     params: {
       source: string;
       method: string;
@@ -99,14 +99,14 @@ interface CommandMap {
     };
     result: void;
   };
-  wasm_plugins: { params: void; result: WasmGadgetManifest[] };
-  plugin_sources: { params: void; result: Record<string, GadgetSourceKind> };
-  install_plugin_archive: {
+  wasm_gadgets: { params: void; result: WasmGadgetManifest[] };
+  gadget_sources: { params: void; result: Record<string, GadgetSourceKind> };
+  install_gadget_archive: {
     params: { archivePath: string };
     result: InstalledGadgetInfo;
   };
-  uninstall_user_plugin: {
-    params: { pluginId: string };
+  uninstall_user_gadget: {
+    params: { gadgetId: string };
     result: UninstallResult;
   };
 }
