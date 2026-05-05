@@ -26,7 +26,7 @@ import type { LogItem } from "../types";
 import { LogItemRow } from "./LogItemRow";
 import type { FlatRow, TreeNode } from "./useTreeView";
 import { formatTimestamp, formatDuration, durationColor } from "./formatters";
-import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
+import { GADGET_COLORS, gadgetColorIndex } from "./gadgetColors";
 
 const AUTO_SCROLL_THRESHOLD = 50;
 
@@ -56,7 +56,7 @@ function SpanHeaderRow({ node, depth, collapsed, onToggleCollapse, index }: Span
   // Type narrowing — we know this is a spanStart item.
   if (startKind.type !== "spanStart") return null;
 
-  const pluginId = node.spanStart.source.type === "plugin" ? node.spanStart.source.value : null;
+  const gadgetId = node.spanStart.source.type === "plugin" ? node.spanStart.source.value : null;
 
   const childCount = node.children.length;
 
@@ -82,15 +82,15 @@ function SpanHeaderRow({ node, depth, collapsed, onToggleCollapse, index }: Span
 
       {/* Source */}
       <span className="shrink-0 w-[120px] flex items-center gap-1">
-        {pluginId ? (
+        {gadgetId ? (
           <>
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full shrink-0",
-                PLUGIN_COLORS[pluginColorIndex(pluginId)],
+                GADGET_COLORS[gadgetColorIndex(gadgetId)],
               )}
             />
-            <span className="text-[11px] text-text-secondary truncate font-medium">{pluginId}</span>
+            <span className="text-[11px] text-text-secondary truncate font-medium">{gadgetId}</span>
           </>
         ) : (
           <span className="text-[11px] text-text-muted italic">host</span>

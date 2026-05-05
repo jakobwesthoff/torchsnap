@@ -21,7 +21,7 @@ import {
 import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
-import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
+import { GADGET_COLORS, gadgetColorIndex } from "./gadgetColors";
 
 // =========================================================
 // Level Pill Configuration
@@ -200,7 +200,7 @@ function SourceDropdown({
                   <span
                     className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
-                      PLUGIN_COLORS[pluginColorIndex(source)],
+                      GADGET_COLORS[gadgetColorIndex(source)],
                     )}
                   />
                 )}
