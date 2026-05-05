@@ -14,7 +14,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { command } from "./command";
 
-export function sendPluginMessage<TPayload = unknown, TResult = unknown, TStream = never>(
+export function sendGadgetMessage<TPayload = unknown, TResult = unknown, TStream = never>(
   source: string,
   method: string,
   payload: TPayload,

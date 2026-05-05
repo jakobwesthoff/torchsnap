@@ -7,7 +7,7 @@ import { command } from "../lib/command";
 import { listen } from "@tauri-apps/api/event";
 import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
-import { sendPluginMessage } from "../lib/pluginMessage";
+import { sendGadgetMessage } from "../lib/gadgetMessage";
 import { createLogger } from "../lib/logger";
 import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
 import type { LauncherActions, GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
@@ -18,8 +18,8 @@ import { MascotInfoOverlay } from "../components/MascotInfoOverlay";
 import { useMascotVariant } from "../hooks/useMascotVariant";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
-import { getPluginView, getPluginInlineView } from "../plugins/registry";
-import type { PluginViewProps, InlineViewProps } from "../plugins/types";
+import { getGadgetView, getGadgetInlineView } from "../plugins/registry";
+import type { GadgetViewProps, InlineViewProps } from "../plugins/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
@@ -30,7 +30,7 @@ import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, PluginViewRef, SourcedEntry } from "../types";
+import type { Action, ActionId, FooterState, GadgetViewRef, SourcedEntry } from "../types";
 
 /** Derive a generic FooterState from an entry's action list. */
 function actionsToFooterState(actions: Action[]): FooterState {
@@ -70,28 +70,28 @@ interface LauncherProps {
 }
 
 // ESLINT: Registry lookups return referentially stable component
-// references for any given pluginId + viewName. The lint cannot
+// references for any given gadgetId + viewName. The lint cannot
 // prove this statically, but no component is truly "created"
 // during render.
 /* eslint-disable react-hooks/static-components */
 function PluginViewContainer({
-  pluginId,
+  gadgetId,
   viewName,
   info,
   runtime,
   launcher,
   ...props
-}: PluginViewProps & {
-  pluginId: string;
+}: GadgetViewProps & {
+  gadgetId: string;
   viewName: string;
   info: GadgetInfo;
   runtime: GadgetRuntime;
   launcher: LauncherActions;
 }) {
-  const View = getPluginView(pluginId, viewName);
+  const View = getGadgetView(gadgetId, viewName);
   if (!View) return null;
   return (
-    <div data-plugin={pluginId}>
+    <div data-plugin={gadgetId}>
       <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
       </GadgetContextProvider>
@@ -100,23 +100,23 @@ function PluginViewContainer({
 }
 
 function InlineViewContainer({
-  pluginId,
+  gadgetId,
   viewName,
   info,
   runtime,
   launcher,
   ...props
 }: InlineViewProps & {
-  pluginId: string;
+  gadgetId: string;
   viewName: string;
   info: GadgetInfo;
   runtime: GadgetRuntime;
   launcher: LauncherActions;
 }) {
-  const View = getPluginInlineView(pluginId, viewName);
+  const View = getGadgetInlineView(gadgetId, viewName);
   if (!View) return null;
   return (
-    <div data-plugin={pluginId}>
+    <div data-plugin={gadgetId}>
       <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
       </GadgetContextProvider>
@@ -127,13 +127,13 @@ function InlineViewContainer({
 
 // Hooks must be called unconditionally per Rules of Hooks. The internal
 // sentinel key is namespaced under `__internal__.` so it can never collide
-// with a real plugin enable flag (plugin IDs are validated
-// lowercase-alphanumeric — see PluginId in src-tauri/src/wasm/manifest.rs).
-function useOptionalPluginEnabled(pluginId: string | null | undefined): boolean {
+// with a real gadget enable flag (gadget IDs are validated
+// lowercase-alphanumeric — see GadgetId in src-tauri/src/wasm/manifest.rs).
+function useOptionalGadgetEnabled(gadgetId: string | null | undefined): boolean {
   const [value] = useSetting<boolean>(
-    pluginId ? `enabled.${pluginId}` : "__internal__.no-active-plugin",
+    gadgetId ? `enabled.${gadgetId}` : "__internal__.no-active-plugin",
   );
-  return pluginId ? value : false;
+  return gadgetId ? value : false;
 }
 
 export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
@@ -197,16 +197,16 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   useResizeObserver(cardRef, onMeasure ? resizeCallback : undefined);
 
   // Local override for when execute_action returns ShowCustomUI.
-  // Takes precedence over the search-driven customPluginView.
-  // Stored as a full PluginViewRef since ShowCustomUI now carries
+  // Takes precedence over the search-driven customGadgetView.
+  // Stored as a full GadgetViewRef since ShowCustomUI now carries
   // an explicit view name and optional data.
-  const [executePluginView, setExecutePluginView] = useState<PluginViewRef | null>(null);
+  const [executeGadgetView, setExecuteGadgetView] = useState<GadgetViewRef | null>(null);
 
   const resetState = useCallback(() => {
     setDisplayQueryState("");
     setSearchQuery("");
     setSelectedIndex(0);
-    setExecutePluginView(null);
+    setExecuteGadgetView(null);
   }, []);
 
   const { dismiss } = useWindowLifecycle({
@@ -234,7 +234,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       (event) => {
         setQuery("");
         setSelectedIndex(0);
-        setExecutePluginView({
+        setExecuteGadgetView({
           pluginId: event.payload.pluginId,
           view: event.payload.view,
           data: event.payload.data,
@@ -254,21 +254,21 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const {
     results,
-    customPluginView: searchPluginView,
-    inlinePluginView,
+    customGadgetView: searchGadgetView,
+    inlineGadgetView,
     matchedPrefix,
   } = useSearch(searchQuery);
 
   // Resolve the active custom plugin view. Both execute-triggered
-  // and search-triggered views are full PluginViewRef objects with
+  // and search-triggered views are full GadgetViewRef objects with
   // explicit view names — no fallback needed.
-  const customPluginView: PluginViewRef | null = executePluginView ?? searchPluginView;
+  const customGadgetView: GadgetViewRef | null = executeGadgetView ?? searchGadgetView;
 
   // The inline view is only active when there is no custom view
   // taking over the entire result area.
-  const activeInlineView = customPluginView == null ? inlinePluginView : null;
+  const activeInlineView = customGadgetView == null ? inlineGadgetView : null;
 
-  // Stable refs so sendMessage/handlePluginExecute etc. don't need
+  // Stable refs so sendMessage/handleGadgetExecute etc. don't need
   // the view objects as useCallback deps (critical for React.memo).
   //
   // ESLINT: Writing refs during render risks an abandoned concurrent
@@ -277,9 +277,9 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // callbacks only read `.pluginId`, which is invariant across
   // re-renders of the same plugin — a stale ref still holds the
   // correct plugin ID.
-  const customPluginViewRef = useRef(customPluginView);
+  const customGadgetViewRef = useRef(customGadgetView);
   // eslint-disable-next-line react-hooks/refs
-  customPluginViewRef.current = customPluginView;
+  customGadgetViewRef.current = customGadgetView;
   const activeInlineViewRef = useRef(activeInlineView);
   // eslint-disable-next-line react-hooks/refs
   activeInlineViewRef.current = activeInlineView;
@@ -323,20 +323,20 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Plugin Custom UI
   // =========================================================
 
-  const hasPluginView = customPluginView != null;
+  const hasGadgetView = customGadgetView != null;
 
   // Footer state set by the active plugin or inline view via
   // their onFooterChange callback. `null` means no plugin/inline
   // footer — fall back to deriving from the selected entry's actions.
-  const [pluginFooter, setPluginFooter] = useState<FooterState | null>(null);
+  const [gadgetFooter, setGadgetFooter] = useState<FooterState | null>(null);
   const [inlineFooter, setInlineFooter] = useState<FooterState | null>(null);
 
   // Reset plugin footer when leaving plugin mode.
   useEffect(() => {
-    if (!customPluginView) {
-      setPluginFooter(null);
+    if (!customGadgetView) {
+      setGadgetFooter(null);
     }
-  }, [customPluginView]);
+  }, [customGadgetView]);
 
   // Reset inline footer when the inline view disappears.
   useEffect(() => {
@@ -351,16 +351,16 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Footer priority: plugin footer (custom UI) > inline footer
   // (when inline slot is selected) > entry actions (list mode).
   const footer =
-    pluginFooter ??
+    gadgetFooter ??
     (inlineSelected && inlineFooter
       ? inlineFooter
       : actionsToFooterState(results[listSelectedIndex]?.actions ?? []));
 
   // Plugin execute handler — wraps the Tauri invoke with the
   // plugin's source ID and handles PostAction.
-  const handlePluginExecute = useCallback(
+  const handleGadgetExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
-      const view = customPluginViewRef.current;
+      const view = customGadgetViewRef.current;
       if (!view) return;
 
       const postAction = await command("search_execute", {
@@ -413,7 +413,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         throw new Error("sendInlineMessage called without an active inline view");
       }
 
-      return sendPluginMessage<TPayload, TResult, TStream>(
+      return sendGadgetMessage<TPayload, TResult, TStream>(
         view.pluginId,
         method,
         payload,
@@ -435,7 +435,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // plugins it returns to the empty launcher state.
   // TODO(state-snapshot): see todos/plugins/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
   const handleGoBack = useCallback(() => {
-    setExecutePluginView(null);
+    setExecuteGadgetView(null);
     setQuery("");
   }, [setQuery]);
 
@@ -447,12 +447,12 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       payload: TPayload,
       onMessage?: (msg: TStream) => void,
     ): Promise<TResult> => {
-      const view = customPluginViewRef.current;
+      const view = customGadgetViewRef.current;
       if (!view) {
         throw new Error("sendMessage called without an active gadget view");
       }
 
-      return sendPluginMessage<TPayload, TResult, TStream>(
+      return sendGadgetMessage<TPayload, TResult, TStream>(
         view.pluginId,
         method,
         payload,
@@ -462,10 +462,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [],
   );
 
-  // Plugin logger — bound to the active plugin view's ID.
-  // Recreated when the active plugin changes.
-  const pluginLoggerId = customPluginView?.pluginId ?? "host";
-  const pluginLogger = useMemo(() => createLogger(pluginLoggerId), [pluginLoggerId]);
+  // Gadget logger — bound to the active gadget view's ID.
+  // Recreated when the active gadget changes.
+  const gadgetLoggerId = customGadgetView?.pluginId ?? "host";
+  const gadgetLogger = useMemo(() => createLogger(gadgetLoggerId), [gadgetLoggerId]);
 
   const inlineLoggerId = activeInlineView?.pluginId ?? "host";
   const inlineLogger = useMemo(() => createLogger(inlineLoggerId), [inlineLoggerId]);
@@ -477,31 +477,31 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // capabilities (sendMessage + logger), and launcher actions
   // into the three slices the GadgetContextProvider expects.
   // The `enabled` flag for each is read reactively from the
-  // host's `enabled.<plugin-id>` setting so plugin components
+  // host's `enabled.<gadget-id>` setting so gadget components
   // see disable toggles immediately via useGadgetInfo().
   // =========================================================
 
-  const pluginEnabled = useOptionalPluginEnabled(customPluginView?.pluginId);
-  const inlineEnabled = useOptionalPluginEnabled(activeInlineView?.pluginId);
+  const gadgetEnabled = useOptionalGadgetEnabled(customGadgetView?.pluginId);
+  const inlineEnabled = useOptionalGadgetEnabled(activeInlineView?.pluginId);
 
-  const pluginInfo = useMemo<GadgetInfo>(
-    () => ({ id: customPluginView?.pluginId ?? "host", enabled: pluginEnabled }),
-    [customPluginView?.pluginId, pluginEnabled],
+  const gadgetInfo = useMemo<GadgetInfo>(
+    () => ({ id: customGadgetView?.pluginId ?? "host", enabled: gadgetEnabled }),
+    [customGadgetView?.pluginId, gadgetEnabled],
   );
-  const pluginRuntime = useMemo<GadgetRuntime>(
-    () => ({ sendMessage, logger: pluginLogger }),
-    [sendMessage, pluginLogger],
+  const gadgetRuntime = useMemo<GadgetRuntime>(
+    () => ({ sendMessage, logger: gadgetLogger }),
+    [sendMessage, gadgetLogger],
   );
-  const pluginLauncher = useMemo<LauncherActions>(
+  const gadgetLauncher = useMemo<LauncherActions>(
     () => ({
       goBack: handleGoBack,
       dismiss,
-      onExecute: handlePluginExecute,
-      onFooterChange: setPluginFooter,
+      onExecute: handleGadgetExecute,
+      onFooterChange: setGadgetFooter,
       setDisplayQuery,
       mouseActiveRef,
     }),
-    [handleGoBack, dismiss, handlePluginExecute, setDisplayQuery],
+    [handleGoBack, dismiss, handleGadgetExecute, setDisplayQuery],
   );
 
   const inlineInfo = useMemo<GadgetInfo>(
@@ -564,7 +564,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       } else if (postAction === "Nothing" || postAction === "KeepOpen") {
         // No launcher state change needed.
       } else if (typeof postAction === "object" && "ShowCustomUI" in postAction) {
-        setExecutePluginView({
+        setExecuteGadgetView({
           pluginId: entry.source,
           view: postAction.ShowCustomUI.view,
           data: postAction.ShowCustomUI.data,
@@ -607,7 +607,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     onExecute: executeSelected,
     selectedActions,
     mouseActiveRef,
-    enabled: customPluginView === null,
+    enabled: customGadgetView === null,
   });
 
   // Emacs/readline bindings (Ctrl+W, Ctrl+U, Ctrl+K, Ctrl+A, Ctrl+E)
@@ -626,8 +626,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // The prefix and stripped query for the plugin component. The
   // backend sends the matched prefix so we don't have to guess.
-  const pluginPrefix = matchedPrefix ?? "";
-  const strippedQuery = pluginPrefix ? searchQuery.slice(pluginPrefix.length) : searchQuery;
+  const gadgetPrefix = matchedPrefix ?? "";
+  const strippedQuery = gadgetPrefix ? searchQuery.slice(gadgetPrefix.length) : searchQuery;
 
   // =========================================================
   // Content area
@@ -649,19 +649,19 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   if (measureDummy) {
     contentBody = <div className="h-[448px]" />;
     contentFooter = <LauncherFooter footer={MEASURE_FOOTER} />;
-  } else if (hasPluginView) {
+  } else if (hasGadgetView) {
     contentBody = (
       <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
         <PluginViewContainer
-          pluginId={customPluginView.pluginId}
-          viewName={customPluginView.view}
-          info={pluginInfo}
-          runtime={pluginRuntime}
-          launcher={pluginLauncher}
+          gadgetId={customGadgetView.pluginId}
+          viewName={customGadgetView.view}
+          info={gadgetInfo}
+          runtime={gadgetRuntime}
+          launcher={gadgetLauncher}
           results={results}
-          data={customPluginView.data}
+          data={customGadgetView.data}
           query={strippedQuery}
-          matchedPrefix={pluginPrefix}
+          matchedPrefix={gadgetPrefix}
         />
       </Suspense>
     );
@@ -674,14 +674,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
           >
             <InlineViewContainer
-              pluginId={activeInlineView.pluginId}
+              gadgetId={activeInlineView.pluginId}
               viewName={activeInlineView.view}
               info={inlineInfo}
               runtime={inlineRuntime}
               launcher={inlineLauncher}
               data={activeInlineView.data}
               query={strippedQuery}
-              matchedPrefix={pluginPrefix}
+              matchedPrefix={gadgetPrefix}
               selected={inlineSelected}
             />
           </Suspense>

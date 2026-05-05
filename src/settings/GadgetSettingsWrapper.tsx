@@ -23,7 +23,7 @@ import { Section } from "./Section";
 import { Entry } from "./Entry";
 import { Switch } from "../components/Switch";
 
-interface PluginSettingsWrapperProps {
+interface GadgetSettingsWrapperProps {
   pluginId: string;
   icon: string;
   name: string;
@@ -31,13 +31,13 @@ interface PluginSettingsWrapperProps {
   children?: ReactNode;
 }
 
-export function PluginSettingsWrapper({
+export function GadgetSettingsWrapper({
   pluginId,
   icon,
   name,
   description,
   children,
-}: PluginSettingsWrapperProps) {
+}: GadgetSettingsWrapperProps) {
   const [enabled, setEnabled] = useSetting<boolean>(`enabled.${pluginId}`);
 
   return (

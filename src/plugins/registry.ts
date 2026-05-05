@@ -11,14 +11,14 @@
  */
 
 import { type ComponentType } from "react";
-import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
-import type { PluginViewProps, PluginSettingsProps, InlineViewProps } from "./types";
+import { launcherComponent, settingsComponent } from "../lib/gadgetComponent";
+import type { GadgetViewProps, GadgetSettingsProps, InlineViewProps } from "./types";
 
 // =========================================================
 // Registry shape
 // =========================================================
 
-export interface PluginRegistryEntry {
+export interface GadgetRegistryEntry {
   /** Human-readable name shown in the settings sidebar. */
   label: string;
   /** Short description shown in the settings section header. */
@@ -27,31 +27,31 @@ export interface PluginRegistryEntry {
    * Used for both the settings section header and the sidebar. */
   icon?: string;
   /** Named view components for the launcher result area (CustomUI). */
-  views?: Record<string, ComponentType<PluginViewProps>>;
+  views?: Record<string, ComponentType<GadgetViewProps>>;
   /** Named inline view components rendered above the result list (InlineUI). */
   inlineViews?: Record<string, ComponentType<InlineViewProps>>;
   /** Settings component rendered in the settings sidebar. */
-  settings?: ComponentType<PluginSettingsProps>;
+  settings?: ComponentType<GadgetSettingsProps>;
 }
 
 // =========================================================
 // Dynamic registry
 // =========================================================
 
-const registry = new Map<string, PluginRegistryEntry>();
+const registry = new Map<string, GadgetRegistryEntry>();
 
 /**
  * Register a plugin in the registry. Overwrites any existing
  * entry for the same ID.
  */
-export function registerPlugin(id: string, entry: PluginRegistryEntry): void {
+export function registerGadget(id: string, entry: GadgetRegistryEntry): void {
   registry.set(id, entry);
 }
 
 /**
  * Remove a plugin from the registry (e.g., on uninstall).
  */
-export function unregisterPlugin(id: string): void {
+export function unregisterGadget(id: string): void {
   registry.delete(id);
 }
 
@@ -62,19 +62,19 @@ export function unregisterPlugin(id: string): void {
 // (internal, always-on).
 // =========================================================
 
-registerPlugin("app-launcher", {
+registerGadget("app-launcher", {
   label: "App Launcher",
   description: "Search and launch installed applications",
   icon: "heroicons:magnifying-glass",
 });
 
-registerPlugin("system-preferences", {
+registerGadget("system-preferences", {
   label: "System Settings",
   description: "Search and open macOS System Settings panes",
   icon: "heroicons:cog-8-tooth",
 });
 
-registerPlugin("clipboard-manager", {
+registerGadget("clipboard-manager", {
   label: "Clipboard",
   description: "Clipboard history with search and paste",
   icon: "heroicons:clipboard-document-list",
@@ -92,17 +92,17 @@ registerPlugin("clipboard-manager", {
  * Look up a named view component for a plugin's CustomUI response.
  * The view name is always provided — if missing, it's a bug.
  */
-export function getPluginView(
+export function getGadgetView(
   pluginId: string,
   viewName: string,
-): ComponentType<PluginViewProps> | undefined {
+): ComponentType<GadgetViewProps> | undefined {
   return registry.get(pluginId)?.views?.[viewName];
 }
 
 /**
  * Look up a named inline view component for a plugin's InlineUI response.
  */
-export function getPluginInlineView(
+export function getGadgetInlineView(
   pluginId: string,
   viewName: string,
 ): ComponentType<InlineViewProps> | undefined {
@@ -112,9 +112,9 @@ export function getPluginInlineView(
 /**
  * Look up the settings component for a plugin.
  */
-export function getPluginSettingsComponent(
+export function getGadgetSettingsComponent(
   pluginId: string,
-): ComponentType<PluginSettingsProps> | undefined {
+): ComponentType<GadgetSettingsProps> | undefined {
   return registry.get(pluginId)?.settings;
 }
 
@@ -124,7 +124,7 @@ export function getPluginSettingsComponent(
  * if it has either a custom settings component or at minimum an
  * icon + description (for the generic enable/disable wrapper).
  */
-export function getPluginsWithSettings(): Array<{
+export function getGadgetsWithSettings(): Array<{
   id: string;
   label: string;
   description?: string;

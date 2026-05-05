@@ -99,7 +99,7 @@ export interface FooterState {
 // =========================================================
 
 /** Reference to a plugin view component, sent from the backend. */
-export interface PluginViewRef {
+export interface GadgetViewRef {
   pluginId: string;
   view: string;
   data?: unknown;
@@ -132,9 +132,9 @@ export type SearchMessage =
       source: ResultSource;
       entries: SourcedEntry[];
       /** View reference when the plugin requested custom UI. */
-      customPluginView: PluginViewRef | null;
+      customPluginView: GadgetViewRef | null;
       /** View reference when the plugin requested inline UI. */
-      inlinePluginView: PluginViewRef | null;
+      inlinePluginView: GadgetViewRef | null;
       /** The prefix that triggered exclusive routing (e.g., ":"). */
       matchedPrefix: string | null;
     }

@@ -24,7 +24,7 @@ import { command } from "../../lib/command";
 import { compareEntries } from "../compareEntries";
 import {
   resultSourceKey,
-  type PluginViewRef,
+  type GadgetViewRef,
   type SearchMessage,
   type SourcedEntry,
 } from "../../types";
@@ -32,9 +32,9 @@ import {
 interface UseSearchResult {
   results: SourcedEntry[];
   /** View reference when the active plugin requested custom UI. */
-  customPluginView: PluginViewRef | null;
+  customGadgetView: GadgetViewRef | null;
   /** View reference when the active plugin requested inline UI. */
-  inlinePluginView: PluginViewRef | null;
+  inlineGadgetView: GadgetViewRef | null;
   /** The prefix that triggered exclusive routing (e.g., ":"). */
   matchedPrefix: string | null;
   loading: boolean;
@@ -42,8 +42,8 @@ interface UseSearchResult {
 
 export function useSearch(query: string): UseSearchResult {
   const [results, setResults] = useState<SourcedEntry[]>([]);
-  const [customPluginView, setCustomPluginView] = useState<PluginViewRef | null>(null);
-  const [inlinePluginView, setInlinePluginView] = useState<PluginViewRef | null>(null);
+  const [customGadgetView, setCustomGadgetView] = useState<GadgetViewRef | null>(null);
+  const [inlineGadgetView, setInlineGadgetView] = useState<GadgetViewRef | null>(null);
   const [matchedPrefix, setMatchedPrefix] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
@@ -56,7 +56,7 @@ export function useSearch(query: string): UseSearchResult {
   // =========================================================
   // View ref generation tracking
   //
-  // View refs (customPluginView, inlinePluginView, matchedPrefix)
+  // View refs (customGadgetView, inlineGadgetView, matchedPrefix)
   // need different handling than entries — entries get replaced
   // atomically from the accumulator on every message, but view
   // refs accumulate "first non-null wins" within a generation
@@ -85,8 +85,8 @@ export function useSearch(query: string): UseSearchResult {
       // eslint-disable-next-line react-hooks/refs
       accumulatorRef.current = new Map();
       setResults([]);
-      setCustomPluginView(null);
-      setInlinePluginView(null);
+      setCustomGadgetView(null);
+      setInlineGadgetView(null);
       setMatchedPrefix(null);
     }
   }
@@ -127,16 +127,16 @@ export function useSearch(query: string): UseSearchResult {
           setResults(flat);
 
           if (isFirstMessageOfGeneration) {
-            setCustomPluginView(message.customPluginView);
-            setInlinePluginView(message.inlinePluginView);
+            setCustomGadgetView(message.customPluginView);
+            setInlineGadgetView(message.inlinePluginView);
             setMatchedPrefix(message.matchedPrefix);
             isFirstMessageOfGeneration = false;
           } else {
             if (message.customPluginView != null) {
-              setCustomPluginView((prev) => prev ?? message.customPluginView);
+              setCustomGadgetView((prev) => prev ?? message.customPluginView);
             }
             if (message.inlinePluginView != null) {
-              setInlinePluginView((prev) => prev ?? message.inlinePluginView);
+              setInlineGadgetView((prev) => prev ?? message.inlinePluginView);
             }
             if (message.matchedPrefix != null) {
               setMatchedPrefix((prev) => prev ?? message.matchedPrefix);
@@ -157,5 +157,5 @@ export function useSearch(query: string): UseSearchResult {
     };
   }, [query]);
 
-  return { results, customPluginView, inlinePluginView, matchedPrefix, loading };
+  return { results, customGadgetView, inlineGadgetView, matchedPrefix, loading };
 }

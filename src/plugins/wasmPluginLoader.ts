@@ -18,11 +18,11 @@
  */
 
 import type { ComponentType } from "react";
-import { launcherComponent, settingsComponent } from "../lib/pluginComponent";
-import { injectPluginCss } from "../lib/pluginCss";
-import { registerPlugin, type PluginRegistryEntry } from "./registry";
-import type { WasmPluginManifest } from "../lib/command";
-import type { PluginViewProps, InlineViewProps } from "./types";
+import { launcherComponent, settingsComponent } from "../lib/gadgetComponent";
+import { injectGadgetCss } from "../lib/gadgetCss";
+import { registerGadget, type GadgetRegistryEntry } from "./registry";
+import type { WasmGadgetManifest } from "../lib/command";
+import type { GadgetViewProps, InlineViewProps } from "./types";
 
 // =========================================================
 // WASM Plugin Registration
@@ -35,14 +35,14 @@ export type WebviewContext = "launcher" | "settings";
  * The `webview` parameter controls which CSS bundle is injected —
  * only the CSS relevant to the current webview is loaded.
  */
-export function registerWasmPlugin(manifest: WasmPluginManifest, webview: WebviewContext): void {
-  const pluginId = manifest.plugin.id;
-  const baseUrl = `torchsnap-plugin://localhost/${pluginId}`;
+export function registerWasmGadget(manifest: WasmGadgetManifest, webview: WebviewContext): void {
+  const gadgetId = manifest.plugin.id;
+  const baseUrl = `torchsnap-plugin://localhost/${gadgetId}`;
 
   // Every WASM plugin gets metadata for the settings sidebar.
   // The PluginSettingsWrapper uses icon + description to render
   // the standardized header and enable/disable toggle.
-  const entry: PluginRegistryEntry = {
+  const entry: GadgetRegistryEntry = {
     label: manifest.plugin.name,
     description: manifest.plugin.description,
     icon: manifest.plugin.icon,
@@ -54,7 +54,7 @@ export function registerWasmPlugin(manifest: WasmPluginManifest, webview: Webvie
     // Launcher views (CustomUI).
     if (frontend.launcherBundle && Object.keys(frontend.views).length > 0) {
       const bundleUrl = `${baseUrl}/${frontend.launcherBundle}`;
-      const views: Record<string, ComponentType<PluginViewProps>> = {};
+      const views: Record<string, ComponentType<GadgetViewProps>> = {};
 
       for (const [viewName, exportName] of Object.entries(frontend.views)) {
         views[viewName] = launcherComponent(() =>
@@ -98,25 +98,25 @@ export function registerWasmPlugin(manifest: WasmPluginManifest, webview: Webvie
     // Inject scoped CSS for the current webview only.
     // Fire-and-forget — CSS loading should not block registration.
     if (webview === "launcher" && frontend.launcherCss) {
-      injectPluginCss(pluginId, frontend.launcherCss);
+      injectGadgetCss(gadgetId, frontend.launcherCss);
     }
     if (webview === "settings" && frontend.settingsCss) {
-      injectPluginCss(pluginId, frontend.settingsCss);
+      injectGadgetCss(gadgetId, frontend.settingsCss);
     }
   }
 
-  registerPlugin(pluginId, entry);
+  registerGadget(gadgetId, entry);
 }
 
 /**
  * Register all WASM plugins from the backend's manifest data.
  * Called once per webview at startup.
  */
-export function registerAllWasmPlugins(
-  manifests: WasmPluginManifest[],
+export function registerAllWasmGadgets(
+  manifests: WasmGadgetManifest[],
   webview: WebviewContext,
 ): void {
   for (const manifest of manifests) {
-    registerWasmPlugin(manifest, webview);
+    registerWasmGadget(manifest, webview);
   }
 }

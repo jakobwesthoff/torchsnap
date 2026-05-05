@@ -21,22 +21,22 @@
  * in `<head>`. The CSS is wrapped in `@scope` so it only applies
  * inside the plugin's container div.
  */
-export async function injectPluginCss(pluginId: string, cssPath: string): Promise<void> {
-  const url = `torchsnap-plugin://localhost/${pluginId}/${cssPath}`;
+export async function injectGadgetCss(gadgetId: string, cssPath: string): Promise<void> {
+  const url = `torchsnap-plugin://localhost/${gadgetId}/${cssPath}`;
   const response = await fetch(url);
 
   if (!response.ok) {
     console.warn(
-      `Failed to load CSS for plugin "${pluginId}": ${response.status} ${response.statusText}`,
+      `Failed to load CSS for plugin "${gadgetId}": ${response.status} ${response.statusText}`,
     );
     return;
   }
 
   const raw = await response.text();
-  const scoped = `@scope ([data-plugin="${pluginId}"]) {\n${raw}\n}`;
+  const scoped = `@scope ([data-plugin="${gadgetId}"]) {\n${raw}\n}`;
 
   const style = document.createElement("style");
-  style.dataset.pluginCss = pluginId;
+  style.dataset.pluginCss = gadgetId;
   style.textContent = scoped;
   document.head.appendChild(style);
 }
@@ -45,7 +45,7 @@ export async function injectPluginCss(pluginId: string, cssPath: string): Promis
  * Remove a previously injected plugin CSS `<style>` element.
  * Used when a plugin is uninstalled or disabled.
  */
-export function removePluginCss(pluginId: string): void {
-  const style = document.head.querySelector(`style[data-plugin-css="${pluginId}"]`);
+export function removeGadgetCss(gadgetId: string): void {
+  const style = document.head.querySelector(`style[data-plugin-css="${gadgetId}"]`);
   style?.remove();
 }

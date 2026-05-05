@@ -99,11 +99,11 @@ interface CommandMap {
     };
     result: void;
   };
-  wasm_plugins: { params: void; result: WasmPluginManifest[] };
-  plugin_sources: { params: void; result: Record<string, PluginSourceKind> };
+  wasm_plugins: { params: void; result: WasmGadgetManifest[] };
+  plugin_sources: { params: void; result: Record<string, GadgetSourceKind> };
   install_plugin_archive: {
     params: { archivePath: string };
-    result: InstalledPluginInfo;
+    result: InstalledGadgetInfo;
   };
   uninstall_user_plugin: {
     params: { pluginId: string };
@@ -119,7 +119,7 @@ interface CommandMap {
 // sites stay idiomatic.
 // =========================================================
 
-export interface InstalledPluginInfo {
+export interface InstalledGadgetInfo {
   id: string;
   name: string;
   version: string;
@@ -133,13 +133,13 @@ export interface UninstallResult {
 // =========================================================
 // Plugin Source Kind
 //
-// Mirrors the Rust `PluginSourceKind` enum. Serialized as
+// Mirrors the Rust `GadgetSourceKind` enum. Serialized as
 // lowercase strings across the Tauri IPC boundary. Used by
 // the Plugins settings panel to render source badges and
 // gate the uninstall action to `user` plugins.
 // =========================================================
 
-export type PluginSourceKind = "builtin" | "system" | "user" | "dev";
+export type GadgetSourceKind = "builtin" | "system" | "user" | "dev";
 
 // =========================================================
 // WASM Plugin Manifest
@@ -148,7 +148,7 @@ export type PluginSourceKind = "builtin" | "system" | "user" | "dev";
 // the backend as JSON with camelCase field names.
 // =========================================================
 
-export interface WasmPluginManifest {
+export interface WasmGadgetManifest {
   plugin: {
     id: string;
     name: string;
