@@ -105,7 +105,7 @@ pub trait GadgetSource: Send + Sync {
     /// Convenience wrapper around `read_file` using the
     /// `wasm` path from the manifest.
     fn read_wasm(&self) -> anyhow::Result<Vec<u8>> {
-        self.read_file(&self.manifest().plugin.wasm)
+        self.read_file(&self.manifest().gadget.wasm)
     }
 
     /// Filesystem path that backs this source — the directory
@@ -701,7 +701,7 @@ mod tests {
     }
 
     const MINIMAL_MANIFEST: &str = r#"
-        [plugin]
+        [gadget]
         id = "test-plugin"
         name = "Test Plugin"
         description = "A test plugin"
@@ -716,7 +716,7 @@ mod tests {
             make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm bytes")]);
 
         let source = DirectorySource::open(&root).expect("should open");
-        assert_eq!(source.manifest().plugin.id.as_str(), "test-plugin");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-plugin");
         assert_eq!(source.root(), root);
     }
 
@@ -878,11 +878,11 @@ mod tests {
 
         // Verify the full manifest is accessible through the trait.
         let manifest = source.manifest();
-        assert_eq!(manifest.plugin.id.as_str(), "test-plugin");
-        assert_eq!(manifest.plugin.name, "Test Plugin");
-        assert_eq!(manifest.plugin.description, "A test plugin");
-        assert_eq!(manifest.plugin.version, "0.1.0");
-        assert_eq!(manifest.plugin.wasm, "plugin.wasm");
+        assert_eq!(manifest.gadget.id.as_str(), "test-plugin");
+        assert_eq!(manifest.gadget.name, "Test Plugin");
+        assert_eq!(manifest.gadget.description, "A test plugin");
+        assert_eq!(manifest.gadget.version, "0.1.0");
+        assert_eq!(manifest.gadget.wasm, "plugin.wasm");
     }
 
     #[test]
@@ -999,7 +999,7 @@ mod tests {
         let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
-        assert_eq!(source.manifest().plugin.id.as_str(), "test-plugin");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-plugin");
     }
 
     #[test]
@@ -1048,11 +1048,11 @@ mod tests {
 
         let source = ArchiveSource::open(&path).expect("should open");
         let manifest = source.manifest();
-        assert_eq!(manifest.plugin.id.as_str(), "test-plugin");
-        assert_eq!(manifest.plugin.name, "Test Plugin");
-        assert_eq!(manifest.plugin.description, "A test plugin");
-        assert_eq!(manifest.plugin.version, "0.1.0");
-        assert_eq!(manifest.plugin.wasm, "plugin.wasm");
+        assert_eq!(manifest.gadget.id.as_str(), "test-plugin");
+        assert_eq!(manifest.gadget.name, "Test Plugin");
+        assert_eq!(manifest.gadget.description, "A test plugin");
+        assert_eq!(manifest.gadget.version, "0.1.0");
+        assert_eq!(manifest.gadget.wasm, "plugin.wasm");
     }
 
     #[test]

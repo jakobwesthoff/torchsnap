@@ -888,7 +888,7 @@ mod tests {
         std::fs::write(
             root.join("manifest.toml"),
             r#"
-[plugin]
+[gadget]
 id = "assets-unit-plugin"
 name = "Assets Unit Plugin"
 description = "Fixture for runtime unit tests"

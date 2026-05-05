@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "open-url"
 name = "Open URL"
 description = "Detect and open URLs typed in the search bar"

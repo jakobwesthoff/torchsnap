@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "zerotier"
 name = "ZeroTier"
 description = "Manage ZeroTier networks from the launcher."

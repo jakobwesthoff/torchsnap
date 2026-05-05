@@ -117,7 +117,7 @@ fn install_impl(
     let source =
         ArchiveSource::open(archive_path).context("open plugin archive for installation")?;
     let manifest = source.manifest().clone();
-    let plugin_id = manifest.plugin.id.as_str().to_string();
+    let plugin_id = manifest.gadget.id.as_str().to_string();
 
     // Collision check against every already-registered source
     // kind. Each kind gets a distinct error message so the user
@@ -167,8 +167,8 @@ fn install_impl(
 
     Ok(InstalledGadgetInfo {
         id: plugin_id,
-        name: manifest.plugin.name,
-        version: manifest.plugin.version,
+        name: manifest.gadget.name,
+        version: manifest.gadget.version,
         requires_restart: true,
     })
 }

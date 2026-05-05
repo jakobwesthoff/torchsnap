@@ -10,7 +10,7 @@
 pub(crate) fn minimal(extra: &str) -> String {
     format!(
         r#"
-        [plugin]
+        [gadget]
         id = "test-plugin"
         name = "Test Plugin"
         description = "A test plugin"

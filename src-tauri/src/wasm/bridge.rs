@@ -191,7 +191,7 @@ impl WasmGadgetBridge {
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let plugin_id = manifest.plugin.id.as_str().to_string();
+        let plugin_id = manifest.gadget.id.as_str().to_string();
 
         // Compile the component into the runtime's cache
         // once; every subsequent `instantiate` reads from
@@ -631,7 +631,7 @@ impl WasmGadgetBridge {
 
 impl Gadget for WasmGadgetBridge {
     fn id(&self) -> &str {
-        self.manifest.plugin.id.as_str()
+        self.manifest.gadget.id.as_str()
     }
 
     /// Write the `[settings]` table defaults from the manifest to
@@ -964,7 +964,7 @@ impl Gadget for WasmGadgetBridge {
     }
 
     fn search_prefixes(&self) -> &[String] {
-        &self.manifest.plugin.prefixes
+        &self.manifest.gadget.prefixes
     }
 
     /// Forward custom frontend messages to the WASM guest's
@@ -1111,7 +1111,7 @@ mod tests {
         std::fs::write(
             bad_plugin_dir.join("manifest.toml"),
             r#"
-[plugin]
+[gadget]
 id = "bad-plugin"
 name = "Bad Plugin"
 description = "broken wasm"
@@ -1154,7 +1154,7 @@ icon = "heroicons:x-mark"
         std::fs::write(
             plugin_dir.join("manifest.toml"),
             r#"
-[plugin]
+[gadget]
 id = "sql-plugin"
 name = "SQL Plugin"
 description = "missing migration"
@@ -1296,7 +1296,7 @@ migrations = ["migrations/001_init.sql"]
         std::fs::write(
             plugin_dir.join("manifest.toml"),
             r#"
-[plugin]
+[gadget]
 id = "sql-plugin"
 name = "SQL Plugin"
 description = "plugin with sql config"
@@ -1374,7 +1374,7 @@ migrations = ["migrations/001_init.sql"]
             plugin_dir.join("manifest.toml"),
             format!(
                 r#"
-[plugin]
+[gadget]
 id = "{plugin_id}"
 name = "SQL Plugin"
 description = "plugin with sql config"
@@ -1492,7 +1492,7 @@ migrations = ["migrations/001_init.sql"]
         std::fs::write(
             plugin_dir.join("manifest.toml"),
             r#"
-[plugin]
+[gadget]
 id = "task-plugin"
 name = "Task Plugin"
 description = "plugin with scheduled tasks"

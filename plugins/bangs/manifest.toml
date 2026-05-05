@@ -1,4 +1,4 @@
-[plugin]
+[gadget]
 id = "bangs"
 name = "Bangs"
 description = "DuckDuckGo bang shortcuts for quick web searches"
