@@ -9,12 +9,12 @@
 // interact with host-provided data structures.
 //
 // Usage:
-//   import type { PluginViewProps } from "@torchsnap/plugin-sdk";
+//   import type { GadgetViewProps } from "@torchsnap/plugin-sdk";
 //   import type { ActionId, SourcedEntry } from "@torchsnap/plugin-sdk";
 // =========================================================
 
 export type {
-  PluginViewProps,
+  GadgetViewProps,
   InlineViewProps,
   GadgetSettingsProps,
 } from "./plugin";
