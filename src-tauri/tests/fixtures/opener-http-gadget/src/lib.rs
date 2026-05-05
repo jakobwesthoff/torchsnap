@@ -17,7 +17,7 @@
 // =========================================================
 
 wit_bindgen::generate!({
-    path: "../../../../plugins/plugin-sdk/wit",
+    path: "../../../../gadgets/gadget-sdk/wit",
     world: "gadget",
 });
 

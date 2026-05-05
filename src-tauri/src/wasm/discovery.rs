@@ -3,32 +3,32 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Discovery
+// Gadget Discovery
 //
 // Enumerates the search roots the host scans at startup and
-// lists the plugin entries (archive files and plugin
+// lists the gadget entries (archive files and gadget
 // directories) within each root.
 //
 // Three roots are considered, in precedence order:
 //
-// 1. **System** — `<resource_dir>/plugins/`, populated by
-//    the Tauri bundler from the `target/bundled-plugins/`
-//    staging dir. Only plugins listed in
-//    `plugins/bundled.toml` end up here.
-// 2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/` in debug
-//    builds. Tags plugins `GadgetSourceKind::Dev` so the
-//    Plugins settings panel can badge them accordingly.
+// 1. **System** — `<resource_dir>/gadgets/`, populated by
+//    the Tauri bundler from the `target/bundled-gadgets/`
+//    staging dir. Only gadgets listed in
+//    `gadgets/bundled.toml` end up here.
+// 2. **Dev** — `<CARGO_MANIFEST_DIR>/../gadgets/` in debug
+//    builds. Tags gadgets `GadgetSourceKind::Dev` so the
+//    Gadgets settings panel can badge them accordingly.
 //    Completely elided from release builds via
 //    `cfg(debug_assertions)`.
-// 3. **User** — `<app_data_dir>/plugins/`, where
+// 3. **User** — `<app_data_dir>/gadgets/`, where
 //    user-installed `.torchsnap` archives (and optional
-//    directory-form plugins for development) live.
+//    directory-form gadgets for development) live.
 //
 // Per-root, archive entries win over a sibling directory
 // with the same stem — so `calculator.torchsnap` shadows
 // `calculator/` if both exist in the same root. Collisions
 // *across* roots are handled by the caller
-// (`load_wasm_plugins` in `lib.rs`): the earlier root wins
+// (`load_wasm_gadgets` in `lib.rs`): the earlier root wins
 // and a warning is logged.
 // =========================================================
 
@@ -44,46 +44,46 @@ use super::source::GadgetSourceKind;
 /// `CARGO_MANIFEST_DIR` and only appears in debug builds.
 ///
 /// Missing directories are simply omitted — a release build
-/// without any user plugins yet, or a dev checkout without a
-/// sibling `plugins/` directory, both produce a non-empty but
+/// without any user gadgets yet, or a dev checkout without a
+/// sibling `gadgets/` directory, both produce a non-empty but
 /// possibly shorter root list. The caller treats an empty
-/// root list as "no plugins to load" rather than an error.
+/// root list as "no gadgets to load" rather than an error.
 pub fn enumerate_search_roots(
     resource_dir: Option<&Path>,
     app_data_dir: &Path,
 ) -> Vec<(GadgetSourceKind, PathBuf)> {
     let mut roots: Vec<(GadgetSourceKind, PathBuf)> = Vec::new();
 
-    // System: plugins bundled into the app's resources at build
+    // System: gadgets bundled into the app's resources at build
     // time. Release builds always expose a resource_dir; debug
     // builds may not have one, in which case System is absent.
     if let Some(res) = resource_dir {
-        let res_plugins = res.join("plugins");
-        if res_plugins.is_dir() {
-            roots.push((GadgetSourceKind::System, res_plugins));
+        let res_gadgets = res.join("gadgets");
+        if res_gadgets.is_dir() {
+            roots.push((GadgetSourceKind::System, res_gadgets));
         }
     }
 
-    // Dev: repo-relative plugin sources. Debug builds only —
+    // Dev: repo-relative gadget sources. Debug builds only —
     // `#[cfg(debug_assertions)]` strips this branch entirely
     // from release artifacts so a stray path at a production
     // user's CARGO_MANIFEST_DIR could never accidentally
     // activate.
     #[cfg(debug_assertions)]
     {
-        let dev_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+        let dev_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../gadgets");
         if dev_dir.is_dir() {
             roots.push((GadgetSourceKind::Dev, dev_dir));
         }
     }
 
     // User: install target for `.torchsnap` files dropped via
-    // the Plugins settings panel. Always scanned (when the
-    // directory exists); users can have plugins regardless of
+    // the Gadgets settings panel. Always scanned (when the
+    // directory exists); users can have gadgets regardless of
     // build profile.
-    let user_plugins = app_data_dir.join("plugins");
-    if user_plugins.is_dir() {
-        roots.push((GadgetSourceKind::User, user_plugins));
+    let user_gadgets = app_data_dir.join("gadgets");
+    if user_gadgets.is_dir() {
+        roots.push((GadgetSourceKind::User, user_gadgets));
     }
 
     roots
@@ -265,7 +265,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let app_data = tmp.path().join("app-data");
         std::fs::create_dir_all(&app_data).expect("mkdir");
-        // No plugins/ subdir under app_data; no resource dir.
+        // No gadgets/ subdir under app_data; no resource dir.
         let roots = enumerate_search_roots(None, &app_data);
         // In debug builds the dev root may still resolve if the
         // test is run from the torchsnap workspace, so accept
@@ -280,8 +280,8 @@ mod tests {
     fn enumerate_includes_system_when_resource_plugins_exists() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let resource = tmp.path().join("res");
-        let resource_plugins = resource.join("plugins");
-        std::fs::create_dir_all(&resource_plugins).expect("mkdir");
+        let resource_gadgets = resource.join("gadgets");
+        std::fs::create_dir_all(&resource_gadgets).expect("mkdir");
         let app_data = tmp.path().join("app-data");
         std::fs::create_dir_all(&app_data).expect("mkdir");
 
@@ -297,7 +297,7 @@ mod tests {
     fn enumerate_includes_user_when_app_data_plugins_exists() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let app_data = tmp.path().join("app-data");
-        std::fs::create_dir_all(app_data.join("plugins")).expect("mkdir");
+        std::fs::create_dir_all(app_data.join("gadgets")).expect("mkdir");
 
         let roots = enumerate_search_roots(None, &app_data);
         let kinds: Vec<GadgetSourceKind> = roots.iter().map(|(k, _)| *k).collect();
@@ -316,9 +316,9 @@ mod tests {
     fn enumerate_orders_system_before_user() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let resource = tmp.path().join("res");
-        std::fs::create_dir_all(resource.join("plugins")).expect("mkdir");
+        std::fs::create_dir_all(resource.join("gadgets")).expect("mkdir");
         let app_data = tmp.path().join("app-data");
-        std::fs::create_dir_all(app_data.join("plugins")).expect("mkdir");
+        std::fs::create_dir_all(app_data.join("gadgets")).expect("mkdir");
 
         let roots = enumerate_search_roots(Some(&resource), &app_data);
         let system_idx = roots
@@ -334,7 +334,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let resource = tmp.path().join("res");
         std::fs::create_dir_all(&resource).expect("mkdir");
-        // resource/plugins is intentionally absent.
+        // resource/gadgets is intentionally absent.
         let app_data = tmp.path().join("app-data");
         std::fs::create_dir_all(&app_data).expect("mkdir");
 

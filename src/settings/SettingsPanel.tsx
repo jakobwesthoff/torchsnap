@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { type ComponentType, Suspense, useMemo, useState } from "react";
-import { getGadgetSettingsComponent, getGadgetsWithSettings } from "../plugins/registry";
-import type { GadgetSettingsProps } from "../plugins/types";
+import { getGadgetSettingsComponent, getGadgetsWithSettings } from "../gadgets/registry";
+import type { GadgetSettingsProps } from "../gadgets/types";
 import { createLogger } from "../lib/logger";
 import { useSetting } from "../hooks/useSetting";
 import { GadgetContextProvider } from "../contexts/GadgetContextProvider";

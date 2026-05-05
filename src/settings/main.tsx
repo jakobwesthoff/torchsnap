@@ -10,7 +10,7 @@ import { command } from "../lib/command";
 import { initStore } from "../settingsStore";
 import { preloadSettingsComponents } from "../lib/gadgetComponent";
 import { initGadgetSdk } from "../lib/sdk";
-import { registerAllWasmGadgets } from "../plugins/wasmPluginLoader";
+import { registerAllWasmGadgets } from "../gadgets/wasmPluginLoader";
 import { SettingsPanel } from "./SettingsPanel";
 import "../index.css";
 

@@ -17,7 +17,7 @@ install-packages:
 # `plugins/` resolve independently because the two trees target
 # different triples.
 
-# Fetch Rust dependencies for both the src-tauri/ and plugins/ workspaces
+# Fetch Rust dependencies for both the src-tauri/ and gadgets/ workspaces
 install-crates:
     cargo fetch --manifest-path src-tauri/Cargo.toml
-    cargo fetch --manifest-path plugins/Cargo.toml
+    cargo fetch --manifest-path gadgets/Cargo.toml

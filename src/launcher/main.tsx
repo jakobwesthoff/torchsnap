@@ -10,7 +10,7 @@ import { KeyBindingProvider } from "../keybindings";
 import { initStore } from "../settingsStore";
 import { preloadLauncherComponents } from "../lib/gadgetComponent";
 import { initGadgetSdk } from "../lib/sdk";
-import { registerAllWasmGadgets } from "../plugins/wasmPluginLoader";
+import { registerAllWasmGadgets } from "../gadgets/wasmPluginLoader";
 import { Launcher } from "./Launcher";
 import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
 import { setupLauncherVisibilityChoreography } from "./visibility";

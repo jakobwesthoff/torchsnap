@@ -55,7 +55,7 @@
         "rust-analyzer.check.command": "clippy",
         "rust-analyzer.linkedProjects": [
           "src-tauri/Cargo.toml",
-          "plugins/Cargo.toml"
+          "gadgets/Cargo.toml"
         ]
       }
     }

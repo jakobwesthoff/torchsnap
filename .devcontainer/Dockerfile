@@ -164,7 +164,7 @@ USER ${USERNAME}
 # Rust targets and components
 # =========================================================
 #
-# - wasm32-wasip2: the target every plugin in plugins/ compiles to.
+# - wasm32-wasip2: the target every gadget in gadgets/ compiles to.
 # - rustfmt, clippy: normal development hygiene.
 # - rust-src, rust-analyzer: needed by the rust-analyzer VS Code
 #   extension for std library navigation and on-the-fly diagnostics.
@@ -177,7 +177,7 @@ RUN rustup target add wasm32-wasip2 \
 # =========================================================
 #
 # Used by `just check-wit` and `just fmt-wit` to inspect and format the
-# WIT files that define the plugin ABI. Installing via `cargo install`
+# WIT files that define the gadget ABI. Installing via `cargo install`
 # (rather than a prebuilt release binary) avoids having to allowlist an
 # extra download domain in the firewall.
 
