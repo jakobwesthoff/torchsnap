@@ -533,21 +533,21 @@ fn website_metadata_clear_cache(
 
 /// Returns the full manifest for every loaded WASM plugin.
 /// Called once per webview at startup to register dynamic
-/// plugin components and settings entries.
+/// gadget components and settings entries.
 #[tauri::command]
-fn wasm_plugins(
+fn wasm_gadgets(
     registry: tauri::State<'_, wasm::protocol::GadgetSourceRegistry>,
 ) -> Vec<wasm::manifest::Manifest> {
     let sources = registry.read().expect("source registry not poisoned");
     sources.values().map(|s| s.manifest().clone()).collect()
 }
 
-/// Return the origin of every registered plugin (native,
+/// Return the origin of every registered gadget (native,
 /// bundled WASM, user-installed WASM, or dev-path WASM).
-/// Consumed by the Plugins settings panel to render source
-/// badges and gate the uninstall action to `user` plugins.
+/// Consumed by the Gadgets settings panel to render source
+/// badges and gate the uninstall action to `user` gadgets.
 #[tauri::command]
-fn plugin_sources(
+fn gadget_sources(
     host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
 ) -> std::collections::HashMap<String, wasm::source::GadgetSourceKind> {
     host.plugin_sources()
@@ -579,7 +579,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::search,
             commands::search_execute,
-            commands::plugin_message,
+            commands::gadget_message,
             control_subscribe,
             launcher_hide,
             launcher_set_layout,
@@ -594,10 +594,10 @@ pub fn run() {
             wasm::logging::commands::logger_emit,
             wasm::logging::commands::logger_span_start,
             wasm::logging::commands::logger_span_end,
-            wasm_plugins,
-            plugin_sources,
-            gadget_install::install_plugin_archive,
-            gadget_install::uninstall_user_plugin,
+            wasm_gadgets,
+            gadget_sources,
+            gadget_install::install_gadget_archive,
+            gadget_install::uninstall_user_gadget,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

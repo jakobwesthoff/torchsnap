@@ -92,7 +92,7 @@ pub struct UninstallResult {
 /// `spawn_blocking` thread so the Tauri IPC thread is not
 /// held up.
 #[tauri::command]
-pub async fn install_plugin_archive(
+pub async fn install_gadget_archive(
     app: AppHandle,
     host: tauri::State<'_, Arc<GadgetHost>>,
     archive_path: String,
@@ -182,13 +182,13 @@ fn install_impl(
 /// optional unpacked dir, the plugin-home state tree, and
 /// the plugin's settings keys.
 #[tauri::command]
-pub async fn uninstall_user_plugin(
+pub async fn uninstall_user_gadget(
     app: AppHandle,
     host: tauri::State<'_, Arc<GadgetHost>>,
-    plugin_id: String,
+    gadget_id: String,
 ) -> Result<UninstallResult, String> {
     let host = Arc::clone(host.inner());
-    tokio::task::spawn_blocking(move || uninstall_impl(&app, &host, &plugin_id))
+    tokio::task::spawn_blocking(move || uninstall_impl(&app, &host, &gadget_id))
         .await
         .map_err(|e| format!("uninstall task panicked: {e}"))?
         .map_err(|e| format!("{e:#}"))
