@@ -40,17 +40,17 @@ pub(crate) struct CommandState {
     pub(crate) rules: Vec<argv_matcher::CompiledCommandRule>,
 }
 
-impl bindings::torchsnap::plugin::command::Host for GadgetState {
+impl bindings::torchsnap::gadget::command::Host for GadgetState {
     fn run(
         &mut self,
         binary: String,
-        options: bindings::torchsnap::plugin::command::CommandOptions,
+        options: bindings::torchsnap::gadget::command::CommandOptions,
     ) -> Result<
-        bindings::torchsnap::plugin::command::CommandResult,
-        bindings::torchsnap::plugin::command::CommandError,
+        bindings::torchsnap::gadget::command::CommandResult,
+        bindings::torchsnap::gadget::command::CommandError,
     > {
         use argv_matcher::matches as match_rule;
-        use bindings::torchsnap::plugin::command::CommandError as WitErr;
+        use bindings::torchsnap::gadget::command::CommandError as WitErr;
 
         // 1. Permission check. Manifest-time overlap detection
         //    guarantees at most one rule matches; matching is
@@ -263,10 +263,10 @@ async fn run_child_with_caps(
     timeout_ms: u64,
     max_output_bytes: u64,
 ) -> Result<
-    bindings::torchsnap::plugin::command::CommandResult,
-    bindings::torchsnap::plugin::command::CommandError,
+    bindings::torchsnap::gadget::command::CommandResult,
+    bindings::torchsnap::gadget::command::CommandError,
 > {
-    use bindings::torchsnap::plugin::command::{CommandError as WitErr, CommandResult};
+    use bindings::torchsnap::gadget::command::{CommandError as WitErr, CommandResult};
     use std::process::Stdio;
     use tokio::io::AsyncWriteExt;
 
@@ -494,12 +494,12 @@ fn emit_command_audit(
     binary: &str,
     argv: &[String],
     outcome: &Result<
-        bindings::torchsnap::plugin::command::CommandResult,
-        bindings::torchsnap::plugin::command::CommandError,
+        bindings::torchsnap::gadget::command::CommandResult,
+        bindings::torchsnap::gadget::command::CommandError,
     >,
     started: std::time::Instant,
 ) {
-    use bindings::torchsnap::plugin::command::CommandError as WitErr;
+    use bindings::torchsnap::gadget::command::CommandError as WitErr;
 
     let duration_ms = started.elapsed().as_millis() as u64;
 

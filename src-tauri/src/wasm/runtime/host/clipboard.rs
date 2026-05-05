@@ -44,7 +44,7 @@ pub(crate) struct ClipboardState {
     pub(crate) writer: Option<ClipboardWriter>,
 }
 
-impl bindings::torchsnap::plugin::clipboard::Host for GadgetState {
+impl bindings::torchsnap::gadget::clipboard::Host for GadgetState {
     fn write_text(&mut self, text: String) -> Result<(), String> {
         let writer = self.clipboard.writer.as_ref().ok_or_else(|| {
             "clipboard writer not initialized — clipboard::write-text called outside enable lifetime"

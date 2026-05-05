@@ -75,9 +75,9 @@ pub(crate) enum WasmFsError {
     Io(String),
 }
 
-impl From<WasmFsError> for bindings::torchsnap::plugin::fs::FsError {
+impl From<WasmFsError> for bindings::torchsnap::gadget::fs::FsError {
     fn from(e: WasmFsError) -> Self {
-        use bindings::torchsnap::plugin::fs::FsError;
+        use bindings::torchsnap::gadget::fs::FsError;
         match e {
             WasmFsError::PermissionDenied(msg) => FsError::PermissionDenied(msg),
             WasmFsError::InvalidPath(msg) => FsError::InvalidPath(msg),
@@ -275,12 +275,12 @@ fn resolve_request(allowlist: Option<&FsAllowlist>, path: &str) -> Result<PathBu
     Ok(canonical)
 }
 
-impl bindings::torchsnap::plugin::fs::Host for GadgetState {
+impl bindings::torchsnap::gadget::fs::Host for GadgetState {
     fn read_file(
         &mut self,
         path: String,
-    ) -> Result<Vec<u8>, bindings::torchsnap::plugin::fs::FsError> {
-        use bindings::torchsnap::plugin::fs::FsError as WitFsError;
+    ) -> Result<Vec<u8>, bindings::torchsnap::gadget::fs::FsError> {
+        use bindings::torchsnap::gadget::fs::FsError as WitFsError;
 
         let allowlist = self.fs.allowlist.clone();
         tokio::task::block_in_place(|| -> Result<Vec<u8>, WasmFsError> {
@@ -302,10 +302,10 @@ impl bindings::torchsnap::plugin::fs::Host for GadgetState {
         &mut self,
         path: String,
     ) -> Result<
-        bindings::torchsnap::plugin::fs::FileMetadata,
-        bindings::torchsnap::plugin::fs::FsError,
+        bindings::torchsnap::gadget::fs::FileMetadata,
+        bindings::torchsnap::gadget::fs::FsError,
     > {
-        use bindings::torchsnap::plugin::fs::{FileMetadata, FsError as WitFsError};
+        use bindings::torchsnap::gadget::fs::{FileMetadata, FsError as WitFsError};
 
         let allowlist = self.fs.allowlist.clone();
         tokio::task::block_in_place(|| -> Result<FileMetadata, WasmFsError> {

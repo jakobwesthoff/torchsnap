@@ -100,7 +100,7 @@ pub struct SqlHandleEntry {
     storage: Arc<SqlStorage>,
 }
 
-impl bindings::torchsnap::plugin::sql::Host for GadgetState {
+impl bindings::torchsnap::gadget::sql::Host for GadgetState {
     fn connection(&mut self) -> Resource<SqlHandleEntry> {
         // The bridge opens the database before the guest's
         // enable() runs, so sql.storage is always populated
@@ -139,12 +139,12 @@ impl bindings::torchsnap::plugin::sql::Host for GadgetState {
     }
 }
 
-impl bindings::torchsnap::plugin::sql::HostSqlHandle for GadgetState {
+impl bindings::torchsnap::gadget::sql::HostSqlHandle for GadgetState {
     fn execute(
         &mut self,
         handle: Resource<SqlHandleEntry>,
         sql: String,
-        params: Vec<bindings::torchsnap::plugin::sql::SqlValue>,
+        params: Vec<bindings::torchsnap::gadget::sql::SqlValue>,
     ) -> Result<u64, String> {
         let entry = self
             .wasi_table
@@ -162,8 +162,8 @@ impl bindings::torchsnap::plugin::sql::HostSqlHandle for GadgetState {
         &mut self,
         handle: Resource<SqlHandleEntry>,
         sql: String,
-        params: Vec<bindings::torchsnap::plugin::sql::SqlValue>,
-    ) -> Result<Vec<Vec<bindings::torchsnap::plugin::sql::SqlValue>>, String> {
+        params: Vec<bindings::torchsnap::gadget::sql::SqlValue>,
+    ) -> Result<Vec<Vec<bindings::torchsnap::gadget::sql::SqlValue>>, String> {
         let entry = self
             .wasi_table
             .get(&handle)
@@ -209,9 +209,9 @@ impl bindings::torchsnap::plugin::sql::HostSqlHandle for GadgetState {
 // SqlValue ↔ host SqlValue
 // ---------------------------------------------------------
 
-impl From<bindings::torchsnap::plugin::sql::SqlValue> for HostSqlValue {
-    fn from(v: bindings::torchsnap::plugin::sql::SqlValue) -> Self {
-        use bindings::torchsnap::plugin::sql::SqlValue as Wit;
+impl From<bindings::torchsnap::gadget::sql::SqlValue> for HostSqlValue {
+    fn from(v: bindings::torchsnap::gadget::sql::SqlValue) -> Self {
+        use bindings::torchsnap::gadget::sql::SqlValue as Wit;
         match v {
             Wit::Null => HostSqlValue::Null,
             Wit::Integer(i) => HostSqlValue::Integer(i),
@@ -222,9 +222,9 @@ impl From<bindings::torchsnap::plugin::sql::SqlValue> for HostSqlValue {
     }
 }
 
-impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
+impl From<HostSqlValue> for bindings::torchsnap::gadget::sql::SqlValue {
     fn from(v: HostSqlValue) -> Self {
-        use bindings::torchsnap::plugin::sql::SqlValue as Wit;
+        use bindings::torchsnap::gadget::sql::SqlValue as Wit;
         match v {
             HostSqlValue::Null => Wit::Null,
             HostSqlValue::Integer(i) => Wit::Integer(i),

@@ -24,12 +24,12 @@ use crate::wasm::permission_vars::{ResolveError, substitute_variables};
 
 use super::super::GadgetState;
 
-impl bindings::torchsnap::plugin::paths::Host for GadgetState {
+impl bindings::torchsnap::gadget::paths::Host for GadgetState {
     fn resolve(
         &mut self,
         template: String,
-    ) -> Result<String, bindings::torchsnap::plugin::paths::ResolveError> {
-        use bindings::torchsnap::plugin::paths::ResolveError as WitResolveError;
+    ) -> Result<String, bindings::torchsnap::gadget::paths::ResolveError> {
+        use bindings::torchsnap::gadget::paths::ResolveError as WitResolveError;
 
         let Some(ctx) = self.path_context.as_ref() else {
             // Mirrors the contract of other capability stashes

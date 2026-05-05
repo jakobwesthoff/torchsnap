@@ -17,7 +17,7 @@ use crate::wasm::bindings;
 
 use super::super::{GadgetState, WasmGadgetInstance};
 
-impl bindings::torchsnap::plugin::settings::Host for GadgetState {
+impl bindings::torchsnap::gadget::settings::Host for GadgetState {
     fn get(&mut self, key: String) -> Option<String> {
         // Debug builds catch the lifecycle invariant violation
         // ("settings host import called before enable") if it

@@ -21,7 +21,7 @@
 
 wasmtime::component::bindgen!({
     path: "../plugins/plugin-sdk/wit",
-    world: "plugin",
+    world: "gadget",
     // Tell wit-bindgen to use our concrete `SqlHandleEntry`
     // type as the resource representation for the
     // `sql.sql-handle` resource. By default, bindgen
@@ -29,7 +29,7 @@ wasmtime::component::bindgen!({
     // swap in a real type carrying the `Arc<SqlStorage>`
     // associated with each outstanding handle.
     with: {
-        "torchsnap:plugin/sql.sql-handle": super::runtime::SqlHandleEntry,
+        "torchsnap:gadget/sql.sql-handle": super::runtime::SqlHandleEntry,
     },
 });
 
@@ -45,7 +45,7 @@ wasmtime::component::bindgen!({
 
 use crate::wasm::runtime::GadgetState;
 
-impl torchsnap::plugin::types::Host for GadgetState {}
+impl torchsnap::gadget::types::Host for GadgetState {}
 
 // =========================================================
 // Type Conversions: WIT types → native types
@@ -55,10 +55,10 @@ impl torchsnap::plugin::types::Host for GadgetState {}
 // interface, not a separate imported `types` interface — see
 // ADR 0029. Because `search` is a guest export from the
 // host's perspective, its generated module lives under
-// `exports::torchsnap::plugin::search` instead of the
+// `exports::torchsnap::gadget::search` instead of the
 // import-side path the old `types` interface used.
 use crate::commands::types as native;
-use exports::torchsnap::plugin::search as wit;
+use exports::torchsnap::gadget::search as wit;
 
 // =========================================================
 // Frecency: host → WIT
@@ -71,9 +71,9 @@ use exports::torchsnap::plugin::search as wit;
 // the WIT boundary directly.
 // =========================================================
 
-impl From<crate::frecency::FrecencyItem> for torchsnap::plugin::frecency::FrecencyItem {
+impl From<crate::frecency::FrecencyItem> for torchsnap::gadget::frecency::FrecencyItem {
     fn from(item: crate::frecency::FrecencyItem) -> Self {
-        torchsnap::plugin::frecency::FrecencyItem {
+        torchsnap::gadget::frecency::FrecencyItem {
             item_id: item.item_id,
             score: item.score,
         }

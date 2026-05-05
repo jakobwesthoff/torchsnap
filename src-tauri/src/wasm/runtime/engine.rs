@@ -156,7 +156,7 @@ impl WasmRuntime {
         let mut linker = Linker::<GadgetState>::new(&self.engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| anyhow::anyhow!("linking WASI imports: {e}"))?;
-        bindings::Plugin::add_to_linker::<GadgetState, HasSelf<GadgetState>>(
+        bindings::Gadget::add_to_linker::<GadgetState, HasSelf<GadgetState>>(
             &mut linker,
             |state| state,
         )
@@ -181,7 +181,7 @@ impl WasmRuntime {
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component and get the typed bindings.
-        let plugin = bindings::Plugin::instantiate(&mut store, &component, &linker)
+        let plugin = bindings::Gadget::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
 
         Ok(WasmGadgetInstance::from_parts(store, plugin, logger))
