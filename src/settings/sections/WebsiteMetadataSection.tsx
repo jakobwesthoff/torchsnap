@@ -76,7 +76,7 @@ export function WebsiteMetadataSection() {
       <SectionHeader
         icon="heroicons:globe-alt"
         title="Website Metadata"
-        description="Caches website favicons and metadata (title, description) so plugins can show enriched results without repeated network requests."
+        description="Caches website favicons and metadata (title, description) so gadgets can show enriched results without repeated network requests."
       />
 
       {/* ---- Retention ---- */}

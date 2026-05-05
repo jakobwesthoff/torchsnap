@@ -98,7 +98,7 @@ export function PluginsManagementPanel() {
   const handleInstallClick = useCallback(async () => {
     const selected = await openFileDialog({
       multiple: false,
-      filters: [{ name: "Torchsnap Plugin", extensions: ["torchsnap"] }],
+      filters: [{ name: "Torchsnap Gadget", extensions: ["torchsnap"] }],
     });
     if (typeof selected !== "string") {
       return;
@@ -133,7 +133,7 @@ export function PluginsManagementPanel() {
           if (paths.length !== event.payload.paths.length) {
             setBanner({
               kind: "error",
-              message: "Only .torchsnap files can be installed as plugins.",
+              message: "Only .torchsnap files can be installed as gadgets.",
             });
             return;
           }
@@ -159,13 +159,13 @@ export function PluginsManagementPanel() {
       const result = await command("uninstall_user_plugin", { pluginId });
       setBanner({
         kind: "success",
-        message: `Uninstalled plugin "${pluginId}".`,
+        message: `Uninstalled gadget "${pluginId}".`,
         requiresRestart: result.requiresRestart,
       });
     } catch (e) {
       setBanner({
         kind: "error",
-        message: formatError(e, "Failed to uninstall plugin"),
+        message: formatError(e, "Failed to uninstall gadget"),
       });
     }
   }, []);
@@ -174,8 +174,8 @@ export function PluginsManagementPanel() {
     <div className="flex flex-col gap-4">
       <SectionHeader
         icon="heroicons:puzzle-piece"
-        title="Plugins"
-        description="Enable, disable, install, and uninstall plugins. Built-in and system plugins ship with the app and cannot be removed."
+        title="Gadgets"
+        description="Enable, disable, install, and uninstall gadgets. Built-in and system gadgets ship with the app and cannot be removed."
       />
 
       {banner && <BannerView banner={banner} onDismiss={() => setBanner(null)} />}
@@ -184,11 +184,11 @@ export function PluginsManagementPanel() {
         <InstallArea onInstallClick={handleInstallClick} dragActive={dragActive} />
       </Section>
 
-      <Section title="Installed Plugins">
+      <Section title="Installed Gadgets">
         {loadingSourceKinds ? (
-          <div className="text-sm text-text-tertiary">Loading plugins…</div>
+          <div className="text-sm text-text-tertiary">Loading gadgets…</div>
         ) : rows.length === 0 ? (
-          <div className="text-sm text-text-tertiary">No plugins registered.</div>
+          <div className="text-sm text-text-tertiary">No gadgets registered.</div>
         ) : (
           <div className="flex flex-col divide-y divide-border-divider">
             {rows.map((row) => (
@@ -237,7 +237,7 @@ function PluginRowView({
         <button
           type="button"
           onClick={() => onUninstall(row.id)}
-          title="Uninstall this user plugin"
+          title="Uninstall this user gadget"
           className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           Uninstall
@@ -278,27 +278,27 @@ function badgeMetadata(kind: PluginSourceKind): {
     case "builtin":
       return {
         label: "Built-in",
-        tooltip: "Native plugin compiled into the app. Always present.",
+        tooltip: "Native gadget compiled into the app. Always present.",
         className: "bg-surface-hover text-text-secondary",
       };
     case "system":
       return {
         label: "System",
         tooltip:
-          "WASM plugin bundled with the app. Upgraded when the app is updated; not uninstallable.",
+          "WASM gadget bundled with the app. Upgraded when the app is updated; not uninstallable.",
         className: "bg-surface-hover text-text-secondary",
       };
     case "user":
       return {
         label: "User",
-        tooltip: "WASM plugin you installed. Uninstall available.",
+        tooltip: "WASM gadget you installed. Uninstall available.",
         className: "bg-accent/15 text-accent",
       };
     case "dev":
       return {
         label: "Dev",
         tooltip:
-          "WASM plugin loaded from the repository in debug builds. Release builds never include it.",
+          "WASM gadget loaded from the repository in debug builds. Release builds never include it.",
         className: "bg-amber-500/15 text-amber-500",
       };
   }
@@ -395,7 +395,7 @@ async function runInstall(archivePath: string, setBanner: (banner: Banner) => vo
   } catch (e) {
     setBanner({
       kind: "error",
-      message: formatError(e, "Failed to install plugin"),
+      message: formatError(e, "Failed to install gadget"),
     });
   }
 }
