@@ -5,14 +5,14 @@
 // =========================================================
 // Plugin Settings Hook Type
 //
-// Describes the signature of the `usePluginSetting` hook
+// Describes the signature of the `useGadgetSetting` hook
 // that the host provides to each plugin's settings
 // component. The hook is pre-bound to the plugin's namespace
-// so calling `usePluginSetting("greeting")` reads and writes
+// so calling `useGadgetSetting("greeting")` reads and writes
 // `plugins.<id>.greeting` in the global settings store.
 //
 // This type decouples the SDK from the host's concrete
-// `createPluginSettingHook` factory (src/hooks/usePluginSetting.ts).
+// `createGadgetSettingHook` factory (src/hooks/useGadgetSetting.ts).
 // =========================================================
 
 export type UsePluginSetting = <T>(key: string) => [value: T, setValue: (v: T) => Promise<void>];

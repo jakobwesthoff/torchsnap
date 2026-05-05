@@ -9,12 +9,12 @@
 //
 //   import {
 //     setupSdkGlobalsForTesting,
-//     MockPluginContextProvider,
+//     MockGadgetContextProvider,
 //   } from "@torchsnap/plugin-sdk/testing";
 // =========================================================
 
 export { setupSdkGlobalsForTesting } from "./setup";
 export {
-  MockPluginContextProvider,
-  type MockPluginContextProviderProps,
-} from "./MockPluginContextProvider";
+  MockGadgetContextProvider,
+  type MockGadgetContextProviderProps,
+} from "./MockGadgetContextProvider";

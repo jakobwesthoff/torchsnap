@@ -20,10 +20,10 @@
 
 import React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
-import { usePluginInfo } from "../contexts/usePluginInfo";
-import { usePluginRuntime } from "../contexts/usePluginRuntime";
+import { useGadgetInfo } from "../contexts/useGadgetInfo";
+import { useGadgetRuntime } from "../contexts/useGadgetRuntime";
 import { useLauncher } from "../contexts/useLauncher";
-import { usePluginSetting } from "../contexts/usePluginSetting";
+import { useGadgetSetting } from "../contexts/useGadgetSetting";
 import { useWindowedList } from "../launcher/hooks/useWindowedList";
 import { useKeyBindings } from "../keybindings/useKeyBindings";
 import { LAYER } from "../keybindings/matching";
@@ -54,7 +54,7 @@ declare global {
   // here because the shim augmentations for those slices are not in
   // `sdk.ts`'s transitive import graph (they come from
   // `packages/plugin-sdk/src/shims/keybindings.ts` and `components.ts`, which
-  // nothing in `src/` imports except `PluginContext.tsx`'s type-sync
+  // nothing in `src/` imports except `GadgetContext.tsx`'s type-sync
   // check — and that only imports `hooks.ts`). `hooks` is intentionally
   // omitted: `hooks.ts` IS transitively reachable and its augmentation
   // is already in scope; re-declaring it here would cause a TS2717
@@ -96,10 +96,10 @@ export function initPluginSdk(): void {
     React,
     jsxRuntime,
     hooks: {
-      usePluginInfo,
-      usePluginRuntime,
+      useGadgetInfo,
+      useGadgetRuntime,
       useLauncher,
-      usePluginSetting,
+      useGadgetSetting,
       useWindowedList,
     },
     keybindings: {

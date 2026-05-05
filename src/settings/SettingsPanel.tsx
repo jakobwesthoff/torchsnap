@@ -7,8 +7,8 @@ import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/r
 import type { PluginSettingsProps } from "../plugins/types";
 import { createLogger } from "../lib/logger";
 import { useSetting } from "../hooks/useSetting";
-import { PluginContextProvider } from "../contexts/PluginContextProvider";
-import type { PluginInfo, PluginRuntime } from "../contexts/PluginContext";
+import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
+import type { GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { TitleBar } from "../components/TitleBar";
@@ -152,8 +152,8 @@ function PluginSectionContent({
   plugin: ReturnType<typeof getPluginsWithSettings>[number];
   CustomSettings?: ComponentType<PluginSettingsProps>;
 }) {
-  // The plugin's enabled flag flows through PluginContext so
-  // setting components can read it via usePluginInfo() and
+  // The plugin's enabled flag flows through GadgetContext so
+  // setting components can read it via useGadgetInfo() and
   // visually disable controls when the plugin is off.
   const [enabled] = useSetting<boolean>(`enabled.${plugin.id}`);
   const logger = useMemo(() => createLogger(plugin.id), [plugin.id]);
@@ -171,8 +171,8 @@ function PluginSectionContent({
     [plugin.id],
   );
 
-  const info = useMemo<PluginInfo>(() => ({ id: plugin.id, enabled }), [plugin.id, enabled]);
-  const runtime = useMemo<PluginRuntime>(() => ({ sendMessage, logger }), [sendMessage, logger]);
+  const info = useMemo<GadgetInfo>(() => ({ id: plugin.id, enabled }), [plugin.id, enabled]);
+  const runtime = useMemo<GadgetRuntime>(() => ({ sendMessage, logger }), [sendMessage, logger]);
 
   return (
     <PluginSettingsWrapper
@@ -182,9 +182,9 @@ function PluginSectionContent({
       description={plugin.description ?? ""}
     >
       {CustomSettings && (
-        <PluginContextProvider info={info} runtime={runtime}>
+        <GadgetContextProvider info={info} runtime={runtime}>
           <CustomSettings />
-        </PluginContextProvider>
+        </GadgetContextProvider>
       )}
     </PluginSettingsWrapper>
   );

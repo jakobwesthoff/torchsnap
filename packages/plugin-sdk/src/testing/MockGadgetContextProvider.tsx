@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// MockPluginContextProvider
+// MockGadgetContextProvider
 //
 // Test helper that wraps a plugin component under test in
-// the host's real PluginContextProvider with sensible mock
+// the host's real GadgetContextProvider with sensible mock
 // defaults. Plugin authors only need to override the slices
 // the test cares about — everything else gets a no-op
 // stand-in.
@@ -15,32 +15,32 @@
 //
 //   import {
 //     setupSdkGlobalsForTesting,
-//     MockPluginContextProvider,
+//     MockGadgetContextProvider,
 //   } from "@torchsnap/plugin-sdk/testing";
 //
 //   beforeAll(() => setupSdkGlobalsForTesting());
 //
 //   test("CalculatorSettings renders", () => {
 //     render(
-//       <MockPluginContextProvider info={{ id: "calculator", enabled: true }}>
+//       <MockGadgetContextProvider info={{ id: "calculator", enabled: true }}>
 //         <CalculatorSettings />
-//       </MockPluginContextProvider>
+//       </MockGadgetContextProvider>
 //     );
 //   });
 //
-// The mock uses the host's real PluginContext object so the
+// The mock uses the host's real GadgetContext object so the
 // shim hooks (`@torchsnap/plugin-sdk/hooks`) resolve through
 // the same React context the production code uses.
 // =========================================================
 
 import { useMemo, useRef, type ReactNode } from "react";
-import { PluginContext } from "../../../src/contexts/PluginContext";
+import { GadgetContext } from "../../../src/contexts/GadgetContext";
 import type {
   LauncherActions,
-  PluginContextValue,
-  PluginInfo,
-  PluginRuntime,
-} from "../../../src/contexts/PluginContext";
+  GadgetContextValue,
+  GadgetInfo,
+  GadgetRuntime,
+} from "../../../src/contexts/GadgetContext";
 import type { Logger } from "../types/logger";
 
 // ---------------------------------------------------------
@@ -63,13 +63,13 @@ const noopSendMessage = async () => undefined as never;
 // Provider
 // ---------------------------------------------------------
 
-export interface MockPluginContextProviderProps {
+export interface MockGadgetContextProviderProps {
   /** Override fields for the `info` slice. Defaults:
    *  `{ id: "test-plugin", enabled: true }`. */
-  info?: Partial<PluginInfo>;
+  info?: Partial<GadgetInfo>;
   /** Override fields for the `runtime` slice. Defaults to
    *  no-op `sendMessage` and a no-op `logger`. */
-  runtime?: Partial<PluginRuntime>;
+  runtime?: Partial<GadgetRuntime>;
   /** Override fields for the `launcher` slice. When the
    *  argument is omitted entirely, the launcher slice is
    *  absent — calling `useLauncher()` from a child throws
@@ -79,24 +79,24 @@ export interface MockPluginContextProviderProps {
   children: ReactNode;
 }
 
-export function MockPluginContextProvider({
+export function MockGadgetContextProvider({
   info,
   runtime,
   launcher,
   children,
-}: MockPluginContextProviderProps) {
+}: MockGadgetContextProviderProps) {
   // The mouseActiveRef default has to be a real RefObject so
   // launcher consumers can read/write `.current` without
   // crashing.
   const mouseActiveRef = useRef(false);
 
-  const value = useMemo<PluginContextValue>(() => {
-    const fullInfo: PluginInfo = {
+  const value = useMemo<GadgetContextValue>(() => {
+    const fullInfo: GadgetInfo = {
       id: "test-plugin",
       enabled: true,
       ...info,
     };
-    const fullRuntime: PluginRuntime = {
+    const fullRuntime: GadgetRuntime = {
       sendMessage: noopSendMessage,
       logger: noopLogger,
       ...runtime,
@@ -123,6 +123,6 @@ export function MockPluginContextProvider({
   }, [info, runtime, launcher]);
 
   return (
-    <PluginContext.Provider value={value}>{children}</PluginContext.Provider>
+    <GadgetContext.Provider value={value}>{children}</GadgetContext.Provider>
   );
 }

@@ -14,9 +14,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { usePluginInfo } from "../../contexts/usePluginInfo";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
-import { usePluginSetting } from "../../contexts/usePluginSetting";
+import { useGadgetInfo } from "../../contexts/useGadgetInfo";
+import { useGadgetRuntime } from "../../contexts/useGadgetRuntime";
+import { useGadgetSetting } from "../../contexts/useGadgetSetting";
 import { Section } from "../../settings/Section";
 import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
@@ -58,14 +58,14 @@ function formatRetentionDays(days: number): string {
 export default function ClipboardSettings() {
   // Identity (with reactive enabled flag) and runtime
   // capabilities are provided by the surrounding
-  // PluginContextProvider.
-  const { enabled } = usePluginInfo();
-  const { sendMessage, logger } = usePluginRuntime();
+  // GadgetContextProvider.
+  const { enabled } = useGadgetInfo();
+  const { sendMessage, logger } = useGadgetRuntime();
 
-  const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+  const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
   const [bringToFrontOnPaste, setBringToFrontOnPaste] =
-    usePluginSetting<boolean>("bringToFrontOnPaste");
-  const [shortcut, setShortcut] = usePluginSetting<string>("shortcut.open-clipboard");
+    useGadgetSetting<boolean>("bringToFrontOnPaste");
+  const [shortcut, setShortcut] = useGadgetSetting<string>("shortcut.open-clipboard");
 
   const [stats, setStats] = useState<ClipboardStats | null>(null);
   const [clearing, setClearing] = useState(false);

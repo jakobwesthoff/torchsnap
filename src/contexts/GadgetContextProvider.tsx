@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// PluginContextProvider
+// GadgetContextProvider
 //
 // The host wraps every plugin component mount in this
 // provider before rendering the plugin's React component
@@ -15,39 +15,39 @@
 
 import { useMemo, type ReactNode } from "react";
 import {
-  PluginContext,
+  GadgetContext,
   type LauncherActions,
-  type PluginContextValue,
-  type PluginInfo,
-  type PluginRuntime,
-} from "./PluginContext";
+  type GadgetContextValue,
+  type GadgetInfo,
+  type GadgetRuntime,
+} from "./GadgetContext";
 import { LoggerContext } from "./LoggerContext";
 
-export interface PluginContextProviderProps {
-  info: PluginInfo;
-  runtime: PluginRuntime;
+export interface GadgetContextProviderProps {
+  info: GadgetInfo;
+  runtime: GadgetRuntime;
   launcher?: LauncherActions;
   children: ReactNode;
 }
 
-export function PluginContextProvider({
+export function GadgetContextProvider({
   info,
   runtime,
   launcher,
   children,
-}: PluginContextProviderProps) {
+}: GadgetContextProviderProps) {
   // Stable value reference unless one of the inputs actually
   // changes. The launcher slice's callbacks are already stable
   // refs at the call sites, so this memo only retriggers on
   // genuine identity changes.
-  const value = useMemo<PluginContextValue>(
+  const value = useMemo<GadgetContextValue>(
     () => ({ info, runtime, launcher }),
     [info, runtime, launcher],
   );
 
   return (
     <LoggerContext.Provider value={runtime.logger}>
-      <PluginContext.Provider value={value}>{children}</PluginContext.Provider>
+      <GadgetContext.Provider value={value}>{children}</GadgetContext.Provider>
     </LoggerContext.Provider>
   );
 }

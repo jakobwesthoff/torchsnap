@@ -12,18 +12,18 @@
 // (`mouseActiveRef`).
 //
 // Calling this hook from a settings panel context (where the
-// PluginContextProvider has no `launcher` slice) is a bug —
+// GadgetContextProvider has no `launcher` slice) is a bug —
 // the hook throws a clear error rather than returning
 // undefined-laced callbacks.
 // =========================================================
 
 import { useContext } from "react";
-import { PluginContext, type LauncherActions } from "./PluginContext";
+import { GadgetContext, type LauncherActions } from "./GadgetContext";
 
 export function useLauncher(): LauncherActions {
-  const ctx = useContext(PluginContext);
+  const ctx = useContext(GadgetContext);
   if (!ctx) {
-    throw new Error("useLauncher must be called inside a <PluginContextProvider>");
+    throw new Error("useLauncher must be called inside a <GadgetContextProvider>");
   }
   if (!ctx.launcher) {
     throw new Error(
