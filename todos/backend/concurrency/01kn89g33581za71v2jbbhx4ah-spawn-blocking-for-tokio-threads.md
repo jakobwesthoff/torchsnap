@@ -2,7 +2,7 @@
 
 ## Context
 
-Several plugins use `std::thread::spawn` for background threads that call
+Several gadgets use `std::thread::spawn` for background threads that call
 `blocking_changed()` or other code relying on `tauri::async_runtime::block_on`.
 While this currently works because the global Tauri runtime handle is accessible
 from any thread, it's not clean — any future code in those threads that touches
@@ -10,14 +10,14 @@ reqwest or other Tokio I/O would panic with "no reactor running".
 
 ## Affected code
 
-- The original calculator plugin (deleted in the WASM port) used
+- The original calculator gadget (deleted in the WASM port) used
   `std::thread::spawn` for its retention cleanup loop. The WASM
   rewrite replaced that with the host-managed scheduler in
   `src-tauri/src/wasm/bridge.rs::scheduler_loop`, which calls the
   guest export inline from the tokio task — see ADR 0032 and the
   comment block in `scheduler_loop` explaining when a future
   pathological task could justify wrapping in `spawn_blocking`.
-- Any remaining native plugin that follows the
+- Any remaining native gadget that follows the
   `std::thread::spawn` + `blocking_changed()` pattern.
 
 ## Recommended fix

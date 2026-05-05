@@ -58,11 +58,11 @@ promote the current `fallback` into a proper `linux` peer of
 
 - `bind_shortcuts(session, specs)` at startup with `(id, description,
   preferred_trigger)` tuples. The launcher's combo becomes one of
-  them; plugin-declared shortcuts are added with their plugin id as
+  them; gadget-declared shortcuts are added with their gadget id as
   the portal-side id.
 - `receive_activated()` stream, dispatched into
-  `plugin_host.rs::on_shortcut` equivalents. Preserve the existing
-  launcher-toggle-vs-plugin routing.
+  `gadget_host.rs::on_shortcut` equivalents. Preserve the existing
+  launcher-toggle-vs-gadget routing.
 - `receive_shortcuts_changed()` stream → write the new combos back
   into the settings store so the in-app UI reflects reality.
 - Hold the portal Session object for the lifetime of the app — if
@@ -70,7 +70,7 @@ promote the current `fallback` into a proper `linux` peer of
 
 ### Registration dispatch
 
-`plugin_host.rs::register_all_shortcuts` gains a cfg split:
+`gadget_host.rs::register_all_shortcuts` gains a cfg split:
 
 - `cfg(all(target_os = "linux", "wayland detected at runtime"))`
   → portal module
@@ -128,7 +128,7 @@ Concretely:
   assuming the preferred trigger was honored.
 - **`configure_shortcuts`** exists and lets the app request a new
   trigger, but typically prompts the user again — use sparingly
-  (e.g. if the user renames the shortcut in the plugin list).
+  (e.g. if the user renames the shortcut in the gadget list).
 - **Session lifecycle.** Drop the session → bindings vanish. Tie
   its lifetime to the app's main `run_loop`.
 
@@ -146,7 +146,7 @@ Concretely:
 - `docs/Howto-build-on-fedora-43.md` — user-facing documentation
   of the current Control-API-socket workaround. Remove or rewrite
   when this todo lands.
-- `src-tauri/src/plugin_host.rs:322-405` — shortcut registration
+- `src-tauri/src/gadget_host.rs:322-405` — shortcut registration
   fan-out, where the dispatch split lives.
 - `src-tauri/src/lib.rs:526` — the
   `.plugin(tauri_plugin_global_shortcut::...)` registration; keep

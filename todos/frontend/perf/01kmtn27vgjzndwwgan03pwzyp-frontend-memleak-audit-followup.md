@@ -3,15 +3,15 @@
 Findings from a second audit of all frontend source files. The four issues
 from `01kmtfq0erkn5vxqnzka4jz2ce-frontend-memory-leak-cleanup.md` are
 excluded — three of those have been fixed, and the fourth
-(`usePluginStream`) is revisited here with additional context.
+(`useGadgetStream`) is revisited here with additional context.
 
-## MEDIUM — `usePluginStream` channel cannot be silenced (design gap)
+## MEDIUM — `useGadgetStream` channel cannot be silenced (design gap)
 
-`src/hooks/usePluginStream.ts`, `src/lib/pluginMessage.ts`
+`src/hooks/useGadgetStream.ts`, `src/lib/gadgetMessage.ts`
 
 The existing todo recommends nulling `channel.onmessage` in the cleanup
-return. This is not feasible with the current API: `sendPluginMessage`
-creates the `Channel` internally (line 26 of `pluginMessage.ts`) and
+return. This is not feasible with the current API: `sendGadgetMessage`
+creates the `Channel` internally (line 26 of `gadgetMessage.ts`) and
 returns only the invoke promise. The caller has no reference to the
 channel object and therefore cannot silence it.
 
@@ -21,12 +21,12 @@ sending on the channel.
 
 **Fix options:**
 
-1. Return the channel alongside the promise from `sendPluginMessage`
+1. Return the channel alongside the promise from `sendGadgetMessage`
    (e.g. `{ promise, channel }`), so the caller can null `onmessage`
    in cleanup.
-2. Accept an `AbortSignal` parameter; when aborted, `sendPluginMessage`
+2. Accept an `AbortSignal` parameter; when aborted, `sendGadgetMessage`
    nulls the channel's `onmessage` internally.
-3. Expose a dedicated `subscribePluginStream` helper that returns a
+3. Expose a dedicated `subscribeGadgetStream` helper that returns a
    handle with an explicit `close()` / `silence()` method.
 
 Option 2 is the most ergonomic for React effects (`AbortController` in
@@ -96,7 +96,7 @@ render-time assignment, not a side effect). Then add a dependency
 array that triggers re-registration only when the definitions
 reference changes.
 
-## NEGLIGIBLE — `Launcher.tsx` `activate-plugin-custom-ui` StrictMode double-mount
+## NEGLIGIBLE — `Launcher.tsx` `activate-gadget-custom-ui` StrictMode double-mount
 
 `src/launcher/Launcher.tsx:117-130`
 
@@ -106,7 +106,7 @@ StrictMode (dev only), effects mount/unmount/remount synchronously.
 The async gap between `listen()` returning a promise and the cleanup
 `.then()` resolving means both the old and new listeners can be
 briefly active at the same time during the StrictMode double-mount
-cycle. This can cause duplicate `activate-plugin-custom-ui` handling
+cycle. This can cause duplicate `activate-gadget-custom-ui` handling
 in development.
 
 Not a production concern. Mentioning for completeness; fix alongside

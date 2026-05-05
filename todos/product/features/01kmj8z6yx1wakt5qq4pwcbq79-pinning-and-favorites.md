@@ -6,7 +6,7 @@ query state.
 
 ## Considerations
 
-- Pin to top of global list, or per-plugin pinning?
+- Pin to top of global list, or per-gadget pinning?
 - Visible pin indicator in the result row?
 - Keyboard shortcut to pin/unpin from the action palette?
 - Storage: settings store or separate data file?

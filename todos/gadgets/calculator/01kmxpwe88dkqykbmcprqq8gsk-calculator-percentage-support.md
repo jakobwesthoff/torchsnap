@@ -24,6 +24,6 @@ advanced: `X + N%` → `X + X * (N/100)` for "add N percent" semantics.
 
 ## Context
 
-Deferred during calculator plugin planning to keep initial implementation
+Deferred during calculator gadget planning to keep initial implementation
 focused. Percentages were originally planned as part of the preprocessing
 layer but separated out as a distinct feature.

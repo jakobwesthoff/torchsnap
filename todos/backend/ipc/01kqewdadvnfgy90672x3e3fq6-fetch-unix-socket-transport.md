@@ -1,4 +1,4 @@
-# Plugin Fetch — Unix Domain Socket Transport
+# Gadget Fetch — Unix Domain Socket Transport
 
 **Status: DEFERRED — needs heavy discussion before implementation.**
 
@@ -9,7 +9,7 @@ is the single most likely future extension to the fetch host import.
 
 ## Why we need it
 
-A large class of "plugin integrates with a local daemon" use cases
+A large class of "gadget integrates with a local daemon" use cases
 expose their API over a Unix domain socket rather than TCP loopback.
 Notable examples:
 
@@ -20,22 +20,22 @@ Notable examples:
 - **zfs-zed**, **zrepl**, various daemon control sockets — all
   Unix-socket-only by design.
 
-Each of these is a plausible future Torchsnap plugin. Without
-socket-transport support in the fetch host import, those plugins
+Each of these is a plausible future Torchsnap gadget. Without
+socket-transport support in the fetch host import, those gadgets
 cannot be implemented at all under the current WIT surface.
 
 ## When we need it
 
-**Not yet.** No concrete plugin scoped that requires it. The trigger
+**Not yet.** No concrete gadget scoped that requires it. The trigger
 for re-opening this todo:
 
-- A specific plugin enters scoping that requires a socket transport.
-- A reasonable-effort estimate puts that plugin's other prerequisites
+- A specific gadget enters scoping that requires a socket transport.
+- A reasonable-effort estimate puts that gadget's other prerequisites
   (UI, storage, parsing) at less than the cost of designing this
   transport — i.e. it becomes the dominant blocker.
 
 Until then, deferring is correct: the architectural cost of adding
-this later is **purely additive**. Existing TCP-loopback plugins
+this later is **purely additive**. Existing TCP-loopback gadgets
 continue to work unchanged regardless of which design we eventually
 pick.
 
@@ -50,24 +50,24 @@ Several shapes are plausible:
 - **A. URL-scheme overloading.** Recognize a synthetic scheme like
   `unix:///path/to/socket?http_path=/api/v1/info` or the more common
   `http+unix://%2Fvar%2Frun%2Fdocker.sock/v1.40/info` (URL-encoded
-  socket path). Pro: one API surface, transparent to plugin code.
+  socket path). Pro: one API surface, transparent to gadget code.
   Con: ugly URL encoding; "origin" semantics break (no host:port);
   custom URL parsing on the host.
 - **B. Explicit transport field in `http-request`.** Add
   `transport: variant { tcp, unix(string) }`. URL field then carries
   only the HTTP-level path (e.g. `http://localhost/api/v1/info`),
   and the host actually connects to the socket path. Pro: clean
-  separation of transport from request. Con: every plugin must
+  separation of transport from request. Con: every gadget must
   set transport; URL is partially fictional.
 - **C. Separate `unix-fetch` interface.** New WIT interface,
   separate import, separate permission shape. Pro: socket and HTTP
   semantics fully decoupled; each can evolve independently. Con:
-  two parallel HTTP clients to maintain; plugins choosing transport
+  two parallel HTTP clients to maintain; gadgets choosing transport
   at runtime get awkward.
-- **D. Raw stream interface (no HTTP at all).** Plugin gets a
+- **D. Raw stream interface (no HTTP at all).** Gadget gets a
   bidirectional byte stream and implements HTTP itself, or talks
   raw socket protocols (D-Bus, custom binary). Pro: maximally
-  general — opens non-HTTP daemon protocols. Con: every plugin
+  general — opens non-HTTP daemon protocols. Con: every gadget
   re-implements HTTP correctly, which is a famously bad idea.
 
 **Lean (subject to discussion):** B if all daemons we care about
@@ -100,7 +100,7 @@ path. Options:
   globbing socket paths feels overgeneralized.
 
 **Lean:** **a** — separate `unix-sockets` allowlist under
-`[permissions.http]`. Keeps the conceptual cluster ("plugin reaches
+`[permissions.http]`. Keeps the conceptual cluster ("gadget reaches
 out to a service") together while not conflating sockets with
 file reads.
 
@@ -118,8 +118,8 @@ modern daemons, but not D-Bus or custom binary protocols. Decision:
   WIT-level streams are still a pain; same complexity as deferred
   streaming responses.
 
-**Lean:** **i** for v1. If a D-Bus plugin is concretely scoped, that
-plugin can carry the raw-stream interface as its own prerequisite.
+**Lean:** **i** for v1. If a D-Bus gadget is concretely scoped, that
+gadget can carry the raw-stream interface as its own prerequisite.
 
 ## Library / implementation notes
 

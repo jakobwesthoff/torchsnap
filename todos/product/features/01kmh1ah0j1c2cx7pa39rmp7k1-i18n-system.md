@@ -11,7 +11,7 @@ start.
 - Settings panel labels and descriptions
 - Placeholder text ("Type to search")
 - Error messages and status text
-- Plugin-provided strings (plugin names, result labels, action
+- Gadget-provided strings (gadget names, result labels, action
   names)
 - Keyboard shortcut display (Cmd vs Ctrl, platform-specific names)
 
@@ -42,12 +42,12 @@ good TypeScript integration, and small enough for a desktop app.
 - The Rust side has fewer strings, so a simpler approach may
   suffice
 
-## Plugin i18n
+## Gadget i18n
 
-- Plugins should be able to provide translations for their own
+- Gadgets should be able to provide translations for their own
   strings
-- Plugin manifest could declare supported locales
-- Host provides the current locale to plugins so they can select
+- Gadget manifest could declare supported locales
+- Host provides the current locale to gadgets so they can select
   the right translation
 - Fallback to English if a translation is missing
 
@@ -59,4 +59,4 @@ good TypeScript integration, and small enough for a desktop app.
 3. Extract all hardcoded English strings into translation keys
 4. Set up the translation file structure (e.g. `locales/en.json`)
 5. Document the i18n workflow for future contributors
-6. Define how plugins provide and access translations
+6. Define how gadgets provide and access translations

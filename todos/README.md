@@ -18,12 +18,12 @@ directory tree.
 
 Top-level groups:
 
-- `plugins/` — work scoped to a single plugin.
-- `plugin-host/` — cross-cutting plugin-runtime work (host APIs,
+- `gadgets/` — work scoped to a single gadget.
+- `gadget-host/` — cross-cutting gadget-runtime work (host APIs,
   the WASM runtime, the SDKs, audits).
 - `frontend/` — UI / React-side work.
 - `backend/` — Rust / Tauri host-side work that isn't
-  plugin-runtime.
+  gadget-runtime.
 - `platform/` — OS-specific bugs and integrations.
 - `product/` — user-facing features and visual identity that
   cross frontend and backend.
@@ -33,7 +33,7 @@ Top-level groups:
   todos.
 
 Subdirectories under each group narrow scope further (e.g.
-`plugins/clipboard/`, `backend/search/`). Add a new subdirectory
+`gadgets/clipboard/`, `backend/search/`). Add a new subdirectory
 when three or more related todos accumulate; before that, keep
 them at the parent level.
 

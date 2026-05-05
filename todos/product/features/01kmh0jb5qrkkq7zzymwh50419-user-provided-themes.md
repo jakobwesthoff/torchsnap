@@ -27,10 +27,10 @@ between alternative visual themes beyond the built-in light/dark.
   - Colors + typography + spacing (more expressive, harder to
     guarantee readability)?
   - Full CSS override (maximum power, risk of breaking layout)?
-- **Compatibility**: How do themes interact with plugins?
-  - Plugins should use the same semantic tokens
-  - A theme that changes tokens automatically affects plugins
-  - What if a plugin defines its own tokens?
+- **Compatibility**: How do themes interact with gadgets?
+  - Gadgets should use the same semantic tokens
+  - A theme that changes tokens automatically affects gadgets
+  - What if a gadget defines its own tokens?
 
 ## Prior art
 

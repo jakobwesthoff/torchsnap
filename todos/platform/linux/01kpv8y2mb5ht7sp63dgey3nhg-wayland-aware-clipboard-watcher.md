@@ -63,20 +63,20 @@ quality as native GTK/Qt apps, no process-management hazards.
 ## Scope of changes
 
 - New Linux-specific backend inside
-  `src-tauri/src/plugins/clipboard/` that implements whatever
+  `src-tauri/src/gadgets/clipboard/` that implements whatever
   trait / channel-shape the existing `ClipboardWatcher` exposes.
   The current code is written against `clipboard-rs`'s
   `ClipboardHandler` interface; the abstraction layer may need a
   small refactor so the Wayland backend can slot in without
   disturbing macOS or Windows.
-- Feature detection + backend selection at plugin startup.
+- Feature detection + backend selection at gadget startup.
 - Testing on: GNOME Wayland (Mutter 45+), KDE Wayland, sway, and
   classic X11 (e.g. `GDK_BACKEND=x11 just start` or an Xfce
   session).
 
 ## Pointers
 
-- `src-tauri/src/plugins/clipboard/mod.rs` — watcher thread, setup
+- `src-tauri/src/gadgets/clipboard/mod.rs` — watcher thread, setup
   points at lines 159–167, active-query read at line 502
 - `src-tauri/Cargo.toml` — `clipboard-rs = "0.3.3"` dep
 - `wl-clipboard-rs` on crates.io:

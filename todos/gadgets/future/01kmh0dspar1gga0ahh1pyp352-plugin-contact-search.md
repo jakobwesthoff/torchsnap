@@ -1,4 +1,4 @@
-# Plugin: Contact search and display
+# Gadget: Contact search and display
 
 Search system contacts and display contact details in the launcher.
 
@@ -20,15 +20,15 @@ Search system contacts and display contact details in the launcher.
 
 - Requires explicit user permission to access contacts
 - Contact data should never leave the local machine
-- Index only — no copying of contact data to plugin storage
+- Index only — no copying of contact data to gadget storage
 
 ## Architecture decisions (2026-04-08 discussion)
 
-Plugins are WASM-sandboxed, so the plugin itself never touches the OS.
+Gadgets are WASM-sandboxed, so the gadget itself never touches the OS.
 The Torchsnap **host** must own contact access and expose a normalized
-capability to plugins. The contacts plugin then becomes a thin
+capability to gadgets. The contacts gadget then becomes a thin
 consumer of that capability — same as how other system-integrated
-plugins work.
+gadgets work.
 
 Proposed host capability surface (to be refined):
 
@@ -36,9 +36,9 @@ Proposed host capability surface (to be refined):
 - `contacts.search(query, limit) -> Vec<ScoredContact>` — fuzzy, host-side
 - `contacts.subscribe_changes()` — later, for live invalidation
 
-Search lives in the **host**, not the plugin: the host owns the
+Search lives in the **host**, not the gadget: the host owns the
 normalized index, fuzzy ranking should not be reimplemented per
-plugin, and contact lists are small enough (hundreds–low thousands)
+gadget, and contact lists are small enough (hundreds–low thousands)
 that fetch-all + in-memory index is the right strategy on every
 platform.
 
@@ -74,8 +74,8 @@ Candidates evaluated:
 - **`mates` / `mates-rs`** — CLI tools over local vCard directories.
   File-based, no OS integration.
 - **`vcard`, `ical-rs`, `calcard`** — vCard parsers only.
-- **Tauri plugins** — no desktop contacts plugin exists. Mobile-only
-  community plugins.
+- **Tauri gadgets** — no desktop contacts gadget exists. Mobile-only
+  community gadgets.
 - **`windows` crate** — has `Windows::ApplicationModel::Contacts`
   WinRT bindings, but raw, same ergonomics problem as
   `objc2-contacts` on macOS.
@@ -99,21 +99,21 @@ Build a small in-tree abstraction inside the host:
    data models on paper before locking it in.
 5. Host-side fuzzy index built on first capability use, invalidated
    on `CNContactStoreDidChange`.
-6. Expose host capability to WASM plugins via the existing plugin
+6. Expose host capability to WASM gadgets via the existing gadget
    host API surface.
 
 Open questions for the design discussion:
 
 - Photo data: pass through as bytes, file path, or opaque handle the
-  plugin resolves later? Bytes are simplest but blow up the
+  gadget resolves later? Bytes are simplest but blow up the
   serialization cost of `list()`.
 - Should `search` accept structured filters (only emails, only
   phones) or just a free-text query? Launcher use case is free-text;
   a directory-style "find everyone at company X" use case wants
   structure.
-- Permission UX: do we prompt on first plugin install, on first
+- Permission UX: do we prompt on first gadget install, on first
   search, or expose a manual "grant access" affordance in settings?
-- Whether the contacts capability should be opt-in per plugin
+- Whether the contacts capability should be opt-in per gadget
   (capability grant in manifest) — almost certainly yes, given the
   privacy sensitivity.
 
@@ -127,6 +127,6 @@ Open questions for the design discussion:
 - Edge cases: contacts with no name, multiple emails/phones,
   non-ASCII names, duplicate entries across sources, very large
   contact lists.
-- Doc updates: plugin SDK docs for the new capability, host
+- Doc updates: gadget SDK docs for the new capability, host
   architecture doc for the backend trait, README note about the
   macOS permission prompt.

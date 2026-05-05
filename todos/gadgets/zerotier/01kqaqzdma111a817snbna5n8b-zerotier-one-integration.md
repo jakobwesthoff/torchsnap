@@ -1,6 +1,6 @@
 # ZeroTier One Integration
 
-**Status: DESIGN IN PROGRESS** — shipped as a dedicated WASM plugin
+**Status: DESIGN IN PROGRESS** — shipped as a dedicated WASM gadget
 behind one prerequisite (file-access WIT layer). Fetch WIT is already
 sufficient.
 
@@ -21,20 +21,20 @@ from within Torchsnap:
 
 ## Implementation kickoff
 
-When this work begins, **start by copying `plugins/template/` into a
-new `plugins/zerotier/` directory** and renaming the crate / plugin
+When this work begins, **start by copying `gadgets/template/` into a
+new `gadgets/zerotier/` directory** and renaming the crate / gadget
 metadata accordingly. The template carries the canonical layout
-(Cargo manifest, `manifest.toml`, `define_plugin!` registration,
+(Cargo manifest, `manifest.toml`, `define_gadget!` registration,
 SDK prelude wiring) and is the supported starting point for new
-plugins. Do not hand-roll plugin scaffolding from the SDK directly.
+gadgets. Do not hand-roll gadget scaffolding from the SDK directly.
 
 After copying:
 
-1. Rename the crate (`Cargo.toml`), the plugin id and metadata
+1. Rename the crate (`Cargo.toml`), the gadget id and metadata
    (`manifest.toml`), and the registered struct.
-2. Add the plugin entry to `plugins/bundled.toml` once the
+2. Add the gadget entry to `gadgets/bundled.toml` once the
    implementation is mature enough for release bundles (per
-   CLAUDE.md's "Plugin build pipeline" section). During development
+   CLAUDE.md's "Gadget build pipeline" section). During development
    the debug loader picks it up automatically.
 3. Declare the runtime permissions described in this todo —
    `[permissions.http]` with `origins = ["http://localhost:9993"]`,
@@ -43,30 +43,30 @@ After copying:
 
 ## Architecture decisions (settled)
 
-- **Dedicated WASM plugin**, not a host integration. Matches current
+- **Dedicated WASM gadget**, not a host integration. Matches current
   architectural direction; feature is self-contained.
-- **History storage:** SQLite via the existing plugin SQL host import.
-  Plugin-home pattern from CLAUDE.md / ADR 0035 already provides the
-  per-plugin sqlite location.
-- **`saved_networks.json` policy:** merge-once-per-session. On plugin
+- **History storage:** SQLite via the existing gadget SQL host import.
+  Gadget-home pattern from CLAUDE.md / ADR 0035 already provides the
+  per-gadget sqlite location.
+- **`saved_networks.json` policy:** merge-once-per-session. On gadget
   instantiation (start of a launcher session), read the file (macOS
-  only) and upsert any unknown entries into the plugin's own
+  only) and upsert any unknown entries into the gadget's own
   history. Idempotent; no watcher needed; naturally picks up entries
   created by the official UI between sessions. A manual re-import
-  button in plugin settings handles the mid-session case.
+  button in gadget settings handles the mid-session case.
   Torchsnap never writes back to that file.
-- **Plugin shape:** query-driven launcher plugin (not a panel app).
+- **Gadget shape:** query-driven launcher gadget (not a panel app).
   See "Launcher behavior model" below for query intents, entry
-  display, and cache strategy. Plugin settings (a separate UI
+  display, and cache strategy. Gadget settings (a separate UI
   surface) hosts the manual-token config field and the
   remembered-networks management view.
 - **Auth token UX:** auto-detect across all known per-OS paths on
-  plugin instantiation. If any path yields a readable token,
+  gadget instantiation. If any path yields a readable token,
   validate it once via `GET /status` and use it; disable the manual
   config field with an "auto-detected" notice. If none work,
   surface a manual-paste config field with an explanatory info box
   describing where each OS stores the token and how to obtain it.
-  The pasted token is stored in plugin storage and used as the
+  The pasted token is stored in gadget storage and used as the
   override. Token is not re-resolved during a session unless the
   user edits the config field.
 - **Multi-platform from v1.** macOS, Linux, Windows. Each is just a
@@ -138,15 +138,15 @@ Per-OS canonical paths (resolver tries each in order, first readable wins):
 - **Windows**
   1. `C:\ProgramData\ZeroTier\One\authtoken.secret` (admin-restricted)
 
-Fallback chain on every plugin start:
+Fallback chain on every gadget start:
 
 1. Try every per-OS canonical path; first readable wins.
-2. If none readable, fall back to the user-supplied token from plugin
+2. If none readable, fall back to the user-supplied token from gadget
    config. If that exists, use it. UI: config field disabled with
    "auto-detected" notice when (1) succeeded; otherwise enabled with
    an explanatory info box describing where to find the token.
 3. If neither produces a token, surface a clear error UX in the
-   plugin's main panel.
+   gadget's main panel.
 
 ## History storage
 
@@ -193,13 +193,13 @@ CREATE TABLE networks (
 );
 ```
 
-Backed by the per-plugin sqlite file in
-`<app_data_dir>/plugin-home/<plugin-id>/state.sqlite3`.
+Backed by the per-gadget sqlite file in
+`<app_data_dir>/gadget-home/<gadget-id>/state.sqlite3`.
 
 ### `saved_networks.json` import
 
-Mode: **merge once per plugin instantiation** (macOS only). When a
-new launcher session starts and the plugin is first instantiated:
+Mode: **merge once per gadget instantiation** (macOS only). When a
+new launcher session starts and the gadget is first instantiated:
 
 1. If the file exists and is readable, parse it.
 2. For each entry, `INSERT OR IGNORE` a row keyed by network ID.
@@ -214,15 +214,15 @@ pick them up without ending the launcher session.
 
 ## Launcher behavior model
 
-The plugin is query-driven. Each user keystroke triggers a query
-invocation; the plugin returns zero or more entries that the launcher
-ranks alongside other plugins' results. State (history table, daemon
+The gadget is query-driven. Each user keystroke triggers a query
+invocation; the gadget returns zero or more entries that the launcher
+ranks alongside other gadgets' results. State (history table, daemon
 response cache, resolved auth token) persists across query
 invocations within a single launcher session.
 
 ### Internal state per network ID
 
-For each known network, the plugin tracks one of three states (union
+For each known network, the gadget tracks one of three states (union
 of live daemon response and history table):
 
 - **connected** — in live `GET /network` with `status == "OK"`.
@@ -274,7 +274,7 @@ joined networks it implies Disconnect first.
 
 - **Connect** (any state): `POST /network/{id}`, empty body.
   Daemon makes no distinction between "new" and "known" — the only
-  difference is whether the plugin already has a history row.
+  difference is whether the gadget already has a history row.
 - **Disconnect**: `DELETE /network/{id}`. History row stays
   (downgrades to "known, not joined").
 - **Forget**: drop the history row. If the network is currently
@@ -282,7 +282,7 @@ joined networks it implies Disconnect first.
 
 ### Failure-state entries
 
-When the daemon or auth isn't reachable, the plugin returns a single
+When the daemon or auth isn't reachable, the gadget returns a single
 synthetic entry under Intent A so the user sees something actionable.
 These only fire when at least one ZT-shaped match would otherwise
 have been produced (i.e. the user typed something that resolves to
@@ -291,12 +291,12 @@ ZT context); they don't pollute unrelated queries.
 | Condition | Entry | Action |
 |---|---|---|
 | Daemon unreachable (connection-refused on `/status`) | "⚠ ZeroTier daemon not running" | (none) |
-| No auth token resolved | "⚠ ZeroTier token not configured" | open plugin settings |
-| Token rejected (401 on validation) | "⚠ ZeroTier authentication failed" | open plugin settings |
+| No auth token resolved | "⚠ ZeroTier token not configured" | open gadget settings |
+| Token rejected (401 on validation) | "⚠ ZeroTier authentication failed" | open gadget settings |
 
 ## Cache and rate-limiting
 
-The plugin caches the last `GET /network` (and `GET /status`)
+The gadget caches the last `GET /network` (and `GET /status`)
 response and rate-limits refresh:
 
 - TTL: **1 second** (const, easily bumped). Implemented as
@@ -314,7 +314,7 @@ response and rate-limits refresh:
 
 ## Auth resolver lifecycle
 
-- **On plugin instantiation (start of launcher session):**
+- **On gadget instantiation (start of launcher session):**
   1. Walk the per-OS candidate paths and the manual-paste config
      value; pick the first readable token.
   2. Validate with a single `GET /status` request.
@@ -334,12 +334,12 @@ response and rate-limits refresh:
 
 Investigated against the existing implementation:
 
-- **WIT:** `plugins/plugin-sdk/wit/torchsnap-plugin.wit` lines 241-303
+- **WIT:** `gadgets/gadget-sdk/wit/torchsnap-gadget.wit` lines 241-303
   (`interface http`).
 - **Host:** `src-tauri/src/wasm/runtime/host/http.rs` (entry point,
   origin check, method translation) and `src-tauri/src/network/http.rs`
   (reqwest wrapper).
-- **ADR:** `docs/adr/0038-wasm-plugin-http-api.md` (accepted 2026-04-19).
+- **ADR:** `docs/adr/0038-wasm-gadget-http-api.md` (accepted 2026-04-19).
 
 Confirmed sufficient for ZeroTier:
 
@@ -349,7 +349,7 @@ Confirmed sufficient for ZeroTier:
 - Request body — `body: option<list<u8>>`. POST with body, empty-body
   POST (`body: none`), and DELETE without body all supported
   (`host/http.rs:162-164`).
-- Response body — full `list<u8>` returned to guest; plugin
+- Response body — full `list<u8>` returned to guest; gadget
   serde-parses JSON itself.
 - Plain HTTP loopback — **no scheme allowlist, no loopback rejection**.
   `check_http_origin` (`host/http.rs:104`) is the only gate; it
@@ -357,9 +357,9 @@ Confirmed sufficient for ZeroTier:
   allowlist. `http://localhost:9993` produces origin
   `http://localhost:9993` which passes when declared.
 - Methods — GET, POST, DELETE all native variants
-  (`torchsnap-plugin.wit:259-267`).
+  (`torchsnap-gadget.wit:259-267`).
 
-**Action required for ZeroTier specifically:** the plugin's
+**Action required for ZeroTier specifically:** the gadget's
 `manifest.toml` must declare:
 
 ```toml
@@ -370,9 +370,9 @@ origins = ["http://localhost:9993"]
 #### Fetch WIT enhancements — implementable separately, ahead of ZeroTier
 
 These are not strictly required by ZeroTier, but the work is cheap,
-benefits every future plugin, and is easier to fold in while we're
+benefits every future gadget, and is easier to fold in while we're
 already opening the WIT for the fs layer. They form a self-contained
-prerequisite that can ship before the ZeroTier plugin without
+prerequisite that can ship before the ZeroTier gadget without
 blocking it.
 
 **1. Per-request timeout.** Add to `http-request`:
@@ -385,8 +385,8 @@ record http-request {
 ```
 
 Host applies a default of **10 seconds** when `timeout-ms` is `none`.
-Plugin can override per-request. Host caps the upper bound (e.g. 5
-minutes) so a misbehaving plugin can't disable timeouts entirely.
+Gadget can override per-request. Host caps the upper bound (e.g. 5
+minutes) so a misbehaving gadget can't disable timeouts entirely.
 
 **2. Richer connection-class error variants.** Replace the current
 `http-error` with a transport-level error variant. Critical
@@ -408,7 +408,7 @@ variant http-error {
 ```
 
 `http-response.status` (already present) carries the HTTP status code
-on every successful response, so plugins distinguish 200 / 401 / 404
+on every successful response, so gadgets distinguish 200 / 401 / 404
 / 5xx in their domain logic without string-matching.
 
 **3. Per-request insecure-TLS flag.** Some local daemons expose APIs
@@ -423,10 +423,10 @@ record http-request {
 ```
 
 Rationale: the origin allowlist already gates *which* endpoint the
-plugin reaches. Whether to verify the cert when talking to that
+gadget reaches. Whether to verify the cert when talking to that
 specific endpoint is a transport detail, not a separate capability.
-A hostile plugin could declare any manifest flag anyway, and the
-user already trusts the plugin enough to grant the origin.
+A hostile gadget could declare any manifest flag anyway, and the
+user already trusts the gadget enough to grant the origin.
 
 Host implementation: a parallel `reqwest::Client` built with
 `danger_accept_invalid_certs(true)` is selected when the per-request
@@ -434,15 +434,15 @@ flag is `true`. Not relevant to ZeroTier (plain HTTP loopback), but
 trivial to add once and avoids future WIT churn.
 
 **4. Streaming responses.** **Deferred.** ADR 0038 already defers
-this. Real cost: streaming WIT type, backpressure, plugin-side
-cancellation — not justified by ZeroTier or any near-term plugin
-idea. Re-open when the first plugin requiring SSE / chunked event
+this. Real cost: streaming WIT type, backpressure, gadget-side
+cancellation — not justified by ZeroTier or any near-term gadget
+idea. Re-open when the first gadget requiring SSE / chunked event
 streams is concretely scoped.
 
 **5. Unix domain socket transport.** **Deferred to its own todo
 (`01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md`).** Not
 required by ZeroTier; not architecturally locked-in by deferring.
-Re-open when a plugin needing it (Docker, podman, systemd, pueue,
+Re-open when a gadget needing it (Docker, podman, systemd, pueue,
 …) is concretely scoped.
 
 ### File-access WIT layer — DOES NOT EXIST, blocking prerequisite
@@ -452,7 +452,7 @@ A new host import is required. Proposed shape (open for refinement):
 #### Capability model
 
 - **Read-only in v1.** ZeroTier needs no writes; defer the write
-  permission discussion until a plugin actually requires it.
+  permission discussion until a gadget actually requires it.
 - **Manifest-declared path allowlist with glob support**, mirroring
   the existing `[permissions.http]` shape:
 
@@ -477,11 +477,11 @@ A new host import is required. Proposed shape (open for refinement):
   - `{system-config}` — `/Library/Application Support` (macOS),
     `/etc` (Linux), `%PROGRAMDATA%` (Windows).
   - `{user-home}` — included only if a real use case appears.
-- **Plugin-home is out of scope for this layer.** No `plugin-home`
-  accessor in the fs interface. Plugins that need persistent
-  per-plugin storage use the existing SQL host import (this plugin
-  does). If a future plugin actually needs filesystem-shaped
-  per-plugin storage, design a separate `plugin-storage` interface
+- **Gadget-home is out of scope for this layer.** No `gadget-home`
+  accessor in the fs interface. Gadgets that need persistent
+  per-gadget storage use the existing SQL host import (this gadget
+  does). If a future gadget actually needs filesystem-shaped
+  per-gadget storage, design a separate `gadget-storage` interface
   then.
 
 #### Glob safety — implementation strategy
@@ -517,7 +517,7 @@ outside the allow set is rejected because the resolved path no
 longer matches. This is what makes "follow symlinks" safe.
 
 TOCTOU between `canonicalize` and `read` is acknowledged and
-accepted — our threat model is a user-installed plugin reading
+accepted — our threat model is a user-installed gadget reading
 local files, not a hostile-attacker-with-write-access scenario.
 
 #### Symlink policy
@@ -556,13 +556,13 @@ this path?". Settled: boolean is sufficient.
 
 Out of scope for v1. The merge-on-activation policy for
 `saved_networks.json` removes the only known reason to need it. If a
-future plugin needs change notifications, add a separate
+future gadget needs change notifications, add a separate
 `fs-watch` interface then.
 
 ## Settings UI — "Remembered networks" panel
 
-The plugin's settings page exposes a management surface for the
-plugin-owned history table:
+The gadget's settings page exposes a management surface for the
+gadget-owned history table:
 
 - **List view** of every row in the history table — network ID, nice
   name, last-seen timestamp, last observed status.
@@ -609,6 +609,6 @@ items move to implementation-time decisions:
   canonicalized paths, `..` rejection at manifest load and at request
   time, symlink-resolution-then-recheck path, denied-vs-not-found
   conflation in `file-exists`.
-- Documentation: ADR for the integration shape (plugin, sqlite
+- Documentation: ADR for the integration shape (gadget, sqlite
   storage, auth UX), plus the file-access WIT layer's own ADR
   (capability model, placeholder set, v1-scope boundaries).

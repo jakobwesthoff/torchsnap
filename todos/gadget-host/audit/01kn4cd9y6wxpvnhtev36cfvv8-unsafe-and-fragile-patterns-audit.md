@@ -60,10 +60,10 @@ SqlValue::List(_) => Err(rusqlite::Error::ToSqlConversionFailure(
   unavoidable given Tauri's API surface. Brief borrow, sound lifetime.
 - **`cgimage_conversion.rs:59,143`**: Unavoidable Core Graphics FFI,
   well-commented safety blocks.
-- **Detached `thread::spawn`** (clipboard, plugin_host): All have
+- **Detached `thread::spawn`** (clipboard, gadget_host): All have
   proper shutdown coordination via condvars/channels. The paste
   thread (`clipboard/mod.rs:521`) is fire-and-forget by design.
   (The native calculator's retention thread was deleted in the
   WASM port and replaced by the host scheduler — see ADR 0032.)
 - **`.unwrap()` in test code**: Standard test practice in the
-  remaining native plugins, not a production concern.
+  remaining native gadgets, not a production concern.

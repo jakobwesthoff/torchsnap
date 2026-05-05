@@ -9,13 +9,13 @@ able to export and restore their entire torchsnap configuration.
   config, all user preferences from `settings.json`
 - **Frecency data**: Usage history that drives result ranking.
   Without this, a fresh install feels like starting over.
-- **Plugin settings**: Per-plugin configuration (namespaced in
+- **Gadget settings**: Per-gadget configuration (namespaced in
   the settings store or separate files)
 - **Pinned items / favorites**: If we implement pinning
-- **Clipboard history**: If the clipboard manager plugin stores
+- **Clipboard history**: If the clipboard manager gadget stores
   history locally
 - **Custom keybinds**: User-configured shortcut overrides
-- **Installed plugins**: List of installed plugins (paths or
+- **Installed gadgets**: List of installed gadgets (paths or
   registry references) so they can be re-fetched on import
 - **Custom themes**: User-installed theme files
 
@@ -31,8 +31,8 @@ able to export and restore their entire torchsnap configuration.
 - Validate archive structure and version before applying
 - Merge vs replace strategy: should importing overwrite all
   settings or merge with existing? Probably offer both.
-- Handle missing plugins gracefully (import settings but warn
-  that plugin X is not installed)
+- Handle missing gadgets gracefully (import settings but warn
+  that gadget X is not installed)
 - Handle version differences (older export → newer app) with
   migration logic
 

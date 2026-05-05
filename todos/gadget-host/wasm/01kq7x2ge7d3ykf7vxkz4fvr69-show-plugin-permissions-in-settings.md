@@ -1,24 +1,24 @@
-# Surface plugin permissions in the settings UI
+# Surface gadget permissions in the settings UI
 
 ## Context
 
-`PluginsManagementPanel.tsx` currently shows each plugin's name,
+`GadgetsManagementPanel.tsx` currently shows each gadget's name,
 description, source badge, and an enable toggle. It does **not** display
-the capabilities each plugin has been granted via its manifest
+the capabilities each gadget has been granted via its manifest
 (`[permissions.opener]`, `[permissions.http]`, future
 `[[permissions.process]]`).
 
 For URL/HTTP this gap was acceptable while the surface was small. With
 process execution about to land (see
 `todos/wasm/*-wasm-process-exec-interface.md`) the gap becomes more
-significant: a plugin that can spawn `mdfind` or `git` is a categorically
+significant: a gadget that can spawn `mdfind` or `git` is a categorically
 larger trust ask than one that can only open `https` URLs, and users
 deserve to see what they have running.
 
 ## Target
 
 Extend the settings panel to render an inline permissions block per
-plugin card, fed from the parsed manifest:
+gadget card, fed from the parsed manifest:
 
 - `[permissions.opener]` — list allowed schemes and (once added) path
   roots.
@@ -29,15 +29,15 @@ plugin card, fed from the parsed manifest:
   should render as a warning chip the same way `*` HTTP origins do.
 
 Permissions that are absent should not render an empty section; the
-shape of the block should reflect the plugin's actual surface.
+shape of the block should reflect the gadget's actual surface.
 
 ## Non-goals
 
 - Editing or revoking permissions. Permissions remain manifest-declared
   and immutable per install. Hot-toggling them is a separate, much
-  larger design question (would invalidate cached `WasmPluginInstance`
+  larger design question (would invalidate cached `WasmGadgetInstance`
   state).
-- Live capability metering ("plugin X has made N HTTP calls in the last
+- Live capability metering ("gadget X has made N HTTP calls in the last
   hour"). Logging of capability calls is an existing concern, separate
   from this UI surface.
 

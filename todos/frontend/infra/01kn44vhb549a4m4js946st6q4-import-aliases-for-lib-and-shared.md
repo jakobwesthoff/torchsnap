@@ -3,14 +3,14 @@
 ## Problem
 
 The frontend currently uses relative paths everywhere (e.g.,
-`../../lib/pluginMessage`, `../hooks/useSetting`). This makes it
+`../../lib/gadgetMessage`, `../hooks/useSetting`). This makes it
 harder to:
 
 - Move files between directories without cascading import updates.
 - Identify at a glance whether an import is project-local or from
   `node_modules`.
-- Decouple shared logic for reuse in the upcoming WASM/plugin
-  frontend, where plugin UIs need access to a subset of the
+- Decouple shared logic for reuse in the upcoming WASM/gadget
+  frontend, where gadget UIs need access to a subset of the
   launcher's lib/hooks/components without pulling in Tauri-specific
   code.
 
@@ -32,9 +32,9 @@ harder to:
 
 ## Context
 
-This is preparatory work for the WASM/plugin decoupling. When plugin
+This is preparatory work for the WASM/gadget decoupling. When gadget
 frontends run in their own context they'll need to import shared
-utilities (e.g., `sendPluginMessage`, UI components, types) via clean
+utilities (e.g., `sendGadgetMessage`, UI components, types) via clean
 aliases rather than fragile relative paths that assume the launcher's
 directory structure. Getting aliases in place now avoids a larger
 migration later.
