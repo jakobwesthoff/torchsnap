@@ -1,24 +1,22 @@
 # =========================================================
-# Torchsnap WASM Plugin Workspace
+# Torchsnap WASM Gadget Workspace
 #
 # A virtual Cargo workspace that owns every in-tree WASM
 # gadget plus the shared `torchsnap-gadget-sdk` crate. The
 # workspace is deliberately separate from `src-tauri/` —
-# plugins target `wasm32-wasip2`, the host targets the
+# gadgets target `wasm32-wasip2`, the host targets the
 # native triple, and the two toolchains should not share a
 # lockfile or build directory.
 #
-# The plugin-sdk member is added in PR 2 once the crate
-# exists. WIT test fixtures under
-# `src-tauri/tests/fixtures/` intentionally remain outside
-# this workspace: they are standalone crates used to
-# exercise edge cases of the host loader and must be
-# buildable in isolation.
+# WIT test fixtures under `src-tauri/tests/fixtures/`
+# intentionally remain outside this workspace: they are
+# standalone crates used to exercise edge cases of the host
+# loader and must be buildable in isolation.
 # =========================================================
 
 [workspace]
 members = [
-    "plugin-sdk",
+    "gadget-sdk",
     "hello-world",
     "calculator",
     "bangs",
@@ -30,9 +28,9 @@ members = [
 resolver = "3"
 
 # =========================================================
-# Release profile (shared by every plugin)
+# Release profile (shared by every gadget)
 #
-# See `plugins/hello-world/src/lib.rs` or the retired per-
+# See `gadgets/hello-world/src/lib.rs` or the retired per-
 # crate blocks for the trade-off rationale behind each
 # setting. The short version:
 #

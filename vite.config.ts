@@ -45,7 +45,7 @@ export default defineConfig(async () => ({
             !id.endsWith("/src/launcher/main.tsx") &&
             !id.endsWith("/src/settings/main.tsx") &&
             !id.endsWith("/src/devtools/main.tsx") &&
-            !id.includes("/src/plugins/")
+            !id.includes("/src/gadgets/")
           ) {
             return "shared";
           }

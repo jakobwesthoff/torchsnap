@@ -54,16 +54,16 @@ pub enum GadgetSourceKind {
     /// binary (e.g. `clipboard`, `bangs`). Always present;
     /// not uninstallable.
     Builtin,
-    /// WASM plugin shipped inside the application bundle
-    /// under `<resource_dir>/plugins/`. Upgraded with the
+    /// WASM gadget shipped inside the application bundle
+    /// under `<resource_dir>/gadgets/`. Upgraded with the
     /// app; not uninstallable at runtime.
     System,
-    /// WASM plugin installed by the user under
-    /// `<app_data_dir>/plugins/`. Uninstallable from the
-    /// Plugins settings panel.
+    /// WASM gadget installed by the user under
+    /// `<app_data_dir>/gadgets/`. Uninstallable from the
+    /// Gadgets settings panel.
     User,
-    /// WASM plugin loaded from the repo-relative development
-    /// path (`CARGO_MANIFEST_DIR/../plugins`) in debug
+    /// WASM gadget loaded from the repo-relative development
+    /// path (`CARGO_MANIFEST_DIR/../gadgets`) in debug
     /// builds. Skipped entirely in release builds.
     Dev,
 }

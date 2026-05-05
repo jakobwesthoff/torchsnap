@@ -24,7 +24,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { command, type GadgetSourceKind } from "../../lib/command";
-import { getGadgetsWithSettings } from "../../plugins/registry";
+import { getGadgetsWithSettings } from "../../gadgets/registry";
 import { useSetting } from "../../hooks/useSetting";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";

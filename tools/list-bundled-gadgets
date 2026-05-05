@@ -4,7 +4,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //
-// Read `plugins/bundled.toml` (or the path given as $1), validate the
+// Read `gadgets/bundled.toml` (or the path given as $1), validate the
 // gadget list, and print each gadget id on its own line.
 //
 // Exit codes:
@@ -15,18 +15,18 @@
 // so the caller can distinguish "nothing to do" from "something is wrong".
 //
 // Usage:
-//   tools/list-bundled-plugins [bundled.toml path]
+//   tools/list-bundled-gadgets [bundled.toml path]
 //
 
 import { readFileSync } from "fs";
 import { parse } from "smol-toml";
 
-const tomlPath = process.argv[2] ?? "plugins/bundled.toml";
+const tomlPath = process.argv[2] ?? "gadgets/bundled.toml";
 
 // =========================================================
-// Read the manifest — a missing file is a valid "no plugins"
+// Read the manifest — a missing file is a valid "no gadgets"
 // state, not an error. This happens during early development
-// before any plugin is ready to ship.
+// before any gadget is ready to ship.
 // =========================================================
 
 let raw: string;
@@ -34,7 +34,7 @@ try {
   raw = readFileSync(tomlPath, "utf8");
 } catch {
   console.error(
-    `Warning: ${tomlPath} not found — no plugins will be bundled with the release.`,
+    `Warning: ${tomlPath} not found — no gadgets will be bundled with the release.`,
   );
   process.exit(0);
 }

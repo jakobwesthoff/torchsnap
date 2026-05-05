@@ -7,7 +7,7 @@
 
 import 'just/install.just'
 import 'just/build.just'
-import 'just/plugins.just'
+import 'just/gadgets.just'
 import 'just/start.just'
 import 'just/quality.just'
 import 'just/assets.just'

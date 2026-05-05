@@ -25,22 +25,22 @@ dist-ssr
 *.sw?
 
 # Repo-root `target/` holds the staging dir for bundled
-# plugins (`target/bundled-plugins/`, populated by
-# `just stage-bundled-plugins`). Cargo does not use this
+# gadgets (`target/bundled-gadgets/`, populated by
+# `just stage-bundled-gadgets`). Cargo does not use this
 # directory because all Rust crates live under `src-tauri/`
-# or `plugins/*/` with their own `target/` dirs.
+# or `gadgets/*/` with their own `target/` dirs.
 /target/
 
-# Rust build artifacts — the plugin workspace owns a single
-# `plugins/target/` directory; per-plugin `target/` dirs are
+# Rust build artifacts — the gadget workspace owns a single
+# `gadgets/target/` directory; per-gadget `target/` dirs are
 # retained here for historical checkouts and any standalone
 # work outside the workspace.
-plugins/target/
-plugins/*/target/
-# Compiled WASM artifacts copied to plugin root by `just build-plugin`
-plugins/*/*.wasm
-# Packaged plugin archives built by `just package-plugin`
-plugins/*.torchsnap
+gadgets/target/
+gadgets/*/target/
+# Compiled WASM artifacts copied to gadget root by `just build-gadget`
+gadgets/*/*.wasm
+# Packaged gadget archives built by `just package-gadget`
+gadgets/*.torchsnap
 
 # Test fixture crate build artifacts — each fixture is a
 # standalone wasm32-wasip2 crate with its own target/ dir.
@@ -54,7 +54,7 @@ src/derived/mascots.json
 
 # DuckDuckGo bang database — downloaded at build time by `just asset-bang-data`,
 # ships inside the .torchsnap archive. Not checked in.
-plugins/bangs/assets/bang.json
+gadgets/bangs/assets/bang.json
 
 # Memory benchmark output
 memsnap-*.json

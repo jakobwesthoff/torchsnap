@@ -6,8 +6,8 @@
 # linting, eslint, formatting, and build verification. The `fullcycle`
 # recipe runs them all in sequence as a pre-push validation step.
 
-# Run all tests (src-tauri Rust suite + plugin workspace)
-test: test-crates test-plugins
+# Run all tests (src-tauri Rust suite + gadget workspace)
+test: test-crates test-gadgets
 
 # Unit tests plus integration tests under `src-tauri/tests/` — the
 # latter load the committed `.wasm` fixtures from `tests/fixtures/`,
@@ -18,18 +18,18 @@ test: test-crates test-plugins
 test-crates:
     cargo test --manifest-path src-tauri/Cargo.toml
 
-# The plugins/ workspace defaults to wasm32-wasip2 via
+# The gadgets/ workspace defaults to wasm32-wasip2 via
 # `.cargo/config.toml`, but `cargo test` must produce a host-native
 # executable to actually run the tests. Detecting the host triple
 # from `rustc -vV` keeps this portable across macOS/Linux/arm64/x64
 # without hardcoding.
 
-# Run plugin unit tests (forces host target over the wasm32-wasip2 default)
-test-plugins:
-    cd plugins && cargo test --target "$(rustc -vV | sed -n 's|host: ||p')"
+# Run gadget unit tests (forces host target over the wasm32-wasip2 default)
+test-gadgets:
+    cd gadgets && cargo test --target "$(rustc -vV | sed -n 's|host: ||p')"
 
-# Check compilation (Rust + WIT + WASM plugins) and types (TypeScript)
-check: check-crates check-wit check-plugins check-types
+# Check compilation (Rust + WIT + WASM gadgets) and types (TypeScript)
+check: check-crates check-wit check-gadgets check-types
 
 # Check the Rust crate compiles
 check-crates:
