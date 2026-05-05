@@ -25,7 +25,7 @@ use std::sync::Arc;
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
-use crate::frecency::PluginFrecency;
+use crate::frecency::GadgetFrecency;
 use crate::settings::GadgetSettings;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::SpanRegistry;
@@ -61,7 +61,7 @@ pub struct GadgetState {
     /// `search()` — this handle is only for plugins that
     /// need to read frecency state directly (e.g. to drive an
     /// empty-query browse mode).
-    pub(crate) frecency: Option<PluginFrecency>,
+    pub(crate) frecency: Option<GadgetFrecency>,
     /// The plugin's own source handle, stashed by the bridge
     /// on `enable()` so the `assets::read` / `assets::exists`
     /// host imports can read files bundled inside the plugin

@@ -6,7 +6,7 @@
 // Frecency host import
 //
 // Routes guest `frecency::is-enabled` / `frecency::top-items`
-// calls through the per-plugin `PluginFrecency` handle
+// calls through the per-plugin `GadgetFrecency` handle
 // stashed on `GadgetState`. Same "degrade gracefully when
 // the handle is missing" contract as the settings import:
 // an accidental call outside an enable lifetime returns
@@ -19,7 +19,7 @@
 // touch those paths directly.
 // =========================================================
 
-use crate::frecency::PluginFrecency;
+use crate::frecency::GadgetFrecency;
 use crate::wasm::bindings;
 
 use super::super::{GadgetState, WasmGadgetInstance};
@@ -45,12 +45,12 @@ impl bindings::torchsnap::plugin::frecency::Host for GadgetState {
 }
 
 impl WasmGadgetInstance {
-    /// Stash a per-plugin `PluginFrecency` handle on the store
+    /// Stash a per-plugin `GadgetFrecency` handle on the store
     /// data so the `frecency::*` host imports can resolve
     /// reads. Called by the bridge from `enable()` before the
     /// guest's own `enable()` runs — same contract as
     /// `set_settings`.
-    pub fn set_frecency(&self, frecency: PluginFrecency) {
+    pub fn set_frecency(&self, frecency: GadgetFrecency) {
         self.with_state_mut(|state| state.frecency = Some(frecency));
     }
 

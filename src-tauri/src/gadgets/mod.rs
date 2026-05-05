@@ -26,7 +26,7 @@ pub mod system_commands;
 pub mod system_preferences;
 
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction};
-use crate::frecency::PluginFrecency;
+use crate::frecency::GadgetFrecency;
 use crate::settings::{GadgetSettings, SettingsInit};
 
 // =========================================================
@@ -65,7 +65,7 @@ pub struct GadgetShortcut {
 /// ever-growing parameter list.
 pub struct GadgetContext {
     pub settings: GadgetSettings,
-    pub frecency: PluginFrecency,
+    pub frecency: GadgetFrecency,
 }
 
 // =========================================================
