@@ -39,7 +39,7 @@ use crate::commands::types::{
     ActionId, GadgetResponse, GadgetViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
     SourcedEntry,
 };
-use crate::frecency::{FrecencyStore, PluginFrecency};
+use crate::frecency::{FrecencyStore, GadgetFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::gadgets::{Gadget, GadgetContext, GadgetShortcut};
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
@@ -269,7 +269,7 @@ impl GadgetHost {
             let h = handle.clone();
             let ctx = GadgetContext {
                 settings: GadgetSettings::new(Arc::clone(&self.store), p.id()),
-                frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
+                frecency: GadgetFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             runtime.spawn_blocking(move || {
                 p.enable(&h, &ctx);
@@ -824,7 +824,7 @@ impl GadgetHost {
                 if new_enabled && !was_enabled {
                     let ctx = GadgetContext {
                         settings: GadgetSettings::new(Arc::clone(&store), id),
-                        frecency: PluginFrecency::new(Arc::clone(&frecency), id),
+                        frecency: GadgetFrecency::new(Arc::clone(&frecency), id),
                     };
                     plugin.enable(&app, &ctx);
                 } else if !new_enabled && was_enabled {

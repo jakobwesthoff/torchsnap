@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// PluginFrecency — plugin-scoped frecency wrapper
+// GadgetFrecency — plugin-scoped frecency wrapper
 //
 // Same pattern as PluginSettings: binds the plugin_id at
 // construction so plugins cannot access other plugins'
@@ -21,12 +21,12 @@ use super::{FrecencyItem, FrecencyStore, FrecencyTarget};
 /// other plugins' frecency data. Obtained from `PluginContext`
 /// during `enable()`.
 #[derive(Clone)]
-pub struct PluginFrecency {
+pub struct GadgetFrecency {
     store: Arc<FrecencyStore>,
     plugin_id: String,
 }
 
-impl PluginFrecency {
+impl GadgetFrecency {
     pub fn new(store: Arc<FrecencyStore>, plugin_id: &str) -> Self {
         Self {
             store,

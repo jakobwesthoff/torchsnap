@@ -65,7 +65,7 @@ use exports::torchsnap::plugin::search as wit;
 //
 // The `frecency` import lets plugins read their own top-N
 // items from the host's frecency store. Host items come out
-// of `PluginFrecency::top_items` as the native `FrecencyItem`
+// of `GadgetFrecency::top_items` as the native `FrecencyItem`
 // struct; this conversion maps them onto the bindgen-
 // generated record so the Host impl can return them across
 // the WIT boundary directly.
