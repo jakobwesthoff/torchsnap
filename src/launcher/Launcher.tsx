@@ -91,7 +91,7 @@ function PluginViewContainer({
   const View = getGadgetView(gadgetId, viewName);
   if (!View) return null;
   return (
-    <div data-plugin={gadgetId}>
+    <div data-gadget={gadgetId}>
       <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
       </GadgetContextProvider>
@@ -116,7 +116,7 @@ function InlineViewContainer({
   const View = getGadgetInlineView(gadgetId, viewName);
   if (!View) return null;
   return (
-    <div data-plugin={gadgetId}>
+    <div data-gadget={gadgetId}>
       <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
       </GadgetContextProvider>

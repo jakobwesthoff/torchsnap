@@ -5,16 +5,16 @@
 // =========================================================
 // Plugin Asset Protocol
 //
-// Registers a `torchsnap-plugin://` custom URI scheme that
+// Registers a `torchsnap-gadget://` custom URI scheme that
 // serves frontend assets directly from plugin sources. This
 // avoids extracting files to disk — the protocol handler
 // reads from `GadgetSource::read_file()` on demand.
 //
 // URI format:
-//   torchsnap-plugin://localhost/<plugin-id>/<file-path>
+//   torchsnap-gadget://localhost/<plugin-id>/<file-path>
 //
-// On macOS/Linux the scheme is `torchsnap-plugin://`.
-// On Windows Tauri maps it to `http://torchsnap-plugin.localhost/`.
+// On macOS/Linux the scheme is `torchsnap-gadget://`.
+// On Windows Tauri maps it to `http://torchsnap-gadget.localhost/`.
 // We parse from the `http::Request` path, so both shapes work.
 // =========================================================
 
@@ -44,7 +44,7 @@ pub fn new_registry() -> GadgetSourceRegistry {
 // Protocol Registration
 // =========================================================
 
-/// Register the `torchsnap-plugin` URI scheme on the Tauri
+/// Register the `torchsnap-gadget` URI scheme on the Tauri
 /// builder. Must be called before `.build()` / `.setup()`
 /// because custom schemes are bound to the webview at
 /// creation time.
@@ -53,7 +53,7 @@ pub fn register_plugin_protocol<R: tauri::Runtime>(
     registry: GadgetSourceRegistry,
 ) -> tauri::Builder<R> {
     builder.register_asynchronous_uri_scheme_protocol(
-        "torchsnap-plugin",
+        "torchsnap-gadget",
         move |_ctx, request, responder| {
             let registry = Arc::clone(&registry);
 
@@ -262,7 +262,7 @@ mod tests {
 
     fn make_request_with_origin(path: &str, origin: &str) -> http::Request<Vec<u8>> {
         http::Request::builder()
-            .uri(format!("torchsnap-plugin://localhost{path}"))
+            .uri(format!("torchsnap-gadget://localhost{path}"))
             .header("Origin", origin)
             .body(vec![])
             .expect("valid request")
@@ -448,7 +448,7 @@ mod tests {
         let registry = test_registry(HashMap::new());
         // No path segments at all after scheme.
         let request = http::Request::builder()
-            .uri("torchsnap-plugin://localhost")
+            .uri("torchsnap-gadget://localhost")
             .header("Origin", "tauri://localhost")
             .body(vec![])
             .expect("valid request");

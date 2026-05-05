@@ -5,9 +5,9 @@
 /**
  * Scoped CSS injection for WASM plugin frontend components.
  *
- * Fetches a plugin's CSS file via `torchsnap-plugin://` and wraps
+ * Fetches a plugin's CSS file via `torchsnap-gadget://` and wraps
  * it in a CSS `@scope` rule targeting the plugin's container
- * `[data-plugin="<plugin-id>"]`. This ensures plugin styles cannot
+ * `[data-gadget="<plugin-id>"]`. This ensures plugin styles cannot
  * leak to the host or other plugins, while host styles (resets,
  * typography, design tokens) still cascade into the plugin.
  */
@@ -22,7 +22,7 @@
  * inside the plugin's container div.
  */
 export async function injectGadgetCss(gadgetId: string, cssPath: string): Promise<void> {
-  const url = `torchsnap-plugin://localhost/${gadgetId}/${cssPath}`;
+  const url = `torchsnap-gadget://localhost/${gadgetId}/${cssPath}`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -33,10 +33,10 @@ export async function injectGadgetCss(gadgetId: string, cssPath: string): Promis
   }
 
   const raw = await response.text();
-  const scoped = `@scope ([data-plugin="${gadgetId}"]) {\n${raw}\n}`;
+  const scoped = `@scope ([data-gadget="${gadgetId}"]) {\n${raw}\n}`;
 
   const style = document.createElement("style");
-  style.dataset.pluginCss = gadgetId;
+  style.dataset.gadgetCss = gadgetId;
   style.textContent = scoped;
   document.head.appendChild(style);
 }
@@ -46,6 +46,6 @@ export async function injectGadgetCss(gadgetId: string, cssPath: string): Promis
  * Used when a plugin is uninstalled or disabled.
  */
 export function removeGadgetCss(gadgetId: string): void {
-  const style = document.head.querySelector(`style[data-plugin-css="${gadgetId}"]`);
+  const style = document.head.querySelector(`style[data-gadget-css="${gadgetId}"]`);
   style?.remove();
 }

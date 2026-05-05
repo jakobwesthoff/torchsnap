@@ -7,7 +7,7 @@
  *
  * For each WASM plugin, this module:
  * - Creates dynamic `import()` factories for views, inline views,
- *   and settings components served via `torchsnap-plugin://`
+ *   and settings components served via `torchsnap-gadget://`
  * - Injects scoped CSS if declared in the manifest
  * - Registers the plugin with metadata (icon, description) so it
  *   appears in the settings sidebar with the generic wrapper
@@ -37,7 +37,7 @@ export type WebviewContext = "launcher" | "settings";
  */
 export function registerWasmGadget(manifest: WasmGadgetManifest, webview: WebviewContext): void {
   const gadgetId = manifest.plugin.id;
-  const baseUrl = `torchsnap-plugin://localhost/${gadgetId}`;
+  const baseUrl = `torchsnap-gadget://localhost/${gadgetId}`;
 
   // Every WASM plugin gets metadata for the settings sidebar.
   // The PluginSettingsWrapper uses icon + description to render
