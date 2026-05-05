@@ -176,7 +176,7 @@ function PluginSectionContent({
 
   return (
     <GadgetSettingsWrapper
-      pluginId={plugin.id}
+      gadgetId={plugin.id}
       icon={plugin.icon ?? "heroicons:puzzle-piece"}
       name={plugin.label}
       description={plugin.description ?? ""}

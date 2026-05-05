@@ -93,29 +93,29 @@ registerGadget("clipboard-manager", {
  * The view name is always provided — if missing, it's a bug.
  */
 export function getGadgetView(
-  pluginId: string,
+  gadgetId: string,
   viewName: string,
 ): ComponentType<GadgetViewProps> | undefined {
-  return registry.get(pluginId)?.views?.[viewName];
+  return registry.get(gadgetId)?.views?.[viewName];
 }
 
 /**
  * Look up a named inline view component for a plugin's InlineUI response.
  */
 export function getGadgetInlineView(
-  pluginId: string,
+  gadgetId: string,
   viewName: string,
 ): ComponentType<InlineViewProps> | undefined {
-  return registry.get(pluginId)?.inlineViews?.[viewName];
+  return registry.get(gadgetId)?.inlineViews?.[viewName];
 }
 
 /**
  * Look up the settings component for a plugin.
  */
 export function getGadgetSettingsComponent(
-  pluginId: string,
+  gadgetId: string,
 ): ComponentType<GadgetSettingsProps> | undefined {
-  return registry.get(pluginId)?.settings;
+  return registry.get(gadgetId)?.settings;
 }
 
 /**

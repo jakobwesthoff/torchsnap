@@ -70,11 +70,11 @@ struct RegisteredShortcut {
     owner: Arc<dyn Gadget>,
 }
 
-/// Payload emitted with the `activate-plugin-custom-ui` event.
+/// Payload emitted with the `activate-gadget-custom-ui` event.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ActivateGadgetPayload {
-    plugin_id: String,
+    gadget_id: String,
     view: String,
     data: Option<serde_json::Value>,
 }
@@ -471,8 +471,8 @@ impl GadgetHost {
             .await
             .expect("prefix search task not panicked");
 
-            let mut custom_plugin_view = None;
-            let mut inline_plugin_view = None;
+            let mut custom_gadget_view = None;
+            let mut inline_gadget_view = None;
             let mut entries = Vec::new();
 
             if let Some(response) = response {
@@ -482,8 +482,8 @@ impl GadgetHost {
 
                 if let Some((kind, vr)) = view_ref {
                     match kind {
-                        ViewKind::Custom => custom_plugin_view = Some(vr),
-                        ViewKind::Inline => inline_plugin_view = Some(vr),
+                        ViewKind::Custom => custom_gadget_view = Some(vr),
+                        ViewKind::Inline => inline_gadget_view = Some(vr),
                     }
                 }
 
@@ -502,8 +502,8 @@ impl GadgetHost {
             let _ = on_results.send(SearchMessage::SearchResults {
                 source: ResultSource::Plugin { id: source.clone() },
                 entries,
-                custom_plugin_view,
-                inline_plugin_view,
+                custom_gadget_view,
+                inline_gadget_view,
                 matched_prefix: Some(prefix_owned),
             });
             let _ = on_results.send(SearchMessage::Done);
@@ -539,8 +539,8 @@ impl GadgetHost {
         let _ = on_results.send(SearchMessage::SearchResults {
             source: ResultSource::Catalog,
             entries: catalog_results,
-            custom_plugin_view: None,
-            inline_plugin_view: None,
+            custom_gadget_view: None,
+            inline_gadget_view: None,
             matched_prefix: None,
         });
 
@@ -579,7 +579,7 @@ impl GadgetHost {
             self.frecency.apply_scores(&source, &mut entries);
             entries.sort_by(|a, b| a.cmp_sort_key(b));
 
-            let inline_plugin_view = match view_ref {
+            let inline_gadget_view = match view_ref {
                 Some((ViewKind::Inline, vr)) if !inline_claimed => {
                     inline_claimed = true;
                     Some(vr)
@@ -600,8 +600,8 @@ impl GadgetHost {
             let _ = on_results.send(SearchMessage::SearchResults {
                 source: ResultSource::Plugin { id: source },
                 entries,
-                custom_plugin_view: None,
-                inline_plugin_view,
+                custom_gadget_view: None,
+                inline_gadget_view,
                 matched_prefix: None,
             });
         }
@@ -741,10 +741,10 @@ impl GadgetHost {
         // implementing the same routing.
         if matches!(action_id, ActionId::OpenSettings) {
             if let Err(e) = app.emit(
-                "open-plugin-settings",
-                serde_json::json!({ "pluginId": source }),
+                "open-gadget-settings",
+                serde_json::json!({ "gadgetId": source }),
             ) {
-                eprintln!("emit open-plugin-settings failed: {e:#}");
+                eprintln!("emit open-gadget-settings failed: {e:#}");
             }
             return Ok(PostAction::Dismiss);
         }
@@ -887,7 +887,7 @@ fn process_plugin_response(
             view_ref = Some((
                 ViewKind::Custom,
                 GadgetViewRef {
-                    plugin_id: source.to_string(),
+                    gadget_id: source.to_string(),
                     view: view.clone(),
                     data: data.clone(),
                 },
@@ -907,7 +907,7 @@ fn process_plugin_response(
             view_ref = Some((
                 ViewKind::Inline,
                 GadgetViewRef {
-                    plugin_id: source.to_string(),
+                    gadget_id: source.to_string(),
                     view: view.clone(),
                     data: data.clone(),
                 },
@@ -958,8 +958,8 @@ fn find_prefix_match<'a>(
 // Helpers
 // =========================================================
 
-/// Show the launcher and emit `activate-plugin-custom-ui` so the
-/// frontend switches to the plugin's view.
+/// Show the launcher and emit `activate-gadget-custom-ui` so the
+/// frontend switches to the gadget's view.
 fn show_launcher_with_plugin(
     app: &tauri::AppHandle,
     plugin_id: &str,
@@ -978,14 +978,14 @@ fn show_launcher_with_plugin(
     }
 
     if let Err(e) = app.emit(
-        "activate-plugin-custom-ui",
+        "activate-gadget-custom-ui",
         ActivateGadgetPayload {
-            plugin_id: plugin_id.to_string(),
+            gadget_id: plugin_id.to_string(),
             view: view.to_string(),
             data,
         },
     ) {
-        eprintln!("shortcut: failed to emit activate-plugin-custom-ui: {e:#}");
+        eprintln!("shortcut: failed to emit activate-gadget-custom-ui: {e:#}");
     }
 }
 

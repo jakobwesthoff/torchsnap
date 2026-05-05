@@ -245,12 +245,12 @@ pub enum GadgetResponse {
 /// Reference to a plugin view component for frontend resolution.
 ///
 /// Sent to the frontend so it can look up the correct React component
-/// in the plugin registry: `registry[pluginId].views[view]` for
-/// `CustomUI`, `registry[pluginId].inlineViews[view]` for `InlineUI`.
+/// in the gadget registry: `registry[gadgetId].views[view]` for
+/// `CustomUI`, `registry[gadgetId].inlineViews[view]` for `InlineUI`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GadgetViewRef {
-    pub plugin_id: String,
+    pub gadget_id: String,
     pub view: String,
     pub data: Option<serde_json::Value>,
 }
@@ -290,11 +290,11 @@ pub enum SearchMessage {
         /// When a query plugin requested custom UI, this contains
         /// a view reference so the frontend can mount the plugin's
         /// React component. `None` for standard list rendering.
-        custom_plugin_view: Option<GadgetViewRef>,
-        /// When a query plugin requested inline UI, this contains
+        custom_gadget_view: Option<GadgetViewRef>,
+        /// When a query gadget requested inline UI, this contains
         /// a view reference for the inline component rendered above
         /// the result list.
-        inline_plugin_view: Option<GadgetViewRef>,
+        inline_gadget_view: Option<GadgetViewRef>,
         /// The prefix that triggered exclusive routing. Sent to the
         /// frontend so the plugin component knows which prefix was
         /// matched. `None` when no prefix routing occurred.

@@ -3,16 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Generic settings wrapper rendered for every plugin that appears
+ * Generic settings wrapper rendered for every gadget that appears
  * in the settings sidebar. Provides the standardized layout:
  *
  * 1. Section header (icon, name, description)
- * 2. Enable/disable toggle (reading `enabled.<pluginId>`)
- * 3. Plugin-specific settings as children (optional)
+ * 2. Enable/disable toggle (reading `enabled.<gadgetId>`)
+ * 3. Gadget-specific settings as children (optional)
  *
  * The enable/disable key lives at the top level of the settings
- * store (`enabled.<pluginId>`), separate from the plugin's own
- * namespace (`plugins.<pluginId>.*`). This ensures plugins cannot
+ * store (`enabled.<gadgetId>`), separate from the gadget's own
+ * namespace (`gadgets.<gadgetId>.*`). This ensures gadgets cannot
  * access their own enabled state.
  */
 
@@ -24,7 +24,7 @@ import { Entry } from "./Entry";
 import { Switch } from "../components/Switch";
 
 interface GadgetSettingsWrapperProps {
-  pluginId: string;
+  gadgetId: string;
   icon: string;
   name: string;
   description: string;
@@ -32,13 +32,13 @@ interface GadgetSettingsWrapperProps {
 }
 
 export function GadgetSettingsWrapper({
-  pluginId,
+  gadgetId,
   icon,
   name,
   description,
   children,
 }: GadgetSettingsWrapperProps) {
-  const [enabled, setEnabled] = useSetting<boolean>(`enabled.${pluginId}`);
+  const [enabled, setEnabled] = useSetting<boolean>(`enabled.${gadgetId}`);
 
   return (
     <div className="flex flex-col gap-4">
