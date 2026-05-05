@@ -35,7 +35,7 @@ import { useHalfPageScroll } from "../../hooks/useHalfPageScroll";
 import { useLauncher } from "../../contexts/useLauncher";
 import { useGadgetRuntime } from "../../contexts/useGadgetRuntime";
 import type { FooterHint } from "@torchsnap/types";
-import type { PluginViewProps } from "../types";
+import type { GadgetViewProps } from "../types";
 import type { ClipboardHistoryEntry, ClipboardListEntry } from "./types";
 
 const PLUGIN_LAYER = LAYER.COMPONENT + 2;
@@ -195,7 +195,7 @@ function DetailPreview({
 // ClipboardView Component
 // =========================================================
 
-export default function ClipboardView({ query }: PluginViewProps) {
+export default function ClipboardView({ query }: GadgetViewProps) {
   const { goBack, dismiss, mouseActiveRef, onFooterChange } = useLauncher();
   const { sendMessage, logger } = useGadgetRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);

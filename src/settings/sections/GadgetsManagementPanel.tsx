@@ -23,8 +23,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { command, type PluginSourceKind } from "../../lib/command";
-import { getPluginsWithSettings } from "../../plugins/registry";
+import { command, type GadgetSourceKind } from "../../lib/command";
+import { getGadgetsWithSettings } from "../../plugins/registry";
 import { useSetting } from "../../hooks/useSetting";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
@@ -41,16 +41,16 @@ interface PluginRow {
   label: string;
   description?: string;
   icon?: string;
-  sourceKind: PluginSourceKind;
+  sourceKind: GadgetSourceKind;
 }
 
 // =========================================================
 // Component
 // =========================================================
 
-export function PluginsManagementPanel() {
-  const pluginMetadata = useMemo(() => getPluginsWithSettings(), []);
-  const [sourceKinds, setSourceKinds] = useState<Record<string, PluginSourceKind>>({});
+export function GadgetsManagementPanel() {
+  const gadgetMetadata = useMemo(() => getGadgetsWithSettings(), []);
+  const [sourceKinds, setSourceKinds] = useState<Record<string, GadgetSourceKind>>({});
   const [loadingSourceKinds, setLoadingSourceKinds] = useState(true);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -80,7 +80,7 @@ export function PluginsManagementPanel() {
   }, []);
 
   const rows: PluginRow[] = useMemo(() => {
-    return pluginMetadata
+    return gadgetMetadata
       .filter((plugin) => sourceKinds[plugin.id] != null)
       .map((plugin) => ({
         id: plugin.id,
@@ -89,7 +89,7 @@ export function PluginsManagementPanel() {
         icon: plugin.icon,
         sourceKind: sourceKinds[plugin.id],
       }));
-  }, [pluginMetadata, sourceKinds]);
+  }, [gadgetMetadata, sourceKinds]);
 
   // =========================================================
   // Install: file picker path
@@ -254,7 +254,7 @@ function PluginRowView({
 // why a given plugin is (or is not) uninstallable.
 // =========================================================
 
-function SourceBadge({ kind }: { kind: PluginSourceKind }) {
+function SourceBadge({ kind }: { kind: GadgetSourceKind }) {
   const { label, tooltip, className } = badgeMetadata(kind);
   return (
     <span
@@ -269,7 +269,7 @@ function SourceBadge({ kind }: { kind: PluginSourceKind }) {
   );
 }
 
-function badgeMetadata(kind: PluginSourceKind): {
+function badgeMetadata(kind: GadgetSourceKind): {
   label: string;
   tooltip: string;
   className: string;

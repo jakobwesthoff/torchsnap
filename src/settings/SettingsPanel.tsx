@@ -3,21 +3,21 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { type ComponentType, Suspense, useMemo, useState } from "react";
-import { getPluginSettingsComponent, getPluginsWithSettings } from "../plugins/registry";
-import type { PluginSettingsProps } from "../plugins/types";
+import { getGadgetSettingsComponent, getGadgetsWithSettings } from "../plugins/registry";
+import type { GadgetSettingsProps } from "../plugins/types";
 import { createLogger } from "../lib/logger";
 import { useSetting } from "../hooks/useSetting";
 import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
 import type { GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
-import { sendPluginMessage } from "../lib/pluginMessage";
+import { sendGadgetMessage } from "../lib/gadgetMessage";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
 import { TitleBar } from "../components/TitleBar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { FrecencySection } from "./sections/FrecencySection";
 import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
-import { PluginsManagementPanel } from "./sections/PluginsManagementPanel";
-import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
+import { GadgetsManagementPanel } from "./sections/GadgetsManagementPanel";
+import { GadgetSettingsWrapper } from "./GadgetSettingsWrapper";
 
 // =========================================================
 // Built-in sidebar sections
@@ -43,7 +43,7 @@ export function SettingsPanel() {
 
   // Discover which plugins have settings components. This is
   // evaluated once per mount — plugins are registered statically.
-  const pluginSections = useMemo(() => getPluginsWithSettings(), []);
+  const gadgetSections = useMemo(() => getGadgetsWithSettings(), []);
 
   return (
     <div className="relative flex h-screen font-sans antialiased bg-surface text-text-primary">
@@ -76,7 +76,7 @@ export function SettingsPanel() {
           <SettingsSidebar
             generalItems={GENERAL_SECTIONS}
             customizationItems={CUSTOMIZATION_SECTIONS}
-            pluginItems={pluginSections}
+            pluginItems={gadgetSections}
             activeId={activeSection}
             onSelect={setActiveSection}
           />
@@ -85,7 +85,7 @@ export function SettingsPanel() {
 
       {/* Content area */}
       <main className="flex-1 overflow-y-auto scrollbar-muted pt-12 pl-6 pr-8 pb-6">
-        <SectionContent activeSection={activeSection} pluginSections={pluginSections} />
+        <SectionContent activeSection={activeSection} gadgetSections={gadgetSections} />
       </main>
     </div>
   );
@@ -97,17 +97,17 @@ export function SettingsPanel() {
 
 function SectionContent({
   activeSection,
-  pluginSections,
+  gadgetSections,
 }: {
   activeSection: string;
-  pluginSections: ReturnType<typeof getPluginsWithSettings>;
+  gadgetSections: ReturnType<typeof getGadgetsWithSettings>;
 }) {
   // Built-in sections
   if (activeSection === "general") {
     return <GeneralSection />;
   }
   if (activeSection === "plugins") {
-    return <PluginsManagementPanel />;
+    return <GadgetsManagementPanel />;
   }
   if (activeSection === "appearance") {
     return <AppearanceSection />;
@@ -119,16 +119,16 @@ function SectionContent({
     return <WebsiteMetadataSection />;
   }
 
-  // Plugin sections — wrapped in PluginSettingsWrapper for the
+  // Plugin sections — wrapped in GadgetSettingsWrapper for the
   // standardized header + enable/disable toggle. Custom settings
   // components (if any) are rendered as children.
-  const plugin = pluginSections.find((p) => p.id === activeSection);
+  const plugin = gadgetSections.find((p) => p.id === activeSection);
   if (!plugin) {
     return null;
   }
 
   // Stable reference — registry returns the same component instance per ID.
-  const CustomSettings = getPluginSettingsComponent(plugin.id);
+  const CustomSettings = getGadgetSettingsComponent(plugin.id);
 
   return (
     <Suspense fallback={<div className="text-text-muted text-sm">Loading settings…</div>}>
@@ -140,7 +140,7 @@ function SectionContent({
 // =========================================================
 // Plugin section content
 //
-// Renders the PluginSettingsWrapper (header + enable/disable)
+// Renders the GadgetSettingsWrapper (header + enable/disable)
 // with an optional custom settings component as children.
 // Memoizes the scoped hook factory per plugin ID.
 // =========================================================
@@ -149,8 +149,8 @@ function PluginSectionContent({
   plugin,
   CustomSettings,
 }: {
-  plugin: ReturnType<typeof getPluginsWithSettings>[number];
-  CustomSettings?: ComponentType<PluginSettingsProps>;
+  plugin: ReturnType<typeof getGadgetsWithSettings>[number];
+  CustomSettings?: ComponentType<GadgetSettingsProps>;
 }) {
   // The plugin's enabled flag flows through GadgetContext so
   // setting components can read it via useGadgetInfo() and
@@ -167,7 +167,7 @@ function PluginSectionContent({
         payload: TPayload,
         onMessage?: (msg: TStream) => void,
       ): Promise<TResult> =>
-        sendPluginMessage<TPayload, TResult, TStream>(plugin.id, method, payload, onMessage),
+        sendGadgetMessage<TPayload, TResult, TStream>(plugin.id, method, payload, onMessage),
     [plugin.id],
   );
 
@@ -175,7 +175,7 @@ function PluginSectionContent({
   const runtime = useMemo<GadgetRuntime>(() => ({ sendMessage, logger }), [sendMessage, logger]);
 
   return (
-    <PluginSettingsWrapper
+    <GadgetSettingsWrapper
       pluginId={plugin.id}
       icon={plugin.icon ?? "heroicons:puzzle-piece"}
       name={plugin.label}
@@ -186,6 +186,6 @@ function PluginSectionContent({
           <CustomSettings />
         </GadgetContextProvider>
       )}
-    </PluginSettingsWrapper>
+    </GadgetSettingsWrapper>
   );
 }

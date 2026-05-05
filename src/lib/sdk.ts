@@ -91,7 +91,7 @@ declare global {
  * host-provided modules. Must be called before any plugin
  * frontend code loads.
  */
-export function initPluginSdk(): void {
+export function initGadgetSdk(): void {
   window.__torchsnap = {
     React,
     jsxRuntime,

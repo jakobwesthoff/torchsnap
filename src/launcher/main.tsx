@@ -8,9 +8,9 @@ import { command } from "../lib/command";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { KeyBindingProvider } from "../keybindings";
 import { initStore } from "../settingsStore";
-import { preloadLauncherComponents } from "../lib/pluginComponent";
-import { initPluginSdk } from "../lib/sdk";
-import { registerAllWasmPlugins } from "../plugins/wasmPluginLoader";
+import { preloadLauncherComponents } from "../lib/gadgetComponent";
+import { initGadgetSdk } from "../lib/sdk";
+import { registerAllWasmGadgets } from "../plugins/wasmPluginLoader";
 import { Launcher } from "./Launcher";
 import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
 import { setupLauncherVisibilityChoreography } from "./visibility";
@@ -30,13 +30,13 @@ async function main() {
   void setupLauncherVisibilityChoreography();
 
   // Initialize the plugin SDK global before any plugin code loads.
-  initPluginSdk();
+  initGadgetSdk();
 
   // Register WASM plugin frontend components before preloading.
   // This ensures dynamic import() factories for WASM plugins are
   // set up and included in the preload batch.
-  const wasmPlugins = await command("wasm_plugins");
-  registerAllWasmPlugins(wasmPlugins, "launcher");
+  const wasmGadgets = await command("wasm_plugins");
+  registerAllWasmGadgets(wasmGadgets, "launcher");
 
   preloadLauncherComponents();
 

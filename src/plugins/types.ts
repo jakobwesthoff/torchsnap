@@ -16,11 +16,11 @@
 
 import type { SourcedEntry } from "@torchsnap/types";
 
-export interface PluginViewProps {
+export interface GadgetViewProps {
   /** Search results from the normal search() flow. The plugin
    *  decides whether to use them or ignore them. */
   results: SourcedEntry[];
-  /** Opaque data from the backend's PluginViewRef.data field.
+  /** Opaque data from the backend's GadgetViewRef.data field.
    *  Only present when the plugin returned CustomUI or InlineUI
    *  with a data payload. */
   data?: unknown;
@@ -40,7 +40,7 @@ export interface PluginViewProps {
  * registry: `registry[pluginId].views[view]` for CustomUI,
  * `registry[pluginId].inlineViews[view]` for InlineUI.
  */
-export interface PluginViewRef {
+export interface GadgetViewRef {
   pluginId: string;
   view: string;
   data?: unknown;
@@ -56,7 +56,7 @@ export interface PluginViewRef {
  * model at index 0.
  */
 export interface InlineViewProps {
-  /** Opaque data from the backend's `PluginViewRef.data`. */
+  /** Opaque data from the backend's `GadgetViewRef.data`. */
   data: unknown;
   /** Current search query (stripped of prefix). */
   query: string;
@@ -73,10 +73,10 @@ export interface InlineViewProps {
 /**
  * Settings panels receive no per-render data. Identity, runtime
  * capabilities, and reactive setting accessors all come from the
- * plugin context hooks (`usePluginInfo`, `usePluginRuntime`,
- * `usePluginSetting`). The interface stays as a named (empty)
- * type so `ComponentType<PluginSettingsProps>` continues to
+ * plugin context hooks (`useGadgetInfo`, `useGadgetRuntime`,
+ * `useGadgetSetting`). The interface stays as a named (empty)
+ * type so `ComponentType<GadgetSettingsProps>` continues to
  * typecheck consistently with the SDK mirror.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PluginSettingsProps {}
+export interface GadgetSettingsProps {}

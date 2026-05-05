@@ -35,7 +35,7 @@ const settingsLoaders: Loader[] = [];
  * Returns both the wrapper component and a `load` function that can be
  * called ahead of time to prime the module cache.
  */
-function pluginComponent<P extends object>(
+function gadgetComponent<P extends object>(
   factory: ImportFactory<P>,
 ): { component: ComponentType<P>; load: Loader } {
   let Component: ComponentType<P> | null = null;
@@ -74,7 +74,7 @@ function pluginComponent<P extends object>(
  * Its loader is registered for `preloadLauncherComponents()`.
  */
 export function launcherComponent<P extends object>(factory: ImportFactory<P>): ComponentType<P> {
-  const { component, load } = pluginComponent(factory);
+  const { component, load } = gadgetComponent(factory);
   launcherLoaders.push(load);
   return component;
 }
@@ -84,7 +84,7 @@ export function launcherComponent<P extends object>(factory: ImportFactory<P>): 
  * Its loader is registered for `preloadSettingsComponents()`.
  */
 export function settingsComponent<P extends object>(factory: ImportFactory<P>): ComponentType<P> {
-  const { component, load } = pluginComponent(factory);
+  const { component, load } = gadgetComponent(factory);
   settingsLoaders.push(load);
   return component;
 }
