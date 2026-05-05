@@ -45,7 +45,7 @@ pub struct FrontendDef {
     pub inline_views: HashMap<String, String>,
 
     /// Path to the CSS file loaded alongside the launcher
-    /// bundle. Served via `torchsnap-plugin://` and scoped to
+    /// bundle. Served via `torchsnap-gadget://` and scoped to
     /// the plugin's container with `@scope`.
     #[serde(
         default,

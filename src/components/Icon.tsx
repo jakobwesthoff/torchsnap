@@ -13,7 +13,7 @@
  * - `data:<url>` — data URL rendered as an `<img>`
  * - `asset:<path-or-url>` — either an absolute filesystem
  *   path (run through Tauri's `convertFileSrc`) or a fully-
- *   qualified URL such as `torchsnap-plugin://...` produced
+ *   qualified URL such as `torchsnap-gadget://...` produced
  *   by the WASM bridge for plugin-relative `AssetIcon`s; URLs
  *   are passed through to `<img src>` directly.
  *
@@ -71,7 +71,7 @@ export function Icon({ icon, className }: IconProps) {
   }
 
   // asset:<path-or-url>
-  // Fully-qualified URLs (e.g. `torchsnap-plugin://...` produced
+  // Fully-qualified URLs (e.g. `torchsnap-gadget://...` produced
   // by the WASM bridge for plugin-relative AssetIcons) bypass
   // `convertFileSrc` — they're already resolvable as `<img src>`.
   // Bare filesystem paths still go through Tauri's asset protocol.

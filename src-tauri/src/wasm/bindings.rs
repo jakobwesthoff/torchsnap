@@ -244,7 +244,7 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 // 1. Plugin-relative paths (`assets/icon.svg`). Plugins
 //    bundle assets inside their `.torchsnap` archive and
 //    reference them by relative path. We rewrite these into
-//    `torchsnap-plugin://localhost/<plugin-id>/<path>` URLs
+//    `torchsnap-gadget://localhost/<plugin-id>/<path>` URLs
 //    so the plugin asset URI scheme (`wasm/protocol.rs`)
 //    serves them to the launcher.
 //
@@ -312,7 +312,7 @@ fn resolve_entry_icon(
     };
     match classify_plugin_asset_path(path) {
         AssetPathClass::Relative => {
-            *path = format!("torchsnap-plugin://localhost/{plugin_id}/{path}");
+            *path = format!("torchsnap-gadget://localhost/{plugin_id}/{path}");
         }
         AssetPathClass::HostFavicon => {
             // Host-issued favicon URL. Passes through unchanged
@@ -544,7 +544,7 @@ mod tests {
         resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
         match slot {
             Some(native::EntryIcon::AssetIcon(p)) => {
-                assert_eq!(p, "torchsnap-plugin://localhost/zerotier/assets/icon.svg");
+                assert_eq!(p, "torchsnap-gadget://localhost/zerotier/assets/icon.svg");
             }
             other => panic!("expected AssetIcon, got {other:?}"),
         }
@@ -582,13 +582,13 @@ mod tests {
         // Layering: plugins must not reach across to other
         // plugins' archives by hand-crafting protocol URLs.
         let mut slot = Some(native::EntryIcon::AssetIcon(
-            "torchsnap-plugin://localhost/other/secret.svg".into(),
+            "torchsnap-gadget://localhost/other/secret.svg".into(),
         ));
         let mut warnings = Vec::new();
         resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
         assert!(slot.is_none());
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("torchsnap-plugin://"));
+        assert!(warnings[0].contains("torchsnap-gadget://"));
         assert!(warnings[0].contains("URL"));
     }
 
