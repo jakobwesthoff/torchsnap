@@ -449,7 +449,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     ): Promise<TResult> => {
       const view = customPluginViewRef.current;
       if (!view) {
-        throw new Error("sendMessage called without an active plugin view");
+        throw new Error("sendMessage called without an active gadget view");
       }
 
       return sendPluginMessage<TPayload, TResult, TStream>(
