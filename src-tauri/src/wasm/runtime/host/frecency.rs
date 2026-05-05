@@ -24,7 +24,7 @@ use crate::wasm::bindings;
 
 use super::super::{GadgetState, WasmGadgetInstance};
 
-impl bindings::torchsnap::plugin::frecency::Host for GadgetState {
+impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
     fn is_enabled(&mut self) -> bool {
         self.frecency.as_ref().is_some_and(|f| f.is_enabled())
     }
@@ -32,7 +32,7 @@ impl bindings::torchsnap::plugin::frecency::Host for GadgetState {
     fn top_items(
         &mut self,
         limit: u32,
-    ) -> Vec<bindings::torchsnap::plugin::frecency::FrecencyItem> {
+    ) -> Vec<bindings::torchsnap::gadget::frecency::FrecencyItem> {
         let Some(frecency) = self.frecency.as_ref() else {
             return Vec::new();
         };

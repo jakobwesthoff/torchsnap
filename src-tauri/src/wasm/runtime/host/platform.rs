@@ -15,9 +15,9 @@ use crate::wasm::bindings;
 
 use super::super::GadgetState;
 
-impl bindings::torchsnap::plugin::platform::Host for GadgetState {
-    fn current_os(&mut self) -> bindings::torchsnap::plugin::platform::Os {
-        use bindings::torchsnap::plugin::platform::Os;
+impl bindings::torchsnap::gadget::platform::Host for GadgetState {
+    fn current_os(&mut self) -> bindings::torchsnap::gadget::platform::Os {
+        use bindings::torchsnap::gadget::platform::Os;
 
         if cfg!(target_os = "macos") {
             Os::Macos
@@ -30,8 +30,8 @@ impl bindings::torchsnap::plugin::platform::Host for GadgetState {
         }
     }
 
-    fn current_arch(&mut self) -> bindings::torchsnap::plugin::platform::Arch {
-        use bindings::torchsnap::plugin::platform::Arch;
+    fn current_arch(&mut self) -> bindings::torchsnap::gadget::platform::Arch {
+        use bindings::torchsnap::gadget::platform::Arch;
 
         if cfg!(target_arch = "x86_64") {
             Arch::X8664

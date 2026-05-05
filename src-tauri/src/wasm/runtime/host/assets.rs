@@ -25,16 +25,16 @@ use super::super::GadgetState;
 
 pub(crate) fn into_assets_io_error(
     e: anyhow::Error,
-) -> bindings::torchsnap::plugin::assets::AssetsError {
-    bindings::torchsnap::plugin::assets::AssetsError::IoError(format!("{e:#}"))
+) -> bindings::torchsnap::gadget::assets::AssetsError {
+    bindings::torchsnap::gadget::assets::AssetsError::IoError(format!("{e:#}"))
 }
 
-impl bindings::torchsnap::plugin::assets::Host for GadgetState {
+impl bindings::torchsnap::gadget::assets::Host for GadgetState {
     fn read(
         &mut self,
         path: String,
-    ) -> Result<Vec<u8>, bindings::torchsnap::plugin::assets::AssetsError> {
-        use bindings::torchsnap::plugin::assets::AssetsError;
+    ) -> Result<Vec<u8>, bindings::torchsnap::gadget::assets::AssetsError> {
+        use bindings::torchsnap::gadget::assets::AssetsError;
 
         // Validate first so a structured `InvalidPath`
         // variant is returned without having to grep the
@@ -65,8 +65,8 @@ impl bindings::torchsnap::plugin::assets::Host for GadgetState {
     fn exists(
         &mut self,
         path: String,
-    ) -> Result<bool, bindings::torchsnap::plugin::assets::AssetsError> {
-        use bindings::torchsnap::plugin::assets::AssetsError;
+    ) -> Result<bool, bindings::torchsnap::gadget::assets::AssetsError> {
+        use bindings::torchsnap::gadget::assets::AssetsError;
 
         if let Err(e) = source::validate_plugin_path(&path) {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));

@@ -6,7 +6,7 @@
 // WasmGadgetInstance — one per loaded plugin
 //
 // Wraps the wasmtime `Store<GadgetState>` plus the typed
-// `bindings::Plugin` and a host-side `Logger`. Per-call
+// `bindings::Gadget` and a host-side `Logger`. Per-call
 // guest dispatch (enable / disable / search / execute /
 // handle_message / run_task / on_setting_changed) lives
 // here.
@@ -56,7 +56,7 @@ use super::state::GadgetState;
 /// empty result instead of running.
 pub struct WasmGadgetInstance {
     pub(crate) store: Mutex<Store<GadgetState>>,
-    pub(crate) plugin: bindings::Plugin,
+    pub(crate) plugin: bindings::Gadget,
     pub(crate) logger: Logger,
     pub(crate) search_generation: AtomicU64,
 }
@@ -67,7 +67,7 @@ impl WasmGadgetInstance {
     /// only legitimate caller is the engine.
     pub(crate) fn from_parts(
         store: Store<GadgetState>,
-        plugin: bindings::Plugin,
+        plugin: bindings::Gadget,
         logger: Logger,
     ) -> Self {
         Self {
@@ -148,7 +148,7 @@ impl WasmGadgetInstance {
         let _span = self.logger.span("enable").start();
         let mut store = self.store.lock().expect("store not poisoned");
         self.plugin
-            .torchsnap_plugin_lifecycle()
+            .torchsnap_gadget_lifecycle()
             .call_enable(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"))
     }
@@ -158,7 +158,7 @@ impl WasmGadgetInstance {
         let _span = self.logger.span("disable").start();
         let mut store = self.store.lock().expect("store not poisoned");
         self.plugin
-            .torchsnap_plugin_lifecycle()
+            .torchsnap_gadget_lifecycle()
             .call_disable(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin disable(): {e}"))
     }
@@ -175,7 +175,7 @@ impl WasmGadgetInstance {
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
         self.plugin
-            .torchsnap_plugin_lifecycle()
+            .torchsnap_gadget_lifecycle()
             .call_on_setting_changed(&mut *store, key, value)
             .map_err(|e| anyhow::anyhow!("calling plugin on_setting_changed(): {e}"))
     }
@@ -203,7 +203,7 @@ impl WasmGadgetInstance {
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
         self.plugin
-            .torchsnap_plugin_tasks()
+            .torchsnap_gadget_tasks()
             .call_run_task(&mut *store, task_id)
             .map_err(|e| anyhow::anyhow!("calling plugin run_task(): {e}"))
     }
@@ -229,7 +229,7 @@ impl WasmGadgetInstance {
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
         self.plugin
-            .torchsnap_plugin_messaging()
+            .torchsnap_gadget_messaging()
             .call_handle_message(&mut *store, method, payload)
             .map_err(|e| anyhow::anyhow!("calling plugin handle_message(): {e}"))
     }
@@ -240,7 +240,7 @@ impl WasmGadgetInstance {
         let mut store = self.store.lock().expect("store not poisoned");
         let wit_entries = self
             .plugin
-            .torchsnap_plugin_search()
+            .torchsnap_gadget_search()
             .call_entries(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling plugin entries(): {e}"))?;
 
@@ -276,7 +276,7 @@ impl WasmGadgetInstance {
 
         let response = self
             .plugin
-            .torchsnap_plugin_search()
+            .torchsnap_gadget_search()
             .call_search(&mut *store, query, matched_prefix)
             .map_err(|e| anyhow::anyhow!("calling plugin search(): {e}"))?;
 
@@ -296,12 +296,12 @@ impl WasmGadgetInstance {
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
 
-        let wit_action_id: bindings::exports::torchsnap::plugin::search::ActionId =
+        let wit_action_id: bindings::exports::torchsnap::gadget::search::ActionId =
             action_id.clone().into();
 
         let result = self
             .plugin
-            .torchsnap_plugin_search()
+            .torchsnap_gadget_search()
             .call_execute(&mut *store, entry_id, &wit_action_id)
             .map_err(|e| anyhow::anyhow!("calling plugin execute(): {e}"))?;
 

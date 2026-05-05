@@ -36,16 +36,16 @@ pub(crate) struct WebsiteMetadataState {
     pub(crate) service: Option<Arc<WebsiteMetadataService>>,
 }
 
-impl bindings::torchsnap::plugin::website_metadata::Host for GadgetState {
+impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
     fn lookup(
         &mut self,
         domain: String,
-        mode: bindings::torchsnap::plugin::website_metadata::LookupMode,
+        mode: bindings::torchsnap::gadget::website_metadata::LookupMode,
     ) -> Result<
-        bindings::torchsnap::plugin::website_metadata::LookupResult,
-        bindings::torchsnap::plugin::website_metadata::WebsiteMetadataError,
+        bindings::torchsnap::gadget::website_metadata::LookupResult,
+        bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError,
     > {
-        use bindings::torchsnap::plugin::website_metadata::WebsiteMetadataError as WitError;
+        use bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError as WitError;
 
         if !self.website_metadata.enabled {
             return Err(WitError::PermissionDenied(
@@ -82,9 +82,9 @@ impl bindings::torchsnap::plugin::website_metadata::Host for GadgetState {
 // =========================================================
 
 fn wit_mode_to_native(
-    mode: bindings::torchsnap::plugin::website_metadata::LookupMode,
+    mode: bindings::torchsnap::gadget::website_metadata::LookupMode,
 ) -> LookupMode {
-    use bindings::torchsnap::plugin::website_metadata::LookupMode as WitMode;
+    use bindings::torchsnap::gadget::website_metadata::LookupMode as WitMode;
     match mode {
         WitMode::Cached => LookupMode::Cached,
         WitMode::Blocking => LookupMode::Blocking,
@@ -93,8 +93,8 @@ fn wit_mode_to_native(
 
 fn native_to_wit(
     result: LookupResult,
-) -> bindings::torchsnap::plugin::website_metadata::LookupResult {
-    use bindings::torchsnap::plugin::website_metadata::{CacheEntry, LookupResult as WitResult};
+) -> bindings::torchsnap::gadget::website_metadata::LookupResult {
+    use bindings::torchsnap::gadget::website_metadata::{CacheEntry, LookupResult as WitResult};
     match result {
         LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
             title: meta.title,
@@ -163,7 +163,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::settings::notifier::SettingsNotifier;
-    use crate::wasm::bindings::torchsnap::plugin::website_metadata as wit;
+    use crate::wasm::bindings::torchsnap::gadget::website_metadata as wit;
 
     /// Test harness: a per-test temp dir, mock server, and a
     /// `GadgetState` whose `website_metadata` field is fully wired

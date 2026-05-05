@@ -21,20 +21,20 @@ use crate::wasm::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 
 use super::super::GadgetState;
 
-impl bindings::torchsnap::plugin::logging::Host for GadgetState {
+impl bindings::torchsnap::gadget::logging::Host for GadgetState {
     fn log(
         &mut self,
-        level: bindings::torchsnap::plugin::logging::LogLevel,
+        level: bindings::torchsnap::gadget::logging::LogLevel,
         message: String,
         metadata: Vec<(String, String)>,
         span: Option<u64>,
     ) {
         let log_level = match level {
-            bindings::torchsnap::plugin::logging::LogLevel::Trace => LogLevel::Trace,
-            bindings::torchsnap::plugin::logging::LogLevel::Debug => LogLevel::Debug,
-            bindings::torchsnap::plugin::logging::LogLevel::Info => LogLevel::Info,
-            bindings::torchsnap::plugin::logging::LogLevel::Warn => LogLevel::Warn,
-            bindings::torchsnap::plugin::logging::LogLevel::Error => LogLevel::Error,
+            bindings::torchsnap::gadget::logging::LogLevel::Trace => LogLevel::Trace,
+            bindings::torchsnap::gadget::logging::LogLevel::Debug => LogLevel::Debug,
+            bindings::torchsnap::gadget::logging::LogLevel::Info => LogLevel::Info,
+            bindings::torchsnap::gadget::logging::LogLevel::Warn => LogLevel::Warn,
+            bindings::torchsnap::gadget::logging::LogLevel::Error => LogLevel::Error,
         };
 
         self.log_sender.send(LogItem {

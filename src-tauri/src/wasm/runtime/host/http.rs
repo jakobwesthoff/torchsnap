@@ -127,9 +127,9 @@ impl WasmHttpError {
     }
 }
 
-impl From<WasmHttpError> for bindings::torchsnap::plugin::http::HttpError {
+impl From<WasmHttpError> for bindings::torchsnap::gadget::http::HttpError {
     fn from(e: WasmHttpError) -> Self {
-        use bindings::torchsnap::plugin::http::HttpError;
+        use bindings::torchsnap::gadget::http::HttpError;
         match e {
             WasmHttpError::PermissionDenied(msg) => HttpError::PermissionDenied(msg),
             WasmHttpError::ConnectionRefused(msg) => HttpError::ConnectionRefused(msg),
@@ -168,9 +168,9 @@ pub(crate) fn check_http_origin(allowed: &[String], url: &str) -> Result<(), Was
 /// an invalid method string is rejected before the request
 /// is sent.
 pub(crate) fn wit_method_to_reqwest(
-    method: bindings::torchsnap::plugin::http::HttpMethod,
+    method: bindings::torchsnap::gadget::http::HttpMethod,
 ) -> Result<reqwest::Method, WasmHttpError> {
-    use bindings::torchsnap::plugin::http::HttpMethod;
+    use bindings::torchsnap::gadget::http::HttpMethod;
     match method {
         HttpMethod::Get => Ok(reqwest::Method::GET),
         HttpMethod::Post => Ok(reqwest::Method::POST),
@@ -183,16 +183,16 @@ pub(crate) fn wit_method_to_reqwest(
     }
 }
 
-impl bindings::torchsnap::plugin::http::Host for GadgetState {
+impl bindings::torchsnap::gadget::http::Host for GadgetState {
     fn fetch(
         &mut self,
-        request: bindings::torchsnap::plugin::http::HttpRequest,
+        request: bindings::torchsnap::gadget::http::HttpRequest,
     ) -> Result<
-        bindings::torchsnap::plugin::http::HttpResponse,
-        bindings::torchsnap::plugin::http::HttpError,
+        bindings::torchsnap::gadget::http::HttpResponse,
+        bindings::torchsnap::gadget::http::HttpError,
     > {
-        use bindings::torchsnap::plugin::http::HttpError as WitHttpError;
-        use bindings::torchsnap::plugin::http::HttpResponse as WitHttpResponse;
+        use bindings::torchsnap::gadget::http::HttpError as WitHttpError;
+        use bindings::torchsnap::gadget::http::HttpResponse as WitHttpResponse;
 
         check_http_origin(&self.http.origins, &request.url).map_err(WitHttpError::from)?;
 

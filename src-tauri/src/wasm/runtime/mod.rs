@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn wit_method_named_variants_map_correctly() {
-        use bindings::torchsnap::plugin::http::HttpMethod;
+        use bindings::torchsnap::gadget::http::HttpMethod;
         let cases = [
             (HttpMethod::Get, reqwest::Method::GET),
             (HttpMethod::Post, reqwest::Method::POST),
@@ -372,14 +372,14 @@ mod tests {
 
     #[test]
     fn wit_method_other_valid_string() {
-        use bindings::torchsnap::plugin::http::HttpMethod;
+        use bindings::torchsnap::gadget::http::HttpMethod;
         let method = wit_method_to_reqwest(HttpMethod::Other("PROPFIND".into())).unwrap();
         assert_eq!(method.as_str(), "PROPFIND");
     }
 
     #[test]
     fn wit_method_other_invalid_string_returns_other_error() {
-        use bindings::torchsnap::plugin::http::HttpMethod;
+        use bindings::torchsnap::gadget::http::HttpMethod;
         let err = wit_method_to_reqwest(HttpMethod::Other("has space".into())).unwrap_err();
         assert!(matches!(err, WasmHttpError::Other(_)));
     }
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn wasm_http_error_conversion_all_variants() {
-        use bindings::torchsnap::plugin::http::HttpError;
+        use bindings::torchsnap::gadget::http::HttpError;
         let cases: Vec<(WasmHttpError, HttpError)> = vec![
             (
                 WasmHttpError::PermissionDenied("origin".into()),
@@ -447,9 +447,9 @@ mod tests {
         });
 
         let client = crate::network::Http::new();
-        let request = bindings::torchsnap::plugin::http::HttpRequest {
+        let request = bindings::torchsnap::gadget::http::HttpRequest {
             url: server.url("/test"),
-            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            method: bindings::torchsnap::gadget::http::HttpMethod::Get,
             headers: vec![("x-custom".into(), "value123".into())],
             body: None,
             timeout_ms: None,
@@ -466,7 +466,7 @@ mod tests {
             ..GadgetState::default_for_test()
         };
 
-        use bindings::torchsnap::plugin::http::Host;
+        use bindings::torchsnap::gadget::http::Host;
         let resp = state.fetch(request).expect("fetch should succeed");
         assert_eq!(resp.status, 200);
         mock.assert();
@@ -484,9 +484,9 @@ mod tests {
         });
 
         let client = crate::network::Http::new();
-        let request = bindings::torchsnap::plugin::http::HttpRequest {
+        let request = bindings::torchsnap::gadget::http::HttpRequest {
             url: server.url("/data"),
-            method: bindings::torchsnap::plugin::http::HttpMethod::Post,
+            method: bindings::torchsnap::gadget::http::HttpMethod::Post,
             headers: vec![],
             body: Some(b"hello".to_vec()),
             timeout_ms: None,
@@ -503,7 +503,7 @@ mod tests {
             ..GadgetState::default_for_test()
         };
 
-        use bindings::torchsnap::plugin::http::Host;
+        use bindings::torchsnap::gadget::http::Host;
         let resp = state.fetch(request).expect("fetch should succeed");
         assert_eq!(resp.status, 201);
         mock.assert();
@@ -521,9 +521,9 @@ mod tests {
         });
 
         let client = crate::network::Http::new();
-        let request = bindings::torchsnap::plugin::http::HttpRequest {
+        let request = bindings::torchsnap::gadget::http::HttpRequest {
             url: server.url("/head-test"),
-            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            method: bindings::torchsnap::gadget::http::HttpMethod::Get,
             headers: vec![],
             body: None,
             timeout_ms: None,
@@ -540,7 +540,7 @@ mod tests {
             ..GadgetState::default_for_test()
         };
 
-        use bindings::torchsnap::plugin::http::Host;
+        use bindings::torchsnap::gadget::http::Host;
         let resp = state.fetch(request).expect("fetch should succeed");
         assert_eq!(resp.status, 404);
         let has_header = resp
@@ -562,9 +562,9 @@ mod tests {
         });
 
         let client = crate::network::Http::new();
-        let request = bindings::torchsnap::plugin::http::HttpRequest {
+        let request = bindings::torchsnap::gadget::http::HttpRequest {
             url: server.url("/body"),
-            method: bindings::torchsnap::plugin::http::HttpMethod::Get,
+            method: bindings::torchsnap::gadget::http::HttpMethod::Get,
             headers: vec![],
             body: None,
             timeout_ms: None,
@@ -581,7 +581,7 @@ mod tests {
             ..GadgetState::default_for_test()
         };
 
-        use bindings::torchsnap::plugin::http::Host;
+        use bindings::torchsnap::gadget::http::Host;
         let resp = state.fetch(request).expect("fetch should succeed");
         assert_eq!(resp.body, b"hello body");
     }
@@ -920,7 +920,7 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_returns_bytes_for_existing_file() {
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -933,7 +933,7 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_preserves_binary_content() {
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -946,8 +946,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_returns_not_found_for_missing_file() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -963,8 +963,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_rejects_traversal_path() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -983,8 +983,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_rejects_absolute_path() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1003,8 +1003,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_rejects_empty_path() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1015,8 +1015,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_rejects_nul_byte_path() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1029,8 +1029,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_read_without_plugin_source_returns_io_error() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         // Default state has `plugin_source: None` — mirrors
         // calling an asset import outside an enable lifetime.
@@ -1049,7 +1049,7 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_exists_returns_true_when_present() {
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1063,7 +1063,7 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_exists_returns_false_when_absent() {
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1077,8 +1077,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_exists_rejects_traversal_path() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let (_dir, src) = make_plugin_source_dir();
         let mut state = state_with_source(src);
@@ -1091,8 +1091,8 @@ icon = "heroicons:beaker"
 
     #[test]
     fn assets_exists_without_plugin_source_returns_io_error() {
-        use bindings::torchsnap::plugin::assets::AssetsError;
-        use bindings::torchsnap::plugin::assets::Host;
+        use bindings::torchsnap::gadget::assets::AssetsError;
+        use bindings::torchsnap::gadget::assets::Host;
 
         let mut state = GadgetState::default_for_test();
         let err = state
@@ -1109,7 +1109,7 @@ icon = "heroicons:beaker"
         let err = anyhow::anyhow!("root cause").context("while doing X");
         let mapped = host::assets::into_assets_io_error(err);
         match mapped {
-            bindings::torchsnap::plugin::assets::AssetsError::IoError(msg) => {
+            bindings::torchsnap::gadget::assets::AssetsError::IoError(msg) => {
                 assert!(msg.contains("while doing X"), "missing context: {msg}");
                 assert!(msg.contains("root cause"), "missing root: {msg}");
             }

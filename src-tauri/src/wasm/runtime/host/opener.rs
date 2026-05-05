@@ -101,12 +101,12 @@ pub(crate) fn check_opener_scheme(
     }
 }
 
-impl bindings::torchsnap::plugin::opener::Host for GadgetState {
+impl bindings::torchsnap::gadget::opener::Host for GadgetState {
     fn open_url(
         &mut self,
         url: String,
-    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
-        use bindings::torchsnap::plugin::opener::OpenerError;
+    ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
+        use bindings::torchsnap::gadget::opener::OpenerError;
 
         match check_opener_scheme(&self.opener.schemes, &url) {
             Ok(()) => {}
@@ -131,8 +131,8 @@ impl bindings::torchsnap::plugin::opener::Host for GadgetState {
     fn open_path(
         &mut self,
         path: String,
-    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
-        use bindings::torchsnap::plugin::opener::OpenerError;
+    ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
+        use bindings::torchsnap::gadget::opener::OpenerError;
 
         if !self.opener.open_path {
             return Err(OpenerError::PermissionDenied(
@@ -150,8 +150,8 @@ impl bindings::torchsnap::plugin::opener::Host for GadgetState {
     fn reveal_path(
         &mut self,
         path: String,
-    ) -> Result<(), bindings::torchsnap::plugin::opener::OpenerError> {
-        use bindings::torchsnap::plugin::opener::OpenerError;
+    ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
+        use bindings::torchsnap::gadget::opener::OpenerError;
 
         if !self.opener.reveal_path {
             return Err(OpenerError::PermissionDenied(
