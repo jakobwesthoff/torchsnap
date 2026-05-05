@@ -1,4 +1,4 @@
-# Plugin: File search
+# Gadget: File search
 
 Search files by name from the launcher — the table-stakes feature
 that makes a launcher feel like a real system tool.

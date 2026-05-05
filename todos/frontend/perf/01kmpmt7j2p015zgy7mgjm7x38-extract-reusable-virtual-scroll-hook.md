@@ -4,8 +4,8 @@
 
 We now have three instances of the same windowed-list pattern:
 - `useWindowedList` (launcher `ResultList`)
-- `useWindowedGrid` (emoji plugin `EmojiGrid`)
-- Clipboard plugin list (upcoming, same technique)
+- `useWindowedGrid` (emoji gadget `EmojiGrid`)
+- Clipboard gadget list (upcoming, same technique)
 
 Each reimplements the same core logic: ref-based window position,
 keyboard-follow during render, non-passive wheel listener, render-time
@@ -26,5 +26,5 @@ arithmetic on top.
 - Mouse wheel handling could be bundled or left to the consumer.
 - Avoid over-abstracting if the variants diverge significantly in
   practice — the current duplication is small and readable.
-- Check whether a shared hook would complicate plugin isolation once
-  plugins move to dynamic registration.
+- Check whether a shared hook would complicate gadget isolation once
+  gadgets move to dynamic registration.

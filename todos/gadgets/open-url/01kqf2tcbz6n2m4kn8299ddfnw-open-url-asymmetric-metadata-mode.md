@@ -4,7 +4,7 @@
 
 The open-url WASM port currently uses
 `website_metadata::lookup_blocking` for every metadata fetch,
-mirroring the native plugin's behaviour exactly. This is the
+mirroring the native gadget's behaviour exactly. This is the
 right starting point — simpler code, single mental model, and
 matches the pre-WASM UX one-to-one.
 
@@ -15,7 +15,7 @@ have meaningfully different correctness contracts.
 
 ## The asymmetry
 
-The native plugin (and the current WASM port) treats the two
+The native gadget (and the current WASM port) treats the two
 input forms differently in the result-construction path:
 
 | User typed | Native behaviour |
@@ -58,7 +58,7 @@ fall back to the hero-icon path (mirrors bangs).
 - **Adds branching.** Two modes, two fallback strategies, more
   test surface. Worth it only if the UX win is real.
 - **Native-parity simplicity wins for v1.** The current port
-  ships behaviour identical to the pre-WASM plugin, so the
+  ships behaviour identical to the pre-WASM gadget, so the
   WASM migration introduces zero behavioural risk. Option B
   changes behaviour (in a defensible direction, but still a
   change) and should be evaluated on its own merits later.
@@ -68,7 +68,7 @@ fall back to the hero-icon path (mirrors bangs).
 - Reports of perceptible lag on per-keystroke open-url
   rendering
 - A general push to reduce blocking host calls in the
-  search loop (e.g. if other per-keystroke plugins start
+  search loop (e.g. if other per-keystroke gadgets start
   hitting blocking host imports)
 - Cache eviction policy changes that increase cold-cache
   rate (currently the in-memory cache has effectively
@@ -76,11 +76,11 @@ fall back to the hero-icon path (mirrors bangs).
 
 ## References
 
-- `plugins/open-url/src/lib.rs` — current implementation, single
+- `gadgets/open-url/src/lib.rs` — current implementation, single
   `lookup_blocking` call site
-- `src-tauri/src/plugins/open_url/mod.rs` — historical native
+- `src-tauri/src/gadgets/open_url/mod.rs` — historical native
   reference (deleted during WASM port)
-- `plugins/plugin-sdk/src/website_metadata.rs` — wrapper exposing
+- `gadgets/gadget-sdk/src/website_metadata.rs` — wrapper exposing
   both `lookup_cached` and `lookup_blocking`
 - `todos/01kn82bmj3y706tme2prsa7d2b-bangs-prefix-mode.md` — bangs
   uses `lookup_cached` because metadata is purely decoration there

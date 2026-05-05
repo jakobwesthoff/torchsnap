@@ -3,7 +3,7 @@
 ## Problem
 
 `ScoredEntry` has a fixed set of fields (`id`, `title`, `subtitle`, `icon`,
-`score`, etc.). Plugins that render their own custom UI via `CustomUI` or
+`score`, etc.). Gadgets that render their own custom UI via `CustomUI` or
 `InlineUI` sometimes need to pass per-entry metadata that doesn't map to any
 existing field (e.g., timestamps, result types, raw values).
 
@@ -18,8 +18,8 @@ Add an optional opaque data field to `ScoredEntry`:
 ```rust
 pub struct ScoredEntry {
     // ... existing fields ...
-    /// Plugin-specific metadata passed through to the frontend.
-    /// Only meaningful when the plugin renders its own UI component.
+    /// Gadget-specific metadata passed through to the frontend.
+    /// Only meaningful when the gadget renders its own UI component.
     pub data: Option<serde_json::Value>,
 }
 ```
@@ -30,6 +30,6 @@ display fields.
 
 ## Concrete use case
 
-The calculator plugin's history entries need a `computed_at` timestamp for
+The calculator gadget's history entries need a `computed_at` timestamp for
 "x ago" display in the history list. Currently there's no clean way to pass
 this per-entry without abusing the subtitle or ID fields.

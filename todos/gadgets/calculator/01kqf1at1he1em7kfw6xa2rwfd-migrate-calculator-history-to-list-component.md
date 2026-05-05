@@ -4,23 +4,23 @@
 
 ## Context
 
-During the ZeroTier plugin work (todo
+During the ZeroTier gadget work (todo
 `01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md`) a new
-shared `<List>` component was added to the plugin SDK
-(`packages/plugin-sdk/src/shims/components.ts`, host implementation
+shared `<List>` component was added to the gadget SDK
+(`packages/gadget-sdk/src/shims/components.ts`, host implementation
 at `src/components/List.tsx`). The ZeroTier settings page is its
 first consumer, used to render the "remembered networks" management
 view.
 
-The calculator plugin already renders a list of records — its
+The calculator gadget already renders a list of records — its
 history view at
-`plugins/calculator/frontend/src/views/CalculatorView.tsx:248-300`
+`gadgets/calculator/frontend/src/views/CalculatorView.tsx:248-300`
 — but it predates the shared component and rolls its own DOM.
 It was actually the reference DOM shape used while designing
 `<List>`.
 
 This todo records the question of whether the calculator history
-view should migrate to the shared component, so other plugins'
+view should migrate to the shared component, so other gadgets'
 list views stay consistent with each other.
 
 ## Why this is exploratory and not mandatory
@@ -42,9 +42,9 @@ and the component's API has settled in real use.
 
 ## When to revisit
 
-- After the ZeroTier plugin has shipped and the `<List>` API has
+- After the ZeroTier gadget has shipped and the `<List>` API has
   been used in anger for at least one minor version cycle.
-- If a third plugin needs a list view — that's the strong signal
+- If a third gadget needs a list view — that's the strong signal
   that the shared primitive is justified.
 - If the two divergent implementations cause a UX inconsistency
   (e.g. different keyboard handling, different selection styling)

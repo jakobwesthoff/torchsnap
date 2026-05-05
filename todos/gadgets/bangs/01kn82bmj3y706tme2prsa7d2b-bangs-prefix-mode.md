@@ -1,8 +1,8 @@
-# Bangs plugin: `!` prefix mode with custom UI
+# Bangs gadget: `!` prefix mode with custom UI
 
 ## Overview
 
-Register `!` as a search prefix for the bangs plugin, enabling an exclusive
+Register `!` as a search prefix for the bangs gadget, enabling an exclusive
 browsing/search mode with a dedicated custom UI — similar to how `:` activates
 the emoji picker.
 
@@ -20,14 +20,14 @@ the emoji picker.
 
 ## Relationship to current implementation
 
-The current bangs plugin participates in general search (no prefix) and detects
+The current bangs gadget participates in general search (no prefix) and detects
 exact `!<trigger>` tokens. The prefix mode would coexist:
 
 - `!` alone or `!` + partial text → prefix mode, custom UI, bang browsing
 - Exact `!g foo bar` in a mixed query → current general search path, single
   result entry
 
-This requires the plugin to register `!` via `search_prefixes()` while still
+This requires the gadget to register `!` via `search_prefixes()` while still
 participating in general search. The hybrid routing approach (prefix + general)
 from the original plan discussion.
 
@@ -40,8 +40,8 @@ from the original plan discussion.
 ## Notes
 
 - The custom UI should render favicons per entry via the SDK helper
-  (`torchsnap_plugin_sdk::website_metadata::favicon_or`); the host's
-  metadata service and the wrapper are in place, the bangs plugin's
+  (`torchsnap_gadget_sdk::website_metadata::favicon_or`); the host's
+  metadata service and the wrapper are in place, the bangs gadget's
   general-search path already uses them.
 - The fuzzy search within prefix mode could use nucleo matching on trigger +
   service_name, similar to how the emoji picker matches on shortcodes + labels

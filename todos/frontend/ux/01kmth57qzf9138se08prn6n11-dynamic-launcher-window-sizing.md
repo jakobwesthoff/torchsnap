@@ -21,7 +21,7 @@ Shrinking is fine — transparent space appears, then window catches up.
 - **Predictive**: compute target height before rendering, resize
   window first (wait for IPC), then update React state. Inverts
   normal data flow.
-- **Pre-sized slots**: each content mode (results, plugin) declares
+- **Pre-sized slots**: each content mode (results, gadget) declares
   its height upfront. Launcher picks the right size before rendering.
 - **Two-phase**: grow → resize window first (adds transparent space),
   then render. Shrink → render first, then resize.
@@ -32,6 +32,6 @@ Shrinking is fine — transparent space appears, then window catches up.
 ## Decision
 
 Deferred. The memory savings (max ~110px of window height difference)
-don't justify the complexity right now. Revisit if more plugin views
+don't justify the complexity right now. Revisit if more gadget views
 with varying heights are added or if the backing-store cost becomes
 a concern again.

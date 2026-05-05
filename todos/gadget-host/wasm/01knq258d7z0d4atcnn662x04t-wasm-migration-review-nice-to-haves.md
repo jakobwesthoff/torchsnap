@@ -17,13 +17,13 @@ single sweep.
 
 ## #22 — Explanatory comments on intentionally-omitted memo deps
 
-**Where:** `src/launcher/Launcher.tsx` around the `pluginLauncher`
+**Where:** `src/launcher/Launcher.tsx` around the `gadgetLauncher`
 and `inlineLauncher` `useMemo` blocks (currently around lines
 498 and 521 in the slice-assembly section, but line numbers
 drift — search for `useMemo<LauncherActions>`).
 
 **The thing:** the deps arrays for these memos intentionally
-omit `setPluginFooter` / `setInlineFooter` (stable React
+omit `setGadgetFooter` / `setInlineFooter` (stable React
 `setState` setters) and `mouseActiveRef` (a stable ref). The
 omissions are correct but undocumented; a future maintainer
 running an exhaustive-deps lint check will be tempted to
@@ -37,14 +37,14 @@ explaining why those values are stable and absent on purpose.
 ## #23 — Generalize `useLauncher()` error message
 
 **Where:** `src/contexts/useLauncher.ts` and the matching shim
-in `plugin-sdk/src/shims/hooks.ts`.
+in `gadget-sdk/src/shims/hooks.ts`.
 
 **Current error string:**
 > `useLauncher called outside the launcher tree (settings panels do not have launcher actions)`
 
 **The thing:** the parenthetical is too specific. Today the
 only non-launcher mount is settings panels, but the
-PluginContext design supports future mount kinds (modal slot,
+GadgetContext design supports future mount kinds (modal slot,
 command palette, menu bar, etc.). When those land the error
 will be misleading.
 
@@ -57,7 +57,7 @@ will be misleading.
 
 **Where:** `src/contexts/__tests__/` (directory does not yet exist).
 
-**The thing:** the entire `src/contexts/` plugin component
+**The thing:** the entire `src/contexts/` gadget component
 infrastructure ships without unit tests. The migration plan
 called for "extensive test coverage" of every new behavior;
 this is the largest gap.
@@ -66,45 +66,45 @@ this is the largest gap.
 
 - **`useLauncher.test.tsx`** — `useLauncher()` throws with the
   exact expected message when called (a) outside any provider
-  and (b) inside a `PluginContextProvider` with no `launcher`
+  and (b) inside a `GadgetContextProvider` with no `launcher`
   slice. Use `renderHook` + `expect(() => ...).toThrow(...)`.
-- **`usePluginSetting.test.tsx`** — `usePluginSetting("foo")`
+- **`useGadgetSetting.test.tsx`** — `useGadgetSetting("foo")`
   inside a provider with `id: "calculator"` reads
-  `plugins.calculator.foo` from the underlying store. Verifies
+  `gadgets.calculator.foo` from the underlying store. Verifies
   the namespace prefixing invariant the entire settings
   contract depends on.
-- **`PluginContextProvider.test.tsx`** — a child calling the
-  legacy `useLogger()` inside `PluginContextProvider` receives
-  the same `Logger` instance as `usePluginRuntime().logger`.
+- **`GadgetContextProvider.test.tsx`** — a child calling the
+  legacy `useLogger()` inside `GadgetContextProvider` receives
+  the same `Logger` instance as `useGadgetRuntime().logger`.
   Guards the dual-drive coupling we explicitly preserved when
   building the new contract.
 - **`Launcher.test.tsx`** (new file or fold into an existing
-  Launcher test) — the `useOptionalPluginEnabled` code path
-  with `customPluginView == null` resolves to `false` without
-  reading any real `enabled.<plugin-id>` key.
+  Launcher test) — the `useOptionalGadgetEnabled` code path
+  with `customGadgetView == null` resolves to `false` without
+  reading any real `enabled.<gadget-id>` key.
 
 **Blocker for landing this:** the host frontend has zero
 existing test infrastructure. Setting up Vitest + React
 Testing Library is a small but real prerequisite — see the
 plan's "Frontend SDK testing requirements" section for the
-shape (`@torchsnap/plugin-sdk/testing`'s
-`MockPluginContextProvider` already exists and would be the
+shape (`@torchsnap/gadget-sdk/testing`'s
+`MockGadgetContextProvider` already exists and would be the
 basis for these tests).
 
 ---
 
 ## #25 — Workspace tsconfig path alias for `@torchsnap/host/*`
 
-**Where:** `plugin-sdk/tsconfig.json` (does not yet exist),
-`plugin-sdk/src/testing/setup.ts`,
-`plugin-sdk/src/testing/MockPluginContextProvider.tsx`.
+**Where:** `gadget-sdk/tsconfig.json` (does not yet exist),
+`gadget-sdk/src/testing/setup.ts`,
+`gadget-sdk/src/testing/MockGadgetContextProvider.tsx`.
 
 **The thing:** the testing entry point currently imports from
 host source via relative paths:
 
 ```ts
-import { initPluginSdk } from "../../../src/lib/sdk";
-import { PluginContext } from "../../../src/contexts/PluginContext";
+import { initGadgetSdk } from "../../../src/lib/sdk";
+import { GadgetContext } from "../../../src/contexts/GadgetContext";
 ```
 
 These work in-monorepo but break the moment the SDK is
@@ -112,10 +112,10 @@ published to npm or moved out of the workspace. The setup.ts
 file documents the deferral but the relative paths are still
 sprinkled across two files.
 
-**Fix:** introduce a `plugin-sdk/tsconfig.json` with a `paths`
+**Fix:** introduce a `gadget-sdk/tsconfig.json` with a `paths`
 mapping `"@torchsnap/host/*": ["../../src/*"]` and rewrite the
 two imports to `import ... from "@torchsnap/host/lib/sdk"` /
-`"@torchsnap/host/contexts/PluginContext"`. The semantic intent
+`"@torchsnap/host/contexts/GadgetContext"`. The semantic intent
 ("I'm reaching into host source") becomes structural rather
 than visual.
 
@@ -126,10 +126,10 @@ changes, not every file that uses it.
 
 ---
 
-## #26 — `MockPluginContextProvider` JSDoc accuracy
+## #26 — `MockGadgetContextProvider` JSDoc accuracy
 
 **Where:**
-`plugin-sdk/src/testing/MockPluginContextProvider.tsx`.
+`gadget-sdk/src/testing/MockGadgetContextProvider.tsx`.
 
 **The thing:** the `launcher` prop's JSDoc says
 *"calling `useLauncher()` from a child throws exactly as it
@@ -154,7 +154,7 @@ Trivial doc-only change.
 ## #27 — Architecture doc example uses raw `unwrap_or_else`
 
 **Where:**
-`docs/Plugin-Architecture/06-settings-reactivity.md` lines
+`docs/Gadget-Architecture/06-settings-reactivity.md` lines
 ~109-111.
 
 **The thing:** the inline example shows the WASM settings
@@ -166,28 +166,28 @@ serde_json::from_str(
 )
 ```
 
-That's verbose and slightly misleading — the template plugin
+That's verbose and slightly misleading — the template gadget
 and the calculator both use small `read_bool_setting` /
-`read_string_setting` helpers instead. New plugin authors
+`read_string_setting` helpers instead. New gadget authors
 reading the architecture doc will cargo-cult the verbose form.
 
 **Fix:** either replace the example with the helper-style
 form (and forward-reference the future Rust SDK crate todo),
 or add a one-line note at the bottom of the example pointing
-at the helper idiom in `plugins/template/src/lib.rs`. The
-helper form is cleaner and reflects what real plugins do.
+at the helper idiom in `gadgets/template/src/lib.rs`. The
+helper form is cleaner and reflects what real gadgets do.
 
 ---
 
 ## #28 — Better `SqlConfig::None` error message
 
 **Where:** `src-tauri/src/wasm/runtime.rs` in
-`bindings::torchsnap::plugin::sql::Host::open` (around the
+`bindings::torchsnap::gadget::sql::Host::open` (around the
 `SqlConfig::None` arm).
 
-**Current error:** `"plugin has no [storage.sql] declared in manifest.toml"`
+**Current error:** `"gadget has no [storage.sql] declared in manifest.toml"`
 
-**The thing:** accurate but misses the case where the plugin
+**The thing:** accurate but misses the case where the gadget
 HAS a `[storage]` table but forgot the `[storage.sql]`
 sub-table, or has `[storage.sql]` with an empty `migrations`
 key.
@@ -195,7 +195,7 @@ key.
 **Fix:** rephrase to suggest the action:
 
 ```
-plugin has no [storage.sql] block declared in its manifest.toml — add a [storage.sql] migrations = [...] entry to enable SQL storage
+gadget has no [storage.sql] block declared in its manifest.toml — add a [storage.sql] migrations = [...] entry to enable SQL storage
 ```
 
 Trivial string change.
@@ -204,7 +204,7 @@ Trivial string change.
 
 ## #29 / #33 — Visibility for `query_history` errors in calculator
 
-**Where:** `plugins/calculator/src/lib.rs query_history`
+**Where:** `gadgets/calculator/src/lib.rs query_history`
 function.
 
 **Current behavior:** `db.query(...)` errors are silently
@@ -240,14 +240,14 @@ though that path is currently unreachable given the schema.
 
 ## #30 — Template `enable_log` table semantic muddle
 
-**Where:** `plugins/template/migrations/001_init.sql` and
-`plugins/template/src/lib.rs` (`enable()` and the
+**Where:** `gadgets/template/migrations/001_init.sql` and
+`gadgets/template/src/lib.rs` (`enable()` and the
 `heartbeat` task).
 
 **The thing:** the `enable_log` table is currently inserted
 into from two places — the lifecycle `enable()` and the
 scheduled `heartbeat` task. There is no column distinguishing
-the two event types. Plugin authors reading the demo will see
+the two event types. Gadget authors reading the demo will see
 a table called `enable_log` containing both kinds of events
 and be confused.
 
@@ -258,14 +258,14 @@ to the migration. The `enable()` insert keeps the default
 `SELECT COUNT(*) FROM enable_log WHERE reason = ?`.
 
 This is a small but pedagogically valuable improvement — it
-shows plugin authors the right pattern for multi-event log
+shows gadget authors the right pattern for multi-event log
 tables instead of teaching them to mix unrelated events into
 a single undifferentiated table.
 
-**Migration concern:** since the template plugin is a
+**Migration concern:** since the template gadget is a
 greenfield example (no production users with existing
 databases), this can be a destructive edit to `001_init.sql`
-rather than a `002_*.sql` add-column migration. Real plugin
+rather than a `002_*.sql` add-column migration. Real gadget
 authors should add a new migration file for production
 schemas — call this out in a comment.
 
@@ -276,7 +276,7 @@ schemas — call this out in a comment.
 **Where:** `src-tauri/src/wasm/manifest.rs parse_cron_schedule`
 (after the existing 5-field token-count check landed in 4eae7b4).
 
-**The thing:** plugin authors who try to write `@daily` or
+**The thing:** gadget authors who try to write `@daily` or
 `@hourly` (Quartz aliases for common schedules) get a generic
 "expected 5-field POSIX cron, got 1 field(s)" error. The 1-
 field count is technically correct but not actionable — the
@@ -315,7 +315,7 @@ the failure message more useful.
 
 ## #32 — Calculator `save_history_method` typed payload
 
-**Where:** `plugins/calculator/src/lib.rs save_history_method`.
+**Where:** `gadgets/calculator/src/lib.rs save_history_method`.
 
 **Current pattern:** three chained
 `value.get("...").and_then(...).ok_or("missing '...'")?`
@@ -345,7 +345,7 @@ Requires adding `serde` as a direct dep on the calculator
 crate (currently only `serde_json` is listed; the derive
 macro needs `serde`).
 
-The Rust plugin SDK (`torchsnap-plugin-sdk`) now exposes
+The Rust gadget SDK (`torchsnap-gadget-sdk`) now exposes
 `messaging::parse_payload<T: DeserializeOwned>` /
 `messaging::to_response<T: Serialize>` for exactly this
 pattern — the calculator's `save_history_method` is already
@@ -360,12 +360,12 @@ another `serde_json::from_str`.
 These came up during the review but already have dedicated
 todos or were explicitly deferred by the migration plan:
 
-- **Rust plugin SDK crate** — implemented as
-  `torchsnap-plugin-sdk` (see `plugins/plugin-sdk/`).
-  Plugins consume it via `use torchsnap_plugin_sdk::prelude::*;`
-  and the `define_plugin!` macro replaces the hand-rolled
+- **Rust gadget SDK crate** — implemented as
+  `torchsnap-gadget-sdk` (see `gadgets/gadget-sdk/`).
+  Gadgets consume it via `use torchsnap_gadget_sdk::prelude::*;`
+  and the `define_gadget!` macro replaces the hand-rolled
   `wit_bindgen::generate!` + `export!` boilerplate.
-- **Dedicated `plugins/test-fixture/` crate** for end-to-end
+- **Dedicated `gadgets/test-fixture/` crate** for end-to-end
   WASM bridge integration tests against the wasmtime linker.
   Mentioned by the migration plan as required for D1-D4
   layered tests but never created. Would unblock the SQL
@@ -378,7 +378,7 @@ todos or were explicitly deferred by the migration plan:
   todo covers this; the scheduler's inline comment now
   documents the threshold (`scheduler_loop` in
   `src-tauri/src/wasm/bridge.rs`).
-- **`messaging-stream` WIT sub-interface** for WASM plugin
+- **`messaging-stream` WIT sub-interface** for WASM gadget
   streaming RPC. Out of scope per ADR 0030; would also need
   the `01kn30th27x0arv9a5cekkwgpw` channel-lifecycle todo to
   land first.
@@ -394,13 +394,13 @@ to keep diffs reviewable:
 2. **Rust polish PR** — #28, #29
 3. **Docs polish PR** — #27
 4. **Template DX PR** — #30, #31 (the friendlier cron error
-   for `@daily` macros has plugin-author user impact, so
+   for `@daily` macros has gadget-author user impact, so
    it's worth combining with the template `reason` column
    change)
 5. **Test scaffolding PR** — #24 + #25 (the workspace
    tsconfig alias is a prerequisite for the testing entry
    points, and the context tests are the first real users
-   of `MockPluginContextProvider`)
+   of `MockGadgetContextProvider`)
 6. **Defer until the Rust SDK crate lands** — #32
 
 No single PR is large enough to justify slicing further. The

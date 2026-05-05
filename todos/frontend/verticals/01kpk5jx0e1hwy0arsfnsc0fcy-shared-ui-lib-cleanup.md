@@ -1,6 +1,6 @@
 # Final cleanup: shared `ui/` primitives after vertical extraction
 
-After completing the mascot, logger, and plugin-runtime verticals, the
+After completing the mascot, logger, and gadget-runtime verticals, the
 horizontal `components/`, `hooks/`, `lib/`, and `contexts/` folders will
 contain only genuinely shared, cross-feature code. This todo tracks the
 final rationalization of those leftovers.

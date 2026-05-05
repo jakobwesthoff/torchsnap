@@ -6,15 +6,15 @@
 ADR 0040 host-runtime work. It now mixes:
 
 - The `WasmRuntime` engine (component compile / instantiate cache).
-- The `PluginState` struct (the wasmtime store data carrier).
+- The `GadgetState` struct (the wasmtime store data carrier).
 - Host trait impls for **every** host import in the WIT —
   `logging`, `settings`, `frecency`, `clipboard`, `sql`, `opener`,
   `http`, `assets`, `command`, `platform`, `paths`.
-- The `WasmPluginInstance` lifecycle and its full setter / clearer
+- The `WasmGadgetInstance` lifecycle and its full setter / clearer
   surface for every capability.
 - The `command::run` runtime: env sanitation, process group
   termination, capped output drain, audit logging.
-- A 1000-line test module with fixture-plugin compile helpers.
+- A 1000-line test module with fixture-gadget compile helpers.
 
 The file is hard to navigate, hard to review when only one
 capability is touched, and hard to keep under intellectual control as
@@ -31,8 +31,8 @@ src-tauri/src/wasm/runtime/
 │                         module-level "what lives here" map
 ├── engine.rs           — `WasmRuntime`: compile, instantiate,
 │                         component cache, span registry handle
-├── state.rs            — `PluginState` struct + `Default` impl
-├── instance.rs         — `WasmPluginInstance`: lifecycle methods,
+├── state.rs            — `GadgetState` struct + `Default` impl
+├── instance.rs         — `WasmGadgetInstance`: lifecycle methods,
 │                         setters/clearers, guest call shims
 │                         (`enable`, `disable`, `entries`, `search`,
 │                         `execute`, `handle_message`, `run_task`,
@@ -67,7 +67,7 @@ re-exports so the rest of the crate keeps importing things from
 
 ## Why deferred
 
-- The Phase H refactor (`PluginState` → capability sub-structs)
+- The Phase H refactor (`GadgetState` → capability sub-structs)
   shrinks each Host impl considerably and may change the natural
   grouping (e.g. `OpenerState`/`HttpState`/`CommandState` could
   each live alongside their Host impl). Doing the file split *first*
@@ -88,10 +88,10 @@ The sensible ordering is:
 
 - Behavior change. This is a structural refactor only. No
   performance work, no API change, no new features.
-- Splitting the test fixture plugins. The existing
-  `src-tauri/tests/fixtures/*-plugin/` crates stay as-is.
+- Splitting the test fixture gadgets. The existing
+  `src-tauri/tests/fixtures/*-gadget/` crates stay as-is.
 - Reworking how host imports are added to the linker. The bindgen-
-  emitted `Plugin::add_to_linker` already finds Host impls
+  emitted `Gadget::add_to_linker` already finds Host impls
   regardless of which module they live in.
 
 ## Blocked-by / enables

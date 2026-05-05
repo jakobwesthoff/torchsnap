@@ -1,11 +1,11 @@
-# Install-time permission consent prompt for User plugins
+# Install-time permission consent prompt for User gadgets
 
 ## Context
 
 ADR 0036 deferred a runtime/install-time consent UX, leaving manifest
-review at parse time as the sole gate. That was acceptable while plugin
+review at parse time as the sole gate. That was acceptable while gadget
 capabilities were limited to URL opening, scoped HTTP fetches, and
-read-only data interfaces (`assets`, `frecency`, plugin-namespaced SQL
+read-only data interfaces (`assets`, `frecency`, gadget-namespaced SQL
 and settings).
 
 Adding `[[permissions.process]]` raises the trust bar materially.
@@ -16,12 +16,12 @@ that capability silently.
 
 ## Target
 
-When a plugin from the **User** source (`PluginSourceKind::User`) is
+When a gadget from the **User** source (`GadgetSourceKind::User`) is
 installed *and* its manifest declares any `[[permissions.process]]`
 rule, present a one-shot consent dialog before the file is moved into
-`<app_data_dir>/plugins/`. The dialog must show:
+`<app_data_dir>/gadgets/`. The dialog must show:
 
-- Plugin display name + version + source path.
+- Gadget display name + version + source path.
 - All `[[permissions.process]]` rules in human-readable form (binary +
   argv shape per rule).
 - Any HTTP origins requesting `*` and any opener `path-roots`
@@ -30,13 +30,13 @@ rule, present a one-shot consent dialog before the file is moved into
 - Confirm / cancel buttons. Cancel aborts the install.
 
 System and Dev sources skip the prompt entirely:
-- `System` plugins are bundled with Torchsnap and trusted by definition.
-- `Dev` plugins exist only in debug builds for the developer's own
+- `System` gadgets are bundled with Torchsnap and trusted by definition.
+- `Dev` gadgets exist only in debug builds for the developer's own
   workflow.
 
 ## Future composition with signing
 
-ADR 0036 also defers extension signing. When that lands, signed plugins
+ADR 0036 also defers extension signing. When that lands, signed gadgets
 from a publisher the user has already trusted should be eligible to
 skip the prompt (matching the pattern macOS uses for notarized vs.
 unsigned apps). The install-time check should therefore be structured
@@ -45,11 +45,11 @@ hardcoded `source == User` branch, so signing can plug in cleanly later.
 
 ## Non-goals
 
-- Per-call runtime prompts (e.g., a dialog every time a plugin spawns
+- Per-call runtime prompts (e.g., a dialog every time a gadget spawns
   `mdfind`). The trust decision is install-time; runtime is enforced by
   the manifest-derived allowlists.
 - Revoking a granted capability after install. See sibling todo
-  `*-show-plugin-permissions-in-settings.md` for the read-only display;
+  `*-show-gadget-permissions-in-settings.md` for the read-only display;
   revocation is a separate, larger design question.
 
 ## Blocked-by / enables

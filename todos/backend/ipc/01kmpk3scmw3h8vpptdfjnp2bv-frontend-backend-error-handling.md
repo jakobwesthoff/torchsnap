@@ -2,7 +2,7 @@
 
 Currently all `invoke` and `sendMessage` calls in the frontend either
 ignore errors entirely (fire-and-forget) or silently swallow them.
-Failed clipboard pastes, broken searches, and plugin message errors
+Failed clipboard pastes, broken searches, and gadget message errors
 are invisible to the user.
 
 ## What's needed

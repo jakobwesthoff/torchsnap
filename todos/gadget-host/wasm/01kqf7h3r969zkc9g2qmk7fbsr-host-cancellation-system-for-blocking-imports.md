@@ -9,19 +9,19 @@ aspect needs careful review before code is written.
 
 ## Context: the problem
 
-WASM plugin instances are single-threaded by component-model
-spec. The host's `WasmPluginInstance` (`src-tauri/src/wasm/runtime/instance.rs:41,232`)
+WASM gadget instances are single-threaded by component-model
+spec. The host's `WasmGadgetInstance` (`src-tauri/src/wasm/runtime/instance.rs:41,232`)
 serializes calls into each instance with a `Mutex<Store>`.
-When a plugin makes a host import call that blocks for a
+When a gadget makes a host import call that blocks for a
 significant time — e.g. `website_metadata::lookup` with
 `LookupMode::Blocking` on a cold cache, which uses
 `tokio::task::block_in_place` (`src-tauri/src/wasm/runtime/host/website_metadata.rs:72`)
 to run a 2+ second synchronous network fetch — the mutex is
 held for the entire fetch duration.
 
-The orchestrator (`PluginHost::search` at
-`src-tauri/src/plugin_host.rs:449,560`) dispatches each
-keystroke's search to all plugins via `spawn_blocking`. With
+The orchestrator (`GadgetHost::search` at
+`src-tauri/src/gadget_host.rs:449,560`) dispatches each
+keystroke's search to all gadgets via `spawn_blocking`. With
 no preemption, every keystroke during a slow call queues a
 new task that eventually runs to completion.
 
@@ -34,11 +34,11 @@ That fix is in scope for short-term implementation.
 What that simpler fix does NOT solve: **the in-flight slow
 call cannot be preempted.** If the user is typing URLs faster
 than each cold-cache lookup completes (which is plausible at
-2s/query), the open-url plugin is permanently 2-4 seconds
+2s/query), the open-url gadget is permanently 2-4 seconds
 behind the user's current query. Each result that arrives is
 already stale (correctly discarded by the frontend's
 generation check at `src/launcher/hooks/useSearch.ts:102`),
-so from the user's perspective the plugin appears to never
+so from the user's perspective the gadget appears to never
 produce a fresh result during URL-typing bursts.
 
 This todo addresses **option C** from the design discussion:
@@ -59,7 +59,7 @@ Blocking is the only mode that guarantees the result shows up
 without further user input.
 
 So `lookup_blocking` is a load-bearing pattern, not an escape
-hatch. Plugins that want existence-gated results need it.
+hatch. Gadgets that want existence-gated results need it.
 Cancellation is the price for keeping the pattern usable in
 hot paths.
 
@@ -75,10 +75,10 @@ signals the token; the host import returns early with a
 
 Open questions:
 
-- **Token granularity.** One token per search? Per plugin per
+- **Token granularity.** One token per search? Per gadget per
   search? Per individual host-import call?
 - **Token propagation.** How does a host import access "its"
-  token? Stored on `PluginState`? Passed as a parameter (would
+  token? Stored on `GadgetState`? Passed as a parameter (would
   require WIT changes)? Pulled from a thread-local?
 - **What gets cancelled?** The `block_in_place` itself can't
   be cancelled — the synchronous body keeps running. The
@@ -115,7 +115,7 @@ The current `website-metadata` interface returns
 would need to either:
 
 - **Add a `Cancelled` error variant.** Cleanest. Forces
-  every plugin to handle it (or pattern-match-all). Plumbs
+  every gadget to handle it (or pattern-match-all). Plumbs
   cancellation as a first-class WIT concept.
 - **Add a separate "lookup-result::cancelled" variant.**
   Conflates with the data variants. Less clean.
@@ -123,10 +123,10 @@ would need to either:
   prone. Reject.
 
 The first option seems right but introduces a new mandatory
-variant for plugin authors to handle. The SDK wrapper could
+variant for gadget authors to handle. The SDK wrapper could
 abstract it (fold `Cancelled` into `Metadata::Unreachable`
 with a log, similar to how `PermissionDenied` and
-`InvalidDomain` are absorbed today) so plugins typically
+`InvalidDomain` are absorbed today) so gadgets typically
 never see it directly.
 
 ### Orchestrator integration
@@ -134,12 +134,12 @@ never see it directly.
 When does the orchestrator signal cancellation?
 
 - **On every new search call:** signal "any in-flight search
-  for this plugin is stale." Aggressive but simple.
+  for this gadget is stale." Aggressive but simple.
 - **On idle-and-replace:** signal only when the user clears
   or significantly changes the query. Less aggressive,
   preserves results for "typing more characters of the same
   domain."
-- **Plugin-author-controlled:** plugin opts into cancelability
+- **Gadget-author-controlled:** gadget opts into cancelability
   via manifest. Heavy.
 
 The first option is most consistent with the generation-based
@@ -155,10 +155,10 @@ Open behavioural questions:
   empty)? Almost certainly the former, but the service's
   current code doesn't distinguish.
 - **In-flight coalescing.** The metadata service coalesces
-  concurrent fetches for the same domain into one. If plugin
-  A's fetch is cancelled but plugin B is awaiting the same
-  fetch, what happens? Probably plugin B's fetch should NOT
-  be cancelled, only plugin A's await — which means
+  concurrent fetches for the same domain into one. If gadget
+  A's fetch is cancelled but gadget B is awaiting the same
+  fetch, what happens? Probably gadget B's fetch should NOT
+  be cancelled, only gadget A's await — which means
   cancellation is at the per-caller layer, not the underlying
   operation layer. That changes the implementation
   significantly.
@@ -169,7 +169,7 @@ Open behavioural questions:
   release path needs to be quick — no other "cleanup" work
   that itself takes time.
 
-### Plugin-side handling
+### Gadget-side handling
 
 The SDK wrapper currently has:
 
@@ -185,24 +185,24 @@ pub enum Metadata {
 A `Cancelled` variant could be added explicitly, OR
 absorbed into `Unreachable` (with a log) following the
 existing error-handling convention. The latter is simpler for
-plugin authors but loses information that *might* be useful
+gadget authors but loses information that *might* be useful
 for distinguishing "we tried and gave up because user moved
 on" from "host couldn't reach."
 
-For most plugins, the difference is academic — both lead to
+For most gadgets, the difference is academic — both lead to
 "don't show this result." Lean toward absorption.
 
 ## Why this is deferred
 
-- **Cross-cutting cost.** Affects WIT, host imports, plugin
-  bridge, metadata service, SDK wrapper, plugin authors.
+- **Cross-cutting cost.** Affects WIT, host imports, gadget
+  bridge, metadata service, SDK wrapper, gadget authors.
 - **Many open questions** above each have multiple valid
   answers; getting any one wrong is expensive to undo.
 - **Short-term symptom is addressable** by the simpler
   per-instance latest-wins mutex pattern (separate todo)
   PLUS the open-url-specific Blocking-mode UX trade-off
   (open-url's row lags the user's current query by up to 2s,
-  but other plugins render normally — assuming the
+  but other gadgets render normally — assuming the
   investigation todo confirms incremental streaming).
 - **Whether we need cancellation at all** depends on whether
   the per-keystroke URL-typing scenario is actually how
@@ -212,9 +212,9 @@ For most plugins, the difference is academic — both lead to
 
 ## When to revisit
 
-- A second plugin lands that genuinely needs `lookup_blocking`
+- A second gadget lands that genuinely needs `lookup_blocking`
   in a hot path (i.e. on every keystroke). The per-instance
-  fix doesn't help these plugins.
+  fix doesn't help these gadgets.
 - User reports of open-url's row lagging visibly during fast
   typing become common.
 - A new host import is proposed that's likely to take seconds
@@ -225,7 +225,7 @@ wins fix plus the existing UX should be sufficient.
 
 ## References
 
-- `src-tauri/src/plugin_host.rs:449,560` — orchestrator
+- `src-tauri/src/gadget_host.rs:449,560` — orchestrator
   search dispatch
 - `src-tauri/src/wasm/runtime/instance.rs:41,232` — per-instance
   mutex
@@ -234,9 +234,9 @@ wins fix plus the existing UX should be sufficient.
 - `src-tauri/src/network/website_metadata/` — service that
   performs the actual fetch (would need cancelation
   refactor)
-- `plugins/plugin-sdk/wit/torchsnap-plugin.wit:718-777` —
+- `gadgets/gadget-sdk/wit/torchsnap-gadget.wit:718-777` —
   WIT interface, would need a `Cancelled` variant
-- `plugins/plugin-sdk/src/website_metadata.rs` — SDK wrapper,
+- `gadgets/gadget-sdk/src/website_metadata.rs` — SDK wrapper,
   `Metadata` enum may grow a `Cancelled` arm or absorb it
 - `src/launcher/hooks/useSearch.ts:95-102` — frontend
   generation check (would still discard, but cancellation

@@ -6,7 +6,7 @@
 
 `src-tauri/src/wasm/manifest.rs` is currently ~2700 lines covering:
 
-- The TOML schema (`Manifest`, `PluginDef`, `SettingsDef`,
+- The TOML schema (`Manifest`, `GadgetDef`, `SettingsDef`,
   `StorageDef`, `FrontendDef`, `TaskDef`, `PermissionsDef` and all
   its sub-structs).
 - The full `[[permissions.command]]` argv vocabulary
@@ -30,7 +30,7 @@ concern. Rough sketch — refine when the work begins:
 ```
 src-tauri/src/wasm/manifest/
 ├── mod.rs              -- top-level Manifest, public API
-├── plugin.rs           -- PluginDef, FrontendDef, TaskDef
+├── gadget.rs           -- GadgetDef, FrontendDef, TaskDef
 ├── settings.rs         -- SettingsDef
 ├── storage.rs          -- StorageDef
 ├── permissions/
@@ -79,4 +79,4 @@ obvious after the fs work added another ~150 lines.
 - Or: when the next bug requires touching multiple permission
   validators and the navigation cost becomes painful.
 
-Whichever comes first. Not blocking on the ZeroTier plugin work.
+Whichever comes first. Not blocking on the ZeroTier gadget work.

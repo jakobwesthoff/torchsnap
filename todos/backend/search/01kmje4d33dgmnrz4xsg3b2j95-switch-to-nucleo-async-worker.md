@@ -7,7 +7,7 @@ or thousands of entries (app launcher, contacts, emoji).
 
 ## When to switch
 
-Once a catalog plugin exceeds ~100 entries or when keystroke-to-result
+Once a catalog gadget exceeds ~100 entries or when keystroke-to-result
 latency becomes noticeable.
 
 ## What changes
@@ -23,10 +23,10 @@ latency becomes noticeable.
 
 ## Open questions
 
-- Whether each catalog plugin gets its own `Nucleo<T>` instance or
+- Whether each catalog gadget gets its own `Nucleo<T>` instance or
   all catalogs share one (separate is cleaner for isolation, shared
   is simpler for cross-catalog ranking)
-- Whether to expose Nucleo instances to WASM plugins or keep them
-  host-internal (leaning toward host-internal — plugins just provide
+- Whether to expose Nucleo instances to WASM gadgets or keep them
+  host-internal (leaning toward host-internal — gadgets just provide
   data, host owns matching)
 - Thread pool sizing for multiple concurrent Nucleo workers

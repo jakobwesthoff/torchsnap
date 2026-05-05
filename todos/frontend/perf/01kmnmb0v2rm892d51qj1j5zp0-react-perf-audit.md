@@ -7,7 +7,7 @@ React.memo / useMemo / useCallback improvements.
 ## Areas to check
 
 - Launcher.tsx: callback stability (handleExecute, handleGoBack,
-  handlePluginExecute), derived values, props passed to children
+  handleGadgetExecute), derived values, props passed to children
 - EmojiGrid.tsx: GridCell should likely be React.memo'd, footer
   effect dependencies, keybinding array stability
 - ResultList / ResultRow: similar memo audit

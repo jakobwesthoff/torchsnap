@@ -5,7 +5,7 @@ application discovery on macOS.
 
 ## Context
 
-The app launcher plugin currently uses `mdfind` (Spotlight CLI) to
+The app launcher gadget currently uses `mdfind` (Spotlight CLI) to
 discover installed applications. This works but spawns a subprocess.
 A direct API call would be faster and cleaner.
 
@@ -36,6 +36,6 @@ A direct API call would be faster and cleaner.
 ## Decision
 
 Deferred. Using `mdfind` behind an `AppDiscovery` trait abstraction
-so the backend can be swapped later without touching plugin logic.
+so the backend can be swapped later without touching gadget logic.
 The trait also serves as the platform abstraction point (Linux:
 `.desktop` files, Windows: Start Menu).

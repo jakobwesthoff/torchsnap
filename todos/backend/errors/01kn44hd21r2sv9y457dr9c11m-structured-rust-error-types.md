@@ -19,7 +19,7 @@ whether to retry, or show context-appropriate messages.
 ## Affected commands
 
 All 8 current commands use `Result<_, String>`:
-- `search`, `search_execute`, `plugin_message` (search domain)
+- `search`, `search_execute`, `gadget_message` (search domain)
 - `frecency_stats`, `frecency_clear` (frecency domain)
 - `launcher_hide`, `launcher_set_layout`, `control_subscribe` (infallible today, but should be consistent)
 

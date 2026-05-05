@@ -1,4 +1,4 @@
-# Plugin: Task switcher
+# Gadget: Task switcher
 
 List running applications/windows and switch to them from the
 launcher.

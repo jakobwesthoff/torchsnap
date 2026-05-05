@@ -2,7 +2,7 @@
 
 ## Problem
 
-The calculator plugin evaluates expressions that can return different types
+The calculator gadget evaluates expressions that can return different types
 (int, float, boolean, and potentially string/tuple). Each type could benefit
 from distinct visual rendering in the inline result component — e.g., booleans
 displayed with color coding (green/red for true/false), floats with precision
@@ -25,5 +25,5 @@ basic type-aware styling. All types render as text with minimal differentiation.
 
 ## Context
 
-Decided during calculator plugin planning. Deferred to keep the initial
+Decided during calculator gadget planning. Deferred to keep the initial
 implementation focused on core functionality.

@@ -37,8 +37,8 @@ Set up a test runner and write tests for the primary frontend features.
 5. **formatters** (`src/devtools/console/formatters.ts`) — timestamp
    formatting, duration formatting, clipboard formatting.
 
-6. **Plugin view integration** — LoggerProvider provides logger via context,
-   useLogger returns it, plugin views receive logger prop.
+6. **Gadget view integration** — LoggerProvider provides logger via context,
+   useLogger returns it, gadget views receive logger prop.
 
 ### Non-priority (defer)
 

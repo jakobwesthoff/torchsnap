@@ -1,10 +1,10 @@
-# Think about and plan further plugins
+# Think about and plan further gadgets
 
-Brainstorm and evaluate additional plugin ideas beyond the initial
+Brainstorm and evaluate additional gadget ideas beyond the initial
 set. Consider what makes a launcher truly indispensable for daily
 use.
 
-## Plugin ideas to evaluate
+## Gadget ideas to evaluate
 
 - **File search**: Index and search files by name (like macOS
   Spotlight). Integration with `mdfind` on macOS, `locate`/`fd` on
