@@ -12,7 +12,16 @@ P1 (UI strings), P2 (docs + ADR), P3 (internal Rust/TS symbols, including file r
 
 ## Successors
 
-None. P5 is the terminal phase of the rename effort. The trigger todo `todos/01kqw4kqe3g50xn77efwv71jy2-rename-plugins-to-gadgets-everywhere.md` is closed at the end of P5.
+After P5 merges, execute **P2b** — the second tranche of documentation rewrites that was deferred because it quotes paths and symbols that only exist post-P5. The full list of P2b commits is in `01kqwvtgqpvxb64eysw7pt4gdt-phase-2-docs-and-adr.md` under "Commit grouping", commits 9–14:
+
+- `update README and CLAUDE.md gadget terminology`
+- `rewrite docs/Gadget-Architecture content for gadget terminology` (includes `05-plugin-messaging.md` → `05-gadget-messaging.md`)
+- `rename and rewrite docs/api/plugin-development.md to gadget-development`
+- `update docs/api/logging-system.md gadget terminology`
+- `rewrite docs/strategy/Selfcontained-Gadget-System content`
+- `update docs/Howto-build-on-fedora-43.md gadget terminology`
+
+Once P2b is done, close the trigger todo `todos/01kqw4kqe3g50xn77efwv71jy2-rename-plugins-to-gadgets-everywhere.md`.
 
 ## Scope
 
