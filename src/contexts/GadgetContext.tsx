@@ -91,7 +91,7 @@ export const GadgetContext = createContext<GadgetContextValue | null>(null);
 // =========================================================
 // SDK shim type sync check
 //
-// `packages/plugin-sdk/src/shims/hooks.ts` mirrors `GadgetInfo`,
+// `packages/gadget-sdk/src/shims/hooks.ts` mirrors `GadgetInfo`,
 // `GadgetRuntime`, `LauncherActions`, and `GadgetSendMessage`
 // for the WASM plugin SDK consumers. The shim re-declares
 // the shapes locally so plugins don't need to reach into
@@ -106,7 +106,7 @@ import type {
   GadgetInfo as SdkGadgetInfo,
   GadgetRuntime as SdkGadgetRuntime,
   GadgetSendMessage as SdkGadgetSendMessage,
-} from "../../packages/plugin-sdk/src/shims/hooks";
+} from "../../packages/gadget-sdk/src/shims/hooks";
 
 // The tuple must be assignable to `[true, true, ...]` — if any
 // pair diverges, one of the `extends` arms resolves to `never`
