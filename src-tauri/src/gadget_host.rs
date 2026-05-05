@@ -102,7 +102,7 @@ struct GadgetSlot {
 
     /// Serializes and deduplicates settings change dispatch for
     /// this plugin. Both `enabled.<id>` changes and
-    /// `plugins.<id>.*` changes are funneled through here.
+    /// `gadgets.<id>.*` changes are funneled through here.
     dispatcher: CoalescingDispatcher,
 }
 
@@ -195,7 +195,7 @@ impl GadgetHost {
         // -------------------------------------------------------
         for slot in &self.slots {
             let id = slot.plugin.id();
-            let prefix = format!("plugins.{id}.");
+            let prefix = format!("gadgets.{id}.");
             let current = SettingsInit::from_store(&self.store, &prefix);
             let initialized = slot.plugin.initialize_settings(current);
             initialized.apply(&self.store, &prefix);
@@ -204,14 +204,8 @@ impl GadgetHost {
             // Defaults to true if no value exists.
             let enabled_key = format!("enabled.{id}");
             if self.store.get(&enabled_key).is_none() {
-                // Migration: if the plugin previously stored enabled
-                // state at `plugins.<id>.enabled`, copy that value
-                // to the new top-level key.
-                let old_key = format!("plugins.{id}.enabled");
-                let migrated_value = self.store.get(&old_key).and_then(|v| v.as_bool());
-                let initial = migrated_value.unwrap_or(true);
                 self.store
-                    .set(enabled_key.clone(), serde_json::Value::Bool(initial));
+                    .set(enabled_key.clone(), serde_json::Value::Bool(true));
             }
 
             // Read the current enabled state and apply to the slot.
@@ -238,7 +232,7 @@ impl GadgetHost {
             // Watch shortcut keys so the reactor re-registers when
             // a user changes a shortcut binding.
             for s in slot.plugin.shortcuts() {
-                keys_to_watch.push(format!("plugins.{id}.{}", s.settings_key));
+                keys_to_watch.push(format!("gadgets.{id}.{}", s.settings_key));
             }
         }
         self.watched_keys.extend(keys_to_watch);
@@ -408,7 +402,7 @@ impl GadgetHost {
         decl: &GadgetShortcut,
         owner: Arc<dyn Gadget>,
     ) -> Option<RegisteredShortcut> {
-        let full_key = format!("plugins.{plugin_id}.{}", decl.settings_key);
+        let full_key = format!("gadgets.{plugin_id}.{}", decl.settings_key);
 
         let combo_str = self
             .store
@@ -785,7 +779,7 @@ impl GadgetHost {
 
     /// Handle a settings change event from the store. Routes
     /// `enabled.<id>` changes to the host-managed lifecycle and
-    /// `plugins.<id>.*` changes to the plugin's `setting_changed`.
+    /// `gadgets.<id>.*` changes to the plugin's `setting_changed`.
     ///
     /// Called from the `settings-changed` Tauri event listener.
     /// Both paths go through the plugin's `CoalescingDispatcher`
@@ -840,9 +834,9 @@ impl GadgetHost {
         }
 
         // -------------------------------------------------------
-        // Path 2: plugins.<plugin-id>.<setting-key>
+        // Path 2: gadgets.<plugin-id>.<setting-key>
         // -------------------------------------------------------
-        if let Some(rest) = key.strip_prefix("plugins.") {
+        if let Some(rest) = key.strip_prefix("gadgets.") {
             // Split "plugin-id.setting-key" at the first dot.
             let Some(dot_pos) = rest.find('.') else {
                 return;
