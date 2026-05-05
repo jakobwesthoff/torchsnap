@@ -13,8 +13,8 @@ use std::process::Command;
 use anyhow::Context;
 
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::platform::macos::osascript;
 use crate::gadgets::system_commands::SystemCommand;
+use crate::platform::macos::osascript;
 
 // =========================================================
 // Empty Trash

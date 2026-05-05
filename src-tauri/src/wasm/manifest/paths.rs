@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::{Manifest, GadgetIcon};
+use super::{GadgetIcon, Manifest};
 use crate::wasm::source::validate_plugin_path;
 
 /// Walk every path-like field of a parsed manifest and run
