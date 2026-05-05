@@ -1,7 +1,0 @@
-[gadget]
-id = "minimal-plugin"
-name = "Minimal Test Plugin"
-description = "Test-only fixture used by src-tauri bridge/runtime tests"
-version = "0.0.0"
-wasm = "minimal_plugin.wasm"
-icon = "heroicons:beaker"

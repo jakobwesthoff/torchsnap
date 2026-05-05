@@ -1098,7 +1098,7 @@ mod tests {
     #[test]
     fn new_compiles_but_does_not_instantiate() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
         assert!(!bridge.instance_is_some());
         assert!(matches!(bridge.sql_config_for_tests(), SqlConfig::None));
     }
@@ -1145,11 +1145,11 @@ icon = "heroicons:x-mark"
         let plugin_dir = tmp.path().join("sql-plugin");
         std::fs::create_dir_all(&plugin_dir).expect("mkdir");
 
-        // Copy the minimal-plugin wasm so the compile step
+        // Copy the minimal-gadget wasm so the compile step
         // passes; we want the migration-read step to fail.
         let wasm_src =
-            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
+        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
             plugin_dir.join("manifest.toml"),
@@ -1159,7 +1159,7 @@ id = "sql-plugin"
 name = "SQL Plugin"
 description = "missing migration"
 version = "0.0.0"
-wasm = "minimal_plugin.wasm"
+wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
 
 [storage.sql]
@@ -1191,7 +1191,7 @@ migrations = ["migrations/001_init.sql"]
     #[test]
     fn ensure_instance_creates_and_is_idempotent() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
 
         let first = bridge.ensure_instance().expect("first ensure");
         assert!(bridge.instance_is_some());
@@ -1206,7 +1206,7 @@ migrations = ["migrations/001_init.sql"]
     #[test]
     fn take_instance_clears_slot() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
 
         assert!(bridge.take_instance().is_none());
 
@@ -1220,7 +1220,7 @@ migrations = ["migrations/001_init.sql"]
     #[test]
     fn re_instantiate_after_take_produces_new_instance() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
 
         // Keep `first` alive across the comparison. Its `ArcInner`
         // slot stays occupied, so the allocator must hand `second`
@@ -1246,7 +1246,7 @@ migrations = ["migrations/001_init.sql"]
         // This is the signal `Plugin::enable` uses to tear
         // the slot back down.
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("failing-enable-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("failing-enable-gadget", tmp.path()).expect("bridge construction");
 
         let instance = bridge.ensure_instance().expect("instantiate");
         assert!(instance.enable().is_err());
@@ -1262,7 +1262,7 @@ migrations = ["migrations/001_init.sql"]
         // dropped, the `Weak` must fail to upgrade — proof
         // that nothing is leaking the wasmtime `Store`.
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
 
         let instance = bridge.ensure_instance().expect("instantiate");
         let weak = bridge.instance_weak().expect("weak snapshot");
@@ -1285,8 +1285,8 @@ migrations = ["migrations/001_init.sql"]
         std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
 
         let wasm_src =
-            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
+        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
             plugin_dir.join("migrations/001_init.sql"),
@@ -1301,7 +1301,7 @@ id = "sql-plugin"
 name = "SQL Plugin"
 description = "plugin with sql config"
 version = "0.0.0"
-wasm = "minimal_plugin.wasm"
+wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
 
 [storage.sql]
@@ -1342,7 +1342,7 @@ migrations = ["migrations/001_init.sql"]
     #[test]
     fn manifest_without_tasks_parses_no_scheduler_entries() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bridge = test_bridge("minimal-plugin", tmp.path()).expect("bridge construction");
+        let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
         assert!(bridge.parsed_tasks.is_empty());
     }
 
@@ -1362,8 +1362,8 @@ migrations = ["migrations/001_init.sql"]
         std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
 
         let wasm_src =
-            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
+        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
             plugin_dir.join("migrations/001_init.sql"),
@@ -1379,7 +1379,7 @@ id = "{plugin_id}"
 name = "SQL Plugin"
 description = "plugin with sql config"
 version = "0.0.0"
-wasm = "minimal_plugin.wasm"
+wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
 
 [storage.sql]
@@ -1468,7 +1468,7 @@ migrations = ["migrations/001_init.sql"]
     #[test]
     fn no_sql_config_creates_no_directory() {
         let app_data = tempfile::tempdir().expect("app data tempdir");
-        let _bridge = test_bridge("minimal-plugin", app_data.path()).expect("bridge construction");
+        let _bridge = test_bridge("minimal-gadget", app_data.path()).expect("bridge construction");
 
         let plugin_home = app_data.path().join("gadget-home");
         assert!(
@@ -1486,8 +1486,8 @@ migrations = ["migrations/001_init.sql"]
         std::fs::create_dir_all(&plugin_dir).expect("mkdir");
 
         let wasm_src =
-            std::path::Path::new(FIXTURE_ROOT).join("minimal-plugin/minimal_plugin.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_plugin.wasm")).expect("copy wasm");
+            std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
+        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
             plugin_dir.join("manifest.toml"),
@@ -1497,7 +1497,7 @@ id = "task-plugin"
 name = "Task Plugin"
 description = "plugin with scheduled tasks"
 version = "0.0.0"
-wasm = "minimal_plugin.wasm"
+wasm = "minimal_gadget.wasm"
 icon = "heroicons:clock"
 
 [[tasks]]
