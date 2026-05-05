@@ -3,7 +3,7 @@ id = "zerotier"
 name = "ZeroTier"
 description = "Manage ZeroTier networks from the launcher."
 version = "0.1.0"
-wasm = "zerotier_plugin.wasm"
+wasm = "zerotier_gadget.wasm"
 # Bundled brand icon — see `assets/ATTRIBUTIONS.md` for the
 # CC0 source and modification notes.
 icon = "assets/icon.svg"

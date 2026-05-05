@@ -3,7 +3,7 @@ id = "open-url"
 name = "Open URL"
 description = "Detect and open URLs typed in the search bar"
 version = "0.1.0"
-wasm = "open_url_plugin.wasm"
+wasm = "open_url_gadget.wasm"
 icon = "heroicons:globe-alt"
 
 [permissions]

@@ -3,7 +3,7 @@ id = "calculator"
 name = "Calculator"
 description = "Evaluate math expressions with history tracking"
 version = "0.1.0"
-wasm = "calculator_plugin.wasm"
+wasm = "calculator_gadget.wasm"
 icon = "heroicons:calculator"
 prefixes = ["="]
 

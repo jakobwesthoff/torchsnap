@@ -40,7 +40,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
-name = "bangs-plugin"
+name = "bangs-gadget"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -76,7 +76,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
-name = "calculator-plugin"
+name = "calculator-gadget"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -131,7 +131,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "emoji-picker-plugin"
+name = "emoji-picker-gadget"
 version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
@@ -231,7 +231,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "hello-world-plugin"
+name = "hello-world-gadget"
 version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
@@ -425,7 +425,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
-name = "open-url-plugin"
+name = "open-url-gadget"
 version = "0.1.0"
 dependencies = [
  "addr",
@@ -672,7 +672,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "template-plugin"
+name = "template-gadget"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1036,7 +1036,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zerotier-plugin"
+name = "zerotier-gadget"
 version = "0.1.0"
 dependencies = [
  "nucleo-matcher",

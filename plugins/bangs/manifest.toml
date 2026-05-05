@@ -3,7 +3,7 @@ id = "bangs"
 name = "Bangs"
 description = "DuckDuckGo bang shortcuts for quick web searches"
 version = "0.1.0"
-wasm = "bangs_plugin.wasm"
+wasm = "bangs_gadget.wasm"
 icon = "heroicons:arrow-top-right-on-square"
 
 [storage.sql]
