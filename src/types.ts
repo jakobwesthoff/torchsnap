@@ -98,9 +98,9 @@ export interface FooterState {
 // Mirrors `src-tauri/src/search/types.rs`.
 // =========================================================
 
-/** Reference to a plugin view component, sent from the backend. */
+/** Reference to a gadget view component, sent from the backend. */
 export interface GadgetViewRef {
-  pluginId: string;
+  gadgetId: string;
   view: string;
   data?: unknown;
 }
@@ -131,10 +131,10 @@ export type SearchMessage =
       type: "searchResults";
       source: ResultSource;
       entries: SourcedEntry[];
-      /** View reference when the plugin requested custom UI. */
-      customPluginView: GadgetViewRef | null;
-      /** View reference when the plugin requested inline UI. */
-      inlinePluginView: GadgetViewRef | null;
+      /** View reference when the gadget requested custom UI. */
+      customGadgetView: GadgetViewRef | null;
+      /** View reference when the gadget requested inline UI. */
+      inlineGadgetView: GadgetViewRef | null;
       /** The prefix that triggered exclusive routing (e.g., ":"). */
       matchedPrefix: string | null;
     }

@@ -221,21 +221,21 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   useControlChannel({ resetState, setQuery });
 
   // =========================================================
-  // Plugin activation via global shortcut
+  // Gadget activation via global shortcut
   //
-  // The backend emits `activate-plugin-custom-ui` when a plugin
+  // The backend emits `activate-gadget-custom-ui` when a gadget
   // shortcut fires and the handler returns ShowCustomUI. We
-  // clear the query and switch to that plugin's view.
+  // clear the query and switch to that gadget's view.
   // =========================================================
 
   useEffect(() => {
-    const unlisten = listen<{ pluginId: string; view: string; data?: unknown }>(
-      "activate-plugin-custom-ui",
+    const unlisten = listen<{ gadgetId: string; view: string; data?: unknown }>(
+      "activate-gadget-custom-ui",
       (event) => {
         setQuery("");
         setSelectedIndex(0);
         setExecuteGadgetView({
-          pluginId: event.payload.pluginId,
+          gadgetId: event.payload.gadgetId,
           view: event.payload.view,
           data: event.payload.data,
         });
@@ -274,7 +274,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // ESLINT: Writing refs during render risks an abandoned concurrent
   // render leaving a stale value that an event handler then reads
   // before the committed render overwrites it. Safe here because
-  // callbacks only read `.pluginId`, which is invariant across
+  // callbacks only read `.gadgetId`, which is invariant across
   // re-renders of the same plugin — a stale ref still holds the
   // correct plugin ID.
   const customGadgetViewRef = useRef(customGadgetView);
@@ -364,7 +364,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       if (!view) return;
 
       const postAction = await command("search_execute", {
-        source: view.pluginId,
+        source: view.gadgetId,
         entryId,
         actionId,
       });
@@ -386,7 +386,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       if (!view) return;
 
       const postAction = await command("search_execute", {
-        source: view.pluginId,
+        source: view.gadgetId,
         entryId,
         actionId,
       });
@@ -414,7 +414,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       }
 
       return sendGadgetMessage<TPayload, TResult, TStream>(
-        view.pluginId,
+        view.gadgetId,
         method,
         payload,
         onMessage,
@@ -453,7 +453,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       }
 
       return sendGadgetMessage<TPayload, TResult, TStream>(
-        view.pluginId,
+        view.gadgetId,
         method,
         payload,
         onMessage,
@@ -464,10 +464,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // Gadget logger — bound to the active gadget view's ID.
   // Recreated when the active gadget changes.
-  const gadgetLoggerId = customGadgetView?.pluginId ?? "host";
+  const gadgetLoggerId = customGadgetView?.gadgetId ?? "host";
   const gadgetLogger = useMemo(() => createLogger(gadgetLoggerId), [gadgetLoggerId]);
 
-  const inlineLoggerId = activeInlineView?.pluginId ?? "host";
+  const inlineLoggerId = activeInlineView?.gadgetId ?? "host";
   const inlineLogger = useMemo(() => createLogger(inlineLoggerId), [inlineLoggerId]);
 
   // =========================================================
@@ -481,12 +481,12 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // see disable toggles immediately via useGadgetInfo().
   // =========================================================
 
-  const gadgetEnabled = useOptionalGadgetEnabled(customGadgetView?.pluginId);
-  const inlineEnabled = useOptionalGadgetEnabled(activeInlineView?.pluginId);
+  const gadgetEnabled = useOptionalGadgetEnabled(customGadgetView?.gadgetId);
+  const inlineEnabled = useOptionalGadgetEnabled(activeInlineView?.gadgetId);
 
   const gadgetInfo = useMemo<GadgetInfo>(
-    () => ({ id: customGadgetView?.pluginId ?? "host", enabled: gadgetEnabled }),
-    [customGadgetView?.pluginId, gadgetEnabled],
+    () => ({ id: customGadgetView?.gadgetId ?? "host", enabled: gadgetEnabled }),
+    [customGadgetView?.gadgetId, gadgetEnabled],
   );
   const gadgetRuntime = useMemo<GadgetRuntime>(
     () => ({ sendMessage, logger: gadgetLogger }),
@@ -505,8 +505,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   );
 
   const inlineInfo = useMemo<GadgetInfo>(
-    () => ({ id: activeInlineView?.pluginId ?? "host", enabled: inlineEnabled }),
-    [activeInlineView?.pluginId, inlineEnabled],
+    () => ({ id: activeInlineView?.gadgetId ?? "host", enabled: inlineEnabled }),
+    [activeInlineView?.gadgetId, inlineEnabled],
   );
   const inlineRuntime = useMemo<GadgetRuntime>(
     () => ({ sendMessage: sendInlineMessage, logger: inlineLogger }),
@@ -565,7 +565,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         // No launcher state change needed.
       } else if (typeof postAction === "object" && "ShowCustomUI" in postAction) {
         setExecuteGadgetView({
-          pluginId: entry.source,
+          gadgetId: entry.source,
           view: postAction.ShowCustomUI.view,
           data: postAction.ShowCustomUI.data,
         });
@@ -653,7 +653,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     contentBody = (
       <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
         <PluginViewContainer
-          gadgetId={customGadgetView.pluginId}
+          gadgetId={customGadgetView.gadgetId}
           viewName={customGadgetView.view}
           info={gadgetInfo}
           runtime={gadgetRuntime}
@@ -674,7 +674,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
           >
             <InlineViewContainer
-              gadgetId={activeInlineView.pluginId}
+              gadgetId={activeInlineView.gadgetId}
               viewName={activeInlineView.view}
               info={inlineInfo}
               runtime={inlineRuntime}

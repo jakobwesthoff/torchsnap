@@ -35,13 +35,13 @@ export interface GadgetViewProps {
 // =========================================================
 
 /**
- * Reference to a plugin view component, sent from the backend.
- * The frontend resolves this to a React component via the plugin
- * registry: `registry[pluginId].views[view]` for CustomUI,
- * `registry[pluginId].inlineViews[view]` for InlineUI.
+ * Reference to a gadget view component, sent from the backend.
+ * The frontend resolves this to a React component via the gadget
+ * registry: `registry[gadgetId].views[view]` for CustomUI,
+ * `registry[gadgetId].inlineViews[view]` for InlineUI.
  */
 export interface GadgetViewRef {
-  pluginId: string;
+  gadgetId: string;
   view: string;
   data?: unknown;
 }

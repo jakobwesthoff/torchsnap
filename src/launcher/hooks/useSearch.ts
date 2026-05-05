@@ -127,16 +127,16 @@ export function useSearch(query: string): UseSearchResult {
           setResults(flat);
 
           if (isFirstMessageOfGeneration) {
-            setCustomGadgetView(message.customPluginView);
-            setInlineGadgetView(message.inlinePluginView);
+            setCustomGadgetView(message.customGadgetView);
+            setInlineGadgetView(message.inlineGadgetView);
             setMatchedPrefix(message.matchedPrefix);
             isFirstMessageOfGeneration = false;
           } else {
-            if (message.customPluginView != null) {
-              setCustomGadgetView((prev) => prev ?? message.customPluginView);
+            if (message.customGadgetView != null) {
+              setCustomGadgetView((prev) => prev ?? message.customGadgetView);
             }
-            if (message.inlinePluginView != null) {
-              setInlineGadgetView((prev) => prev ?? message.inlinePluginView);
+            if (message.inlineGadgetView != null) {
+              setInlineGadgetView((prev) => prev ?? message.inlineGadgetView);
             }
             if (message.matchedPrefix != null) {
               setMatchedPrefix((prev) => prev ?? message.matchedPrefix);
