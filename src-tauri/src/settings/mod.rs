@@ -37,10 +37,10 @@ use tauri_plugin_store::Store;
 /// already have a value are left untouched.
 ///
 /// ```ignore
-/// SettingsInit::from_store(&store, "plugins.clipboard-manager.")
+/// SettingsInit::from_store(&store, "gadgets.clipboard-manager.")
 ///     .ensure("pollingInterval", 500)
 ///     .ensure("retentionDays", 30)
-///     .apply(&store, "plugins.clipboard-manager.");
+///     .apply(&store, "gadgets.clipboard-manager.");
 /// ```
 pub struct SettingsInit {
     entries: HashMap<String, Value>,
@@ -51,7 +51,7 @@ impl SettingsInit {
     ///
     /// The prefix is stripped from keys in the returned map, so
     /// callers work with short names (e.g., `"pollingInterval"`
-    /// rather than `"plugins.clipboard-manager.pollingInterval"`).
+    /// rather than `"gadgets.clipboard-manager.pollingInterval"`).
     pub fn from_store<R: tauri::Runtime>(store: &Arc<Store<R>>, prefix: &str) -> Self {
         let mut entries = HashMap::new();
         for (key, value) in store.entries() {
@@ -123,7 +123,7 @@ impl SettingsInit {
 /// Scoped read-only access to a plugin's settings namespace.
 ///
 /// Wraps the app-wide settings store with a fixed key prefix
-/// (`plugins.<id>.`) so plugins can read their own settings
+/// (`gadgets.<id>.`) so plugins can read their own settings
 /// without knowing the full key path.
 ///
 /// Injected into `Plugin::enable()` (via `GadgetContext`)
@@ -150,7 +150,7 @@ impl<R: tauri::Runtime> GadgetSettings<R> {
     pub fn new(store: Arc<Store<R>>, plugin_id: &str) -> Self {
         Self {
             store,
-            prefix: format!("plugins.{plugin_id}."),
+            prefix: format!("gadgets.{plugin_id}."),
         }
     }
 

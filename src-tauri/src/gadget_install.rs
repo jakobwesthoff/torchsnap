@@ -36,7 +36,7 @@
 //    any (dev-style user plugin), and the state tree at
 //    `<app_data_dir>/plugin-home/<id>/`.
 // 3. Strip settings keys — `enabled.<id>` and every
-//    `plugins.<id>.*` key. The exact-match-plus-prefix
+//    `gadgets.<id>.*` key. The exact-match-plus-prefix
 //    design keeps unrelated plugins' settings intact even
 //    when plugin ids share a textual prefix (e.g. `calc` vs
 //    `calculator`).
@@ -242,17 +242,17 @@ fn uninstall_impl(
 
     // Strip the plugin's settings keys. The store API has no
     // bulk delete, so we snapshot the matching keys first and
-    // delete them by name. A `plugins.<id>.` prefix test plus
+    // delete them by name. A `gadgets.<id>.` prefix test plus
     // the exact `enabled.<id>` key together cover every key
     // the host writes for a plugin; unrelated plugins whose id
     // shares a text prefix (e.g. `calc` vs `calculator`) are
-    // left alone because `plugins.calc.` does not match
-    // `plugins.calculator.foo`.
+    // left alone because `gadgets.calc.` does not match
+    // `gadgets.calculator.foo`.
     let store = app
         .store("settings.json")
         .context("open settings store for uninstall cleanup")?;
     let enabled_key = format!("enabled.{plugin_id}");
-    let prefix = format!("plugins.{plugin_id}.");
+    let prefix = format!("gadgets.{plugin_id}.");
     let mut to_delete: Vec<String> = Vec::new();
     for (key, _) in store.entries() {
         if key == enabled_key || key.starts_with(&prefix) {
@@ -303,7 +303,7 @@ mod tests {
     /// keep these tests passing.
     fn keys_to_strip_for(plugin_id: &str, all_keys: &[&str]) -> Vec<String> {
         let enabled_key = format!("enabled.{plugin_id}");
-        let prefix = format!("plugins.{plugin_id}.");
+        let prefix = format!("gadgets.{plugin_id}.");
         all_keys
             .iter()
             .filter(|k| **k == enabled_key || k.starts_with(&prefix))
@@ -321,9 +321,9 @@ mod tests {
     #[test]
     fn cleanup_matches_plugin_settings_prefix() {
         let keys = [
-            "plugins.foo.alpha",
-            "plugins.foo.beta",
-            "plugins.foo.nested.key",
+            "gadgets.foo.alpha",
+            "gadgets.foo.beta",
+            "gadgets.foo.nested.key",
         ];
         let stripped = keys_to_strip_for("foo", &keys);
         assert_eq!(stripped.len(), 3);
@@ -338,14 +338,14 @@ mod tests {
         let keys = [
             "enabled.calc",
             "enabled.calculator",
-            "plugins.calc.shortcut",
-            "plugins.calculator.history",
-            "plugins.calculator.enabled",
+            "gadgets.calc.shortcut",
+            "gadgets.calculator.history",
+            "gadgets.calculator.enabled",
         ];
         let stripped = keys_to_strip_for("calc", &keys);
         assert_eq!(stripped.len(), 2);
         assert!(stripped.contains(&"enabled.calc".to_string()));
-        assert!(stripped.contains(&"plugins.calc.shortcut".to_string()));
+        assert!(stripped.contains(&"gadgets.calc.shortcut".to_string()));
     }
 
     #[test]
@@ -355,7 +355,7 @@ mod tests {
             "frecency.enabled",
             "websiteMetadata.cacheTtlDays",
             "enabled.other-plugin",
-            "plugins.other-plugin.key",
+            "gadgets.other-plugin.key",
         ];
         let stripped = keys_to_strip_for("foo", &keys);
         assert!(

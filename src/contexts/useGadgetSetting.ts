@@ -6,7 +6,7 @@
 // useGadgetSetting
 //
 // Reactive accessor for a single setting in the active
-// plugin's namespace. Reads from `plugins.<id>.<key>` in the
+// plugin's namespace. Reads from `gadgets.<id>.<key>` in the
 // global settings store; writes propagate cross-window.
 //
 // The plugin id is derived from the surrounding
@@ -21,5 +21,5 @@ import { useGadgetInfo } from "./useGadgetInfo";
 
 export function useGadgetSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
   const { id } = useGadgetInfo();
-  return useSetting<T>(`plugins.${id}.${key}`);
+  return useSetting<T>(`gadgets.${id}.${key}`);
 }

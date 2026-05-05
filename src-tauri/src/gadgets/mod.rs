@@ -164,9 +164,9 @@ pub trait Gadget: Send + Sync {
 
     /// React to a settings change in this plugin's namespace.
     ///
-    /// Called by the host whenever a key in `plugins.<id>.*` changes
+    /// Called by the host whenever a key in `gadgets.<id>.*` changes
     /// at runtime. The `key` is relative to the plugin namespace
-    /// (e.g., `"retentionDays"`, not `"plugins.calculator.retentionDays"`).
+    /// (e.g., `"retentionDays"`, not `"gadgets.calculator.retentionDays"`).
     ///
     /// This is dispatched through a `CoalescingDispatcher` — rapid
     /// changes to the same key are deduplicated to the latest value.
