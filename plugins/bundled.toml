@@ -10,7 +10,7 @@
 # Each entry must match a subdirectory of `plugins/`. IDs are
 # listed one-per-line (trailing comma allowed) so that adding
 # or removing a plugin produces a clean, one-line diff.
-plugins = [
+gadgets = [
     "calculator",
     "emoji-picker",
     "bangs",
