@@ -349,7 +349,7 @@ mod tests {
         let raw = rule(
             "git",
             vec![ArgvConstraint::Literal {
-                value: "${plugin-archive}/repos".to_string(),
+                value: "${gadget-archive}/repos".to_string(),
             }],
         );
         let compiled = compile_rule(&raw, 0, &default_ctx()).expect("compile");
@@ -366,7 +366,7 @@ mod tests {
         let raw = rule(
             "git",
             vec![ArgvConstraint::PathUnder {
-                root: "${plugin-data}/repos".to_string(),
+                root: "${gadget-data}/repos".to_string(),
             }],
         );
         let compiled = compile_rule(&raw, 0, &default_ctx()).expect("compile");
@@ -581,7 +581,7 @@ mod tests {
         let raw = rule(
             "ls",
             vec![ArgvConstraint::PathUnder {
-                root: "${plugin-data}".to_string(),
+                root: "${gadget-data}".to_string(),
             }],
         );
         let compiled = vec![compile_rule(&raw, 0, &ctx).unwrap()];
@@ -600,7 +600,7 @@ mod tests {
         let raw = rule(
             "ls",
             vec![ArgvConstraint::PathUnder {
-                root: "${plugin-data}".to_string(),
+                root: "${gadget-data}".to_string(),
             }],
         );
         let compiled = vec![compile_rule(&raw, 0, &ctx).unwrap()];
@@ -624,7 +624,7 @@ mod tests {
         let raw = rule(
             "ls",
             vec![ArgvConstraint::PathUnder {
-                root: "${plugin-data}".to_string(),
+                root: "${gadget-data}".to_string(),
             }],
         );
         let compiled = vec![compile_rule(&raw, 0, &ctx).unwrap()];

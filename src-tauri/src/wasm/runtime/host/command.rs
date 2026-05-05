@@ -64,7 +64,7 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
 
         // 2. Resolve the working directory. The plugin can override
         //    per call via `options.cwd`; otherwise we default to
-        //    `<plugin-data>/exec-cwd/`, lazily created. Without a
+        //    `<gadget-data>/exec-cwd/`, lazily created. Without a
         //    `PathContext` the plugin is effectively pre-enable, so
         //    we can't resolve the default — surface that as a
         //    spawn-failed error for clarity.

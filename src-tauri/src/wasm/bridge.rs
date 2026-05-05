@@ -110,12 +110,12 @@ pub struct WasmGadgetBridge {
     /// move under the plugin). Empty when the manifest declares
     /// no rules.
     command_rules_raw: Vec<super::manifest::CommandPermissionDef>,
-    /// Resolved `${plugin-data}` for this plugin —
-    /// `<app_data_dir>/plugin-home/<plugin-id>/`. Re-stashed
+    /// Resolved `${gadget-data}` for this plugin —
+    /// `<app_data_dir>/gadget-home/<plugin-id>/`. Re-stashed
     /// on every fresh instance so per-call `paths::resolve`
     /// substitutions go through one source of truth.
     plugin_data: PathBuf,
-    /// Resolved `${plugin-archive}` for this plugin — the
+    /// Resolved `${gadget-archive}` for this plugin — the
     /// directory root for `DirectorySource`, or the
     /// `.torchsnap` archive file for `ArchiveSource`. See the
     /// `GadgetSource::root_path` docs for the per-source
@@ -168,9 +168,9 @@ impl WasmGadgetBridge {
     /// once to read the WASM bytes and any SQL migration
     /// files). `app_data_dir` is the host's per-app data
     /// root; the plugin's database lives at
-    /// `<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3`.
+    /// `<app_data_dir>/gadget-home/<plugin-id>/sql/storage.sqlite3`.
     ///
-    /// The `plugin-home/<plugin-id>/` tree is the plugin's
+    /// The `gadget-home/<plugin-id>/` tree is the plugin's
     /// host-managed state root — `sql/` sits alongside
     /// future sibling slots (e.g. `files/`, `cache/`).
     /// Separating state from code lets `plugins/` remain a
@@ -220,7 +220,7 @@ impl WasmGadgetBridge {
                 }
 
                 let db_path: PathBuf = app_data_dir
-                    .join("plugin-home")
+                    .join("gadget-home")
                     .join(plugin_id.as_str())
                     .join("sql")
                     .join("storage.sqlite3");
@@ -272,9 +272,9 @@ impl WasmGadgetBridge {
         // `paths::resolve` host import (and, in the next
         // sub-phase, command-rule compilation) will need.
         // Plugin-archive comes from the source's filesystem
-        // root; plugin-data is the per-plugin host-managed
-        // state directory under `<app_data_dir>/plugin-home/`.
-        let plugin_data = app_data_dir.join("plugin-home").join(plugin_id.as_str());
+        // root; gadget-data is the per-plugin host-managed
+        // state directory under `<app_data_dir>/gadget-home/`.
+        let plugin_data = app_data_dir.join("gadget-home").join(plugin_id.as_str());
         let plugin_archive = source.root_path().to_path_buf();
 
         // Pre-parse every `[[tasks]]` schedule. The manifest
@@ -533,10 +533,10 @@ async fn scheduler_loop(
 }
 
 /// Build a [`PathContext`] resolving the five `${...}`
-/// substitution variables (`plugin-data`, `plugin-archive`,
+/// substitution variables (`gadget-data`, `gadget-archive`,
 /// `home`, `xdg-config`, `xdg-data`) for one plugin
 /// instance. Called from `enable()` once per re-enable
-/// cycle. The plugin-data and plugin-archive paths come
+/// cycle. The gadget-data and gadget-archive paths come
 /// from the bridge (the bridge already has them); the
 /// XDG-style paths come from Tauri's path resolver, which
 /// produces platform-correct values (`Application Support`
@@ -1402,11 +1402,11 @@ migrations = ["migrations/001_init.sql"]
     }
 
     /// The host-managed storage path must follow the
-    /// `plugin-home/<id>/sql/storage.sqlite3` layout.
+    /// `gadget-home/<id>/sql/storage.sqlite3` layout.
     /// This is a structural guarantee for both plugin
     /// authors (who reason about where their data lives)
     /// and the uninstall flow (which deletes the
-    /// `plugin-home/<id>/` subtree to clean up).
+    /// `gadget-home/<id>/` subtree to clean up).
     #[test]
     fn sql_config_uses_plugin_home_layout() {
         let source_root = tempfile::tempdir().expect("source tempdir");
@@ -1418,7 +1418,7 @@ migrations = ["migrations/001_init.sql"]
             SqlConfig::Configured { db_path, .. } => {
                 let expected = app_data
                     .path()
-                    .join("plugin-home")
+                    .join("gadget-home")
                     .join("layout-plugin")
                     .join("sql")
                     .join("storage.sqlite3");
@@ -1463,17 +1463,17 @@ migrations = ["migrations/001_init.sql"]
     }
 
     /// A plugin with no `[storage.sql]` block must not cause
-    /// any `plugin-home/` directory to be created: the bridge
+    /// any `gadget-home/` directory to be created: the bridge
     /// constructor is a no-op for storage in that case.
     #[test]
     fn no_sql_config_creates_no_directory() {
         let app_data = tempfile::tempdir().expect("app data tempdir");
         let _bridge = test_bridge("minimal-plugin", app_data.path()).expect("bridge construction");
 
-        let plugin_home = app_data.path().join("plugin-home");
+        let plugin_home = app_data.path().join("gadget-home");
         assert!(
             !plugin_home.exists(),
-            "plugin-home/ must not be created for a plugin without [storage.sql]"
+            "gadget-home/ must not be created for a plugin without [storage.sql]"
         );
     }
 

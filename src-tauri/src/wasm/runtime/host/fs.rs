@@ -365,8 +365,8 @@ mod tests {
     fn ctx_for(tmp: &TempDir) -> PathContext {
         let root = tmp.path().to_path_buf();
         PathContext {
-            plugin_data: root.join("plugin-data"),
-            plugin_archive: root.join("plugin-archive"),
+            plugin_data: root.join("gadget-data"),
+            plugin_archive: root.join("gadget-archive"),
             home: root.join("home"),
             xdg_config: root.join("xdg-config"),
             xdg_data: root.join("xdg-data"),
