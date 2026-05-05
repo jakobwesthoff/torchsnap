@@ -110,13 +110,13 @@ pub trait GadgetSource: Send + Sync {
 
     /// Filesystem path that backs this source — the directory
     /// for `DirectorySource`, the `.torchsnap` archive file for
-    /// `ArchiveSource`. Used to populate the `${plugin-archive}`
+    /// `ArchiveSource`. Used to populate the `${gadget-archive}`
     /// substitution variable so command rules and runtime
     /// `paths::resolve` calls can refer to it.
     ///
     /// For `ArchiveSource` the returned path is the archive
     /// file itself (not its contents), so paths constructed as
-    /// `${plugin-archive}/foo` will not canonicalize to a real
+    /// `${gadget-archive}/foo` will not canonicalize to a real
     /// file under it. That is correct: archive contents are
     /// reachable via `assets::read`, not via filesystem paths.
     /// Bundled-binary support (deferred — see
@@ -396,7 +396,7 @@ pub struct ArchiveSource {
     archive: Mutex<zip::ZipArchive<std::fs::File>>,
     manifest: Manifest,
     /// Path to the `.torchsnap` archive file on disk. Returned
-    /// by `root_path()` for the `${plugin-archive}` variable
+    /// by `root_path()` for the `${gadget-archive}` variable
     /// substitution (see GadgetSource trait docs).
     archive_path: PathBuf,
 }

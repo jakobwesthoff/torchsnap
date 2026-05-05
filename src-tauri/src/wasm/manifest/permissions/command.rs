@@ -46,7 +46,7 @@ pub struct CommandPermissionDef {
     /// Optional default working directory for invocations
     /// matching this rule. Plugin can override per-call;
     /// when omitted, the host falls back to the per-plugin
-    /// scratch directory at `${plugin-data}/exec-cwd/`.
+    /// scratch directory at `${gadget-data}/exec-cwd/`.
     pub cwd: Option<String>,
 
     /// Hard ceiling on `command-options.timeout-ms` for
@@ -135,8 +135,8 @@ pub(super) fn validate_rules(rules: &[CommandPermissionDef]) -> anyhow::Result<(
 /// - `regex`       — argv element must match `pattern` (anchored).
 /// - `path-under`  — argv element parses as an absolute path that
 ///                   canonicalizes under `root`. `root` may use the
-///                   substitution variables `${plugin-data}`,
-///                   `${plugin-archive}`, `${home}`, `${xdg-config}`,
+///                   substitution variables `${gadget-data}`,
+///                   `${gadget-archive}`, `${home}`, `${xdg-config}`,
 ///                   `${xdg-data}`.
 /// - `any-string`  — argv element accepted unconditionally.
 /// - `rest`        — applies `constraint` to every remaining argv
@@ -420,7 +420,7 @@ mod tests {
                    { kind = "enum", values = ["HEAD", "main"] },
                    { kind = "glob", pattern = "refs/heads/*" },
                    { kind = "regex", pattern = "[0-9a-f]{40}" },
-                   { kind = "path-under", root = "${plugin-data}/repos" },
+                   { kind = "path-under", root = "${gadget-data}/repos" },
                    { kind = "any-string" },
                    { kind = "rest", constraint = { kind = "any-string" } },
                ]"#,
@@ -534,8 +534,8 @@ mod tests {
     #[test]
     fn accept_recognized_variables_in_literal() {
         for var in &[
-            "plugin-data",
-            "plugin-archive",
+            "gadget-data",
+            "gadget-archive",
             "home",
             "xdg-config",
             "xdg-data",

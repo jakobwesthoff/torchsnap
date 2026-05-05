@@ -34,7 +34,7 @@
 // 2. Remove the archive at `<app_data_dir>/plugins/<id>.torchsnap`,
 //    the unpacked dir at `<app_data_dir>/plugins/<id>/` if
 //    any (dev-style user plugin), and the state tree at
-//    `<app_data_dir>/plugin-home/<id>/`.
+//    `<app_data_dir>/gadget-home/<id>/`.
 // 3. Strip settings keys — `enabled.<id>` and every
 //    `gadgets.<id>.*` key. The exact-match-plus-prefix
 //    design keeps unrelated plugins' settings intact even
@@ -179,7 +179,7 @@ fn install_impl(
 
 /// Uninstall a user-installed plugin. Rejects built-in,
 /// system, and dev plugins. Removes the archive, the
-/// optional unpacked dir, the plugin-home state tree, and
+/// optional unpacked dir, the gadget-home state tree, and
 /// the plugin's settings keys.
 #[tauri::command]
 pub async fn uninstall_user_gadget(
@@ -232,12 +232,12 @@ fn uninstall_impl(
         std::fs::remove_dir_all(&dir).context("remove plugin directory")?;
     }
 
-    // State tree: `<app_data_dir>/plugin-home/<id>/`. Dropped
+    // State tree: `<app_data_dir>/gadget-home/<id>/`. Dropped
     // unconditionally; the plugin can never reach it after the
     // restart the caller is about to perform.
-    let home = app_data_dir.join("plugin-home").join(plugin_id);
+    let home = app_data_dir.join("gadget-home").join(plugin_id);
     if home.exists() {
-        std::fs::remove_dir_all(&home).context("remove plugin-home directory")?;
+        std::fs::remove_dir_all(&home).context("remove gadget-home directory")?;
     }
 
     // Strip the plugin's settings keys. The store API has no

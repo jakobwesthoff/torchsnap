@@ -24,9 +24,9 @@
 //
 // 3. The `paths::resolve` host import lets plugins resolve
 //    the same template syntax at runtime, so a manifest
-//    declaration like `path-under = "${plugin-archive}/foo"`
+//    declaration like `path-under = "${gadget-archive}/foo"`
 //    has a 1:1 plugin-side equivalent
-//    `paths::resolve("${plugin-archive}/foo")`.
+//    `paths::resolve("${gadget-archive}/foo")`.
 //
 // Keeping the recognized list, the parser, and the
 // substituter in one module means manifest validation and
@@ -43,8 +43,8 @@ use thiserror::Error;
 /// does not appear here is rejected at the appropriate
 /// stage (manifest parse or runtime resolve).
 pub const RECOGNIZED_PERMISSION_VARIABLES: &[&str] = &[
-    "plugin-data",
-    "plugin-archive",
+    "gadget-data",
+    "gadget-archive",
     "home",
     "xdg-config",
     "xdg-data",
@@ -68,8 +68,8 @@ impl PathContext {
     /// [`RECOGNIZED_PERMISSION_VARIABLES`].
     pub fn lookup(&self, name: &str) -> Option<&std::path::Path> {
         match name {
-            "plugin-data" => Some(self.plugin_data.as_path()),
-            "plugin-archive" => Some(self.plugin_archive.as_path()),
+            "gadget-data" => Some(self.plugin_data.as_path()),
+            "gadget-archive" => Some(self.plugin_archive.as_path()),
             "home" => Some(self.home.as_path()),
             "xdg-config" => Some(self.xdg_config.as_path()),
             "xdg-data" => Some(self.xdg_data.as_path()),
@@ -275,7 +275,7 @@ mod tests {
     fn validate_rejects_first_unknown_variable_in_chain() {
         // First unrecognized name should be the one named in
         // the error — confirms we're tokenizing left-to-right.
-        let err = validate_variable_references("${plugin-data}/${unknown}/${home}", "test", 0)
+        let err = validate_variable_references("${gadget-data}/${unknown}/${home}", "test", 0)
             .unwrap_err();
         assert!(err.to_string().contains("unknown"));
     }
@@ -284,20 +284,20 @@ mod tests {
 
     #[test]
     fn substitute_replaces_single_variable() {
-        let resolved = substitute_variables("${plugin-data}", &ctx()).expect("should substitute");
+        let resolved = substitute_variables("${gadget-data}", &ctx()).expect("should substitute");
         assert_eq!(resolved, "/data/plug");
     }
 
     #[test]
     fn substitute_preserves_literal_segments() {
         let resolved =
-            substitute_variables("${plugin-data}/repos/local", &ctx()).expect("should substitute");
+            substitute_variables("${gadget-data}/repos/local", &ctx()).expect("should substitute");
         assert_eq!(resolved, "/data/plug/repos/local");
     }
 
     #[test]
     fn substitute_handles_multiple_variables() {
-        let resolved = substitute_variables("PRE_${plugin-data}_MID_${home}_END", &ctx())
+        let resolved = substitute_variables("PRE_${gadget-data}_MID_${home}_END", &ctx())
             .expect("should substitute");
         assert_eq!(resolved, "PRE_/data/plug_MID_/home/jake_END");
     }
@@ -326,9 +326,9 @@ mod tests {
 
     #[test]
     fn substitute_returns_unterminated_error() {
-        let err = substitute_variables("${plugin-data", &ctx()).unwrap_err();
+        let err = substitute_variables("${gadget-data", &ctx()).unwrap_err();
         match err {
-            ResolveError::Unterminated(rest) => assert!(rest.starts_with("${plugin-data")),
+            ResolveError::Unterminated(rest) => assert!(rest.starts_with("${gadget-data")),
             other => panic!("expected Unterminated, got {other:?}"),
         }
     }

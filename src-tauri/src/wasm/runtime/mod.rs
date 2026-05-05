@@ -1337,7 +1337,7 @@ icon = "heroicons:beaker"
             .expect("instantiate command fixture");
 
         // Stash a path context so the default cwd resolution
-        // (`<plugin-data>/exec-cwd/`) has somewhere real to
+        // (`<gadget-data>/exec-cwd/`) has somewhere real to
         // create. The tempdir lives on so the test's child
         // process actually has a valid cwd at spawn time.
         let scratch = tempfile::TempDir::new().expect("scratch tempdir");
