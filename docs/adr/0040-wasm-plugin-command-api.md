@@ -6,6 +6,8 @@ Date: 2026-04-27
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 ADR 0036 set the trust-model invariant: the WIT capability surface is
@@ -47,7 +49,7 @@ verification a heavier capability needs.
 
 Add a `command` interface to the WIT world with one function:
 
-```wit
+````wit
 interface command {
     record command-options {
         args:             list<string>,
@@ -76,13 +78,12 @@ interface command {
     run: func(binary: string, options: command-options)
          -> result<command-result, command-error>;
 }
-```
+````
 
 The function is synchronous from the guest's perspective. The host
 runs the spawn on tokio via `tokio::task::block_in_place`, mirroring
 the bridge pattern established by `http::fetch` (ADR 0038). No
-shell is invoked: argv goes directly to `Command::new(binary).args
-(args)`. No process handles are returned; no streaming; no PTY.
+shell is invoked: argv goes directly to `Command::new(binary).args (args)`. No process handles are returned; no streaming; no PTY.
 The `Mutex<Store<PluginState>>` already serializes guest calls per
 plugin, so a plugin has at most one in-flight `run` at a time —
 the cap is 1 by architecture, not by manifest.
@@ -92,7 +93,7 @@ the cap is 1 by architecture, not by manifest.
 Plugins declare repeated `[[permissions.command]]` rules in
 `manifest.toml`:
 
-```toml
+````toml
 [[permissions.command]]
 binary = "mdfind"
 argv = [
@@ -105,20 +106,20 @@ argv = [
     { kind = "literal", literal = "rev-parse" },
     { kind = "literal", literal = "HEAD" },
 ]
-```
+````
 
 Each rule names a binary (PATH-resolved name or absolute path) and
 a sequence of argv constraints. Constraint kinds:
 
-- `literal` — exact byte match
-- `enum` — one of N exact strings
-- `glob` — shape match against a glob pattern
-- `regex` — anchored regex (compiled at parse time)
-- `path-under` — canonicalized path lies under a declared root,
+* `literal` — exact byte match
+* `enum` — one of N exact strings
+* `glob` — shape match against a glob pattern
+* `regex` — anchored regex (compiled at parse time)
+* `path-under` — canonicalized path lies under a declared root,
   no symlink escape, supports not-yet-existing files via the
   shared `path_safety::canonical_under_root` helper
-- `any-string` — explicit acknowledgement of free-form input
-- `rest` — applies a constraint to all remaining argv positions
+* `any-string` — explicit acknowledgement of free-form input
+* `rest` — applies a constraint to all remaining argv positions
 
 Variables `${plugin-data}`, `${plugin-archive}`, `${home}`,
 `${xdg-config}`, `${xdg-data}` are resolved once at plugin enable
@@ -196,12 +197,12 @@ have something to debug with.
 Base env = host process env minus a denylist, then plugin
 overrides layered on top:
 
-- Stripped: `LD_PRELOAD`, `LD_LIBRARY_PATH`,
+* Stripped: `LD_PRELOAD`, `LD_LIBRARY_PATH`,
   `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `SSH_AUTH_SOCK`,
   `GPG_AGENT_INFO`.
-- Pattern-stripped: keys matching `*_TOKEN`, `*_KEY`,
+* Pattern-stripped: keys matching `*_TOKEN`, `*_KEY`,
   `*_PASSWORD`, `*_SECRET` (case-insensitive).
-- `PATH` is the host's `PATH` with empty entries removed.
+* `PATH` is the host's `PATH` with empty entries removed.
 
 A plugin can re-set any stripped variable explicitly via
 `command-options.env` if it genuinely needs to (`SSH_AUTH_SOCK`
@@ -221,7 +222,7 @@ call.
 `opener` (ADR 0037) currently exposes only `open-url` with a
 scheme allowlist. This ADR extends it:
 
-```wit
+````wit
 interface opener {
     variant opener-error {
         permission-denied(string),
@@ -232,22 +233,21 @@ interface opener {
     open-path:   func(path: string) -> result<_, opener-error>;
     reveal-path: func(path: string) -> result<_, opener-error>;
 }
-```
+````
 
-The shared `opener-error` variant replaces the original `result<_,
-string>` shape so plugins switch on a typed error value instead of
+The shared `opener-error` variant replaces the original `result<_, string>` shape so plugins switch on a typed error value instead of
 string-matching free-form messages, matching the pattern of
 `http-error` and `command-error`. `invalid-url` is only emitted by
 `open-url` (the path operations have no equivalent parse step).
 
 Each new function is gated by a boolean in `[permissions.opener]`:
 
-```toml
+````toml
 [permissions.opener]
 schemes      = ["https"]
 open-path    = true
 reveal-path  = true
-```
+````
 
 The booleans replace an originally-considered `path-roots`
 allowlist. A plugin author who wanted unrestricted path access
@@ -260,14 +260,14 @@ precision.
 
 ### A small `platform` interface
 
-```wit
+````wit
 interface platform {
     variant os   { macos, linux, windows, other(string) }
     variant arch { x86-64, aarch64, other(string) }
     os:   func() -> os;
     arch: func() -> arch;
 }
-```
+````
 
 WASM/WASI does not expose host OS or architecture. Plugins
 making platform-conditional decisions (different binaries on
@@ -287,7 +287,7 @@ satisfy a `path-under` constraint must be able to discover the
 same resolved values — otherwise an `${plugin-archive}/helper`
 constraint is unreachable from plugin code.
 
-```wit
+````wit
 interface paths {
     variant resolve-error {
         unknown-variable(string),
@@ -295,7 +295,7 @@ interface paths {
     }
     resolve: func(template: string) -> result<string, resolve-error>;
 }
-```
+````
 
 Single function, identical template syntax to the manifest. A plugin
 declaring `path-under = "${plugin-archive}/repos"` in its manifest
@@ -444,8 +444,7 @@ documented in the SDK docs.
 
 ### Explicitly deferred
 
-* **Bundled plugin executables** (`binary =
-  "${plugin-archive}/helper"`). Tracked in
+* **Bundled plugin executables** (`binary = "${plugin-archive}/helper"`). Tracked in
   `todos/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`.
   Requires archive-format mode preservation and (on macOS)
   quarantine-attribute handling and code-signing strategy.

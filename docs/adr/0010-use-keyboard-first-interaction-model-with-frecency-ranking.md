@@ -6,6 +6,8 @@ Date: 2026-03-25
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 The launcher's interaction model shapes every user-facing feature.
@@ -15,11 +17,11 @@ together to avoid contradictory UX patterns.
 
 Key tensions:
 
-- **Speed vs discoverability**: Power users want zero friction;
+* **Speed vs discoverability**: Power users want zero friction;
   new users need to learn how the launcher works.
-- **Mouse vs keyboard**: Supporting both without either feeling
+* **Mouse vs keyboard**: Supporting both without either feeling
   like an afterthought.
-- **Static ranking vs learned ranking**: Fixed plugin priority is
+* **Static ranking vs learned ranking**: Fixed plugin priority is
   predictable but doesn't adapt; ML-style ranking adapts but can
   feel unpredictable.
 
@@ -38,9 +40,10 @@ is never required. Every action is reachable via keyboard alone.
 
 **Mouse hover suppression** prevents results that appear under a
 stationary cursor from auto-selecting. A `mouseActiveRef` gate:
-- Set to `false` on window focus, query change, keyboard navigation
-- Set to `true` only on `onMouseMove` over the list container
-- `onMouseEnter` per row only updates selection when gate is open
+
+* Set to `false` on window focus, query change, keyboard navigation
+* Set to `true` only on `onMouseMove` over the list container
+* `onMouseEnter` per row only updates selection when gate is open
 
 ### Result ranking
 
@@ -67,27 +70,27 @@ animations. Respect `prefers-reduced-motion`.
 ### UX principles
 
 1. Speed over features — every interaction feels instant
-2. Keyboard-first — mouse works but is never required
-3. Minimal chrome — feels like part of the OS
-4. Progressive disclosure — simple by default, power through
+1. Keyboard-first — mouse works but is never required
+1. Minimal chrome — feels like part of the OS
+1. Progressive disclosure — simple by default, power through
    exploration
-5. Consistent behavior — Enter executes, Escape dismisses, arrows
+1. Consistent behavior — Enter executes, Escape dismisses, arrows
    navigate, across all plugins
 
 ## Consequences
 
-- Frecency ranking requires persistent storage of user selections
+* Frecency ranking requires persistent storage of user selections
   and a scoring algorithm. Adds complexity compared to static
   ranking, but produces a launcher that improves with use.
-- Query reset on show means no "resume where I left off" capability.
+* Query reset on show means no "resume where I left off" capability.
   This is intentional — the launcher is for quick lookups, not
   sustained workflows.
-- Mouse hover suppression adds a ref-based gate pattern to every
+* Mouse hover suppression adds a ref-based gate pattern to every
   component that renders result rows. Small implementation cost for
   a significant UX improvement.
-- Dynamic card height requires measuring content and animating
+* Dynamic card height requires measuring content and animating
   smoothly. More complex than fixed height, but avoids wasted space
   and oversized empty states.
-- The keyboard-first principle means every new feature must be
+* The keyboard-first principle means every new feature must be
   audited for keyboard reachability. This is a design constraint,
   not just a preference.

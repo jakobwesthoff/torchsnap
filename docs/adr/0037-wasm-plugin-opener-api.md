@@ -6,6 +6,8 @@ Date: 2026-04-19
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 WASM plugins need a way to open URLs in the OS default handler (browser,
@@ -30,21 +32,21 @@ already reserves the namespace for the future `reveal-path` function.
 Add a new `interface opener` host import to the WIT world with a single
 `open-url` function:
 
-```wit
+````wit
 interface opener {
     open-url: func(url: string) -> result<_, string>;
 }
-```
+````
 
 ### Permission model: scheme allowlist from manifest
 
 Plugins declare which URL schemes they may open under `[permissions.opener]`
 in `manifest.toml`:
 
-```toml
+````toml
 [permissions.opener]
 schemes = ["https", "http"]
-```
+````
 
 The host enforces the allowlist at call time. Any scheme not listed returns
 `err("scheme not permitted: {scheme}")` without invoking the OS opener.
@@ -66,7 +68,7 @@ macOS) is the other natural member of an opener interface. It is not included
 now because:
 
 1. No plugin currently being migrated to WASM requires it.
-2. Path validation (no traversal, confined to safe roots) deserves its own
+1. Path validation (no traversal, confined to safe roots) deserves its own
    design pass.
 
 When the app-launcher plugin is converted, `reveal-path` should be

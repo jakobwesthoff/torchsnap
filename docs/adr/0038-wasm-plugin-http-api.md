@@ -6,6 +6,8 @@ Date: 2026-04-19
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 Several plugins that are candidates for WASM conversion make outbound HTTP
@@ -31,7 +33,7 @@ are necessary.
 Add a new `interface http` host import to the WIT world. The interface
 exposes a single `fetch` function:
 
-```wit
+````wit
 interface http {
     variant http-method { get, post, put, patch, delete, head, other(string) }
 
@@ -58,7 +60,7 @@ interface http {
 
     fetch: func(request: http-request) -> result<http-response, http-error>;
 }
-```
+````
 
 ### Blocking bridge via `block_in_place`
 
@@ -73,13 +75,13 @@ WASM guest's call-return semantics intact.
 Plugins declare which origins they may reach under `[permissions.http]` in
 `manifest.toml`:
 
-```toml
+````toml
 [permissions.http]
 origins = ["https://api.duckduckgo.com"]
 
 # or trust-all:
 origins = ["*"]
-```
+````
 
 The `"*"` wildcard opts the plugin into trust-all mode — any origin is
 permitted. This is provided because some plugins (e.g., a general-purpose
@@ -93,11 +95,11 @@ no HTTP access (deny by default).
 Declared origins are normalized via `url::Url::origin().ascii_serialization()`
 when the manifest is loaded, not at call time. This means:
 
-- `https://API.EXAMPLE.COM` and `https://api.example.com` collapse to the
+* `https://API.EXAMPLE.COM` and `https://api.example.com` collapse to the
   same entry.
-- A manifest with `"https://api.example.com:443"` normalizes to
+* A manifest with `"https://api.example.com:443"` normalizes to
   `"https://api.example.com"` (default port elision).
-- Invalid URLs in the `origins` list fail plugin load with a clear error.
+* Invalid URLs in the `origins` list fail plugin load with a clear error.
 
 Normalizing at parse time prevents drift between how an origin was declared
 and how the request URL's origin looks after the browser's own normalization.
@@ -106,12 +108,12 @@ and how the request URL's origin looks after the browser's own normalization.
 
 `http-error` has exactly three variants:
 
-- `permission-denied(string)` — the request URL's origin is not in the
+* `permission-denied(string)` — the request URL's origin is not in the
   allowlist. The string contains the blocked origin for diagnostics.
-- `network(string)` — any connection-level failure: DNS resolution, TLS
+* `network(string)` — any connection-level failure: DNS resolution, TLS
   handshake, connection refused, invalid method string, or any other
   transport error. All real transport failures fit here.
-- `timeout` — the request exceeded the configured or host-default timeout.
+* `timeout` — the request exceeded the configured or host-default timeout.
   Separated from `network` because it requires different handling in the
   plugin (retry with back-off vs. abort).
 

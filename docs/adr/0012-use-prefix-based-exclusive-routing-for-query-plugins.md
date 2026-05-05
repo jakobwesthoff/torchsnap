@@ -6,6 +6,8 @@ Date: 2026-03-25
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 Amended by [23. Call all query plugins regardless of prefix registration](0023-call-all-query-plugins-regardless-of-prefix-registration.md)
 
 Amended by [24. Unify CatalogPlugin and QueryPlugin into a single Plugin trait](0024-unify-catalogplugin-and-queryplugin-into-single-plugin-trait.md)
@@ -29,14 +31,14 @@ catalog plugins.
 
 Alternatives considered:
 
-- **No routing (all plugins see all queries)**: Simple but plugins
+* **No routing (all plugins see all queries)**: Simple but plugins
   waste cycles on irrelevant queries. No clear ownership means
   catalog plugins could return spurious matches on prefixed input
   (e.g., app launcher matching `:rocket` against app names).
-- **Frontend routing**: Frontend strips prefix and sends to a
+* **Frontend routing**: Frontend strips prefix and sends to a
   specific plugin. Moves routing logic out of Rust, splits
   responsibility, complicates the single `search` command.
-- **Plugin-side prefix checking**: Each plugin checks the prefix
+* **Plugin-side prefix checking**: Each plugin checks the prefix
   itself and returns empty when not relevant. Works but duplicates
   logic and still routes all queries to all plugins.
 
@@ -47,9 +49,9 @@ Alternatives considered:
 The plugin system uses two separate traits reflecting the two
 fundamentally different plugin modes from ADR 0011:
 
-- **`CatalogPlugin`**: provides a static entry list, host-filtered
+* **`CatalogPlugin`**: provides a static entry list, host-filtered
   via nucleo. Never sees the query.
-- **`QueryPlugin`**: receives the query string, performs its own
+* **`QueryPlugin`**: receives the query string, performs its own
   matching, returns pre-scored results.
 
 ### Optional prefix registration
@@ -58,9 +60,9 @@ fundamentally different plugin modes from ADR 0011:
 `fn prefixes(&self) -> &[&str]`. Prefixes can be multi-character
 (e.g., `":"`, `"g "`, `"="`, `"http://"`).
 
-- **Prefix plugins** (`prefixes()` returns non-empty): activated
+* **Prefix plugins** (`prefixes()` returns non-empty): activated
   only when the query starts with one of their prefixes.
-- **Always-on plugins** (`prefixes()` returns empty): receive every
+* **Always-on plugins** (`prefixes()` returns empty): receive every
   query, run alongside catalog plugins.
 
 ### Exclusive routing
@@ -69,27 +71,26 @@ When the query matches a registered prefix:
 
 1. Only the owning query plugin is called. Catalog plugins and
    prefix-less query plugins are **skipped entirely**.
-2. The prefix is stripped from the query before passing it to the
+1. The prefix is stripped from the query before passing it to the
    plugin.
-3. The matched prefix is passed as `matched_prefix: Option<&str>`
+1. The matched prefix is passed as `matched_prefix: Option<&str>`
    so the plugin knows which of its prefixes triggered (relevant
    when a plugin registers multiple prefixes).
 
 When no prefix matches:
 
 1. All catalog plugins are searched (host runs nucleo).
-2. All always-on query plugins are called.
-3. Results are merged and sorted by score.
+1. All always-on query plugins are called.
+1. Results are merged and sorted by score.
 
 ### Conflict resolution
 
-- **Longest prefix wins**: if plugin A registers `":"` and plugin B
+* **Longest prefix wins**: if plugin A registers `":"` and plugin B
   registers `":e"`, a query `":emoji"` routes to B.
-- **First-registered wins**: if two plugins register the same prefix,
+* **First-registered wins**: if two plugins register the same prefix,
   the first one registered takes ownership. A warning is logged.
-- Full conflict resolution (user-configurable priority, runtime
-  disambiguation) is deferred — see the `query-prefix-conflict-
-  resolution` todo.
+* Full conflict resolution (user-configurable priority, runtime
+  disambiguation) is deferred — see the `query-prefix-conflict- resolution` todo.
 
 ### Return type
 
@@ -101,20 +102,20 @@ host. This prevents plugins from spoofing another plugin's source.
 
 ## Consequences
 
-- Prefix-activated plugins get clean, stripped queries without
+* Prefix-activated plugins get clean, stripped queries without
   boilerplate prefix checking.
-- Catalog plugins never see prefixed input, eliminating spurious
+* Catalog plugins never see prefixed input, eliminating spurious
   matches (no app results for `:rocket`).
-- Exclusive routing means a prefixed query has exactly one owner —
+* Exclusive routing means a prefixed query has exactly one owner —
   no ambiguity, no wasted work.
-- Always-on query plugins (no prefix) coexist with catalog plugins
+* Always-on query plugins (no prefix) coexist with catalog plugins
   naturally, contributing results to every search.
-- The `matched_prefix` parameter supports plugins with multiple
+* The `matched_prefix` parameter supports plugins with multiple
   prefixes (e.g., a web search plugin handling both `g ` and
   `ddg `).
-- Prefix conflict resolution is intentionally minimal (first-
+* Prefix conflict resolution is intentionally minimal (first-
   registered wins). This will need revisiting when third-party
   plugins can register arbitrary prefixes.
-- The two-trait split means the registry maintains two plugin
+* The two-trait split means the registry maintains two plugin
   collections and the setup/execute routing must check both. This
   adds some complexity but keeps each trait focused.

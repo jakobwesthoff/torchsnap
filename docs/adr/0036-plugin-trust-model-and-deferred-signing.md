@@ -6,6 +6,8 @@ Date: 2026-04-17
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 ADR 0035 ships a user-installable plugin flow: users drop a
@@ -16,13 +18,13 @@ from doing damage?
 
 The surface area worth reasoning about, concretely:
 
-- A plugin's WASM component runs inside wasmtime with host-provided
+* A plugin's WASM component runs inside wasmtime with host-provided
   imports defined in `plugins/plugin-sdk/wit/torchsnap-plugin.wit`. Available imports
   today: `logging`, `clipboard` (write-only), `sql`, `settings`,
   `messaging`. **There is no `network` interface.** Guest code
   cannot open sockets, make HTTP requests, or read arbitrary files
   outside what the host chooses to expose.
-- The manifest (`manifest.toml`) references files within the
+* The manifest (`manifest.toml`) references files within the
   plugin source — the WASM binary, the frontend bundle, icons, SQL
   migrations. At load time the host calls
   `PluginSource::read_file(path)` on those references. A
@@ -30,7 +32,7 @@ The surface area worth reasoning about, concretely:
   get the host to read files outside the plugin root and hand them
   to the webview as "the plugin's frontend bundle" — escalating
   past the WIT sandbox entirely.
-- `.torchsnap` files are plain zip archives with no signature.
+* `.torchsnap` files are plain zip archives with no signature.
   Nothing today proves who built a given archive or that it has
   not been tampered with in transit.
 
@@ -60,14 +62,14 @@ manifest-referenced path (`plugin.wasm`, asset-form icon,
 `DirectorySource::read_file` / `ArchiveSource::read_file`
 boundaries as defense in depth. The guard rejects:
 
-- Empty strings, NUL bytes.
-- Backslashes (paths are forward-slash by policy, matching zip
+* Empty strings, NUL bytes.
+* Backslashes (paths are forward-slash by policy, matching zip
   semantics, regardless of host OS).
-- Absolute POSIX paths (leading `/`).
-- Windows-style absolute paths (`C:\…`, `\\…`) — rejected on all
+* Absolute POSIX paths (leading `/`).
+* Windows-style absolute paths (`C:\…`, `\\…`) — rejected on all
   platforms so a Windows-authored malicious plugin still fails on
   macOS.
-- Running depth below zero after lexical normalization of `..` and
+* Running depth below zero after lexical normalization of `..` and
   `.` segments — catches `../foo`, `a/../../b`, and deeper
   variants.
 
@@ -100,15 +102,15 @@ a `.dmg` or `.exe` downloaded from the internet.
 
 The decision to defer is active, not an oversight. Reasons:
 
-- The WIT sandbox already bounds what any plugin — trusted or
+* The WIT sandbox already bounds what any plugin — trusted or
   not — can do. The damage a malicious plugin can inflict is
   limited to the host-provided capabilities (no network egress
   means no exfiltration vector; no arbitrary fs means no data
   theft outside the plugin's own state tree).
-- Signing is only useful once there is a distribution channel to
+* Signing is only useful once there is a distribution channel to
   tie an identity to. A plugin marketplace or update mechanism
   would want signing; ad-hoc hand-sharing does not.
-- A premature signing scheme becomes a maintenance burden and is
+* A premature signing scheme becomes a maintenance burden and is
   usually wrong by the time it matters — better to wait until the
   real threat model is visible.
 
@@ -116,40 +118,40 @@ The decision to defer is active, not an oversight. Reasons:
 
 Revisit this ADR when any of the following becomes true:
 
-- A `network` (or filesystem-read) WIT import is added, widening
+* A `network` (or filesystem-read) WIT import is added, widening
   the attack surface beyond what the current model bounds.
-- A distribution channel beyond direct download appears (plugin
+* A distribution channel beyond direct download appears (plugin
   catalog, auto-update, marketplace).
-- An actual exploit emerges in the wild against this model.
+* An actual exploit emerges in the wild against this model.
 
 ## Consequences
 
 ### What this enables
 
-- v1 ships without the engineering cost of a signing scheme.
-- The sandbox is expressible in one sentence: "what WIT lets them
+* v1 ships without the engineering cost of a signing scheme.
+* The sandbox is expressible in one sentence: "what WIT lets them
   do." That is audit-friendly and gives plugin authors a clear
   mental model of what is and isn't in scope for their code.
-- The path guard is load-bearing, and the tests treat it that way:
+* The path guard is load-bearing, and the tests treat it that way:
   regressions surface immediately.
 
 ### What this costs
 
-- Supply-chain risk is entirely on the user: they must trust the
+* Supply-chain risk is entirely on the user: they must trust the
   source they downloaded a `.torchsnap` from. No host-level proof
   of authorship or integrity.
-- A tampered archive that passes the manifest parser and WIT
+* A tampered archive that passes the manifest parser and WIT
   imports is indistinguishable from a legitimate one. The blast
   radius is bounded by the sandbox, but "bounded" is not "zero."
-- The decision to add a `network` interface in the future is now
+* The decision to add a `network` interface in the future is now
   explicitly a trust-model revisit trigger, not just a feature
   request.
 
 ### Non-consequences (for clarity)
 
-- This is not a statement that plugins are "safe to run from
+* This is not a statement that plugins are "safe to run from
   strangers." It is a statement that the sandbox limits damage,
   not that damage is impossible.
-- The WIT sandbox does not protect against denial-of-service
+* The WIT sandbox does not protect against denial-of-service
   (infinite loops, memory exhaustion inside the guest). Those are
   runtime resource concerns, outside this ADR's scope.
