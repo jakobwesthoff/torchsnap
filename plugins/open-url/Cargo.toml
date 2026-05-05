@@ -1,5 +1,5 @@
 [package]
-name = "open-url-plugin"
+name = "open-url-gadget"
 version = "0.1.0"
 edition = "2024"
 

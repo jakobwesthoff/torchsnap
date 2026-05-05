@@ -3,7 +3,7 @@ id = "template"
 name = "Template Plugin"
 description = "Starting point for new Torchsnap plugins"
 version = "0.1.0"
-wasm = "template_plugin.wasm"
+wasm = "template_gadget.wasm"
 icon = "heroicons:puzzle-piece"
 prefixes = ["tpl:"]
 

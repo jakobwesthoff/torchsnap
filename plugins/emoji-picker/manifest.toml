@@ -3,7 +3,7 @@ id = "emoji-picker"
 name = "Emoji Picker"
 description = "Search and insert emojis by shortcode"
 version = "0.1.0"
-wasm = "emoji_picker_plugin.wasm"
+wasm = "emoji_picker_gadget.wasm"
 icon = "heroicons:face-smile"
 prefixes = [":"]
 

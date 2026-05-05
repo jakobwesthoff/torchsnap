@@ -1,5 +1,5 @@
 [package]
-name = "template-plugin"
+name = "template-gadget"
 version = "0.1.0"
 edition = "2024"
 
