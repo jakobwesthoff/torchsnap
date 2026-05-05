@@ -79,13 +79,13 @@ use host::http::HttpState;
 mod tests {
     use super::*;
 
-    /// Bytes of the committed `minimal-plugin` fixture. The
+    /// Bytes of the committed `minimal-gadget` fixture. The
     /// fixture is a standalone `wasm32-wasip2` crate under
-    /// `src-tauri/tests/fixtures/minimal-plugin/` whose guest
+    /// `src-tauri/tests/fixtures/minimal-gadget/` whose guest
     /// implements every WIT export as a no-op. See that
     /// directory's README for rebuild instructions.
     const MINIMAL_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../../tests/fixtures/minimal-plugin/minimal_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/minimal-gadget/minimal_gadget.wasm");
 
     /// Construct a bare `WasmRuntime` for tests. Uses a
     /// discarding `LogSender` and a fresh `SpanRegistry` so
@@ -202,30 +202,30 @@ mod tests {
             .expect("second instance untouched by operations on the first");
     }
 
-    /// Bytes of the committed `website-metadata-plugin` fixture.
+    /// Bytes of the committed `website-metadata-gadget` fixture.
     /// See the fixture crate's README for rebuild instructions.
     const WEBSITE_METADATA_PLUGIN_WASM: &[u8] = include_bytes!(
-        "../../../tests/fixtures/website-metadata-plugin/website_metadata_plugin.wasm"
+        "../../../tests/fixtures/website-metadata-gadget/website_metadata_gadget.wasm"
     );
 
-    /// Bytes of the committed `opener-http-plugin` fixture.
+    /// Bytes of the committed `opener-http-gadget` fixture.
     /// Exercises the `opener` and `http` host interfaces via
     /// `messaging::handle-message` dispatch.
     const OPENER_HTTP_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../../tests/fixtures/opener-http-plugin/opener_http_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/opener-http-gadget/opener_http_gadget.wasm");
 
-    /// Bytes of the committed `assets-plugin` fixture.
+    /// Bytes of the committed `assets-gadget` fixture.
     /// Exercises the `assets` host interface via
     /// `messaging::handle-message` dispatch.
     const ASSETS_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../../tests/fixtures/assets-plugin/assets_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/assets-gadget/assets_gadget.wasm");
 
-    /// Bytes of the committed `command-plugin` fixture.
+    /// Bytes of the committed `command-gadget` fixture.
     /// Exercises the `command` host interface via
     /// `messaging::handle-message` dispatch.
     #[cfg(unix)]
     const COMMAND_PLUGIN_WASM: &[u8] =
-        include_bytes!("../../../tests/fixtures/command-plugin/command_plugin.wasm");
+        include_bytes!("../../../tests/fixtures/command-gadget/command_gadget.wasm");
 
     // =========================================================
     // Unit tests for opener/http pure functions
@@ -1147,7 +1147,7 @@ icon = "heroicons:beaker"
     fn assets_fixture_source() -> Arc<dyn super::super::source::GadgetSource + Send + Sync> {
         use super::super::source::DirectorySource;
         let fixture_root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/assets-plugin");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/assets-gadget");
         Arc::new(DirectorySource::open(fixture_root).expect("open assets fixture"))
     }
 
@@ -1184,7 +1184,7 @@ icon = "heroicons:beaker"
 
         let expected_len = std::fs::metadata(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/assets-plugin/data/payload.bin"),
+                .join("tests/fixtures/assets-gadget/data/payload.bin"),
         )
         .expect("stat fixture")
         .len();

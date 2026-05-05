@@ -1,0 +1,7 @@
+[gadget]
+id = "failing-enable-plugin"
+name = "Failing-Enable Test Plugin"
+description = "Test-only fixture whose guest enable() panics"
+version = "0.0.0"
+wasm = "failing_enable_gadget.wasm"
+icon = "heroicons:exclamation-triangle"

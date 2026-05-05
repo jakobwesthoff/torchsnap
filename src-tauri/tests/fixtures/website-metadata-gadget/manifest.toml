@@ -1,0 +1,10 @@
+[gadget]
+id = "website-metadata-plugin"
+name = "Website Metadata Test Plugin"
+description = "Test-only fixture exercising the website-metadata host import"
+version = "0.0.0"
+wasm = "website_metadata_gadget.wasm"
+icon = "heroicons:beaker"
+
+[permissions]
+website-metadata = true
