@@ -6,10 +6,10 @@
 // Host trait impls — one file per WIT host import
 //
 // Each capability owns its state sub-struct, the
-// `bindings::*::Host for PluginState` impl, any helper
+// `bindings::*::Host for GadgetState` impl, any helper
 // free functions and type aliases used only by that
 // capability, and the corresponding setters/clearers as
-// extension methods on `WasmPluginInstance`.
+// extension methods on `WasmGadgetInstance`.
 //
 // Tests for each capability live in the same file as the
 // implementation, gated `#[cfg(test)]`. Shared test

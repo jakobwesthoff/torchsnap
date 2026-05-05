@@ -25,7 +25,7 @@ use crate::wasm::bindings;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
 /// Command state. Compiled `[[permissions.command]]` rules
 /// + (future) handle to a currently-running child for
@@ -40,7 +40,7 @@ pub(crate) struct CommandState {
     pub(crate) rules: Vec<argv_matcher::CompiledCommandRule>,
 }
 
-impl bindings::torchsnap::plugin::command::Host for PluginState {
+impl bindings::torchsnap::plugin::command::Host for GadgetState {
     fn run(
         &mut self,
         binary: String,
@@ -113,7 +113,7 @@ impl bindings::torchsnap::plugin::command::Host for PluginState {
         // 5. Spawn + run. Synchronous from the guest's perspective;
         //    `block_in_place` lets the async work run on the host's
         //    thread pool without blocking the tokio runtime.
-        let plugin_id = self.plugin_id.clone();
+        let plugin_id = self.gadget_id.clone();
         let log_sender = self.log_sender.clone();
         let argv = options.args.clone();
         let stdin_bytes = options.stdin.clone();
@@ -142,7 +142,7 @@ impl bindings::torchsnap::plugin::command::Host for PluginState {
     }
 }
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Stash the compiled `[[permissions.command]]` rules.
     /// Called by the bridge at `enable()` after compiling
     /// the raw manifest rules against the per-plugin

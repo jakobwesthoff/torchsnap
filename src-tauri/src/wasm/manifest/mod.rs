@@ -48,15 +48,15 @@ pub(crate) mod test_helpers;
 // rename attributes:
 //   `#[serde(rename(deserialize = "kebab-case", serialize = "camelCase"))]`
 //
-// Types with custom serde impls (`PluginId`, `PluginIcon`) handle
-// their own format: `PluginId` serializes as a plain string,
-// `PluginIcon` serializes back to the `"heroicons:<name>"` or
+// Types with custom serde impls (`GadgetId`, `GadgetIcon`) handle
+// their own format: `GadgetId` serializes as a plain string,
+// `GadgetIcon` serializes back to the `"heroicons:<name>"` or
 // bare path format matching the TOML input.
 // =========================================================
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
-    pub plugin: PluginMeta,
+    pub plugin: GadgetMeta,
 
     /// Plugin-specific settings defaults. Each key-value pair
     /// is applied to the settings store on first load (existing
@@ -102,12 +102,12 @@ pub struct Manifest {
 // =========================================================
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PluginMeta {
+pub struct GadgetMeta {
     /// Stable identifier. Lowercase alphanumeric and hyphens
     /// only (e.g., `"clipboard-manager"`). Used as the key
     /// for settings namespaces, frecency storage, data
     /// directories, and frontend registry lookups.
-    pub id: PluginId,
+    pub id: GadgetId,
 
     /// Human-readable display name shown in the settings
     /// sidebar and section header.
@@ -131,7 +131,7 @@ pub struct PluginMeta {
     /// - `"heroicons:<name>"` — resolved to a HeroIcon component
     /// - Any other string — treated as a path to a WebP image
     ///   within the plugin archive/directory
-    pub icon: PluginIcon,
+    pub icon: GadgetIcon,
 
     /// Optional search prefixes for exclusive query routing
     /// (e.g., `[":"]` for the emoji picker). Omit for catalog
@@ -148,21 +148,21 @@ pub struct PluginMeta {
 /// characters and hyphens only, must not be empty, must not
 /// start or end with a hyphen.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PluginId(String);
+pub struct GadgetId(String);
 
-impl PluginId {
+impl GadgetId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl std::fmt::Display for PluginId {
+impl std::fmt::Display for GadgetId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl Serialize for PluginId {
+impl Serialize for GadgetId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -171,14 +171,14 @@ impl Serialize for PluginId {
     }
 }
 
-impl<'de> Deserialize<'de> for PluginId {
+impl<'de> Deserialize<'de> for GadgetId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let raw = String::deserialize(deserializer)?;
         validate_plugin_id(&raw).map_err(serde::de::Error::custom)?;
-        Ok(PluginId(raw))
+        Ok(GadgetId(raw))
     }
 }
 
@@ -212,32 +212,32 @@ fn validate_plugin_id(id: &str) -> Result<(), String> {
 ///
 /// The image variant stores a path relative to the plugin
 /// root — it is not a filesystem path. At load time the host
-/// reads the image bytes via `PluginSource::read_file`.
+/// reads the image bytes via `GadgetSource::read_file`.
 #[derive(Debug, Clone)]
-pub enum PluginIcon {
+pub enum GadgetIcon {
     /// A HeroIcon name (e.g., `"clipboard-document-list"`).
     HeroIcon(String),
 
     /// A relative path to a WebP image within the plugin
     /// source (e.g., `"assets/icon.webp"`). MUST be read via
-    /// `PluginSource::read_file` — this is never a filesystem
+    /// `GadgetSource::read_file` — this is never a filesystem
     /// path.
     Asset(String),
 }
 
-impl Serialize for PluginIcon {
+impl Serialize for GadgetIcon {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         match self {
-            PluginIcon::HeroIcon(name) => serializer.serialize_str(&format!("heroicons:{name}")),
-            PluginIcon::Asset(path) => serializer.serialize_str(path),
+            GadgetIcon::HeroIcon(name) => serializer.serialize_str(&format!("heroicons:{name}")),
+            GadgetIcon::Asset(path) => serializer.serialize_str(path),
         }
     }
 }
 
-impl<'de> Deserialize<'de> for PluginIcon {
+impl<'de> Deserialize<'de> for GadgetIcon {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -249,9 +249,9 @@ impl<'de> Deserialize<'de> for PluginIcon {
                     "heroicons: prefix requires an icon name",
                 ));
             }
-            Ok(PluginIcon::HeroIcon(name.to_string()))
+            Ok(GadgetIcon::HeroIcon(name.to_string()))
         } else {
-            Ok(PluginIcon::Asset(raw))
+            Ok(GadgetIcon::Asset(raw))
         }
     }
 }
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(m.plugin.description, "A test plugin");
         assert_eq!(m.plugin.version, "0.1.0");
         assert_eq!(m.plugin.wasm, "test.wasm");
-        assert!(matches!(m.plugin.icon, PluginIcon::HeroIcon(ref n) if n == "beaker"));
+        assert!(matches!(m.plugin.icon, GadgetIcon::HeroIcon(ref n) if n == "beaker"));
         assert!(m.plugin.prefixes.is_empty());
         assert!(m.settings.is_empty());
         assert!(m.shortcuts.is_empty());
@@ -520,8 +520,8 @@ mod tests {
         let toml = minimal("");
         let m = Manifest::parse(&toml).expect("should parse");
         match &m.plugin.icon {
-            PluginIcon::HeroIcon(name) => assert_eq!(name, "beaker"),
-            PluginIcon::Asset(p) => panic!("expected HeroIcon, got Asset({p})"),
+            GadgetIcon::HeroIcon(name) => assert_eq!(name, "beaker"),
+            GadgetIcon::Asset(p) => panic!("expected HeroIcon, got Asset({p})"),
         }
     }
 
@@ -538,8 +538,8 @@ mod tests {
         "#;
         let m = Manifest::parse(toml).expect("should parse");
         match &m.plugin.icon {
-            PluginIcon::Asset(path) => assert_eq!(path, "assets/icon.webp"),
-            PluginIcon::HeroIcon(n) => panic!("expected Asset, got HeroIcon({n})"),
+            GadgetIcon::Asset(path) => assert_eq!(path, "assets/icon.webp"),
+            GadgetIcon::HeroIcon(n) => panic!("expected Asset, got HeroIcon({n})"),
         }
     }
 
@@ -555,7 +555,7 @@ mod tests {
             icon = "icon.webp"
         "#;
         let m = Manifest::parse(toml).expect("should parse");
-        assert!(matches!(&m.plugin.icon, PluginIcon::Asset(p) if p == "icon.webp"));
+        assert!(matches!(&m.plugin.icon, GadgetIcon::Asset(p) if p == "icon.webp"));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::{Manifest, PluginIcon};
+use super::{Manifest, GadgetIcon};
 use crate::wasm::source::validate_plugin_path;
 
 /// Walk every path-like field of a parsed manifest and run
@@ -27,7 +27,7 @@ pub(super) fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()>
     validate_plugin_path(&manifest.plugin.wasm)
         .map_err(|e| anyhow::anyhow!("invalid `plugin.wasm`: {e}"))?;
 
-    if let PluginIcon::Asset(ref path) = manifest.plugin.icon {
+    if let GadgetIcon::Asset(ref path) = manifest.plugin.icon {
         validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `plugin.icon`: {e}"))?;
     }
 

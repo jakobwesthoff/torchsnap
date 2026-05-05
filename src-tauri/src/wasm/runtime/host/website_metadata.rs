@@ -21,7 +21,7 @@ use crate::network::website_metadata::{
 };
 use crate::wasm::bindings;
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
 /// Per-plugin website-metadata state. Populated by the bridge
 /// on `enable()` from the manifest's `[permissions]\nwebsite-metadata`
@@ -36,7 +36,7 @@ pub(crate) struct WebsiteMetadataState {
     pub(crate) service: Option<Arc<WebsiteMetadataService>>,
 }
 
-impl bindings::torchsnap::plugin::website_metadata::Host for PluginState {
+impl bindings::torchsnap::plugin::website_metadata::Host for GadgetState {
     fn lookup(
         &mut self,
         domain: String,
@@ -115,7 +115,7 @@ fn native_to_wit(
 // Bridge setters
 // =========================================================
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Install the manifest gate flag and (when enabled) the shared
     /// service handle. Mirrors `set_http_origins` / `set_http_client`.
     pub fn set_website_metadata(
@@ -143,8 +143,8 @@ impl WasmPluginInstance {
 // Tests
 // =========================================================
 //
-// The shim is a thin trait impl on `PluginState`. Tests
-// construct a `PluginState` directly (no wasmtime instance
+// The shim is a thin trait impl on `GadgetState`. Tests
+// construct a `GadgetState` directly (no wasmtime instance
 // or guest WASM needed), wire a `WebsiteMetadataState` with
 // the shared service pointed at an httpmock server, and
 // invoke `Host::lookup` like the bindgen-generated code
@@ -166,12 +166,12 @@ mod tests {
     use crate::wasm::bindings::torchsnap::plugin::website_metadata as wit;
 
     /// Test harness: a per-test temp dir, mock server, and a
-    /// `PluginState` whose `website_metadata` field is fully wired
+    /// `GadgetState` whose `website_metadata` field is fully wired
     /// to the shared service. The notifier is held to keep its
     /// settings-watch thread alive across the test.
     struct ShimEnv {
         server: MockServer,
-        state: PluginState,
+        state: GadgetState,
         _tmp: TempDir,
         _notifier: SettingsNotifier,
     }
@@ -188,7 +188,7 @@ mod tests {
             svc.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}")),
         );
 
-        let mut state = PluginState::default_for_test();
+        let mut state = GadgetState::default_for_test();
         state.website_metadata = WebsiteMetadataState {
             enabled,
             service: if enabled { Some(svc) } else { None },
@@ -232,12 +232,12 @@ mod tests {
     /// `spawn_blocking`) lets the caller hold `Mock` references
     /// on the same `MockServer` across the call.
     fn lookup_sync(
-        state: &mut PluginState,
+        state: &mut GadgetState,
         domain: &str,
         mode: wit::LookupMode,
     ) -> Result<wit::LookupResult, wit::WebsiteMetadataError> {
         tokio::task::block_in_place(|| {
-            <PluginState as wit::Host>::lookup(state, domain.to_string(), mode)
+            <GadgetState as wit::Host>::lookup(state, domain.to_string(), mode)
         })
     }
 

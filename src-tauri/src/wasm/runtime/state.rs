@@ -5,7 +5,7 @@
 // =========================================================
 // Per-Plugin Store State
 //
-// `PluginState` is the `T` in `Store<T>`. It holds the WASI
+// `GadgetState` is the `T` in `Store<T>`. It holds the WASI
 // context, foundational per-plugin state (plugin id, log
 // sender, span registry, settings/frecency/source/path
 // handles), and the per-capability sub-structs that each
@@ -13,7 +13,7 @@
 //
 // The composition pattern: capability sub-structs live in
 // `host/<capability>.rs` next to their Host impl, and this
-// file imports them and stitches them into PluginState.
+// file imports them and stitches them into GadgetState.
 // Adding a new capability means editing one capability file
 // plus three lines here (add the field, add the
 // `Default::default()` to the constructor, add the field
@@ -26,11 +26,11 @@ use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::frecency::PluginFrecency;
-use crate::settings::PluginSettings;
+use crate::settings::GadgetSettings;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::SpanRegistry;
 use crate::wasm::permission_vars::PathContext;
-use crate::wasm::source::PluginSource;
+use crate::wasm::source::GadgetSource;
 
 use super::host::clipboard::ClipboardState;
 use super::host::command::CommandState;
@@ -40,8 +40,8 @@ use super::host::opener::OpenerState;
 use super::host::sql::SqlState;
 use super::host::website_metadata::WebsiteMetadataState;
 
-pub struct PluginState {
-    pub(crate) plugin_id: String,
+pub struct GadgetState {
+    pub(crate) gadget_id: String,
     pub(crate) wasi: WasiCtx,
     pub(crate) wasi_table: ResourceTable,
     pub(crate) log_sender: LogSender,
@@ -52,7 +52,7 @@ pub struct PluginState {
     /// errors gracefully if accessed before that happens —
     /// which it shouldn't, since the host always calls
     /// `enable()` before any guest code runs.
-    pub(crate) settings: Option<PluginSettings>,
+    pub(crate) settings: Option<GadgetSettings>,
     /// Per-plugin namespaced frecency reader. Same lifecycle
     /// as `settings`: stashed by the bridge on `enable()` from
     /// the `PluginContext.frecency` handle and cleared on
@@ -69,7 +69,7 @@ pub struct PluginState {
     /// it. `None` outside an enable lifetime — the host
     /// imports return an `io-error` in that case, matching
     /// the contract of the other capability stashes.
-    pub(crate) plugin_source: Option<Arc<dyn PluginSource + Send + Sync>>,
+    pub(crate) plugin_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
     /// Resolved `${...}` substitution variables for this plugin
     /// instance. Populated by the bridge on `enable()`; consumed
     /// by `paths::resolve` and by `command::run` rule
@@ -91,12 +91,12 @@ pub struct PluginState {
     pub(crate) website_metadata: WebsiteMetadataState,
 }
 
-impl PluginState {
-    /// Build a fresh `PluginState` with all capability fields
+impl GadgetState {
+    /// Build a fresh `GadgetState` with all capability fields
     /// in their "disabled" defaults. Called from
     /// `WasmRuntime::instantiate`. The bridge populates each
     /// capability via the corresponding
-    /// `WasmPluginInstance::set_*` setter on `enable()`.
+    /// `WasmGadgetInstance::set_*` setter on `enable()`.
     pub(crate) fn new(
         plugin_id: String,
         wasi: WasiCtx,
@@ -104,7 +104,7 @@ impl PluginState {
         span_registry: Arc<SpanRegistry>,
     ) -> Self {
         Self {
-            plugin_id,
+            gadget_id: plugin_id,
             wasi,
             wasi_table: ResourceTable::new(),
             log_sender,
@@ -128,7 +128,7 @@ impl PluginState {
 // ResourceTable inside our custom store data. In wasmtime
 // 43, `ctx()` returns a `WasiCtxView` that bundles both
 // references together.
-impl WasiView for PluginState {
+impl WasiView for GadgetState {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
             ctx: &mut self.wasi,
@@ -138,16 +138,16 @@ impl WasiView for PluginState {
 }
 
 #[cfg(test)]
-impl PluginState {
-    /// Construct a `PluginState` with all capability fields set
+impl GadgetState {
+    /// Construct a `GadgetState` with all capability fields set
     /// to their "absent" defaults. Tests override specific
     /// fields with struct update syntax
-    /// (`..PluginState::default_for_test()`).
+    /// (`..GadgetState::default_for_test()`).
     pub(crate) fn default_for_test() -> Self {
         use wasmtime_wasi::WasiCtxBuilder;
 
         let wasi = WasiCtxBuilder::new().build();
-        PluginState::new(
+        GadgetState::new(
             "test-plugin".to_string(),
             wasi,
             LogSender::test_sender(),

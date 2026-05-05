@@ -35,9 +35,9 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use crate::wasm::bindings;
 use crate::wasm::permission_vars::{PathContext, substitute_variables};
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
-/// FS state stashed on `PluginState`. `allowlist` is `None`
+/// FS state stashed on `GadgetState`. `allowlist` is `None`
 /// when the plugin's manifest has no `[permissions.fs]`
 /// section, which means every fs call returns
 /// `permission-denied`.
@@ -275,7 +275,7 @@ fn resolve_request(allowlist: Option<&FsAllowlist>, path: &str) -> Result<PathBu
     Ok(canonical)
 }
 
-impl bindings::torchsnap::plugin::fs::Host for PluginState {
+impl bindings::torchsnap::plugin::fs::Host for GadgetState {
     fn read_file(
         &mut self,
         path: String,
@@ -340,7 +340,7 @@ impl bindings::torchsnap::plugin::fs::Host for PluginState {
     }
 }
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Stash the compiled fs allowlist on this instance.
     /// Called by the bridge on `enable()` from the manifest's
     /// `[permissions.fs] read = [...]` after substitution and

@@ -19,7 +19,7 @@
 //    traversal here.
 // 2. Extract the manifest's plugin id.
 // 3. Reject if a plugin with that id is already registered
-//    with any `PluginSourceKind`, with a message specific to
+//    with any `GadgetSourceKind`, with a message specific to
 //    the colliding kind.
 // 4. Atomically copy the archive into
 //    `<app_data_dir>/plugins/<id>.torchsnap` via a
@@ -29,7 +29,7 @@
 // Uninstall steps:
 //
 // 1. Look up the plugin's source kind. Reject unless it is
-//    `PluginSourceKind::User`; built-in, system, and dev
+//    `GadgetSourceKind::User`; built-in, system, and dev
 //    plugins are not uninstallable through this flow.
 // 2. Remove the archive at `<app_data_dir>/plugins/<id>.torchsnap`,
 //    the unpacked dir at `<app_data_dir>/plugins/<id>/` if
@@ -50,8 +50,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::plugin_host::PluginHost;
-use crate::wasm::source::{ArchiveSource, PluginSource, PluginSourceKind};
+use crate::gadget_host::GadgetHost;
+use crate::wasm::source::{ArchiveSource, GadgetSource, GadgetSourceKind};
 
 // =========================================================
 // Response types
@@ -63,7 +63,7 @@ use crate::wasm::source::{ArchiveSource, PluginSource, PluginSourceKind};
 /// show the restart prompt.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InstalledPluginInfo {
+pub struct InstalledGadgetInfo {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -94,9 +94,9 @@ pub struct UninstallResult {
 #[tauri::command]
 pub async fn install_plugin_archive(
     app: AppHandle,
-    host: tauri::State<'_, Arc<PluginHost>>,
+    host: tauri::State<'_, Arc<GadgetHost>>,
     archive_path: String,
-) -> Result<InstalledPluginInfo, String> {
+) -> Result<InstalledGadgetInfo, String> {
     let host = Arc::clone(host.inner());
     let archive_path = PathBuf::from(archive_path);
     tokio::task::spawn_blocking(move || install_impl(&app, &host, &archive_path))
@@ -107,9 +107,9 @@ pub async fn install_plugin_archive(
 
 fn install_impl(
     app: &AppHandle,
-    host: &PluginHost,
+    host: &GadgetHost,
     archive_path: &Path,
-) -> anyhow::Result<InstalledPluginInfo> {
+) -> anyhow::Result<InstalledGadgetInfo> {
     // Opening the archive validates the zip structure, parses
     // the manifest, and runs the path guard on every
     // manifest-referenced file. If any of those fail the
@@ -125,16 +125,16 @@ fn install_impl(
     // any) fits their case.
     if let Some(kind) = host.plugin_sources().get(&plugin_id).copied() {
         match kind {
-            PluginSourceKind::Builtin => anyhow::bail!(
+            GadgetSourceKind::Builtin => anyhow::bail!(
                 "A built-in plugin with id `{plugin_id}` already exists. Built-in plugins cannot be replaced."
             ),
-            PluginSourceKind::System => anyhow::bail!(
+            GadgetSourceKind::System => anyhow::bail!(
                 "A system plugin with id `{plugin_id}` is bundled with the app. Overriding system plugins is not supported."
             ),
-            PluginSourceKind::Dev => anyhow::bail!(
+            GadgetSourceKind::Dev => anyhow::bail!(
                 "A development plugin with id `{plugin_id}` is loaded from the repository. Edit the dev plugin directly or change its id before installing."
             ),
-            PluginSourceKind::User => anyhow::bail!(
+            GadgetSourceKind::User => anyhow::bail!(
                 "A user plugin with id `{plugin_id}` is already installed. Uninstall the existing version, then retry."
             ),
         }
@@ -165,7 +165,7 @@ fn install_impl(
     std::fs::copy(archive_path, &tmp_path).context("copy archive into staging location")?;
     std::fs::rename(&tmp_path, &final_path).context("publish staged archive")?;
 
-    Ok(InstalledPluginInfo {
+    Ok(InstalledGadgetInfo {
         id: plugin_id,
         name: manifest.plugin.name,
         version: manifest.plugin.version,
@@ -184,7 +184,7 @@ fn install_impl(
 #[tauri::command]
 pub async fn uninstall_user_plugin(
     app: AppHandle,
-    host: tauri::State<'_, Arc<PluginHost>>,
+    host: tauri::State<'_, Arc<GadgetHost>>,
     plugin_id: String,
 ) -> Result<UninstallResult, String> {
     let host = Arc::clone(host.inner());
@@ -196,7 +196,7 @@ pub async fn uninstall_user_plugin(
 
 fn uninstall_impl(
     app: &AppHandle,
-    host: &PluginHost,
+    host: &GadgetHost,
     plugin_id: &str,
 ) -> anyhow::Result<UninstallResult> {
     let kind = host
@@ -205,7 +205,7 @@ fn uninstall_impl(
         .copied()
         .ok_or_else(|| anyhow::anyhow!("unknown plugin id `{plugin_id}`"))?;
 
-    if kind != PluginSourceKind::User {
+    if kind != GadgetSourceKind::User {
         anyhow::bail!(
             "plugin `{plugin_id}` is a {kind:?} plugin — only user-installed plugins can be uninstalled"
         );

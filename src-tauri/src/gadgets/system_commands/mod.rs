@@ -13,7 +13,7 @@
 // =========================================================
 
 use crate::commands::types::{ActionId, CatalogEntry, PostAction};
-use crate::plugins::Plugin;
+use crate::gadgets::Gadget;
 
 // =========================================================
 // SystemCommand Trait
@@ -66,14 +66,14 @@ fn system_commands() -> Vec<Box<dyn SystemCommand>> {
 }
 
 // =========================================================
-// SystemCommandsPlugin
+// SystemCommandsGadget
 // =========================================================
 
-pub struct SystemCommandsPlugin {
+pub struct SystemCommandsGadget {
     commands: Vec<Box<dyn SystemCommand>>,
 }
 
-impl SystemCommandsPlugin {
+impl SystemCommandsGadget {
     pub fn new() -> Self {
         Self {
             commands: system_commands(),
@@ -81,7 +81,7 @@ impl SystemCommandsPlugin {
     }
 }
 
-impl Plugin for SystemCommandsPlugin {
+impl Gadget for SystemCommandsGadget {
     fn id(&self) -> &str {
         "system-commands"
     }

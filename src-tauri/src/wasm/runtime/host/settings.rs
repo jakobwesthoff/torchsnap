@@ -6,18 +6,18 @@
 // Settings host import
 //
 // Routes guest `settings::get(key)` calls through the
-// per-plugin `PluginSettings` handle stashed on
-// `PluginState`. The handle is bridge-stashed at `enable()`;
+// per-plugin `GadgetSettings` handle stashed on
+// `GadgetState`. The handle is bridge-stashed at `enable()`;
 // reads outside an enable lifetime degrade gracefully to
 // `None` rather than trapping.
 // =========================================================
 
-use crate::settings::PluginSettings;
+use crate::settings::GadgetSettings;
 use crate::wasm::bindings;
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
-impl bindings::torchsnap::plugin::settings::Host for PluginState {
+impl bindings::torchsnap::plugin::settings::Host for GadgetState {
     fn get(&mut self, key: String) -> Option<String> {
         // Debug builds catch the lifecycle invariant violation
         // ("settings host import called before enable") if it
@@ -28,19 +28,19 @@ impl bindings::torchsnap::plugin::settings::Host for PluginState {
         // returns `None` instead of panicking the guest.
         debug_assert!(
             self.settings.is_some(),
-            "settings::get called before bridge stashed PluginSettings — lifecycle invariant broken",
+            "settings::get called before bridge stashed GadgetSettings — lifecycle invariant broken",
         );
         let settings = self.settings.as_ref()?;
         settings.get_raw(&key)
     }
 }
 
-impl WasmPluginInstance {
-    /// Stash a per-plugin `PluginSettings` handle on the
+impl WasmGadgetInstance {
+    /// Stash a per-plugin `GadgetSettings` handle on the
     /// store data so the `settings::get` host import can
     /// resolve reads. Called by the bridge from `enable()`
     /// before the guest's own `enable()` runs.
-    pub fn set_settings(&self, settings: PluginSettings) {
+    pub fn set_settings(&self, settings: GadgetSettings) {
         self.with_state_mut(|state| state.settings = Some(settings));
     }
 

@@ -36,13 +36,13 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use super::{Plugin, PluginContext};
+use super::{Gadget, GadgetContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
 const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
-pub struct AppLauncherPlugin {
+pub struct AppLauncherGadget {
     cache: Arc<RwLock<Vec<DiscoveredApp>>>,
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
@@ -50,7 +50,7 @@ pub struct AppLauncherPlugin {
     icon_cache: Arc<IconCache>,
 }
 
-impl AppLauncherPlugin {
+impl AppLauncherGadget {
     pub fn new(discovery: impl AppDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
@@ -139,12 +139,12 @@ fn extract_icons(
     valid_keys
 }
 
-impl Plugin for AppLauncherPlugin {
+impl Gadget for AppLauncherGadget {
     fn id(&self) -> &str {
         "app-launcher"
     }
 
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {
         // Called on a dedicated background thread by the host.
         //
         // Phase 1: Discover apps and publish immediately so search

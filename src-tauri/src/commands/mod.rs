@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tauri::State;
 use tauri::ipc::Channel;
 
-use crate::plugin_host::PluginHost;
+use crate::gadget_host::GadgetHost;
 use serde_json::Value;
 use types::{ActionId, PostAction, SearchMessage};
 
@@ -27,7 +27,7 @@ use types::{ActionId, PostAction, SearchMessage};
 pub async fn search(
     query: String,
     on_results: Channel<SearchMessage>,
-    state: State<'_, Arc<PluginHost>>,
+    state: State<'_, Arc<GadgetHost>>,
 ) -> Result<(), String> {
     state.search(&query, &on_results).await;
     Ok(())
@@ -49,7 +49,7 @@ pub async fn search_execute(
     source: String,
     entry_id: String,
     action_id: ActionId,
-    state: State<'_, Arc<PluginHost>>,
+    state: State<'_, Arc<GadgetHost>>,
     app: tauri::AppHandle,
 ) -> Result<PostAction, String> {
     let host = Arc::clone(&state);
@@ -76,7 +76,7 @@ pub async fn plugin_message(
     method: String,
     payload: Value,
     channel: Channel<Value>,
-    state: State<'_, Arc<PluginHost>>,
+    state: State<'_, Arc<GadgetHost>>,
 ) -> Result<Value, String> {
     let host = Arc::clone(&state);
     tokio::task::spawn_blocking(move || {

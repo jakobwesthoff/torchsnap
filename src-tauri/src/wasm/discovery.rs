@@ -16,7 +16,7 @@
 //    staging dir. Only plugins listed in
 //    `plugins/bundled.toml` end up here.
 // 2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/` in debug
-//    builds. Tags plugins `PluginSourceKind::Dev` so the
+//    builds. Tags plugins `GadgetSourceKind::Dev` so the
 //    Plugins settings panel can badge them accordingly.
 //    Completely elided from release builds via
 //    `cfg(debug_assertions)`.
@@ -36,7 +36,7 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use super::source::PluginSourceKind;
+use super::source::GadgetSourceKind;
 
 /// Build the ordered list of `(kind, path)` roots the loader
 /// should scan. Caller passes the resolved `resource_dir` and
@@ -51,8 +51,8 @@ use super::source::PluginSourceKind;
 pub fn enumerate_search_roots(
     resource_dir: Option<&Path>,
     app_data_dir: &Path,
-) -> Vec<(PluginSourceKind, PathBuf)> {
-    let mut roots: Vec<(PluginSourceKind, PathBuf)> = Vec::new();
+) -> Vec<(GadgetSourceKind, PathBuf)> {
+    let mut roots: Vec<(GadgetSourceKind, PathBuf)> = Vec::new();
 
     // System: plugins bundled into the app's resources at build
     // time. Release builds always expose a resource_dir; debug
@@ -60,7 +60,7 @@ pub fn enumerate_search_roots(
     if let Some(res) = resource_dir {
         let res_plugins = res.join("plugins");
         if res_plugins.is_dir() {
-            roots.push((PluginSourceKind::System, res_plugins));
+            roots.push((GadgetSourceKind::System, res_plugins));
         }
     }
 
@@ -73,7 +73,7 @@ pub fn enumerate_search_roots(
     {
         let dev_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
         if dev_dir.is_dir() {
-            roots.push((PluginSourceKind::Dev, dev_dir));
+            roots.push((GadgetSourceKind::Dev, dev_dir));
         }
     }
 
@@ -83,7 +83,7 @@ pub fn enumerate_search_roots(
     // build profile.
     let user_plugins = app_data_dir.join("plugins");
     if user_plugins.is_dir() {
-        roots.push((PluginSourceKind::User, user_plugins));
+        roots.push((GadgetSourceKind::User, user_plugins));
     }
 
     roots
@@ -271,7 +271,7 @@ mod tests {
         // test is run from the torchsnap workspace, so accept
         // either 0 or 1 (Dev) roots here.
         assert!(
-            roots.is_empty() || roots.iter().all(|(k, _)| *k == PluginSourceKind::Dev),
+            roots.is_empty() || roots.iter().all(|(k, _)| *k == GadgetSourceKind::Dev),
             "unexpected non-dev root: {roots:?}"
         );
     }
@@ -286,9 +286,9 @@ mod tests {
         std::fs::create_dir_all(&app_data).expect("mkdir");
 
         let roots = enumerate_search_roots(Some(&resource), &app_data);
-        let kinds: Vec<PluginSourceKind> = roots.iter().map(|(k, _)| *k).collect();
+        let kinds: Vec<GadgetSourceKind> = roots.iter().map(|(k, _)| *k).collect();
         assert!(
-            kinds.contains(&PluginSourceKind::System),
+            kinds.contains(&GadgetSourceKind::System),
             "System root missing from {roots:?}"
         );
     }
@@ -300,9 +300,9 @@ mod tests {
         std::fs::create_dir_all(app_data.join("plugins")).expect("mkdir");
 
         let roots = enumerate_search_roots(None, &app_data);
-        let kinds: Vec<PluginSourceKind> = roots.iter().map(|(k, _)| *k).collect();
+        let kinds: Vec<GadgetSourceKind> = roots.iter().map(|(k, _)| *k).collect();
         assert!(
-            kinds.contains(&PluginSourceKind::User),
+            kinds.contains(&GadgetSourceKind::User),
             "User root missing from {roots:?}"
         );
     }
@@ -323,8 +323,8 @@ mod tests {
         let roots = enumerate_search_roots(Some(&resource), &app_data);
         let system_idx = roots
             .iter()
-            .position(|(k, _)| *k == PluginSourceKind::System);
-        let user_idx = roots.iter().position(|(k, _)| *k == PluginSourceKind::User);
+            .position(|(k, _)| *k == GadgetSourceKind::System);
+        let user_idx = roots.iter().position(|(k, _)| *k == GadgetSourceKind::User);
         assert!(system_idx.is_some() && user_idx.is_some());
         assert!(system_idx < user_idx, "System must precede User");
     }
@@ -340,7 +340,7 @@ mod tests {
 
         let roots = enumerate_search_roots(Some(&resource), &app_data);
         assert!(
-            roots.iter().all(|(k, _)| *k != PluginSourceKind::System),
+            roots.iter().all(|(k, _)| *k != GadgetSourceKind::System),
             "System should not be included when res/plugins is missing"
         );
     }

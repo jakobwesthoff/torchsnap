@@ -29,7 +29,7 @@ use std::time::Duration;
 use crate::network::Http;
 use crate::wasm::bindings;
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
 /// HTTP state. Origin allowlist + per-plugin clients.
 #[derive(Default)]
@@ -183,7 +183,7 @@ pub(crate) fn wit_method_to_reqwest(
     }
 }
 
-impl bindings::torchsnap::plugin::http::Host for PluginState {
+impl bindings::torchsnap::plugin::http::Host for GadgetState {
     fn fetch(
         &mut self,
         request: bindings::torchsnap::plugin::http::HttpRequest,
@@ -258,7 +258,7 @@ impl bindings::torchsnap::plugin::http::Host for PluginState {
     }
 }
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Stash the origin allowlist for `http::fetch`. Called
     /// by the bridge at `enable()` from the manifest's
     /// `[permissions.http].origins` list (already normalized).

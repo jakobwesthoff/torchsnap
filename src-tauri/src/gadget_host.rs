@@ -18,7 +18,7 @@
 // - Action execution and message routing
 // - Shutdown (disable all plugins)
 //
-// Managed as `Arc<PluginHost>` in Tauri state — no Mutex needed
+// Managed as `Arc<GadgetHost>` in Tauri state — no Mutex needed
 // since all fields are either immutable after init or use
 // interior mutability (AtomicBool, watch channels).
 // =========================================================
@@ -36,16 +36,16 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::commands::types::{
-    ActionId, PluginResponse, PluginViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
+    ActionId, GadgetResponse, GadgetViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
     SourcedEntry,
 };
 use crate::frecency::{FrecencyStore, PluginFrecency};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
-use crate::plugins::{Plugin, PluginContext, PluginShortcut};
+use crate::gadgets::{Gadget, GadgetContext, GadgetShortcut};
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
-use crate::settings::{PluginSettings, SettingsInit};
+use crate::settings::{GadgetSettings, SettingsInit};
 use crate::unicode::Utf16Positions;
-use crate::wasm::source::PluginSourceKind;
+use crate::wasm::source::GadgetSourceKind;
 
 // =========================================================
 // Internal Helpers
@@ -65,34 +65,34 @@ enum ViewKind {
 /// activation back to the owning plugin.
 struct RegisteredShortcut {
     shortcut: Shortcut,
-    plugin_id: String,
+    gadget_id: String,
     shortcut_id: String,
-    owner: Arc<dyn Plugin>,
+    owner: Arc<dyn Gadget>,
 }
 
 /// Payload emitted with the `activate-plugin-custom-ui` event.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ActivatePluginPayload {
+struct ActivateGadgetPayload {
     plugin_id: String,
     view: String,
     data: Option<serde_json::Value>,
 }
 
 // =========================================================
-// PluginSlot — per-plugin state managed by the host
+// GadgetSlot — per-plugin state managed by the host
 // =========================================================
 
 /// Wraps a plugin with host-managed lifecycle state. The host
 /// owns the enabled flag and the settings dispatcher — plugins
 /// never manage their own enabled state.
-struct PluginSlot {
-    plugin: Arc<dyn Plugin>,
+struct GadgetSlot {
+    plugin: Arc<dyn Gadget>,
 
     /// Where this plugin was loaded from. Surfaced to the
     /// frontend so the Plugins settings panel can badge each
     /// entry and gate uninstall to `User` only.
-    source_kind: PluginSourceKind,
+    source_kind: GadgetSourceKind,
 
     /// Host-owned enabled flag. Checked before including the
     /// plugin in search results, shortcut registration, etc.
@@ -106,8 +106,8 @@ struct PluginSlot {
     dispatcher: CoalescingDispatcher,
 }
 
-impl PluginSlot {
-    fn new(plugin: Arc<dyn Plugin>, source_kind: PluginSourceKind) -> Self {
+impl GadgetSlot {
+    fn new(plugin: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
         Self {
             plugin,
             source_kind,
@@ -124,11 +124,11 @@ impl PluginSlot {
 }
 
 // =========================================================
-// PluginHost
+// GadgetHost
 // =========================================================
 
-pub struct PluginHost {
-    slots: Vec<PluginSlot>,
+pub struct GadgetHost {
+    slots: Vec<GadgetSlot>,
     store: Arc<Store<tauri::Wry>>,
     frecency: Arc<FrecencyStore>,
 
@@ -145,7 +145,7 @@ pub struct PluginHost {
     shortcut_signal_rx: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
 }
 
-impl PluginHost {
+impl GadgetHost {
     pub fn new(store: Arc<Store<tauri::Wry>>, frecency: Arc<FrecencyStore>) -> Self {
         let (tx, rx) = mpsc::channel(1);
         Self {
@@ -164,16 +164,16 @@ impl PluginHost {
     /// surfaced through [`Self::plugin_sources`] to the frontend
     /// so the Plugins settings panel can badge and gate each
     /// entry appropriately.
-    pub fn register(&mut self, plugin: Box<dyn Plugin>, source_kind: PluginSourceKind) {
+    pub fn register(&mut self, plugin: Box<dyn Gadget>, source_kind: GadgetSourceKind) {
         self.slots
-            .push(PluginSlot::new(Arc::from(plugin), source_kind));
+            .push(GadgetSlot::new(Arc::from(plugin), source_kind));
     }
 
     /// Snapshot of the plugin-id → source-kind mapping. Exposed
     /// via the `plugin_sources` Tauri command. The host's slot
     /// list is append-only after setup, so this snapshot is
     /// stable over the process lifetime.
-    pub fn plugin_sources(&self) -> std::collections::HashMap<String, PluginSourceKind> {
+    pub fn plugin_sources(&self) -> std::collections::HashMap<String, GadgetSourceKind> {
         self.slots
             .iter()
             .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
@@ -267,8 +267,8 @@ impl PluginHost {
 
             let p = Arc::clone(&slot.plugin);
             let h = handle.clone();
-            let ctx = PluginContext {
-                settings: PluginSettings::new(Arc::clone(&self.store), p.id()),
+            let ctx = GadgetContext {
+                settings: GadgetSettings::new(Arc::clone(&self.store), p.id()),
                 frecency: PluginFrecency::new(Arc::clone(&self.frecency), p.id()),
             };
             runtime.spawn_blocking(move || {
@@ -279,7 +279,7 @@ impl PluginHost {
 
     /// Spawn the shortcut reactor task. Called once after the host
     /// is wrapped in `Arc` and managed as Tauri state, so we can
-    /// pass `Arc<PluginHost>` into the async task.
+    /// pass `Arc<GadgetHost>` into the async task.
     pub fn start_shortcut_reactor(self: &Arc<Self>, app: &tauri::AppHandle) {
         let rx = self
             .shortcut_signal_rx
@@ -386,13 +386,13 @@ impl PluginHost {
 
                     match result {
                         Ok(PostAction::ShowCustomUI { view, data }) => {
-                            show_launcher_with_plugin(&handle, &r.plugin_id, &view, data);
+                            show_launcher_with_plugin(&handle, &r.gadget_id, &view, data);
                         }
                         Ok(_) => {}
                         Err(e) => {
                             eprintln!(
                                 "shortcut: {}.{} handler failed: {e:#}",
-                                r.plugin_id, r.shortcut_id
+                                r.gadget_id, r.shortcut_id
                             );
                         }
                     }
@@ -405,8 +405,8 @@ impl PluginHost {
     fn resolve_shortcut(
         &self,
         plugin_id: &str,
-        decl: &PluginShortcut,
-        owner: Arc<dyn Plugin>,
+        decl: &GadgetShortcut,
+        owner: Arc<dyn Gadget>,
     ) -> Option<RegisteredShortcut> {
         let full_key = format!("plugins.{plugin_id}.{}", decl.settings_key);
 
@@ -429,7 +429,7 @@ impl PluginHost {
 
         Some(RegisteredShortcut {
             shortcut,
-            plugin_id: plugin_id.to_string(),
+            gadget_id: plugin_id.to_string(),
             shortcut_id: decl.id.to_string(),
             owner,
         })
@@ -516,7 +516,7 @@ impl PluginHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let plugins: Vec<Arc<dyn Plugin>> = self
+        let plugins: Vec<Arc<dyn Gadget>> = self
             .slots
             .iter()
             .filter(|s| s.is_active())
@@ -612,15 +612,15 @@ impl PluginHost {
     /// Delegate to the standalone function for testability.
     fn process_plugin_response(
         &self,
-        response: PluginResponse,
+        response: GadgetResponse,
         source: &str,
         allow_custom_ui: bool,
-    ) -> (Option<(ViewKind, PluginViewRef)>, Vec<SourcedEntry>) {
+    ) -> (Option<(ViewKind, GadgetViewRef)>, Vec<SourcedEntry>) {
         process_plugin_response(response, source, allow_custom_ui)
     }
 
     /// Delegate to the standalone function for testability.
-    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
         find_prefix_match(&self.slots, query)
     }
 
@@ -631,7 +631,7 @@ impl PluginHost {
     /// return their entry list, query-only plugins return the
     /// default empty vec (zero cost).
     fn search_catalogs_static(
-        plugins: &[Arc<dyn Plugin>],
+        plugins: &[Arc<dyn Gadget>],
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<SourcedEntry> {
@@ -822,8 +822,8 @@ impl PluginHost {
                 let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
 
                 if new_enabled && !was_enabled {
-                    let ctx = PluginContext {
-                        settings: PluginSettings::new(Arc::clone(&store), id),
+                    let ctx = GadgetContext {
+                        settings: GadgetSettings::new(Arc::clone(&store), id),
                         frecency: PluginFrecency::new(Arc::clone(&frecency), id),
                     };
                     plugin.enable(&app, &ctx);
@@ -868,7 +868,7 @@ impl PluginHost {
 // Search Helpers (standalone for testability)
 // =========================================================
 
-/// Process a `PluginResponse` into scored entries and an
+/// Process a `GadgetResponse` into scored entries and an
 /// optional view reference.
 ///
 /// `allow_custom_ui` controls whether `CustomUI` responses
@@ -876,24 +876,24 @@ impl PluginHost {
 /// `CustomUI` is downgraded to plain results — entries are
 /// still extracted but the custom view is dropped.
 fn process_plugin_response(
-    response: PluginResponse,
+    response: GadgetResponse,
     source: &str,
     allow_custom_ui: bool,
-) -> (Option<(ViewKind, PluginViewRef)>, Vec<SourcedEntry>) {
+) -> (Option<(ViewKind, GadgetViewRef)>, Vec<SourcedEntry>) {
     let mut view_ref = None;
 
     match &response {
-        PluginResponse::CustomUI { view, data, .. } if allow_custom_ui => {
+        GadgetResponse::CustomUI { view, data, .. } if allow_custom_ui => {
             view_ref = Some((
                 ViewKind::Custom,
-                PluginViewRef {
+                GadgetViewRef {
                     plugin_id: source.to_string(),
                     view: view.clone(),
                     data: data.clone(),
                 },
             ));
         }
-        PluginResponse::CustomUI { .. } => {
+        GadgetResponse::CustomUI { .. } => {
             // CustomUI is only honoured in prefix mode. In non-prefix
             // (always-on) mode we downgrade to plain results so the
             // plugin's entries still appear but without the custom view.
@@ -903,22 +903,22 @@ fn process_plugin_response(
                 source
             );
         }
-        PluginResponse::InlineUI { view, data, .. } => {
+        GadgetResponse::InlineUI { view, data, .. } => {
             view_ref = Some((
                 ViewKind::Inline,
-                PluginViewRef {
+                GadgetViewRef {
                     plugin_id: source.to_string(),
                     view: view.clone(),
                     data: data.clone(),
                 },
             ));
         }
-        PluginResponse::Results(_) => {}
+        GadgetResponse::Results(_) => {}
     }
 
     let entries: Vec<SourcedEntry> = match response {
-        PluginResponse::Results(results) => results,
-        PluginResponse::CustomUI { results, .. } | PluginResponse::InlineUI { results, .. } => {
+        GadgetResponse::Results(results) => results,
+        GadgetResponse::CustomUI { results, .. } | GadgetResponse::InlineUI { results, .. } => {
             results
         }
     }
@@ -933,10 +933,10 @@ fn process_plugin_response(
 /// match for `query`. Returns `None` when no prefix matches.
 /// Disabled plugins are skipped.
 fn find_prefix_match<'a>(
-    slots: &'a [PluginSlot],
+    slots: &'a [GadgetSlot],
     query: &str,
-) -> Option<(&'a Arc<dyn Plugin>, &'a str)> {
-    let mut best: Option<(&Arc<dyn Plugin>, &str)> = None;
+) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
+    let mut best: Option<(&Arc<dyn Gadget>, &str)> = None;
     let mut best_len = 0;
 
     for slot in slots {
@@ -979,7 +979,7 @@ fn show_launcher_with_plugin(
 
     if let Err(e) = app.emit(
         "activate-plugin-custom-ui",
-        ActivatePluginPayload {
+        ActivateGadgetPayload {
             plugin_id: plugin_id.to_string(),
             view: view.to_string(),
             data,
@@ -1007,15 +1007,15 @@ mod tests {
     // plugin.
     // -------------------------------------------------------
 
-    struct MockPlugin {
+    struct MockGadget {
         id: String,
         enabled: bool,
         prefixes: Vec<String>,
         catalog_entries: Vec<CatalogEntry>,
-        search_response: Option<PluginResponse>,
+        search_response: Option<GadgetResponse>,
     }
 
-    impl MockPlugin {
+    impl MockGadget {
         fn new(id: &str) -> Self {
             Self {
                 id: id.to_string(),
@@ -1036,13 +1036,13 @@ mod tests {
             self
         }
 
-        fn with_search_response(mut self, response: PluginResponse) -> Self {
+        fn with_search_response(mut self, response: GadgetResponse) -> Self {
             self.search_response = Some(response);
             self
         }
     }
 
-    impl Plugin for MockPlugin {
+    impl Gadget for MockGadget {
         fn id(&self) -> &str {
             &self.id
         }
@@ -1055,7 +1055,7 @@ mod tests {
             self.catalog_entries.clone()
         }
 
-        fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
+        fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<GadgetResponse> {
             self.search_response.clone()
         }
 
@@ -1083,17 +1083,17 @@ mod tests {
         }
     }
 
-    /// Helper to wrap mock plugins in `PluginSlot`. Tests
-    /// default slots to `PluginSourceKind::Builtin` since
+    /// Helper to wrap mock plugins in `GadgetSlot`. Tests
+    /// default slots to `GadgetSourceKind::Builtin` since
     /// they exercise host routing logic, not source-kind
     /// plumbing — dedicated tests below cover the source-kind
     /// path.
-    fn plugin_slots(plugins: Vec<MockPlugin>) -> Vec<PluginSlot> {
+    fn gadget_slots(plugins: Vec<MockGadget>) -> Vec<GadgetSlot> {
         plugins
             .into_iter()
             .map(|p| {
                 let enabled = p.enabled;
-                let slot = PluginSlot::new(Arc::new(p), PluginSourceKind::Builtin);
+                let slot = GadgetSlot::new(Arc::new(p), GadgetSourceKind::Builtin);
                 slot.enabled.store(enabled, Ordering::Relaxed);
                 slot
             })
@@ -1106,20 +1106,20 @@ mod tests {
 
     #[test]
     fn default_search_returns_none() {
-        let plugin = MockPlugin::new("empty");
+        let plugin = MockGadget::new("empty");
         assert!(plugin.search("anything", None).is_none());
     }
 
     #[test]
     fn search_returns_configured_response() {
-        let plugin = MockPlugin::new("test")
-            .with_search_response(PluginResponse::Results(vec![scored_entry("r1", 100)]));
+        let plugin = MockGadget::new("test")
+            .with_search_response(GadgetResponse::Results(vec![scored_entry("r1", 100)]));
 
         let result = plugin.search("query", None);
         assert!(result.is_some());
 
         match result.unwrap() {
-            PluginResponse::Results(entries) => {
+            GadgetResponse::Results(entries) => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].id, "r1");
             }
@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn search_returns_custom_ui() {
-        let plugin = MockPlugin::new("test").with_search_response(PluginResponse::CustomUI {
+        let plugin = MockGadget::new("test").with_search_response(GadgetResponse::CustomUI {
             view: "history".into(),
             data: Some(serde_json::json!({"key": "value"})),
             results: vec![scored_entry("h1", 50)],
@@ -1137,7 +1137,7 @@ mod tests {
 
         let result = plugin.search("=2+2", Some("="));
         match result.unwrap() {
-            PluginResponse::CustomUI {
+            GadgetResponse::CustomUI {
                 view,
                 data,
                 results,
@@ -1152,7 +1152,7 @@ mod tests {
 
     #[test]
     fn search_returns_inline_ui() {
-        let plugin = MockPlugin::new("test").with_search_response(PluginResponse::InlineUI {
+        let plugin = MockGadget::new("test").with_search_response(GadgetResponse::InlineUI {
             view: "result".into(),
             data: None,
             results: vec![],
@@ -1160,7 +1160,7 @@ mod tests {
 
         let result = plugin.search("42", None);
         match result.unwrap() {
-            PluginResponse::InlineUI { view, .. } => {
+            GadgetResponse::InlineUI { view, .. } => {
                 assert_eq!(view, "result");
             }
             _ => panic!("expected InlineUI variant"),
@@ -1173,13 +1173,13 @@ mod tests {
 
     #[test]
     fn default_prefixes_are_empty() {
-        let plugin = MockPlugin::new("no-prefix");
+        let plugin = MockGadget::new("no-prefix");
         assert!(plugin.search_prefixes().is_empty());
     }
 
     #[test]
     fn configured_prefixes_returned() {
-        let plugin = MockPlugin::new("calc").with_prefixes(&["=", "calc "]);
+        let plugin = MockGadget::new("calc").with_prefixes(&["=", "calc "]);
         let prefixes = plugin.search_prefixes();
         assert_eq!(prefixes.len(), 2);
         assert_eq!(prefixes[0], "=");
@@ -1192,19 +1192,19 @@ mod tests {
 
     #[test]
     fn no_plugins_no_match() {
-        let plugins = plugin_slots(vec![]);
+        let plugins = gadget_slots(vec![]);
         assert!(find_prefix_match(&plugins, "=2+2").is_none());
     }
 
     #[test]
     fn no_prefix_plugins_no_match() {
-        let plugins = plugin_slots(vec![MockPlugin::new("a"), MockPlugin::new("b")]);
+        let plugins = gadget_slots(vec![MockGadget::new("a"), MockGadget::new("b")]);
         assert!(find_prefix_match(&plugins, "hello").is_none());
     }
 
     #[test]
     fn single_prefix_match() {
-        let plugins = plugin_slots(vec![MockPlugin::new("calc").with_prefixes(&["="])]);
+        let plugins = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
         let (plugin, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
         assert_eq!(plugin.id(), "calc");
         assert_eq!(prefix, "=");
@@ -1212,9 +1212,9 @@ mod tests {
 
     #[test]
     fn longest_prefix_wins() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("short").with_prefixes(&["!"]),
-            MockPlugin::new("long").with_prefixes(&["!g"]),
+        let plugins = gadget_slots(vec![
+            MockGadget::new("short").with_prefixes(&["!"]),
+            MockGadget::new("long").with_prefixes(&["!g"]),
         ]);
 
         // "!google" matches both "!" and "!g" — longest wins.
@@ -1225,15 +1225,15 @@ mod tests {
 
     #[test]
     fn prefix_must_be_at_start() {
-        let plugins = plugin_slots(vec![MockPlugin::new("calc").with_prefixes(&["="])]);
+        let plugins = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
         // "hello =" doesn't start with "=".
         assert!(find_prefix_match(&plugins, "hello =").is_none());
     }
 
     #[test]
     fn disabled_plugin_prefix_skipped() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("calc")
+        let plugins = gadget_slots(vec![
+            MockGadget::new("calc")
                 .with_prefixes(&["="])
                 .with_enabled(false),
         ]);
@@ -1242,11 +1242,11 @@ mod tests {
 
     #[test]
     fn disabled_plugin_skipped_fallback_to_shorter() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("disabled-long")
+        let plugins = gadget_slots(vec![
+            MockGadget::new("disabled-long")
                 .with_prefixes(&["!g"])
                 .with_enabled(false),
-            MockPlugin::new("enabled-short").with_prefixes(&["!"]),
+            MockGadget::new("enabled-short").with_prefixes(&["!"]),
         ]);
 
         let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
@@ -1256,9 +1256,9 @@ mod tests {
 
     #[test]
     fn multi_char_prefix() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("emoji").with_prefixes(&[":"]),
-            MockPlugin::new("http").with_prefixes(&["http://", "https://"]),
+        let plugins = gadget_slots(vec![
+            MockGadget::new("emoji").with_prefixes(&[":"]),
+            MockGadget::new("http").with_prefixes(&["http://", "https://"]),
         ]);
 
         let (plugin, prefix) = find_prefix_match(&plugins, "https://example.com").unwrap();
@@ -1269,7 +1269,7 @@ mod tests {
     #[test]
     fn exact_prefix_query() {
         // Query is exactly the prefix with nothing after it.
-        let plugins = plugin_slots(vec![MockPlugin::new("emoji").with_prefixes(&[":"])]);
+        let plugins = gadget_slots(vec![MockGadget::new("emoji").with_prefixes(&[":"])]);
         let (plugin, prefix) = find_prefix_match(&plugins, ":").unwrap();
         assert_eq!(plugin.id(), "emoji");
         assert_eq!(prefix, ":");
@@ -1277,8 +1277,8 @@ mod tests {
 
     #[test]
     fn multiple_prefixes_same_plugin() {
-        let plugins = plugin_slots(vec![
-            MockPlugin::new("multi").with_prefixes(&["http://", "https://"]),
+        let plugins = gadget_slots(vec![
+            MockGadget::new("multi").with_prefixes(&["http://", "https://"]),
         ]);
 
         let (_, prefix) = find_prefix_match(&plugins, "http://foo.com").unwrap();
@@ -1294,7 +1294,7 @@ mod tests {
 
     #[test]
     fn results_response_extracts_entries() {
-        let response = PluginResponse::Results(vec![scored_entry("a", 100), scored_entry("b", 50)]);
+        let response = GadgetResponse::Results(vec![scored_entry("a", 100), scored_entry("b", 50)]);
         let (view, entries) = process_plugin_response(response, "test-plugin", false);
         assert!(view.is_none());
         assert_eq!(entries.len(), 2);
@@ -1305,7 +1305,7 @@ mod tests {
 
     #[test]
     fn empty_results_yields_empty_entries() {
-        let response = PluginResponse::Results(vec![]);
+        let response = GadgetResponse::Results(vec![]);
         let (view, entries) = process_plugin_response(response, "p", false);
         assert!(view.is_none());
         assert!(entries.is_empty());
@@ -1313,7 +1313,7 @@ mod tests {
 
     #[test]
     fn custom_ui_allowed_in_prefix_mode() {
-        let response = PluginResponse::CustomUI {
+        let response = GadgetResponse::CustomUI {
             view: "history".into(),
             data: Some(serde_json::json!({"x": 1})),
             results: vec![scored_entry("h1", 10)],
@@ -1330,7 +1330,7 @@ mod tests {
 
     #[test]
     fn custom_ui_downgraded_outside_prefix_mode() {
-        let response = PluginResponse::CustomUI {
+        let response = GadgetResponse::CustomUI {
             view: "picker".into(),
             data: None,
             results: vec![scored_entry("e1", 20), scored_entry("e2", 10)],
@@ -1344,7 +1344,7 @@ mod tests {
 
     #[test]
     fn inline_ui_produces_view_ref() {
-        let response = PluginResponse::InlineUI {
+        let response = GadgetResponse::InlineUI {
             view: "result".into(),
             data: Some(serde_json::json!({"result": "42"})),
             results: vec![],
@@ -1360,7 +1360,7 @@ mod tests {
     fn inline_ui_allowed_in_both_modes() {
         // InlineUI should work regardless of prefix/non-prefix mode.
         for allow_custom in [true, false] {
-            let response = PluginResponse::InlineUI {
+            let response = GadgetResponse::InlineUI {
                 view: "v".into(),
                 data: None,
                 results: vec![],
@@ -1375,7 +1375,7 @@ mod tests {
 
     #[test]
     fn custom_ui_with_no_results_prefix_mode() {
-        let response = PluginResponse::CustomUI {
+        let response = GadgetResponse::CustomUI {
             view: "picker".into(),
             data: None,
             results: vec![],
@@ -1387,62 +1387,62 @@ mod tests {
 
     #[test]
     fn source_id_propagated_to_entries() {
-        let response = PluginResponse::Results(vec![scored_entry("x", 1)]);
+        let response = GadgetResponse::Results(vec![scored_entry("x", 1)]);
         let (_, entries) = process_plugin_response(response, "my-plugin", false);
         assert_eq!(entries[0].source, "my-plugin");
     }
 
     // =======================================================
-    // PluginSourceKind plumbing through the slot
+    // GadgetSourceKind plumbing through the slot
     // =======================================================
 
-    /// Every variant must survive `PluginSlot::new`. The
+    /// Every variant must survive `GadgetSlot::new`. The
     /// field drives the frontend source badge, so a slot
     /// that silently dropped the kind would present the
     /// wrong origin to the user.
     #[test]
     fn slot_preserves_every_source_kind_variant() {
         for kind in [
-            PluginSourceKind::Builtin,
-            PluginSourceKind::System,
-            PluginSourceKind::User,
-            PluginSourceKind::Dev,
+            GadgetSourceKind::Builtin,
+            GadgetSourceKind::System,
+            GadgetSourceKind::User,
+            GadgetSourceKind::Dev,
         ] {
-            let slot = PluginSlot::new(Arc::new(MockPlugin::new("probe")), kind);
+            let slot = GadgetSlot::new(Arc::new(MockGadget::new("probe")), kind);
             assert_eq!(slot.source_kind, kind);
         }
     }
 
     /// Aggregation across multiple slots yields the plugin-id →
     /// source-kind map exposed to the frontend. This mirrors
-    /// the body of `PluginHost::plugin_sources`; together with
+    /// the body of `GadgetHost::plugin_sources`; together with
     /// the per-slot preservation test above it is sufficient
     /// coverage for the command's output without constructing
-    /// a full `PluginHost` (which would require a real
+    /// a full `GadgetHost` (which would require a real
     /// `Store` + `FrecencyStore`).
     #[test]
     fn slot_aggregation_produces_expected_source_map() {
         let slots = vec![
-            PluginSlot::new(
-                Arc::new(MockPlugin::new("builtin-a")),
-                PluginSourceKind::Builtin,
+            GadgetSlot::new(
+                Arc::new(MockGadget::new("builtin-a")),
+                GadgetSourceKind::Builtin,
             ),
-            PluginSlot::new(
-                Arc::new(MockPlugin::new("system-x")),
-                PluginSourceKind::System,
+            GadgetSlot::new(
+                Arc::new(MockGadget::new("system-x")),
+                GadgetSourceKind::System,
             ),
-            PluginSlot::new(Arc::new(MockPlugin::new("user-y")), PluginSourceKind::User),
-            PluginSlot::new(Arc::new(MockPlugin::new("dev-z")), PluginSourceKind::Dev),
+            GadgetSlot::new(Arc::new(MockGadget::new("user-y")), GadgetSourceKind::User),
+            GadgetSlot::new(Arc::new(MockGadget::new("dev-z")), GadgetSourceKind::Dev),
         ];
-        let map: std::collections::HashMap<String, PluginSourceKind> = slots
+        let map: std::collections::HashMap<String, GadgetSourceKind> = slots
             .iter()
             .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
             .collect();
 
         assert_eq!(map.len(), 4);
-        assert_eq!(map["builtin-a"], PluginSourceKind::Builtin);
-        assert_eq!(map["system-x"], PluginSourceKind::System);
-        assert_eq!(map["user-y"], PluginSourceKind::User);
-        assert_eq!(map["dev-z"], PluginSourceKind::Dev);
+        assert_eq!(map["builtin-a"], GadgetSourceKind::Builtin);
+        assert_eq!(map["system-x"], GadgetSourceKind::System);
+        assert_eq!(map["user-y"], GadgetSourceKind::User);
+        assert_eq!(map["dev-z"], GadgetSourceKind::Dev);
     }
 }

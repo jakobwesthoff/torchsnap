@@ -8,7 +8,7 @@
 // Routes guest `logging::log` / `span-start` / `span-end`
 // calls into the host's `LogSender` and `SpanRegistry`.
 // `log_sender` and `span_registry` are foundational fields
-// on `PluginState` (set at instance construction, not at
+// on `GadgetState` (set at instance construction, not at
 // enable time) so this Host impl needs no setter — every
 // instance has them populated by the time any guest call
 // runs.
@@ -19,9 +19,9 @@ use std::time::SystemTime;
 use crate::wasm::bindings;
 use crate::wasm::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 
-use super::super::PluginState;
+use super::super::GadgetState;
 
-impl bindings::torchsnap::plugin::logging::Host for PluginState {
+impl bindings::torchsnap::plugin::logging::Host for GadgetState {
     fn log(
         &mut self,
         level: bindings::torchsnap::plugin::logging::LogLevel,
@@ -40,7 +40,7 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
         self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            source: LogSource::Plugin(self.plugin_id.clone()),
+            source: LogSource::Plugin(self.gadget_id.clone()),
             kind: LogItemKind::Message {
                 level: log_level,
                 message,
@@ -62,7 +62,7 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
         match self.span_registry.start(
             name,
             parent,
-            LogSource::Plugin(self.plugin_id.clone()),
+            LogSource::Plugin(self.gadget_id.clone()),
             metadata,
         ) {
             Some((id, depth)) => {
@@ -71,7 +71,7 @@ impl bindings::torchsnap::plugin::logging::Host for PluginState {
                 self.log_sender.send(LogItem {
                     seq: 0,
                     timestamp: SystemTime::now(),
-                    source: LogSource::Plugin(self.plugin_id.clone()),
+                    source: LogSource::Plugin(self.gadget_id.clone()),
                     kind: LogItemKind::SpanStart {
                         span_id: id,
                         name: name_for_item,

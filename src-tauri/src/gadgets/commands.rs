@@ -11,12 +11,12 @@
 // from other plugins.
 // =========================================================
 
-use super::Plugin;
+use super::Gadget;
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
 
-pub struct BuiltInCommandsPlugin;
+pub struct BuiltInCommandsGadget;
 
-impl Plugin for BuiltInCommandsPlugin {
+impl Gadget for BuiltInCommandsGadget {
     fn id(&self) -> &str {
         "builtin-commands"
     }

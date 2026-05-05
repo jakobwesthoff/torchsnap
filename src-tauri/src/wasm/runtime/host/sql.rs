@@ -17,7 +17,7 @@
 // `Arc<SqlStorage>` — the underlying connection (and its
 // internal mutex) is shared across every outstanding handle.
 // Concurrent host imports are not actually possible because
-// the wasmtime store mutex (`WasmPluginInstance::store`)
+// the wasmtime store mutex (`WasmGadgetInstance::store`)
 // already serializes every guest call.
 //
 // The Bindgen-generated `WitSqlValue` and `HostSqlHandle`
@@ -35,7 +35,7 @@ use wasmtime::component::Resource;
 use crate::storage::{SqlStorage, SqlValue as HostSqlValue};
 use crate::wasm::bindings;
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
 /// SQL storage state. `config` is set once at bridge
 /// construction from the manifest; `storage` and
@@ -74,7 +74,7 @@ impl Default for SqlState {
 /// Materialized at bridge construction so the wasmtime host
 /// import can resolve `sql::connection()` synchronously.
 /// Migration files are read once via
-/// `PluginSource::read_file` at load time.
+/// `GadgetSource::read_file` at load time.
 #[derive(Clone)]
 pub enum SqlConfig {
     /// Plugin did not declare a `[storage.sql]` block in its
@@ -100,7 +100,7 @@ pub struct SqlHandleEntry {
     storage: Arc<SqlStorage>,
 }
 
-impl bindings::torchsnap::plugin::sql::Host for PluginState {
+impl bindings::torchsnap::plugin::sql::Host for GadgetState {
     fn connection(&mut self) -> Resource<SqlHandleEntry> {
         // The bridge opens the database before the guest's
         // enable() runs, so sql.storage is always populated
@@ -131,7 +131,7 @@ impl bindings::torchsnap::plugin::sql::Host for PluginState {
         // every outstanding handle on disable, even if the
         // guest forgot to drop them. Without this list, a
         // leaked handle would keep the rusqlite connection
-        // alive until the entire WasmPluginInstance is
+        // alive until the entire WasmGadgetInstance is
         // dropped (effectively until app shutdown).
         self.sql.handle_reps.push(handle.rep());
 
@@ -139,7 +139,7 @@ impl bindings::torchsnap::plugin::sql::Host for PluginState {
     }
 }
 
-impl bindings::torchsnap::plugin::sql::HostSqlHandle for PluginState {
+impl bindings::torchsnap::plugin::sql::HostSqlHandle for GadgetState {
     fn execute(
         &mut self,
         handle: Resource<SqlHandleEntry>,
@@ -197,7 +197,7 @@ impl bindings::torchsnap::plugin::sql::HostSqlHandle for PluginState {
 
         // Removing the entry drops just this resource's
         // clone of the master Arc. The underlying
-        // SqlStorage stays alive on PluginState's
+        // SqlStorage stays alive on GadgetState's
         // `sql.storage` field until the plugin is
         // disabled.
         self.wasi_table.delete(handle)?;
@@ -252,7 +252,7 @@ impl From<HostSqlValue> for bindings::torchsnap::plugin::sql::SqlValue {
     }
 }
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Install the SQL storage configuration on the store
     /// data. Called once by the bridge at construction time
     /// (before any guest call) — the migration strings have
@@ -292,7 +292,7 @@ impl WasmPluginInstance {
     /// `Arc<SqlStorage>` so the rusqlite `Connection` is
     /// closed at disable. Without this drain, a guest that
     /// neglected to release every handle would keep the
-    /// connection alive until the whole `WasmPluginInstance`
+    /// connection alive until the whole `WasmGadgetInstance`
     /// is dropped.
     pub fn clear_sql_storage(&self) {
         let mut store = self.store.lock().expect("store not poisoned");

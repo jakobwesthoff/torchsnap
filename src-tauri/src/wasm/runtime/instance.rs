@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WasmPluginInstance — one per loaded plugin
+// WasmGadgetInstance — one per loaded plugin
 //
-// Wraps the wasmtime `Store<PluginState>` plus the typed
+// Wraps the wasmtime `Store<GadgetState>` plus the typed
 // `bindings::Plugin` and a host-side `Logger`. Per-call
 // guest dispatch (enable / disable / search / execute /
 // handle_message / run_task / on_setting_changed) lives
@@ -13,7 +13,7 @@
 //
 // Capability-specific setters/clearers
 // (`set_clipboard_writer`, `set_opener_schemes`, etc.)
-// land via `impl WasmPluginInstance` extension blocks in
+// land via `impl WasmGadgetInstance` extension blocks in
 // the `host/<capability>.rs` files. The foundational
 // setters defined here cover the cross-capability state
 // (`plugin_source`, `path_context`) plus the
@@ -29,9 +29,9 @@ use wasmtime::Store;
 use crate::wasm::bindings;
 use crate::wasm::logging::spans::Logger;
 use crate::wasm::permission_vars::PathContext;
-use crate::wasm::source::PluginSource;
+use crate::wasm::source::GadgetSource;
 
-use super::state::PluginState;
+use super::state::GadgetState;
 
 /// A loaded WASM plugin instance.
 ///
@@ -54,19 +54,19 @@ use super::state::PluginState;
 /// after acquiring the mutex; if a newer call registered
 /// during the wait, the older one short-circuits with an
 /// empty result instead of running.
-pub struct WasmPluginInstance {
-    pub(crate) store: Mutex<Store<PluginState>>,
+pub struct WasmGadgetInstance {
+    pub(crate) store: Mutex<Store<GadgetState>>,
     pub(crate) plugin: bindings::Plugin,
     pub(crate) logger: Logger,
     pub(crate) search_generation: AtomicU64,
 }
 
-impl WasmPluginInstance {
-    /// Build a `WasmPluginInstance` from the parts produced
+impl WasmGadgetInstance {
+    /// Build a `WasmGadgetInstance` from the parts produced
     /// by `WasmRuntime::instantiate`. Crate-private — the
     /// only legitimate caller is the engine.
     pub(crate) fn from_parts(
-        store: Store<PluginState>,
+        store: Store<GadgetState>,
         plugin: bindings::Plugin,
         logger: Logger,
     ) -> Self {
@@ -79,11 +79,11 @@ impl WasmPluginInstance {
     }
 
     /// Apply a closure to a mutable reference to the plugin's
-    /// `PluginState`, holding the store lock for its duration.
+    /// `GadgetState`, holding the store lock for its duration.
     /// The single chokepoint every capability setter routes
     /// through, so the lock-acquire / `data_mut()` pattern
     /// lives in one place rather than 30 setters.
-    pub(crate) fn with_state_mut<R>(&self, f: impl FnOnce(&mut PluginState) -> R) -> R {
+    pub(crate) fn with_state_mut<R>(&self, f: impl FnOnce(&mut GadgetState) -> R) -> R {
         let mut store = self.store.lock().expect("store not poisoned");
         f(store.data_mut())
     }
@@ -97,7 +97,7 @@ impl WasmPluginInstance {
 // `assets::*`. Both are bridge-stashed at `enable()`.
 // =========================================================
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Stash the resolved `${...}` substitution context.
     /// Called by the bridge at `enable()` after computing the
     /// per-plugin paths.
@@ -110,11 +110,11 @@ impl WasmPluginInstance {
         self.with_state_mut(|state| state.path_context = None);
     }
 
-    /// Stash the plugin's own `PluginSource` handle. Called
+    /// Stash the plugin's own `GadgetSource` handle. Called
     /// by the bridge on `enable()`. The `assets::*` host
     /// imports use this Arc to read the plugin's bundled
     /// files on demand.
-    pub fn set_plugin_source(&self, source: Arc<dyn PluginSource + Send + Sync>) {
+    pub fn set_plugin_source(&self, source: Arc<dyn GadgetSource + Send + Sync>) {
         self.with_state_mut(|state| state.plugin_source = Some(source));
     }
 
@@ -139,10 +139,10 @@ impl WasmPluginInstance {
 // Every call holds the store mutex for its full duration —
 // that is the ordering invariant the host import
 // implementations rely on (no concurrent access to
-// `PluginState` is possible while a guest call is running).
+// `GadgetState` is possible while a guest call is running).
 // =========================================================
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Call the guest's `enable` export.
     pub fn enable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("enable").start();
@@ -250,7 +250,7 @@ impl WasmPluginInstance {
     /// Call the guest's `search` export and convert to native types.
     ///
     /// Implements the latest-wins elision described on
-    /// [`WasmPluginInstance`]: each call registers its own
+    /// [`WasmGadgetInstance`]: each call registers its own
     /// generation, then re-checks after acquiring the store
     /// mutex. When a newer call has overtaken us during the
     /// wait — typical when a previous call is mid-way through
@@ -264,14 +264,14 @@ impl WasmPluginInstance {
         &self,
         query: &str,
         matched_prefix: Option<&str>,
-    ) -> anyhow::Result<crate::commands::types::PluginResponse> {
+    ) -> anyhow::Result<crate::commands::types::GadgetResponse> {
         let my_gen = self.search_generation.fetch_add(1, Ordering::AcqRel) + 1;
 
         let _span = self.logger.span("search").meta("query", query).start();
         let mut store = self.store.lock().expect("store not poisoned");
 
         if self.search_generation.load(Ordering::Acquire) > my_gen {
-            return Ok(crate::commands::types::PluginResponse::Results(vec![]));
+            return Ok(crate::commands::types::GadgetResponse::Results(vec![]));
         }
 
         let response = self

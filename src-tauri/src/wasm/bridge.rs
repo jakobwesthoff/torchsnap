@@ -7,7 +7,7 @@
 //
 // Host-side representation of a WASM plugin. Owns the
 // plugin's full lifecycle: compiles the component at
-// construction, lazily instantiates a `WasmPluginInstance`
+// construction, lazily instantiates a `WasmGadgetInstance`
 // on enable, and drops it on disable so the wasmtime
 // `Store` and all guest-side linear memory are reclaimed.
 // Implements the native `Plugin` trait so WASM plugins
@@ -26,8 +26,8 @@ use chrono::Utc;
 use cron::Schedule;
 use tauri::async_runtime::JoinHandle;
 
-use crate::commands::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
-use crate::plugins::Plugin;
+use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction};
+use crate::gadgets::Gadget;
 use crate::settings::SettingsInit;
 
 use super::logging::channel::LogSender;
@@ -35,28 +35,28 @@ use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::permission_vars::PathContext;
 use super::runtime::host::opener::UrlOpenerFn;
-use super::runtime::{SqlConfig, WasmPluginInstance, WasmRuntime};
-use super::source::PluginSource;
+use super::runtime::{SqlConfig, WasmGadgetInstance, WasmRuntime};
+use super::source::GadgetSource;
 
 // =========================================================
-// WasmPluginBridge
+// WasmGadgetBridge
 // =========================================================
 
 /// Host-side representation of a WASM plugin. Owns the
 /// manifest, a handle to the shared `WasmRuntime`, the
 /// materialized `SqlConfig`, and the currently live
 /// instance slot.
-pub struct WasmPluginBridge {
+pub struct WasmGadgetBridge {
     manifest: Manifest,
     plugin_id: String,
     runtime: Arc<WasmRuntime>,
-    /// Re-applied to every fresh `WasmPluginInstance` on
-    /// enable — each new `PluginState` starts with
+    /// Re-applied to every fresh `WasmGadgetInstance` on
+    /// enable — each new `GadgetState` starts with
     /// `SqlConfig::None`, so the bridge holds the
     /// materialized config here to survive disable/re-enable
     /// cycles without re-reading the plugin source.
     sql_config: SqlConfig,
-    /// Retained so `enable()` can stash it on `PluginState`
+    /// Retained so `enable()` can stash it on `GadgetState`
     /// for the `assets::read` / `assets::exists` host
     /// imports, which call into the source at runtime
     /// (during guest `enable`, search, messaging) long after
@@ -64,7 +64,7 @@ pub struct WasmPluginBridge {
     ///
     /// Stored as `Arc<_>` because the same underlying source
     /// is simultaneously retained by `wasm::protocol`'s
-    /// `PluginSourceRegistry` for frontend asset serving
+    /// `GadgetSourceRegistry` for frontend asset serving
     /// (the `plugin://` custom protocol handler). Two
     /// independent owners of the same source — shared
     /// ownership = `Arc`. `Box` would force a double-open
@@ -73,12 +73,12 @@ pub struct WasmPluginBridge {
     ///
     /// The `+ Send + Sync` bound is required by the dyn
     /// type signature because the bridge crosses threads
-    /// via the scheduler tokio tasks. The `PluginSource`
+    /// via the scheduler tokio tasks. The `GadgetSource`
     /// trait itself is already declared
-    /// `pub trait PluginSource: Send + Sync`, so every impl
+    /// `pub trait GadgetSource: Send + Sync`, so every impl
     /// already qualifies — the bound here is purely a
     /// compile-time assertion.
-    plugin_source: Arc<dyn PluginSource + Send + Sync>,
+    plugin_source: Arc<dyn GadgetSource + Send + Sync>,
     /// Permitted URL schemes for `opener::open-url`. Extracted
     /// from `[permissions.opener].schemes` at construction;
     /// empty means the plugin has no opener access.
@@ -118,7 +118,7 @@ pub struct WasmPluginBridge {
     /// Resolved `${plugin-archive}` for this plugin — the
     /// directory root for `DirectorySource`, or the
     /// `.torchsnap` archive file for `ArchiveSource`. See the
-    /// `PluginSource::root_path` docs for the per-source
+    /// `GadgetSource::root_path` docs for the per-source
     /// contract.
     plugin_archive: PathBuf,
     /// Live guest instance, or `None` while disabled.
@@ -127,9 +127,9 @@ pub struct WasmPluginBridge {
     /// holding this lock. Every access is
     /// `lock → Arc::clone → drop lock → call`, so the outer
     /// lock only covers slot creation / teardown. The
-    /// `WasmPluginInstance`'s inner store mutex is what
+    /// `WasmGadgetInstance`'s inner store mutex is what
     /// serializes guest calls.
-    instance: Mutex<Option<Arc<WasmPluginInstance>>>,
+    instance: Mutex<Option<Arc<WasmGadgetInstance>>>,
     log_sender: LogSender,
     /// Pre-parsed `[[tasks]]` entries from the manifest. The
     /// raw schedule strings are validated at manifest load
@@ -162,7 +162,7 @@ struct ParsedTask {
     schedule: Schedule,
 }
 
-impl WasmPluginBridge {
+impl WasmGadgetBridge {
     /// Build a bridge from a parsed manifest, a handle to
     /// the shared runtime, and the plugin source (used
     /// once to read the WASM bytes and any SQL migration
@@ -180,7 +180,7 @@ impl WasmPluginBridge {
     /// Compiles the WASM component into the runtime's
     /// cache right here so broken plugins fail fast at
     /// load time. Does **not** instantiate — a fresh
-    /// `WasmPluginInstance` is created later on demand by
+    /// `WasmGadgetInstance` is created later on demand by
     /// `Plugin::enable`, so disabled plugins consume only
     /// their cached `Component` until the user turns them
     /// on.
@@ -188,7 +188,7 @@ impl WasmPluginBridge {
         manifest: Manifest,
         runtime: Arc<WasmRuntime>,
         log_sender: LogSender,
-        source: Arc<dyn PluginSource + Send + Sync>,
+        source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
         let plugin_id = manifest.plugin.id.as_str().to_string();
@@ -326,9 +326,9 @@ impl WasmPluginBridge {
     /// Return a clone of the live instance, creating one
     /// via `runtime.instantiate` if the slot is empty.
     /// Re-applies the bridge's `sql_config` on every fresh
-    /// instance — each new `PluginState` starts with
+    /// instance — each new `GadgetState` starts with
     /// `SqlConfig::None`.
-    fn ensure_instance(&self) -> anyhow::Result<Arc<WasmPluginInstance>> {
+    fn ensure_instance(&self) -> anyhow::Result<Arc<WasmGadgetInstance>> {
         let mut slot = self.instance.lock().expect("instance slot not poisoned");
         if let Some(existing) = slot.as_ref() {
             return Ok(Arc::clone(existing));
@@ -348,7 +348,7 @@ impl WasmPluginBridge {
     /// Take the instance out of the slot. The caller must
     /// drop every other `Arc` clone (notably the scheduler
     /// task's) before the underlying `Store` can be freed.
-    fn take_instance(&self) -> Option<Arc<WasmPluginInstance>> {
+    fn take_instance(&self) -> Option<Arc<WasmGadgetInstance>> {
         self.instance
             .lock()
             .expect("instance slot not poisoned")
@@ -370,7 +370,7 @@ impl WasmPluginBridge {
     /// Plugins without `[[tasks]]` get nothing — no tokio
     /// task is spawned at all, so the cost is zero for
     /// plugins that don't use the API.
-    fn spawn_scheduler(&self, instance: Arc<WasmPluginInstance>) {
+    fn spawn_scheduler(&self, instance: Arc<WasmGadgetInstance>) {
         if self.parsed_tasks.is_empty() {
             return;
         }
@@ -447,7 +447,7 @@ impl WasmPluginBridge {
 // =========================================================
 
 async fn scheduler_loop(
-    instance: Arc<WasmPluginInstance>,
+    instance: Arc<WasmGadgetInstance>,
     schedules: Vec<(String, Schedule)>,
     shutdown: Arc<AtomicBool>,
     log_sender: LogSender,
@@ -582,7 +582,7 @@ fn log_task_error(log_sender: &LogSender, plugin_id: &str, task_id: &str, error:
     });
 }
 
-impl WasmPluginBridge {
+impl WasmGadgetBridge {
     /// Emit a log entry for bridge-level events (errors from
     /// guest calls that are caught and handled here).
     fn log(&self, level: LogLevel, message: String) {
@@ -606,7 +606,7 @@ impl WasmPluginBridge {
     /// transiently if the bridge tore its instance down
     /// after a guest `enable()` failure — see the
     /// `Plugin::enable → Result` follow-up todo).
-    fn current_instance(&self) -> Option<Arc<WasmPluginInstance>> {
+    fn current_instance(&self) -> Option<Arc<WasmGadgetInstance>> {
         self.instance
             .lock()
             .expect("instance slot not poisoned")
@@ -629,7 +629,7 @@ impl WasmPluginBridge {
     }
 }
 
-impl Plugin for WasmPluginBridge {
+impl Gadget for WasmGadgetBridge {
     fn id(&self) -> &str {
         self.manifest.plugin.id.as_str()
     }
@@ -646,7 +646,7 @@ impl Plugin for WasmPluginBridge {
         settings
     }
 
-    fn enable(&self, app: &tauri::AppHandle, ctx: &crate::plugins::PluginContext) {
+    fn enable(&self, app: &tauri::AppHandle, ctx: &crate::gadgets::GadgetContext) {
         let instance = match self.ensure_instance() {
             Ok(instance) => instance,
             Err(e) => {
@@ -936,7 +936,7 @@ impl Plugin for WasmPluginBridge {
         instance.execute(entry_id, action_id)
     }
 
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> {
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {
         let Some(instance) = self.current_instance() else {
             self.log_dispatched_while_disabled("search()");
             return None;
@@ -1016,7 +1016,7 @@ impl Plugin for WasmPluginBridge {
 // =========================================================
 
 #[cfg(test)]
-impl WasmPluginBridge {
+impl WasmGadgetBridge {
     /// Whether the instance slot is currently populated.
     /// Tests use this to observe lifecycle transitions
     /// without unlocking the slot manually.
@@ -1031,7 +1031,7 @@ impl WasmPluginBridge {
     /// verification: tests hold the returned `Weak`, run
     /// the tear-down path, and assert that `upgrade()`
     /// returns `None`.
-    pub(crate) fn instance_weak(&self) -> Option<std::sync::Weak<WasmPluginInstance>> {
+    pub(crate) fn instance_weak(&self) -> Option<std::sync::Weak<WasmGadgetInstance>> {
         self.instance
             .lock()
             .expect("instance slot not poisoned")
@@ -1079,14 +1079,14 @@ mod tests {
     fn test_bridge(
         fixture: &str,
         app_data_dir: &std::path::Path,
-    ) -> anyhow::Result<WasmPluginBridge> {
+    ) -> anyhow::Result<WasmGadgetBridge> {
         let fixture_path = std::path::Path::new(FIXTURE_ROOT).join(fixture);
-        let source: Arc<dyn PluginSource + Send + Sync> = Arc::new(
+        let source: Arc<dyn GadgetSource + Send + Sync> = Arc::new(
             DirectorySource::open(&fixture_path)
                 .with_context(|| format!("open fixture `{fixture}`"))?,
         );
         let manifest = source.manifest().clone();
-        WasmPluginBridge::new(
+        WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
@@ -1124,12 +1124,12 @@ icon = "heroicons:x-mark"
         std::fs::write(bad_plugin_dir.join("bad.wasm"), b"not a wasm file at all")
             .expect("write bad wasm");
 
-        let source: Arc<dyn PluginSource + Send + Sync> =
+        let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&bad_plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
-        let result = WasmPluginBridge::new(
+        let result = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
@@ -1168,12 +1168,12 @@ migrations = ["migrations/001_init.sql"]
         )
         .expect("write manifest");
 
-        let source: Arc<dyn PluginSource + Send + Sync> =
+        let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
-        let result = WasmPluginBridge::new(
+        let result = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
@@ -1278,7 +1278,7 @@ migrations = ["migrations/001_init.sql"]
     fn sql_config_applied_on_each_instance() {
         // Each fresh instance must be able to open its SQL
         // storage — proof that `ensure_instance` re-applied
-        // the cached config onto the new `PluginState`
+        // the cached config onto the new `GadgetState`
         // (which would otherwise default to `SqlConfig::None`).
         let tmp = tempfile::tempdir().expect("tempdir");
         let plugin_dir = tmp.path().join("sql-plugin");
@@ -1311,10 +1311,10 @@ migrations = ["migrations/001_init.sql"]
         .expect("write manifest");
 
         let app_data = tempfile::tempdir().expect("app data tempdir");
-        let source: Arc<dyn PluginSource + Send + Sync> =
+        let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
-        let bridge = WasmPluginBridge::new(
+        let bridge = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
@@ -1357,7 +1357,7 @@ migrations = ["migrations/001_init.sql"]
         plugin_id: &str,
         source_root: &std::path::Path,
         app_data_dir: &std::path::Path,
-    ) -> anyhow::Result<WasmPluginBridge> {
+    ) -> anyhow::Result<WasmGadgetBridge> {
         let plugin_dir = source_root.join(plugin_id);
         std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
 
@@ -1389,10 +1389,10 @@ migrations = ["migrations/001_init.sql"]
         )
         .expect("write manifest");
 
-        let source: Arc<dyn PluginSource + Send + Sync> =
+        let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
-        WasmPluginBridge::new(
+        WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),
@@ -1512,10 +1512,10 @@ schedule = "*/5 * * * *"
         .expect("write manifest");
 
         let app_data = tempfile::tempdir().expect("tempdir");
-        let source: Arc<dyn PluginSource + Send + Sync> =
+        let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
         let manifest = source.manifest().clone();
-        let bridge = WasmPluginBridge::new(
+        let bridge = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogSender::test_sender(),

@@ -214,14 +214,14 @@ impl FrecencyTarget for SourcedEntry {
 // Plugin-to-Host Channel
 //
 // Plugins push results into a `ResultChannel` during search.
-// The host reads `PluginResponse` values from the receiving end
+// The host reads `GadgetResponse` values from the receiving end
 // and translates them into `SearchMessage`s for the frontend.
 // =========================================================
 
 /// Return type for `Plugin::search()`. Not serialized — only
 /// used between plugin and host within the same process.
 #[derive(Debug, Clone)]
-pub enum PluginResponse {
+pub enum GadgetResponse {
     /// Standard result list entries.
     Results(Vec<ScoredEntry>),
     /// Plugin requests full custom UI (replaces the result list).
@@ -249,7 +249,7 @@ pub enum PluginResponse {
 /// `CustomUI`, `registry[pluginId].inlineViews[view]` for `InlineUI`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginViewRef {
+pub struct GadgetViewRef {
     pub plugin_id: String,
     pub view: String,
     pub data: Option<serde_json::Value>,
@@ -290,11 +290,11 @@ pub enum SearchMessage {
         /// When a query plugin requested custom UI, this contains
         /// a view reference so the frontend can mount the plugin's
         /// React component. `None` for standard list rendering.
-        custom_plugin_view: Option<PluginViewRef>,
+        custom_plugin_view: Option<GadgetViewRef>,
         /// When a query plugin requested inline UI, this contains
         /// a view reference for the inline component rendered above
         /// the result list.
-        inline_plugin_view: Option<PluginViewRef>,
+        inline_plugin_view: Option<GadgetViewRef>,
         /// The prefix that triggered exclusive routing. Sent to the
         /// frontend so the plugin component knows which prefix was
         /// matched. `None` when no prefix routing occurred.

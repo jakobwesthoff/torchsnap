@@ -13,9 +13,9 @@
 
 use crate::wasm::bindings;
 
-use super::super::PluginState;
+use super::super::GadgetState;
 
-impl bindings::torchsnap::plugin::platform::Host for PluginState {
+impl bindings::torchsnap::plugin::platform::Host for GadgetState {
     fn current_os(&mut self) -> bindings::torchsnap::plugin::platform::Os {
         use bindings::torchsnap::plugin::platform::Os;
 

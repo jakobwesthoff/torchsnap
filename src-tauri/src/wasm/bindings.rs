@@ -43,9 +43,9 @@ wasmtime::component::bindgen!({
 // `add_to_linker` pass requires every imported interface to
 // have an impl. One-line empty impl satisfies the trait.
 
-use crate::wasm::runtime::PluginState;
+use crate::wasm::runtime::GadgetState;
 
-impl torchsnap::plugin::types::Host for PluginState {}
+impl torchsnap::plugin::types::Host for GadgetState {}
 
 // =========================================================
 // Type Conversions: WIT types → native types
@@ -207,19 +207,19 @@ impl From<wit::ScoredEntry> for native::ScoredEntry {
     }
 }
 
-impl From<wit::SearchResponse> for native::PluginResponse {
+impl From<wit::SearchResponse> for native::GadgetResponse {
     fn from(response: wit::SearchResponse) -> Self {
         match response {
-            wit::SearchResponse::Nothing => native::PluginResponse::Results(vec![]),
+            wit::SearchResponse::Nothing => native::GadgetResponse::Results(vec![]),
             wit::SearchResponse::Results(entries) => {
-                native::PluginResponse::Results(entries.into_iter().map(Into::into).collect())
+                native::GadgetResponse::Results(entries.into_iter().map(Into::into).collect())
             }
-            wit::SearchResponse::CustomUi(vr) => native::PluginResponse::CustomUI {
+            wit::SearchResponse::CustomUi(vr) => native::GadgetResponse::CustomUI {
                 view: vr.view,
                 data: parse_optional_json(vr.data),
                 results: vr.results.into_iter().map(Into::into).collect(),
             },
-            wit::SearchResponse::InlineUi(vr) => native::PluginResponse::InlineUI {
+            wit::SearchResponse::InlineUi(vr) => native::GadgetResponse::InlineUI {
                 view: vr.view,
                 data: parse_optional_json(vr.data),
                 results: vr.results.into_iter().map(Into::into).collect(),
@@ -273,13 +273,13 @@ use crate::network::website_metadata::protocol::HOST_FAVICON_SCHEME;
 /// plugin's log.
 #[must_use = "warnings should be surfaced to the plugin's log"]
 pub fn resolve_search_response_asset_icons(
-    response: &mut native::PluginResponse,
+    response: &mut native::GadgetResponse,
     plugin_id: &str,
 ) -> Vec<String> {
     let entries = match response {
-        native::PluginResponse::Results(r) => r.as_mut_slice(),
-        native::PluginResponse::CustomUI { results, .. } => results.as_mut_slice(),
-        native::PluginResponse::InlineUI { results, .. } => results.as_mut_slice(),
+        native::GadgetResponse::Results(r) => r.as_mut_slice(),
+        native::GadgetResponse::CustomUI { results, .. } => results.as_mut_slice(),
+        native::GadgetResponse::InlineUI { results, .. } => results.as_mut_slice(),
     };
     let mut warnings = Vec::new();
     for entry in entries {
@@ -392,9 +392,9 @@ mod tests {
 
     #[test]
     fn nothing_maps_to_empty_results() {
-        let response: native::PluginResponse = wit::SearchResponse::Nothing.into();
+        let response: native::GadgetResponse = wit::SearchResponse::Nothing.into();
         match response {
-            native::PluginResponse::Results(entries) => assert!(entries.is_empty()),
+            native::GadgetResponse::Results(entries) => assert!(entries.is_empty()),
             other => panic!("expected Results, got {other:?}"),
         }
     }
@@ -402,9 +402,9 @@ mod tests {
     #[test]
     fn results_maps_to_results() {
         let entries = vec![wit_scored_entry("a", 100), wit_scored_entry("b", 50)];
-        let response: native::PluginResponse = wit::SearchResponse::Results(entries).into();
+        let response: native::GadgetResponse = wit::SearchResponse::Results(entries).into();
         match response {
-            native::PluginResponse::Results(entries) => {
+            native::GadgetResponse::Results(entries) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].id, "a");
                 assert_eq!(entries[0].score, 100);
@@ -421,9 +421,9 @@ mod tests {
             data: Some(r#"{"key": "value"}"#.to_string()),
             results: vec![wit_scored_entry("item", 42)],
         };
-        let response: native::PluginResponse = wit::SearchResponse::CustomUi(vr).into();
+        let response: native::GadgetResponse = wit::SearchResponse::CustomUi(vr).into();
         match response {
-            native::PluginResponse::CustomUI {
+            native::GadgetResponse::CustomUI {
                 view,
                 data,
                 results,
@@ -444,9 +444,9 @@ mod tests {
             data: Some(r#"{"num": 42}"#.to_string()),
             results: vec![],
         };
-        let response: native::PluginResponse = wit::SearchResponse::InlineUi(vr).into();
+        let response: native::GadgetResponse = wit::SearchResponse::InlineUi(vr).into();
         match response {
-            native::PluginResponse::InlineUI {
+            native::GadgetResponse::InlineUI {
                 view,
                 data,
                 results,
@@ -466,9 +466,9 @@ mod tests {
             data: None,
             results: vec![],
         };
-        let response: native::PluginResponse = wit::SearchResponse::CustomUi(vr).into();
+        let response: native::GadgetResponse = wit::SearchResponse::CustomUi(vr).into();
         match response {
-            native::PluginResponse::CustomUI { data, .. } => {
+            native::GadgetResponse::CustomUI { data, .. } => {
                 assert!(data.is_none());
             }
             other => panic!("expected CustomUI, got {other:?}"),
@@ -482,9 +482,9 @@ mod tests {
             data: Some("not valid json {{{".to_string()),
             results: vec![],
         };
-        let response: native::PluginResponse = wit::SearchResponse::CustomUi(vr).into();
+        let response: native::GadgetResponse = wit::SearchResponse::CustomUi(vr).into();
         match response {
-            native::PluginResponse::CustomUI { view, data, .. } => {
+            native::GadgetResponse::CustomUI { view, data, .. } => {
                 assert_eq!(view, "echo");
                 // Malformed JSON degrades to None rather than crashing.
                 assert!(data.is_none());
@@ -505,9 +505,9 @@ mod tests {
             data: None,
             results: entries,
         };
-        let response: native::PluginResponse = wit::SearchResponse::CustomUi(vr).into();
+        let response: native::GadgetResponse = wit::SearchResponse::CustomUi(vr).into();
         match response {
-            native::PluginResponse::CustomUI { results, .. } => {
+            native::GadgetResponse::CustomUI { results, .. } => {
                 assert_eq!(results.len(), 3);
                 assert_eq!(results[0].score, 100);
                 assert_eq!(results[2].id, "c");
