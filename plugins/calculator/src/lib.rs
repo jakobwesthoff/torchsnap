@@ -39,8 +39,8 @@ use evalexpr::{Node, Operator, Value, build_operator_tree};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
-use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue};
+use torchsnap_gadget_sdk::prelude::*;
+use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue};
 
 // =========================================================
 // Constants
@@ -82,7 +82,7 @@ thread_local! {
 // =========================================================
 
 struct CalculatorPlugin;
-define_plugin!(CalculatorPlugin);
+define_gadget!(CalculatorPlugin);
 
 impl LifecycleGuest for CalculatorPlugin {
     fn enable() {

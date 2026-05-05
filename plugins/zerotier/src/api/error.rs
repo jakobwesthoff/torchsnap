@@ -11,7 +11,7 @@
 //! branches on these to pick a failure-state title.
 
 use thiserror::Error;
-use torchsnap_plugin_sdk::http::HttpError;
+use torchsnap_gadget_sdk::http::HttpError;
 
 #[derive(Debug, Error)]
 pub enum ApiError {

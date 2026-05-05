@@ -23,10 +23,10 @@ use std::cell::RefCell;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use torchsnap_plugin_sdk::http::HttpError;
-use torchsnap_plugin_sdk::platform::Os;
-use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::sql::SqlHandle;
+use torchsnap_gadget_sdk::http::HttpError;
+use torchsnap_gadget_sdk::platform::Os;
+use torchsnap_gadget_sdk::prelude::*;
+use torchsnap_gadget_sdk::sql::SqlHandle;
 
 mod actions;
 mod api;
@@ -41,7 +41,7 @@ use cache::{DEFAULT_TTL, RateLimitCache};
 use query::{Intent, NetworkRow, NetworkState, ScoredMatch};
 
 struct ZeroTierPlugin;
-define_plugin!(ZeroTierPlugin);
+define_gadget!(ZeroTierPlugin);
 
 // =========================================================
 // Per-instance runtime state
@@ -162,18 +162,18 @@ fn initialize(runtime: &mut Runtime) {
     // Merge `saved_networks.json` only on macOS — that file
     // is a private cache of the official macOS UI and does
     // not exist on Linux or Windows.
-    if matches!(torchsnap_plugin_sdk::platform::current_os(), Os::Macos) {
+    if matches!(torchsnap_gadget_sdk::platform::current_os(), Os::Macos) {
         let _ = merge_saved_networks();
     }
 }
 
 fn merge_saved_networks() -> Result<usize, String> {
-    let path = torchsnap_plugin_sdk::paths::resolve(
+    let path = torchsnap_gadget_sdk::paths::resolve(
         "${xdg-config}/ZeroTier/saved_networks.json",
     )
     .map_err(|e| format!("resolve saved_networks path: {e:?}"))?;
     let bytes =
-        torchsnap_plugin_sdk::fs::read_file(&path).map_err(|e| format!("read: {e:?}"))?;
+        torchsnap_gadget_sdk::fs::read_file(&path).map_err(|e| format!("read: {e:?}"))?;
     let json = String::from_utf8(bytes).map_err(|e| format!("utf8: {e}"))?;
     let db = history::connection();
     history::import_saved_networks(&db, &json, now_ms())
@@ -230,7 +230,7 @@ impl SearchGuest for ZeroTierPlugin {
         // configured (the user can still copy an id from a
         // synthetic-Join entry, for example).
         if matches!(action_id, ActionId::Copy) {
-            torchsnap_plugin_sdk::clipboard::write_text(&network_id)
+            torchsnap_gadget_sdk::clipboard::write_text(&network_id)
                 .map_err(|e| format!("clipboard write: {e}"))?;
             return Ok(PostAction::Dismiss);
         }
@@ -626,7 +626,7 @@ impl MessagingGuest for ZeroTierPlugin {
                     _ => "none",
                 };
                 let is_macos = matches!(
-                    torchsnap_plugin_sdk::platform::current_os(),
+                    torchsnap_gadget_sdk::platform::current_os(),
                     Os::Macos
                 );
                 serde_json::to_string(&AuthStateResponse {

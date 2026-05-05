@@ -45,7 +45,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
  "urlencoding",
 ]
 
@@ -84,7 +84,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
  "ulid",
 ]
 
@@ -137,7 +137,7 @@ dependencies = [
  "nucleo-matcher",
  "serde",
  "serde_json",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
 ]
 
 [[package]]
@@ -236,7 +236,7 @@ version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
  "serde_json",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
 ]
 
 [[package]]
@@ -429,7 +429,7 @@ name = "open-url-plugin"
 version = "0.1.0"
 dependencies = [
  "addr",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
  "url",
 ]
 
@@ -677,7 +677,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
 ]
 
 [[package]]
@@ -711,7 +711,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "torchsnap-plugin-sdk"
+name = "torchsnap-gadget-sdk"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1043,7 +1043,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "torchsnap-plugin-sdk",
+ "torchsnap-gadget-sdk",
 ]
 
 [[package]]

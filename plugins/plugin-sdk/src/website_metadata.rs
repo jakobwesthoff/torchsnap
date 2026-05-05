@@ -32,7 +32,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use torchsnap_plugin_sdk::prelude::*;
+//! use torchsnap_gadget_sdk::prelude::*;
 //!
 //! let icon = website_metadata::favicon_or(
 //!     "example.com",

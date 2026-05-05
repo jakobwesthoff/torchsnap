@@ -2,7 +2,7 @@
 # Torchsnap WASM Plugin Workspace
 #
 # A virtual Cargo workspace that owns every in-tree WASM
-# plugin plus the shared `torchsnap-plugin-sdk` crate. The
+# gadget plus the shared `torchsnap-gadget-sdk` crate. The
 # workspace is deliberately separate from `src-tauri/` —
 # plugins target `wasm32-wasip2`, the host targets the
 # native triple, and the two toolchains should not share a

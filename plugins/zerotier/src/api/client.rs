@@ -11,7 +11,7 @@
 //! than the hand-rolled types. Every call sets the
 //! `X-ZT1-Auth` header from the `Client`'s configured token.
 
-use torchsnap_plugin_sdk::http::{self, HttpMethod, HttpRequest};
+use torchsnap_gadget_sdk::http::{self, HttpMethod, HttpRequest};
 
 use super::error::ApiError;
 use super::types::{Network, Status};

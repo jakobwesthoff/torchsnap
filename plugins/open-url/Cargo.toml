@@ -7,7 +7,7 @@ edition = "2024"
 # `cargo build --target wasm32-wasip2`, not the host target.
 
 [dependencies]
-torchsnap-plugin-sdk = { path = "../plugin-sdk" }
+torchsnap-gadget-sdk = { path = "../plugin-sdk" }
 url = "2"
 addr = "0.15"
 

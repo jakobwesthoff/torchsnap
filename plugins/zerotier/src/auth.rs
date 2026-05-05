@@ -20,8 +20,8 @@
 //! does not declare return `permission-denied` and the
 //! resolver falls through to the next candidate.
 
-use torchsnap_plugin_sdk::platform::{self, Os};
-use torchsnap_plugin_sdk::{fs, settings};
+use torchsnap_gadget_sdk::platform::{self, Os};
+use torchsnap_gadget_sdk::{fs, settings};
 
 /// Source the resolved token came from. Used by the settings
 /// UI to decide whether to disable the manual-paste field
@@ -130,7 +130,7 @@ pub fn resolve() -> ResolvedToken {
 /// `permission-denied` and the resolver tries the next
 /// candidate).
 fn paths_resolve(template: &str) -> String {
-    torchsnap_plugin_sdk::paths::resolve(template).unwrap_or_else(|_| template.to_string())
+    torchsnap_gadget_sdk::paths::resolve(template).unwrap_or_else(|_| template.to_string())
 }
 
 #[cfg(test)]

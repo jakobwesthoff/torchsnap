@@ -33,10 +33,10 @@ use std::collections::HashMap;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Deserialize;
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
 struct EmojiPickerPlugin;
-define_plugin!(EmojiPickerPlugin);
+define_gadget!(EmojiPickerPlugin);
 
 // =========================================================
 // Tunables
