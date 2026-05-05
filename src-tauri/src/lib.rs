@@ -977,7 +977,7 @@ pub fn run() {
 // Scans every configured search root (see
 // `wasm::discovery`) for plugin archives and directory-form
 // plugins, instantiates each one once, and registers it with
-// the `PluginHost` tagged with its `GadgetSourceKind`.
+// the `GadgetHost` tagged with its `GadgetSourceKind`.
 //
 // Cross-root collision rule: the first root that registers a
 // given plugin id wins. Since `enumerate_search_roots` orders

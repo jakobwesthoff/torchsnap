@@ -43,7 +43,7 @@ pub async fn search(
 /// reach the `http::fetch` host import, which requires
 /// `Handle::current()` for reqwest's internal machinery.
 /// `spawn_blocking` puts the call on a Tokio worker that satisfies
-/// that precondition. See the comment on `PluginHost::execute`.
+/// that precondition. See the comment on `GadgetHost::execute`.
 #[tauri::command]
 pub async fn search_execute(
     source: String,

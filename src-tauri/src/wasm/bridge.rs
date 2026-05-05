@@ -11,7 +11,7 @@
 // on enable, and drops it on disable so the wasmtime
 // `Store` and all guest-side linear memory are reclaimed.
 // Implements the native `Plugin` trait so WASM plugins
-// participate in the existing `PluginHost` dispatch
+// participate in the existing `GadgetHost` dispatch
 // pipeline alongside native plugins.
 // =========================================================
 
@@ -1052,7 +1052,7 @@ mod tests {
     //! These exercise the `ensure_instance`/`take_instance`
     //! lifecycle and the constructor's fail-fast behavior
     //! directly. The full `Plugin::enable` path is not
-    //! covered because `PluginContext.settings` needs a
+    //! covered because `GadgetContext.settings` needs a
     //! real Tauri store; the primitives it composes are
     //! driven directly instead.
 
