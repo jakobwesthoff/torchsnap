@@ -10,7 +10,7 @@
 // (source filter chips).
 // =========================================================
 
-export const PLUGIN_COLORS = [
+export const GADGET_COLORS = [
   "bg-orange-400",
   "bg-sky-400",
   "bg-emerald-400",
@@ -29,10 +29,10 @@ export const PLUGIN_COLORS = [
   "bg-fuchsia-400",
 ];
 
-export function pluginColorIndex(pluginId: string): number {
+export function gadgetColorIndex(gadgetId: string): number {
   let hash = 0;
-  for (let i = 0; i < pluginId.length; i++) {
-    hash = ((hash << 5) - hash + pluginId.charCodeAt(i)) | 0;
+  for (let i = 0; i < gadgetId.length; i++) {
+    hash = ((hash << 5) - hash + gadgetId.charCodeAt(i)) | 0;
   }
-  return Math.abs(hash) % PLUGIN_COLORS.length;
+  return Math.abs(hash) % GADGET_COLORS.length;
 }

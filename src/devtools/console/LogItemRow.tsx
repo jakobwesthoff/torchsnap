@@ -24,7 +24,7 @@ import { ChevronRightIcon, ClipboardDocumentIcon } from "@heroicons/react/24/out
 import { PlayIcon, StopIcon } from "@heroicons/react/16/solid";
 import { cn } from "../../lib/cn";
 import type { LogItem, LogLevel } from "../types";
-import { PLUGIN_COLORS, pluginColorIndex } from "./pluginColors";
+import { GADGET_COLORS, gadgetColorIndex } from "./gadgetColors";
 import {
   formatTimestamp,
   formatDuration,
@@ -79,7 +79,7 @@ export const LogItemRow = memo(function LogItemRow({
   const metadata = kind.metadata;
   const hasMetadata = metadata.length > 0;
 
-  const pluginId = item.source.type === "plugin" ? item.source.value : null;
+  const gadgetId = item.source.type === "plugin" ? item.source.value : null;
 
   const copyToClipboard = useCallback(
     (e: React.MouseEvent) => {
@@ -132,15 +132,15 @@ export const LogItemRow = memo(function LogItemRow({
 
       {/* Source */}
       <span className="shrink-0 w-[120px] flex items-center gap-1">
-        {pluginId ? (
+        {gadgetId ? (
           <>
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full shrink-0",
-                PLUGIN_COLORS[pluginColorIndex(pluginId)],
+                GADGET_COLORS[gadgetColorIndex(gadgetId)],
               )}
             />
-            <span className="text-[11px] text-text-secondary truncate font-medium">{pluginId}</span>
+            <span className="text-[11px] text-text-secondary truncate font-medium">{gadgetId}</span>
           </>
         ) : (
           <span className="text-[11px] text-text-muted italic">host</span>
