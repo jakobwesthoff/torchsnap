@@ -6,8 +6,6 @@ Date: 2026-03-27
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 Plugins need persistent storage. The clipboard manager needs to store
@@ -22,15 +20,15 @@ Neither is suitable for structured, queryable data at scale.
 
 ### Constraints
 
-* **Isolation:** Plugins must not be able to read or modify each other's
+- **Isolation:** Plugins must not be able to read or modify each other's
   data.
-* **WASM future:** All plugins are intended to become WASM modules. The
+- **WASM future:** All plugins are intended to become WASM modules. The
   storage API must use types that can cross the WASM boundary
   (serializable, no raw pointers or connection handles).
-* **Queryability:** Simple key-value is insufficient — the clipboard
+- **Queryability:** Simple key-value is insufficient — the clipboard
   manager needs filtered, sorted, paginated queries over history
   entries.
-* **Migration support:** Plugin schemas evolve. Each plugin must be able
+- **Migration support:** Plugin schemas evolve. Each plugin must be able
   to run its own migrations independently.
 
 ## Decision
@@ -41,11 +39,11 @@ are scoped per plugin using the plugin ID (ADR 0017).
 
 ### Physical layout
 
-````
+```
 <app_data_dir>/plugin-home/<plugin-id>/
 ├── sql/
 │   └── storage.sqlite3         # SqlStorage (WASM plugin shape)
-````
+```
 
 Directory resolved via Tauri's `app.path().app_data_dir()`. The
 top-level split between `plugins/` (plugin *code* — archives and
@@ -87,9 +85,9 @@ DSL.
 
 **Migrations:** Each plugin provides its migrations via a trait method:
 
-````rust
+```rust
 fn migrations(&self) -> Vec<Migration>;
-````
+```
 
 The host runs migrations during `enable()` before handing the
 `SqlStorage` to the plugin. This keeps migration execution centralized
@@ -97,14 +95,14 @@ and gives the host visibility into schema changes.
 
 ## Consequences
 
-* Plugins get a thin SQL interface that maps directly to WASM host
+- Plugins get a thin SQL interface that maps directly to WASM host
   functions when the time comes.
-* Each plugin's structured data is isolated in its own DB file.
+- Each plugin's structured data is isolated in its own DB file.
   Removing a user-installed plugin means deleting its
   `plugin-home/<plugin-id>/` subtree (the uninstall command in
   ADR 0035 does exactly this).
-* `rusqlite` and `rusqlite_migration` become new dependencies.
-* The host is responsible for creating plugin data directories and
+- `rusqlite` and `rusqlite_migration` become new dependencies.
+- The host is responsible for creating plugin data directories and
   opening connections during `enable()`.
-* Binary data (images, files) is handled separately by `FileStorage`
+- Binary data (images, files) is handled separately by `FileStorage`
   (ADR 0019), referenced by key in `SqlStorage`.

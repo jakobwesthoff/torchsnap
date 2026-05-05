@@ -6,8 +6,6 @@ Date: 2026-03-27
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 Plugins need to store binary data — app icons, clipboard images, file
@@ -30,13 +28,13 @@ with a string ID that determines its subdirectory under the plugin's
 data path. A plugin can have multiple `FileStorage` instances for
 different purposes.
 
-````
+```
 <app_data_dir>/plugin-home/<plugin-id>/
 ├── sql/
 │   └── storage.sqlite3         # SqlStorage (ADR 0018)
 ├── icons/                      # FileStorage("icons")
 ├── thumbnails/                 # FileStorage("thumbnails")
-````
+```
 
 The per-plugin state root at `<app_data_dir>/plugin-home/<plugin-id>/`
 is formalized in ADR 0035, which splits plugin *code* (under
@@ -45,7 +43,7 @@ is formalized in ADR 0035, which splits plugin *code* (under
 
 **API:**
 
-````rust
+```rust
 pub struct EntryMetadata {
     pub modified: SystemTime,
     pub size: u64,
@@ -57,7 +55,7 @@ fn delete(&self, key: &str) -> Result<()>;
 fn exists(&self, key: &str) -> bool;
 fn metadata(&self, key: &str) -> Option<EntryMetadata>;
 fn entries(&self) -> impl Iterator<Item = (String, EntryMetadata)>;
-````
+```
 
 `FileStorage` is dumb storage — it does not interpret file contents or
 make invalidation decisions. The `entries()` method returns an iterator
@@ -82,13 +80,13 @@ mediates all file I/O through host functions using the same API.
 
 ## Consequences
 
-* Plugins get a clean primitive for binary data that is independent of
+- Plugins get a clean primitive for binary data that is independent of
   their SQL storage.
-* Multiple `FileStorage` instances per plugin allow logical separation
+- Multiple `FileStorage` instances per plugin allow logical separation
   (icons, thumbnails, exports, etc.) without naming conflicts.
-* The current `IconCache` is refactored into a cache layer on top of
+- The current `IconCache` is refactored into a cache layer on top of
   `FileStorage`, separating storage from invalidation policy.
-* `FileStorage` stays simple — no cache logic, no interpretation of
+- `FileStorage` stays simple — no cache logic, no interpretation of
   contents, no automatic cleanup. Consumers decide policy.
-* Plugin data isolation extends to binary data: each plugin's files live
+- Plugin data isolation extends to binary data: each plugin's files live
   under its own directory. Removing a plugin removes everything.

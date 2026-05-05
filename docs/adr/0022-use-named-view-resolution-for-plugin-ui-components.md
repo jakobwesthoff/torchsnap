@@ -6,8 +6,6 @@ Date: 2026-03-29
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 Amends [13. Allow plugins to provide custom UI components for the result area](0013-allow-plugins-to-provide-custom-ui-components-for-the-result-area.md)
 
 ## Context
@@ -30,10 +28,10 @@ and another resolution path in the host.
 
 Alternatives considered:
 
-* **One `view` and one `inline` per plugin**: Simpler but inflexible.
+- **One `view` and one `inline` per plugin**: Simpler but inflexible.
   Cannot support a plugin with multiple view variants without
   introducing new registry fields for each case.
-* **Component selection via `data` prop**: The plugin registers one
+- **Component selection via `data` prop**: The plugin registers one
   component and uses the `data` JSON to switch rendering internally.
   Works but pushes routing logic into every component and makes the
   registry less descriptive.
@@ -43,7 +41,7 @@ Alternatives considered:
 Replace the single `view` and `inline` fields in `PluginRegistryEntry`
 with maps keyed by view name:
 
-````ts
+```ts
 interface PluginRegistryEntry {
     label: string;
     description?: string;
@@ -52,7 +50,7 @@ interface PluginRegistryEntry {
     inlineViews?: Record<string, ComponentType<InlineViewProps>>;
     settings?: ComponentType<PluginSettingsProps>;
 }
-````
+```
 
 The `view: String` field in `SearchResponse::CustomUI` and
 `SearchResponse::InlineUI` (ADR 0021) selects which component to
@@ -69,7 +67,7 @@ plugin code to the React component.
 
 ### Registry examples
 
-````ts
+```ts
 "emoji-picker": {
     label: "Emoji",
     views: {
@@ -87,20 +85,20 @@ plugin code to the React component.
     },
     settings: lazy(() => import("./calculator/CalculatorSettings")),
 },
-````
+```
 
 ### Host-side propagation
 
 The `PluginViewRef` struct (ADR 0021) carries the view name from the
 Rust backend through to the frontend:
 
-````rust
+```rust
 pub struct PluginViewRef {
     pub plugin_id: String,
     pub view: String,
     pub data: Option<serde_json::Value>,
 }
-````
+```
 
 The frontend's `PluginViewContainer` resolves the component by looking
 up `registry[pluginViewRef.pluginId].views[pluginViewRef.view]` (or
@@ -109,16 +107,16 @@ view name), it renders nothing and logs a warning.
 
 ## Consequences
 
-* Plugins can register multiple view components for different contexts
+- Plugins can register multiple view components for different contexts
   without changes to the registry schema.
-* The `view` field is a required string on `CustomUI` and `InlineUI`,
+- The `view` field is a required string on `CustomUI` and `InlineUI`,
   preventing silent misresolution. A missing or mistyped view name
   produces a visible warning rather than a blank component.
-* Existing plugins (emoji picker) must name their views during migration
+- Existing plugins (emoji picker) must name their views during migration
   (e.g., `"picker"` for the emoji grid).
-* The `settings` field remains singular (one settings component per
+- The `settings` field remains singular (one settings component per
   plugin). There is no current need for multiple settings views, and
   adding a map there would be premature.
-* View names are arbitrary strings chosen by the plugin author.
+- View names are arbitrary strings chosen by the plugin author.
   Collisions are impossible since they are scoped to the plugin ID.
   No central naming convention is enforced.

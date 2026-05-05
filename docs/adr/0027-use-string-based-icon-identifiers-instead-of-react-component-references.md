@@ -6,8 +6,6 @@ Date: 2026-04-05
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 The frontend plugin registry, settings sidebar, and settings section headers
@@ -16,9 +14,9 @@ references to HeroIcon React components. This approach had three problems:
 
 1. WASM plugins, whose manifests are JSON, cannot express a React component
    reference. They had no way to specify an icon at all.
-1. Every registration site had to import the specific HeroIcon components it
+2. Every registration site had to import the specific HeroIcon components it
    used, spreading icon imports across many files.
-1. Native and WASM plugins required different code paths for icon resolution,
+3. Native and WASM plugins required different code paths for icon resolution,
    adding complexity to any component that renders plugin icons.
 
 The registry's `settingsIcon` field was also a duplicate of `icon` — they
@@ -30,23 +28,23 @@ Replace component references with string identifiers following a prefix
 protocol. A shared `<Icon>` component (`src/components/Icon.tsx`) handles
 resolution and rendering. All consumers pass strings:
 
-\| Prefix | Resolution |
-\|---|---|
-\| `heroicons:<name>` | Resolved at runtime to the corresponding `@heroicons/react` component |
-\| `emoji:<character>` | Rendered as a `<span>` containing the character |
-\| `data:<url>` | Rendered as an `<img>` with the data URL as its `src` |
-\| `asset:<path>` | Rendered via Tauri's `convertFileSrc` as an `<img>` |
+| Prefix | Resolution |
+|---|---|
+| `heroicons:<name>` | Resolved at runtime to the corresponding `@heroicons/react` component |
+| `emoji:<character>` | Rendered as a `<span>` containing the character |
+| `data:<url>` | Rendered as an `<img>` with the data URL as its `src` |
+| `asset:<path>` | Rendered via Tauri's `convertFileSrc` as an `<img>` |
 
 The `settingsIcon` field is removed; `icon` alone is used throughout the
 registry.
 
 ## Consequences
 
-* WASM plugin manifests specify icons as strings (e.g.,
+- WASM plugin manifests specify icons as strings (e.g.,
   `"heroicons:hand-raised"`), and they render identically to native plugins.
-* No HeroIcon imports at registration sites — just a string literal.
-* `<Icon>` is the single place that imports `@heroicons/react`. Adding support
+- No HeroIcon imports at registration sites — just a string literal.
+- `<Icon>` is the single place that imports `@heroicons/react`. Adding support
   for a new icon source (e.g., plugin-bundled asset files) requires changing
   only `<Icon>`, not any consumer.
-* The `settingsIcon` field is removed from `PluginRegistryEntry`. Any existing
+- The `settingsIcon` field is removed from `PluginRegistryEntry`. Any existing
   usage must migrate to `icon`.

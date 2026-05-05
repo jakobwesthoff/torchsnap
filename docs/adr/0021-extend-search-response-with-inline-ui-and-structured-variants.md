@@ -6,8 +6,6 @@ Date: 2026-03-29
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 Amends [13. Allow plugins to provide custom UI components for the result area](0013-allow-plugins-to-provide-custom-ui-components-for-the-result-area.md)
 
 ## Context
@@ -32,10 +30,10 @@ it choose not to participate?).
 
 Alternatives considered:
 
-* **Separate `inline_search()` method on QueryPlugin**: Adds a second
+- **Separate `inline_search()` method on QueryPlugin**: Adds a second
   search path to the trait, complicating the plugin contract. Requires
   the host to call two methods per plugin per query.
-* **Keep `CustomUI` as a tuple variant and pass data via `sendMessage`**:
+- **Keep `CustomUI` as a tuple variant and pass data via `sendMessage`**:
   Adds latency (extra IPC round-trip) and forces async initialization in
   components that could render immediately from synchronous data.
 
@@ -43,7 +41,7 @@ Alternatives considered:
 
 Refactor `SearchResponse` into four variants:
 
-````rust
+```rust
 pub enum SearchResponse {
     /// Plugin has nothing to contribute for this query.
     Nothing,
@@ -62,25 +60,25 @@ pub enum SearchResponse {
         results: Vec<ScoredEntry>,
     },
 }
-````
+```
 
 ### Variant semantics
 
-* **`Nothing`**: Explicit signal that the plugin inspected the query and
+- **`Nothing`**: Explicit signal that the plugin inspected the query and
   has nothing to contribute. The host skips it entirely — no entries, no
   view activation.
 
-* **`Results(Vec<ScoredEntry>)`**: Standard list entries merged into the
+- **`Results(Vec<ScoredEntry>)`**: Standard list entries merged into the
   host's result list. No custom UI.
 
-* **`CustomUI { view, data, results }`**: The plugin takes over the
+- **`CustomUI { view, data, results }`**: The plugin takes over the
   entire result area. The `view` field names a React component registered
   in the frontend plugin registry (see ADR 0022). `data` is optional
   opaque JSON passed to the component as a prop. `results` are `ScoredEntry`
   values the component may use. The host disables its navigation keybindings;
   the component owns all interaction.
 
-* **`InlineUI { view, data, results }`**: The plugin's component renders
+- **`InlineUI { view, data, results }`**: The plugin's component renders
   in a slot above the standard result list. The result list remains
   visible below. `view` names the inline React component. `data` is
   opaque JSON for the component. `results` are `ScoredEntry` values merged
@@ -91,7 +89,7 @@ pub enum SearchResponse {
 The `SearchResult` internal type and `SearchMessage` IPC type gain
 support for both view types:
 
-````rust
+```rust
 pub struct PluginViewRef {
     pub plugin_id: String,
     pub view: String,
@@ -104,13 +102,13 @@ pub struct SearchResult {
     pub inline_plugin_view: Option<PluginViewRef>,
     pub matched_prefix: Option<String>,
 }
-````
+```
 
 The host handles each variant in both the prefix-match and no-prefix
 search paths:
 
-* **Prefix match path**: All four variants are honored as declared.
-* **No-prefix path**: `CustomUI` is **downgraded to `Results`** as a
+- **Prefix match path**: All four variants are honored as declared.
+- **No-prefix path**: `CustomUI` is **downgraded to `Results`** as a
   safety measure — full UI takeover is not permitted without an explicit
   prefix match. `InlineUI` is honored (this is its primary use case).
 
@@ -124,18 +122,18 @@ introducing a separate interaction model for inline views.
 
 ## Consequences
 
-* Plugins gain a clean way to provide inline UI without full takeover,
+- Plugins gain a clean way to provide inline UI without full takeover,
   enabling the calculator plugin and future inline-style plugins.
-* The explicit `Nothing` variant improves debugging and makes plugin
+- The explicit `Nothing` variant improves debugging and makes plugin
   intent unambiguous.
-* `CustomUI` is no longer a simple tuple — existing call sites (emoji
+- `CustomUI` is no longer a simple tuple — existing call sites (emoji
   picker) must migrate to the struct variant with `view` and `data`
   fields.
-* The `data` field eliminates the need for an extra `sendMessage`
+- The `data` field eliminates the need for an extra `sendMessage`
   round-trip for initial render data, reducing first-paint latency for
   plugin components.
-* The inline selection model adds complexity to the host's navigation
+- The inline selection model adds complexity to the host's navigation
   system (index 0 is conditionally occupied by the inline component).
-* The safety downgrade of `CustomUI` in the no-prefix path prevents
+- The safety downgrade of `CustomUI` in the no-prefix path prevents
   accidental full takeover but means a plugin cannot provide full custom
   UI without registering a prefix.

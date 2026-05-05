@@ -6,20 +6,18 @@ Date: 2026-03-27
 
 Superseded by [25. Host-managed plugin enable/disable lifecycle](0025-host-managed-plugin-enable-disable-lifecycle.md)
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 Plugins currently have no way to release resources when the application
 shuts down or when they are disabled. The process exit kills everything,
 but this is insufficient for:
 
-* **Background threads** that should be signaled to stop gracefully
+- **Background threads** that should be signaled to stop gracefully
   (e.g., the clipboard watcher thread holds a `ShutdownChannel` from
   `clipboard-rs`).
-* **Open file handles or database connections** that should be flushed
+- **Open file handles or database connections** that should be flushed
   and closed cleanly rather than relying on OS cleanup.
-* **Future plugin enable/disable at runtime**, where a plugin must
+- **Future plugin enable/disable at runtime**, where a plugin must
   release resources without the process exiting.
 
 ## Decision
@@ -27,15 +25,15 @@ but this is insufficient for:
 Both `CatalogPlugin` and `QueryPlugin` gain a `teardown()` method with
 a default no-op:
 
-````rust
+```rust
 fn teardown(&self) {}
-````
+```
 
 The host calls `teardown()` when:
 
-* The application is shutting down (via Tauri's `RunEvent::Exit` or
+- The application is shutting down (via Tauri's `RunEvent::Exit` or
   equivalent).
-* A plugin is being disabled at runtime (future capability).
+- A plugin is being disabled at runtime (future capability).
 
 `teardown()` runs on the main thread and must not block indefinitely.
 Plugins should signal their background threads to stop and return
@@ -48,10 +46,10 @@ registered plugins and calls `teardown()` on each.
 
 ## Consequences
 
-* Plugins with background threads (clipboard watcher, future file
+- Plugins with background threads (clipboard watcher, future file
   watchers) can shut down cleanly.
-* Enables future runtime plugin enable/disable without requiring process
+- Enables future runtime plugin enable/disable without requiring process
   restart.
-* No behavioral change for existing plugins — `teardown()` defaults to
+- No behavioral change for existing plugins — `teardown()` defaults to
   a no-op.
-* The app's shutdown path must be wired to call `teardown_all()`.
+- The app's shutdown path must be wired to call `teardown_all()`.

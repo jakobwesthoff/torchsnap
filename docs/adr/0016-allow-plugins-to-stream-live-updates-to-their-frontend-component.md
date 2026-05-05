@@ -6,8 +6,6 @@ Date: 2026-03-27
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 Some plugins produce data asynchronously after their custom UI is
@@ -33,16 +31,16 @@ the message bus from ADR 0013 as follows:
    `onMessage` callback. This opens a Tauri channel scoped to the
    invocation.
 
-1. **Backend:** The plugin's `handle_message` implementation receives
+2. **Backend:** The plugin's `handle_message` implementation receives
    the channel, stores it, and returns an initial payload (e.g., the
    current clipboard history). The stored channel is shared with the
    plugin's background thread (e.g., via `Arc<Mutex<...>>`).
 
-1. **Background thread:** When new data arrives (e.g., a new clipboard
+3. **Background thread:** When new data arrives (e.g., a new clipboard
    entry), the thread sends it through the stored channel. The frontend
    receives it via the `onMessage` callback.
 
-1. **Cleanup:** When the frontend component unmounts, it drops its end
+4. **Cleanup:** When the frontend component unmounts, it drops its end
    of the channel. The backend detects the closed channel on the next
    send attempt and removes it. No explicit unsubscribe message is
    needed.
@@ -59,13 +57,13 @@ ADR 0013.
 
 ## Consequences
 
-* Plugins can push real-time updates to their UI without polling or
+- Plugins can push real-time updates to their UI without polling or
   global events.
-* The channel lifecycle is tied to the component mount/unmount cycle —
+- The channel lifecycle is tied to the component mount/unmount cycle —
   no leaked subscriptions.
-* Requires the `handle_message` + `Channel<StreamItem>` implementation
+- Requires the `handle_message` + `Channel<StreamItem>` implementation
   from ADR 0013 topic 4 to be wired up (currently a TODO).
-* The reusable subscription hook reduces boilerplate for future
+- The reusable subscription hook reduces boilerplate for future
   streaming plugins.
-* Backend plugins that hold a channel reference must handle the channel
+- Backend plugins that hold a channel reference must handle the channel
   being closed at any time (component unmounted, user navigated away).
