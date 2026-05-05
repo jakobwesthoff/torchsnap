@@ -25,7 +25,7 @@
 //   - useGadgetSetting<T>() → reactive setting accessor
 //
 // Per-render data (`results`, `data`, `query`, `matchedPrefix`,
-// `selected`) intentionally stays as props on PluginViewProps /
+// `selected`) intentionally stays as props on GadgetViewProps /
 // InlineViewProps because it changes on every keystroke and
 // would force every context consumer to re-render if hoisted
 // into context.

@@ -11,7 +11,7 @@
 // via `@torchsnap/plugin-sdk/hooks` so that sub-components
 // don't need to thread props through every level.
 //
-// - PluginViewProps     — full-screen launcher view
+// - GadgetViewProps     — full-screen launcher view
 // - InlineViewProps     — inline result row above the list
 // - GadgetSettingsProps — settings sidebar panel (no per-render data)
 //
@@ -22,7 +22,7 @@
 
 import type { SourcedEntry } from "./data";
 
-export interface PluginViewProps {
+export interface GadgetViewProps {
   /** Search results from the normal search() flow. The plugin
    *  decides whether to use them or ignore them. */
   results: SourcedEntry[];
