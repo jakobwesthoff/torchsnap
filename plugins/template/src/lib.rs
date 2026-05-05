@@ -43,10 +43,10 @@
 //   `manifest.toml`.
 // =========================================================
 
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
 struct TemplatePlugin;
-define_plugin!(TemplatePlugin);
+define_gadget!(TemplatePlugin);
 
 impl LifecycleGuest for TemplatePlugin {
     fn enable() {

@@ -26,9 +26,9 @@ use std::cell::RefCell;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use torchsnap_plugin_sdk::http::{HttpMethod, HttpRequest};
-use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
+use torchsnap_gadget_sdk::http::{HttpMethod, HttpRequest};
+use torchsnap_gadget_sdk::prelude::*;
+use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
 
 // =========================================================
 // Pending-URL thread-local
@@ -75,7 +75,7 @@ const BANG_SCORE: u32 = 1000;
 const BUNDLED_BANG_PATH: &str = "assets/bang.json";
 
 struct BangsPlugin;
-define_plugin!(BangsPlugin);
+define_gadget!(BangsPlugin);
 
 // =========================================================
 // Lifecycle

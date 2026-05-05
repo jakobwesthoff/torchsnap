@@ -8,7 +8,7 @@
 //!
 //! ```ignore
 //! use std::time::Duration;
-//! use torchsnap_plugin_sdk::command;
+//! use torchsnap_gadget_sdk::command;
 //!
 //! let result = command::run("mdfind")
 //!     .arg("kMDItemContentType == 'com.apple.application-bundle'")

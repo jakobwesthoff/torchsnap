@@ -15,12 +15,12 @@
 
 use std::cell::RefCell;
 
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
 mod petnames;
 
 struct HelloWorld;
-define_plugin!(HelloWorld);
+define_gadget!(HelloWorld);
 
 // =========================================================
 // Petname Storage

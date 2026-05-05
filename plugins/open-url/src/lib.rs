@@ -27,8 +27,8 @@
 
 use std::cell::RefCell;
 
-use torchsnap_plugin_sdk::prelude::*;
-use torchsnap_plugin_sdk::website_metadata::Metadata;
+use torchsnap_gadget_sdk::prelude::*;
+use torchsnap_gadget_sdk::website_metadata::Metadata;
 
 // =========================================================
 // Pending-URL thread-local
@@ -49,7 +49,7 @@ thread_local! {
 const URL_SCORE: u32 = 500;
 
 struct OpenUrlPlugin;
-define_plugin!(OpenUrlPlugin);
+define_gadget!(OpenUrlPlugin);
 
 // =========================================================
 // URL detection

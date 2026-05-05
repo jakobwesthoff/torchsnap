@@ -11,7 +11,7 @@
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use torchsnap_plugin_sdk::{Action, ActionId, EntryIcon, ScoredEntry};
+use torchsnap_gadget_sdk::{Action, ActionId, EntryIcon, ScoredEntry};
 
 // =========================================================
 // Word Lists
