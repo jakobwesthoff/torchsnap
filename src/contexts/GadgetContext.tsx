@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// PluginContext
+// GadgetContext
 //
 // The plugin component contract. The host wraps every plugin
-// component mount in a <PluginContextProvider> (see
-// PluginContextProvider.tsx) that carries:
+// component mount in a <GadgetContextProvider> (see
+// GadgetContextProvider.tsx) that carries:
 //
 //   - info     — identity (id, enabled flag)
 //   - runtime  — host capabilities (sendMessage, logger)
@@ -19,10 +19,10 @@
 // Plugin components read what they need via the four hooks
 // exposed alongside this file:
 //
-//   - usePluginInfo()       → info slice
-//   - usePluginRuntime()    → runtime slice
+//   - useGadgetInfo()       → info slice
+//   - useGadgetRuntime()    → runtime slice
 //   - useLauncher()         → launcher slice (throws outside launcher)
-//   - usePluginSetting<T>() → reactive setting accessor
+//   - useGadgetSetting<T>() → reactive setting accessor
 //
 // Per-render data (`results`, `data`, `query`, `matchedPrefix`,
 // `selected`) intentionally stays as props on PluginViewProps /
@@ -32,7 +32,7 @@
 //
 // This file holds **only** the Context object and its value
 // types. The Provider component lives in
-// PluginContextProvider.tsx so React Fast Refresh can do its
+// GadgetContextProvider.tsx so React Fast Refresh can do its
 // component-only file detection.
 // =========================================================
 
@@ -44,21 +44,21 @@ import type { Logger } from "../lib/logger";
 // Value shape
 // ---------------------------------------------------------
 
-export interface PluginInfo {
+export interface GadgetInfo {
   /** Plugin id (e.g. "calculator", "clipboard-manager"). */
   id: string;
   /** Reactive enabled flag from the host's `enabled.<id>` setting. */
   enabled: boolean;
 }
 
-export type PluginSendMessage = <TPayload = unknown, TResult = unknown, TStream = never>(
+export type GadgetSendMessage = <TPayload = unknown, TResult = unknown, TStream = never>(
   method: string,
   payload: TPayload,
   onMessage?: (msg: TStream) => void,
 ) => Promise<TResult>;
 
-export interface PluginRuntime {
-  sendMessage: PluginSendMessage;
+export interface GadgetRuntime {
+  sendMessage: GadgetSendMessage;
   logger: Logger;
 }
 
@@ -71,9 +71,9 @@ export interface LauncherActions {
   mouseActiveRef: RefObject<boolean>;
 }
 
-export interface PluginContextValue {
-  info: PluginInfo;
-  runtime: PluginRuntime;
+export interface GadgetContextValue {
+  info: GadgetInfo;
+  runtime: GadgetRuntime;
   /** Present when mounted inside the launcher; absent in settings. */
   launcher?: LauncherActions;
 }
@@ -86,13 +86,13 @@ export interface PluginContextValue {
 // a provider (which is always a bug, never an intended state).
 // ---------------------------------------------------------
 
-export const PluginContext = createContext<PluginContextValue | null>(null);
+export const GadgetContext = createContext<GadgetContextValue | null>(null);
 
 // =========================================================
 // SDK shim type sync check
 //
-// `packages/plugin-sdk/src/shims/hooks.ts` mirrors `PluginInfo`,
-// `PluginRuntime`, `LauncherActions`, and `PluginSendMessage`
+// `packages/plugin-sdk/src/shims/hooks.ts` mirrors `GadgetInfo`,
+// `GadgetRuntime`, `LauncherActions`, and `GadgetSendMessage`
 // for the WASM plugin SDK consumers. The shim re-declares
 // the shapes locally so plugins don't need to reach into
 // host source via path-based imports for IDE completion.
@@ -103,9 +103,9 @@ export const PluginContext = createContext<PluginContextValue | null>(null);
 
 import type {
   LauncherActions as SdkLauncherActions,
-  PluginInfo as SdkPluginInfo,
-  PluginRuntime as SdkPluginRuntime,
-  PluginSendMessage as SdkPluginSendMessage,
+  GadgetInfo as SdkGadgetInfo,
+  GadgetRuntime as SdkGadgetRuntime,
+  GadgetSendMessage as SdkGadgetSendMessage,
 } from "../../packages/plugin-sdk/src/shims/hooks";
 
 // The tuple must be assignable to `[true, true, ...]` — if any
@@ -113,12 +113,12 @@ import type {
 // and the assignment fails to compile. Consumed with `void` to
 // satisfy `noUnusedLocals` without runtime cost.
 void [
-  true as SdkPluginInfo extends PluginInfo ? true : never,
-  true as PluginInfo extends SdkPluginInfo ? true : never,
-  true as SdkPluginRuntime extends PluginRuntime ? true : never,
-  true as PluginRuntime extends SdkPluginRuntime ? true : never,
+  true as SdkGadgetInfo extends GadgetInfo ? true : never,
+  true as GadgetInfo extends SdkGadgetInfo ? true : never,
+  true as SdkGadgetRuntime extends GadgetRuntime ? true : never,
+  true as GadgetRuntime extends SdkGadgetRuntime ? true : never,
   true as SdkLauncherActions extends LauncherActions ? true : never,
   true as LauncherActions extends SdkLauncherActions ? true : never,
-  true as SdkPluginSendMessage extends PluginSendMessage ? true : never,
-  true as PluginSendMessage extends SdkPluginSendMessage ? true : never,
+  true as SdkGadgetSendMessage extends GadgetSendMessage ? true : never,
+  true as GadgetSendMessage extends SdkGadgetSendMessage ? true : never,
 ];

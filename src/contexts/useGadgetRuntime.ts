@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// usePluginRuntime
+// useGadgetRuntime
 //
 // Returns the runtime capabilities the host provides for the
 // plugin: `sendMessage` for backend RPC and `logger` for
@@ -13,12 +13,12 @@
 // =========================================================
 
 import { useContext } from "react";
-import { PluginContext, type PluginRuntime } from "./PluginContext";
+import { GadgetContext, type GadgetRuntime } from "./GadgetContext";
 
-export function usePluginRuntime(): PluginRuntime {
-  const ctx = useContext(PluginContext);
+export function useGadgetRuntime(): GadgetRuntime {
+  const ctx = useContext(GadgetContext);
   if (!ctx) {
-    throw new Error("usePluginRuntime must be called inside a <PluginContextProvider>");
+    throw new Error("useGadgetRuntime must be called inside a <GadgetContextProvider>");
   }
   return ctx.runtime;
 }

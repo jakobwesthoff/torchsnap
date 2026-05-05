@@ -25,11 +25,11 @@
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import type { PluginSendMessage } from "../contexts/PluginContext";
+import type { GadgetSendMessage } from "../contexts/GadgetContext";
 
-type SendMessage = PluginSendMessage;
+type SendMessage = GadgetSendMessage;
 
-export interface PluginStreamState<TResult, TSnapshot> {
+export interface GadgetStreamState<TResult, TSnapshot> {
   /** Whether the invoke Promise has resolved. */
   established: boolean;
   /** The command's return value, available once `established` is true. */
@@ -38,14 +38,14 @@ export interface PluginStreamState<TResult, TSnapshot> {
   snapshot: TSnapshot | undefined;
 }
 
-export function usePluginStream<TPayload, TResult, TSnapshot>(
+export function useGadgetStream<TPayload, TResult, TSnapshot>(
   sendMessage: SendMessage,
   method: string,
   payload: TPayload,
-): PluginStreamState<TResult, TSnapshot> {
+): GadgetStreamState<TResult, TSnapshot> {
   // Mutable state and subscriber list — the external store contract
   // requires synchronous getSnapshot and subscribe.
-  const stateRef = useRef<PluginStreamState<TResult, TSnapshot>>({
+  const stateRef = useRef<GadgetStreamState<TResult, TSnapshot>>({
     established: false,
     result: undefined,
     snapshot: undefined,
@@ -88,7 +88,7 @@ export function usePluginStream<TPayload, TResult, TSnapshot>(
       },
       (err) => {
         if (!cancelled) {
-          console.error(`usePluginStream(${method}) error:`, err);
+          console.error(`useGadgetStream(${method}) error:`, err);
         }
       },
     );

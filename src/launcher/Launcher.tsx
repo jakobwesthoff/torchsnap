@@ -9,8 +9,8 @@ import { binarySearch } from "../lib/binarySearch";
 import { compareEntries } from "./compareEntries";
 import { sendPluginMessage } from "../lib/pluginMessage";
 import { createLogger } from "../lib/logger";
-import { PluginContextProvider } from "../contexts/PluginContextProvider";
-import type { LauncherActions, PluginInfo, PluginRuntime } from "../contexts/PluginContext";
+import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
+import type { LauncherActions, GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
@@ -84,17 +84,17 @@ function PluginViewContainer({
 }: PluginViewProps & {
   pluginId: string;
   viewName: string;
-  info: PluginInfo;
-  runtime: PluginRuntime;
+  info: GadgetInfo;
+  runtime: GadgetRuntime;
   launcher: LauncherActions;
 }) {
   const View = getPluginView(pluginId, viewName);
   if (!View) return null;
   return (
     <div data-plugin={pluginId}>
-      <PluginContextProvider info={info} runtime={runtime} launcher={launcher}>
+      <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
-      </PluginContextProvider>
+      </GadgetContextProvider>
     </div>
   );
 }
@@ -109,17 +109,17 @@ function InlineViewContainer({
 }: InlineViewProps & {
   pluginId: string;
   viewName: string;
-  info: PluginInfo;
-  runtime: PluginRuntime;
+  info: GadgetInfo;
+  runtime: GadgetRuntime;
   launcher: LauncherActions;
 }) {
   const View = getPluginInlineView(pluginId, viewName);
   if (!View) return null;
   return (
     <div data-plugin={pluginId}>
-      <PluginContextProvider info={info} runtime={runtime} launcher={launcher}>
+      <GadgetContextProvider info={info} runtime={runtime} launcher={launcher}>
         <View {...props} />
-      </PluginContextProvider>
+      </GadgetContextProvider>
     </div>
   );
 }
@@ -471,24 +471,24 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const inlineLogger = useMemo(() => createLogger(inlineLoggerId), [inlineLoggerId]);
 
   // =========================================================
-  // PluginContext value assembly
+  // GadgetContext value assembly
   //
   // The host packs identity (id + enabled), runtime
   // capabilities (sendMessage + logger), and launcher actions
-  // into the three slices the PluginContextProvider expects.
+  // into the three slices the GadgetContextProvider expects.
   // The `enabled` flag for each is read reactively from the
   // host's `enabled.<plugin-id>` setting so plugin components
-  // see disable toggles immediately via usePluginInfo().
+  // see disable toggles immediately via useGadgetInfo().
   // =========================================================
 
   const pluginEnabled = useOptionalPluginEnabled(customPluginView?.pluginId);
   const inlineEnabled = useOptionalPluginEnabled(activeInlineView?.pluginId);
 
-  const pluginInfo = useMemo<PluginInfo>(
+  const pluginInfo = useMemo<GadgetInfo>(
     () => ({ id: customPluginView?.pluginId ?? "host", enabled: pluginEnabled }),
     [customPluginView?.pluginId, pluginEnabled],
   );
-  const pluginRuntime = useMemo<PluginRuntime>(
+  const pluginRuntime = useMemo<GadgetRuntime>(
     () => ({ sendMessage, logger: pluginLogger }),
     [sendMessage, pluginLogger],
   );
@@ -504,11 +504,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [handleGoBack, dismiss, handlePluginExecute, setDisplayQuery],
   );
 
-  const inlineInfo = useMemo<PluginInfo>(
+  const inlineInfo = useMemo<GadgetInfo>(
     () => ({ id: activeInlineView?.pluginId ?? "host", enabled: inlineEnabled }),
     [activeInlineView?.pluginId, inlineEnabled],
   );
-  const inlineRuntime = useMemo<PluginRuntime>(
+  const inlineRuntime = useMemo<GadgetRuntime>(
     () => ({ sendMessage: sendInlineMessage, logger: inlineLogger }),
     [sendInlineMessage, inlineLogger],
   );

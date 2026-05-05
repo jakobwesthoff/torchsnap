@@ -7,7 +7,7 @@
  *
  * Split-pane layout: left panel is a virtually-scrolled entry list,
  * right panel shows a detail preview of the selected entry. The list
- * searches lightweight `ClipboardListEntry` data via `usePluginStream`,
+ * searches lightweight `ClipboardListEntry` data via `useGadgetStream`,
  * which also keeps a channel open for live updates when the underlying
  * data changes. Full entry detail is loaded on demand when the
  * selection changes, with an LRU cache to avoid re-fetching during
@@ -28,12 +28,12 @@ import { ImagePreview } from "./detail/ImagePreview";
 import { FileListPreview } from "./detail/FileListPreview";
 import { useKeyBindings } from "../../keybindings";
 import { LAYER, type KeyBindingDefinition } from "../../keybindings/matching";
-import { usePluginStream } from "../../hooks/usePluginStream";
+import { useGadgetStream } from "../../hooks/useGadgetStream";
 import { useWindowedList } from "../../launcher/hooks/useWindowedList";
 import { LruCache } from "../../lib/LruCache";
 import { useHalfPageScroll } from "../../hooks/useHalfPageScroll";
 import { useLauncher } from "../../contexts/useLauncher";
-import { usePluginRuntime } from "../../contexts/usePluginRuntime";
+import { useGadgetRuntime } from "../../contexts/useGadgetRuntime";
 import type { FooterHint } from "@torchsnap/types";
 import type { PluginViewProps } from "../types";
 import type { ClipboardHistoryEntry, ClipboardListEntry } from "./types";
@@ -197,7 +197,7 @@ function DetailPreview({
 
 export default function ClipboardView({ query }: PluginViewProps) {
   const { goBack, dismiss, mouseActiveRef, onFooterChange } = useLauncher();
-  const { sendMessage, logger } = usePluginRuntime();
+  const { sendMessage, logger } = useGadgetRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -206,7 +206,7 @@ export default function ClipboardView({ query }: PluginViewProps) {
 
   // Search clipboard history. Results are pushed through the channel
   // both initially and on data changes (new entry, delete, clear).
-  const { snapshot: history } = usePluginStream<
+  const { snapshot: history } = useGadgetStream<
     { query: string | null },
     null,
     ClipboardListEntry[]

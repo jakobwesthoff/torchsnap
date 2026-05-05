@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// usePluginInfo
+// useGadgetInfo
 //
 // Returns the identity / static info slice of the plugin
 // context: the plugin id and its reactive enabled flag.
@@ -13,12 +13,12 @@
 // =========================================================
 
 import { useContext } from "react";
-import { PluginContext, type PluginInfo } from "./PluginContext";
+import { GadgetContext, type GadgetInfo } from "./GadgetContext";
 
-export function usePluginInfo(): PluginInfo {
-  const ctx = useContext(PluginContext);
+export function useGadgetInfo(): GadgetInfo {
+  const ctx = useContext(GadgetContext);
   if (!ctx) {
-    throw new Error("usePluginInfo must be called inside a <PluginContextProvider>");
+    throw new Error("useGadgetInfo must be called inside a <GadgetContextProvider>");
   }
   return ctx.info;
 }

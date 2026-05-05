@@ -3,23 +3,23 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// usePluginSetting
+// useGadgetSetting
 //
 // Reactive accessor for a single setting in the active
 // plugin's namespace. Reads from `plugins.<id>.<key>` in the
 // global settings store; writes propagate cross-window.
 //
 // The plugin id is derived from the surrounding
-// PluginContextProvider via `usePluginInfo()`, so plugin
+// GadgetContextProvider via `useGadgetInfo()`, so plugin
 // authors only deal with short relative key names:
 //
-//   const [days, setDays] = usePluginSetting<number>("retentionDays");
+//   const [days, setDays] = useGadgetSetting<number>("retentionDays");
 // =========================================================
 
 import { useSetting } from "../hooks/useSetting";
-import { usePluginInfo } from "./usePluginInfo";
+import { useGadgetInfo } from "./useGadgetInfo";
 
-export function usePluginSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
-  const { id } = usePluginInfo();
+export function useGadgetSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
+  const { id } = useGadgetInfo();
   return useSetting<T>(`plugins.${id}.${key}`);
 }

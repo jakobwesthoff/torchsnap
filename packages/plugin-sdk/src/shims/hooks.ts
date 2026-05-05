@@ -6,7 +6,7 @@
 // Plugin Context Hooks Shim
 //
 // Bridges plugin code's
-// `import { usePluginInfo } from "@torchsnap/plugin-sdk/hooks"`
+// `import { useGadgetInfo } from "@torchsnap/plugin-sdk/hooks"`
 // to the host-provided hook implementations on
 // `window.__torchsnap.hooks`.
 //
@@ -30,7 +30,7 @@ import type { Logger } from "../types/logger";
 // ---------------------------------------------------------
 // Ambient global
 //
-// The host's `initPluginSdk()` populates `window.__torchsnap`
+// The host's `initGadgetSdk()` populates `window.__torchsnap`
 // before any plugin bundle loads. This ambient declaration
 // teaches the plugin's tsc about the shape so the lazy access
 // inside `hostHooks()` typechecks cleanly without leaking
@@ -47,10 +47,10 @@ import type { Logger } from "../types/logger";
 declare global {
   interface TorchsnapGlobal {
     hooks: {
-      usePluginInfo: () => PluginInfo;
-      usePluginRuntime: () => PluginRuntime;
+      useGadgetInfo: () => GadgetInfo;
+      useGadgetRuntime: () => GadgetRuntime;
       useLauncher: () => LauncherActions;
-      usePluginSetting: <T>(
+      useGadgetSetting: <T>(
         key: string,
       ) => [value: T, setValue: (v: T) => Promise<void>];
       useWindowedList: (params: UseWindowedListParams) => UseWindowedListResult;
@@ -75,10 +75,10 @@ export interface UseWindowedListResult {
 }
 
 // ---------------------------------------------------------
-// Hook return shapes (mirrors src/contexts/PluginContext.tsx)
+// Hook return shapes (mirrors src/contexts/GadgetContext.tsx)
 // ---------------------------------------------------------
 
-export interface PluginInfo {
+export interface GadgetInfo {
   id: string;
   enabled: boolean;
 }
@@ -96,7 +96,7 @@ export interface PluginInfo {
  * silently drop the streaming channel — `onMessage` is
  * never invoked for a WASM-backed plugin no matter what
  * the backend tries to push. This is enforced by the
- * `WasmPluginBridge::handle_message` override (see ADR
+ * `WasmGadgetBridge::handle_message` override (see ADR
  * 0030 for the rationale and the future
  * `messaging-stream` sub-interface that would lift this
  * restriction).
@@ -106,7 +106,7 @@ export interface PluginInfo {
  * one-shot calls, or (c) wait for the streaming
  * sub-interface.
  */
-export type PluginSendMessage = <
+export type GadgetSendMessage = <
   TPayload = unknown,
   TResult = unknown,
   TStream = never,
@@ -116,8 +116,8 @@ export type PluginSendMessage = <
   onMessage?: (msg: TStream) => void,
 ) => Promise<TResult>;
 
-export interface PluginRuntime {
-  sendMessage: PluginSendMessage;
+export interface GadgetRuntime {
+  sendMessage: GadgetSendMessage;
   logger: Logger;
 }
 
@@ -135,8 +135,8 @@ export interface LauncherActions {
 //
 // Plugin authors call these directly. Each one resolves the
 // host-provided implementation lazily on first call so the
-// shim can load before initPluginSdk() runs without throwing
-// at module-evaluation time. (initPluginSdk runs before any
+// shim can load before initGadgetSdk() runs without throwing
+// at module-evaluation time. (initGadgetSdk runs before any
 // plugin bundle is fetched, but defensive reads keep the
 // shim robust against future loader reordering.)
 // ---------------------------------------------------------
@@ -145,28 +145,28 @@ function hostHooks() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/plugin-sdk/hooks: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+      "@torchsnap/plugin-sdk/hooks: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
     );
   }
   return t.hooks;
 }
 
-export function usePluginInfo(): PluginInfo {
-  return hostHooks().usePluginInfo();
+export function useGadgetInfo(): GadgetInfo {
+  return hostHooks().useGadgetInfo();
 }
 
-export function usePluginRuntime(): PluginRuntime {
-  return hostHooks().usePluginRuntime();
+export function useGadgetRuntime(): GadgetRuntime {
+  return hostHooks().useGadgetRuntime();
 }
 
 export function useLauncher(): LauncherActions {
   return hostHooks().useLauncher();
 }
 
-export function usePluginSetting<T>(
+export function useGadgetSetting<T>(
   key: string,
 ): [value: T, setValue: (v: T) => Promise<void>] {
-  return hostHooks().usePluginSetting<T>(key);
+  return hostHooks().useGadgetSetting<T>(key);
 }
 
 export function useWindowedList(
