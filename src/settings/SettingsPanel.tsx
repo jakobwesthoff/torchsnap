@@ -25,7 +25,7 @@ import { PluginSettingsWrapper } from "./PluginSettingsWrapper";
 
 const GENERAL_SECTIONS: SidebarItem[] = [
   { id: "general", label: "General", icon: "heroicons:cog-6-tooth" },
-  { id: "plugins", label: "Plugins", icon: "heroicons:puzzle-piece" },
+  { id: "plugins", label: "Gadgets", icon: "heroicons:puzzle-piece" },
 ];
 
 const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
