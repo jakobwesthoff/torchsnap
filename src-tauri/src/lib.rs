@@ -5,12 +5,12 @@
 mod commands;
 mod control;
 mod frecency;
-mod icons;
-mod network;
-mod platform;
 mod gadget_host;
 mod gadget_install;
 mod gadgets;
+mod icons;
+mod network;
+mod platform;
 mod settings;
 mod storage;
 mod unicode;

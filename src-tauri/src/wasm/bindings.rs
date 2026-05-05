@@ -620,9 +620,7 @@ mod tests {
 
         match &slot {
             Some(native::EntryIcon::AssetIcon(p)) => assert_eq!(p, original),
-            other => panic!(
-                "host-favicon URL must survive as AssetIcon, got {other:?}"
-            ),
+            other => panic!("host-favicon URL must survive as AssetIcon, got {other:?}"),
         }
         assert!(
             warnings.is_empty(),

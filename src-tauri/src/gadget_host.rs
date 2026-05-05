@@ -40,8 +40,8 @@ use crate::commands::types::{
     SourcedEntry,
 };
 use crate::frecency::{FrecencyStore, GadgetFrecency};
-use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::gadgets::{Gadget, GadgetContext, GadgetShortcut};
+use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::settings::{GadgetSettings, SettingsInit};
 use crate::unicode::Utf16Positions;

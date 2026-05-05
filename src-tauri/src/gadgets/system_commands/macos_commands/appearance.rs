@@ -11,8 +11,8 @@
 // =========================================================
 
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::platform::macos::osascript;
 use crate::gadgets::system_commands::SystemCommand;
+use crate::platform::macos::osascript;
 
 // =========================================================
 // Toggle Dark / Light Mode

@@ -687,8 +687,7 @@ impl WebsiteMetadataService {
             if let Some(ref favicon_url) = page_metadata.favicon_url {
                 match self.fetch_and_store_favicon(favicon_url) {
                     Some(stored) => {
-                        let icon =
-                            EntryIcon::AssetIcon(host_favicon_url(&stored.key, &stored.ext));
+                        let icon = EntryIcon::AssetIcon(host_favicon_url(&stored.key, &stored.ext));
                         (Some(stored.key), Some(stored.ext), icon)
                     }
                     None => (None, None, EntryIcon::HeroIcon("globe-alt".to_string())),

@@ -293,7 +293,10 @@ impl Manifest {
         // normalized copy — origins are stored as `ascii_serialization()`
         // so runtime checks can use plain string equality.
         let manifest = Manifest {
-            permissions: manifest.permissions.map(permissions::validate_permissions).transpose()?,
+            permissions: manifest
+                .permissions
+                .map(permissions::validate_permissions)
+                .transpose()?,
             ..manifest
         };
 
@@ -335,8 +338,8 @@ impl Manifest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::test_helpers::minimal;
+    use super::*;
 
     // =====================================================
     // Manifest: happy paths
@@ -811,5 +814,3 @@ mod tests {
         Manifest::parse(toml).expect("should parse despite unknown fields");
     }
 }
-
-
