@@ -13,9 +13,9 @@
  */
 
 import { memo, useEffect } from "react";
-import type { InlineViewProps } from "@torchsnap/plugin-sdk";
-import { useLauncher, usePluginRuntime } from "@torchsnap/plugin-sdk/hooks";
-import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
+import type { InlineViewProps } from "@torchsnap/gadget-sdk";
+import { useLauncher, useGadgetRuntime } from "@torchsnap/gadget-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
 
 interface CalcData {
@@ -29,7 +29,7 @@ export const CalculatorInline = memo(function CalculatorInline({
   selected,
 }: InlineViewProps) {
   const { onExecute, onFooterChange } = useLauncher();
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage } = useGadgetRuntime();
   const calcData = data as CalcData | undefined;
 
   // Report our footer to the host on mount.

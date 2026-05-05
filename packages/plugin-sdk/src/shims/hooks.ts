@@ -6,7 +6,7 @@
 // Plugin Context Hooks Shim
 //
 // Bridges plugin code's
-// `import { useGadgetInfo } from "@torchsnap/plugin-sdk/hooks"`
+// `import { useGadgetInfo } from "@torchsnap/gadget-sdk/hooks"`
 // to the host-provided hook implementations on
 // `window.__torchsnap.hooks`.
 //
@@ -145,7 +145,7 @@ function hostHooks() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/plugin-sdk/hooks: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
+      "@torchsnap/gadget-sdk/hooks: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
     );
   }
   return t.hooks;

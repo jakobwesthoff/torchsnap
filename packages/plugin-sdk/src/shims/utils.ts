@@ -6,7 +6,7 @@
 // Host Utilities Shim
 //
 // Bridges plugin code's
-// `import { highlightText } from "@torchsnap/plugin-sdk/utils"`
+// `import { highlightText } from "@torchsnap/gadget-sdk/utils"`
 // to the host-provided utility implementations on
 // `window.__torchsnap.utils`.
 //
@@ -46,7 +46,7 @@ declare global {
 // Re-exports
 //
 // Host lookup is deferred to call-time so this module is
-// safe to evaluate before `initPluginSdk()` has populated
+// safe to evaluate before `initGadgetSdk()` has populated
 // the global.
 // ---------------------------------------------------------
 
@@ -54,7 +54,7 @@ function hostUtils() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/plugin-sdk/utils: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+      "@torchsnap/gadget-sdk/utils: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
     );
   }
   return t.utils;

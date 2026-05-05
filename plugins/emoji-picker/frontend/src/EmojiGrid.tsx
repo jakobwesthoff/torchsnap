@@ -19,14 +19,14 @@ import {
   useState,
   type RefObject,
 } from "react";
-import type { PluginViewProps, SourcedEntry } from "@torchsnap/plugin-sdk";
-import { useLauncher } from "@torchsnap/plugin-sdk/hooks";
+import type { GadgetViewProps, SourcedEntry } from "@torchsnap/gadget-sdk";
+import { useLauncher } from "@torchsnap/gadget-sdk/hooks";
 import {
   LAYER,
   useKeyBindings,
   type KeyBindingDefinition,
-} from "@torchsnap/plugin-sdk/keybindings";
-import { highlightText } from "@torchsnap/plugin-sdk/utils";
+} from "@torchsnap/gadget-sdk/keybindings";
+import { highlightText } from "@torchsnap/gadget-sdk/utils";
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./constants";
 import { useWindowedGrid } from "./useWindowedGrid";
 
@@ -82,7 +82,7 @@ function GridCell({ entry, selected, onSelect, onExecute, mouseActiveRef }: Grid
 // Emoji Grid
 // =========================================================
 
-export function EmojiGrid({ results }: PluginViewProps) {
+export function EmojiGrid({ results }: GadgetViewProps) {
   const { goBack, mouseActiveRef, onExecute, onFooterChange } = useLauncher();
   const [selectedIndex, setSelectedIndex] = useState(0);
 

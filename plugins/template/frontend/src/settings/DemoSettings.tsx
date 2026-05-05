@@ -9,10 +9,10 @@
 // is selected. Showcases the typical settings authoring
 // surface so new plugin authors can copy-and-adapt:
 //
-// - `usePluginInfo()` for the plugin's identity and reactive
+// - `useGadgetInfo()` for the plugin's identity and reactive
 //   `enabled` flag (used to disable controls when the plugin
 //   is off)
-// - `usePluginSetting()` for namespaced reactive settings;
+// - `useGadgetSetting()` for namespaced reactive settings;
 //   the plugin id is inferred from the surrounding
 //   PluginContextProvider
 // - `Switch`, `Section`, `Entry` from the host's design-system
@@ -24,14 +24,14 @@
 // `plugins/test-fixture/` crate, not here.
 // =========================================================
 
-import { usePluginInfo, usePluginSetting } from "@torchsnap/plugin-sdk/hooks";
-import { Entry, Section, Switch } from "@torchsnap/plugin-sdk/components";
+import { useGadgetInfo, useGadgetSetting } from "@torchsnap/gadget-sdk/hooks";
+import { Entry, Section, Switch } from "@torchsnap/gadget-sdk/components";
 import "../../styles/settings.css";
 
 export function DemoSettings() {
-  const { enabled } = usePluginInfo();
-  const [greeting, setGreeting] = usePluginSetting<string>("greeting");
-  const [verbose, setVerbose] = usePluginSetting<boolean>("verbose");
+  const { enabled } = useGadgetInfo();
+  const [greeting, setGreeting] = useGadgetSetting<string>("greeting");
+  const [verbose, setVerbose] = useGadgetSetting<boolean>("verbose");
 
   return (
     <div className="flex flex-col gap-4">

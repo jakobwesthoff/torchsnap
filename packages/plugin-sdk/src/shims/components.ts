@@ -6,12 +6,12 @@
 // Host Components Shim
 //
 // Bridges plugin code's
-// `import { Switch } from "@torchsnap/plugin-sdk/components"`
+// `import { Switch } from "@torchsnap/gadget-sdk/components"`
 // to the host-provided component implementations on
 // `window.__torchsnap.components`.
 //
 // Same shim mechanism as `react`, `react/jsx-runtime`, and
-// the plugin context hooks. The host's `initPluginSdk()`
+// the plugin context hooks. The host's `initGadgetSdk()`
 // populates the global before any plugin bundle loads — by
 // the time this module evaluates, the host references are
 // already available.
@@ -113,7 +113,7 @@ function hostComponents() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/plugin-sdk/components: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+      "@torchsnap/gadget-sdk/components: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
     );
   }
   return t.components;

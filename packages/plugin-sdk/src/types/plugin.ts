@@ -8,7 +8,7 @@
 // Per-render data passed to the three plugin component
 // kinds. Everything else (identity, sendMessage, logger,
 // launcher actions) flows through the React context exposed
-// via `@torchsnap/plugin-sdk/hooks` so that sub-components
+// via `@torchsnap/gadget-sdk/hooks` so that sub-components
 // don't need to thread props through every level.
 //
 // - GadgetViewProps     — full-screen launcher view

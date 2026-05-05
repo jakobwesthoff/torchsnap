@@ -4,7 +4,7 @@
 
 /**
  * Plugin component prop interfaces — host-side mirror of
- * `@torchsnap/plugin-sdk`'s `plugin.ts`.
+ * `@torchsnap/gadget-sdk`'s `plugin.ts`.
  *
  * Per ADR 0028, ambient capabilities (`pluginId`, `sendMessage`,
  * `logger`, launcher actions, reactive setting accessors) are
