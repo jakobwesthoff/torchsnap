@@ -6,6 +6,8 @@ Date: 2026-04-08
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 WASM plugins need the same settings access pattern that native plugins

@@ -6,6 +6,8 @@ Date: 2026-03-27
 
 Superseded by [25. Host-managed plugin enable/disable lifecycle](0025-host-managed-plugin-enable-disable-lifecycle.md)
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 Plugin `setup()` currently takes only `&self`. Plugins that need access

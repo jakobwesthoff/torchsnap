@@ -5,6 +5,8 @@ Date: 2026-04-11
 ## Status
 
 Accepted
+
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 Amends [31. WASM plugin SQL storage API](0031-wasm-plugin-sql-storage-api.md)
 Amends [32. WASM plugin scheduled tasks via host-managed cron scheduler](0032-wasm-plugin-scheduled-tasks.md)
 

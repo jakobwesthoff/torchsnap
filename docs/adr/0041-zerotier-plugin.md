@@ -6,6 +6,8 @@ Date: 2026-04-30
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 `zerotier-one` runs as a local daemon that exposes its full management

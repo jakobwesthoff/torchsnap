@@ -10,6 +10,8 @@ Amended by [21. Extend SearchResponse with inline UI and structured variants](00
 
 Amended by [22. Use named view resolution for plugin UI components](0022-use-named-view-resolution-for-plugin-ui-components.md)
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 The standard result list (vertical rows of icon + title + subtitle) works
