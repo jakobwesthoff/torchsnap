@@ -5,7 +5,7 @@
 
 //
 // Read `plugins/bundled.toml` (or the path given as $1), validate the
-// plugin list, and print each plugin id on its own line.
+// gadget list, and print each gadget id on its own line.
 //
 // Exit codes:
 //   0  — success; zero or more ids printed to stdout
@@ -45,13 +45,13 @@ const config = parse(raw);
 // Validate and extract the plugin list
 // =========================================================
 
-// An absent or empty `plugins` key is allowed — it means the author
+// An absent or empty `gadgets` key is allowed — it means the author
 // explicitly cleared the list rather than deleting the file.
-const ids: unknown = (config as Record<string, unknown>).plugins;
+const ids: unknown = (config as Record<string, unknown>).gadgets;
 
 if (!Array.isArray(ids) || ids.length === 0) {
   console.error(
-    `Warning: ${tomlPath} declares no plugins — no plugins will be bundled with the release.`,
+    `Warning: ${tomlPath} declares no gadgets — no gadgets will be bundled with the release.`,
   );
   process.exit(0);
 }
@@ -61,19 +61,19 @@ if (!Array.isArray(ids) || ids.length === 0) {
 for (const id of ids) {
   if (typeof id !== "string") {
     console.error(
-      `Error: non-string plugin id in ${tomlPath}: ${JSON.stringify(id)}`,
+      `Error: non-string gadget id in ${tomlPath}: ${JSON.stringify(id)}`,
     );
     process.exit(1);
   }
 }
 
 // Duplicate ids cause ambiguous staging behaviour — two entries for the
-// same plugin would build it twice and could silently shadow one archive
+// same gadget would build it twice and could silently shadow one archive
 // with another. Fail early so the mistake surfaces at build time.
 const seen = new Set<string>();
 for (const id of ids as string[]) {
   if (seen.has(id)) {
-    console.error(`Error: duplicate plugin id in ${tomlPath}: ${id}`);
+    console.error(`Error: duplicate gadget id in ${tomlPath}: ${id}`);
     process.exit(1);
   }
   seen.add(id);
