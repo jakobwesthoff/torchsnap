@@ -94,7 +94,7 @@ pub struct GadgetContext {
 ///
 /// The host manages the plugin lifecycle through these phases:
 ///
-/// 1. Plugin is constructed and registered via `PluginHost::register`
+/// 1. Plugin is constructed and registered via `GadgetHost::register`
 /// 2. `initialize_settings()` is called synchronously at startup
 /// 3. `enable()` is called on a background thread if `enabled.<id>`
 ///    is `true` in the settings store (default)

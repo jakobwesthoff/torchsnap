@@ -5,7 +5,7 @@
 // =========================================================
 // GadgetFrecency — plugin-scoped frecency wrapper
 //
-// Same pattern as PluginSettings: binds the plugin_id at
+// Same pattern as GadgetSettings: binds the plugin_id at
 // construction so plugins cannot access other plugins'
 // frecency data.
 // =========================================================
@@ -18,7 +18,7 @@ use super::{FrecencyItem, FrecencyStore, FrecencyTarget};
 /// Plugin-scoped view of the [`FrecencyStore`].
 ///
 /// Binds `plugin_id` at construction — plugins cannot access
-/// other plugins' frecency data. Obtained from `PluginContext`
+/// other plugins' frecency data. Obtained from `GadgetContext`
 /// during `enable()`.
 #[derive(Clone)]
 pub struct GadgetFrecency {
@@ -37,7 +37,7 @@ impl GadgetFrecency {
     /// Record a selection event for the given item.
     ///
     /// **Important:** The host already calls `FrecencyStore::record()`
-    /// inside `PluginHost::execute()`. Only call this directly for
+    /// inside `GadgetHost::execute()`. Only call this directly for
     /// custom UI interactions that bypass `execute()` — never for
     /// the same selection the host already handles, or the event
     /// will be double-counted.

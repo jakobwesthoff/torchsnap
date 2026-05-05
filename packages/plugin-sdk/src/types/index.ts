@@ -16,7 +16,7 @@
 export type {
   PluginViewProps,
   InlineViewProps,
-  PluginSettingsProps,
+  GadgetSettingsProps,
 } from "./plugin";
 
 export type {

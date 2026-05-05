@@ -126,7 +126,7 @@ impl SettingsInit {
 /// (`plugins.<id>.`) so plugins can read their own settings
 /// without knowing the full key path.
 ///
-/// Injected into `Plugin::enable()` (via `PluginContext`)
+/// Injected into `Plugin::enable()` (via `GadgetContext`)
 /// after defaults have been initialized via `SettingsInit`.
 pub struct GadgetSettings<R: tauri::Runtime = tauri::Wry> {
     store: Arc<Store<R>>,

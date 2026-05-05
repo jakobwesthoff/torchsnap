@@ -13,11 +13,11 @@
 //
 // - PluginViewProps     — full-screen launcher view
 // - InlineViewProps     — inline result row above the list
-// - PluginSettingsProps — settings sidebar panel (no per-render data)
+// - GadgetSettingsProps — settings sidebar panel (no per-render data)
 //
 // The host constructs objects satisfying these interfaces
 // before rendering plugin components and wraps the mount in
-// a <PluginContextProvider> that supplies everything else.
+// a <GadgetContextProvider> that supplies everything else.
 // =========================================================
 
 import type { SourcedEntry } from "./data";
@@ -26,7 +26,7 @@ export interface PluginViewProps {
   /** Search results from the normal search() flow. The plugin
    *  decides whether to use them or ignore them. */
   results: SourcedEntry[];
-  /** Opaque data from the backend's PluginViewRef.data field.
+  /** Opaque data from the backend's GadgetViewRef.data field.
    *  Only present when the plugin returned CustomUI or InlineUI
    *  with a data payload. */
   data?: unknown;
@@ -37,7 +37,7 @@ export interface PluginViewProps {
 }
 
 export interface InlineViewProps {
-  /** Opaque data from the backend's PluginViewRef.data field. */
+  /** Opaque data from the backend's GadgetViewRef.data field. */
   data: unknown;
   /** Current search query (stripped of prefix). */
   query: string;
@@ -51,8 +51,8 @@ export interface InlineViewProps {
  * Settings panels receive no per-render data. Identity, runtime
  * capabilities, and reactive setting accessors all come from the
  * plugin context hooks. Kept as a named (empty) interface so that
- * `ComponentType<PluginSettingsProps>` continues to typecheck and
+ * `ComponentType<GadgetSettingsProps>` continues to typecheck and
  * future per-render fields (if any) have an obvious home.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PluginSettingsProps {}
+export interface GadgetSettingsProps {}

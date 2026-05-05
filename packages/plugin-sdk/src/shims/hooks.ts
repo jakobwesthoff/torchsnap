@@ -87,7 +87,7 @@ export interface GadgetInfo {
  * Sends a custom message to the plugin's backend handler.
  *
  * The host routes the call to the plugin identified by the
- * surrounding `PluginContext` provider's `info.id`. The
+ * surrounding `GadgetContext` provider's `info.id`. The
  * returned promise resolves with the backend's response.
  *
  * **WASM plugins do not support streaming.** The `onMessage`

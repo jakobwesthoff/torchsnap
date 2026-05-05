@@ -40,7 +40,7 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
   const baseUrl = `torchsnap-gadget://localhost/${gadgetId}`;
 
   // Every WASM plugin gets metadata for the settings sidebar.
-  // The PluginSettingsWrapper uses icon + description to render
+  // The GadgetSettingsWrapper uses icon + description to render
   // the standardized header and enable/disable toggle.
   const entry: GadgetRegistryEntry = {
     label: manifest.plugin.name,

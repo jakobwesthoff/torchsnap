@@ -47,7 +47,7 @@ pub struct GadgetState {
     pub(crate) log_sender: LogSender,
     pub(crate) span_registry: Arc<SpanRegistry>,
     /// Per-plugin namespaced settings reader. `None` until the
-    /// bridge stashes the `PluginContext.settings` handle on
+    /// bridge stashes the `GadgetContext.settings` handle on
     /// `enable()`. The settings host import (`settings::get`)
     /// errors gracefully if accessed before that happens —
     /// which it shouldn't, since the host always calls
@@ -55,7 +55,7 @@ pub struct GadgetState {
     pub(crate) settings: Option<GadgetSettings>,
     /// Per-plugin namespaced frecency reader. Same lifecycle
     /// as `settings`: stashed by the bridge on `enable()` from
-    /// the `PluginContext.frecency` handle and cleared on
+    /// the `GadgetContext.frecency` handle and cleared on
     /// `disable()`. The host automatically records selections
     /// before `execute()` and applies score bonuses after
     /// `search()` — this handle is only for plugins that

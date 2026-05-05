@@ -14,7 +14,7 @@
 // - FrecencyStore: central store wrapping SqlStorage, shared
 //   via Arc across the plugin host and Tauri state.
 // - GadgetFrecency: plugin-scoped wrapper that binds the
-//   plugin_id, following the PluginSettings pattern.
+//   plugin_id, following the GadgetSettings pattern.
 // - FrecencyTarget: trait for types that can receive a score
 //   bonus (SourcedEntry, ScoredEntry).
 // =========================================================
@@ -124,7 +124,7 @@ pub struct FrecencyStats {
 // =========================================================
 
 /// Central frecency tracking store. Thread-safe, shareable
-/// via `Arc`. Used by `PluginHost` directly — plugins get
+/// via `Arc`. Used by `GadgetHost` directly — plugins get
 /// [`GadgetFrecency`] instead.
 pub struct FrecencyStore {
     db: SqlStorage,
@@ -166,7 +166,7 @@ impl FrecencyStore {
     /// events beyond the per-item cap.
     ///
     /// **Note for plugin authors:** The host already calls this in
-    /// `PluginHost::execute()`. Plugins should only call `record()`
+    /// `GadgetHost::execute()`. Plugins should only call `record()`
     /// directly (via `GadgetFrecency`) for custom UI interactions
     /// that bypass `execute()`.
     pub fn record(&self, plugin_id: &str, item_id: &str) {

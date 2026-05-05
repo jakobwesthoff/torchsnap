@@ -12,7 +12,7 @@
 // drop zone accepting `.torchsnap` archives.
 //
 // Both install and uninstall require an app restart to take
-// effect because `PluginHost::register` freezes the plugin
+// effect because `GadgetHost::register` freezes the plugin
 // set after setup. The banner at the top of the panel
 // surfaces that requirement with a single-click restart
 // button; `todos/wasm/…-plugin-hot-lifecycle.md` tracks the

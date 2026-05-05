@@ -7,7 +7,7 @@
 //
 // Backend for the Plugins settings panel's install and
 // uninstall flows. Both commands return
-// `requires_restart: true` because the `PluginHost` slot
+// `requires_restart: true` because the `GadgetHost` slot
 // list is frozen after setup — a hot lifecycle path is
 // tracked in `todos/wasm/…-plugin-hot-lifecycle.md`.
 //
