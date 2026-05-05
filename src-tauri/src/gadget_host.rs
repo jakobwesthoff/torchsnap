@@ -494,7 +494,7 @@ impl GadgetHost {
             }
 
             let _ = on_results.send(SearchMessage::SearchResults {
-                source: ResultSource::Plugin { id: source.clone() },
+                source: ResultSource::Gadget { id: source.clone() },
                 entries,
                 custom_gadget_view,
                 inline_gadget_view,
@@ -592,7 +592,7 @@ impl GadgetHost {
             // Always emit; a plugin going from results to empty
             // relies on this message to evict its prior entries.
             let _ = on_results.send(SearchMessage::SearchResults {
-                source: ResultSource::Plugin { id: source },
+                source: ResultSource::Gadget { id: source },
                 entries,
                 custom_gadget_view: None,
                 inline_gadget_view,

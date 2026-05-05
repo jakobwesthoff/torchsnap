@@ -41,7 +41,7 @@ export function durationColor(durationUs: number): string {
 
 export function formatItemForClipboard(item: LogItem): string {
   const time = formatTimestamp(item.timestamp);
-  const source = item.source.type === "plugin" ? item.source.value : "host";
+  const source = item.source.type === "gadget" ? item.source.value : "host";
   const { kind } = item;
 
   if (kind.type === "message") {

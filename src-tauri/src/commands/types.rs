@@ -309,7 +309,7 @@ pub enum SearchMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ResultSource {
-    Plugin { id: String },
+    Gadget { id: String },
     Catalog,
 }
 
@@ -319,11 +319,11 @@ mod result_source_tests {
 
     #[test]
     fn plugin_variant_serializes_with_type_and_id_fields() {
-        let json = serde_json::to_value(ResultSource::Plugin {
+        let json = serde_json::to_value(ResultSource::Gadget {
             id: "bangs".to_string(),
         })
-        .expect("serialize plugin source");
-        assert_eq!(json, serde_json::json!({ "type": "plugin", "id": "bangs" }));
+        .expect("serialize gadget source");
+        assert_eq!(json, serde_json::json!({ "type": "gadget", "id": "bangs" }));
     }
 
     #[test]
@@ -334,7 +334,7 @@ mod result_source_tests {
 
     #[test]
     fn plugin_id_round_trips_special_characters() {
-        let json = serde_json::to_value(ResultSource::Plugin {
+        let json = serde_json::to_value(ResultSource::Gadget {
             id: "my-weird.plugin-id".to_string(),
         })
         .expect("serialize weird id");

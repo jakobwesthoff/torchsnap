@@ -14,7 +14,7 @@
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
 
-export type LogSource = { type: "plugin"; value: string } | { type: "host" };
+export type LogSource = { type: "gadget"; value: string } | { type: "host" };
 
 // =========================================================
 // LogItemKind — discriminated payload

@@ -85,7 +85,7 @@ impl WasmRuntime {
         Logger::new(
             self.log_sender.clone(),
             Arc::clone(&self.span_registry),
-            LogSource::Plugin(plugin_id.to_string()),
+            LogSource::Gadget(plugin_id.to_string()),
         )
     }
 

@@ -117,13 +117,13 @@ export interface GadgetViewRef {
  * catalog-providing plugin — it replaces the catalog layer
  * wholesale, not per-plugin.
  */
-export type ResultSource = { type: "plugin"; id: string } | { type: "catalog" };
+export type ResultSource = { type: "gadget"; id: string } | { type: "catalog" };
 
 /** Stable string key for `ResultSource`. Namespacing the
- *  `plugin:` prefix guards against a plugin id colliding with
+ *  `gadget:` prefix guards against a gadget id colliding with
  *  the catalog layer's key. */
 export function resultSourceKey(source: ResultSource): string {
-  return source.type === "catalog" ? "catalog" : `plugin:${source.id}`;
+  return source.type === "catalog" ? "catalog" : `gadget:${source.id}`;
 }
 
 export type SearchMessage =

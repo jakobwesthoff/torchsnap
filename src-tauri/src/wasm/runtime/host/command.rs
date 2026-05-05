@@ -548,7 +548,7 @@ fn emit_command_audit(
     log_sender.send(LogItem {
         seq: 0,
         timestamp: SystemTime::now(),
-        source: LogSource::Plugin(plugin_id.to_string()),
+        source: LogSource::Gadget(plugin_id.to_string()),
         kind: LogItemKind::Message {
             level: LogLevel::Debug,
             message: format!("command::run {binary}"),

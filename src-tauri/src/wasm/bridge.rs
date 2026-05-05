@@ -569,7 +569,7 @@ fn log_task_error(log_sender: &LogSender, plugin_id: &str, task_id: &str, error:
     log_sender.send(LogItem {
         seq: 0,
         timestamp: SystemTime::now(),
-        source: LogSource::Plugin(plugin_id.to_string()),
+        source: LogSource::Gadget(plugin_id.to_string()),
         kind: LogItemKind::Message {
             level: LogLevel::Error,
             message: format!("scheduled task `{task_id}` failed: {error}"),
@@ -589,7 +589,7 @@ impl WasmGadgetBridge {
         self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            source: LogSource::Plugin(self.plugin_id.clone()),
+            source: LogSource::Gadget(self.plugin_id.clone()),
             kind: LogItemKind::Message {
                 level,
                 message,
