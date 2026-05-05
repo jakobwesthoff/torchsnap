@@ -42,7 +42,7 @@
 
 wit_bindgen::generate!({
     path: "wit",
-    world: "plugin",
+    world: "gadget",
     pub_export_macro: true,
     default_bindings_module: "::torchsnap_plugin_sdk",
 });
@@ -63,10 +63,10 @@ pub mod website_metadata;
 // re-export them flatly so plugins only need a single
 // `use torchsnap_plugin_sdk::prelude::*;`.
 // =========================================================
-pub use exports::torchsnap::plugin::lifecycle::Guest as LifecycleGuest;
-pub use exports::torchsnap::plugin::messaging::Guest as MessagingGuest;
-pub use exports::torchsnap::plugin::search::Guest as SearchGuest;
-pub use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
+pub use exports::torchsnap::gadget::lifecycle::Guest as LifecycleGuest;
+pub use exports::torchsnap::gadget::messaging::Guest as MessagingGuest;
+pub use exports::torchsnap::gadget::search::Guest as SearchGuest;
+pub use exports::torchsnap::gadget::tasks::Guest as TasksGuest;
 
 // =========================================================
 // WIT-generated record / variant re-exports
@@ -75,7 +75,7 @@ pub use exports::torchsnap::plugin::tasks::Guest as TasksGuest;
 // `CatalogEntry`, … constantly; surfacing them at the crate
 // root keeps per-plugin `use` blocks short.
 // =========================================================
-pub use exports::torchsnap::plugin::search::{
+pub use exports::torchsnap::gadget::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as _SearchGuest, PostAction, ScoredEntry,
     SearchResponse, ViewResponse,
 };
@@ -92,13 +92,13 @@ pub use exports::torchsnap::plugin::search::{
 // higher-level `settings` helper module. The same applies to
 // `logging_host`.
 // =========================================================
-pub use torchsnap::plugin::{
+pub use torchsnap::gadget::{
     assets, clipboard, frecency, fs, http, opener, paths, platform,
 };
-pub use torchsnap::plugin::command as command_host;
-pub use torchsnap::plugin::logging as logging_host;
-pub use torchsnap::plugin::settings as settings_host;
-pub use torchsnap::plugin::website_metadata as website_metadata_host;
+pub use torchsnap::gadget::command as command_host;
+pub use torchsnap::gadget::logging as logging_host;
+pub use torchsnap::gadget::settings as settings_host;
+pub use torchsnap::gadget::website_metadata as website_metadata_host;
 
 pub mod prelude {
     //! Common glob import for plugin authors.

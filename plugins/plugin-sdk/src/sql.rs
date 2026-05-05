@@ -21,7 +21,7 @@
 //! a future iteration once plugin authors actually motivate
 //! them.
 
-pub use crate::torchsnap::plugin::sql::{SqlHandle, SqlValue, connection};
+pub use crate::torchsnap::gadget::sql::{SqlHandle, SqlValue, connection};
 
 // =========================================================
 // Row — typed read-side accessor

@@ -1,10 +1,10 @@
-/// Torchsnap Plugin Interface
+/// Torchsnap Gadget Interface
 ///
 /// Minimal initial definition covering lifecycle, catalog search,
-/// query search, and execution. Expanded as real plugins are converted.
-package torchsnap:plugin@0.1.0;
+/// query search, and execution. Expanded as real gadgets are converted.
+package torchsnap:gadget@0.1.0;
 
-/// ─── Host imports (provided by the host to plugins) ─────
+/// ─── Host imports (provided by the host to gadgets) ─────
 interface logging {
   enum log-level {
     trace,
@@ -33,18 +33,18 @@ interface logging {
 
 /// System clipboard write access.
 ///
-/// WASM plugins have no direct access to host APIs — they
-/// can't reach `tauri_plugin_clipboard_manager` the way
-/// native plugins do. This interface exposes a single
-/// write-text operation so plugins can copy results to the
+/// WASM gadgets have no direct access to host APIs — they
+/// can't reach `tauri_gadget_clipboard_manager` the way
+/// native gadgets do. This interface exposes a single
+/// write-text operation so gadgets can copy results to the
 /// clipboard from inside `execute()`, `handle-message`, or
 /// any other guest entry point.
 ///
 /// Read access (paste, query) is intentionally NOT exposed.
-/// Reading the clipboard from a sandboxed plugin would let
-/// any plugin slurp arbitrary content the user has copied
+/// Reading the clipboard from a sandboxed gadget would let
+/// any gadget slurp arbitrary content the user has copied
 /// from other applications, which is a privacy footgun.
-/// Plugins that need clipboard read should stay native or
+/// Gadgets that need clipboard read should stay native or
 /// wait for an explicit, audited extension of this
 /// interface.
 interface clipboard {
@@ -54,17 +54,17 @@ interface clipboard {
   write-text: func(text: string) -> result<_, string>;
 }
 
-/// Per-plugin SQLite storage.
+/// Per-gadget SQLite storage.
 ///
-/// Each plugin gets an isolated database file at
-/// `<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3`. The host
+/// Each gadget gets an isolated database file at
+/// `<app_data_dir>/gadget-home/<gadget-id>/sql/storage.sqlite3`. The host
 /// creates the file and applies the migration files declared
 /// in `manifest.toml`'s `[storage.sql]` table before the
-/// guest's `enable()` runs. Plugins obtain lightweight
+/// guest's `enable()` runs. Gadgets obtain lightweight
 /// connection handles via `connection()` and use them to
 /// issue queries.
 ///
-/// Plugins are responsible for scoring, ordering, and
+/// Gadgets are responsible for scoring, ordering, and
 /// `IN (...)` expansion on their side — the WIT `sql-value`
 /// variant intentionally omits the host's internal `List`
 /// variant. Use `serde_json` (or any other serialization)
@@ -77,7 +77,7 @@ interface clipboard {
 /// Per-statement errors surface from `execute` / `query`.
 interface sql {
   /// A database value matching SQLite's five storage classes.
-  /// Plugins build query parameters and read result rows in
+  /// Gadgets build query parameters and read result rows in
   /// terms of this variant.
   variant sql-value {
     null,
@@ -98,34 +98,34 @@ interface sql {
     query: func(sql: string, params: list<sql-value>) -> result<list<list<sql-value>>, string>;
   }
 
-  /// Obtain a connection handle to the plugin's database.
+  /// Obtain a connection handle to the gadget's database.
   /// The host initializes the database (file creation,
   /// migrations) before the guest's `enable()` runs, so
-  /// this always succeeds for plugins that declare
+  /// this always succeeds for gadgets that declare
   /// `[storage.sql]` in their manifest. The handle is
   /// released automatically via WIT resource drop semantics
-  /// when the plugin lets it go out of scope.
+  /// when the gadget lets it go out of scope.
   connection: func() -> sql-handle;
 }
 
-/// Plugin-scoped frecency tracking.
+/// Gadget-scoped frecency tracking.
 ///
 /// The host already records selections automatically before
 /// dispatching `execute()` and applies frecency score bonuses
-/// to every query plugin's results after `search()` returns
-/// — neither path requires the plugin to do anything. This
-/// interface exists for the narrower case of plugins that
+/// to every query gadget's results after `search()` returns
+/// — neither path requires the gadget to do anything. This
+/// interface exists for the narrower case of gadgets that
 /// need to *read* frecency state to drive their own UI, e.g.
 /// the emoji picker's empty-query browse mode, which surfaces
 /// the user's most-used emoji when the query is just the
 /// prefix character.
 ///
-/// All calls are namespaced to the plugin's own ID — plugins
-/// cannot read other plugins' frecency data, same guarantee
+/// All calls are namespaced to the gadget's own ID — gadgets
+/// cannot read other gadgets' frecency data, same guarantee
 /// as the `settings` interface.
 interface frecency {
   /// A single item with its computed frecency score. `score`
-  /// is opaque — plugins should treat it as a relative
+  /// is opaque — gadgets should treat it as a relative
   /// ordering key, not an absolute magnitude.
   record frecency-item {
     item-id: string,
@@ -143,33 +143,33 @@ interface frecency {
   top-items: func(limit: u32) -> list<frecency-item>;
 }
 
-/// Read settings from this plugin's namespace.
+/// Read settings from this gadget's namespace.
 ///
-/// Plugins are confined to keys under `plugins.<plugin-id>.`
+/// Gadgets are confined to keys under `gadgets.<gadget-id>.`
 /// — the host strips the prefix transparently. There is no
-/// way to read other plugins' settings or host-level keys.
+/// way to read other gadgets' settings or host-level keys.
 ///
 /// Returned values are JSON-encoded strings (`true`, `42`,
 /// `"hello"`, `{"a":1}`, …) so any TOML-compatible value
 /// shape can cross the WIT boundary without inventing a
-/// dedicated value variant. The plugin parses the JSON
+/// dedicated value variant. The gadget parses the JSON
 /// into whatever shape it expects.
 ///
 /// `none` means the key has never been set in the store,
 /// neither by the manifest's `[settings]` defaults nor by a
-/// runtime write. Plugins typically fall back to a hard-coded
+/// runtime write. Gadgets typically fall back to a hard-coded
 /// default in that case (the same default that lives in
 /// `manifest.toml`).
 interface settings {
   /// Returns the JSON-encoded value for `key`, or `none` if unset.
-  /// `key` is relative to the plugin's namespace.
+  /// `key` is relative to the gadget's namespace.
   get: func(key: string) -> option<string>;
 }
 
 /// Opens URLs and filesystem paths via the OS default handler chain
 /// (browser, mail client, registered application, file manager).
 ///
-/// WASM plugins have no direct access to Tauri's opener APIs. This
+/// WASM gadgets have no direct access to Tauri's opener APIs. This
 /// interface exposes three operations:
 ///
 /// - `open-url`     — open a URL with the registered scheme handler.
@@ -177,10 +177,10 @@ interface settings {
 ///                    application (Finder/Explorer/xdg-mime resolution).
 /// - `reveal-path`  — reveal a filesystem path in the OS file manager.
 ///
-/// Plugins declare each capability under `[permissions.opener]` in
+/// Gadgets declare each capability under `[permissions.opener]` in
 /// `manifest.toml`. The host enforces declarations at call time. Omitting
 /// the section entirely (or declaring it with no granted capability)
-/// means the plugin has no opener access (deny by default).
+/// means the gadget has no opener access (deny by default).
 ///
 /// ```toml
 /// [permissions.opener]
@@ -190,22 +190,22 @@ interface settings {
 /// ```
 ///
 /// The boolean gates intentionally do not constrain *which* paths the
-/// plugin may target. A path-root allowlist would not narrow the
+/// gadget may target. A path-root allowlist would not narrow the
 /// malicious-author threat (the malicious payload can ship inside the
-/// plugin archive itself), and the legitimate use cases require broad
+/// gadget archive itself), and the legitimate use cases require broad
 /// access. The trust signal is at the manifest-declaration level: a
-/// plugin that can `open-path` is trusted to launch arbitrary registered
-/// handlers; a plugin that cannot, cannot.
+/// gadget that can `open-path` is trusted to launch arbitrary registered
+/// handlers; a gadget that cannot, cannot.
 interface opener {
   /// Error variants shared by every `opener` operation. The shape
   /// mirrors `http-error` and `command-error`: one variant per
   /// semantic category, no catch-all.
   variant opener-error {
-    /// The plugin's manifest does not grant the required capability:
+    /// The gadget's manifest does not grant the required capability:
     /// the URL's scheme is not in `[permissions.opener] schemes` for
     /// `open-url`, `open-path = false` for `open-path`, or
     /// `reveal-path = false` for `reveal-path`. The string describes
-    /// the missing capability so plugin authors can fix their
+    /// the missing capability so gadget authors can fix their
     /// manifest.
     permission-denied(string),
     /// The URL passed to `open-url` failed to parse. Only emitted by
@@ -219,29 +219,29 @@ interface opener {
   }
 
   /// Open `url` in the OS default handler. Returns
-  /// `permission-denied` if the scheme is not in the plugin's
+  /// `permission-denied` if the scheme is not in the gadget's
   /// declared allowlist, `invalid-url` if `url` is not parseable,
   /// or `backend-failure` if the OS-level opener call fails.
   open-url: func(url: string) -> result<_, opener-error>;
 
   /// Open `path` with the OS-registered application for that path's
   /// type (LaunchServices on macOS, GIO on Linux, ShellExecute on
-  /// Windows). Requires `open-path = true` in the plugin's
+  /// Windows). Requires `open-path = true` in the gadget's
   /// `[permissions.opener]` block.
   open-path: func(path: string) -> result<_, opener-error>;
 
   /// Reveal `path` in the OS file manager (Show in Finder, Show in
   /// Files, Show in Explorer). Requires `reveal-path = true` in the
-  /// plugin's `[permissions.opener]` block.
+  /// gadget's `[permissions.opener]` block.
   reveal-path: func(path: string) -> result<_, opener-error>;
 }
 
-/// Minimal synchronous HTTP client for WASM plugins.
+/// Minimal synchronous HTTP client for WASM gadgets.
 ///
-/// WASM plugins have no async runtime, so `fetch` is a blocking host call
-/// executed on the host's thread pool. Plugins declare allowed origins under
+/// WASM gadgets have no async runtime, so `fetch` is a blocking host call
+/// executed on the host's thread pool. Gadgets declare allowed origins under
 /// `[permissions.http]` in `manifest.toml`. The host enforces this at call
-/// time. The special origin `"*"` opts the plugin into trust-all mode.
+/// time. The special origin `"*"` opts the gadget into trust-all mode.
 ///
 /// ```toml
 /// [permissions.http]
@@ -264,14 +264,14 @@ interface http {
     other(string),
   }
 
-  /// A synchronous HTTP request issued by a WASM plugin through the host.
+  /// A synchronous HTTP request issued by a WASM gadget through the host.
   ///
   /// `timeout-ms: none` delegates to the host default. `max-body-size: none`
   /// delegates to the host default (guards against unbounded downloads).
   /// `insecure-tls: true` disables TLS certificate verification for the
   /// request — required for talking to local daemons that ship a
   /// self-signed certificate (Docker over TLS, k3s, ...). The origin
-  /// allowlist still gates which endpoint the plugin can reach.
+  /// allowlist still gates which endpoint the gadget can reach.
   record http-request {
     url: string,
     method: http-method,
@@ -282,7 +282,7 @@ interface http {
     insecure-tls: bool,
   }
 
-  /// The HTTP response returned to a WASM plugin. Status `100`–`599`
+  /// The HTTP response returned to a WASM gadget. Status `100`–`599`
   /// is a successful round-trip — `4xx` and `5xx` are application-level
   /// outcomes, not errors. `http-error` covers only cases where no HTTP
   /// response was produced.
@@ -293,10 +293,10 @@ interface http {
   }
 
   /// Transport-level errors for `fetch`. Each variant covers a single
-  /// category so plugins can produce precise UX (e.g. distinguishing
+  /// category so gadgets can produce precise UX (e.g. distinguishing
   /// "daemon not running" from "auth failure" without string-matching).
   variant http-error {
-    /// The request URL's origin is not in the plugin's declared
+    /// The request URL's origin is not in the gadget's declared
     /// allowlist. Message is the rejected origin.
     permission-denied(string),
     /// TCP / Unix-socket connect failed before any HTTP exchange —
@@ -324,16 +324,16 @@ interface http {
   fetch: func(request: http-request) -> result<http-response, http-error>;
 }
 
-/// Read-only access to host filesystem paths declared in the plugin's
+/// Read-only access to host filesystem paths declared in the gadget's
 /// manifest.
 ///
-/// Plugins declare an exact-or-glob allowlist under
+/// Gadgets declare an exact-or-glob allowlist under
 /// `[permissions.fs]` in `manifest.toml`. The host expands
 /// `${home}` / `${xdg-config}` / `${xdg-data}` substitutions (same
 /// vocabulary as `[[permissions.command]]` and `paths::resolve`),
 /// canonicalizes the resulting patterns to resolve OS-level symlinks
 /// (`/var → /private/var` on macOS, etc.), compiles them into a
-/// `GlobSet`, and stores it on the per-plugin instance.
+/// `GlobSet`, and stores it on the per-gadget instance.
 ///
 /// ```toml
 /// [permissions.fs]
@@ -363,13 +363,13 @@ interface http {
 ///
 /// Each call blocks the guest until the host returns. WASM guests
 /// have no async runtime, and the host scheduler keeps other
-/// plugins responsive while one plugin waits on a read.
+/// gadgets responsive while one gadget waits on a read.
 interface fs {
   /// Error variants for `read-file` and `file-metadata`. One variant
   /// per semantic category; no catch-all.
   variant fs-error {
     /// The request path validates and exists, but is not covered by
-    /// the plugin's manifest allowlist. Message is the request path
+    /// the gadget's manifest allowlist. Message is the request path
     /// (post-canonicalization) for diagnostics.
     permission-denied(string),
     /// The request path was syntactically rejected before I/O —
@@ -390,7 +390,7 @@ interface fs {
   /// `modified-unix-ms` is the modification time as Unix epoch
   /// milliseconds; `is-symlink` reports whether the requested
   /// path is itself a symlink — observed *before* symlink
-  /// resolution, so a plugin can tell when its allowlist let
+  /// resolution, so a gadget can tell when its allowlist let
   /// it through a symlink rather than a real file.
   record file-metadata {
     size: u64,
@@ -399,16 +399,16 @@ interface fs {
   }
 
   /// Read the full contents of `path`. Resolves symlinks; the real
-  /// target must also match the manifest allowlist. Plugins that
+  /// target must also match the manifest allowlist. Gadgets that
   /// need a string interpret the returned bytes themselves
   /// (`String::from_utf8_lossy` etc.).
   read-file: func(path: string) -> result<list<u8>, fs-error>;
 
-  /// Probe whether `path` is readable by this plugin. Returns
+  /// Probe whether `path` is readable by this gadget. Returns
   /// `true` when the path exists and is covered by the manifest
   /// allowlist; `false` for *all* other reasons (path missing,
   /// path denied, syntactically invalid, I/O error). The conflated
-  /// `false` is intentional — it lets a plugin walk a list of
+  /// `false` is intentional — it lets a gadget walk a list of
   /// candidate paths and pick the first usable one without
   /// branching on error variants.
   file-exists: func(path: string) -> bool;
@@ -418,18 +418,18 @@ interface fs {
   metadata: func(path: string) -> result<file-metadata, fs-error>;
 }
 
-/// Per-plugin asset access.
+/// Per-gadget asset access.
 ///
-/// Every WASM plugin can read files from inside its own `.torchsnap`
-/// archive (or development directory) via this interface. Plugins do
+/// Every WASM gadget can read files from inside its own `.torchsnap`
+/// archive (or development directory) via this interface. Gadgets do
 /// NOT opt in — there is no `[permissions.assets]` section. The
 /// guarantee is spatial: paths are validated by the same
-/// `validate-plugin-path` guard that governs every other plugin-file
+/// `validate-gadget-path` guard that governs every other gadget-file
 /// read on the host side, so the interface can only reach files
-/// already inside the plugin root.
+/// already inside the gadget root.
 ///
 /// Bytes cross the WIT boundary in full on every `read` call — the
-/// host holds no cached handle. Plugins that need to retain an asset
+/// host holds no cached handle. Gadgets that need to retain an asset
 /// should keep one copy in their own linear memory after reading.
 ///
 /// Typical use: load a bundled JSON database at `enable()` time.
@@ -440,23 +440,23 @@ interface assets {
   /// Error variants for `read` and `exists`. The shape mirrors
   /// `http-error`: one variant per semantic category, no catch-all.
   variant assets-error {
-    /// The path is outside the plugin root, or syntactically invalid
+    /// The path is outside the gadget root, or syntactically invalid
     /// (absolute, backslash-separated, contains `..` traversal, NUL
     /// byte, Windows drive letter, or empty). Message includes the
     /// offending path.
     invalid-path(string),
-    /// The path validates but no such file exists inside the plugin.
+    /// The path validates but no such file exists inside the gadget.
     not-found,
     /// The host's filesystem (or archive) layer reported an error
     /// while reading. Permission problems, corrupt archives, etc.
     io-error(string),
   }
 
-  /// Read a file inside the plugin. `path` is relative to the plugin
+  /// Read a file inside the gadget. `path` is relative to the gadget
   /// root, same convention as `manifest.toml` path fields.
   read: func(path: string) -> result<list<u8>, assets-error>;
 
-  /// Check whether a file exists inside the plugin without reading
+  /// Check whether a file exists inside the gadget without reading
   /// its bytes. Useful for optional assets (e.g. a bundled fallback
   /// that may or may not ship depending on the build).
   exists: func(path: string) -> result<bool, assets-error>;
@@ -464,7 +464,7 @@ interface assets {
 
 /// Run a system process and capture its output.
 ///
-/// Plugins declare repeated `[[permissions.command]]` rules in
+/// Gadgets declare repeated `[[permissions.command]]` rules in
 /// `manifest.toml`. Each rule names a `binary` plus per-position argv
 /// constraints; a `command::run` call must match exactly one rule or
 /// the host returns `permission-denied(string)`. The matcher is
@@ -473,19 +473,19 @@ interface assets {
 /// decision can never silently depend on rule ordering.
 ///
 /// Constraints are defense-in-depth: they restrict the *shape* of
-/// invocations, not the consequences of running a binary. A plugin
+/// invocations, not the consequences of running a binary. A gadget
 /// granted `git` will inherit whatever `git` reads from
 /// `~/.gitconfig` and `/etc/gitconfig`. Argv constraints meaningfully
 /// defend against unintentional misuse and against compositional
-/// attacks where a plugin with `http::fetch` would otherwise pull
+/// attacks where a gadget with `http::fetch` would otherwise pull
 /// arbitrary paths from a remote response. They do not make a
-/// determined malicious plugin author safe; that is a
+/// determined malicious gadget author safe; that is a
 /// distribution-time problem (see ADR 0036).
 ///
 /// No shell. Argv goes directly to `Command::new(binary).args(args)`;
 /// there is no shell tokenization step and no `/bin/sh -c` wrapping.
 /// No streaming, no PTY, no persistent process handles. The host's
-/// store lock means at most one `run` call is in flight per plugin
+/// store lock means at most one `run` call is in flight per gadget
 /// at a time.
 ///
 /// ```toml
@@ -511,7 +511,7 @@ interface command {
     /// the rule's argv constraints.
     args: list<string>,
     /// Working directory. When omitted, the host substitutes
-    /// `<plugin-data>/exec-cwd/`, lazily created.
+    /// `<gadget-data>/exec-cwd/`, lazily created.
     cwd: option<string>,
     /// Additional environment variables. Layered on top of the host
     /// process env (with credential-leakage variables stripped).
@@ -568,7 +568,7 @@ interface command {
 
 /// Runtime OS and CPU architecture detection.
 ///
-/// WASI does not expose either to guests. Plugins making
+/// WASI does not expose either to guests. Gadgets making
 /// platform-conditional decisions (different binaries on different
 /// OSes, different default paths, OS-gated features) need this signal.
 /// No permission is required: the values are informational and do not
@@ -596,21 +596,21 @@ interface platform {
 
 /// Resolve manifest substitution variables at runtime.
 ///
-/// Plugins declare `${...}` substitution variables in
+/// Gadgets declare `${...}` substitution variables in
 /// `[[permissions.command]]` `path-under` roots, `literal` values, and
 /// per-rule `cwd`. The host resolves them at bridge construction time.
 /// To construct argv strings that satisfy a `path-under` constraint
-/// referencing host-resolved paths, the plugin needs the same resolved
+/// referencing host-resolved paths, the gadget needs the same resolved
 /// values — that is what this interface provides.
 ///
 /// Recognized variables match the manifest set:
-/// `plugin-data`, `plugin-archive`, `home`, `xdg-config`, `xdg-data`.
+/// `gadget-data`, `gadget-archive`, `home`, `xdg-config`, `xdg-data`.
 ///
 /// No permission is required: the values are informational, and the
 /// recognized list is closed (the host controls it).
 ///
 /// ```ignore
-/// let helper = paths::resolve("${plugin-archive}/bin/helper")?;
+/// let helper = paths::resolve("${gadget-archive}/bin/helper")?;
 /// command::run(&helper, opts)?;
 /// ```
 interface paths {
@@ -630,19 +630,19 @@ interface paths {
   resolve: func(template: string) -> result<string, resolve-error>;
 }
 
-/// ─── Guest exports (implemented by plugins) ─────────────
+/// ─── Guest exports (implemented by gadgets) ─────────────
 interface lifecycle {
   enable: func();
 
   disable: func();
 
-  /// Called by the host whenever a setting in this plugin's
+  /// Called by the host whenever a setting in this gadget's
   /// namespace changes. `key` is relative (matching the
   /// `settings::get` argument); `value` is the new
   /// JSON-encoded value, same encoding as `settings::get`.
   ///
   /// The host's existing CoalescingDispatcher (ADR 0026)
-  /// runs *before* the change reaches the plugin, so rapid
+  /// runs *before* the change reaches the gadget, so rapid
   /// successive writes to the same key are deduplicated to
   /// the most recent value before this callback fires.
   on-setting-changed: func(key: string, value: string);
@@ -662,27 +662,27 @@ interface types {
   variant entry-icon {
     hero-icon(string),
     data-url(string),
-    /// File asset reference. Pass a path relative to the plugin
+    /// File asset reference. Pass a path relative to the gadget
     /// archive root — `assets/icon.svg` resolves to that file
-    /// inside the plugin's `.torchsnap` archive (or the equivalent
+    /// inside the gadget's `.torchsnap` archive (or the equivalent
     /// directory under the debug loader). The launcher renders it
     /// directly with content-type detected from the file. Absolute
     /// paths are reserved for host-produced icons (e.g. cached
-    /// favicons returned by `website-metadata::lookup`); plugins
+    /// favicons returned by `website-metadata::lookup`); gadgets
     /// should always pass a relative path.
     asset-icon(string),
     emoji(string),
   }
 
-  /// Well-known action identifiers. Plugins use these for
+  /// Well-known action identifiers. Gadgets use these for
   /// standard actions so the host can assign default keybindings
-  /// and icons. Use `custom` for plugin-specific actions.
+  /// and icons. Use `custom` for gadget-specific actions.
   ///
-  /// `open-settings` jumps to the originating plugin's own
+  /// `open-settings` jumps to the originating gadget's own
   /// settings panel — useful as a primary action on synthetic
   /// "configuration required" entries (e.g. "API token missing —
-  /// configure plugin"). The host routes the action to the
-  /// settings page scoped to the plugin id that returned the entry.
+  /// configure gadget"). The host routes the action to the
+  /// settings page scoped to the gadget id that returned the entry.
   variant action-id {
     open,
     copy,
@@ -711,8 +711,8 @@ interface search {
     actions: list<action>,
   }
 
-  /// A pre-scored search result returned by query plugins.
-  /// The plugin is responsible for scoring and highlight
+  /// A pre-scored search result returned by query gadgets.
+  /// The gadget is responsible for scoring and highlight
   /// position calculation.
   record scored-entry {
     id: string,
@@ -737,18 +737,18 @@ interface search {
     results: list<scored-entry>,
   }
 
-  /// What a query plugin returns from `search()`.
+  /// What a query gadget returns from `search()`.
   variant search-response {
-    /// Plugin has nothing to contribute for this query.
+    /// Gadget has nothing to contribute for this query.
     nothing,
     /// Standard scored results merged into the host's list.
     results(list<scored-entry>),
-    /// Plugin requests full custom UI (replaces the result list).
+    /// Gadget requests full custom UI (replaces the result list).
     /// The host mounts the named view component registered in
-    /// the plugin's frontend manifest.
+    /// the gadget's frontend manifest.
     custom-ui(view-response),
-    /// Plugin requests inline UI (rendered above the result list).
-    /// Only one plugin can claim the inline slot per search.
+    /// Gadget requests inline UI (rendered above the result list).
+    /// Only one gadget can claim the inline slot per search.
     inline-ui(view-response),
   }
 
@@ -761,16 +761,16 @@ interface search {
   /// Return catalog entries for host-side fuzzy matching.
   entries: func() -> list<catalog-entry>;
 
-  /// Plugin-driven search. Called on every query keystroke.
+  /// Gadget-driven search. Called on every query keystroke.
   /// Returns scored results directly (call-return, no streaming).
   search: func(query: string, matched-prefix: option<string>) -> search-response;
 
   execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
 }
 
-/// Custom frontend ↔ plugin RPC.
+/// Custom frontend ↔ gadget RPC.
 ///
-/// The plugin's React frontend can call
+/// The gadget's React frontend can call
 /// `sendMessage(method, payload)` to invoke the backend on
 /// demand. The host routes the call to this guest export;
 /// the response is returned to the frontend's
@@ -778,32 +778,32 @@ interface search {
 ///
 /// Both `payload` and the success arm of `result` are
 /// JSON-encoded strings — same encoding convention as the
-/// `settings::get` interface. The plugin parses the
+/// `settings::get` interface. The gadget parses the
 /// payload with `serde_json::from_str` on the way in and
 /// serializes the response on the way out.
 ///
 /// Returning `err(string)` propagates as a Tauri command
 /// error to the frontend's `sendMessage` promise (the
-/// frontend sees `"plugin error: <string>"` so bridge-level
-/// failures and plugin-reported failures are
+/// frontend sees `"gadget error: <string>"` so bridge-level
+/// failures and gadget-reported failures are
 /// distinguishable in logs).
 ///
-/// **WASM plugins cannot stream.** This export is
-/// strictly request/response. Native plugins still get the
+/// **WASM gadgets cannot stream.** This export is
+/// strictly request/response. Native gadgets still get the
 /// full streaming `Channel<Value>` via the underlying
-/// `Plugin::handle_message` trait — only the WIT bridge is
-/// limited to one-shot returns. If a future WASM plugin
+/// `Gadget::handle_message` trait — only the WIT bridge is
+/// limited to one-shot returns. If a future WASM gadget
 /// genuinely needs streaming, a `messaging-stream`
 /// sub-interface can be added without breaking this one.
 interface messaging {
-  /// Handle a custom message from the plugin's frontend.
+  /// Handle a custom message from the gadget's frontend.
   handle-message: func(method: string, payload: string) -> result<string, string>;
 }
 
 /// Scheduled background tasks.
 ///
-/// WASM has no threads — plugins can't spawn their own
-/// timers or background loops. The host runs a per-plugin
+/// WASM has no threads — gadgets can't spawn their own
+/// timers or background loops. The host runs a per-gadget
 /// tokio scheduler that walks every `[[tasks]]` entry from
 /// the manifest, sleeps until the earliest next fire, and
 /// invokes `run-task` with the manifest-declared `task-id`
@@ -817,18 +817,18 @@ interface messaging {
 ///   id = "retention-cleanup"
 ///   schedule = "*/30 * * * *"
 ///
-/// Plugins without `[[tasks]]` ship a default no-op
+/// Gadgets without `[[tasks]]` ship a default no-op
 /// implementation; the host never spawns a scheduler loop
 /// when the manifest declares no tasks, so the cost is zero
-/// for plugins that don't use the API.
+/// for gadgets that don't use the API.
 ///
 /// Returning `err(string)` is logged by the host and does
-/// not disable the plugin — scheduled tasks are best-effort
+/// not disable the gadget — scheduled tasks are best-effort
 /// background work, not lifecycle-critical.
 interface tasks {
   /// Invoked by the host at the cron-scheduled time for the
   /// task with the given manifest-declared `task-id`. The
-  /// plugin dispatches by name and runs whatever work the
+  /// gadget dispatches by name and runs whatever work the
   /// task is supposed to do.
   run-task: func(task-id: string) -> result<_, string>;
 }
@@ -836,9 +836,9 @@ interface tasks {
 /// Shared host service that fetches, caches, and serves per-domain
 /// website metadata (title, description, favicon).
 ///
-/// The cache is shared across plugins — a favicon fetched for one
-/// domain by plugin A is immediately available to plugin B. Favicon
-/// images are stored as host-owned files; plugins receive an
+/// The cache is shared across gadgets — a favicon fetched for one
+/// domain by gadget A is immediately available to gadget B. Favicon
+/// images are stored as host-owned files; gadgets receive an
 /// `entry-icon` ready to embed in search results.
 ///
 /// Gated by `[permissions]\nwebsite-metadata = true` in the manifest.
@@ -877,12 +877,12 @@ interface website-metadata {
   }
 
   variant website-metadata-error {
-    /// The plugin manifest does not declare
+    /// The gadget manifest does not declare
     /// `[permissions]\nwebsite-metadata = true`.
     permission-denied(string),
     /// Domain string is empty, oversized, or contains characters
     /// that aren't valid in a bare domain (scheme, path, port,
-    /// whitespace, ...). PSL validation is the plugin's job.
+    /// whitespace, ...). PSL validation is the gadget's job.
     invalid-domain(string),
   }
 
@@ -891,8 +891,8 @@ interface website-metadata {
   lookup: func(domain: string, mode: lookup-mode) -> result<lookup-result, website-metadata-error>;
 }
 
-/// ─── The plugin world ───────────────────────────────────
-world plugin {
+/// ─── The gadget world ───────────────────────────────────
+world gadget {
   import logging;
   import clipboard;
   import sql;
