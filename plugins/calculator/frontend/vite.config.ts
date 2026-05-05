@@ -5,7 +5,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { torchsnap } from "@torchsnap/plugin-sdk/vite";
+import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 import { resolve } from "path";
 
 // =========================================================
@@ -21,7 +21,7 @@ import { resolve } from "path";
 //   that re-export from `window.__torchsnap`, where the host
 //   provides its React instance at runtime.
 //
-// - Type imports from `@torchsnap/plugin-sdk` resolve through
+// - Type imports from `@torchsnap/gadget-sdk` resolve through
 //   node_modules (via the `link:` dependency) and are erased
 //   at compile time — no runtime dependency.
 //

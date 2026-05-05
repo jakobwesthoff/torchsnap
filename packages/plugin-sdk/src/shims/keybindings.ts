@@ -6,7 +6,7 @@
 // Host Keybindings Shim
 //
 // Bridges plugin code's
-// `import { useKeyBindings, LAYER } from "@torchsnap/plugin-sdk/keybindings"`
+// `import { useKeyBindings, LAYER } from "@torchsnap/gadget-sdk/keybindings"`
 // to the host-provided keybinding system on
 // `window.__torchsnap.keybindings`.
 //
@@ -17,7 +17,7 @@
 //
 // Same shim mechanism as the React, components, and hooks
 // subpaths. Resolved at module evaluation time — the host's
-// `initPluginSdk()` runs before any plugin bundle loads.
+// `initGadgetSdk()` runs before any plugin bundle loads.
 // =========================================================
 
 import "./global";
@@ -83,7 +83,7 @@ function hostKeybindings() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/plugin-sdk/keybindings: window.__torchsnap is not initialized — call initPluginSdk() before loading plugin bundles",
+      "@torchsnap/gadget-sdk/keybindings: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
     );
   }
   return t.keybindings;

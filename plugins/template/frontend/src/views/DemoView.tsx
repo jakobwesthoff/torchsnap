@@ -11,10 +11,10 @@
 //
 // - JSX with the automatic runtime (no `import React` needed)
 // - React hooks via the SDK
-// - Per-render data (`data`, `query`) from PluginViewProps
+// - Per-render data (`data`, `query`) from GadgetViewProps
 // - Launcher actions via the `useLauncher()` context hook
 // - Custom RPC into your Rust backend via
-//   `usePluginRuntime().sendMessage(method, payload)` —
+//   `useGadgetRuntime().sendMessage(method, payload)` —
 //   the host routes the call to your `MessagingGuest::handle_message`
 // - Component-lifecycle keybinding registration via
 //   `useKeyBindings` and the `LAYER` constants
@@ -28,13 +28,13 @@
 // =========================================================
 
 import { useEffect, useState } from "react";
-import type { PluginViewProps } from "@torchsnap/plugin-sdk";
+import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
 import {
   useLauncher,
-  usePluginRuntime,
+  useGadgetRuntime,
   useWindowedList,
-} from "@torchsnap/plugin-sdk/hooks";
-import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
+} from "@torchsnap/gadget-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import "../../styles/launcher.css";
 
 // Sample dataset for the windowed list. Real plugins source
@@ -43,9 +43,9 @@ import "../../styles/launcher.css";
 const DEMO_ITEMS = Array.from({ length: 32 }, (_, i) => `Item #${i + 1}`);
 const PAGE_SIZE = 6;
 
-export function DemoView({ data, query }: PluginViewProps) {
+export function DemoView({ data, query }: GadgetViewProps) {
   const { dismiss } = useLauncher();
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage } = useGadgetRuntime();
   const [count, setCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
 

@@ -3,14 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// @torchsnap/plugin-sdk — Public Type Exports
+// @torchsnap/gadget-sdk — Public Type Exports
 //
 // Everything a plugin needs to type its components and
 // interact with host-provided data structures.
 //
 // Usage:
-//   import type { GadgetViewProps } from "@torchsnap/plugin-sdk";
-//   import type { ActionId, SourcedEntry } from "@torchsnap/plugin-sdk";
+//   import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
+//   import type { ActionId, SourcedEntry } from "@torchsnap/gadget-sdk";
 // =========================================================
 
 export type {

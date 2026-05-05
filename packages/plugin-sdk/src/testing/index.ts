@@ -3,14 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// @torchsnap/plugin-sdk/testing — barrel
+// @torchsnap/gadget-sdk/testing — barrel
 //
 // Single import surface for plugin component tests:
 //
 //   import {
 //     setupSdkGlobalsForTesting,
 //     MockGadgetContextProvider,
-//   } from "@torchsnap/plugin-sdk/testing";
+//   } from "@torchsnap/gadget-sdk/testing";
 // =========================================================
 
 export { setupSdkGlobalsForTesting } from "./setup";

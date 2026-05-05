@@ -19,13 +19,13 @@
  */
 
 import { memo, useEffect, useState, type ReactNode } from "react";
-import type { FooterState, PluginViewProps } from "@torchsnap/plugin-sdk";
+import type { FooterState, GadgetViewProps } from "@torchsnap/gadget-sdk";
 import {
   useLauncher,
-  usePluginRuntime,
+  useGadgetRuntime,
   useWindowedList,
-} from "@torchsnap/plugin-sdk/hooks";
-import { LAYER, useKeyBindings } from "@torchsnap/plugin-sdk/keybindings";
+} from "@torchsnap/gadget-sdk/hooks";
+import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
 import { CalculatorError, CalculatorHelp } from "./CalculatorHelp";
 
@@ -58,9 +58,9 @@ export const CalculatorView = memo(function CalculatorView({
   data,
   query,
   matchedPrefix,
-}: PluginViewProps) {
+}: GadgetViewProps) {
   const { goBack, mouseActiveRef, onExecute, onFooterChange, setDisplayQuery } = useLauncher();
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage } = useGadgetRuntime();
 
   // The backend's search() returns the eval result in the `data`
   // field of the CustomUI response, threaded through PluginViewRef.

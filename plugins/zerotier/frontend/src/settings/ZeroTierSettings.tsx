@@ -19,8 +19,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { usePluginInfo, usePluginRuntime, usePluginSetting } from "@torchsnap/plugin-sdk/hooks";
-import { Entry, List, type ListItem, Section } from "@torchsnap/plugin-sdk/components";
+import { useGadgetInfo, useGadgetRuntime, useGadgetSetting } from "@torchsnap/gadget-sdk/hooks";
+import { Entry, List, type ListItem, Section } from "@torchsnap/gadget-sdk/components";
 import "../../styles/settings.css";
 
 type AuthSource = "auto" | "manual" | "none";
@@ -64,10 +64,10 @@ function stateBadge(net: KnownNetwork): string {
 }
 
 export function ZeroTierSettings() {
-  const { enabled } = usePluginInfo();
-  const { sendMessage } = usePluginRuntime();
+  const { enabled } = useGadgetInfo();
+  const { sendMessage } = useGadgetRuntime();
 
-  const [manualToken, setManualToken] = usePluginSetting<string>("manualToken");
+  const [manualToken, setManualToken] = useGadgetSetting<string>("manualToken");
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [networks, setNetworks] = useState<KnownNetwork[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);

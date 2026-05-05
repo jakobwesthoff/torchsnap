@@ -13,7 +13,7 @@
 // of runtime code), so the output is a self-contained ES
 // module with no unresolved imports.
 //
-// At runtime, the host calls `initPluginSdk()` before any
+// At runtime, the host calls `initGadgetSdk()` before any
 // plugin code loads, ensuring `window.__torchsnap.React` is
 // available.
 // =========================================================

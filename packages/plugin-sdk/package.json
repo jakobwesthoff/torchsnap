@@ -1,5 +1,5 @@
 {
-  "name": "@torchsnap/plugin-sdk",
+  "name": "@torchsnap/gadget-sdk",
   "version": "0.0.1",
   "private": true,
   "type": "module",

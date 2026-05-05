@@ -14,7 +14,7 @@
 // wiring up resolve aliases to shim files, plugins just add
 // `torchsnap()` to their plugin array:
 //
-//   import { torchsnap } from "@torchsnap/plugin-sdk/vite";
+//   import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 //
 //   export default defineConfig({
 //     plugins: [torchsnap(), react(), tailwindcss()],

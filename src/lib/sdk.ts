@@ -14,7 +14,7 @@
  * `packages/plugin-sdk/src/shims/` that re-export from the global.
  * At build time, Vite aliases `"react"` and `"react/jsx-runtime"`
  * to the React shims; the other subpaths are real package paths
- * exported from `@torchsnap/plugin-sdk`'s `package.json` and
+ * exported from `@torchsnap/gadget-sdk`'s `package.json` and
  * resolved via standard module resolution.
  */
 

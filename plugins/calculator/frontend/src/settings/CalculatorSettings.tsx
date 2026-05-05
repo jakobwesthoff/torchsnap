@@ -13,18 +13,18 @@
  *
  * The plugin's enabled flag (used to disable controls when the
  * user has turned the calculator off) comes from
- * `usePluginInfo().enabled`. The three settings come from
- * `usePluginSetting<T>(key)` and the `stats` / `clear_history`
- * RPC calls go through `usePluginRuntime().sendMessage`.
+ * `useGadgetInfo().enabled`. The three settings come from
+ * `useGadgetSetting<T>(key)` and the `stats` / `clear_history`
+ * RPC calls go through `useGadgetRuntime().sendMessage`.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  usePluginInfo,
-  usePluginRuntime,
-  usePluginSetting,
-} from "@torchsnap/plugin-sdk/hooks";
-import { Entry, Section, Slider, Switch } from "@torchsnap/plugin-sdk/components";
+  useGadgetInfo,
+  useGadgetRuntime,
+  useGadgetSetting,
+} from "@torchsnap/gadget-sdk/hooks";
+import { Entry, Section, Slider, Switch } from "@torchsnap/gadget-sdk/components";
 import "../../styles/settings.css";
 
 interface CalcStats {
@@ -38,12 +38,12 @@ function formatRetentionDays(days: number): string {
 }
 
 export function CalculatorSettings() {
-  const { enabled } = usePluginInfo();
-  const { sendMessage } = usePluginRuntime();
+  const { enabled } = useGadgetInfo();
+  const { sendMessage } = useGadgetRuntime();
 
-  const [heuristicEnabled, setHeuristicEnabled] = usePluginSetting<boolean>("heuristicEnabled");
-  const [historyEnabled, setHistoryEnabled] = usePluginSetting<boolean>("historyEnabled");
-  const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+  const [heuristicEnabled, setHeuristicEnabled] = useGadgetSetting<boolean>("heuristicEnabled");
+  const [historyEnabled, setHistoryEnabled] = useGadgetSetting<boolean>("historyEnabled");
+  const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
 
   const [stats, setStats] = useState<CalcStats | null>(null);
   const [clearing, setClearing] = useState(false);

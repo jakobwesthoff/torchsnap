@@ -9,16 +9,16 @@
  * `stats` message, plus a "Refresh" button that triggers a
  * fresh network download via the guest's `refresh` message.
  *
- * RPC calls go through `usePluginRuntime().sendMessage` — the
+ * RPC calls go through `useGadgetRuntime().sendMessage` — the
  * plugin id is inferred from the surrounding
  * `PluginContextProvider`, so no `PLUGIN_ID` constant is
  * needed. Styling primitives come from the SDK's shared
- * `@torchsnap/plugin-sdk/components` module.
+ * `@torchsnap/gadget-sdk/components` module.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { usePluginRuntime } from "@torchsnap/plugin-sdk/hooks";
-import { Section } from "@torchsnap/plugin-sdk/components";
+import { useGadgetRuntime } from "@torchsnap/gadget-sdk/hooks";
+import { Section } from "@torchsnap/gadget-sdk/components";
 import "../../styles/settings.css";
 
 // =========================================================
@@ -72,7 +72,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 // =========================================================
 
 export function BangsSettings() {
-  const { sendMessage } = usePluginRuntime();
+  const { sendMessage } = useGadgetRuntime();
 
   const [stats, setStats] = useState<BangStats | null>(null);
   const [refreshing, setRefreshing] = useState(false);

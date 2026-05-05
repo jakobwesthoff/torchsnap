@@ -16,7 +16,7 @@
 //   import {
 //     setupSdkGlobalsForTesting,
 //     MockGadgetContextProvider,
-//   } from "@torchsnap/plugin-sdk/testing";
+//   } from "@torchsnap/gadget-sdk/testing";
 //
 //   beforeAll(() => setupSdkGlobalsForTesting());
 //
@@ -29,7 +29,7 @@
 //   });
 //
 // The mock uses the host's real GadgetContext object so the
-// shim hooks (`@torchsnap/plugin-sdk/hooks`) resolve through
+// shim hooks (`@torchsnap/gadget-sdk/hooks`) resolve through
 // the same React context the production code uses.
 // =========================================================
 
