@@ -6,22 +6,20 @@ Date: 2026-04-08
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 WASM plugins need a way for their React frontends to call back into
 the plugin's Rust code on demand. The native plugin trait already has
 this capability:
 
-````rust
+```rust
 fn handle_message(
     &self,
     method: &str,
     payload: serde_json::Value,
     channel: tauri::ipc::Channel<serde_json::Value>,
 ) -> anyhow::Result<serde_json::Value>;
-````
+```
 
 The frontend uses the existing
 `sendMessage(source, method, payload, onMessage?)` SDK helper (now
@@ -47,7 +45,7 @@ override `WasmPluginBridge::handle_message` to dispatch into it.
 
 **WIT additions** (`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
 
-````wit
+```wit
 interface messaging {
   /// Handle a custom message from the plugin's frontend.
   handle-message: func(method: string, payload: string)
@@ -61,7 +59,7 @@ world plugin {
   export search;
   export messaging;     // NEW
 }
-````
+```
 
 **JSON-encoded strings cross the boundary** in both directions:
 the bridge re-serializes the incoming `serde_json::Value` payload
@@ -86,7 +84,7 @@ this one.
 
 **Bridge wiring** (`src-tauri/src/wasm/bridge.rs`):
 
-````rust
+```rust
 fn handle_message(
     &self,
     method: &str,
@@ -104,7 +102,7 @@ fn handle_message(
 
     serde_json::from_str(&result_json).context("parse guest handle-message response")
 }
-````
+```
 
 `WasmPluginInstance::handle_message` is the new typed wrapper
 around the WIT guest export, mirroring the existing wrappers for
@@ -126,42 +124,42 @@ methods.)
 
 ## Alternatives considered
 
-* **Folding `handle-message` into `lifecycle`** — rejected.
+- **Folding `handle-message` into `lifecycle`** — rejected.
   Lifecycle is for plugin-state transitions; messaging is a
   separate concern with its own future evolution path
   (streaming, server-sent events, etc.). Standalone interface
   per the WIT type-organization convention.
-* **Inventing a WIT value variant for the payload / response**
+- **Inventing a WIT value variant for the payload / response**
   — would double the binding surface for no real win; the
   store and frontend already speak JSON.
-* **Streaming via `Channel` exposed to WIT** — out of scope.
+- **Streaming via `Channel` exposed to WIT** — out of scope.
   WASM plugins can't trivially hold a Tauri `Channel` (no
   Tauri runtime in the wasmtime sandbox), and the existing
   channel-lifecycle todo (see `todos/01kn30th27x0arv9a5cekkwgpw…`)
   needs to land first to define the lifecycle semantics. Adding
   a `messaging-stream` sub-interface later is purely additive.
-* **A proc macro for dispatching by method name on the plugin
+- **A proc macro for dispatching by method name on the plugin
   side** — premature. Plain `match` works fine for the v1
   template. A macro can come later when real plugins
   demonstrate the ergonomic case.
 
 ## Consequences
 
-* WASM plugins get frontend ↔ backend RPC parity with native
+- WASM plugins get frontend ↔ backend RPC parity with native
   plugins for the request/response shape (which is the vast
   majority of `sendMessage` use cases).
-* Same Tauri command (`plugin_message`) routes both native and
+- Same Tauri command (`plugin_message`) routes both native and
   WASM plugins. Frontend code is unchanged.
-* Adding a new lifecycle method (`handle-message`) is a
+- Adding a new lifecycle method (`handle-message`) is a
   WIT-breaking change for any existing guest. Every shipped
   plugin must implement it (even as a no-op or `Err(unknown)`)
   or fail to compile against the new world. The `template`,
   `hello-world`, and untracked `calculator` template-copy
   crates were updated in the same commit.
-* Errors propagate naturally: WIT `Result<String, String>` →
+- Errors propagate naturally: WIT `Result<String, String>` →
   bridge `anyhow::Result<Value>` → Tauri `Result<Value, String>`
   → JS Promise rejection. Identical UX to native plugin
   errors.
-* The `_channel` parameter being ignored is documented in the
+- The `_channel` parameter being ignored is documented in the
   bridge — silent acceptance would be confusing if a future
   contributor added streaming support and forgot to wire it.

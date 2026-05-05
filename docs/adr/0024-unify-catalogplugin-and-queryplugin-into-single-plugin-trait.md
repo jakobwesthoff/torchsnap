@@ -6,8 +6,6 @@ Date: 2026-04-05
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 Amends [12. Use prefix-based exclusive routing for query plugins](0012-use-prefix-based-exclusive-routing-for-query-plugins.md)
 
 ## Context
@@ -30,7 +28,7 @@ Catalog-only plugins override `entries()`. Query-only plugins override
 All lifecycle methods appear once. The host checks whether `entries()` and/or
 `search()` return non-default values to route search queries.
 
-````rust
+```rust
 pub trait Plugin: Send + Sync {
     fn id(&self) -> &str;
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
@@ -45,17 +43,17 @@ pub trait Plugin: Send + Sync {
     fn entries(&self) -> Vec<CatalogEntry> { vec![] }
     fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<PluginResponse> { None }
 }
-````
+```
 
 Registration is a single `host.register()` call. The old `register_query()`
 method and the `CatalogPlugin`/`QueryPlugin` trait names are removed.
 
 ## Consequences
 
-* No trait duplication — lifecycle methods exist once.
-* Plugins can now serve both catalog entries and custom query results with a
+- No trait duplication — lifecycle methods exist once.
+- Plugins can now serve both catalog entries and custom query results with a
   single implementation and a single plugin ID.
-* Registration is simpler: one call instead of two conditional calls depending
+- Registration is simpler: one call instead of two conditional calls depending
   on which trait the plugin implements.
-* The `register_query()` method is removed. Any code that distinguished
+- The `register_query()` method is removed. Any code that distinguished
   between catalog and query registration at the call site must be updated.

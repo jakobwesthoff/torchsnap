@@ -6,8 +6,6 @@ Date: 2026-04-30
 
 Accepted
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 `zerotier-one` runs as a local daemon that exposes its full management
@@ -51,11 +49,11 @@ For each network ID the plugin tracks one of three states, derived
 from the union of live `GET /network` and the plugin's own history
 table:
 
-\| State | Origin | Meaning |
-\|---|---|---|
-\| `Connected` | live, `status == OK` | traffic flowing |
-\| `JoinedOffline` | live, any other status | joined but not connected (`REQUESTING_CONFIGURATION`, `ACCESS_DENIED`, `AUTHENTICATION_REQUIRED`, `NOT_FOUND`, `PORT_ERROR`, `Unknown`) |
-\| `KnownOnly` | history only | network we have seen before, daemon has left it |
+| State | Origin | Meaning |
+|---|---|---|
+| `Connected` | live, `status == OK` | traffic flowing |
+| `JoinedOffline` | live, any other status | joined but not connected (`REQUESTING_CONFIGURATION`, `ACCESS_DENIED`, `AUTHENTICATION_REQUIRED`, `NOT_FOUND`, `PORT_ERROR`, `Unknown`) |
+| `KnownOnly` | history only | network we have seen before, daemon has left it |
 
 The state determines the entry's primary action label
 (`Disconnect` for the first two, `Connect` for the last) and the
@@ -95,8 +93,8 @@ re-invoked only when the user edits the manual-paste setting:
    `ProgramData` path. Reads go through the new `fs::read_file`
    host import — the manifest's `[permissions.fs]` block declares
    each candidate.
-1. Manual-paste fallback from the `manualToken` plugin setting.
-1. If neither produces a token, the plugin marks itself as
+2. Manual-paste fallback from the `manualToken` plugin setting.
+3. If neither produces a token, the plugin marks itself as
    `Unconfigured`. `search()` queries with ZT context (matched
    network or bare ID) surface a "ZeroTier token not configured"
    entry with `ActionId::OpenSettings` so the user can fix the
@@ -127,12 +125,12 @@ writes back to the JSON file.
 Plugin entries carry these base scores, summed with the per-match
 nucleo score:
 
-\| Class | Score |
-\|---|---|
-\| Connected | 750 + nucleo |
-\| Joined offline | 450 + nucleo |
-\| Known only | 250 + nucleo |
-\| Synthetic Connect-by-ID | 125 |
+| Class | Score |
+|---|---|
+| Connected | 750 + nucleo |
+| Joined offline | 450 + nucleo |
+| Known only | 250 + nucleo |
+| Synthetic Connect-by-ID | 125 |
 
 These slot between the existing host anchors (bangs at 1000,
 open-url at 500) so connected ZeroTier results rank between bangs
@@ -155,16 +153,16 @@ Built from the SDK's `<Section>`, `<Entry>`, and the new shared
 
 ### Out of scope for v1
 
-* Unix domain socket transport — separate todo
+- Unix domain socket transport — separate todo
   (`01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md`).
-* Streaming responses on fetch (deferred per ADR 0038).
-* File watching on `saved_networks.json`. Merge-on-instantiation
+- Streaming responses on fetch (deferred per ADR 0038).
+- File watching on `saved_networks.json`. Merge-on-instantiation
   plus a manual Re-import button cover the cases that matter; a
   dedicated `fs-watch` interface can wait for a real consumer.
-* Add-by-ID-without-joining in settings. Connect-via-launcher is
+- Add-by-ID-without-joining in settings. Connect-via-launcher is
   the canonical entry point.
-* Force-reconnect action. User can Disconnect then Connect.
-* Prefix routing (`zt:` / `zerotier:` / `join:`). Trivial to add
+- Force-reconnect action. User can Disconnect then Connect.
+- Prefix routing (`zt:` / `zerotier:` / `join:`). Trivial to add
   later if useful; not necessary for v1 since the bare-16-hex-char
   trigger handles the join-by-id case without ambiguity.
 
@@ -172,24 +170,24 @@ Built from the SDK's `<Section>`, `<Entry>`, and the new shared
 
 ### Positive
 
-* The plugin exercises every host-API addition the work landed
+- The plugin exercises every host-API addition the work landed
   end-to-end (`fs`, the richer fetch error model, `OpenSettings`,
   the shared `<List>` SDK component). Real-consumer pressure
   validated each before any other plugin adopts them.
-* Failure-state entries make the plugin self-diagnosing: a user
+- Failure-state entries make the plugin self-diagnosing: a user
   whose daemon is down or whose token doesn't work sees a
   one-keystroke path to fix it from inside the launcher, with no
   separate troubleshooting flow.
-* Cache invalidation on mutating actions keeps the user's mental
+- Cache invalidation on mutating actions keeps the user's mental
   model in sync with reality without timer-driven polling.
 
 ### Negative
 
-* The 200 ms `search()`-time timeout is tight enough to surface as
+- The 200 ms `search()`-time timeout is tight enough to surface as
   a "no results" flicker if the daemon is genuinely slow (rather
   than hung). Acceptable trade for not freezing the launcher; can
   be tuned upward if real users hit the regression.
-* Settings frontend and Rust handler share a JSON RPC contract
+- Settings frontend and Rust handler share a JSON RPC contract
   with no schema enforcement. A typo in a method name or response
   shape on either side fails at runtime, not at build time.
   Acceptable for now — the surface is small (six methods) — but a
@@ -203,16 +201,16 @@ each supported platform:
 1. Daemon running, joined to one network → typing the network's
    name surfaces a Connected entry with the correct subtitle
    (`● Connected · 10.x.x.x`).
-1. Typing 16 hex characters not in history → "Connect to network
+2. Typing 16 hex characters not in history → "Connect to network
    `<id>`" entry; activating it joins and inserts a history row.
-1. Triggering Disconnect on a connected entry → next query within
+3. Triggering Disconnect on a connected entry → next query within
    1 s sees the Stored badge.
-1. Triggering Forget on any entry → the row disappears from the
+4. Triggering Forget on any entry → the row disappears from the
    settings panel's list.
-1. Stopping the daemon → next ZT-context query shows
+5. Stopping the daemon → next ZT-context query shows
    "ZeroTier daemon not running"; entry is non-actionable other
    than Dismiss.
-1. Settings panel: token field disabled with auto-detected text on
+6. Settings panel: token field disabled with auto-detected text on
    a healthy macOS install; enabled with explanatory info on a
    Linux install where the daemon path is not group-readable.
 
@@ -227,20 +225,20 @@ existing plugin recompiles cleanly against the SDK bump).
 
 ## Related ADRs
 
-* ADR 0035 — plugin distribution via bundled and user-installable archives
-* ADR 0036 — plugin trust model and deferred signing
-* ADR 0038 — WASM plugin HTTP API (extended in this work with
+- ADR 0035 — plugin distribution via bundled and user-installable archives
+- ADR 0036 — plugin trust model and deferred signing
+- ADR 0038 — WASM plugin HTTP API (extended in this work with
   richer error variants and `insecure-tls`)
 
 ## Related todos
 
-* `01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md` —
+- `01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md` —
   iterative design discussion that produced this ADR.
-* `01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md` —
+- `01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md` —
   deferred Unix socket transport, needed for Docker / podman / etc.
   plugins but not for ZeroTier.
-* `01kqf1at1he1em7kfw6xa2rwfd-migrate-calculator-history-to-list-component.md`
+- `01kqf1at1he1em7kfw6xa2rwfd-migrate-calculator-history-to-list-component.md`
   — exploratory follow-up on whether the calculator plugin's
   history view should migrate to the shared `<List>` component.
-* `01kqf1xsn6rb650f5a793wa5s4-refactor-manifest-rs.md` —
+- `01kqf1xsn6rb650f5a793wa5s4-refactor-manifest-rs.md` —
   unrelated cleanup surfaced during this work.

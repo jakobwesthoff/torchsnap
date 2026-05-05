@@ -6,8 +6,6 @@ Date: 2026-03-26
 
 In Progress
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 Amended by [21. Extend SearchResponse with inline UI and structured variants](0021-extend-search-response-with-inline-ui-and-structured-variants.md)
 
 Amended by [22. Use named view resolution for plugin UI components](0022-use-named-view-resolution-for-plugin-ui-components.md)
@@ -43,7 +41,7 @@ Status: **decided**
 **Activation** happens through two paths, both producing the same
 frontend effect (mount the plugin's component):
 
-* **Search path**: The plugin's `search()` returns a `SearchResponse`
+- **Search path**: The plugin's `search()` returns a `SearchResponse`
   enum — either `Results(entries)` for standard list rendering, or
   `CustomUI(entries)` to request custom UI. The decision is per-query,
   not per-plugin — a plugin could return standard results for some
@@ -51,7 +49,7 @@ frontend effect (mount the plugin's component):
   the plugin has exclusive prefix ownership, the backend includes the
   plugin's ID in the search message. The frontend mounts the plugin's
   component in place of `ResultList`.
-* **Execute path** (future): `execute()` returns a new `PostAction`
+- **Execute path** (future): `execute()` returns a new `PostAction`
   variant (e.g., `ShowCustomUI`) that tells the frontend to mount the
   plugin's component. This enables "drill-in" flows where a standard
   list entry opens a custom view.
@@ -101,22 +99,22 @@ The host provides the following props to the plugin component:
 
 **Inputs (host → plugin):**
 
-* `results: ScoredEntry[]` — search results from the normal
+- `results: ScoredEntry[]` — search results from the normal
   `search()` flow, always provided. The plugin decides whether to
   use them or ignore them.
-* `query: string` — current query, stripped of the matched prefix.
-* `matchedPrefix: string` — which prefix activated the plugin.
-* `goBack(): void` — pop back to previous state (see topic 1).
-* `dismiss(): void` — close the launcher.
-* `mouseActiveRef: React.RefObject<boolean>` — shared mouse-active
+- `query: string` — current query, stripped of the matched prefix.
+- `matchedPrefix: string` — which prefix activated the plugin.
+- `goBack(): void` — pop back to previous state (see topic 1).
+- `dismiss(): void` — close the launcher.
+- `mouseActiveRef: React.RefObject<boolean>` — shared mouse-active
   tracking to suppress hover-selection during keyboard navigation.
 
 **Outputs (plugin → host):**
 
-* `onExecute(entryId: string, actionId: ActionId): void` — plugin
+- `onExecute(entryId: string, actionId: ActionId): void` — plugin
   delegates execution to host. The host owns PostAction handling
   and dismiss logic.
-* `onFooterChange(state: FooterState): void` — plugin sets the
+- `onFooterChange(state: FooterState): void` — plugin sets the
   footer content (see topic 7). The plugin is responsible for
   keeping this in sync with its actual keybindings.
 
@@ -139,43 +137,43 @@ Two data paths, used as needed:
    host-provided `onExecute` callback. This covers simple cases like
    the emoji grid.
 
-1. **Direct (custom):** The plugin communicates with its backend
+2. **Direct (custom):** The plugin communicates with its backend
    through a host-provided `sendMessage` function. This function is
    passed as a prop to the plugin component and is pre-bound to the
    plugin's ID — the component never specifies its own identity.
-   
+
    On the Rust side, the plugin trait gets a `handle_message` method:
-   
-   ````rust
+
+   ```rust
    fn handle_message(
        &self,
        method: &str,
        payload: MessagePayload,
        channel: Channel<StreamItem>,
    ) -> Result<MessageResponse>;
-   ````
-   
+   ```
+
    `MessagePayload`, `MessageResponse`, and `StreamItem` are newtypes
    over `serde_json::Value`. The newtypes prevent accidental swapping
    of return values and stream items at the trait boundary. Type safety
    within a plugin is the plugin's responsibility — it serializes and
    deserializes its own concrete types on both sides (Rust and TS).
-   
+
    On the frontend, the prop signature is:
-   
-   ````typescript
+
+   ```typescript
    sendMessage<TResult, TStream = never>(
        method: string,
        payload: unknown,
        onMessage?: (msg: TStream) => void,
    ): Promise<TResult>
-   ````
-   
+   ```
+
    Without `onMessage`: simple request/response. With `onMessage`:
    streaming — each backend channel message calls the callback, the
    promise resolves with the final return value when the handler
    completes.
-   
+
    The host owns a single Tauri command (`plugin_message`) that
    creates the channel, dispatches to the plugin by ID, and bridges
    responses back to the frontend. This is WASM-friendly since the
@@ -198,21 +196,18 @@ a plugin component is mounted. The plugin registers everything it
 needs through the existing keybinding engine.
 
 This includes:
-
-* Navigation (arrows, Tab, PageUp/Down — whatever suits the layout)
-* Action execution (Enter for primary, modifier combos for secondary)
-* Escape (with `goBack()` fallback when nothing internal to unwind)
+- Navigation (arrows, Tab, PageUp/Down — whatever suits the layout)
+- Action execution (Enter for primary, modifier combos for secondary)
+- Escape (with `goBack()` fallback when nothing internal to unwind)
 
 The plugin is responsible for:
-
-* Binding all keys it advertises in the footer
-* Calling `onExecute(entryId, actionId)` when an action is triggered
-* Keeping `onFooterChange` in sync with actual bindings
+- Binding all keys it advertises in the footer
+- Calling `onExecute(entryId, actionId)` when an action is triggered
+- Keeping `onFooterChange` in sync with actual bindings
 
 **Host keeps active regardless of plugin state:**
-
-* Emacs input bindings (Ctrl+W/U/K/A/E)
-* Global shortcut (toggle launcher visibility)
+- Emacs input bindings (Ctrl+W/U/K/A/E)
+- Global shortcut (toggle launcher visibility)
 
 ### 6. Shared Component Library / SDK Surface
 
@@ -228,11 +223,11 @@ imports stay the same.
 
 Initial modules:
 
-* `@torchsnap/keybindings` → `./src/keybindings`
+- `@torchsnap/keybindings` → `./src/keybindings`
   (useKeyBindings, KeyCombo types, matching utilities)
-* `@torchsnap/components` → `./src/components`
+- `@torchsnap/components` → `./src/components`
   (KeyPill, Switch, SettingsEntry, and other shared UI)
-* `@torchsnap/types` → `./src/launcher/types`
+- `@torchsnap/types` → `./src/launcher/types`
   (ScoredEntry, EntryIcon, ActionId, FooterState, etc.)
 
 Aliases are configured in both `tsconfig.json` (for type checking)
@@ -256,7 +251,7 @@ Status: **decided**
 
 The footer uses a generic `FooterState` model:
 
-````typescript
+```typescript
 type FooterHint = {
     combo?: KeyCombo;
     label: string;
@@ -266,14 +261,14 @@ type FooterState = {
     primary?: FooterHint;
     hints: FooterHint[];
 };
-````
+```
 
 Both the host and plugins produce `FooterState`:
 
-* **Host (list mode):** Derives `FooterState` from the selected
+- **Host (list mode):** Derives `FooterState` from the selected
   entry's actions — maps each action to a `FooterHint` with its
   declared keybinding and label.
-* **Plugin (custom UI):** Sets `FooterState` directly via the
+- **Plugin (custom UI):** Sets `FooterState` directly via the
   `onFooterChange` callback. The plugin controls exactly what the
   footer displays, keeping it in sync with its actual keybindings.
 
@@ -283,15 +278,15 @@ model and ensures consistency regardless of who provides the data.
 
 ## Deferred Items
 
-* **Dynamic plugin component registration:** The frontend currently
+- **Dynamic plugin component registration:** The frontend currently
   uses a static map (plugin ID → React component). This will be
   replaced with dynamic resolution once plugin files and dynamic
   loading are designed (Phase 3). See todo.
-* **Plugin message bus:** The `sendMessage` / `handle_message`
+- **Plugin message bus:** The `sendMessage` / `handle_message`
   mechanism (topic 4) is stubbed. The trait method defaults to an
   error. The Tauri command and frontend wrapper are built when the
   first plugin needs custom backend communication. See todo.
-* **Emoji frecency for empty query:** The empty-prefix query (just
+- **Emoji frecency for empty query:** The empty-prefix query (just
   `:`) shows unfiltered emoji in emojibase order for now. Will be
   replaced with frecency-ranked results once the ranking system
   exists. See todo.
@@ -309,16 +304,16 @@ Shared components are imported via stable `@torchsnap/*` path aliases.
 
 ## Consequences
 
-* Plugins get full rendering control within a bounded area, enabling
+- Plugins get full rendering control within a bounded area, enabling
   layouts like emoji grids, calculator inlines, and preview panes
   without host-side display mode enumerations.
-* The footer refactoring (entry actions → generic `FooterState`) is
+- The footer refactoring (entry actions → generic `FooterState`) is
   a prerequisite and improves the footer's generality regardless of
   plugin custom UI.
-* The host's keybinding registration must become conditional —
+- The host's keybinding registration must become conditional —
   navigation/action bindings are skipped when a plugin is mounted.
-* Internal plugins use direct imports via path aliases; the extraction
+- Internal plugins use direct imports via path aliases; the extraction
   to real packages is deferred but mechanical when needed.
-* The static plugin ID → component map is a known coupling point,
+- The static plugin ID → component map is a known coupling point,
   acceptable for internal plugins, to be replaced with dynamic
   resolution in Phase 3.

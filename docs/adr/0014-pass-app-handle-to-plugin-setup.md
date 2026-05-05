@@ -6,8 +6,6 @@ Date: 2026-03-27
 
 Superseded by [25. Host-managed plugin enable/disable lifecycle](0025-host-managed-plugin-enable-disable-lifecycle.md)
 
-Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
-
 ## Context
 
 Plugin `setup()` currently takes only `&self`. Plugins that need access
@@ -27,9 +25,9 @@ search, contact search) will have similar needs.
 Both `CatalogPlugin::setup()` and `QueryPlugin::setup()` gain an
 `AppHandle` parameter:
 
-````rust
+```rust
 fn setup(&self, app: &tauri::AppHandle) {}
-````
+```
 
 Plugins that need the handle store `app.clone()` or derive what they
 need during setup. Plugins that don't need it ignore the parameter.
@@ -39,9 +37,10 @@ to each plugin.
 
 ## Consequences
 
-* All existing plugins need a trivial signature update (`_app: &tauri::AppHandle`). No behavioral change.
-* `setup_all()` and the call site in `lib.rs` need the handle threaded
+- All existing plugins need a trivial signature update (`_app:
+  &tauri::AppHandle`). No behavioral change.
+- `setup_all()` and the call site in `lib.rs` need the handle threaded
   through.
-* Plugins can now resolve paths, access Tauri-managed state, and obtain
+- Plugins can now resolve paths, access Tauri-managed state, and obtain
   handles for background threads during initialization — without
   workarounds like storing the handle at construction time.
