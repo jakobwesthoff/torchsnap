@@ -126,7 +126,7 @@ it (same as `show`).
 ### `dismiss`
 
 Hide the launcher and reset its state — clears the search query,
-selection, and any active plugin view. This matches the behavior of
+selection, and any active gadget view. This matches the behavior of
 pressing Escape in the launcher.
 
 **Parameters:** none
