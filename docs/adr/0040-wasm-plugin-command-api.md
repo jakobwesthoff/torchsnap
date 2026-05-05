@@ -6,6 +6,8 @@ Date: 2026-04-27
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 ADR 0036 set the trust-model invariant: the WIT capability surface is

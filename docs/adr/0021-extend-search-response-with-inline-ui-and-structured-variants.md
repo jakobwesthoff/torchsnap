@@ -6,6 +6,8 @@ Date: 2026-03-29
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 Amends [13. Allow plugins to provide custom UI components for the result area](0013-allow-plugins-to-provide-custom-ui-components-for-the-result-area.md)
 
 ## Context

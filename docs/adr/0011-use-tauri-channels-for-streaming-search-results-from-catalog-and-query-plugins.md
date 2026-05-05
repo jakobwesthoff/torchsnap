@@ -6,6 +6,8 @@ Date: 2026-03-25
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 Plugins fall into two fundamentally different categories:

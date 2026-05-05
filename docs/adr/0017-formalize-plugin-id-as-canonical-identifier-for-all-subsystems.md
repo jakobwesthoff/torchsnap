@@ -6,6 +6,8 @@ Date: 2026-03-27
 
 Accepted
 
+Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
+
 ## Context
 
 Every plugin already has an `id()` method on the `Plugin` trait (formerly
