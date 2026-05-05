@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Install / Uninstall
+// Gadget Install / Uninstall
 //
-// Backend for the Plugins settings panel's install and
+// Backend for the Gadgets settings panel's install and
 // uninstall flows. Both commands return
 // `requires_restart: true` because the `GadgetHost` slot
 // list is frozen after setup — a hot lifecycle path is
@@ -17,28 +17,28 @@
 //    which validates the zip and parses the manifest. The
 //    path guard that runs during `Manifest::parse` catches
 //    traversal here.
-// 2. Extract the manifest's plugin id.
-// 3. Reject if a plugin with that id is already registered
+// 2. Extract the manifest's gadget id.
+// 3. Reject if a gadget with that id is already registered
 //    with any `GadgetSourceKind`, with a message specific to
 //    the colliding kind.
 // 4. Atomically copy the archive into
-//    `<app_data_dir>/plugins/<id>.torchsnap` via a
+//    `<app_data_dir>/gadgets/<id>.torchsnap` via a
 //    temp-then-rename dance so a mid-copy crash leaves no
 //    partial archive behind.
 //
 // Uninstall steps:
 //
-// 1. Look up the plugin's source kind. Reject unless it is
+// 1. Look up the gadget's source kind. Reject unless it is
 //    `GadgetSourceKind::User`; built-in, system, and dev
-//    plugins are not uninstallable through this flow.
-// 2. Remove the archive at `<app_data_dir>/plugins/<id>.torchsnap`,
-//    the unpacked dir at `<app_data_dir>/plugins/<id>/` if
-//    any (dev-style user plugin), and the state tree at
+//    gadgets are not uninstallable through this flow.
+// 2. Remove the archive at `<app_data_dir>/gadgets/<id>.torchsnap`,
+//    the unpacked dir at `<app_data_dir>/gadgets/<id>/` if
+//    any (dev-style user gadget), and the state tree at
 //    `<app_data_dir>/gadget-home/<id>/`.
 // 3. Strip settings keys — `enabled.<id>` and every
 //    `gadgets.<id>.*` key. The exact-match-plus-prefix
-//    design keeps unrelated plugins' settings intact even
-//    when plugin ids share a textual prefix (e.g. `calc` vs
+//    design keeps unrelated gadgets' settings intact even
+//    when gadget ids share a textual prefix (e.g. `calc` vs
 //    `calculator`).
 // =========================================================
 
@@ -144,10 +144,10 @@ fn install_impl(
         .path()
         .app_data_dir()
         .context("resolve app data dir for plugin install")?;
-    let plugins_dir = app_data_dir.join("plugins");
-    std::fs::create_dir_all(&plugins_dir).context("create plugins directory")?;
+    let gadgets_dir = app_data_dir.join("gadgets");
+    std::fs::create_dir_all(&gadgets_dir).context("create gadgets directory")?;
 
-    let final_path = plugins_dir.join(format!("{plugin_id}.torchsnap"));
+    let final_path = gadgets_dir.join(format!("{plugin_id}.torchsnap"));
 
     // Drop the source handle before the copy/rename — on
     // Windows the archive file would otherwise still be open
@@ -161,7 +161,7 @@ fn install_impl(
     // the directory scan skips (it is not a plain
     // `*.torchsnap` entry); a crash after rename leaves a
     // valid install.
-    let tmp_path = plugins_dir.join(format!(".{plugin_id}.torchsnap.tmp"));
+    let tmp_path = gadgets_dir.join(format!(".{plugin_id}.torchsnap.tmp"));
     std::fs::copy(archive_path, &tmp_path).context("copy archive into staging location")?;
     std::fs::rename(&tmp_path, &final_path).context("publish staged archive")?;
 
@@ -216,18 +216,18 @@ fn uninstall_impl(
         .app_data_dir()
         .context("resolve app data dir for plugin uninstall")?;
 
-    // Archive form: `<app_data_dir>/plugins/<id>.torchsnap`.
+    // Archive form: `<app_data_dir>/gadgets/<id>.torchsnap`.
     let archive = app_data_dir
-        .join("plugins")
+        .join("gadgets")
         .join(format!("{plugin_id}.torchsnap"));
     if archive.exists() {
-        std::fs::remove_file(&archive).context("remove plugin archive")?;
+        std::fs::remove_file(&archive).context("remove gadget archive")?;
     }
 
-    // Directory form: `<app_data_dir>/plugins/<id>/`. A
-    // dev-style user plugin may be shipped this way by a plugin
+    // Directory form: `<app_data_dir>/gadgets/<id>/`. A
+    // dev-style user gadget may be shipped this way by a gadget
     // author testing a release flow.
-    let dir = app_data_dir.join("plugins").join(plugin_id);
+    let dir = app_data_dir.join("gadgets").join(plugin_id);
     if dir.exists() {
         std::fs::remove_dir_all(&dir).context("remove plugin directory")?;
     }
