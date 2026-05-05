@@ -107,7 +107,7 @@ export function LogList({ items, droppedCount, spanDepthMap, completedSpanIds }:
       <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
         <CommandLineIcon className="w-10 h-10 text-text-muted/50" />
         <p className="text-sm">No log entries yet</p>
-        <p className="text-xs text-text-muted/70">Log output from plugins will appear here</p>
+        <p className="text-xs text-text-muted/70">Log output from gadgets will appear here</p>
       </div>
     );
   }
