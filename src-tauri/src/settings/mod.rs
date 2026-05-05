@@ -14,7 +14,7 @@ pub mod notifier;
 //   exist in the store. Works for both global app settings and
 //   per-plugin settings via a key prefix.
 //
-// - PluginSettings: runtime read wrapper injected into plugins
+// - GadgetSettings: runtime read wrapper injected into plugins
 //   during setup. Scopes all reads to `plugins.<id>.` so plugins
 //   can only access their own namespace.
 // =========================================================
@@ -117,7 +117,7 @@ impl SettingsInit {
 }
 
 // =========================================================
-// PluginSettings
+// GadgetSettings
 // =========================================================
 
 /// Scoped read-only access to a plugin's settings namespace.
@@ -128,7 +128,7 @@ impl SettingsInit {
 ///
 /// Injected into `Plugin::enable()` (via `PluginContext`)
 /// after defaults have been initialized via `SettingsInit`.
-pub struct PluginSettings<R: tauri::Runtime = tauri::Wry> {
+pub struct GadgetSettings<R: tauri::Runtime = tauri::Wry> {
     store: Arc<Store<R>>,
     prefix: String,
 }
@@ -136,7 +136,7 @@ pub struct PluginSettings<R: tauri::Runtime = tauri::Wry> {
 // Manual `Clone` impl: the derive would require `R: Clone`, but
 // we only need `Arc::clone` and `String::clone` — neither depends
 // on `R` being `Clone`.
-impl<R: tauri::Runtime> Clone for PluginSettings<R> {
+impl<R: tauri::Runtime> Clone for GadgetSettings<R> {
     fn clone(&self) -> Self {
         Self {
             store: Arc::clone(&self.store),
@@ -145,7 +145,7 @@ impl<R: tauri::Runtime> Clone for PluginSettings<R> {
     }
 }
 
-impl<R: tauri::Runtime> PluginSettings<R> {
+impl<R: tauri::Runtime> GadgetSettings<R> {
     /// Create a new scoped settings reader for the given plugin ID.
     pub fn new(store: Arc<Store<R>>, plugin_id: &str) -> Self {
         Self {

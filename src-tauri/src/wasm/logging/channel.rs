@@ -40,7 +40,7 @@ use super::{BROADCAST_CAPACITY, CHANNEL_CAPACITY, DEFAULT_RING_BUFFER_CAPACITY, 
 // =========================================================
 
 /// Cheaply cloneable handle for sending log items without
-/// blocking. Held by `PluginState`, `Logger`, and any host
+/// blocking. Held by `GadgetState`, `Logger`, and any host
 /// code that needs to emit log items.
 ///
 /// If the bounded channel is full, `send()` drops the item

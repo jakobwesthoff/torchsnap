@@ -12,9 +12,9 @@
 // Architecture:
 //   WasmRuntime (one per app, owns Engine + Component cache)
 //    ├── compile(plugin_id, wasm_bytes)
-//    └── instantiate(plugin_id) → WasmPluginInstance
+//    └── instantiate(plugin_id) → WasmGadgetInstance
 //
-//   WasmPluginInstance (one per plugin, owns Store + Plugin)
+//   WasmGadgetInstance (one per plugin, owns Store + Plugin)
 //    ├── enable() / disable()
 //    ├── entries() → Vec<CatalogEntry>
 //    └── execute(entry_id, action_id) → PostAction
@@ -31,11 +31,11 @@
 //
 //   - `engine`   — `WasmRuntime`: component compile + cache,
 //                  linker construction, instantiation.
-//   - `state`    — `PluginState` struct (the wasmtime store
+//   - `state`    — `GadgetState` struct (the wasmtime store
 //                  data) plus the foundational
 //                  `Default::default()` / `default_for_test`
 //                  constructors and the `WasiView` impl.
-//   - `instance` — `WasmPluginInstance` lifecycle wrapper
+//   - `instance` — `WasmGadgetInstance` lifecycle wrapper
 //                  with foundational setters
 //                  (`set_path_context`, `set_plugin_source`)
 //                  and guest-call dispatch (`enable`,
@@ -44,7 +44,7 @@
 //                  `on_setting_changed`).
 //   - `host/`    — one file per WIT host import. Each owns
 //                  its state sub-struct, Host trait impl,
-//                  helpers, and `impl WasmPluginInstance`
+//                  helpers, and `impl WasmGadgetInstance`
 //                  blocks for the capability-specific
 //                  setters/clearers.
 //
@@ -60,8 +60,8 @@ pub mod state;
 
 pub use engine::WasmRuntime;
 pub use host::sql::{SqlConfig, SqlHandleEntry};
-pub use instance::WasmPluginInstance;
-pub use state::PluginState;
+pub use instance::WasmGadgetInstance;
+pub use state::GadgetState;
 
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn instances_are_independent() {
         // Two instances from the same cached Component must
-        // have disjoint PluginStates: operating on one must
+        // have disjoint GadgetStates: operating on one must
         // not disturb the other.
         let runtime = test_runtime();
         runtime
@@ -457,13 +457,13 @@ mod tests {
             insecure_tls: false,
         };
 
-        let mut state = PluginState {
+        let mut state = GadgetState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
                 insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
-            ..PluginState::default_for_test()
+            ..GadgetState::default_for_test()
         };
 
         use bindings::torchsnap::plugin::http::Host;
@@ -494,13 +494,13 @@ mod tests {
             insecure_tls: false,
         };
 
-        let mut state = PluginState {
+        let mut state = GadgetState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
                 insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
-            ..PluginState::default_for_test()
+            ..GadgetState::default_for_test()
         };
 
         use bindings::torchsnap::plugin::http::Host;
@@ -531,13 +531,13 @@ mod tests {
             insecure_tls: false,
         };
 
-        let mut state = PluginState {
+        let mut state = GadgetState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
                 insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
-            ..PluginState::default_for_test()
+            ..GadgetState::default_for_test()
         };
 
         use bindings::torchsnap::plugin::http::Host;
@@ -572,13 +572,13 @@ mod tests {
             insecure_tls: false,
         };
 
-        let mut state = PluginState {
+        let mut state = GadgetState {
             http: HttpState {
                 origins: vec!["*".into()],
                 client: Some(Arc::new(client)),
                 insecure_client: Arc::new(std::sync::OnceLock::new()),
             },
-            ..PluginState::default_for_test()
+            ..GadgetState::default_for_test()
         };
 
         use bindings::torchsnap::plugin::http::Host;
@@ -595,7 +595,7 @@ mod tests {
     // opener closure and a `httpmock` HTTP server respectively.
     // =========================================================
 
-    fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+    fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
             .compile("opener-http-plugin", OPENER_HTTP_PLUGIN_WASM)
@@ -732,7 +732,7 @@ mod tests {
         (svc, tmp, notifier)
     }
 
-    fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+    fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
             .compile("website-metadata-plugin", WEBSITE_METADATA_PLUGIN_WASM)
@@ -868,7 +868,7 @@ mod tests {
     // Assets host import — unit tests
     //
     // These drive the `assets::Host` impl directly against a
-    // `PluginState` built with `default_for_test` and a
+    // `GadgetState` built with `default_for_test` and a
     // `DirectorySource` stashed on `plugin_source`. They cover
     // each variant of `AssetsError` plus the happy paths for
     // both `read` and `exists`. The fixture-driven integration
@@ -878,7 +878,7 @@ mod tests {
 
     fn make_plugin_source_dir() -> (
         tempfile::TempDir,
-        Arc<dyn super::super::source::PluginSource + Send + Sync>,
+        Arc<dyn super::super::source::GadgetSource + Send + Sync>,
     ) {
         use super::super::source::DirectorySource;
 
@@ -904,17 +904,17 @@ icon = "heroicons:beaker"
         std::fs::create_dir_all(root.join("data")).expect("mkdir data");
         std::fs::write(root.join("data/payload.bin"), [0u8, 1, 2, 3, 255]).expect("write payload");
 
-        let src: Arc<dyn super::super::source::PluginSource + Send + Sync> =
+        let src: Arc<dyn super::super::source::GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(root).expect("open"));
         (dir, src)
     }
 
     fn state_with_source(
-        src: Arc<dyn super::super::source::PluginSource + Send + Sync>,
-    ) -> PluginState {
-        PluginState {
+        src: Arc<dyn super::super::source::GadgetSource + Send + Sync>,
+    ) -> GadgetState {
+        GadgetState {
             plugin_source: Some(src),
-            ..PluginState::default_for_test()
+            ..GadgetState::default_for_test()
         }
     }
 
@@ -1034,7 +1034,7 @@ icon = "heroicons:beaker"
 
         // Default state has `plugin_source: None` — mirrors
         // calling an asset import outside an enable lifetime.
-        let mut state = PluginState::default_for_test();
+        let mut state = GadgetState::default_for_test();
         let err = state
             .read("greeting.txt".to_string())
             .expect_err("uninitialized returns Err");
@@ -1094,7 +1094,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::plugin::assets::AssetsError;
         use bindings::torchsnap::plugin::assets::Host;
 
-        let mut state = PluginState::default_for_test();
+        let mut state = GadgetState::default_for_test();
         let err = state
             .exists("greeting.txt".to_string())
             .expect_err("uninitialized returns Err");
@@ -1128,7 +1128,7 @@ icon = "heroicons:beaker"
     // `handle_message` dispatch.
     // =========================================================
 
-    fn compile_assets_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance) {
+    fn compile_assets_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
             .compile("assets-plugin", ASSETS_PLUGIN_WASM)
@@ -1139,12 +1139,12 @@ icon = "heroicons:beaker"
         (runtime, instance)
     }
 
-    /// Build a `PluginSource` pointing at the committed
+    /// Build a `GadgetSource` pointing at the committed
     /// assets-plugin fixture directory. This mirrors what
     /// the bridge does in production: `DirectorySource::open`
     /// on the plugin root, wrapped in an `Arc`, then stashed
     /// on the instance via `set_plugin_source`.
-    fn assets_fixture_source() -> Arc<dyn super::super::source::PluginSource + Send + Sync> {
+    fn assets_fixture_source() -> Arc<dyn super::super::source::GadgetSource + Send + Sync> {
         use super::super::source::DirectorySource;
         let fixture_root =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/assets-plugin");
@@ -1324,7 +1324,7 @@ icon = "heroicons:beaker"
     // =========================================================
 
     #[cfg(unix)]
-    fn compile_command_fixture() -> (Arc<WasmRuntime>, WasmPluginInstance, tempfile::TempDir) {
+    fn compile_command_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance, tempfile::TempDir) {
         use super::super::argv_matcher::{CompiledArgvConstraint, CompiledCommandRule};
         use super::super::permission_vars::PathContext;
 

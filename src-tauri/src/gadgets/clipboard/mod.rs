@@ -50,7 +50,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::{Plugin, PluginContext};
+use super::{Gadget, GadgetContext};
 
 /// How often the retention cleanup thread wakes to delete expired
 /// entries. Chosen to be infrequent enough to be negligible, but
@@ -79,10 +79,10 @@ pub(super) struct WatcherLifecycle {
 }
 
 // =========================================================
-// ClipboardPlugin
+// ClipboardGadget
 // =========================================================
 
-pub struct ClipboardPlugin {
+pub struct ClipboardGadget {
     platform: Arc<dyn ClipboardPlatform>,
 
     /// Shared state (DB + file storage). Initialized in `enable()`,
@@ -109,10 +109,10 @@ pub struct ClipboardPlugin {
 
     /// Plugin settings handle for reading settings outside of
     /// `enable()`. Initialized in `enable()`.
-    settings: Mutex<Option<crate::settings::PluginSettings>>,
+    settings: Mutex<Option<crate::settings::GadgetSettings>>,
 }
 
-impl ClipboardPlugin {
+impl ClipboardGadget {
     pub fn new(platform: impl ClipboardPlatform + 'static) -> Self {
         Self {
             platform: Arc::new(platform),
@@ -253,7 +253,7 @@ fn retention_cleanup_loop(
 // Plugin Implementation
 // =========================================================
 
-impl Plugin for ClipboardPlugin {
+impl Gadget for ClipboardGadget {
     fn id(&self) -> &str {
         PLUGIN_ID
     }
@@ -265,8 +265,8 @@ impl Plugin for ClipboardPlugin {
             .ensure("shortcut.open-clipboard", "CmdOrCtrl+Shift+V")
     }
 
-    fn shortcuts(&self) -> Vec<super::PluginShortcut> {
-        vec![super::PluginShortcut {
+    fn shortcuts(&self) -> Vec<super::GadgetShortcut> {
+        vec![super::GadgetShortcut {
             id: "open-clipboard",
             label: "Open Clipboard History",
             default_shortcut: "CmdOrCtrl+Shift+V",
@@ -285,7 +285,7 @@ impl Plugin for ClipboardPlugin {
         })
     }
 
-    fn enable(&self, app: &tauri::AppHandle, ctx: &PluginContext) {
+    fn enable(&self, app: &tauri::AppHandle, ctx: &GadgetContext) {
         // ----- Initialize state (DB + file storage) -----
         //
         // State lives under `plugin-home/<id>/`: code lives

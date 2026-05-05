@@ -8,7 +8,7 @@
 // Registers a `torchsnap-plugin://` custom URI scheme that
 // serves frontend assets directly from plugin sources. This
 // avoids extracting files to disk — the protocol handler
-// reads from `PluginSource::read_file()` on demand.
+// reads from `GadgetSource::read_file()` on demand.
 //
 // URI format:
 //   torchsnap-plugin://localhost/<plugin-id>/<file-path>
@@ -24,7 +24,7 @@ use std::sync::{Arc, RwLock};
 
 use tauri::http;
 
-use super::source::PluginSource;
+use super::source::GadgetSource;
 
 // =========================================================
 // Plugin Source Registry
@@ -33,10 +33,10 @@ use super::source::PluginSource;
 /// Shared registry mapping plugin IDs to their sources.
 /// Populated during plugin loading, read by the protocol
 /// handler on every asset request.
-pub type PluginSourceRegistry = Arc<RwLock<HashMap<String, Arc<dyn PluginSource>>>>;
+pub type GadgetSourceRegistry = Arc<RwLock<HashMap<String, Arc<dyn GadgetSource>>>>;
 
 /// Create an empty registry.
-pub fn new_registry() -> PluginSourceRegistry {
+pub fn new_registry() -> GadgetSourceRegistry {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
@@ -50,14 +50,14 @@ pub fn new_registry() -> PluginSourceRegistry {
 /// creation time.
 pub fn register_plugin_protocol<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
-    registry: PluginSourceRegistry,
+    registry: GadgetSourceRegistry,
 ) -> tauri::Builder<R> {
     builder.register_asynchronous_uri_scheme_protocol(
         "torchsnap-plugin",
         move |_ctx, request, responder| {
             let registry = Arc::clone(&registry);
 
-            // Spawn blocking because PluginSource::read_file may
+            // Spawn blocking because GadgetSource::read_file may
             // hold a Mutex (ArchiveSource) and do file I/O.
             std::thread::spawn(move || {
                 let response = handle_request(&registry, &request);
@@ -74,7 +74,7 @@ pub fn register_plugin_protocol<R: tauri::Runtime>(
 /// Parse the request, look up the plugin source, read the
 /// file, and build the HTTP response.
 fn handle_request(
-    registry: &PluginSourceRegistry,
+    registry: &GadgetSourceRegistry,
     request: &http::Request<Vec<u8>>,
 ) -> http::Response<Vec<u8>> {
     // Extract the origin for CORS. Echo the request's Origin
@@ -110,7 +110,7 @@ struct ErrorResponse {
 /// Core logic: parse URI, look up source, read file, detect
 /// content type.
 fn serve_plugin_asset(
-    registry: &PluginSourceRegistry,
+    registry: &GadgetSourceRegistry,
     request: &http::Request<Vec<u8>>,
 ) -> Result<(Vec<u8>, String), ErrorResponse> {
     let path = request.uri().path();
@@ -190,7 +190,7 @@ fn detect_content_type(path: &str, data: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::wasm::manifest::Manifest;
-    use crate::wasm::source::PluginSource;
+    use crate::wasm::source::GadgetSource;
 
     // =====================================================
     // Test helpers
@@ -203,7 +203,7 @@ mod tests {
         files: HashMap<String, Vec<u8>>,
     }
 
-    impl PluginSource for MemorySource {
+    impl GadgetSource for MemorySource {
         fn manifest(&self) -> &Manifest {
             &self.manifest
         }
@@ -243,7 +243,7 @@ mod tests {
         .expect("valid manifest")
     }
 
-    fn test_registry(files: HashMap<String, Vec<u8>>) -> PluginSourceRegistry {
+    fn test_registry(files: HashMap<String, Vec<u8>>) -> GadgetSourceRegistry {
         let registry = new_registry();
         let source = Arc::new(MemorySource {
             manifest: test_manifest(),
@@ -412,7 +412,7 @@ mod tests {
         let request = make_request("/test-plugin/../../../etc/passwd");
 
         let response = handle_request(&registry, &request);
-        // Depending on PluginSource implementation, this may be
+        // Depending on GadgetSource implementation, this may be
         // a 404 (path rejected by source) — either way, no data
         // should be returned.
         assert!(
@@ -626,7 +626,7 @@ mod tests {
     fn directory_registry(
         manifest: &str,
         files: &[(&str, &[u8])],
-    ) -> (tempfile::TempDir, PluginSourceRegistry) {
+    ) -> (tempfile::TempDir, GadgetSourceRegistry) {
         let dir = tempfile::tempdir().expect("create temp dir");
         let root = dir.path();
 

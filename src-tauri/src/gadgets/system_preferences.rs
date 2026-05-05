@@ -32,15 +32,15 @@ use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use super::{Plugin, PluginContext};
+use super::{Gadget, GadgetContext};
 
-pub struct SystemPreferencesPlugin {
+pub struct SystemPreferencesGadget {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
     discovery: Arc<dyn SettingsDiscovery>,
     icon_cache: Arc<IconCache>,
 }
 
-impl SystemPreferencesPlugin {
+impl SystemPreferencesGadget {
     pub fn new(discovery: impl SettingsDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
@@ -77,12 +77,12 @@ fn cache_pane_icons(
     valid_keys
 }
 
-impl Plugin for SystemPreferencesPlugin {
+impl Gadget for SystemPreferencesGadget {
     fn id(&self) -> &str {
         "system-preferences"
     }
 
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.

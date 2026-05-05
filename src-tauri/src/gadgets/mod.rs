@@ -25,12 +25,12 @@ pub mod commands;
 pub mod system_commands;
 pub mod system_preferences;
 
-use crate::commands::types::{ActionId, CatalogEntry, PluginResponse, PostAction};
+use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction};
 use crate::frecency::PluginFrecency;
-use crate::settings::{PluginSettings, SettingsInit};
+use crate::settings::{GadgetSettings, SettingsInit};
 
 // =========================================================
-// PluginShortcut — global shortcut declaration
+// GadgetShortcut — global shortcut declaration
 // =========================================================
 
 /// A global keyboard shortcut that a plugin wants to register.
@@ -40,7 +40,7 @@ use crate::settings::{PluginSettings, SettingsInit};
 /// `handle_shortcut()`. The actual key combo is persisted in the
 /// plugin's settings namespace under `shortcut.<id>`, so users
 /// can reconfigure it.
-pub struct PluginShortcut {
+pub struct GadgetShortcut {
     /// Stable identifier for this shortcut (e.g., "open-clipboard").
     /// Used for routing activations back to the plugin.
     pub id: &'static str,
@@ -56,15 +56,15 @@ pub struct PluginShortcut {
 }
 
 // =========================================================
-// PluginContext — bundled runtime context for plugin activation
+// GadgetContext — bundled runtime context for plugin activation
 // =========================================================
 
 /// Runtime context passed to plugins during `enable()`.
 ///
 /// Bundles scoped settings access so plugins don't need an
 /// ever-growing parameter list.
-pub struct PluginContext {
-    pub settings: PluginSettings,
+pub struct GadgetContext {
+    pub settings: GadgetSettings,
     pub frecency: PluginFrecency,
 }
 
@@ -109,7 +109,7 @@ pub struct PluginContext {
 /// Enable/disable may be called multiple times during the app's
 /// lifetime as the user toggles the plugin on and off.
 ///
-pub trait Plugin: Send + Sync {
+pub trait Gadget: Send + Sync {
     /// Unique identifier for this plugin. Used as the `source`
     /// field in `SourcedEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
@@ -148,10 +148,10 @@ pub trait Plugin: Send + Sync {
     /// to block.
     ///
     // FIXME: Find a cleaner way to provide context without passing
-    // AppHandle and PluginContext on every enable() call. These are
+    // AppHandle and GadgetContext on every enable() call. These are
     // immutable after construction — ideally the plugin would hold
     // a reference from registration time.
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &PluginContext) {}
+    fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {}
 
     /// Deactivate the plugin. Called when the user toggles the
     /// plugin off and during `RunEvent::Exit`.
@@ -186,12 +186,12 @@ pub trait Plugin: Send + Sync {
     /// Declare global keyboard shortcuts this plugin wants to register.
     ///
     /// The host reads the actual key combos from settings (falling
-    /// back to `PluginShortcut::default_shortcut`) and registers
+    /// back to `GadgetShortcut::default_shortcut`) and registers
     /// them with the OS. When a shortcut fires, the host calls
     /// `handle_shortcut()` with the matching shortcut ID.
     ///
     /// The default implementation declares no shortcuts.
-    fn shortcuts(&self) -> Vec<PluginShortcut> {
+    fn shortcuts(&self) -> Vec<GadgetShortcut> {
         vec![]
     }
 
@@ -218,7 +218,7 @@ pub trait Plugin: Send + Sync {
     /// returns an error — override only when the plugin needs
     /// custom frontend ↔ backend communication.
     ///
-    /// **WASM plugins:** The `WasmPluginBridge` adapter that
+    /// **WASM plugins:** The `WasmGadgetBridge` adapter that
     /// wraps a WIT guest export ignores the `channel`
     /// parameter — WASM plugins are strictly request/response
     /// (per ADR 0030). If a plugin needs streaming support,
@@ -260,14 +260,14 @@ pub trait Plugin: Send + Sync {
     /// `matched_prefix` is `Some(prefix)` when a registered prefix
     /// triggered this call (query is already stripped), or `None`
     /// when running as an always-on plugin. Note:
-    /// [`PluginResponse::CustomUI`] is only honoured in prefix mode;
+    /// [`GadgetResponse::CustomUI`] is only honoured in prefix mode;
     /// in always-on mode it is downgraded to plain results.
     ///
     /// Returns `None` when the plugin has no results for this query,
-    /// or `Some(PluginResponse)` with the results/UI payload.
+    /// or `Some(GadgetResponse)` with the results/UI payload.
     ///
     /// The default is a no-op returning `None` (catalog-only plugins).
-    fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<PluginResponse> {
+    fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<GadgetResponse> {
         None
     }
 }

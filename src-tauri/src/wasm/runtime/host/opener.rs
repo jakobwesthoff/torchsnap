@@ -25,7 +25,7 @@
 
 use crate::wasm::bindings;
 
-use super::super::{PluginState, WasmPluginInstance};
+use super::super::{GadgetState, WasmGadgetInstance};
 
 /// Closure type for any of the opener writer slots.
 ///
@@ -101,7 +101,7 @@ pub(crate) fn check_opener_scheme(
     }
 }
 
-impl bindings::torchsnap::plugin::opener::Host for PluginState {
+impl bindings::torchsnap::plugin::opener::Host for GadgetState {
     fn open_url(
         &mut self,
         url: String,
@@ -167,7 +167,7 @@ impl bindings::torchsnap::plugin::opener::Host for PluginState {
     }
 }
 
-impl WasmPluginInstance {
+impl WasmGadgetInstance {
     /// Stash the URL scheme allowlist for `opener::open-url`.
     /// Called by the bridge at `enable()` from the manifest's
     /// `[permissions.opener].schemes` list.

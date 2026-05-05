@@ -12,7 +12,7 @@
 // confined to the plugin root.
 //
 // `read` and `exists` both pre-validate then delegate to
-// the `PluginSource` trait stashed on `PluginState`. The
+// the `GadgetSource` trait stashed on `GadgetState`. The
 // `into_assets_io_error` helper maps the trait's
 // `anyhow::Error` into the WIT `assets-error::io-error`
 // variant.
@@ -21,7 +21,7 @@
 use crate::wasm::bindings;
 use crate::wasm::source;
 
-use super::super::PluginState;
+use super::super::GadgetState;
 
 pub(crate) fn into_assets_io_error(
     e: anyhow::Error,
@@ -29,7 +29,7 @@ pub(crate) fn into_assets_io_error(
     bindings::torchsnap::plugin::assets::AssetsError::IoError(format!("{e:#}"))
 }
 
-impl bindings::torchsnap::plugin::assets::Host for PluginState {
+impl bindings::torchsnap::plugin::assets::Host for GadgetState {
     fn read(
         &mut self,
         path: String,

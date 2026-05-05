@@ -8,9 +8,9 @@ mod frecency;
 mod icons;
 mod network;
 mod platform;
-mod plugin_host;
-mod plugin_install;
-mod plugins;
+mod gadget_host;
+mod gadget_install;
+mod gadgets;
 mod settings;
 mod storage;
 mod unicode;
@@ -536,7 +536,7 @@ fn website_metadata_clear_cache(
 /// plugin components and settings entries.
 #[tauri::command]
 fn wasm_plugins(
-    registry: tauri::State<'_, wasm::protocol::PluginSourceRegistry>,
+    registry: tauri::State<'_, wasm::protocol::GadgetSourceRegistry>,
 ) -> Vec<wasm::manifest::Manifest> {
     let sources = registry.read().expect("source registry not poisoned");
     sources.values().map(|s| s.manifest().clone()).collect()
@@ -548,8 +548,8 @@ fn wasm_plugins(
 /// badges and gate the uninstall action to `user` plugins.
 #[tauri::command]
 fn plugin_sources(
-    host: tauri::State<'_, Arc<plugin_host::PluginHost>>,
-) -> std::collections::HashMap<String, wasm::source::PluginSourceKind> {
+    host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
+) -> std::collections::HashMap<String, wasm::source::GadgetSourceKind> {
     host.plugin_sources()
 }
 
@@ -596,8 +596,8 @@ pub fn run() {
             wasm::logging::commands::logger_span_end,
             wasm_plugins,
             plugin_sources,
-            plugin_install::install_plugin_archive,
-            plugin_install::uninstall_user_plugin,
+            gadget_install::install_plugin_archive,
+            gadget_install::uninstall_user_plugin,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -671,18 +671,18 @@ pub fn run() {
             // search routing, and shutdown.
             // =========================================================
             let mut host =
-                plugin_host::PluginHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
+                gadget_host::GadgetHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
             // All built-in plugins are native Rust code compiled
             // into the binary — tag them `Builtin`. The Plugins
             // settings panel uses this to suppress the uninstall
             // action for built-ins.
             host.register(
-                Box::new(plugins::commands::BuiltInCommandsPlugin),
-                wasm::source::PluginSourceKind::Builtin,
+                Box::new(gadgets::commands::BuiltInCommandsGadget),
+                wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(plugins::system_commands::SystemCommandsPlugin::new()),
-                wasm::source::PluginSourceKind::Builtin,
+                Box::new(gadgets::system_commands::SystemCommandsGadget::new()),
+                wasm::source::GadgetSourceKind::Builtin,
             );
 
             let icon_cache_dir = app
@@ -692,24 +692,24 @@ pub fn run() {
                 .join("icons");
             let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
             host.register(
-                Box::new(plugins::app_launcher::AppLauncherPlugin::new(
+                Box::new(gadgets::app_launcher::AppLauncherGadget::new(
                     platform::PlatformAppDiscovery,
                     Arc::clone(&icon_cache),
                 )),
-                wasm::source::PluginSourceKind::Builtin,
+                wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(plugins::system_preferences::SystemPreferencesPlugin::new(
+                Box::new(gadgets::system_preferences::SystemPreferencesGadget::new(
                     platform::PlatformSettingsDiscovery,
                     Arc::clone(&icon_cache),
                 )),
-                wasm::source::PluginSourceKind::Builtin,
+                wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(plugins::clipboard::ClipboardPlugin::new(
+                Box::new(gadgets::clipboard::ClipboardGadget::new(
                     platform::PlatformClipboard,
                 )),
-                wasm::source::PluginSourceKind::Builtin,
+                wasm::source::GadgetSourceKind::Builtin,
             );
 
             // =========================================================
@@ -957,7 +957,7 @@ pub fn run() {
             let metadata = app.state::<Arc<network::website_metadata::WebsiteMetadataService>>();
             metadata.teardown();
 
-            let host = app.state::<Arc<plugin_host::PluginHost>>();
+            let host = app.state::<Arc<gadget_host::GadgetHost>>();
             host.disable_all();
 
             // Belt-and-suspenders cleanup for the control socket.
@@ -977,7 +977,7 @@ pub fn run() {
 // Scans every configured search root (see
 // `wasm::discovery`) for plugin archives and directory-form
 // plugins, instantiates each one once, and registers it with
-// the `PluginHost` tagged with its `PluginSourceKind`.
+// the `PluginHost` tagged with its `GadgetSourceKind`.
 //
 // Cross-root collision rule: the first root that registers a
 // given plugin id wins. Since `enumerate_search_roots` orders
@@ -991,10 +991,10 @@ pub fn run() {
 // =========================================================
 
 fn load_wasm_plugins(
-    host: &mut plugin_host::PluginHost,
+    host: &mut gadget_host::GadgetHost,
     log_sender: &wasm::logging::channel::LogSender,
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
-    source_registry: &wasm::protocol::PluginSourceRegistry,
+    source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
     resource_dir: Option<&std::path::Path>,
     metadata_service: Arc<network::website_metadata::WebsiteMetadataService>,
@@ -1016,7 +1016,7 @@ fn load_wasm_plugins(
             // archive, missing manifest, failing path guard —
             // log and move on so one broken plugin does not
             // prevent the rest from loading.
-            let source: Arc<dyn wasm::source::PluginSource + Send + Sync> =
+            let source: Arc<dyn wasm::source::GadgetSource + Send + Sync> =
                 match open_plugin_source(&path) {
                     Ok(s) => s,
                     Err(e) => {
@@ -1100,10 +1100,10 @@ fn load_wasm_plugins(
 /// `DirectorySource` vs `ArchiveSource` by directory-ness.
 /// Split out of `load_wasm_plugins` so the collision check
 /// can run against the manifest id *before* the expensive
-/// WASM compile in `WasmPluginBridge::new`.
+/// WASM compile in `WasmGadgetBridge::new`.
 fn open_plugin_source(
     path: &std::path::Path,
-) -> anyhow::Result<Arc<dyn wasm::source::PluginSource + Send + Sync>> {
+) -> anyhow::Result<Arc<dyn wasm::source::GadgetSource + Send + Sync>> {
     if path.is_dir() {
         Ok(Arc::new(wasm::source::DirectorySource::open(path)?))
     } else {
@@ -1117,7 +1117,7 @@ fn open_plugin_source(
 fn log_loader_error(
     log_sender: &wasm::logging::channel::LogSender,
     path: &std::path::Path,
-    source_kind: wasm::source::PluginSourceKind,
+    source_kind: wasm::source::GadgetSourceKind,
     error: &anyhow::Error,
 ) {
     log_sender.send(wasm::logging::LogItem {
@@ -1138,16 +1138,16 @@ fn log_loader_error(
 
 fn load_single_wasm_plugin(
     runtime: Arc<wasm::runtime::WasmRuntime>,
-    source: Arc<dyn wasm::source::PluginSource + Send + Sync>,
-    source_kind: wasm::source::PluginSourceKind,
-    host: &mut plugin_host::PluginHost,
+    source: Arc<dyn wasm::source::GadgetSource + Send + Sync>,
+    source_kind: wasm::source::GadgetSourceKind,
+    host: &mut gadget_host::GadgetHost,
     log_sender: &wasm::logging::channel::LogSender,
-    source_registry: &wasm::protocol::PluginSourceRegistry,
+    source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<String> {
     let plugin_id = source.manifest().plugin.id.as_str().to_string();
     let manifest = source.manifest().clone();
-    let bridge = wasm::bridge::WasmPluginBridge::new(
+    let bridge = wasm::bridge::WasmGadgetBridge::new(
         manifest,
         runtime,
         log_sender.clone(),

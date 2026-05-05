@@ -12,11 +12,11 @@
 // - `ArchiveSource`   — a `.torchsnap` zip archive, used
 //   in production.
 //
-// Both implement `PluginSource`, which provides access to
+// Both implement `GadgetSource`, which provides access to
 // the parsed manifest and the raw bytes of any file within
 // the plugin. The rest of the plugin system is agnostic to
 // which source loaded the plugin — the source kind
-// (`PluginSourceKind`) is tracked separately by the host so
+// (`GadgetSourceKind`) is tracked separately by the host so
 // UI surfaces (badges, uninstall availability) can reason
 // about where a plugin came from.
 // =========================================================
@@ -30,11 +30,11 @@ use anyhow::Context as _;
 use super::manifest::Manifest;
 
 // =========================================================
-// PluginSourceKind
+// GadgetSourceKind
 // =========================================================
 
 /// Tags each loaded plugin with the root it was discovered
-/// from. Orthogonal to [`PluginSource`]: the trait abstracts
+/// from. Orthogonal to [`GadgetSource`]: the trait abstracts
 /// *how* we read the plugin's files (directory vs. archive),
 /// this enum records *where on the host* it came from.
 ///
@@ -49,7 +49,7 @@ use super::manifest::Manifest;
 /// `user`, `dev`) across the Tauri IPC boundary.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum PluginSourceKind {
+pub enum GadgetSourceKind {
     /// Native Rust plugin compiled directly into the host
     /// binary (e.g. `clipboard`, `bangs`). Always present;
     /// not uninstallable.
@@ -69,12 +69,12 @@ pub enum PluginSourceKind {
 }
 
 // =========================================================
-// PluginSource Trait
+// GadgetSource Trait
 // =========================================================
 
 /// A read-only view into a plugin's files, regardless of
 /// whether they come from a directory or a zip archive.
-pub trait PluginSource: Send + Sync {
+pub trait GadgetSource: Send + Sync {
     /// The parsed manifest for this plugin.
     fn manifest(&self) -> &Manifest;
 
@@ -199,7 +199,7 @@ impl DirectorySource {
     }
 }
 
-impl PluginSource for DirectorySource {
+impl GadgetSource for DirectorySource {
     fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -397,7 +397,7 @@ pub struct ArchiveSource {
     manifest: Manifest,
     /// Path to the `.torchsnap` archive file on disk. Returned
     /// by `root_path()` for the `${plugin-archive}` variable
-    /// substitution (see PluginSource trait docs).
+    /// substitution (see GadgetSource trait docs).
     archive_path: PathBuf,
 }
 
@@ -438,7 +438,7 @@ impl ArchiveSource {
     }
 }
 
-impl PluginSource for ArchiveSource {
+impl GadgetSource for ArchiveSource {
     fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -499,7 +499,7 @@ mod tests {
     use super::*;
 
     // =========================================================
-    // PluginSourceKind serialization
+    // GadgetSourceKind serialization
     // =========================================================
 
     /// Every variant must round-trip through JSON unchanged.
@@ -509,29 +509,29 @@ mod tests {
     #[test]
     fn plugin_source_kind_round_trips_through_json() {
         for kind in [
-            PluginSourceKind::Builtin,
-            PluginSourceKind::System,
-            PluginSourceKind::User,
-            PluginSourceKind::Dev,
+            GadgetSourceKind::Builtin,
+            GadgetSourceKind::System,
+            GadgetSourceKind::User,
+            GadgetSourceKind::Dev,
         ] {
             let encoded = serde_json::to_string(&kind).expect("serialize");
-            let decoded: PluginSourceKind = serde_json::from_str(&encoded).expect("deserialize");
+            let decoded: GadgetSourceKind = serde_json::from_str(&encoded).expect("deserialize");
             assert_eq!(decoded, kind, "round-trip lost information for {kind:?}");
         }
     }
 
     /// The wire format must stay lowercase. The TypeScript
-    /// `PluginSourceKind` string literal type depends on these
+    /// `GadgetSourceKind` string literal type depends on these
     /// exact values — if Rust ever produces `"Builtin"` or
     /// `"BUILTIN"` instead of `"builtin"`, the frontend will
     /// silently fail to match.
     #[test]
     fn plugin_source_kind_uses_lowercase_wire_names() {
         let cases = [
-            (PluginSourceKind::Builtin, "\"builtin\""),
-            (PluginSourceKind::System, "\"system\""),
-            (PluginSourceKind::User, "\"user\""),
-            (PluginSourceKind::Dev, "\"dev\""),
+            (GadgetSourceKind::Builtin, "\"builtin\""),
+            (GadgetSourceKind::System, "\"system\""),
+            (GadgetSourceKind::User, "\"user\""),
+            (GadgetSourceKind::Dev, "\"dev\""),
         ];
         for (kind, expected) in cases {
             let encoded = serde_json::to_string(&kind).expect("serialize");
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn plugin_source_kind_rejects_non_lowercase_input() {
         for bad in ["\"Builtin\"", "\"SYSTEM\"", "\"User \"", "\"\"", "null"] {
-            let decoded: Result<PluginSourceKind, _> = serde_json::from_str(bad);
+            let decoded: Result<GadgetSourceKind, _> = serde_json::from_str(bad);
             assert!(
                 decoded.is_err(),
                 "expected rejection for input {bad}, got {decoded:?}"

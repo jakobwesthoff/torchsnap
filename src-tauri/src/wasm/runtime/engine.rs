@@ -25,8 +25,8 @@ use crate::wasm::logging::LogSource;
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::{Logger, SpanRegistry};
 
-use super::instance::WasmPluginInstance;
-use super::state::PluginState;
+use super::instance::WasmGadgetInstance;
+use super::state::GadgetState;
 
 /// Shared WASM runtime holding the wasmtime Engine and a
 /// per-plugin compiled-component cache.
@@ -118,17 +118,17 @@ impl WasmRuntime {
 
     /// Instantiate a previously-compiled WASM plugin.
     ///
-    /// Builds a fresh linker + `WasiCtx` + `PluginState` +
+    /// Builds a fresh linker + `WasiCtx` + `GadgetState` +
     /// `Store` against the cached `Component` and returns a
     /// ready-to-call instance. The linker is rebuilt on
-    /// every call because it references `PluginState`, but
+    /// every call because it references `GadgetState`, but
     /// linker construction is just map inserts (no WASM
     /// compilation) and `instantiate` is not in a hot path.
     ///
     /// Errors if `plugin_id` has not been compiled — that
     /// is an internal lifecycle bug, not a user-facing
     /// failure mode.
-    pub fn instantiate(&self, plugin_id: &str) -> anyhow::Result<WasmPluginInstance> {
+    pub fn instantiate(&self, plugin_id: &str) -> anyhow::Result<WasmGadgetInstance> {
         let logger = self.logger_for(plugin_id);
         let _instantiate_span = logger
             .span("instantiate")
@@ -153,10 +153,10 @@ impl WasmRuntime {
         };
 
         // Set up the linker with all host imports.
-        let mut linker = Linker::<PluginState>::new(&self.engine);
+        let mut linker = Linker::<GadgetState>::new(&self.engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| anyhow::anyhow!("linking WASI imports: {e}"))?;
-        bindings::Plugin::add_to_linker::<PluginState, HasSelf<PluginState>>(
+        bindings::Plugin::add_to_linker::<GadgetState, HasSelf<GadgetState>>(
             &mut linker,
             |state| state,
         )
@@ -171,7 +171,7 @@ impl WasmRuntime {
             .inherit_stderr()
             .build();
 
-        let state = PluginState::new(
+        let state = GadgetState::new(
             plugin_id.to_string(),
             wasi,
             self.log_sender.clone(),
@@ -184,6 +184,6 @@ impl WasmRuntime {
         let plugin = bindings::Plugin::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
 
-        Ok(WasmPluginInstance::from_parts(store, plugin, logger))
+        Ok(WasmGadgetInstance::from_parts(store, plugin, logger))
     }
 }
