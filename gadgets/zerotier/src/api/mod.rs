@@ -5,9 +5,9 @@
 //! ZeroTier service-API client.
 //!
 //! Wraps the local `zerotier-one` HTTP API surface
-//! (<http://localhost:9993>) the plugin actually exercises:
+//! (<http://localhost:9993>) the gadget actually exercises:
 //! list networks, get a single network, join, leave, node
-//! status. Every call goes through the plugin's `http::fetch`
+//! status. Every call goes through the gadget's `http::fetch`
 //! host import and carries the `X-ZT1-Auth` header.
 
 mod client;

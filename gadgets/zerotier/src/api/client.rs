@@ -80,7 +80,7 @@ impl Client {
     }
 
     /// Leave a network. The daemon drops its membership and
-    /// removes the network from `GET /network`; the plugin
+    /// removes the network from `GET /network`; the gadget
     /// keeps its history row (downgrades to "Stored").
     pub fn leave_network(&self, id: &str) -> Result<(), ApiError> {
         let path = format!("/network/{id}");

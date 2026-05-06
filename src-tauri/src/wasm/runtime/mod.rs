@@ -893,12 +893,12 @@ id = "assets-unit-gadget"
 name = "Assets Unit Gadget"
 description = "fixture for runtime unit tests"
 version = "0.0.0"
-wasm = "plugin.wasm"
+wasm = "gadget.wasm"
 icon = "heroicons:beaker"
 "#,
         )
         .expect("write manifest");
-        std::fs::write(root.join("plugin.wasm"), b"wasm").expect("write wasm");
+        std::fs::write(root.join("gadget.wasm"), b"wasm").expect("write wasm");
         std::fs::write(root.join("greeting.txt"), b"hello from the fixture\n")
             .expect("write greeting");
         std::fs::create_dir_all(root.join("data")).expect("mkdir data");

@@ -34,7 +34,7 @@ pub struct HistoryRow {
 
 /// Insert or update a row from a live daemon observation.
 /// `now_ms` is injected rather than read from a clock so tests
-/// stay deterministic and the plugin doesn't need a wall-clock
+/// stay deterministic and the gadget doesn't need a wall-clock
 /// host import for what is really just a free-running counter.
 pub fn upsert_observed(db: &SqlHandle, net: &Network, now_ms: i64) -> Result<(), String> {
     let snapshot =
@@ -112,7 +112,7 @@ pub fn clear_all(db: &SqlHandle) -> Result<(), String> {
 
 /// Merge entries from the macOS UI's `saved_networks.json`
 /// into the table. `INSERT OR IGNORE` semantics — entries the
-/// plugin already knows about are not overwritten so daemon
+/// gadget already knows about are not overwritten so daemon
 /// observations remain authoritative once we have them.
 /// Returns the number of newly-inserted rows.
 pub fn import_saved_networks(

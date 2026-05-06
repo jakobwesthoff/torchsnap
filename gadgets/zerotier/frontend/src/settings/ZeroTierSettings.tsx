@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * ZeroTier plugin settings panel.
+ * ZeroTier gadget settings panel.
  *
  * Two top-level sections:
  *
@@ -12,7 +12,7 @@
  *    auth-token file was successfully auto-detected; enabled
  *    with explanatory info text otherwise.
  * 2. **Remembered networks** — a list of every network the
- *    plugin has observed live, plus everything imported from
+ *    gadget has observed live, plus everything imported from
  *    the macOS UI's `saved_networks.json`. Per-row Forget,
  *    plus toolbar Clear-all and (macOS only) "Re-import from
  *    ZeroTier UI".

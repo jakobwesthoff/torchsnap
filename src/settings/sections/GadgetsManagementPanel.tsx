@@ -81,13 +81,13 @@ export function GadgetsManagementPanel() {
 
   const rows: PluginRow[] = useMemo(() => {
     return gadgetMetadata
-      .filter((plugin) => sourceKinds[plugin.id] != null)
-      .map((plugin) => ({
-        id: plugin.id,
-        label: plugin.label,
-        description: plugin.description,
-        icon: plugin.icon,
-        sourceKind: sourceKinds[plugin.id],
+      .filter((gadget) => sourceKinds[gadget.id] != null)
+      .map((gadget) => ({
+        id: gadget.id,
+        label: gadget.label,
+        description: gadget.description,
+        icon: gadget.icon,
+        sourceKind: sourceKinds[gadget.id],
       }));
   }, [gadgetMetadata, sourceKinds]);
 

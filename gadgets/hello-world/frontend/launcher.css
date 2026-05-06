@@ -6,7 +6,7 @@
  * Hello World — Echo View Styles
  *
  * Uses host CSS custom properties (design tokens) for colors
- * so the plugin automatically matches the active theme.
+ * so the gadget automatically matches the active theme.
  * The host wraps this CSS in @scope at injection time — no
  * scoping directives needed here.
  * ========================================================= */

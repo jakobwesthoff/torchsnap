@@ -66,7 +66,7 @@ impl MessagingGuest for WebsiteMetadataPlugin {
     ///   Errors propagate the WIT error variant.
     ///
     /// - `"lookup-cached"` — cached-mode lookup. Same response
-    ///   shape; on cold miss the plugin sees `pending`.
+    ///   shape; on cold miss the gadget sees `pending`.
     fn handle_message(method: String, payload: String) -> Result<String, String> {
         let mode = match method.as_str() {
             "lookup-blocking" => LookupMode::Blocking,

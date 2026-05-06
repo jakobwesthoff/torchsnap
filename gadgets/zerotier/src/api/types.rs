@@ -6,7 +6,7 @@
 //!
 //! Field naming follows the daemon's camelCase convention; we
 //! map to snake_case Rust via `#[serde(rename_all)]` at the
-//! struct level. Only the fields the plugin actually consumes
+//! struct level. Only the fields the gadget actually consumes
 //! are modeled — everything else is dropped during deserialization.
 
 use serde::{Deserialize, Serialize};
@@ -107,7 +107,7 @@ pub struct Dns {
     pub servers: Vec<String>,
 }
 
-/// Node-level status from `GET /status`. The plugin uses this
+/// Node-level status from `GET /status`. The gadget uses this
 /// to validate that the configured auth token is accepted by
 /// the daemon — a 200 response means the token works.
 #[derive(Debug, Clone, Serialize, Deserialize)]

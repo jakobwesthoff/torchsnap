@@ -13,7 +13,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
-  // Stable import paths for plugin SDK surface. Must be kept in
+  // Stable import paths for gadget SDK surface. Must be kept in
   // sync with tsconfig.json paths.
   resolve: {
     alias: {
@@ -38,7 +38,7 @@ export default defineConfig(async () => ({
           // from that chunk, the entry's bootstrap side effects
           // (mounting React, calling Tauri IPC) run in the wrong
           // window context. Extracting everything except the entry
-          // points and lazy-loaded plugin components into a shared
+          // points and lazy-loaded gadget components into a shared
           // chunk avoids this entirely.
           if (
             id.includes("/src/") &&

@@ -348,9 +348,9 @@ mod tests {
     #[test]
     fn parse_minimal_manifest() {
         let m = Manifest::parse(&minimal("")).expect("should parse");
-        assert_eq!(m.gadget.id.as_str(), "test-plugin");
-        assert_eq!(m.gadget.name, "Test Plugin");
-        assert_eq!(m.gadget.description, "A test plugin");
+        assert_eq!(m.gadget.id.as_str(), "test-gadget");
+        assert_eq!(m.gadget.name, "Test Gadget");
+        assert_eq!(m.gadget.description, "A test gadget");
         assert_eq!(m.gadget.version, "0.1.0");
         assert_eq!(m.gadget.wasm, "test.wasm");
         assert!(matches!(m.gadget.icon, GadgetIcon::HeroIcon(ref n) if n == "beaker"));
@@ -439,7 +439,7 @@ mod tests {
         let valid = [
             "a",
             "hello-world",
-            "my-plugin-2",
+            "my-gadget-2",
             "x1",
             "abc",
             "a-b-c-d",
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn reject_dots_in_gadget_id() {
-        let err = validate_gadget_id("my.plugin").unwrap_err();
+        let err = validate_gadget_id("my.gadget").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
@@ -502,8 +502,8 @@ mod tests {
     fn gadget_id_display_and_as_str() {
         let toml = minimal("");
         let m = Manifest::parse(&toml).expect("should parse");
-        assert_eq!(m.gadget.id.as_str(), "test-plugin");
-        assert_eq!(m.gadget.id.to_string(), "test-plugin");
+        assert_eq!(m.gadget.id.as_str(), "test-gadget");
+        assert_eq!(m.gadget.id.to_string(), "test-gadget");
     }
 
     #[test]

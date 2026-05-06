@@ -14,7 +14,7 @@
 //!   "Stored" for re-Connect.
 //! * [`forget`] — drop the history row. If the network is
 //!   currently joined, disconnect first so the daemon and
-//!   the plugin's state stay in sync.
+//!   the gadget's state stay in sync.
 //!
 //! All three return the cache-invalidation signal to the
 //! caller; the lib-level orchestration calls

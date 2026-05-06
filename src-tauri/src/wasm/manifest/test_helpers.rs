@@ -11,9 +11,9 @@ pub(crate) fn minimal(extra: &str) -> String {
     format!(
         r#"
         [gadget]
-        id = "test-plugin"
-        name = "Test Plugin"
-        description = "A test plugin"
+        id = "test-gadget"
+        name = "Test Gadget"
+        description = "A test gadget"
         version = "0.1.0"
         wasm = "test.wasm"
         icon = "heroicons:beaker"
