@@ -63,7 +63,7 @@ use exports::torchsnap::gadget::search as wit;
 // =========================================================
 // Frecency: host → WIT
 //
-// The `frecency` import lets plugins read their own top-N
+// The `frecency` import lets gadgets read their own top-N
 // items from the host's frecency store. Host items come out
 // of `GadgetFrecency::top_items` as the native `FrecencyItem`
 // struct; this conversion maps them onto the bindgen-
@@ -134,7 +134,7 @@ impl From<wit::Action> for native::Action {
     fn from(action: wit::Action) -> Self {
         let id: native::ActionId = action.id.into();
         // Keybindings for well-known `ActionId`s are filled by the
-        // host. Without this, secondary actions on WASM plugin
+        // host. Without this, secondary actions on WASM gadget
         // entries are invisible in the launcher footer (the footer
         // filters out actions without a keybinding) and unreachable
         // by keyboard (`useKeyboardNavigation` only registers
@@ -151,7 +151,7 @@ impl From<wit::Action> for native::Action {
 /// Default keybinding assignment for the well-known [`native::ActionId`]
 /// variants. `Open` stays unbound — the launcher wires Enter to the
 /// selected entry's primary action separately. `Custom` actions are
-/// plugin-specific and get no host-side default.
+/// gadget-specific and get no host-side default.
 fn default_keybinding_for(id: &native::ActionId) -> Option<native::ActionKeybinding> {
     use native::{ActionId, ActionKeybinding};
     let (mods, key): (&[&str], &str) = match id {
@@ -230,7 +230,7 @@ impl From<wit::SearchResponse> for native::GadgetResponse {
 
 /// Parse an optional JSON-encoded string into a `serde_json::Value`.
 /// Returns `None` if the input is `None` or if the JSON is malformed
-/// (graceful degradation — a plugin sending bad JSON shouldn't crash
+/// (graceful degradation — a gadget sending bad JSON shouldn't crash
 /// the host).
 fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
     json.and_then(|s| serde_json::from_str(&s).ok())
@@ -241,40 +241,40 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 //
 // `AssetIcon` carries one of three things:
 //
-// 1. Plugin-relative paths (`assets/icon.svg`). Plugins
+// 1. Gadget-relative paths (`assets/icon.svg`). Gadgets
 //    bundle assets inside their `.torchsnap` archive and
 //    reference them by relative path. We rewrite these into
-//    `torchsnap-gadget://localhost/<plugin-id>/<path>` URLs
-//    so the plugin asset URI scheme (`wasm/protocol.rs`)
+//    `torchsnap-gadget://localhost/<gadget-id>/<path>` URLs
+//    so the gadget asset URI scheme (`wasm/protocol.rs`)
 //    serves them to the launcher.
 //
 // 2. `torchsnap-favicon://localhost/<key>.<ext>` URLs
 //    produced by `WebsiteMetadataService`. The host owns
 //    the scheme via `network::website_metadata::protocol`
 //    and serves bytes from the favicon cache. These travel
-//    host → guest → host (the plugin embeds the URL the
+//    host → guest → host (the gadget embeds the URL the
 //    host handed it back into the search response), so the
 //    resolver passes them through unchanged.
 //
 // 3. Anything else — absolute filesystem paths, arbitrary
-//    qualified URLs from plugins. Rejected: the icon is
+//    qualified URLs from gadgets. Rejected: the icon is
 //    dropped (`None`) and a warning is recorded for the
-//    caller to log. Plugins have no business pointing
+//    caller to log. Gadgets have no business pointing
 //    `AssetIcon` at arbitrary host filesystem locations or
-//    cross-plugin protocol URLs; the host-favicon scheme is
+//    cross-gadget protocol URLs; the host-favicon scheme is
 //    the one whitelisted exception.
 // =========================================================
 
 use crate::network::website_metadata::protocol::HOST_FAVICON_SCHEME;
 
-/// Rewrite plugin-relative `AssetIcon` paths in a search result
+/// Rewrite gadget-relative `AssetIcon` paths in a search result
 /// payload. Returns warning messages for any rejected icons —
 /// the caller (bridge) is responsible for routing them to the
-/// plugin's log.
-#[must_use = "warnings should be surfaced to the plugin's log"]
+/// gadget's log.
+#[must_use = "warnings should be surfaced to the gadget's log"]
 pub fn resolve_search_response_asset_icons(
     response: &mut native::GadgetResponse,
-    plugin_id: &str,
+    gadget_id: &str,
 ) -> Vec<String> {
     let entries = match response {
         native::GadgetResponse::Results(r) => r.as_mut_slice(),
@@ -283,45 +283,45 @@ pub fn resolve_search_response_asset_icons(
     };
     let mut warnings = Vec::new();
     for entry in entries {
-        resolve_entry_icon(&mut entry.icon, plugin_id, &mut warnings);
+        resolve_entry_icon(&mut entry.icon, gadget_id, &mut warnings);
     }
     warnings
 }
 
-/// Rewrite plugin-relative `AssetIcon` paths in catalog entries.
+/// Rewrite gadget-relative `AssetIcon` paths in catalog entries.
 /// Returns warning messages — see [`resolve_search_response_asset_icons`].
-#[must_use = "warnings should be surfaced to the plugin's log"]
+#[must_use = "warnings should be surfaced to the gadget's log"]
 pub fn resolve_catalog_entries_asset_icons(
     entries: &mut [native::CatalogEntry],
-    plugin_id: &str,
+    gadget_id: &str,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     for entry in entries {
-        resolve_entry_icon(&mut entry.icon, plugin_id, &mut warnings);
+        resolve_entry_icon(&mut entry.icon, gadget_id, &mut warnings);
     }
     warnings
 }
 
 fn resolve_entry_icon(
     slot: &mut Option<native::EntryIcon>,
-    plugin_id: &str,
+    gadget_id: &str,
     warnings: &mut Vec<String>,
 ) {
     let Some(native::EntryIcon::AssetIcon(path)) = slot.as_mut() else {
         return;
     };
-    match classify_plugin_asset_path(path) {
+    match classify_gadget_asset_path(path) {
         AssetPathClass::Relative => {
-            *path = format!("torchsnap-gadget://localhost/{plugin_id}/{path}");
+            *path = format!("torchsnap-gadget://localhost/{gadget_id}/{path}");
         }
         AssetPathClass::HostFavicon => {
             // Host-issued favicon URL. Passes through unchanged
             // — the host owns the scheme and the cache root, so
-            // there is no plugin-issued payload to validate.
+            // there is no gadget-issued payload to validate.
         }
         AssetPathClass::AbsolutePath => {
             warnings.push(format!(
-                "AssetIcon path `{path}` is absolute; plugins must reference \
+                "AssetIcon path `{path}` is absolute; gadgets must reference \
                  bundled assets with a relative path (e.g. `assets/icon.svg`). \
                  Dropping icon."
             ));
@@ -329,7 +329,7 @@ fn resolve_entry_icon(
         }
         AssetPathClass::QualifiedUrl => {
             warnings.push(format!(
-                "AssetIcon path `{path}` is a fully-qualified URL; plugins \
+                "AssetIcon path `{path}` is a fully-qualified URL; gadgets \
                  must reference bundled assets with a relative path (e.g. \
                  `assets/icon.svg`). Dropping icon."
             ));
@@ -345,7 +345,7 @@ enum AssetPathClass {
     HostFavicon,
 }
 
-fn classify_plugin_asset_path(path: &str) -> AssetPathClass {
+fn classify_gadget_asset_path(path: &str) -> AssetPathClass {
     // Match the host-favicon scheme before the generic `://`
     // arm so it doesn't fall through to `QualifiedUrl`.
     if path.starts_with(HOST_FAVICON_SCHEME) {
@@ -560,7 +560,7 @@ mod tests {
             "/var/cache/favicon.png".into(),
         ));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
         assert!(slot.is_none(), "absolute path must drop the icon");
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("/var/cache/favicon.png"));
@@ -571,7 +571,7 @@ mod tests {
     fn absolute_windows_path_drops_icon_and_warns() {
         let mut slot = Some(native::EntryIcon::AssetIcon("C:\\cache\\fav.png".into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
         assert!(slot.is_none(), "absolute path must drop the icon");
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("C:\\cache\\fav.png"));
@@ -579,8 +579,8 @@ mod tests {
 
     #[test]
     fn already_qualified_url_drops_icon_and_warns() {
-        // Layering: plugins must not reach across to other
-        // plugins' archives by hand-crafting protocol URLs.
+        // Layering: gadgets must not reach across to other
+        // gadgets' archives by hand-crafting protocol URLs.
         let mut slot = Some(native::EntryIcon::AssetIcon(
             "torchsnap-gadget://localhost/other/secret.svg".into(),
         ));
@@ -605,10 +605,10 @@ mod tests {
     fn host_favicon_url_passes_through_unchanged() {
         // Regression: host-issued favicons travel as
         // `torchsnap-favicon://localhost/<key>.<ext>` URLs from
-        // the website-metadata service through the plugin's
+        // the website-metadata service through the gadget's
         // search response back to the host. The resolver must
         // pass these through unchanged — they're host-managed,
-        // not plugin-issued. Before this rule existed, the
+        // not gadget-issued. Before this rule existed, the
         // generic `://` arm classified them as `QualifiedUrl`
         // and dropped the icon, leaving the launcher to render
         // the `command-line` HeroIcon fallback for every URL/
@@ -616,7 +616,7 @@ mod tests {
         let original = "torchsnap-favicon://localhost/abc123.webp";
         let mut slot = Some(native::EntryIcon::AssetIcon(original.into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-plugin", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
 
         match &slot {
             Some(native::EntryIcon::AssetIcon(p)) => assert_eq!(p, original),

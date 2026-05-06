@@ -104,10 +104,10 @@ export function FrecencySection() {
           <div className="flex flex-col gap-2">
             <StatRow label="Total events" value={String(stats.totalEvents)} />
             <StatRow label="Unique items" value={String(stats.uniqueItems)} />
-            {Object.entries(stats.eventsByPlugin)
+            {Object.entries(stats.eventsByGadget)
               .sort(([, a], [, b]) => b - a)
-              .map(([pluginId, count]) => (
-                <StatRow key={pluginId} label={pluginId} value={String(count)} indent />
+              .map(([gadgetId, count]) => (
+                <StatRow key={gadgetId} label={gadgetId} value={String(count)} indent />
               ))}
             {stats.oldestEvent != null && (
               <StatRow label="Oldest event" value={formatAge(stats.oldestEvent)} />

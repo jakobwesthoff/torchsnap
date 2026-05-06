@@ -5,11 +5,11 @@
 // =========================================================
 // Assets host import
 //
-// Per-plugin asset reads, validated by the same
-// `validate_plugin_path` guard that governs every other
-// plugin-file read on the host side. No permission section
+// Per-gadget asset reads, validated by the same
+// `validate_gadget_path` guard that governs every other
+// gadget-file read on the host side. No permission section
 // in the manifest — the guarantee is spatial: paths are
-// confined to the plugin root.
+// confined to the gadget root.
 //
 // `read` and `exists` both pre-validate then delegate to
 // the `GadgetSource` trait stashed on `GadgetState`. The
@@ -39,12 +39,12 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
         // Validate first so a structured `InvalidPath`
         // variant is returned without having to grep the
         // trait's `anyhow::Error` for a guard message.
-        if let Err(e) = source::validate_plugin_path(&path) {
+        if let Err(e) = source::validate_gadget_path(&path) {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let plugin_source = self
-            .plugin_source
+        let gadget_source = self
+            .gadget_source
             .as_ref()
             .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
 
@@ -53,13 +53,13 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
         // attempting the read and matching on the error
         // string — would be fragile across filesystem /
         // archive backends.
-        match plugin_source.file_exists(&path) {
+        match gadget_source.file_exists(&path) {
             Ok(true) => {}
             Ok(false) => return Err(AssetsError::NotFound),
             Err(e) => return Err(into_assets_io_error(e)),
         }
 
-        plugin_source.read_file(&path).map_err(into_assets_io_error)
+        gadget_source.read_file(&path).map_err(into_assets_io_error)
     }
 
     fn exists(
@@ -68,16 +68,16 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
     ) -> Result<bool, bindings::torchsnap::gadget::assets::AssetsError> {
         use bindings::torchsnap::gadget::assets::AssetsError;
 
-        if let Err(e) = source::validate_plugin_path(&path) {
+        if let Err(e) = source::validate_gadget_path(&path) {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let plugin_source = self
-            .plugin_source
+        let gadget_source = self
+            .gadget_source
             .as_ref()
             .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
 
-        plugin_source
+        gadget_source
             .file_exists(&path)
             .map_err(into_assets_io_error)
     }

@@ -71,7 +71,7 @@ pub fn register_gadget_protocol<R: tauri::Runtime>(
 // Request Handler
 // =========================================================
 
-/// Parse the request, look up the plugin source, read the
+/// Parse the request, look up the gadget source, read the
 /// file, and build the HTTP response.
 fn handle_request(
     registry: &GadgetSourceRegistry,
@@ -86,7 +86,7 @@ fn handle_request(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("*");
 
-    match serve_plugin_asset(registry, request) {
+    match serve_gadget_asset(registry, request) {
         Ok((body, content_type)) => http::Response::builder()
             .status(200)
             .header("Content-Type", content_type)
@@ -109,41 +109,41 @@ struct ErrorResponse {
 
 /// Core logic: parse URI, look up source, read file, detect
 /// content type.
-fn serve_plugin_asset(
+fn serve_gadget_asset(
     registry: &GadgetSourceRegistry,
     request: &http::Request<Vec<u8>>,
 ) -> Result<(Vec<u8>, String), ErrorResponse> {
     let path = request.uri().path();
 
-    // Strip leading slash and split into plugin-id / file-path.
+    // Strip leading slash and split into gadget-id / file-path.
     let trimmed = path.trim_start_matches('/');
-    let (plugin_id, file_path) = trimmed.split_once('/').ok_or_else(|| ErrorResponse {
+    let (gadget_id, file_path) = trimmed.split_once('/').ok_or_else(|| ErrorResponse {
         status: 400,
-        message: format!("invalid path: expected /<plugin-id>/<file-path>, got {path}"),
+        message: format!("invalid path: expected /<gadget-id>/<file-path>, got {path}"),
     })?;
 
-    if plugin_id.is_empty() {
+    if gadget_id.is_empty() {
         return Err(ErrorResponse {
             status: 400,
-            message: "missing plugin ID in path".to_string(),
+            message: "missing gadget ID in path".to_string(),
         });
     }
 
     if file_path.is_empty() {
         return Err(ErrorResponse {
             status: 400,
-            message: "missing file path after plugin ID".to_string(),
+            message: "missing file path after gadget ID".to_string(),
         });
     }
 
-    // Look up the plugin source.
+    // Look up the gadget source.
     let sources = registry.read().expect("registry not poisoned");
-    let source = sources.get(plugin_id).ok_or_else(|| ErrorResponse {
+    let source = sources.get(gadget_id).ok_or_else(|| ErrorResponse {
         status: 404,
-        message: format!("unknown plugin: {plugin_id}"),
+        message: format!("unknown gadget: {gadget_id}"),
     })?;
 
-    // Read the file from the plugin source.
+    // Read the file from the gadget source.
     let data = source.read_file(file_path).map_err(|e| ErrorResponse {
         status: 404,
         message: format!("{e:#}"),
@@ -157,7 +157,7 @@ fn serve_plugin_asset(
 // Content-Type Detection
 // =========================================================
 
-/// Detect the content type for a plugin asset. Uses the
+/// Detect the content type for a gadget asset. Uses the
 /// `infer` crate for binary formats (images, wasm, etc.)
 /// and falls back to extension-based detection for text
 /// formats that `infer` can't identify by magic bytes.
@@ -196,7 +196,7 @@ mod tests {
     // Test helpers
     // =====================================================
 
-    /// In-memory plugin source for testing. Stores files as
+    /// In-memory gadget source for testing. Stores files as
     /// a simple hashmap — no filesystem or zip involved.
     struct MemorySource {
         manifest: Manifest,
@@ -232,9 +232,9 @@ mod tests {
         Manifest::parse(
             r#"
             [gadget]
-            id = "test-plugin"
-            name = "Test Plugin"
-            description = "A test plugin"
+            id = "test-gadget"
+            name = "Test Gadget"
+            description = "A test gadget"
             version = "0.1.0"
             wasm = "test.wasm"
             icon = "heroicons:beaker"
@@ -252,7 +252,7 @@ mod tests {
         registry
             .write()
             .expect("lock")
-            .insert("test-plugin".to_string(), source);
+            .insert("test-gadget".to_string(), source);
         registry
     }
 
@@ -280,7 +280,7 @@ mod tests {
             b"export function Echo() {}".to_vec(),
         );
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/frontend/launcher.js");
+        let request = make_request("/test-gadget/frontend/launcher.js");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -299,7 +299,7 @@ mod tests {
             b".echo { color: red; }".to_vec(),
         );
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/frontend/styles.css");
+        let request = make_request("/test-gadget/frontend/styles.css");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -311,7 +311,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("data.json".to_string(), b"{}".to_vec());
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/data.json");
+        let request = make_request("/test-gadget/data.json");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -332,7 +332,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("icon.png".to_string(), png_header.to_vec());
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/icon.png");
+        let request = make_request("/test-gadget/icon.png");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -346,7 +346,7 @@ mod tests {
         let registry = test_registry(files);
 
         // Dev origin
-        let request = make_request_with_origin("/test-plugin/test.js", "http://localhost:1420");
+        let request = make_request_with_origin("/test-gadget/test.js", "http://localhost:1420");
         let response = handle_request(&registry, &request);
         assert_eq!(
             response
@@ -357,7 +357,7 @@ mod tests {
         );
 
         // Prod origin
-        let request = make_request_with_origin("/test-plugin/test.js", "tauri://localhost");
+        let request = make_request_with_origin("/test-gadget/test.js", "tauri://localhost");
         let response = handle_request(&registry, &request);
         assert_eq!(
             response
@@ -375,7 +375,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("binary.dat".to_string(), all_bytes.clone());
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/binary.dat");
+        let request = make_request("/test-gadget/binary.dat");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -387,20 +387,20 @@ mod tests {
     // =====================================================
 
     #[test]
-    fn unknown_plugin_404() {
+    fn unknown_gadget_404() {
         let registry = test_registry(HashMap::new());
-        let request = make_request("/nonexistent-plugin/file.js");
+        let request = make_request("/nonexistent-gadget/file.js");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 404);
         let body = String::from_utf8_lossy(response.body());
-        assert!(body.contains("unknown plugin"), "body: {body}");
+        assert!(body.contains("unknown gadget"), "body: {body}");
     }
 
     #[test]
     fn missing_file_404() {
         let registry = test_registry(HashMap::new());
-        let request = make_request("/test-plugin/nonexistent.js");
+        let request = make_request("/test-gadget/nonexistent.js");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 404);
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn path_traversal_400_or_404() {
         let registry = test_registry(HashMap::new());
-        let request = make_request("/test-plugin/../../../etc/passwd");
+        let request = make_request("/test-gadget/../../../etc/passwd");
 
         let response = handle_request(&registry, &request);
         // Depending on GadgetSource implementation, this may be
@@ -425,8 +425,8 @@ mod tests {
     #[test]
     fn empty_file_path_400() {
         let registry = test_registry(HashMap::new());
-        // Path is just "/test-plugin/" with no file path.
-        let request = make_request("/test-plugin/");
+        // Path is just "/test-gadget/" with no file path.
+        let request = make_request("/test-gadget/");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 400);
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn no_plugin_id_400() {
+    fn no_gadget_id_400() {
         let registry = test_registry(HashMap::new());
         let request = make_request("/");
 
@@ -466,7 +466,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("data.xyz".to_string(), b"something".to_vec());
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/data.xyz");
+        let request = make_request("/test-gadget/data.xyz");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -484,7 +484,7 @@ mod tests {
             b"<svg></svg>".to_vec(),
         );
         let registry = test_registry(files);
-        let request = make_request("/test-plugin/assets/images/logo.svg");
+        let request = make_request("/test-gadget/assets/images/logo.svg");
 
         let response = handle_request(&registry, &request);
         assert_eq!(response.status(), 200);
@@ -495,14 +495,14 @@ mod tests {
     }
 
     #[test]
-    fn multiple_plugins_in_registry() {
+    fn multiple_gadgets_in_registry() {
         let registry = new_registry();
 
         let source_a = Arc::new(MemorySource {
             manifest: Manifest::parse(
                 r#"
                 [gadget]
-                id = "plugin-a"
+                id = "gadget-a"
                 name = "A"
                 description = "A"
                 version = "0.1.0"
@@ -511,14 +511,14 @@ mod tests {
             "#,
             )
             .unwrap(),
-            files: HashMap::from([("file.js".to_string(), b"// plugin A".to_vec())]),
+            files: HashMap::from([("file.js".to_string(), b"// gadget A".to_vec())]),
         });
 
         let source_b = Arc::new(MemorySource {
             manifest: Manifest::parse(
                 r#"
                 [gadget]
-                id = "plugin-b"
+                id = "gadget-b"
                 name = "B"
                 description = "B"
                 version = "0.1.0"
@@ -527,20 +527,20 @@ mod tests {
             "#,
             )
             .unwrap(),
-            files: HashMap::from([("file.js".to_string(), b"// plugin B".to_vec())]),
+            files: HashMap::from([("file.js".to_string(), b"// gadget B".to_vec())]),
         });
 
         {
             let mut sources = registry.write().expect("lock");
-            sources.insert("plugin-a".to_string(), source_a);
-            sources.insert("plugin-b".to_string(), source_b);
+            sources.insert("gadget-a".to_string(), source_a);
+            sources.insert("gadget-b".to_string(), source_b);
         }
 
-        let resp_a = handle_request(&registry, &make_request("/plugin-a/file.js"));
-        let resp_b = handle_request(&registry, &make_request("/plugin-b/file.js"));
+        let resp_a = handle_request(&registry, &make_request("/gadget-a/file.js"));
+        let resp_b = handle_request(&registry, &make_request("/gadget-b/file.js"));
 
-        assert_eq!(resp_a.body(), b"// plugin A");
-        assert_eq!(resp_b.body(), b"// plugin B");
+        assert_eq!(resp_a.body(), b"// gadget A");
+        assert_eq!(resp_b.body(), b"// gadget B");
     }
 
     // =====================================================
@@ -607,7 +607,7 @@ mod tests {
         [gadget]
         id = "frontend-test"
         name = "Frontend Test"
-        description = "Test plugin with frontend assets"
+        description = "Test gadget with frontend assets"
         version = "0.1.0"
         wasm = "test.wasm"
         icon = "heroicons:beaker"
@@ -621,7 +621,7 @@ mod tests {
         echo = "Echo"
     "#;
 
-    /// Create a temporary plugin directory with manifest and
+    /// Create a temporary gadget directory with manifest and
     /// frontend assets, register it via DirectorySource.
     fn directory_registry(
         manifest: &str,
@@ -641,10 +641,10 @@ mod tests {
         }
 
         let source = Arc::new(DirectorySource::open(root).expect("open directory source"));
-        let plugin_id = source.manifest().gadget.id.to_string();
+        let gadget_id = source.manifest().gadget.id.to_string();
 
         let registry = new_registry();
-        registry.write().expect("lock").insert(plugin_id, source);
+        registry.write().expect("lock").insert(gadget_id, source);
 
         (dir, registry)
     }
@@ -735,7 +735,7 @@ mod tests {
             [gadget]
             id = "hello-world"
             name = "Hello World"
-            description = "Test plugin"
+            description = "Test gadget"
             version = "0.1.0"
             wasm = "hello_world_plugin.wasm"
             icon = "heroicons:hand-raised"

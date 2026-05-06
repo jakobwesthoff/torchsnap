@@ -333,7 +333,7 @@ mod result_source_tests {
     }
 
     #[test]
-    fn plugin_id_round_trips_special_characters() {
+    fn gadget_id_round_trips_special_characters() {
         let json = serde_json::to_value(ResultSource::Gadget {
             id: "my-weird.plugin-id".to_string(),
         })

@@ -3,20 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Host
+// Gadget Host
 //
-// Central authority for the plugin lifecycle. Owns all plugin
+// Central authority for the gadget lifecycle. Owns all gadget
 // references and is the single entry point for:
 //
 // - Registration (register)
 // - Settings initialization (Phase 1: synchronous defaults)
-// - Parallel plugin enable (Phase 2: tokio spawn_blocking)
+// - Parallel gadget enable (Phase 2: tokio spawn_blocking)
 // - Host-managed enable/disable via `enabled.<id>` keys
 // - Settings change dispatch via CoalescingDispatcher
 // - Global shortcut registration and reactive re-registration
 // - Search routing (nucleo + prefix matching)
 // - Action execution and message routing
-// - Shutdown (disable all plugins)
+// - Shutdown (disable all gadgets)
 //
 // Managed as `Arc<GadgetHost>` in Tauri state — no Mutex needed
 // since all fields are either immutable after init or use
@@ -51,7 +51,7 @@ use crate::wasm::source::GadgetSourceKind;
 // Internal Helpers
 // =========================================================
 
-/// Distinguishes CustomUI from InlineUI in `process_plugin_response`.
+/// Distinguishes CustomUI from InlineUI in `process_gadget_response`.
 enum ViewKind {
     Custom,
     Inline,
@@ -62,7 +62,7 @@ enum ViewKind {
 // =========================================================
 
 /// A registered shortcut with enough context to route the
-/// activation back to the owning plugin.
+/// activation back to the owning gadget.
 struct RegisteredShortcut {
     shortcut: Shortcut,
     gadget_id: String,
@@ -80,44 +80,44 @@ struct ActivateGadgetPayload {
 }
 
 // =========================================================
-// GadgetSlot — per-plugin state managed by the host
+// GadgetSlot — per-gadget state managed by the host
 // =========================================================
 
-/// Wraps a plugin with host-managed lifecycle state. The host
-/// owns the enabled flag and the settings dispatcher — plugins
+/// Wraps a gadget with host-managed lifecycle state. The host
+/// owns the enabled flag and the settings dispatcher — gadgets
 /// never manage their own enabled state.
 struct GadgetSlot {
-    plugin: Arc<dyn Gadget>,
+    gadget: Arc<dyn Gadget>,
 
-    /// Where this plugin was loaded from. Surfaced to the
-    /// frontend so the Plugins settings panel can badge each
+    /// Where this gadget was loaded from. Surfaced to the
+    /// frontend so the Gadgets settings panel can badge each
     /// entry and gate uninstall to `User` only.
     source_kind: GadgetSourceKind,
 
     /// Host-owned enabled flag. Checked before including the
-    /// plugin in search results, shortcut registration, etc.
+    /// gadget in search results, shortcut registration, etc.
     /// Updated by the host when `enabled.<id>` changes in the
     /// settings store.
     enabled: AtomicBool,
 
     /// Serializes and deduplicates settings change dispatch for
-    /// this plugin. Both `enabled.<id>` changes and
+    /// this gadget. Both `enabled.<id>` changes and
     /// `gadgets.<id>.*` changes are funneled through here.
     dispatcher: CoalescingDispatcher,
 }
 
 impl GadgetSlot {
-    fn new(plugin: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
+    fn new(gadget: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
         Self {
-            plugin,
+            gadget,
             source_kind,
             enabled: AtomicBool::new(true),
             dispatcher: CoalescingDispatcher::new(),
         }
     }
 
-    /// Whether this plugin is currently active. The host owns
-    /// this flag — plugins never manage their own enabled state.
+    /// Whether this gadget is currently active. The host owns
+    /// this flag — gadgets never manage their own enabled state.
     fn is_active(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
@@ -164,9 +164,9 @@ impl GadgetHost {
     /// surfaced through [`Self::gadget_sources`] to the frontend
     /// so the Gadgets settings panel can badge and gate each
     /// entry appropriately.
-    pub fn register(&mut self, plugin: Box<dyn Gadget>, source_kind: GadgetSourceKind) {
+    pub fn register(&mut self, gadget: Box<dyn Gadget>, source_kind: GadgetSourceKind) {
         self.slots
-            .push(GadgetSlot::new(Arc::from(plugin), source_kind));
+            .push(GadgetSlot::new(Arc::from(gadget), source_kind));
     }
 
     /// Snapshot of the gadget-id → source-kind mapping. Exposed
@@ -176,7 +176,7 @@ impl GadgetHost {
     pub fn gadget_sources(&self) -> std::collections::HashMap<String, GadgetSourceKind> {
         self.slots
             .iter()
-            .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
+            .map(|slot| (slot.gadget.id().to_string(), slot.source_kind))
             .collect()
     }
 
@@ -184,20 +184,20 @@ impl GadgetHost {
     // Initialization
     // =========================================================
 
-    /// Initialize settings, register shortcuts, enable plugins,
+    /// Initialize settings, register shortcuts, enable gadgets,
     /// and spawn the shortcut reactor.
     ///
-    /// Must be called exactly once after all plugins are registered
+    /// Must be called exactly once after all gadgets are registered
     /// and before `app.manage()` stores the host.
     pub fn initialize_and_start(&mut self, app: &tauri::AppHandle) {
         // -------------------------------------------------------
-        // Phase 1: Initialize plugin settings defaults (synchronous)
+        // Phase 1: Initialize gadget settings defaults (synchronous)
         // -------------------------------------------------------
         for slot in &self.slots {
-            let id = slot.plugin.id();
+            let id = slot.gadget.id();
             let prefix = format!("gadgets.{id}.");
             let current = SettingsInit::from_store(&self.store, &prefix);
-            let initialized = slot.plugin.initialize_settings(current);
+            let initialized = slot.gadget.initialize_settings(current);
             initialized.apply(&self.store, &prefix);
 
             // Host-managed enabled key: `enabled.<id>`.
@@ -224,14 +224,14 @@ impl GadgetHost {
 
         let mut keys_to_watch = Vec::new();
         for slot in &self.slots {
-            let id = slot.plugin.id();
+            let id = slot.gadget.id();
 
             // Watch the host-managed enabled key for shortcut reactor.
             keys_to_watch.push(format!("enabled.{id}"));
 
             // Watch shortcut keys so the reactor re-registers when
             // a user changes a shortcut binding.
-            for s in slot.plugin.shortcuts() {
+            for s in slot.gadget.shortcuts() {
                 keys_to_watch.push(format!("gadgets.{id}.{}", s.settings_key));
             }
         }
@@ -243,9 +243,9 @@ impl GadgetHost {
         self.register_all_shortcuts(app);
 
         // -------------------------------------------------------
-        // Phase 2: Parallel plugin startup (background)
+        // Phase 2: Parallel gadget startup (background)
         //
-        // Call enable() on each plugin that is initially enabled.
+        // Call enable() on each gadget that is initially enabled.
         //
         // We obtain the runtime handle explicitly because this
         // method is called from Tauri's synchronous setup()
@@ -259,14 +259,14 @@ impl GadgetHost {
                 continue;
             }
 
-            let p = Arc::clone(&slot.plugin);
+            let gadget = Arc::clone(&slot.gadget);
             let h = handle.clone();
             let ctx = GadgetContext {
-                settings: GadgetSettings::new(Arc::clone(&self.store), p.id()),
-                frecency: GadgetFrecency::new(Arc::clone(&self.frecency), p.id()),
+                settings: GadgetSettings::new(Arc::clone(&self.store), gadget.id()),
+                frecency: GadgetFrecency::new(Arc::clone(&self.frecency), gadget.id()),
             };
             runtime.spawn_blocking(move || {
-                p.enable(&h, &ctx);
+                gadget.enable(&h, &ctx);
             });
         }
     }
@@ -320,15 +320,15 @@ impl GadgetHost {
 
         let mut registered: Vec<RegisteredShortcut> = Vec::new();
 
-        // Collect shortcuts from all enabled plugins.
+        // Collect shortcuts from all enabled gadgets.
         for slot in &self.slots {
             if !slot.is_active() {
                 continue;
             }
-            let plugin = &slot.plugin;
-            let plugin_id = plugin.id().to_string();
-            for decl in plugin.shortcuts() {
-                if let Some(r) = self.resolve_shortcut(&plugin_id, &decl, Arc::clone(plugin)) {
+            let gadget = &slot.gadget;
+            let gadget_id = gadget.id().to_string();
+            for decl in gadget.shortcuts() {
+                if let Some(r) = self.resolve_shortcut(&gadget_id, &decl, Arc::clone(gadget)) {
                     registered.push(r);
                 }
             }
@@ -371,7 +371,7 @@ impl GadgetHost {
                         return;
                     }
 
-                    // Plugin shortcut routing.
+                    // Gadget shortcut routing.
                     let Some(r) = registered.iter().find(|r| r.shortcut == *shortcut) else {
                         return;
                     };
@@ -380,7 +380,7 @@ impl GadgetHost {
 
                     match result {
                         Ok(PostAction::ShowCustomUI { view, data }) => {
-                            show_launcher_with_plugin(&handle, &r.gadget_id, &view, data);
+                            show_launcher_with_gadget(&handle, &r.gadget_id, &view, data);
                         }
                         Ok(_) => {}
                         Err(e) => {
@@ -398,11 +398,11 @@ impl GadgetHost {
 
     fn resolve_shortcut(
         &self,
-        plugin_id: &str,
+        gadget_id: &str,
         decl: &GadgetShortcut,
         owner: Arc<dyn Gadget>,
     ) -> Option<RegisteredShortcut> {
-        let full_key = format!("gadgets.{plugin_id}.{}", decl.settings_key);
+        let full_key = format!("gadgets.{gadget_id}.{}", decl.settings_key);
 
         let combo_str = self
             .store
@@ -414,7 +414,7 @@ impl GadgetHost {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
-                    "shortcut: invalid combo '{combo_str}' for {plugin_id}.{}: {e}",
+                    "shortcut: invalid combo '{combo_str}' for {gadget_id}.{}: {e}",
                     decl.id
                 );
                 return None;
@@ -423,7 +423,7 @@ impl GadgetHost {
 
         Some(RegisteredShortcut {
             shortcut,
-            gadget_id: plugin_id.to_string(),
+            gadget_id: gadget_id.to_string(),
             shortcut_id: decl.id.to_string(),
             owner,
         })
@@ -433,12 +433,12 @@ impl GadgetHost {
     // Search
     // =========================================================
 
-    /// Search all plugins against the given query, streaming
+    /// Search all gadgets against the given query, streaming
     /// results to the frontend as they become available.
     ///
-    /// Catalog results are sent first (sync, fast). Query plugins
+    /// Catalog results are sent first (sync, fast). Query gadgets
     /// are dispatched concurrently on the blocking thread pool and
-    /// their results stream to the frontend as each plugin
+    /// their results stream to the frontend as each gadget
     /// completes.
     pub async fn search(&self, query: &str, on_results: &tauri::ipc::Channel<SearchMessage>) {
         if query.is_empty() {
@@ -448,19 +448,19 @@ impl GadgetHost {
 
         // =======================================================
         // Prefix routing: longest match wins. Exclusive — only
-        // the matched plugin runs, no catalogs, no fan-out.
+        // the matched gadget runs, no catalogs, no fan-out.
         // =======================================================
 
-        if let Some((plugin, prefix)) = self.find_prefix_match(query) {
+        if let Some((gadget, prefix)) = self.find_prefix_match(query) {
             // Note: prefix match already checked is_active() internally
             let stripped = query[prefix.len()..].to_string();
-            let source = plugin.id().to_string();
+            let source = gadget.id().to_string();
             let prefix_owned = prefix.to_string();
-            let plugin = Arc::clone(plugin);
+            let gadget = Arc::clone(gadget);
 
             let prefix_for_search = prefix_owned.clone();
             let response = tokio::task::spawn_blocking(move || {
-                plugin.search(&stripped, Some(&prefix_for_search))
+                gadget.search(&stripped, Some(&prefix_for_search))
             })
             .await
             .expect("prefix search task not panicked");
@@ -470,7 +470,7 @@ impl GadgetHost {
             let mut entries = Vec::new();
 
             if let Some(response) = response {
-                let (view_ref, results) = self.process_plugin_response(
+                let (view_ref, results) = self.process_gadget_response(
                     response, &source, true, // prefix mode — CustomUI allowed
                 );
 
@@ -483,9 +483,9 @@ impl GadgetHost {
 
                 entries.extend(results);
 
-                // Exactly one plugin responds in prefix mode,
+                // Exactly one gadget responds in prefix mode,
                 // so a stable score-descending sort preserves
-                // the plugin's intended ordering for equal-
+                // the gadget's intended ordering for equal-
                 // score items. The `cmp_sort_key` tiebreaker
                 // used on the merging path (`entry.id ASC`)
                 // would overwrite that intent.
@@ -505,7 +505,7 @@ impl GadgetHost {
         }
 
         // =======================================================
-        // No prefix: catalog search + concurrent query plugins.
+        // No prefix: catalog search + concurrent query gadgets.
         // =======================================================
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
@@ -514,7 +514,7 @@ impl GadgetHost {
             .slots
             .iter()
             .filter(|s| s.is_active())
-            .map(|s| Arc::clone(&s.plugin))
+            .map(|s| Arc::clone(&s.gadget))
             .collect();
         let frecency = self.frecency.clone();
         let query_owned = query.to_string();
@@ -538,8 +538,8 @@ impl GadgetHost {
             matched_prefix: None,
         });
 
-        // Phase 2: query plugins — spawn concurrently, deliver
-        // results to the frontend as each plugin completes.
+        // Phase 2: query gadgets — spawn concurrently, deliver
+        // results to the frontend as each gadget completes.
         let mut join_set = JoinSet::new();
 
         for slot in &self.slots {
@@ -547,15 +547,15 @@ impl GadgetHost {
                 continue;
             }
 
-            let source = slot.plugin.id().to_string();
-            let plugin = Arc::clone(&slot.plugin);
+            let source = slot.gadget.id().to_string();
+            let gadget = Arc::clone(&slot.gadget);
             let query = query_owned.clone();
 
-            join_set.spawn_blocking(move || (source, plugin.search(&query, None)));
+            join_set.spawn_blocking(move || (source, gadget.search(&query, None)));
         }
 
         // Drain the JoinSet — each completed task yields one
-        // plugin's results, preserving incremental delivery.
+        // gadget's results, preserving incremental delivery.
         let mut inline_claimed = false;
 
         while let Some(result) = join_set.join_next().await {
@@ -566,7 +566,7 @@ impl GadgetHost {
                 None => continue,
             };
 
-            let (view_ref, mut entries) = self.process_plugin_response(
+            let (view_ref, mut entries) = self.process_gadget_response(
                 response, &source, false, // non-prefix — CustomUI downgraded
             );
 
@@ -580,8 +580,8 @@ impl GadgetHost {
                 }
                 Some((ViewKind::Inline, _)) => {
                     eprintln!(
-                        "search: dropping InlineUI from plugin '{}' — \
-                         another plugin already claimed the inline slot",
+                        "search: dropping InlineUI from gadget '{}' — \
+                         another gadget already claimed the inline slot",
                         source
                     );
                     None
@@ -589,7 +589,7 @@ impl GadgetHost {
                 _ => None,
             };
 
-            // Always emit; a plugin going from results to empty
+            // Always emit; a gadget going from results to empty
             // relies on this message to evict its prior entries.
             let _ = on_results.send(SearchMessage::SearchResults {
                 source: ResultSource::Gadget { id: source },
@@ -604,13 +604,13 @@ impl GadgetHost {
     }
 
     /// Delegate to the standalone function for testability.
-    fn process_plugin_response(
+    fn process_gadget_response(
         &self,
         response: GadgetResponse,
         source: &str,
         allow_custom_ui: bool,
     ) -> (Option<(ViewKind, GadgetViewRef)>, Vec<SourcedEntry>) {
-        process_plugin_response(response, source, allow_custom_ui)
+        process_gadget_response(response, source, allow_custom_ui)
     }
 
     /// Delegate to the standalone function for testability.
@@ -621,8 +621,8 @@ impl GadgetHost {
     /// Catalog search as a static method so it can run on
     /// `spawn_blocking` without borrowing `&self`.
     ///
-    /// Calls `entries()` on every plugin — catalog-only plugins
-    /// return their entry list, query-only plugins return the
+    /// Calls `entries()` on every gadget — catalog-only gadgets
+    /// return their entry list, query-only gadgets return the
     /// default empty vec (zero cost).
     fn search_catalogs_static(
         plugins: &[Arc<dyn Gadget>],
@@ -642,15 +642,15 @@ impl GadgetHost {
         let mut char_buf = Vec::new();
         let mut title_indices = Vec::new();
 
-        for plugin in plugins {
-            // Disabled plugins are already filtered out by the caller.
-            let source = plugin.id().to_string();
+        for gadget in plugins {
+            // Disabled gadgets are already filtered out by the caller.
+            let source = gadget.id().to_string();
 
-            // Track where this plugin's results start so we can
+            // Track where this gadget's results start so we can
             // apply frecency scores to just this slice afterwards.
-            let plugin_start = results.len();
+            let gadget_start = results.len();
 
-            for entry in plugin.entries() {
+            for entry in gadget.entries() {
                 title_indices.clear();
                 let title_haystack = Utf32Str::new(&entry.title, &mut char_buf);
                 let title_score = pattern.indices(title_haystack, &mut matcher, &mut title_indices);
@@ -688,8 +688,8 @@ impl GadgetHost {
                 }
             }
 
-            // Apply frecency bonuses to this plugin's results.
-            frecency.apply_scores(&source, &mut results[plugin_start..]);
+            // Apply frecency bonuses to this gadget's results.
+            frecency.apply_scores(&source, &mut results[gadget_start..]);
         }
 
         // Sort catalog results by the deterministic composite key
@@ -703,12 +703,12 @@ impl GadgetHost {
     // Execute / Message Routing
     // =========================================================
 
-    /// Dispatch a launcher action to the plugin that owns
+    /// Dispatch a launcher action to the gadget that owns
     /// `entry_id`.
     ///
     /// Tokio runtime precondition: callers must invoke this from a
     /// thread that has a current Tokio runtime (a worker or a
-    /// `spawn_blocking` task on a multi-thread runtime). Plugin
+    /// `spawn_blocking` task on a multi-thread runtime). Gadget
     /// `execute()` implementations can reach the `http::fetch` host
     /// import, which calls `Handle::current()` inside reqwest's
     /// internal machinery. Tauri's synchronous `#[tauri::command]`
@@ -728,10 +728,10 @@ impl GadgetHost {
         self.frecency.record(source, entry_id);
 
         // `OpenSettings` is a host-managed action: regardless of which
-        // plugin emitted the entry, navigation to the settings panel is
-        // the host's responsibility, and the plugin has nothing useful
+        // gadget emitted the entry, navigation to the settings panel is
+        // the host's responsibility, and the gadget has nothing useful
         // to do with the action. Short-circuit before dispatching so
-        // every plugin gets the behaviour for free without each
+        // every gadget gets the behaviour for free without each
         // implementing the same routing.
         if matches!(action_id, ActionId::OpenSettings) {
             if let Err(e) = app.emit(
@@ -743,10 +743,10 @@ impl GadgetHost {
             return Ok(PostAction::Dismiss);
         }
 
-        if let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == source) {
-            return slot.plugin.execute(entry_id, action_id, app);
+        if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
+            return slot.gadget.execute(entry_id, action_id, app);
         }
-        anyhow::bail!("unknown plugin source: {source}");
+        anyhow::bail!("unknown gadget source: {source}");
     }
 
     pub fn handle_message(
@@ -756,20 +756,20 @@ impl GadgetHost {
         payload: serde_json::Value,
         channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        if let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == source) {
-            return slot.plugin.handle_message(method, payload, channel);
+        if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
+            return slot.gadget.handle_message(method, payload, channel);
         }
-        anyhow::bail!("unknown plugin source: {source}");
+        anyhow::bail!("unknown gadget source: {source}");
     }
 
     // =========================================================
     // Shutdown
     // =========================================================
 
-    /// Disable all plugins during app exit.
+    /// Disable all gadgets during app exit.
     pub fn disable_all(&self) {
         for slot in &self.slots {
-            slot.plugin.disable();
+            slot.gadget.disable();
         }
     }
 
@@ -779,10 +779,10 @@ impl GadgetHost {
 
     /// Handle a settings change event from the store. Routes
     /// `enabled.<id>` changes to the host-managed lifecycle and
-    /// `gadgets.<id>.*` changes to the plugin's `setting_changed`.
+    /// `gadgets.<id>.*` changes to the gadget's `setting_changed`.
     ///
     /// Called from the `settings-changed` Tauri event listener.
-    /// Both paths go through the plugin's `CoalescingDispatcher`
+    /// Both paths go through the gadget's `CoalescingDispatcher`
     /// for serialization and dedup.
     pub fn handle_setting_changed(
         &self,
@@ -791,16 +791,16 @@ impl GadgetHost {
         app: &tauri::AppHandle,
     ) {
         // -------------------------------------------------------
-        // Path 1: enabled.<plugin-id>
+        // Path 1: enabled.<gadget-id>
         // -------------------------------------------------------
-        if let Some(plugin_id) = key.strip_prefix("enabled.") {
-            let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == plugin_id) else {
+        if let Some(gadget_id) = key.strip_prefix("enabled.") {
+            let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == gadget_id) else {
                 return;
             };
 
             slot.dispatcher.enqueue(key.to_string(), value);
 
-            let plugin = Arc::clone(&slot.plugin);
+            let gadget = Arc::clone(&slot.gadget);
             let store = Arc::clone(&self.store);
             let frecency = Arc::clone(&self.frecency);
             let enabled_flag = &slot.enabled;
@@ -820,9 +820,9 @@ impl GadgetHost {
                         settings: GadgetSettings::new(Arc::clone(&store), id),
                         frecency: GadgetFrecency::new(Arc::clone(&frecency), id),
                     };
-                    plugin.enable(&app, &ctx);
+                    gadget.enable(&app, &ctx);
                 } else if !new_enabled && was_enabled {
-                    plugin.disable();
+                    gadget.disable();
                 }
                 // If same state → no-op (coalesced to identical value)
             });
@@ -834,25 +834,25 @@ impl GadgetHost {
         }
 
         // -------------------------------------------------------
-        // Path 2: gadgets.<plugin-id>.<setting-key>
+        // Path 2: gadgets.<gadget-id>.<setting-key>
         // -------------------------------------------------------
         if let Some(rest) = key.strip_prefix("gadgets.") {
-            // Split "plugin-id.setting-key" at the first dot.
+            // Split "gadget-id.setting-key" at the first dot.
             let Some(dot_pos) = rest.find('.') else {
                 return;
             };
-            let plugin_id = &rest[..dot_pos];
+            let gadget_id = &rest[..dot_pos];
             let setting_key = &rest[dot_pos + 1..];
 
-            let Some(slot) = self.slots.iter().find(|s| s.plugin.id() == plugin_id) else {
+            let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == gadget_id) else {
                 return;
             };
 
             slot.dispatcher.enqueue(setting_key.to_string(), value);
 
-            let plugin = Arc::clone(&slot.plugin);
+            let gadget = Arc::clone(&slot.gadget);
             slot.dispatcher.dispatch(|k, v| {
-                plugin.setting_changed(k, v.clone());
+                gadget.setting_changed(k, v.clone());
             });
         }
     }
@@ -869,7 +869,7 @@ impl GadgetHost {
 /// produce a view reference. In non-prefix (always-on) mode,
 /// `CustomUI` is downgraded to plain results — entries are
 /// still extracted but the custom view is dropped.
-fn process_plugin_response(
+fn process_gadget_response(
     response: GadgetResponse,
     source: &str,
     allow_custom_ui: bool,
@@ -890,9 +890,9 @@ fn process_plugin_response(
         GadgetResponse::CustomUI { .. } => {
             // CustomUI is only honoured in prefix mode. In non-prefix
             // (always-on) mode we downgrade to plain results so the
-            // plugin's entries still appear but without the custom view.
+            // gadget's entries still appear but without the custom view.
             eprintln!(
-                "search: dropping CustomUI from plugin '{}' — \
+                "search: dropping CustomUI from gadget '{}' — \
                  CustomUI is only supported in prefix mode",
                 source
             );
@@ -923,9 +923,9 @@ fn process_plugin_response(
     (view_ref, entries)
 }
 
-/// Find the plugin whose registered prefix is the longest
+/// Find the gadget whose registered prefix is the longest
 /// match for `query`. Returns `None` when no prefix matches.
-/// Disabled plugins are skipped.
+/// Disabled gadgets are skipped.
 fn find_prefix_match<'a>(
     slots: &'a [GadgetSlot],
     query: &str,
@@ -937,9 +937,9 @@ fn find_prefix_match<'a>(
         if !slot.is_active() {
             continue;
         }
-        for prefix in slot.plugin.search_prefixes() {
+        for prefix in slot.gadget.search_prefixes() {
             if prefix.len() > best_len && query.starts_with(prefix.as_str()) {
-                best = Some((&slot.plugin, prefix.as_str()));
+                best = Some((&slot.gadget, prefix.as_str()));
                 best_len = prefix.len();
             }
         }
@@ -954,9 +954,9 @@ fn find_prefix_match<'a>(
 
 /// Show the launcher and emit `activate-gadget-custom-ui` so the
 /// frontend switches to the gadget's view.
-fn show_launcher_with_plugin(
+fn show_launcher_with_gadget(
     app: &tauri::AppHandle,
-    plugin_id: &str,
+    gadget_id: &str,
     view: &str,
     data: Option<serde_json::Value>,
 ) {
@@ -974,7 +974,7 @@ fn show_launcher_with_plugin(
     if let Err(e) = app.emit(
         "activate-gadget-custom-ui",
         ActivateGadgetPayload {
-            gadget_id: plugin_id.to_string(),
+            gadget_id: gadget_id.to_string(),
             view: view.to_string(),
             data,
         },
@@ -993,12 +993,12 @@ mod tests {
     use crate::commands::types::CatalogEntry;
 
     // -------------------------------------------------------
-    // Mock Plugin
+    // Mock Gadget
     //
-    // Configurable stub implementing `Plugin` for unit tests.
+    // Configurable stub implementing `Gadget` for unit tests.
     // Each field controls a specific trait method's return
     // value. Defaults produce an empty, enabled, prefix-free
-    // plugin.
+    // gadget.
     // -------------------------------------------------------
 
     struct MockGadget {
@@ -1077,7 +1077,7 @@ mod tests {
         }
     }
 
-    /// Helper to wrap mock plugins in `GadgetSlot`. Tests
+    /// Helper to wrap mock gadgets in `GadgetSlot`. Tests
     /// default slots to `GadgetSourceKind::Builtin` since
     /// they exercise host routing logic, not source-kind
     /// plumbing — dedicated tests below cover the source-kind
@@ -1095,21 +1095,21 @@ mod tests {
     }
 
     // =======================================================
-    // Plugin::search() contract tests
+    // Gadget::search() contract tests
     // =======================================================
 
     #[test]
     fn default_search_returns_none() {
-        let plugin = MockGadget::new("empty");
-        assert!(plugin.search("anything", None).is_none());
+        let gadget = MockGadget::new("empty");
+        assert!(gadget.search("anything", None).is_none());
     }
 
     #[test]
     fn search_returns_configured_response() {
-        let plugin = MockGadget::new("test")
+        let gadget = MockGadget::new("test")
             .with_search_response(GadgetResponse::Results(vec![scored_entry("r1", 100)]));
 
-        let result = plugin.search("query", None);
+        let result = gadget.search("query", None);
         assert!(result.is_some());
 
         match result.unwrap() {
@@ -1123,13 +1123,13 @@ mod tests {
 
     #[test]
     fn search_returns_custom_ui() {
-        let plugin = MockGadget::new("test").with_search_response(GadgetResponse::CustomUI {
+        let gadget = MockGadget::new("test").with_search_response(GadgetResponse::CustomUI {
             view: "history".into(),
             data: Some(serde_json::json!({"key": "value"})),
             results: vec![scored_entry("h1", 50)],
         });
 
-        let result = plugin.search("=2+2", Some("="));
+        let result = gadget.search("=2+2", Some("="));
         match result.unwrap() {
             GadgetResponse::CustomUI {
                 view,
@@ -1146,13 +1146,13 @@ mod tests {
 
     #[test]
     fn search_returns_inline_ui() {
-        let plugin = MockGadget::new("test").with_search_response(GadgetResponse::InlineUI {
+        let gadget = MockGadget::new("test").with_search_response(GadgetResponse::InlineUI {
             view: "result".into(),
             data: None,
             results: vec![],
         });
 
-        let result = plugin.search("42", None);
+        let result = gadget.search("42", None);
         match result.unwrap() {
             GadgetResponse::InlineUI { view, .. } => {
                 assert_eq!(view, "result");
@@ -1162,19 +1162,19 @@ mod tests {
     }
 
     // =======================================================
-    // search_prefixes() contract tests
+    // Gadget::search_prefixes() contract tests
     // =======================================================
 
     #[test]
     fn default_prefixes_are_empty() {
-        let plugin = MockGadget::new("no-prefix");
-        assert!(plugin.search_prefixes().is_empty());
+        let gadget = MockGadget::new("no-prefix");
+        assert!(gadget.search_prefixes().is_empty());
     }
 
     #[test]
     fn configured_prefixes_returned() {
-        let plugin = MockGadget::new("calc").with_prefixes(&["=", "calc "]);
-        let prefixes = plugin.search_prefixes();
+        let gadget = MockGadget::new("calc").with_prefixes(&["=", "calc "]);
+        let prefixes = gadget.search_prefixes();
         assert_eq!(prefixes.len(), 2);
         assert_eq!(prefixes[0], "=");
         assert_eq!(prefixes[1], "calc ");
@@ -1185,13 +1185,13 @@ mod tests {
     // =======================================================
 
     #[test]
-    fn no_plugins_no_match() {
+    fn no_gadgets_no_match() {
         let plugins = gadget_slots(vec![]);
         assert!(find_prefix_match(&plugins, "=2+2").is_none());
     }
 
     #[test]
-    fn no_prefix_plugins_no_match() {
+    fn no_prefix_gadgets_no_match() {
         let plugins = gadget_slots(vec![MockGadget::new("a"), MockGadget::new("b")]);
         assert!(find_prefix_match(&plugins, "hello").is_none());
     }
@@ -1199,8 +1199,8 @@ mod tests {
     #[test]
     fn single_prefix_match() {
         let plugins = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
-        let (plugin, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
-        assert_eq!(plugin.id(), "calc");
+        let (gadget, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
+        assert_eq!(gadget.id(), "calc");
         assert_eq!(prefix, "=");
     }
 
@@ -1212,8 +1212,8 @@ mod tests {
         ]);
 
         // "!google" matches both "!" and "!g" — longest wins.
-        let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
-        assert_eq!(plugin.id(), "long");
+        let (gadget, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        assert_eq!(gadget.id(), "long");
         assert_eq!(prefix, "!g");
     }
 
@@ -1225,7 +1225,7 @@ mod tests {
     }
 
     #[test]
-    fn disabled_plugin_prefix_skipped() {
+    fn disabled_gadget_prefix_skipped() {
         let plugins = gadget_slots(vec![
             MockGadget::new("calc")
                 .with_prefixes(&["="])
@@ -1235,7 +1235,7 @@ mod tests {
     }
 
     #[test]
-    fn disabled_plugin_skipped_fallback_to_shorter() {
+    fn disabled_gadget_skipped_fallback_to_shorter() {
         let plugins = gadget_slots(vec![
             MockGadget::new("disabled-long")
                 .with_prefixes(&["!g"])
@@ -1243,8 +1243,8 @@ mod tests {
             MockGadget::new("enabled-short").with_prefixes(&["!"]),
         ]);
 
-        let (plugin, prefix) = find_prefix_match(&plugins, "!google").unwrap();
-        assert_eq!(plugin.id(), "enabled-short");
+        let (gadget, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        assert_eq!(gadget.id(), "enabled-short");
         assert_eq!(prefix, "!");
     }
 
@@ -1255,8 +1255,8 @@ mod tests {
             MockGadget::new("http").with_prefixes(&["http://", "https://"]),
         ]);
 
-        let (plugin, prefix) = find_prefix_match(&plugins, "https://example.com").unwrap();
-        assert_eq!(plugin.id(), "http");
+        let (gadget, prefix) = find_prefix_match(&plugins, "https://example.com").unwrap();
+        assert_eq!(gadget.id(), "http");
         assert_eq!(prefix, "https://");
     }
 
@@ -1264,13 +1264,13 @@ mod tests {
     fn exact_prefix_query() {
         // Query is exactly the prefix with nothing after it.
         let plugins = gadget_slots(vec![MockGadget::new("emoji").with_prefixes(&[":"])]);
-        let (plugin, prefix) = find_prefix_match(&plugins, ":").unwrap();
-        assert_eq!(plugin.id(), "emoji");
+        let (gadget, prefix) = find_prefix_match(&plugins, ":").unwrap();
+        assert_eq!(gadget.id(), "emoji");
         assert_eq!(prefix, ":");
     }
 
     #[test]
-    fn multiple_prefixes_same_plugin() {
+    fn multiple_prefixes_same_gadget() {
         let plugins = gadget_slots(vec![
             MockGadget::new("multi").with_prefixes(&["http://", "https://"]),
         ]);
@@ -1283,24 +1283,24 @@ mod tests {
     }
 
     // =======================================================
-    // process_plugin_response() tests
+    // process_gadget_response() tests
     // =======================================================
 
     #[test]
     fn results_response_extracts_entries() {
         let response = GadgetResponse::Results(vec![scored_entry("a", 100), scored_entry("b", 50)]);
-        let (view, entries) = process_plugin_response(response, "test-plugin", false);
+        let (view, entries) = process_gadget_response(response, "test-gadget", false);
         assert!(view.is_none());
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].inner.id, "a");
         assert_eq!(entries[1].inner.id, "b");
-        assert_eq!(entries[0].source, "test-plugin");
+        assert_eq!(entries[0].source, "test-gadget");
     }
 
     #[test]
     fn empty_results_yields_empty_entries() {
         let response = GadgetResponse::Results(vec![]);
-        let (view, entries) = process_plugin_response(response, "p", false);
+        let (view, entries) = process_gadget_response(response, "p", false);
         assert!(view.is_none());
         assert!(entries.is_empty());
     }
@@ -1312,7 +1312,7 @@ mod tests {
             data: Some(serde_json::json!({"x": 1})),
             results: vec![scored_entry("h1", 10)],
         };
-        let (view, entries) = process_plugin_response(response, "calc", true);
+        let (view, entries) = process_gadget_response(response, "calc", true);
         let (kind, vr) = view.unwrap();
         assert!(matches!(kind, ViewKind::Custom));
         assert_eq!(vr.gadget_id, "calc");
@@ -1329,7 +1329,7 @@ mod tests {
             data: None,
             results: vec![scored_entry("e1", 20), scored_entry("e2", 10)],
         };
-        let (view, entries) = process_plugin_response(response, "emoji", false);
+        let (view, entries) = process_gadget_response(response, "emoji", false);
         // View is dropped (not allowed outside prefix mode).
         assert!(view.is_none());
         // Entries are still extracted from the CustomUI response.
@@ -1343,7 +1343,7 @@ mod tests {
             data: Some(serde_json::json!({"result": "42"})),
             results: vec![],
         };
-        let (view, entries) = process_plugin_response(response, "calc", false);
+        let (view, entries) = process_gadget_response(response, "calc", false);
         let (kind, vr) = view.unwrap();
         assert!(matches!(kind, ViewKind::Inline));
         assert_eq!(vr.view, "result");
@@ -1359,7 +1359,7 @@ mod tests {
                 data: None,
                 results: vec![],
             };
-            let (view, _) = process_plugin_response(response, "p", allow_custom);
+            let (view, _) = process_gadget_response(response, "p", allow_custom);
             assert!(
                 view.is_some(),
                 "InlineUI should produce view ref with allow_custom={allow_custom}"
@@ -1374,7 +1374,7 @@ mod tests {
             data: None,
             results: vec![],
         };
-        let (view, entries) = process_plugin_response(response, "emoji", true);
+        let (view, entries) = process_gadget_response(response, "emoji", true);
         assert!(view.is_some());
         assert!(entries.is_empty());
     }
@@ -1382,8 +1382,8 @@ mod tests {
     #[test]
     fn source_id_propagated_to_entries() {
         let response = GadgetResponse::Results(vec![scored_entry("x", 1)]);
-        let (_, entries) = process_plugin_response(response, "my-plugin", false);
-        assert_eq!(entries[0].source, "my-plugin");
+        let (_, entries) = process_gadget_response(response, "my-gadget", false);
+        assert_eq!(entries[0].source, "my-gadget");
     }
 
     // =======================================================
@@ -1430,7 +1430,7 @@ mod tests {
         ];
         let map: std::collections::HashMap<String, GadgetSourceKind> = slots
             .iter()
-            .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
+            .map(|slot| (slot.gadget.id().to_string(), slot.source_kind))
             .collect();
 
         assert_eq!(map.len(), 4);

@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// GadgetFrecency — plugin-scoped frecency wrapper
+// GadgetFrecency — gadget-scoped frecency wrapper
 //
-// Same pattern as GadgetSettings: binds the plugin_id at
-// construction so plugins cannot access other plugins'
+// Same pattern as GadgetSettings: binds the gadget_id at
+// construction so gadgets cannot access other gadgets'
 // frecency data.
 // =========================================================
 
@@ -15,22 +15,22 @@ use std::sync::Arc;
 
 use super::{FrecencyItem, FrecencyStore, FrecencyTarget};
 
-/// Plugin-scoped view of the [`FrecencyStore`].
+/// Gadget-scoped view of the [`FrecencyStore`].
 ///
-/// Binds `plugin_id` at construction — plugins cannot access
-/// other plugins' frecency data. Obtained from `GadgetContext`
+/// Binds `gadget_id` at construction — gadgets cannot access
+/// other gadgets' frecency data. Obtained from `GadgetContext`
 /// during `enable()`.
 #[derive(Clone)]
 pub struct GadgetFrecency {
     store: Arc<FrecencyStore>,
-    plugin_id: String,
+    gadget_id: String,
 }
 
 impl GadgetFrecency {
-    pub fn new(store: Arc<FrecencyStore>, plugin_id: &str) -> Self {
+    pub fn new(store: Arc<FrecencyStore>, gadget_id: &str) -> Self {
         Self {
             store,
-            plugin_id: plugin_id.to_string(),
+            gadget_id: gadget_id.to_string(),
         }
     }
 
@@ -42,27 +42,27 @@ impl GadgetFrecency {
     /// the same selection the host already handles, or the event
     /// will be double-counted.
     pub fn record(&self, item_id: &str) {
-        self.store.record(&self.plugin_id, item_id);
+        self.store.record(&self.gadget_id, item_id);
     }
 
     /// Compute the frecency score for a single item.
     pub fn score(&self, item_id: &str) -> u32 {
-        self.store.score(&self.plugin_id, item_id)
+        self.store.score(&self.gadget_id, item_id)
     }
 
     /// Batch-compute frecency scores for multiple items.
     pub fn scores(&self, item_ids: &[&str]) -> HashMap<String, u32> {
-        self.store.scores(&self.plugin_id, item_ids)
+        self.store.scores(&self.gadget_id, item_ids)
     }
 
     /// Apply frecency score bonuses to a mutable slice of results.
     pub fn apply_scores(&self, results: &mut [impl FrecencyTarget]) {
-        self.store.apply_scores(&self.plugin_id, results);
+        self.store.apply_scores(&self.gadget_id, results);
     }
 
     /// Return the top-N most frequently/recently used items.
     pub fn top_items(&self, limit: usize) -> Vec<FrecencyItem> {
-        self.store.top_items(&self.plugin_id, limit)
+        self.store.top_items(&self.gadget_id, limit)
     }
 
     /// Whether frecency tracking is currently enabled.

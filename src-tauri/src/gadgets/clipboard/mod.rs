@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Clipboard Manager Plugin
+// Clipboard Manager Gadget
 //
-// Catalog plugin that monitors the system clipboard, stores
+// Catalog gadget that monitors the system clipboard, stores
 // history across all content formats, and lets users browse
 // and paste previous entries via a custom UI.
 //
@@ -16,7 +16,7 @@
 //   watcher  — clipboard change handler (background thread)
 //
 // Lifecycle:
-//   The host manages enable/disable. On enable(), the plugin
+//   The host manages enable/disable. On enable(), the gadget
 //   opens its database, starts the clipboard watcher and the
 //   retention cleanup thread. On disable(), both are stopped.
 //   The host calls setting_changed() for runtime updates to
@@ -289,7 +289,7 @@ impl Gadget for ClipboardGadget {
         // ----- Initialize state (DB + file storage) -----
         //
         // State lives under `gadget-home/<id>/`: code lives
-        // under `plugins/` and is owned by the installer, so
+        // under `gadgets/` and is owned by the installer, so
         // host-managed state gets its own root with reserved
         // sibling slots (`sql/`, `files/`, future additions).
         let data_dir = app

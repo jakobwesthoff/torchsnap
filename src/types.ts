@@ -157,6 +157,6 @@ export type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: str
 export interface FrecencyStats {
   totalEvents: number;
   uniqueItems: number;
-  eventsByPlugin: Record<string, number>;
+  eventsByGadget: Record<string, number>;
   oldestEvent: number | null;
 }

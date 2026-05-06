@@ -49,9 +49,9 @@ pub struct GadgetShortcut {
     /// Default key combo in Tauri shortcut syntax
     /// (e.g., "CmdOrCtrl+Shift+V").
     pub default_shortcut: &'static str,
-    /// Plugin-scoped settings key where the current combo is stored
+    /// Gadget-scoped settings key where the current combo is stored
     /// (e.g., "shortcut.open-clipboard"). The manager reads
-    /// `plugins.<plugin_id>.<settings_key>` from the store.
+    /// `gadgets.<gadget_id>.<settings_key>` from the store.
     pub settings_key: &'static str,
 }
 

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WasmGadgetInstance — one per loaded plugin
+// WasmGadgetInstance — one per loaded gadget
 //
 // Wraps the wasmtime `Store<GadgetState>` plus the typed
 // `bindings::Gadget` and a host-side `Logger`. Per-call
@@ -16,7 +16,7 @@
 // land via `impl WasmGadgetInstance` extension blocks in
 // the `host/<capability>.rs` files. The foundational
 // setters defined here cover the cross-capability state
-// (`plugin_source`, `path_context`) plus the
+// (`gadget_source`, `path_context`) plus the
 // `with_state_mut` chokepoint every other setter routes
 // through.
 // =========================================================
@@ -33,9 +33,9 @@ use crate::wasm::source::GadgetSource;
 
 use super::state::GadgetState;
 
-/// A loaded WASM plugin instance.
+/// A loaded WASM gadget instance.
 ///
-/// Wraps the wasmtime Store and typed Plugin bindings. All
+/// Wraps the wasmtime Store and typed Gadget bindings. All
 /// guest calls go through the Mutex-protected Store to
 /// satisfy `Send + Sync` requirements.
 ///
@@ -56,7 +56,7 @@ use super::state::GadgetState;
 /// empty result instead of running.
 pub struct WasmGadgetInstance {
     pub(crate) store: Mutex<Store<GadgetState>>,
-    pub(crate) plugin: bindings::Gadget,
+    pub(crate) gadget: bindings::Gadget,
     pub(crate) logger: Logger,
     pub(crate) search_generation: AtomicU64,
 }
@@ -67,18 +67,18 @@ impl WasmGadgetInstance {
     /// only legitimate caller is the engine.
     pub(crate) fn from_parts(
         store: Store<GadgetState>,
-        plugin: bindings::Gadget,
+        gadget: bindings::Gadget,
         logger: Logger,
     ) -> Self {
         Self {
             store: Mutex::new(store),
-            plugin,
+            gadget,
             logger,
             search_generation: AtomicU64::new(0),
         }
     }
 
-    /// Apply a closure to a mutable reference to the plugin's
+    /// Apply a closure to a mutable reference to the gadget's
     /// `GadgetState`, holding the store lock for its duration.
     /// The single chokepoint every capability setter routes
     /// through, so the lock-acquire / `data_mut()` pattern
@@ -93,14 +93,14 @@ impl WasmGadgetInstance {
 // Foundational setters — cross-capability state
 //
 // `path_context` is consumed by both `paths::resolve` and
-// `command::run`; `plugin_source` is consumed by
+// `command::run`; `gadget_source` is consumed by
 // `assets::*`. Both are bridge-stashed at `enable()`.
 // =========================================================
 
 impl WasmGadgetInstance {
     /// Stash the resolved `${...}` substitution context.
     /// Called by the bridge at `enable()` after computing the
-    /// per-plugin paths.
+    /// per-gadget paths.
     pub fn set_path_context(&self, ctx: PathContext) {
         self.with_state_mut(|state| state.path_context = Some(ctx));
     }
@@ -110,20 +110,20 @@ impl WasmGadgetInstance {
         self.with_state_mut(|state| state.path_context = None);
     }
 
-    /// Stash the plugin's own `GadgetSource` handle. Called
+    /// Stash the gadget's own `GadgetSource` handle. Called
     /// by the bridge on `enable()`. The `assets::*` host
-    /// imports use this Arc to read the plugin's bundled
+    /// imports use this Arc to read the gadget's bundled
     /// files on demand.
-    pub fn set_plugin_source(&self, source: Arc<dyn GadgetSource + Send + Sync>) {
-        self.with_state_mut(|state| state.plugin_source = Some(source));
+    pub fn set_gadget_source(&self, source: Arc<dyn GadgetSource + Send + Sync>) {
+        self.with_state_mut(|state| state.gadget_source = Some(source));
     }
 
-    /// Drop the plugin source on `disable()`. Eager release
+    /// Drop the gadget source on `disable()`. Eager release
     /// so the underlying `ArchiveSource` file handle (or
     /// the `DirectorySource` path) doesn't linger across
     /// enable cycles.
-    pub fn clear_plugin_source(&self) {
-        self.with_state_mut(|state| state.plugin_source = None);
+    pub fn clear_gadget_source(&self) {
+        self.with_state_mut(|state| state.gadget_source = None);
     }
 }
 
@@ -134,7 +134,7 @@ impl WasmGadgetInstance {
 // The outer `Result` is for wasmtime trap / serialization
 // errors; for exports that return their own `Result` (e.g.
 // `handle-message`, `run-task`), the inner result is the
-// plugin's success/error arm.
+// gadget's success/error arm.
 //
 // Every call holds the store mutex for its full duration —
 // that is the ordering invariant the host import
@@ -147,20 +147,20 @@ impl WasmGadgetInstance {
     pub fn enable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("enable").start();
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        self.gadget
             .torchsnap_gadget_lifecycle()
             .call_enable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling plugin enable(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget enable(): {e}"))
     }
 
     /// Call the guest's `disable` export.
     pub fn disable(&self) -> anyhow::Result<()> {
         let _span = self.logger.span("disable").start();
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        self.gadget
             .torchsnap_gadget_lifecycle()
             .call_disable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling plugin disable(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget disable(): {e}"))
     }
 
     /// Call the guest's `on-setting-changed` export. Used by
@@ -174,26 +174,26 @@ impl WasmGadgetInstance {
             .meta("key", key)
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        self.gadget
             .torchsnap_gadget_lifecycle()
             .call_on_setting_changed(&mut *store, key, value)
-            .map_err(|e| anyhow::anyhow!("calling plugin on_setting_changed(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget on_setting_changed(): {e}"))
     }
 
     /// Call the guest's `tasks::run-task` export.
     ///
-    /// Used by the per-plugin scheduler loop to fire a
+    /// Used by the per-gadget scheduler loop to fire a
     /// scheduled task. The `task_id` matches a `[[tasks]]`
-    /// entry from the manifest. The plugin dispatches by
+    /// entry from the manifest. The gadget dispatches by
     /// name and runs whatever work the task is supposed to
     /// do.
     ///
     /// The outer `Result` is for wasmtime trap /
     /// serialization errors; the inner
-    /// `Result<(), String>` is the plugin's own
+    /// `Result<(), String>` is the gadget's own
     /// success/error arm. Returning `Err(string)` is
     /// logged by the bridge — it does not auto-disable the
-    /// plugin.
+    /// gadget.
     #[allow(clippy::type_complexity)]
     pub fn run_task(&self, task_id: &str) -> anyhow::Result<Result<(), String>> {
         let _span = self
@@ -202,18 +202,18 @@ impl WasmGadgetInstance {
             .meta("task_id", task_id)
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        self.gadget
             .torchsnap_gadget_tasks()
             .call_run_task(&mut *store, task_id)
-            .map_err(|e| anyhow::anyhow!("calling plugin run_task(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget run_task(): {e}"))
     }
 
     /// Call the guest's `messaging::handle-message` export.
     ///
-    /// `payload` is a JSON-encoded string (the plugin parses
+    /// `payload` is a JSON-encoded string (the gadget parses
     /// it on its side). The returned outer `Result` is for
     /// wasmtime trap / serialization errors; the inner
-    /// `Result<String, String>` is the plugin's own
+    /// `Result<String, String>` is the gadget's own
     /// success/error arm. The success arm is the
     /// JSON-encoded response string.
     #[allow(clippy::type_complexity)]
@@ -228,10 +228,10 @@ impl WasmGadgetInstance {
             .meta("method", method)
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
-        self.plugin
+        self.gadget
             .torchsnap_gadget_messaging()
             .call_handle_message(&mut *store, method, payload)
-            .map_err(|e| anyhow::anyhow!("calling plugin handle_message(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget handle_message(): {e}"))
     }
 
     /// Call the guest's `entries` export and convert to native types.
@@ -239,10 +239,10 @@ impl WasmGadgetInstance {
         let _span = self.logger.span("entries").start();
         let mut store = self.store.lock().expect("store not poisoned");
         let wit_entries = self
-            .plugin
+            .gadget
             .torchsnap_gadget_search()
             .call_entries(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling plugin entries(): {e}"))?;
+            .map_err(|e| anyhow::anyhow!("calling gadget entries(): {e}"))?;
 
         Ok(wit_entries.into_iter().map(Into::into).collect())
     }
@@ -275,10 +275,10 @@ impl WasmGadgetInstance {
         }
 
         let response = self
-            .plugin
+            .gadget
             .torchsnap_gadget_search()
             .call_search(&mut *store, query, matched_prefix)
-            .map_err(|e| anyhow::anyhow!("calling plugin search(): {e}"))?;
+            .map_err(|e| anyhow::anyhow!("calling gadget search(): {e}"))?;
 
         Ok(response.into())
     }
@@ -300,14 +300,14 @@ impl WasmGadgetInstance {
             action_id.clone().into();
 
         let result = self
-            .plugin
+            .gadget
             .torchsnap_gadget_search()
             .call_execute(&mut *store, entry_id, &wit_action_id)
-            .map_err(|e| anyhow::anyhow!("calling plugin execute(): {e}"))?;
+            .map_err(|e| anyhow::anyhow!("calling gadget execute(): {e}"))?;
 
         match result {
             Ok(post_action) => Ok(post_action.into()),
-            Err(msg) => anyhow::bail!("plugin execute() returned error: {msg}"),
+            Err(msg) => anyhow::bail!("gadget execute() returned error: {msg}"),
         }
     }
 }

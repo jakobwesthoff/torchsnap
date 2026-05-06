@@ -79,18 +79,18 @@ impl WasmRuntime {
         }))
     }
 
-    /// Create a Logger for a specific plugin, used for
+    /// Create a Logger for a specific gadget, used for
     /// host-side span creation around guest calls.
-    fn logger_for(&self, plugin_id: &str) -> Logger {
+    fn logger_for(&self, gadget_id: &str) -> Logger {
         Logger::new(
             self.log_sender.clone(),
             Arc::clone(&self.span_registry),
-            LogSource::Gadget(plugin_id.to_string()),
+            LogSource::Gadget(gadget_id.to_string()),
         )
     }
 
     /// Compile a WASM component's bytes and cache the
-    /// resulting `Component` under `plugin_id`.
+    /// resulting `Component` under `gadget_id`.
     ///
     /// Must be called before the first `instantiate()` for
     /// that ID. Compilation is the expensive step (parse +
@@ -101,9 +101,9 @@ impl WasmRuntime {
     /// Re-compiling an existing entry replaces the cached
     /// `Component` — no current code path triggers this,
     /// but the branch is kept for a future hot-reload path.
-    pub fn compile(&self, plugin_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()> {
-        let logger = self.logger_for(plugin_id);
-        let _compile_span = logger.span("compile").meta("plugin_id", plugin_id).start();
+    pub fn compile(&self, gadget_id: &str, wasm_bytes: &[u8]) -> anyhow::Result<()> {
+        let logger = self.logger_for(gadget_id);
+        let _compile_span = logger.span("compile").meta("gadget_id", gadget_id).start();
 
         let component = Component::new(&self.engine, wasm_bytes)
             .map_err(|e| anyhow::anyhow!("compiling WASM component: {e}"))?;
@@ -111,12 +111,12 @@ impl WasmRuntime {
         self.components
             .lock()
             .expect("wasm component cache not poisoned")
-            .insert(plugin_id.to_string(), component);
+            .insert(gadget_id.to_string(), component);
 
         Ok(())
     }
 
-    /// Instantiate a previously-compiled WASM plugin.
+    /// Instantiate a previously-compiled WASM gadget.
     ///
     /// Builds a fresh linker + `WasiCtx` + `GadgetState` +
     /// `Store` against the cached `Component` and returns a
@@ -125,29 +125,29 @@ impl WasmRuntime {
     /// linker construction is just map inserts (no WASM
     /// compilation) and `instantiate` is not in a hot path.
     ///
-    /// Errors if `plugin_id` has not been compiled — that
+    /// Errors if `gadget_id` has not been compiled — that
     /// is an internal lifecycle bug, not a user-facing
     /// failure mode.
-    pub fn instantiate(&self, plugin_id: &str) -> anyhow::Result<WasmGadgetInstance> {
-        let logger = self.logger_for(plugin_id);
+    pub fn instantiate(&self, gadget_id: &str) -> anyhow::Result<WasmGadgetInstance> {
+        let logger = self.logger_for(gadget_id);
         let _instantiate_span = logger
             .span("instantiate")
-            .meta("plugin_id", plugin_id)
+            .meta("gadget_id", gadget_id)
             .start();
 
         // Clone the `Component` out of the cache under the
         // lock (wasmtime's `Component` is an `Arc` internally
         // so cloning is cheap) and drop the guard before the
-        // linker/store work, so concurrent plugin loads don't
+        // linker/store work, so concurrent gadget loads don't
         // block on each other.
         let component = {
             let cache = self
                 .components
                 .lock()
                 .expect("wasm component cache not poisoned");
-            cache.get(plugin_id).cloned().ok_or_else(|| {
+            cache.get(gadget_id).cloned().ok_or_else(|| {
                 anyhow::anyhow!(
-                    "plugin `{plugin_id}` has not been compiled — call WasmRuntime::compile first"
+                    "gadget `{gadget_id}` has not been compiled — call WasmRuntime::compile first"
                 )
             })?
         };
@@ -160,11 +160,11 @@ impl WasmRuntime {
             &mut linker,
             |state| state,
         )
-        .map_err(|e| anyhow::anyhow!("linking plugin imports: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("linking gadget imports: {e}"))?;
 
         // Build the WASI context. Minimal sandbox: no filesystem,
         // no network, no env vars. Stdout/stderr are inherited so
-        // plugin println! reaches the host terminal.
+        // gadget println! reaches the host terminal.
         // TODO(redirect-plugin-stdout): see todos/plugin-host/wasm/01kqmdf6rgavhar6m4mm8vhxeb-redirect-plugin-stdout-to-logger.md
         let wasi = WasiCtxBuilder::new()
             .inherit_stdout()
@@ -172,7 +172,7 @@ impl WasmRuntime {
             .build();
 
         let state = GadgetState::new(
-            plugin_id.to_string(),
+            gadget_id.to_string(),
             wasi,
             self.log_sender.clone(),
             Arc::clone(&self.span_registry),
@@ -182,7 +182,7 @@ impl WasmRuntime {
 
         // Instantiate the component and get the typed bindings.
         let plugin = bindings::Gadget::instantiate(&mut store, &component, &linker)
-            .map_err(|e| anyhow::anyhow!("instantiating WASM plugin: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("instantiating WASM gadget: {e}"))?;
 
         Ok(WasmGadgetInstance::from_parts(store, plugin, logger))
     }

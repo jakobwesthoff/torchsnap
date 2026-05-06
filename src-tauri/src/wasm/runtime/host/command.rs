@@ -73,11 +73,11 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
             None => {
                 let Some(ctx) = self.path_context.as_ref() else {
                     return Err(WitErr::SpawnFailed(
-                        "no path context available — command::run requires an enabled plugin"
+                        "no path context available — command::run requires an enabled gadget"
                             .into(),
                     ));
                 };
-                let scratch = ctx.plugin_data.join("exec-cwd");
+                let scratch = ctx.gadget_data.join("exec-cwd");
                 if let Err(e) = std::fs::create_dir_all(&scratch) {
                     return Err(WitErr::SpawnFailed(format!(
                         "create scratch cwd `{}`: {e}",
@@ -113,7 +113,7 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
         // 5. Spawn + run. Synchronous from the guest's perspective;
         //    `block_in_place` lets the async work run on the host's
         //    thread pool without blocking the tokio runtime.
-        let plugin_id = self.gadget_id.clone();
+        let gadget_id = self.gadget_id.clone();
         let log_sender = self.log_sender.clone();
         let argv = options.args.clone();
         let stdin_bytes = options.stdin.clone();
@@ -134,9 +134,9 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
 
         // 6. Audit log: every call gets a `debug`-level entry with
         //    the binary, full argv, exit code, duration, and output
-        //    sizes. Plugin authors are responsible for argv hygiene
+        //    sizes. Gadget authors are responsible for argv hygiene
         //    — see ADR 0040.
-        emit_command_audit(&log_sender, &plugin_id, &binary, &argv, &outcome, started);
+        emit_command_audit(&log_sender, &gadget_id, &binary, &argv, &outcome, started);
 
         outcome
     }
@@ -490,7 +490,7 @@ fn signal_name(signal: i32) -> String {
 /// argv-hygiene contract.
 fn emit_command_audit(
     log_sender: &LogSender,
-    plugin_id: &str,
+    gadget_id: &str,
     binary: &str,
     argv: &[String],
     outcome: &Result<
@@ -548,7 +548,7 @@ fn emit_command_audit(
     log_sender.send(LogItem {
         seq: 0,
         timestamp: SystemTime::now(),
-        source: LogSource::Gadget(plugin_id.to_string()),
+        source: LogSource::Gadget(gadget_id.to_string()),
         kind: LogItemKind::Message {
             level: LogLevel::Debug,
             message: format!("command::run {binary}"),

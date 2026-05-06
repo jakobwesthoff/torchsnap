@@ -307,10 +307,10 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn ctx_with(plugin_archive: PathBuf, plugin_data: PathBuf) -> PathContext {
+    fn ctx_with(gadget_archive: PathBuf, gadget_data: PathBuf) -> PathContext {
         PathContext {
-            plugin_data,
-            plugin_archive,
+            gadget_data,
+            gadget_archive,
             home: PathBuf::from("/tmp"),
             xdg_config: PathBuf::from("/tmp"),
             xdg_data: PathBuf::from("/tmp"),
@@ -319,8 +319,8 @@ mod tests {
 
     fn default_ctx() -> PathContext {
         PathContext {
-            plugin_data: PathBuf::from("/tmp/plug-data"),
-            plugin_archive: PathBuf::from("/tmp/plug-archive"),
+            gadget_data: PathBuf::from("/tmp/plug-data"),
+            gadget_archive: PathBuf::from("/tmp/plug-archive"),
             home: PathBuf::from("/tmp/home"),
             xdg_config: PathBuf::from("/tmp/config"),
             xdg_data: PathBuf::from("/tmp/data"),

@@ -12,9 +12,9 @@
 //
 // Architecture:
 // - FrecencyStore: central store wrapping SqlStorage, shared
-//   via Arc across the plugin host and Tauri state.
-// - GadgetFrecency: plugin-scoped wrapper that binds the
-//   plugin_id, following the GadgetSettings pattern.
+//   via Arc across the gadget host and Tauri state.
+// - GadgetFrecency: gadget-scoped wrapper that binds the
+//   gadget_id, following the GadgetSettings pattern.
 // - FrecencyTarget: trait for types that can receive a score
 //   bonus (SourcedEntry, ScoredEntry).
 // =========================================================
@@ -39,7 +39,7 @@ use crate::storage::{SqlStorage, SqlValue};
 // Constants
 // =========================================================
 
-/// Maximum number of events retained per (plugin_id, item_id).
+/// Maximum number of events retained per (gadget_id, item_id).
 const MAX_EVENTS_PER_ITEM: i64 = 30;
 
 /// Events older than this are deleted on startup.
@@ -113,7 +113,7 @@ pub struct FrecencyItem {
 pub struct FrecencyStats {
     pub total_events: u64,
     pub unique_items: u64,
-    pub events_by_plugin: HashMap<String, u64>,
+    pub events_by_gadget: HashMap<String, u64>,
     /// Millisecond timestamp of the oldest event, or `None` if
     /// the database is empty.
     pub oldest_event: Option<i64>,
@@ -160,16 +160,16 @@ impl FrecencyStore {
     // Public API
     // -------------------------------------------------------
 
-    /// Record a selection event for the given (plugin_id, item_id).
+    /// Record a selection event for the given (gadget_id, item_id).
     ///
     /// No-op when frecency is disabled. After inserting, prunes
     /// events beyond the per-item cap.
     ///
-    /// **Note for plugin authors:** The host already calls this in
-    /// `GadgetHost::execute()`. Plugins should only call `record()`
+    /// **Note for gadget authors:** The host already calls this in
+    /// `GadgetHost::execute()`. Gadgets should only call `record()`
     /// directly (via `GadgetFrecency`) for custom UI interactions
     /// that bypass `execute()`.
-    pub fn record(&self, plugin_id: &str, item_id: &str) {
+    pub fn record(&self, gadget_id: &str, item_id: &str) {
         if !self.is_enabled() {
             return;
         }
@@ -182,7 +182,7 @@ impl FrecencyStore {
             "INSERT OR IGNORE INTO frecency_events (plugin_id, item_id, timestamp) \
              VALUES (?, ?, ?)",
             &[
-                SqlValue::from(plugin_id),
+                SqlValue::from(gadget_id),
                 SqlValue::from(item_id),
                 SqlValue::from(now),
             ],
@@ -197,9 +197,9 @@ impl FrecencyStore {
                  ORDER BY timestamp DESC LIMIT ?\
              )",
             &[
-                SqlValue::from(plugin_id),
+                SqlValue::from(gadget_id),
                 SqlValue::from(item_id),
-                SqlValue::from(plugin_id),
+                SqlValue::from(gadget_id),
                 SqlValue::from(item_id),
                 SqlValue::from(MAX_EVENTS_PER_ITEM),
             ],
@@ -208,7 +208,7 @@ impl FrecencyStore {
 
     /// Compute the frecency score for a single item.
     /// Returns 0 when disabled or when no events exist.
-    pub fn score(&self, plugin_id: &str, item_id: &str) -> u32 {
+    pub fn score(&self, gadget_id: &str, item_id: &str) -> u32 {
         if !self.is_enabled() {
             return 0;
         }
@@ -219,7 +219,7 @@ impl FrecencyStore {
             .query_map(
                 "SELECT timestamp FROM frecency_events \
                  WHERE plugin_id = ? AND item_id = ?",
-                &[SqlValue::from(plugin_id), SqlValue::from(item_id)],
+                &[SqlValue::from(gadget_id), SqlValue::from(item_id)],
                 |row| row.get::<i64>(0),
             )
             .unwrap_or_default();
@@ -232,7 +232,7 @@ impl FrecencyStore {
     /// Returns a map from item_id to score. Items with no events
     /// are omitted from the map. Chunks the IN clause at 500 items
     /// defensively.
-    pub fn scores(&self, plugin_id: &str, item_ids: &[&str]) -> HashMap<String, u32> {
+    pub fn scores(&self, gadget_id: &str, item_ids: &[&str]) -> HashMap<String, u32> {
         if !self.is_enabled() || item_ids.is_empty() {
             return HashMap::new();
         }
@@ -241,7 +241,7 @@ impl FrecencyStore {
         let mut result = HashMap::new();
 
         for chunk in item_ids.chunks(IN_CLAUSE_CHUNK_SIZE) {
-            let rows = self.fetch_timestamps(plugin_id, chunk);
+            let rows = self.fetch_timestamps(gadget_id, chunk);
             for (item_id, timestamps) in &rows {
                 let score = compute_score(timestamps, now);
                 if score > 0 {
@@ -255,13 +255,13 @@ impl FrecencyStore {
 
     /// Batch-fetch frecency scores and apply them as additive
     /// bonuses to a mutable slice of results.
-    pub fn apply_scores(&self, plugin_id: &str, results: &mut [impl FrecencyTarget]) {
+    pub fn apply_scores(&self, gadget_id: &str, results: &mut [impl FrecencyTarget]) {
         if !self.is_enabled() || results.is_empty() {
             return;
         }
 
         let ids: Vec<&str> = results.iter().map(|r| r.item_id()).collect();
-        let scores = self.scores(plugin_id, &ids);
+        let scores = self.scores(gadget_id, &ids);
 
         for result in results.iter_mut() {
             if let Some(&bonus) = scores.get(result.item_id()) {
@@ -271,11 +271,11 @@ impl FrecencyStore {
     }
 
     /// Return the top-N most frequently/recently used items for
-    /// a plugin. Used for empty-query cases like the emoji picker.
+    /// a gadget. Used for empty-query cases like the emoji picker.
     ///
-    /// Fetches all events for the plugin, groups by item_id,
+    /// Fetches all events for the gadget, groups by item_id,
     /// computes scores, and returns the top N sorted descending.
-    pub fn top_items(&self, plugin_id: &str, limit: usize) -> Vec<FrecencyItem> {
+    pub fn top_items(&self, gadget_id: &str, limit: usize) -> Vec<FrecencyItem> {
         if !self.is_enabled() {
             return Vec::new();
         }
@@ -286,7 +286,7 @@ impl FrecencyStore {
             .db
             .query_map(
                 "SELECT item_id, timestamp FROM frecency_events WHERE plugin_id = ?",
-                &[SqlValue::from(plugin_id)],
+                &[SqlValue::from(gadget_id)],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
             .unwrap_or_default();
@@ -342,16 +342,16 @@ impl FrecencyStore {
             .copied()
             .unwrap_or(0) as u64;
 
-        let plugin_rows = self
+        let gadget_rows = self
             .db
             .query_map(
                 "SELECT plugin_id, COUNT(*) FROM frecency_events GROUP BY plugin_id",
                 &[],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
-            .context("count events by plugin")?;
+            .context("count events by gadget")?;
 
-        let events_by_plugin: HashMap<String, u64> = plugin_rows
+        let events_by_gadget: HashMap<String, u64> = gadget_rows
             .into_iter()
             .map(|(id, count)| (id, count as u64))
             .collect();
@@ -369,7 +369,7 @@ impl FrecencyStore {
         Ok(FrecencyStats {
             total_events,
             unique_items,
-            events_by_plugin,
+            events_by_gadget,
             oldest_event,
         })
     }
@@ -399,8 +399,8 @@ impl FrecencyStore {
     }
 
     /// Fetch all timestamps for a set of item_ids within a single
-    /// plugin, grouped by item_id. Used internally by `scores()`.
-    fn fetch_timestamps(&self, plugin_id: &str, item_ids: &[&str]) -> HashMap<String, Vec<i64>> {
+    /// gadget, grouped by item_id. Used internally by `scores()`.
+    fn fetch_timestamps(&self, gadget_id: &str, item_ids: &[&str]) -> HashMap<String, Vec<i64>> {
         let id_list: Vec<SqlValue> = item_ids.iter().map(|id| SqlValue::from(*id)).collect();
 
         let rows = self
@@ -408,7 +408,7 @@ impl FrecencyStore {
             .query_map(
                 "SELECT item_id, timestamp FROM frecency_events \
                  WHERE plugin_id = ? AND item_id IN (?)",
-                &[SqlValue::from(plugin_id), SqlValue::List(id_list)],
+                &[SqlValue::from(gadget_id), SqlValue::List(id_list)],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
             .unwrap_or_default();
@@ -554,8 +554,8 @@ mod tests {
         let stats = store.stats().expect("stats");
         assert!(stats.total_events >= 3);
         assert!(stats.unique_items >= 3);
-        assert!(stats.events_by_plugin.contains_key("p1"));
-        assert!(stats.events_by_plugin.contains_key("p2"));
+        assert!(stats.events_by_gadget.contains_key("p1"));
+        assert!(stats.events_by_gadget.contains_key("p2"));
         assert!(stats.oldest_event.is_some());
     }
 
