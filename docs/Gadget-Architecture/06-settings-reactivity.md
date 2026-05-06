@@ -87,8 +87,8 @@ The three callees are independent:
 The dispatcher is reused as a serialization point even for the
 enable/disable toggle. The callback flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
-`plugin.enable(app, &GadgetContext { settings, frecency })` or
-`plugin.disable()`. Always signals shortcut re-registration before
+`gadget.enable(app, &GadgetContext { settings, frecency })` or
+`gadget.disable()`. Always signals shortcut re-registration before
 returning.
 
 **Path 2 — `gadgets.<gadget-id>.<setting-key>`**
@@ -96,7 +96,7 @@ returning.
 Splits at the first `.` after the prefix, looks up the slot, and
 enqueues the relative `setting-key` into the slot's
 `CoalescingDispatcher`. The callback simply forwards
-`(key, value)` to `plugin.setting_changed(key, value)`. Gadgets see
+`(key, value)` to `gadget.setting_changed(key, value)`. Gadgets see
 relative keys (`"retentionDays"`), never the full path.
 
 ## CoalescingDispatcher (ADR 0026)
@@ -120,7 +120,7 @@ Threading model:
 - `enqueue` is called from the Tauri event listener (main thread),
   briefly holding `pending`.
 - `dispatch` runs the callback inline. For Path 2 the callback is
-  `plugin.setting_changed(k, v.clone())`, which for native gadgets
+  `gadget.setting_changed(k, v.clone())`, which for native gadgets
   is whatever the gadget implements and for WASM gadgets crosses the
   wasmtime boundary.
 
