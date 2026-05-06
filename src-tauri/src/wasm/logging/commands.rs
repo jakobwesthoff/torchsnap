@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_source_plugin() {
+    fn resolve_source_gadget() {
         assert_eq!(
             resolve_source("hello-world"),
             LogSource::Gadget("hello-world".into()),
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_source_empty_string_is_plugin() {
+    fn resolve_source_empty_string_is_gadget() {
         // An empty string is not "host" — treated as a gadget
         // with an empty ID. Not a useful case, but the behavior
         // should be defined.
@@ -312,7 +312,7 @@ mod tests {
         system.sender().send(LogItem {
             seq: 0,
             timestamp: std::time::SystemTime::now(),
-            source: resolve_source("my-plugin"),
+            source: resolve_source("my-gadget"),
             kind: LogItemKind::Message {
                 level: LogLevel::Info,
                 message: "hello from frontend".into(),
@@ -322,7 +322,7 @@ mod tests {
         });
 
         let item = recv(&mut sub).await;
-        assert_eq!(item.source, LogSource::Gadget("my-plugin".into()));
+        assert_eq!(item.source, LogSource::Gadget("my-gadget".into()));
         match &item.kind {
             LogItemKind::Message {
                 level,
@@ -405,7 +405,7 @@ mod tests {
         let registry = SpanRegistry::new();
         let mut sub = system.subscribe();
 
-        let source = resolve_source("my-plugin");
+        let source = resolve_source("my-gadget");
         let (id, depth) = registry
             .start(
                 "frontend-span".into(),

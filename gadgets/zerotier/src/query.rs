@@ -140,7 +140,7 @@ pub fn parse_entry_id(entry_id: &str) -> Option<String> {
 ///
 /// Uses `nucleo_matcher::Pattern` with `Smart` case and
 /// normalization — same configuration the host catalog path
-/// uses, kept in lockstep so plugin and host scoring behave
+/// uses, kept in lockstep so gadget and host scoring behave
 /// identically.
 pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
     use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
@@ -175,8 +175,8 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
     }
 
     // Sort descending by total score so the launcher can
-    // stable-sort across plugins later without re-ordering
-    // the within-plugin order.
+    // stable-sort across gadgets later without re-ordering
+    // the within-gadget order.
     out.sort_by(|a, b| b.score.cmp(&a.score));
     out
 }

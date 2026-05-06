@@ -4,7 +4,7 @@
 
 //! Error categories the API client surfaces to callers.
 //!
-//! The host's `http-error` is too low-level for plugin-side
+//! The host's `http-error` is too low-level for gadget-side
 //! UX decisions ("daemon unreachable" vs. "auth rejected" vs.
 //! "got a JSON we can't parse"), so we map it through a
 //! domain-level enum. The launcher entry-rendering path
@@ -21,7 +21,7 @@ pub enum ApiError {
     #[error("zerotier-one is not reachable")]
     DaemonUnreachable(String),
 
-    /// The auth token the plugin presented was rejected with
+    /// The auth token the gadget presented was rejected with
     /// HTTP 401 / 403. Surfaced as a "configure token" entry.
     #[error("authentication rejected by zerotier-one")]
     AuthRejected,
@@ -44,7 +44,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    /// Map a host `http-error` into the plugin's error model.
+    /// Map a host `http-error` into the gadget's error model.
     /// `connection-refused` is the strong signal for "daemon
     /// not running", and `permission-denied` here means the
     /// manifest's origin allowlist rejected the request — that

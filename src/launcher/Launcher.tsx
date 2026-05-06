@@ -131,7 +131,7 @@ function InlineViewContainer({
 // lowercase-alphanumeric — see GadgetId in src-tauri/src/wasm/manifest.rs).
 function useOptionalGadgetEnabled(gadgetId: string | null | undefined): boolean {
   const [value] = useSetting<boolean>(
-    gadgetId ? `enabled.${gadgetId}` : "__internal__.no-active-plugin",
+    gadgetId ? `enabled.${gadgetId}` : "__internal__.no-active-gadget",
   );
   return gadgetId ? value : false;
 }
@@ -433,7 +433,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // reset the query. For prefix-triggered gadgets this deactivates
   // the gadget through the normal search flow; for execute-triggered
   // gadgets it returns to the empty launcher state.
-  // TODO(state-snapshot): see todos/plugins/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
+  // TODO(state-snapshot): see todos/gadgets/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
   const handleGoBack = useCallback(() => {
     setExecuteGadgetView(null);
     setQuery("");

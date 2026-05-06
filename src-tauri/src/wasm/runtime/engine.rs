@@ -165,7 +165,7 @@ impl WasmRuntime {
         // Build the WASI context. Minimal sandbox: no filesystem,
         // no network, no env vars. Stdout/stderr are inherited so
         // gadget println! reaches the host terminal.
-        // TODO(redirect-plugin-stdout): see todos/plugin-host/wasm/01kqmdf6rgavhar6m4mm8vhxeb-redirect-plugin-stdout-to-logger.md
+        // TODO(redirect-gadget-stdout): see todos/gadget-host/wasm/01kqmdf6rgavhar6m4mm8vhxeb-redirect-gadget-stdout-to-logger.md
         let wasi = WasiCtxBuilder::new()
             .inherit_stdout()
             .inherit_stderr()
@@ -181,9 +181,9 @@ impl WasmRuntime {
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component and get the typed bindings.
-        let plugin = bindings::Gadget::instantiate(&mut store, &component, &linker)
+        let gadget = bindings::Gadget::instantiate(&mut store, &component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiating WASM gadget: {e}"))?;
 
-        Ok(WasmGadgetInstance::from_parts(store, plugin, logger))
+        Ok(WasmGadgetInstance::from_parts(store, gadget, logger))
     }
 }

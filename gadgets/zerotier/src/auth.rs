@@ -4,7 +4,7 @@
 
 //! Auth-token resolution.
 //!
-//! The plugin needs the local daemon's auth token to set the
+//! The gadget needs the local daemon's auth token to set the
 //! `X-ZT1-Auth` header. ZeroTier writes this token at install
 //! time and never rotates it, so resolution runs once on
 //! `enable()` and is re-run only when the user edits the
@@ -70,7 +70,7 @@ pub fn candidate_paths(os: &Os, user_config_dir: &str) -> Vec<String> {
 }
 
 /// Try every candidate path; return the first token whose
-/// file is readable under the plugin's fs allowlist.
+/// file is readable under the gadget's fs allowlist.
 pub fn read_first_readable(paths: &[String]) -> Option<String> {
     for path in paths {
         if let Ok(bytes) = fs::read_file(path) {

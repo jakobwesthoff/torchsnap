@@ -498,7 +498,7 @@ mod tests {
         let err = Manifest::parse(&minimal(
             r#"[[permissions.command]]
                binary = "git"
-               argv = [{ kind = "literal", value = "${plugin-typo}" }]"#,
+               argv = [{ kind = "literal", value = "${gadget-typo}" }]"#,
         ))
         .unwrap_err();
         assert!(err.to_string().contains("unknown variable"));
