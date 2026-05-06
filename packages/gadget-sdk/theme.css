@@ -5,13 +5,13 @@
 /* =========================================================
  * Torchsnap Design Tokens
  *
- * Shared between the host app and WASM plugin frontends.
+ * Shared between the host app and WASM gadget frontends.
  * Both import this file so Tailwind generates matching
  * utility classes (e.g., `text-text-primary`, `bg-surface`).
  *
  * At runtime in the host, these define the actual CSS custom
- * property values. In plugins, the values cascade from the
- * host stylesheet through the @scope wrapper — the plugin's
+ * property values. In gadgets, the values cascade from the
+ * host stylesheet through the @scope wrapper — the gadget's
  * copy is only needed at build time for Tailwind's class
  * generation.
  *

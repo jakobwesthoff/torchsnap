@@ -152,7 +152,7 @@ cargo install just
 
 ## 5. Cargo-based tooling
 
-These are consumed by recipes under `just/` and by the plugin build
+These are consumed by recipes under `just/` and by the gadget build
 pipeline.
 
 ```sh

@@ -17,7 +17,7 @@ export type {
   GadgetViewProps,
   InlineViewProps,
   GadgetSettingsProps,
-} from "./plugin";
+} from "./gadget";
 
 export type {
   ActionId,

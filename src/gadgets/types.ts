@@ -4,7 +4,7 @@
 
 /**
  * Gadget component prop interfaces — host-side mirror of
- * `@torchsnap/gadget-sdk`'s `plugin.ts`.
+ * `@torchsnap/gadget-sdk`'s `gadget.ts`.
  *
  * Per ADR 0028, ambient capabilities (`gadgetId`, `sendMessage`,
  * `logger`, launcher actions, reactive setting accessors) are
