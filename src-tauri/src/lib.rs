@@ -618,8 +618,7 @@ pub fn run() {
     // The protocol handler reads from these to serve frontend
     // assets; gadget loading populates the registry.
     let source_registry = wasm::protocol::new_registry();
-    let builder =
-        wasm::protocol::register_gadget_protocol(builder, Arc::clone(&source_registry));
+    let builder = wasm::protocol::register_gadget_protocol(builder, Arc::clone(&source_registry));
 
     // Host favicon URI scheme. Custom schemes must be registered
     // on the builder before `.setup()` runs, but
