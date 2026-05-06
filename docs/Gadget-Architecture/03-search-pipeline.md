@@ -126,7 +126,7 @@ canonical "new generation, recompute" signal.
 
 Every active slot is dispatched in parallel via a `tokio::task::JoinSet`
 of `spawn_blocking` tasks (`gadget_host.rs:549-561`). Each task calls
-`plugin.search(query, None)` (no `matched_prefix` because prefix routing
+`gadget.search(query, None)` (no `matched_prefix` because prefix routing
 already exclusive-shorted) and yields `(source, response)`.
 
 The host drains the `JoinSet` with `join_next().await`

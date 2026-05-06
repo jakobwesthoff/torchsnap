@@ -55,7 +55,7 @@ string — the full `anyhow` chain stays in host logs.
 ## Host Routing
 
 `GadgetHost::handle_message` (`gadget_host.rs`) walks the registered
-`GadgetSlot`s and dispatches to the slot whose `plugin.id() == source`.
+`GadgetSlot`s and dispatches to the slot whose `gadget.id() == source`.
 Unknown ids return `anyhow!("unknown gadget source: {source}")`.
 
 The host does no payload validation. Both `payload` and the return
