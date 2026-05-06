@@ -50,44 +50,44 @@ and other non-source configuration files.
 
 ### `cargo-component` is NOT used
 
-This project does **not** use `cargo-component`. WASM plugins are built
-with plain `cargo build --release` from the `plugins/` virtual
+This project does **not** use `cargo-component`. WASM gadgets are built
+with plain `cargo build --release` from the `gadgets/` virtual
 workspace (the `wasm32-wasip2` target is set as the workspace default
-via `plugins/.cargo/config.toml`). The WIT `wit_bindgen::generate!`
-invocation lives in the `torchsnap-plugin-sdk` crate
-(`plugins/plugin-sdk/`); plugin crates consume the generated bindings
-through `use torchsnap_plugin_sdk::prelude::*;` and register themselves
-via `define_plugin!(MyPlugin)`. Do not install `cargo-component` and do
+via `gadgets/.cargo/config.toml`). The WIT `wit_bindgen::generate!`
+invocation lives in the `torchsnap-gadget-sdk` crate
+(`gadgets/gadget-sdk/`); gadget crates consume the generated bindings
+through `use torchsnap_gadget_sdk::prelude::*;` and register themselves
+via `define_gadget!(MyGadget)`. Do not install `cargo-component` and do
 not add recipes that depend on it.
 
 WIT inspection / formatting uses `wasm-tools` (`just check-wit`,
 `just fmt-wit`), which is a separate tool.
 
-## Plugin build pipeline
+## Gadget build pipeline
 
-Release bundles ship only the plugins whitelisted in
-`plugins/bundled.toml`. The `stage-bundled-plugins` Just recipe
-reads the whitelist, rebuilds each listed plugin, and copies the
-resulting `.torchsnap` archives into `target/bundled-plugins/`,
+Release bundles ship only the gadgets whitelisted in
+`gadgets/bundled.toml`. The `stage-bundled-gadgets` Just recipe
+reads the whitelist, rebuilds each listed gadget, and copies the
+resulting `.torchsnap` archives into `target/bundled-gadgets/`,
 which Tauri picks up via the `resources` entry in
 `tauri.conf.json`. `just build` runs this staging step before
 `tauri build` automatically; no manual orchestration needed.
 
 The repo-root `target/` directory is gitignored — it is owned
 entirely by this staging flow. Cargo itself uses
-`src-tauri/target/` for the host and `plugins/target/` for the
-plugin virtual workspace.
+`src-tauri/target/` for the host and `gadgets/target/` for the
+gadget virtual workspace.
 
-To add a plugin to release bundles, edit `plugins/bundled.toml`
-and rebuild. To develop a plugin without adding it to release
-bundles, just keep its source under `plugins/<id>/` — the debug
+To add a gadget to release bundles, edit `gadgets/bundled.toml`
+and rebuild. To develop a gadget without adding it to release
+bundles, just keep its source under `gadgets/<id>/` — the debug
 loader scans that directory automatically (ADR 0035).
 
-## Plugin storage layout
+## Gadget storage layout
 
-Host-managed per-plugin state (SQLite databases, future blob /
+Host-managed per-gadget state (SQLite databases, future blob /
 cache sibling directories) lives under
-`<app_data_dir>/plugin-home/<plugin-id>/`, separate from plugin
-code which lives under `<app_data_dir>/plugins/`. SQLite files
+`<app_data_dir>/gadget-home/<gadget-id>/`, separate from gadget
+code which lives under `<app_data_dir>/gadgets/`. SQLite files
 use the `.sqlite3` extension project-wide (not `.db`). See
 ADR 0035 (distribution) and ADR 0018 (SQL storage) for details.
