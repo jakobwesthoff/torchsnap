@@ -3,15 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Asset Protocol
+// Gadget Asset Protocol
 //
 // Registers a `torchsnap-gadget://` custom URI scheme that
-// serves frontend assets directly from plugin sources. This
+// serves frontend assets directly from gadget sources. This
 // avoids extracting files to disk — the protocol handler
 // reads from `GadgetSource::read_file()` on demand.
 //
 // URI format:
-//   torchsnap-gadget://localhost/<plugin-id>/<file-path>
+//   torchsnap-gadget://localhost/<gadget-id>/<file-path>
 //
 // On macOS/Linux the scheme is `torchsnap-gadget://`.
 // On Windows Tauri maps it to `http://torchsnap-gadget.localhost/`.
@@ -27,11 +27,11 @@ use tauri::http;
 use super::source::GadgetSource;
 
 // =========================================================
-// Plugin Source Registry
+// Gadget Source Registry
 // =========================================================
 
-/// Shared registry mapping plugin IDs to their sources.
-/// Populated during plugin loading, read by the protocol
+/// Shared registry mapping gadget IDs to their sources.
+/// Populated during gadget loading, read by the protocol
 /// handler on every asset request.
 pub type GadgetSourceRegistry = Arc<RwLock<HashMap<String, Arc<dyn GadgetSource>>>>;
 
@@ -48,7 +48,7 @@ pub fn new_registry() -> GadgetSourceRegistry {
 /// builder. Must be called before `.build()` / `.setup()`
 /// because custom schemes are bound to the webview at
 /// creation time.
-pub fn register_plugin_protocol<R: tauri::Runtime>(
+pub fn register_gadget_protocol<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     registry: GadgetSourceRegistry,
 ) -> tauri::Builder<R> {

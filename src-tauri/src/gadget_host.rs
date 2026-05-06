@@ -158,22 +158,22 @@ impl GadgetHost {
         }
     }
 
-    /// Register a plugin with the host. `source_kind` records
-    /// where the plugin was loaded from (native Rust code,
+    /// Register a gadget with the host. `source_kind` records
+    /// where the gadget was loaded from (native Rust code,
     /// bundled WASM archive, user install, dev path) and is
-    /// surfaced through [`Self::plugin_sources`] to the frontend
-    /// so the Plugins settings panel can badge and gate each
+    /// surfaced through [`Self::gadget_sources`] to the frontend
+    /// so the Gadgets settings panel can badge and gate each
     /// entry appropriately.
     pub fn register(&mut self, plugin: Box<dyn Gadget>, source_kind: GadgetSourceKind) {
         self.slots
             .push(GadgetSlot::new(Arc::from(plugin), source_kind));
     }
 
-    /// Snapshot of the plugin-id → source-kind mapping. Exposed
-    /// via the `plugin_sources` Tauri command. The host's slot
+    /// Snapshot of the gadget-id → source-kind mapping. Exposed
+    /// via the `gadget_sources` Tauri command. The host's slot
     /// list is append-only after setup, so this snapshot is
     /// stable over the process lifetime.
-    pub fn plugin_sources(&self) -> std::collections::HashMap<String, GadgetSourceKind> {
+    pub fn gadget_sources(&self) -> std::collections::HashMap<String, GadgetSourceKind> {
         self.slots
             .iter()
             .map(|slot| (slot.plugin.id().to_string(), slot.source_kind))
@@ -1407,9 +1407,9 @@ mod tests {
         }
     }
 
-    /// Aggregation across multiple slots yields the plugin-id →
+    /// Aggregation across multiple slots yields the gadget-id →
     /// source-kind map exposed to the frontend. This mirrors
-    /// the body of `GadgetHost::plugin_sources`; together with
+    /// the body of `GadgetHost::gadget_sources`; together with
     /// the per-slot preservation test above it is sufficient
     /// coverage for the command's output without constructing
     /// a full `GadgetHost` (which would require a real
