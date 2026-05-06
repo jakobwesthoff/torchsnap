@@ -5,23 +5,25 @@
 // =========================================================
 // WASM Gadget Runtime
 //
-// Manages the wasmtime engine (shared across all gadgets)
-// and provides per-gadget instances that wrap a Store and
-// typed component bindings.
-//
 // Architecture:
-//   WasmRuntime (one per app, owns Engine + Component cache)
-//    ├── compile(gadget_id, wasm_bytes)
-//    └── instantiate(gadget_id) → WasmGadgetInstance
+//
+//   WasmRuntime (one per app, stateless service)
+//    ├── compile(wasm_bytes) → Component
+//    └── instantiate(gadget_id, &component) → WasmGadgetInstance
+//
+//   CachedComponent (one per gadget, owned by bridge)
+//    ├── acquire() → &Component  (deserialize from disk cache)
+//    ├── release()               (drop in-memory, keep on disk)
+//    └── instantiate() → WasmGadgetInstance
 //
 //   WasmGadgetInstance (one per gadget, owns Store + Gadget)
 //    ├── enable() / disable()
 //    ├── entries() → Vec<CatalogEntry>
 //    └── execute(entry_id, action_id) → PostAction
 //
-// The compile/instantiate split lets the expensive step run
-// once per gadget while instantiation stays cheap enough to
-// repeat on demand. See ADR 0033.
+// `WasmRuntime` is a stateless compile/instantiate service.
+// `CachedComponent` wraps it with a disk-backed cache and
+// acquire/release semantics for in-memory residency.
 // =========================================================
 
 // =========================================================
@@ -29,35 +31,30 @@
 //
 // `runtime` is split by concern:
 //
-//   - `engine`   — `WasmRuntime`: component compile + cache,
-//                  linker construction, instantiation.
-//   - `state`    — `GadgetState` struct (the wasmtime store
-//                  data) plus the foundational
-//                  `Default::default()` / `default_for_test`
-//                  constructors and the `WasiView` impl.
-//   - `instance` — `WasmGadgetInstance` lifecycle wrapper
-//                  with foundational setters
-//                  (`set_path_context`, `set_gadget_source`)
-//                  and guest-call dispatch (`enable`,
-//                  `disable`, `entries`, `search`,
-//                  `execute`, `handle_message`, `run_task`,
-//                  `on_setting_changed`).
-//   - `host/`    — one file per WIT host import. Each owns
-//                  its state sub-struct, Host trait impl,
-//                  helpers, and `impl WasmGadgetInstance`
-//                  blocks for the capability-specific
-//                  setters/clearers.
+//   - `engine`           — `WasmRuntime`: stateless
+//                          compilation and instantiation.
+//   - `cached_component` — `CachedComponent`: disk-backed
+//                          compiled component cache with
+//                          lazy acquire/release.
+//   - `state`            — `GadgetState` struct (the wasmtime
+//                          store data) plus constructors and
+//                          the `WasiView` impl.
+//   - `instance`         — `WasmGadgetInstance` lifecycle
+//                          wrapper with guest-call dispatch.
+//   - `host/`            — one file per WIT host import.
 //
 // Tests live in this file's `tests` module so all the
 // integration tests share the fixture-loading helpers
 // (`test_runtime()`, fixture WASM byte constants).
 // =========================================================
 
+pub mod cached_component;
 pub mod engine;
 pub mod host;
 pub mod instance;
 pub mod state;
 
+pub use cached_component::CachedComponent;
 pub use engine::WasmRuntime;
 pub use host::sql::{SqlConfig, SqlHandleEntry};
 pub use instance::WasmGadgetInstance;
@@ -74,6 +71,8 @@ use super::logging::channel::LogSender;
 use super::logging::spans::SpanRegistry;
 #[cfg(test)]
 use host::http::HttpState;
+#[cfg(test)]
+use wasmtime::component::Component;
 
 #[cfg(test)]
 mod tests {
@@ -91,110 +90,47 @@ mod tests {
     /// discarding `LogSender` and a fresh `SpanRegistry` so
     /// tests do not depend on a running logging task.
     fn test_runtime() -> Arc<WasmRuntime> {
-        // No metadata service in the default test runtime — tests
-        // exercising the website-metadata host import construct one
-        // and pass it explicitly via a dedicated helper.
         WasmRuntime::new(
             LogSender::test_sender(),
             Arc::new(SpanRegistry::new()),
-            None,
         )
         .expect("WasmRuntime::new should succeed with default config")
+    }
+
+    /// Compile and return the minimal-gadget fixture component.
+    fn compile_minimal(runtime: &WasmRuntime) -> Component {
+        runtime.compile(MINIMAL_GADGET_WASM).expect("compile minimal fixture")
+    }
+
+    #[test]
+    fn compile_returns_component() {
+        let runtime = test_runtime();
+        let _component = compile_minimal(&runtime);
     }
 
     #[test]
     fn compile_then_instantiate_succeeds() {
         let runtime = test_runtime();
-        runtime
-            .compile("minimal", MINIMAL_GADGET_WASM)
-            .expect("compile valid fixture");
-        let instance = runtime.instantiate("minimal").expect("instantiate");
+        let component = compile_minimal(&runtime);
+        let instance = runtime
+            .instantiate("minimal", &component)
+            .expect("instantiate");
         instance.enable().expect("guest enable no-op");
     }
 
     #[test]
-    fn compile_caches_component() {
-        // No direct recompilation counter to assert on; we
-        // verify the cache retains the entry after two
-        // successful instantiates instead.
-        let runtime = test_runtime();
-        runtime
-            .compile("minimal", MINIMAL_GADGET_WASM)
-            .expect("compile");
-        let _first = runtime.instantiate("minimal").expect("first instantiate");
-        let _second = runtime.instantiate("minimal").expect("second instantiate");
-
-        assert!(
-            runtime
-                .components
-                .lock()
-                .expect("cache lock")
-                .contains_key("minimal")
-        );
-    }
-
-    #[test]
-    fn instantiate_without_compile_errors() {
-        let runtime = test_runtime();
-        let err = runtime
-            .instantiate("never-compiled")
-            .err()
-            .expect("instantiate returns Err for unknown id");
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("never-compiled") && msg.contains("compile"),
-            "error should name the missing gadget and hint at `compile` (got: {msg})"
-        );
-    }
-
-    #[test]
     fn compile_invalid_bytes_errors() {
-        // Both checks matter: the return is an `Err` AND the
-        // cache stays empty, so a subsequent `instantiate`
-        // cannot silently succeed against a partial entry.
         let runtime = test_runtime();
-        assert!(
-            runtime
-                .compile("garbage", b"not a wasm component at all")
-                .is_err()
-        );
-        assert!(
-            !runtime
-                .components
-                .lock()
-                .expect("cache lock")
-                .contains_key("garbage")
-        );
-        assert!(runtime.instantiate("garbage").is_err());
-    }
-
-    #[test]
-    fn compile_replaces_existing_entry() {
-        // Pins the "re-compile replaces" semantic so a future
-        // refactor that accidentally rejects duplicate compiles
-        // would trip this assertion.
-        let runtime = test_runtime();
-        runtime
-            .compile("minimal", MINIMAL_GADGET_WASM)
-            .expect("first compile");
-        runtime
-            .compile("minimal", MINIMAL_GADGET_WASM)
-            .expect("second compile replaces");
-        runtime.instantiate("minimal").expect("instantiate");
+        assert!(runtime.compile(b"not a wasm component at all").is_err());
     }
 
     #[test]
     fn instances_are_independent() {
-        // Two instances from the same cached Component must
-        // have disjoint GadgetStates: operating on one must
-        // not disturb the other.
         let runtime = test_runtime();
-        runtime
-            .compile("minimal", MINIMAL_GADGET_WASM)
-            .expect("compile");
+        let component = compile_minimal(&runtime);
 
-        let first = runtime.instantiate("minimal").expect("first");
-        let second = runtime.instantiate("minimal").expect("second");
+        let first = runtime.instantiate("minimal", &component).expect("first");
+        let second = runtime.instantiate("minimal", &component).expect("second");
 
         first.clear_sql_storage();
         second
@@ -597,11 +533,11 @@ mod tests {
 
     fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
-        runtime
-            .compile("opener-http-gadget", OPENER_HTTP_GADGET_WASM)
+        let component = runtime
+            .compile(OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-gadget")
+            .instantiate("opener-http-gadget", &component)
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
@@ -734,11 +670,11 @@ mod tests {
 
     fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
-        runtime
-            .compile("website-metadata-gadget", WEBSITE_METADATA_GADGET_WASM)
+        let component = runtime
+            .compile(WEBSITE_METADATA_GADGET_WASM)
             .expect("compile website-metadata fixture");
         let instance = runtime
-            .instantiate("website-metadata-gadget")
+            .instantiate("website-metadata-gadget", &component)
             .expect("instantiate website-metadata fixture");
         (runtime, instance)
     }
@@ -1130,11 +1066,11 @@ icon = "heroicons:beaker"
 
     fn compile_assets_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
-        runtime
-            .compile("assets-gadget", ASSETS_GADGET_WASM)
+        let component = runtime
+            .compile(ASSETS_GADGET_WASM)
             .expect("compile assets fixture");
         let instance = runtime
-            .instantiate("assets-gadget")
+            .instantiate("assets-gadget", &component)
             .expect("instantiate assets fixture");
         (runtime, instance)
     }
@@ -1329,11 +1265,11 @@ icon = "heroicons:beaker"
         use super::super::permission_vars::PathContext;
 
         let runtime = test_runtime();
-        runtime
-            .compile("command-gadget", COMMAND_GADGET_WASM)
+        let component = runtime
+            .compile(COMMAND_GADGET_WASM)
             .expect("compile command fixture");
         let instance = runtime
-            .instantiate("command-gadget")
+            .instantiate("command-gadget", &component)
             .expect("instantiate command fixture");
 
         // Stash a path context so the default cwd resolution
