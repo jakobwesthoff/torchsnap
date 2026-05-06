@@ -104,7 +104,7 @@ export function EmojiGrid({ results }: GadgetViewProps) {
 
   // Footer shows the selected emoji's shortcode and label
   // alongside the Enter key hint. Highlight positions come
-  // from the plugin's Rust side as UTF-16 offsets.
+  // from the gadget's Rust side as UTF-16 offsets.
   useEffect(() => {
     const entry = results[selectedIndex];
     onFooterChange({

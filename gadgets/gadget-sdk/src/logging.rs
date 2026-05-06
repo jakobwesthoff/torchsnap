@@ -2,13 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Structured logging helpers for plugins.
+//! Structured logging helpers for gadgets.
 //!
 //! Flat re-exports of the host's `logging` interface plus
 //! convenience macros modelled on `tracing::info!` /
 //! `tracing::error!`. The macros cover the common case — a
 //! message with optional `key => value` metadata pairs, no
-//! parent span — so plugin code doesn't drown in
+//! parent span — so gadget code doesn't drown in
 //! `logging_host::log(logging_host::LogLevel::Info, "...",
 //! &[], None)` boilerplate.
 //!
@@ -17,7 +17,7 @@
 //! span handles). The macros deliberately don't forward
 //! span handles — span-scoped logging is a deliberate
 //! opt-in, and the default of "log outside any span" matches
-//! how nearly every log call site in existing plugins is
+//! how nearly every log call site in existing gadgets is
 //! already written.
 
 pub use crate::logging_host::{LogLevel, log, span_end, span_start};

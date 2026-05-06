@@ -24,7 +24,7 @@
 //! - [`favicon_or`], the one-line idiom for the most common case:
 //!   "give me the cached favicon, or this fallback icon."
 //!
-//! The error string is discarded after logging. Plugins that need
+//! The error string is discarded after logging. Gadgets that need
 //! to surface it should call [`website_metadata_host::lookup`]
 //! directly — the raw module stays accessible through the SDK
 //! prelude under that name.
@@ -107,7 +107,7 @@ pub fn lookup_blocking(domain: &str) -> Metadata {
 /// Implicitly uses [`LookupMode::Cached`] — never blocks. Returns
 /// the cached favicon on a hit, or `fallback` for any other
 /// outcome (cold cache, no data, unreachable, error). The
-/// canonical idiom for plugins that just want a favicon-or-
+/// canonical idiom for gadgets that just want a favicon-or-
 /// default for a domain in their result list.
 pub fn favicon_or(domain: &str, fallback: EntryIcon) -> EntryIcon {
     match lookup_cached(domain) {
@@ -120,8 +120,8 @@ pub fn favicon_or(domain: &str, fallback: EntryIcon) -> EntryIcon {
 // Internal dispatch
 //
 // Both error variants are programmer bugs that cannot recover
-// at runtime — `PermissionDenied` means the plugin's manifest
-// is missing the grant, `InvalidDomain` means the plugin
+// at runtime — `PermissionDenied` means the gadget's manifest
+// is missing the grant, `InvalidDomain` means the gadget
 // passed a malformed domain string. We log loudly via the
 // host so the bug surfaces in the host's log view, then fold
 // to `Unreachable` so call sites don't have to plumb error

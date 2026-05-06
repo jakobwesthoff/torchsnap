@@ -5,7 +5,7 @@
 //! JSON helpers for `handle_message` dispatch.
 //!
 //! Both sides of the `messaging::handle-message` export are
-//! JSON-encoded strings, so typical plugin code looks like:
+//! JSON-encoded strings, so typical gadget code looks like:
 //!
 //! ```ignore
 //! "save_history" => {
@@ -16,7 +16,7 @@
 //!
 //! The error messages carry the `serde_json` diagnostic so
 //! frontend / host logs can tell a malformed payload from a
-//! plugin-level rejection.
+//! gadget-level rejection.
 
 use serde::{Serialize, de::DeserializeOwned};
 

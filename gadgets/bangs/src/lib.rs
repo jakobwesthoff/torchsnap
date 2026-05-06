@@ -3,14 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Bangs Plugin (WASM)
+// Bangs Gadget (WASM)
 //
 // Detects DuckDuckGo bang patterns (e.g. `!g`, `!yt`,
 // `!crates`) anywhere in the query string and surfaces a
 // single result entry that opens the corresponding service
 // URL with the remaining search terms.
 //
-// The bang database lives in the plugin's per-plugin SQL
+// The bang database lives in the gadget's per-gadget SQL
 // storage. First `enable()` after installation populates it
 // from (a) the DDG bang.js endpoint when the network is
 // reachable, (b) the `assets/bang.json` file bundled inside
@@ -52,7 +52,7 @@ use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
 // calls that overlap), this mechanism breaks silently —
 // execute() would open a stale or wrong URL.
 //
-// HACK(plugin-execute-data-param): see todos/plugin-host/api/01kn7v6ynyf580ax9jyyt25jgc-plugin-execute-data-param.md — remove once execute() carries an arbitrary data parameter.
+// HACK(gadget-execute-data-param): see todos/gadget-host/api/01kn7v6ynyf580ax9jyyt25jgc-plugin-execute-data-param.md — remove once execute() carries an arbitrary data parameter.
 //
 // `RefCell<Option<String>>` rather than `Cell<Option<String>>`
 // because `Option<String>` is not `Copy`. Calculator uses
@@ -66,10 +66,10 @@ thread_local! {
 /// Score assigned to bang results. High enough to appear
 /// near the top (above mediocre fuzzy matches) but below a
 /// perfect title match + heavy frecency. Matches the native
-/// plugin's value 1:1.
+/// gadget's value 1:1.
 const BANG_SCORE: u32 = 1000;
 
-/// Path inside the plugin archive where the bundled bang
+/// Path inside the gadget archive where the bundled bang
 /// database lives. Loaded via `assets::read` as a fallback
 /// when the network fetch fails.
 const BUNDLED_BANG_PATH: &str = "assets/bang.json";
@@ -137,7 +137,7 @@ impl LifecycleGuest for BangsPlugin {
 
 impl SearchGuest for BangsPlugin {
     fn entries() -> Vec<CatalogEntry> {
-        // Query-only plugin — no catalog.
+        // Query-only gadget — no catalog.
         Vec::new()
     }
 
@@ -177,8 +177,8 @@ impl SearchGuest for BangsPlugin {
 
         // Highlight the service-name span inside the title
         // so the result visually anchors on the target
-        // service. Native plugin used `Utf16Positions` — we
-        // compute the same UTF-16 offset list inline here
+        // service. The native gadget used `Utf16Positions` —
+        // we compute the same UTF-16 offset list inline here
         // since a helper crate isn't available in the guest.
         let title_highlight_positions = utf16_positions_for_substring(&title, &bang.service_name);
 
@@ -330,7 +330,7 @@ fn lookup_bang(db: &SqlHandle, trigger: &str) -> Result<Option<BangRecord>, Stri
 // Query token parsing
 //
 // Pure functions, exhaustively unit-tested at the bottom of
-// the file. Ported verbatim from the native plugin; no host
+// the file. Ported verbatim from the native gadget; no host
 // dependencies.
 // =========================================================
 
@@ -377,7 +377,7 @@ fn byte_offset_of_token(s: &str, token_index: usize) -> usize {
 ///
 /// Inline here rather than shared via the SDK because the
 /// logic is small (~15 lines) and only one guest needs it
-/// today. If a second plugin lands with the same requirement,
+/// today. If a second gadget lands with the same requirement,
 /// lift it into the SDK.
 fn utf16_positions_for_substring(haystack: &str, needle: &str) -> Vec<u32> {
     if needle.is_empty() {
@@ -488,7 +488,7 @@ fn import_bangs(db: &SqlHandle, entries: &[BangEntry], source: &str) -> Result<(
 
         // Record metadata the settings UI surfaces. Import
         // date uses SQLite's strftime for consistency with
-        // the native plugin and the calculator history.
+        // the native gadget and the calculator history.
         db.execute(
             "INSERT INTO metadata (key, value) \
              VALUES ('import_date', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -640,7 +640,7 @@ fn query_stats(db: &SqlHandle) -> Result<BangStats, String> {
 // Pure-function tests
 //
 // SQL / HTTP / assets paths are exercised by the host's own
-// integration tests through the WASM plugin boundary (see
+// integration tests through the WASM gadget boundary (see
 // `src-tauri/src/wasm/runtime.rs`). The tests here cover
 // only the pure token-parsing helpers, which are trivial
 // to exercise in the native `cargo test` pass.

@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// DemoView — Template Plugin Launcher View
+// DemoView — Template Gadget Launcher View
 //
 // Custom UI component rendered when the user types the "tpl:"
-// prefix. Showcases the typical plugin authoring surface so
-// you can copy-and-adapt for your own plugin:
+// prefix. Showcases the typical gadget authoring surface so
+// you can copy-and-adapt for your own gadget:
 //
 // - JSX with the automatic runtime (no `import React` needed)
 // - React hooks via the SDK
@@ -22,9 +22,9 @@
 // - Tailwind utilities using the host's design tokens
 //
 // This file is meant to be **read** and adapted into your
-// own plugin code. End-to-end test coverage of the SDK
+// own gadget code. End-to-end test coverage of the SDK
 // shim machinery lives in the dedicated
-// `plugins/test-fixture/` crate, not here.
+// `gadgets/test-fixture/` crate, not here.
 // =========================================================
 
 import { useEffect, useState } from "react";
@@ -37,7 +37,7 @@ import {
 import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import "../../styles/launcher.css";
 
-// Sample dataset for the windowed list. Real plugins source
+// Sample dataset for the windowed list. Real gadgets source
 // this from `data` (host-provided per-render payload) or from
 // `sendMessage(...)` round-trips into their backend.
 const DEMO_ITEMS = Array.from({ length: 32 }, (_, i) => `Item #${i + 1}`);
@@ -112,11 +112,11 @@ export function DemoView({ data, query }: GadgetViewProps) {
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <h2 className="text-lg font-semibold text-text-primary">Template Plugin</h2>
+      <h2 className="text-lg font-semibold text-text-primary">Template Gadget</h2>
 
       <p className="text-sm text-text-secondary">
-        This view was loaded dynamically from a WASM plugin's frontend bundle
-        via the <code className="text-accent">torchsnap-plugin://</code> protocol.
+        This view was loaded dynamically from a WASM gadget's frontend bundle
+        via the <code className="text-accent">torchsnap-gadget://</code> protocol.
       </p>
 
       {/* Per-render data: the host hands `query` and `data`
@@ -132,8 +132,8 @@ export function DemoView({ data, query }: GadgetViewProps) {
 
       {/* Live data fetched from the Rust backend via
           sendMessage. The greeting is read from a setting,
-          and the enable count is read from the per-plugin
-          SQL database. Both fetch on mount; real plugins
+          and the enable count is read from the per-gadget
+          SQL database. Both fetch on mount; real gadgets
           typically also re-fetch on relevant events. */}
       <div className="rounded-lg border border-border bg-surface-inset p-4">
         <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">

@@ -318,7 +318,7 @@ mod result_source_tests {
     use super::ResultSource;
 
     #[test]
-    fn plugin_variant_serializes_with_type_and_id_fields() {
+    fn gadget_variant_serializes_with_type_and_id_fields() {
         let json = serde_json::to_value(ResultSource::Gadget {
             id: "bangs".to_string(),
         })
@@ -335,12 +335,12 @@ mod result_source_tests {
     #[test]
     fn gadget_id_round_trips_special_characters() {
         let json = serde_json::to_value(ResultSource::Gadget {
-            id: "my-weird.plugin-id".to_string(),
+            id: "my-weird.gadget-id".to_string(),
         })
         .expect("serialize weird id");
         assert_eq!(
             json["id"],
-            serde_json::Value::String("my-weird.plugin-id".into())
+            serde_json::Value::String("my-weird.gadget-id".into())
         );
     }
 }

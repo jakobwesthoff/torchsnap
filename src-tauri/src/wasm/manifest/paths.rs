@@ -83,7 +83,7 @@ mod tests {
     /// would let a crafted gadget have the host `read_file`
     /// an arbitrary file as "the WASM component".
     #[test]
-    fn reject_plugin_wasm_with_traversal() {
+    fn reject_gadget_wasm_with_traversal() {
         let toml = r#"
             [gadget]
             id = "bad"
@@ -101,7 +101,7 @@ mod tests {
     /// Absolute paths in `gadget.wasm` are equally dangerous
     /// and must fail.
     #[test]
-    fn reject_plugin_wasm_absolute_path() {
+    fn reject_gadget_wasm_absolute_path() {
         let toml = r#"
             [gadget]
             id = "bad"

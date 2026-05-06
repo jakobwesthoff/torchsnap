@@ -5,7 +5,7 @@
 /**
  * Inline result component for the calculator's heuristic mode.
  *
- * Registered as `inline-views["result"]` in the plugin manifest.
+ * Registered as `inline-views["result"]` in the gadget manifest.
  * Renders the calculator result above the standard result list.
  * Participates in the host's selection model at index 0.
  *

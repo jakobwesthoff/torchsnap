@@ -20,7 +20,7 @@
 //!
 //! Score-tier rationale (referenced from `ranges:` comments
 //! around the codebase): bangs sit at a fixed 1000, the
-//! built-in URL plugin at 500. Connected ZeroTier entries
+//! built-in URL gadget at 500. Connected ZeroTier entries
 //! slot between (750), joined-offline near URL (450),
 //! known-only below (250), synthetic Intent B at the floor
 //! (125). Frecency adds up to ~3000 on top, so frequently

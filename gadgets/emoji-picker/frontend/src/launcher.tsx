@@ -6,7 +6,7 @@
 // Launcher entry barrel
 //
 // Vite builds this single file into `dist/launcher.js`; the
-// host loads it via `torchsnap-plugin://` and looks up the
+// host loads it via `torchsnap-gadget://` and looks up the
 // named export that matches the manifest's
 // `[frontend.views]` mapping — in our case
 // `picker = "EmojiGrid"`.

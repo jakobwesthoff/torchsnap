@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! ZeroTier plugin entry point.
+//! ZeroTier gadget entry point.
 //!
-//! Wires the per-plugin host imports to the domain modules:
+//! Wires the per-gadget host imports to the domain modules:
 //!
 //! * `enable()` resolves the auth token, validates it, opens
 //!   the SQLite history, and (on macOS) merges the official
@@ -349,8 +349,8 @@ fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
 }
 
 // Bundled ZeroTier brand glyph in `assets/icon.svg`. The host
-// bridge resolves this plugin-relative path to the launcher's
-// `torchsnap-plugin://` asset URL automatically; see the WIT
+// bridge resolves this gadget-relative path to the launcher's
+// `torchsnap-gadget://` asset URL automatically; see the WIT
 // docs on `entry-icon::asset-icon`. The SVG itself is a CC0
 // derivative — see `assets/ATTRIBUTIONS.md`.
 fn network_icon() -> EntryIcon {

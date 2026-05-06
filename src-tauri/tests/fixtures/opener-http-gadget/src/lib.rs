@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Opener/HTTP Test Plugin
+// Opener/HTTP Test Gadget
 //
-// Test-only WASM plugin used by the Rust test suite in
+// Test-only WASM gadget used by the Rust test suite in
 // `src-tauri/src/wasm/runtime.rs`. Exercises the `opener`
 // and `http` host interfaces via `messaging::handle-message`
 // dispatch so tests get a clean `Result<String, String>`

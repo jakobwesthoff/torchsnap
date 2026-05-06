@@ -4,10 +4,10 @@
 
 //! Typed accessors for the host's `settings::get` interface.
 //!
-//! The WIT boundary hands plugins JSON-encoded strings so any
+//! The WIT boundary hands gadgets JSON-encoded strings so any
 //! TOML-compatible value shape can cross without inventing a
 //! dedicated variant. These helpers fold the JSON parse into
-//! the same call site where the key is named, so plugin code
+//! the same call site where the key is named, so gadget code
 //! reads more like direct struct access:
 //!
 //! ```ignore
@@ -17,7 +17,7 @@
 //! ```
 //!
 //! `get` returns `None` for both "unset" and "present but
-//! failed to parse into `T`" — plugins that need to
+//! failed to parse into `T`" — gadgets that need to
 //! distinguish the two should call the underlying
 //! `settings_host::get` directly.
 

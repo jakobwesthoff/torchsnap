@@ -13,10 +13,10 @@
 //! Resolution order:
 //!
 //! 1. Per-OS canonical paths, first readable wins.
-//! 2. The `manualToken` plugin setting.
+//! 2. The `manualToken` gadget setting.
 //!
 //! Filesystem reads go through the manifest-allowlisted
-//! `fs::read_file` host import; paths the plugin's manifest
+//! `fs::read_file` host import; paths the gadget's manifest
 //! does not declare return `permission-denied` and the
 //! resolver falls through to the next candidate.
 
@@ -58,7 +58,7 @@ pub fn candidate_paths(os: &Os, user_config_dir: &str) -> Vec<String> {
             "/Library/Application Support/ZeroTier/One/authtoken.secret".to_string(),
             // The official UI deposits a 0644 user-readable
             // copy here; far more often available to the
-            // unprivileged plugin than the 0600 system path.
+            // unprivileged gadget than the 0600 system path.
             format!("{user_config_dir}/ZeroTier/One/authtoken.secret"),
         ],
         Os::Linux => vec!["/var/lib/zerotier-one/authtoken.secret".to_string()],

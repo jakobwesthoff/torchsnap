@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Emoji Picker Plugin (WASM)
+// Emoji Picker Gadget (WASM)
 //
 // Activated by the ":" prefix. Searches emoji by shortcode
 // and keyword with two-pass nucleo matching: shortcode hits
@@ -514,7 +514,7 @@ impl LifecycleGuest for EmojiPickerPlugin {
 
 impl SearchGuest for EmojiPickerPlugin {
     fn entries() -> Vec<CatalogEntry> {
-        // Prefix-only plugin: it contributes nothing to the
+        // Prefix-only gadget: it contributes nothing to the
         // always-on catalog, so typing a plain word like
         // "grinning" won't surface emoji.
         Vec::new()
@@ -523,7 +523,7 @@ impl SearchGuest for EmojiPickerPlugin {
     fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
         // Outside prefix mode we have nothing to contribute;
         // returning `Nothing` lets the host route the query
-        // to other always-on plugins.
+        // to other always-on gadgets.
         if matched_prefix.is_none() {
             return SearchResponse::Nothing;
         }

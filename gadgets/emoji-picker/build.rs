@@ -10,15 +10,15 @@
 // can embed them into the wasm binary via `include_str!`.
 //
 // The `.torchsnap` archive intentionally strips
-// `frontend/node_modules/*` (see `just/plugins.just` —
-// `package-plugin` exclusion list), which means the guest
+// `frontend/node_modules/*` (see `just/gadgets.just` —
+// `package-gadget` exclusion list), which means the guest
 // cannot read these files at runtime. Embedding at compile
-// time is the simplest workaround for the v1 plugin ABI. A
-// future `plugin-assets` WIT interface
-// (`todos/wasm/…plugin-assets-wit-interface.md`) would let
+// time is the simplest workaround for the v1 gadget ABI. A
+// future `gadget-assets` WIT interface
+// (`todos/wasm/…gadget-assets-wit-interface.md`) would let
 // the guest load them from the archive and shrink the binary.
 //
-// `just build-plugin emoji-picker` runs `bun install` in
+// `just build-gadget emoji-picker` runs `bun install` in
 // `frontend/` before invoking Cargo, so `node_modules/` is
 // guaranteed to exist by the time this build script runs.
 // =========================================================
@@ -51,8 +51,8 @@ fn main() {
         fs::copy(src_path, out_path.join(dest)).unwrap_or_else(|e| {
             panic!(
                 "copy `{src}` into OUT_DIR: {e} \
-                 — run `bun install` in `plugins/emoji-picker/frontend/` \
-                 (or build via `just build-plugin emoji-picker` which does this automatically)"
+                 — run `bun install` in `gadgets/emoji-picker/frontend/` \
+                 (or build via `just build-gadget emoji-picker` which does this automatically)"
             )
         });
         // Re-run when the source JSON changes (e.g. after

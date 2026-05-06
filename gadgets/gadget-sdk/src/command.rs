@@ -4,7 +4,7 @@
 
 //! Ergonomic builder for the `command::run` host import.
 //!
-//! Plugin code typically looks like:
+//! Gadget code typically looks like:
 //!
 //! ```ignore
 //! use std::time::Duration;
@@ -19,13 +19,13 @@
 //! ```
 //!
 //! Every call to [`run`] must match exactly one
-//! `[[permissions.command]]` rule in the plugin's
+//! `[[permissions.command]]` rule in the gadget's
 //! `manifest.toml`. Mismatches surface as
 //! [`CommandError::PermissionDenied`]; see ADR 0040 for the
 //! trust model and constraint vocabulary.
 //!
 //! The raw host import lives at
-//! [`crate::command_host`](crate::command_host) for plugin
+//! [`crate::command_host`](crate::command_host) for gadget
 //! code that wants to call into the WIT surface directly
 //! without the builder.
 
@@ -131,7 +131,7 @@ impl CommandBuilder {
     }
 
     /// Spawn the binary, drain output, and return the
-    /// captured result. Synchronous from the plugin's
+    /// captured result. Synchronous from the gadget's
     /// perspective; runs to completion before returning.
     pub fn invoke(self) -> Result<CommandResult, CommandError> {
         let options = RawOptions {
