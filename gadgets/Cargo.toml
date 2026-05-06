@@ -42,9 +42,15 @@ resolver = "3"
 #                        inline across compilation units.
 # - `panic = "abort"`  — strips unwind tables; wasmtime
 #                        traps panics regardless.
+# - `strip = "debuginfo"` — drops DWARF sections from the
+#                        emitted `.wasm`. The host loader and
+#                        wasmtime traps reference function
+#                        names from the `name` section, which
+#                        is preserved.
 # =========================================================
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+strip = "debuginfo"
