@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Source Abstraction
+// Gadget Source Abstraction
 //
-// Plugins can be loaded from two kinds of backing stores:
+// Gadgets can be loaded from two kinds of backing stores:
 //
 // - `DirectorySource` — a plain directory on disk, used
 //   during development to avoid re-zipping on every change.
@@ -14,11 +14,11 @@
 //
 // Both implement `GadgetSource`, which provides access to
 // the parsed manifest and the raw bytes of any file within
-// the plugin. The rest of the plugin system is agnostic to
-// which source loaded the plugin — the source kind
+// the gadget. The rest of the gadget system is agnostic to
+// which source loaded the gadget — the source kind
 // (`GadgetSourceKind`) is tracked separately by the host so
 // UI surfaces (badges, uninstall availability) can reason
-// about where a plugin came from.
+// about where a gadget came from.
 // =========================================================
 
 use std::io::Read as _;
@@ -33,24 +33,24 @@ use super::manifest::Manifest;
 // GadgetSourceKind
 // =========================================================
 
-/// Tags each loaded plugin with the root it was discovered
+/// Tags each loaded gadget with the root it was discovered
 /// from. Orthogonal to [`GadgetSource`]: the trait abstracts
-/// *how* we read the plugin's files (directory vs. archive),
+/// *how* we read the gadget's files (directory vs. archive),
 /// this enum records *where on the host* it came from.
 ///
 /// The UI uses this to:
 ///
-/// - Show a source badge next to each plugin.
+/// - Show a source badge next to each gadget.
 /// - Gate the uninstall action to `User` only.
 /// - Reject install-time ID collisions against `Builtin`,
-///   `System`, and `Dev` plugins.
+///   `System`, and `Dev` gadgets.
 ///
 /// Serialized as lowercase strings (`builtin`, `system`,
 /// `user`, `dev`) across the Tauri IPC boundary.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GadgetSourceKind {
-    /// Native Rust plugin compiled directly into the host
+    /// Native Rust gadget compiled directly into the host
     /// binary (e.g. `clipboard`, `bangs`). Always present;
     /// not uninstallable.
     Builtin,
@@ -72,24 +72,24 @@ pub enum GadgetSourceKind {
 // GadgetSource Trait
 // =========================================================
 
-/// A read-only view into a plugin's files, regardless of
+/// A read-only view into a gadget's files, regardless of
 /// whether they come from a directory or a zip archive.
 pub trait GadgetSource: Send + Sync {
-    /// The parsed manifest for this plugin.
+    /// The parsed manifest for this gadget.
     fn manifest(&self) -> &Manifest;
 
-    /// Read the raw bytes of a file within the plugin.
+    /// Read the raw bytes of a file within the gadget.
     ///
-    /// The `path` is relative to the plugin root (matching
+    /// The `path` is relative to the gadget root (matching
     /// the paths used in `manifest.toml`).
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>>;
 
     /// Check whether a file exists at `path` without
     /// reading its bytes.
     ///
-    /// Used by the `assets::exists` host import so plugins
+    /// Used by the `assets::exists` host import so gadgets
     /// can probe optional assets cheaply. `path` is
-    /// validated with the same `validate_plugin_path` guard
+    /// validated with the same `validate_gadget_path` guard
     /// as `read_file` — traversal, absolute paths, etc. are
     /// rejected as errors (not `Ok(false)`) so callers can
     /// tell "invalid path" apart from "valid path, file
@@ -129,7 +129,7 @@ pub trait GadgetSource: Send + Sync {
 // DirectorySource
 // =========================================================
 
-/// Loads a plugin from a plain directory on disk.
+/// Loads a gadget from a plain directory on disk.
 ///
 /// The directory must contain a `manifest.toml` at its root.
 /// All file paths in the manifest are resolved relative to
@@ -140,7 +140,7 @@ pub struct DirectorySource {
 }
 
 impl DirectorySource {
-    /// Open a plugin directory and parse its manifest.
+    /// Open a gadget directory and parse its manifest.
     pub fn open(root: impl Into<PathBuf>) -> anyhow::Result<Self> {
         let root = root.into();
         let manifest_path = root.join("manifest.toml");
@@ -159,9 +159,9 @@ impl DirectorySource {
         &self.root
     }
 
-    /// Resolve a plugin-relative path against the plugin
+    /// Resolve a gadget-relative path against the gadget
     /// root, enforcing both the lexical guard
-    /// (`validate_plugin_path`) and the symlink-target
+    /// (`validate_gadget_path`) and the symlink-target
     /// guard (`canonicalize` + `starts_with`). Returns the
     /// canonical path when the file exists inside the root;
     /// `Ok(None)` when the path is lexically valid but the
@@ -174,17 +174,17 @@ impl DirectorySource {
     /// `self.root.join(path)` result (`/var/...`), which
     /// would otherwise produce false-negative "escapes"
     /// errors for every missing-file read.
-    /// `validate_plugin_path` has already enforced the
+    /// `validate_gadget_path` has already enforced the
     /// lexical bound, and there is no symlink target to
     /// inspect when the file doesn't exist.
     fn resolve_inside_root(&self, path: &str) -> anyhow::Result<Option<PathBuf>> {
-        validate_plugin_path(path)?;
+        validate_gadget_path(path)?;
 
         let full_path = self.root.join(path);
         let canonical_root = self
             .root
             .canonicalize()
-            .context("resolving plugin root directory")?;
+            .context("resolving gadget root directory")?;
 
         let canonical = match full_path.canonicalize() {
             Ok(p) => p,
@@ -193,7 +193,7 @@ impl DirectorySource {
 
         anyhow::ensure!(
             canonical.starts_with(&canonical_root),
-            "plugin file path `{path}` escapes the plugin directory"
+            "gadget file path `{path}` escapes the gadget directory"
         );
         Ok(Some(canonical))
     }
@@ -207,7 +207,7 @@ impl GadgetSource for DirectorySource {
     fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
         match self.resolve_inside_root(path)? {
             Some(canonical) => {
-                std::fs::read(&canonical).with_context(|| format!("reading plugin file `{path}`"))
+                std::fs::read(&canonical).with_context(|| format!("reading gadget file `{path}`"))
             }
             None => {
                 // Surface a proper "not found" error. The
@@ -215,7 +215,7 @@ impl GadgetSource for DirectorySource {
                 // in `resolve_inside_root` already validated
                 // the path.
                 std::fs::read(self.root.join(path))
-                    .with_context(|| format!("reading plugin file `{path}`"))
+                    .with_context(|| format!("reading gadget file `{path}`"))
             }
         }
     }
@@ -264,24 +264,24 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 // =========================================================
-// Plugin Path Guard
+// Gadget Path Guard
 //
 // Single lexical validator for every user-supplied path
-// inside a plugin — manifest-referenced files (wasm, icon,
+// inside a gadget — manifest-referenced files (wasm, icon,
 // migrations, frontend bundles/CSS) and every argument to
 // `read_file()`.
 //
 // A manifest that says `launcher-bundle = "../../.ssh/id_rsa"`
 // would otherwise get the host to read an arbitrary file and
 // hand the bytes back as a "frontend bundle". The host would
-// gladly serve that to the webview via the plugin protocol.
+// gladly serve that to the webview via the gadget protocol.
 // The WIT sandbox does not cover this path because the read
 // happens host-side before anything reaches the guest.
 //
 // Applied at two layers:
 //
 // 1. **Manifest parse** — every path field in `manifest.toml`
-//    is validated before the plugin is considered loadable.
+//    is validated before the gadget is considered loadable.
 //    This is the primary gate.
 // 2. **Read boundary** — both `DirectorySource::read_file` and
 //    `ArchiveSource::read_file` re-validate their `path`
@@ -293,46 +293,46 @@ fn normalize_path(path: &Path) -> PathBuf {
 // - Non-empty.
 // - No NUL bytes (defensive against embedded-null path
 //   truncation surprises on some platforms).
-// - No backslashes — paths inside a plugin are always
+// - No backslashes — paths inside a gadget are always
 //   forward-slash, regardless of host OS. Archives use the
 //   zip spec (forward-slash), directory manifests are
 //   cross-platform by policy.
 // - Not an absolute POSIX path (leading `/`).
 // - Not a Windows absolute path (`C:\…`, `\\…`). This guard
 //   fires even on macOS/Linux so a Windows-targeted malicious
-//   plugin still gets rejected before reaching platform-
+//   gadget still gets rejected before reaching platform-
 //   specific code.
 // - After lexically resolving `..` and `.` segments, the
 //   running depth never goes below zero (i.e. the path never
-//   escapes the plugin root).
+//   escapes the gadget root).
 //
 // Returns the lexically normalized path for callers that want
 // to use it as a filesystem-side key. The unnormalized input
-// is still carried in error messages to help plugin authors
+// is still carried in error messages to help gadget authors
 // debug rejections.
 // =========================================================
 
-/// Validate that `path` is a safe, plugin-relative path.
+/// Validate that `path` is a safe, gadget-relative path.
 /// Returns the lexically normalized form on success. See the
-/// module-level "Plugin Path Guard" comment for the full list
+/// module-level "Gadget Path Guard" comment for the full list
 /// of rules.
-pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
-    anyhow::ensure!(!path.is_empty(), "plugin file path must not be empty");
+pub(crate) fn validate_gadget_path(path: &str) -> anyhow::Result<PathBuf> {
+    anyhow::ensure!(!path.is_empty(), "gadget file path must not be empty");
     anyhow::ensure!(
         !path.contains('\0'),
-        "plugin file path `{path}` must not contain NUL bytes"
+        "gadget file path `{path}` must not contain NUL bytes"
     );
     anyhow::ensure!(
         !path.contains('\\'),
-        "plugin file path `{path}` must use forward slashes (`/`) — backslashes are rejected regardless of host OS"
+        "gadget file path `{path}` must use forward slashes (`/`) — backslashes are rejected regardless of host OS"
     );
     anyhow::ensure!(
         !path.starts_with('/'),
-        "plugin file path `{path}` must be relative (no leading `/`)"
+        "gadget file path `{path}` must be relative (no leading `/`)"
     );
 
     // Windows drive-letter detection (`C:`, `z:`, …). Rejected
-    // on all platforms so a malicious plugin shipped from a
+    // on all platforms so a malicious gadget shipped from a
     // Windows author still fails on macOS/Linux.
     let mut bytes = path.bytes();
     if let (Some(first), Some(second)) = (bytes.next(), bytes.next())
@@ -340,7 +340,7 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
         && second == b':'
     {
         anyhow::bail!(
-            "plugin file path `{path}` looks like a Windows absolute path — paths must be plugin-relative"
+            "gadget file path `{path}` looks like a Windows absolute path — paths must be gadget-relative"
         );
     }
 
@@ -357,7 +357,7 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
                 depth -= 1;
                 anyhow::ensure!(
                     depth >= 0,
-                    "plugin file path `{path}` escapes the plugin root"
+                    "gadget file path `{path}` escapes the gadget root"
                 );
             }
             std::path::Component::Normal(_) => depth += 1,
@@ -367,7 +367,7 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
                 // prefixes in case an exotic input slipped
                 // past the earlier checks.
                 anyhow::bail!(
-                    "plugin file path `{path}` must be relative (no root or drive prefix)"
+                    "gadget file path `{path}` must be relative (no root or drive prefix)"
                 );
             }
         }
@@ -380,7 +380,7 @@ pub(crate) fn validate_plugin_path(path: &str) -> anyhow::Result<PathBuf> {
 // ArchiveSource
 // =========================================================
 
-/// Loads a plugin from a `.torchsnap` zip archive.
+/// Loads a gadget from a `.torchsnap` zip archive.
 ///
 /// The archive is held open for the lifetime of the source so
 /// that files (WASM binary, frontend assets, images) can be
@@ -448,19 +448,19 @@ impl GadgetSource for ArchiveSource {
         // The guard rejects absolute / Windows / backslash /
         // NUL / traversal paths in one place; the normalized
         // output is what zip `by_name` lookups should use.
-        let normalized = validate_plugin_path(path)?;
+        let normalized = validate_gadget_path(path)?;
         let normalized_str = normalized.to_string_lossy();
 
         let mut archive = self.archive.lock().expect("archive mutex not poisoned");
 
         let mut entry = archive
             .by_name(&normalized_str)
-            .with_context(|| format!("reading plugin file `{path}` from archive"))?;
+            .with_context(|| format!("reading gadget file `{path}` from archive"))?;
 
         let mut buf = Vec::with_capacity(entry.size() as usize);
         entry
             .read_to_end(&mut buf)
-            .with_context(|| format!("decompressing plugin file `{path}`"))?;
+            .with_context(|| format!("decompressing gadget file `{path}`"))?;
 
         Ok(buf)
     }
@@ -468,7 +468,7 @@ impl GadgetSource for ArchiveSource {
     fn file_exists(&self, path: &str) -> anyhow::Result<bool> {
         // Same validation contract as `read_file`: invalid
         // paths are errors, not `Ok(false)`.
-        let normalized = validate_plugin_path(path)?;
+        let normalized = validate_gadget_path(path)?;
         let normalized_str = normalized.to_string_lossy();
 
         let mut archive = self.archive.lock().expect("archive mutex not poisoned");
@@ -507,7 +507,7 @@ mod tests {
     /// serializer/deserializer asymmetry would surface as a
     /// silently-lost source kind on the UI.
     #[test]
-    fn plugin_source_kind_round_trips_through_json() {
+    fn gadget_source_kind_round_trips_through_json() {
         for kind in [
             GadgetSourceKind::Builtin,
             GadgetSourceKind::System,
@@ -526,7 +526,7 @@ mod tests {
     /// `"BUILTIN"` instead of `"builtin"`, the frontend will
     /// silently fail to match.
     #[test]
-    fn plugin_source_kind_uses_lowercase_wire_names() {
+    fn gadget_source_kind_uses_lowercase_wire_names() {
         let cases = [
             (GadgetSourceKind::Builtin, "\"builtin\""),
             (GadgetSourceKind::System, "\"system\""),
@@ -543,7 +543,7 @@ mod tests {
     /// rely on this strictness so typos in a consumer are
     /// caught rather than silently producing a wrong kind.
     #[test]
-    fn plugin_source_kind_rejects_non_lowercase_input() {
+    fn gadget_source_kind_rejects_non_lowercase_input() {
         for bad in ["\"Builtin\"", "\"SYSTEM\"", "\"User \"", "\"\"", "null"] {
             let decoded: Result<GadgetSourceKind, _> = serde_json::from_str(bad);
             assert!(
@@ -554,29 +554,29 @@ mod tests {
     }
 
     // =========================================================
-    // validate_plugin_path: the accept-cases
+    // validate_gadget_path: the accept-cases
     //
-    // Every path a legitimate plugin author might write must
+    // Every path a legitimate gadget author might write must
     // pass. Failing any of these would break the real-world
-    // plugins (calculator, clipboard, hello-world, template)
+    // gadgets (calculator, clipboard, hello-world, template)
     // when they reference their own files.
     // =========================================================
 
     #[test]
     fn path_guard_accepts_bare_filename() {
-        assert!(validate_plugin_path("manifest.toml").is_ok());
-        assert!(validate_plugin_path("icon.webp").is_ok());
+        assert!(validate_gadget_path("manifest.toml").is_ok());
+        assert!(validate_gadget_path("icon.webp").is_ok());
     }
 
     #[test]
     fn path_guard_accepts_nested_file() {
-        assert!(validate_plugin_path("frontend/dist/launcher.js").is_ok());
-        assert!(validate_plugin_path("migrations/001_init.sql").is_ok());
+        assert!(validate_gadget_path("frontend/dist/launcher.js").is_ok());
+        assert!(validate_gadget_path("migrations/001_init.sql").is_ok());
     }
 
     #[test]
     fn path_guard_accepts_deeply_nested_path() {
-        assert!(validate_plugin_path("a/b/c/d/e/deeply_nested.bin").is_ok());
+        assert!(validate_gadget_path("a/b/c/d/e/deeply_nested.bin").is_ok());
     }
 
     #[test]
@@ -584,15 +584,15 @@ mod tests {
         // A filename that contains dots but is not a `..`
         // segment must pass — `.env.local`, `foo.bar.baz`,
         // etc. are legitimate filenames.
-        assert!(validate_plugin_path("foo.bar.baz.wasm").is_ok());
-        assert!(validate_plugin_path("frontend/.prettierrc.json").is_ok());
+        assert!(validate_gadget_path("foo.bar.baz.wasm").is_ok());
+        assert!(validate_gadget_path("frontend/.prettierrc.json").is_ok());
     }
 
     #[test]
     fn path_guard_accepts_roundtrip_into_self() {
         // `a/./b` normalizes to `a/b` — curdir segments are
         // valid even though they're unusual.
-        assert!(validate_plugin_path("frontend/./launcher.js").is_ok());
+        assert!(validate_gadget_path("frontend/./launcher.js").is_ok());
     }
 
     #[test]
@@ -601,56 +601,56 @@ mod tests {
         // separators. Callers use this for zip `by_name`
         // lookups so it must match what a well-behaved
         // manifest author would have written.
-        let normalized = validate_plugin_path("frontend/./dist/launcher.js").unwrap();
+        let normalized = validate_gadget_path("frontend/./dist/launcher.js").unwrap();
         assert_eq!(normalized, Path::new("frontend/dist/launcher.js"));
     }
 
     // =========================================================
-    // validate_plugin_path: the reject-cases
+    // validate_gadget_path: the reject-cases
     //
     // Every form of attacker-controlled path that could
-    // escape the plugin root must be rejected. Failures here
-    // are the exact scenarios documented in the Plugin Path
+    // escape the gadget root must be rejected. Failures here
+    // are the exact scenarios documented in the Gadget Path
     // Guard comment above.
     // =========================================================
 
     #[test]
     fn path_guard_rejects_empty_string() {
-        assert!(validate_plugin_path("").is_err());
+        assert!(validate_gadget_path("").is_err());
     }
 
     #[test]
     fn path_guard_rejects_nul_byte() {
-        assert!(validate_plugin_path("foo\0bar").is_err());
-        assert!(validate_plugin_path("\0").is_err());
+        assert!(validate_gadget_path("foo\0bar").is_err());
+        assert!(validate_gadget_path("\0").is_err());
     }
 
     #[test]
     fn path_guard_rejects_backslash_separator() {
-        // Even on Windows we reject backslashes: plugin
+        // Even on Windows we reject backslashes: gadget
         // paths are forward-slash by policy, matching the
         // zip spec. This keeps cross-platform behaviour
         // uniform.
-        assert!(validate_plugin_path("frontend\\launcher.js").is_err());
-        assert!(validate_plugin_path("..\\escape").is_err());
+        assert!(validate_gadget_path("frontend\\launcher.js").is_err());
+        assert!(validate_gadget_path("..\\escape").is_err());
     }
 
     #[test]
     fn path_guard_rejects_leading_slash() {
-        assert!(validate_plugin_path("/etc/passwd").is_err());
-        assert!(validate_plugin_path("/").is_err());
+        assert!(validate_gadget_path("/etc/passwd").is_err());
+        assert!(validate_gadget_path("/").is_err());
     }
 
     #[test]
     fn path_guard_rejects_windows_drive_letter() {
-        assert!(validate_plugin_path("C:/Windows/System32/cmd.exe").is_err());
-        assert!(validate_plugin_path("z:foo").is_err());
+        assert!(validate_gadget_path("C:/Windows/System32/cmd.exe").is_err());
+        assert!(validate_gadget_path("z:foo").is_err());
     }
 
     #[test]
     fn path_guard_rejects_parent_at_start() {
-        assert!(validate_plugin_path("../secret").is_err());
-        assert!(validate_plugin_path("..").is_err());
+        assert!(validate_gadget_path("../secret").is_err());
+        assert!(validate_gadget_path("..").is_err());
     }
 
     #[test]
@@ -658,13 +658,13 @@ mod tests {
         // The walking check catches paths where the running
         // depth dips below zero, even if the end result
         // happens to land back inside the root.
-        assert!(validate_plugin_path("a/../../outside").is_err());
+        assert!(validate_gadget_path("a/../../outside").is_err());
     }
 
     #[test]
     fn path_guard_rejects_nested_parent_traversal() {
-        assert!(validate_plugin_path("../../../../etc/shadow").is_err());
-        assert!(validate_plugin_path("frontend/../../escape").is_err());
+        assert!(validate_gadget_path("../../../../etc/shadow").is_err());
+        assert!(validate_gadget_path("frontend/../../escape").is_err());
     }
 
     /// Regression guard for the "crosses zero then returns"
@@ -672,15 +672,15 @@ mod tests {
     /// lands inside the root, but the walk visits depth -1
     /// in the middle — an attacker could otherwise abuse
     /// this to probe the filesystem structure outside the
-    /// plugin.
+    /// gadget.
     #[test]
     fn path_guard_rejects_depth_dip_even_if_final_inside_root() {
-        assert!(validate_plugin_path("a/../../b/c").is_err());
+        assert!(validate_gadget_path("a/../../b/c").is_err());
     }
 
-    /// Helper: create a temporary plugin directory with a
+    /// Helper: create a temporary gadget directory with a
     /// manifest and optional extra files.
-    fn make_plugin_dir(
+    fn make_gadget_dir(
         manifest_toml: &str,
         files: &[(&str, &[u8])],
     ) -> (tempfile::TempDir, PathBuf) {
@@ -702,28 +702,28 @@ mod tests {
 
     const MINIMAL_MANIFEST: &str = r#"
         [gadget]
-        id = "test-plugin"
-        name = "Test Plugin"
-        description = "A test plugin"
+        id = "test-gadget"
+        name = "Test Gadget"
+        description = "A test gadget"
         version = "0.1.0"
-        wasm = "plugin.wasm"
+        wasm = "gadget.wasm"
         icon = "heroicons:beaker"
     "#;
 
     #[test]
     fn open_valid_directory() {
         let (_dir, root) =
-            make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm bytes")]);
+            make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"fake wasm bytes")]);
 
         let source = DirectorySource::open(&root).expect("should open");
-        assert_eq!(source.manifest().gadget.id.as_str(), "test-plugin");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
         assert_eq!(source.root(), root);
     }
 
     #[test]
     fn read_wasm_binary() {
         let wasm_bytes = b"\x00asm fake component";
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", wasm_bytes)]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", wasm_bytes)]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let bytes = source.read_wasm().expect("should read wasm");
@@ -732,10 +732,10 @@ mod tests {
 
     #[test]
     fn read_nested_file() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("frontend/launcher.js", b"export function View() {}"),
             ],
         );
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn reject_path_traversal() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let result = source.read_file("../../../etc/passwd");
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn reject_invalid_manifest() {
-        let (_dir, root) = make_plugin_dir("not valid toml [[[", &[]);
+        let (_dir, root) = make_gadget_dir("not valid toml [[[", &[]);
 
         let result = DirectorySource::open(&root);
         assert!(result.is_err(), "should fail with invalid toml");
@@ -777,14 +777,14 @@ mod tests {
 
     #[test]
     fn reject_nonexistent_file() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let err = source
             .read_file("does-not-exist.txt")
             .expect_err("should fail for missing file");
         // The error must describe the missing-file condition,
-        // NOT claim the path escapes the plugin directory.
+        // NOT claim the path escapes the gadget directory.
         // On macOS, `canonicalize()` on a tempdir path yields
         // `/private/var/...` while lexical joins yield
         // `/var/...`; an incorrect starts_with check against
@@ -803,8 +803,8 @@ mod tests {
 
     #[test]
     fn read_wasm_fails_if_wasm_file_missing() {
-        // Manifest references plugin.wasm but we don't create it.
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[]);
+        // Manifest references gadget.wasm but we don't create it.
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[]);
 
         let source = DirectorySource::open(&root).expect("should open");
         let result = source.read_wasm();
@@ -813,10 +813,10 @@ mod tests {
 
     #[test]
     fn read_file_with_dot_segments() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("frontend/launcher.js", b"js content"),
             ],
         );
@@ -832,7 +832,7 @@ mod tests {
 
     #[test]
     fn reject_traversal_via_dot_segments_to_sibling() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
 
@@ -843,10 +843,10 @@ mod tests {
 
     #[test]
     fn read_deeply_nested_file() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("a/b/c/d/deep.txt", b"deep content"),
             ],
         );
@@ -860,9 +860,9 @@ mod tests {
     fn read_binary_file_preserves_bytes() {
         // Ensure we handle non-UTF-8 binary data correctly.
         let binary: Vec<u8> = (0..=255).collect();
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("data.bin", &binary)],
+            &[("gadget.wasm", b"wasm"), ("data.bin", &binary)],
         );
 
         let source = DirectorySource::open(&root).expect("should open");
@@ -872,22 +872,22 @@ mod tests {
 
     #[test]
     fn manifest_accessible_after_open() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = DirectorySource::open(&root).expect("should open");
 
         // Verify the full manifest is accessible through the trait.
         let manifest = source.manifest();
-        assert_eq!(manifest.gadget.id.as_str(), "test-plugin");
-        assert_eq!(manifest.gadget.name, "Test Plugin");
-        assert_eq!(manifest.gadget.description, "A test plugin");
+        assert_eq!(manifest.gadget.id.as_str(), "test-gadget");
+        assert_eq!(manifest.gadget.name, "Test Gadget");
+        assert_eq!(manifest.gadget.description, "A test gadget");
         assert_eq!(manifest.gadget.version, "0.1.0");
-        assert_eq!(manifest.gadget.wasm, "plugin.wasm");
+        assert_eq!(manifest.gadget.wasm, "gadget.wasm");
     }
 
     #[test]
     fn open_nonexistent_directory() {
-        let result = DirectorySource::open("/nonexistent/path/to/plugin");
+        let result = DirectorySource::open("/nonexistent/path/to/gadget");
         assert!(result.is_err(), "should fail for nonexistent directory");
     }
 
@@ -961,7 +961,7 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().expect("create temp dir");
-        let archive_path = dir.path().join("plugin.torchsnap");
+        let archive_path = dir.path().join("gadget.torchsnap");
         std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
 
         (dir, archive_path)
@@ -988,7 +988,7 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().expect("create temp dir");
-        let archive_path = dir.path().join("plugin.torchsnap");
+        let archive_path = dir.path().join("gadget.torchsnap");
         std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
 
         (dir, archive_path)
@@ -996,16 +996,16 @@ mod tests {
 
     #[test]
     fn archive_open_valid() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"fake wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"fake wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
-        assert_eq!(source.manifest().gadget.id.as_str(), "test-plugin");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
     }
 
     #[test]
     fn archive_read_wasm() {
         let wasm_bytes = b"\x00asm fake component";
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", wasm_bytes)]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", wasm_bytes)]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let bytes = source.read_wasm().expect("should read wasm");
@@ -1017,7 +1017,7 @@ mod tests {
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("frontend/launcher.js", b"export function View() {}"),
             ],
         );
@@ -1034,7 +1034,7 @@ mod tests {
         let binary: Vec<u8> = (0..=255).collect();
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("data.bin", &binary)],
+            &[("gadget.wasm", b"wasm"), ("data.bin", &binary)],
         );
 
         let source = ArchiveSource::open(&path).expect("should open");
@@ -1044,20 +1044,20 @@ mod tests {
 
     #[test]
     fn archive_manifest_accessible() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let manifest = source.manifest();
-        assert_eq!(manifest.gadget.id.as_str(), "test-plugin");
-        assert_eq!(manifest.gadget.name, "Test Plugin");
-        assert_eq!(manifest.gadget.description, "A test plugin");
+        assert_eq!(manifest.gadget.id.as_str(), "test-gadget");
+        assert_eq!(manifest.gadget.name, "Test Gadget");
+        assert_eq!(manifest.gadget.description, "A test gadget");
         assert_eq!(manifest.gadget.version, "0.1.0");
-        assert_eq!(manifest.gadget.wasm, "plugin.wasm");
+        assert_eq!(manifest.gadget.wasm, "gadget.wasm");
     }
 
     #[test]
     fn archive_reject_missing_manifest() {
-        let (_dir, path) = make_archive_without_manifest(&[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive_without_manifest(&[("gadget.wasm", b"wasm")]);
 
         let result = ArchiveSource::open(&path);
         assert!(result.is_err(), "should fail without manifest.toml");
@@ -1073,7 +1073,7 @@ mod tests {
 
     #[test]
     fn archive_reject_nonexistent_file() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("does-not-exist.txt");
@@ -1082,7 +1082,7 @@ mod tests {
 
     #[test]
     fn archive_reject_path_traversal() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("../../../etc/passwd");
@@ -1095,7 +1095,7 @@ mod tests {
 
     #[test]
     fn archive_reject_dot_segment_escape() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("frontend/../../secret");
@@ -1104,7 +1104,7 @@ mod tests {
 
     #[test]
     fn archive_reject_absolute_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("/etc/passwd");
@@ -1117,7 +1117,7 @@ mod tests {
 
     #[test]
     fn archive_read_wasm_missing() {
-        // Manifest references plugin.wasm but archive doesn't contain it.
+        // Manifest references gadget.wasm but archive doesn't contain it.
         let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[]);
 
         let source = ArchiveSource::open(&path).expect("should open");
@@ -1157,7 +1157,7 @@ mod tests {
 
     #[test]
     fn archive_nonexistent_path() {
-        let result = ArchiveSource::open("/nonexistent/path/to/plugin.torchsnap");
+        let result = ArchiveSource::open("/nonexistent/path/to/gadget.torchsnap");
         assert!(result.is_err(), "should fail for nonexistent archive");
     }
 
@@ -1165,7 +1165,7 @@ mod tests {
     // file_exists — DirectorySource
     //
     // Coverage target: the full happy / missing matrix plus
-    // every rejection category `validate_plugin_path` can
+    // every rejection category `validate_gadget_path` can
     // surface. `file_exists` must share the same lexical
     // guard as `read_file`; the tests assert behavioral
     // parity for the guard paths so a future divergence
@@ -1175,9 +1175,9 @@ mod tests {
 
     #[test]
     fn file_exists_returns_true_for_existing_directory_file() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("data/bangs.json", b"[]")],
+            &[("gadget.wasm", b"wasm"), ("data/bangs.json", b"[]")],
         );
         let source = DirectorySource::open(&root).expect("open");
         assert!(
@@ -1189,7 +1189,7 @@ mod tests {
 
     #[test]
     fn file_exists_returns_false_for_missing_directory_file() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         assert!(
             !source
@@ -1203,9 +1203,9 @@ mod tests {
         // `file_exists` reports true only for regular files.
         // A subdirectory returns `Ok(false)` so callers
         // don't treat it as a readable asset.
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("assets/thing.txt", b"hi")],
+            &[("gadget.wasm", b"wasm"), ("assets/thing.txt", b"hi")],
         );
         let source = DirectorySource::open(&root).expect("open");
         assert!(
@@ -1218,7 +1218,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_traversal_path() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source
             .file_exists("../../../etc/passwd")
@@ -1231,7 +1231,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_absolute_path() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source
             .file_exists("/etc/passwd")
@@ -1244,7 +1244,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_backslash_path() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source
             .file_exists("frontend\\launcher.js")
@@ -1257,7 +1257,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_empty_path() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source.file_exists("").expect_err("empty must error");
         assert!(
@@ -1268,7 +1268,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_nul_byte_path() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source
             .file_exists("data\0hidden")
@@ -1281,7 +1281,7 @@ mod tests {
 
     #[test]
     fn file_exists_rejects_windows_drive_letter() {
-        let (_dir, root) = make_plugin_dir(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = DirectorySource::open(&root).expect("open");
         let err = source
             .file_exists("C:/Windows/System32/config/SAM")
@@ -1298,10 +1298,10 @@ mod tests {
 
     #[test]
     fn file_exists_handles_dot_segments_within_bounds() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("frontend/launcher.js", b"js content"),
             ],
         );
@@ -1315,9 +1315,9 @@ mod tests {
 
     #[test]
     fn file_exists_returns_false_after_file_removed() {
-        let (dir, root) = make_plugin_dir(
+        let (dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("transient.txt", b"will go")],
+            &[("gadget.wasm", b"wasm"), ("transient.txt", b"will go")],
         );
         let source = DirectorySource::open(&root).expect("open");
         assert!(source.file_exists("transient.txt").expect("present"));
@@ -1332,10 +1332,10 @@ mod tests {
 
     #[test]
     fn file_exists_returns_true_for_deeply_nested_file() {
-        let (_dir, root) = make_plugin_dir(
+        let (_dir, root) = make_gadget_dir(
             MINIMAL_MANIFEST,
             &[
-                ("plugin.wasm", b"wasm"),
+                ("gadget.wasm", b"wasm"),
                 ("a/b/c/d/deep.txt", b"deep content"),
             ],
         );
@@ -1355,14 +1355,14 @@ mod tests {
     // tests lock in that branch so a future zip crate
     // upgrade that renames the variant (or the
     // implementation that stops matching on it) trips here
-    // before plugins regress.
+    // before gadgets regress.
     // =====================================================
 
     #[test]
     fn archive_file_exists_returns_true_for_existing_entry() {
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("data/bangs.json", b"[]")],
+            &[("gadget.wasm", b"wasm"), ("data/bangs.json", b"[]")],
         );
         let source = ArchiveSource::open(&path).expect("open");
         assert!(source.file_exists("data/bangs.json").expect("probe ok"));
@@ -1370,7 +1370,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_returns_false_for_missing_entry() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         assert!(
             !source
@@ -1381,7 +1381,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_traversal_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("../../../etc/passwd")
@@ -1394,7 +1394,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_absolute_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("/etc/passwd")
@@ -1407,7 +1407,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_backslash_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("frontend\\launcher.js")
@@ -1420,7 +1420,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_empty_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("plugin.wasm", b"wasm")]);
+        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source.file_exists("").expect_err("empty must error");
         assert!(
@@ -1433,7 +1433,7 @@ mod tests {
     fn archive_file_exists_handles_nested_entry() {
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("a/b/c/d/deep.txt", b"deep")],
+            &[("gadget.wasm", b"wasm"), ("a/b/c/d/deep.txt", b"deep")],
         );
         let source = ArchiveSource::open(&path).expect("open");
         assert!(source.file_exists("a/b/c/d/deep.txt").expect("probe ok"));
@@ -1452,7 +1452,7 @@ mod tests {
         // and verify both shapes of call continue to work.
         let (_dir, path) = make_archive(
             MINIMAL_MANIFEST,
-            &[("plugin.wasm", b"wasm"), ("a.txt", b"a"), ("b.txt", b"b")],
+            &[("gadget.wasm", b"wasm"), ("a.txt", b"a"), ("b.txt", b"b")],
         );
         let source = ArchiveSource::open(&path).expect("open");
         assert!(source.file_exists("a.txt").expect("a"));

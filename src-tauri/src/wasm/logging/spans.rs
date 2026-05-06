@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn plugin_source_preserved() {
+    fn gadget_source_preserved() {
         let registry = SpanRegistry::new();
         let (id, _) = registry
             .start(

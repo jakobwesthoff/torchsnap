@@ -305,7 +305,7 @@ mod tests {
     //       as the Tauri commands without the State wrapper) -----
 
     #[tokio::test]
-    async fn emit_message_plugin_source() {
+    async fn emit_message_gadget_source() {
         let system = LoggingSystem::start();
         let mut sub = system.subscribe();
 

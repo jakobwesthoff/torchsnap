@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Per-Plugin Store State
+// Per-Gadget Store State
 //
 // `GadgetState` is the `T` in `Store<T>`. It holds the WASI
-// context, foundational per-plugin state (plugin id, log
+// context, foundational per-gadget state (gadget id, log
 // sender, span registry, settings/frecency/source/path
 // handles), and the per-capability sub-structs that each
 // host import owns.
@@ -46,31 +46,31 @@ pub struct GadgetState {
     pub(crate) wasi_table: ResourceTable,
     pub(crate) log_sender: LogSender,
     pub(crate) span_registry: Arc<SpanRegistry>,
-    /// Per-plugin namespaced settings reader. `None` until the
+    /// Per-gadget namespaced settings reader. `None` until the
     /// bridge stashes the `GadgetContext.settings` handle on
     /// `enable()`. The settings host import (`settings::get`)
     /// errors gracefully if accessed before that happens —
     /// which it shouldn't, since the host always calls
     /// `enable()` before any guest code runs.
     pub(crate) settings: Option<GadgetSettings>,
-    /// Per-plugin namespaced frecency reader. Same lifecycle
+    /// Per-gadget namespaced frecency reader. Same lifecycle
     /// as `settings`: stashed by the bridge on `enable()` from
     /// the `GadgetContext.frecency` handle and cleared on
     /// `disable()`. The host automatically records selections
     /// before `execute()` and applies score bonuses after
-    /// `search()` — this handle is only for plugins that
+    /// `search()` — this handle is only for gadgets that
     /// need to read frecency state directly (e.g. to drive an
     /// empty-query browse mode).
     pub(crate) frecency: Option<GadgetFrecency>,
-    /// The plugin's own source handle, stashed by the bridge
+    /// The gadget's own source handle, stashed by the bridge
     /// on `enable()` so the `assets::read` / `assets::exists`
-    /// host imports can read files bundled inside the plugin
+    /// host imports can read files bundled inside the gadget
     /// archive (or development directory) without re-opening
     /// it. `None` outside an enable lifetime — the host
     /// imports return an `io-error` in that case, matching
     /// the contract of the other capability stashes.
-    pub(crate) plugin_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
-    /// Resolved `${...}` substitution variables for this plugin
+    pub(crate) gadget_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
+    /// Resolved `${...}` substitution variables for this gadget
     /// instance. Populated by the bridge on `enable()`; consumed
     /// by `paths::resolve` and by `command::run` rule
     /// compilation. `None` outside an enable lifetime —
@@ -98,20 +98,20 @@ impl GadgetState {
     /// capability via the corresponding
     /// `WasmGadgetInstance::set_*` setter on `enable()`.
     pub(crate) fn new(
-        plugin_id: String,
+        gadget_id: String,
         wasi: WasiCtx,
         log_sender: LogSender,
         span_registry: Arc<SpanRegistry>,
     ) -> Self {
         Self {
-            gadget_id: plugin_id,
+            gadget_id,
             wasi,
             wasi_table: ResourceTable::new(),
             log_sender,
             span_registry,
             settings: None,
             frecency: None,
-            plugin_source: None,
+            gadget_source: None,
             path_context: None,
             sql: SqlState::default(),
             clipboard: ClipboardState::default(),
@@ -148,7 +148,7 @@ impl GadgetState {
 
         let wasi = WasiCtxBuilder::new().build();
         GadgetState::new(
-            "test-plugin".to_string(),
+            "test-gadget".to_string(),
             wasi,
             LogSender::test_sender(),
             Arc::new(SpanRegistry::new()),

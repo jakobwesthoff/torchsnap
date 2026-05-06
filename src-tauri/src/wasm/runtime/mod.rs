@@ -3,24 +3,24 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WASM Plugin Runtime
+// WASM Gadget Runtime
 //
-// Manages the wasmtime engine (shared across all plugins)
-// and provides per-plugin instances that wrap a Store and
+// Manages the wasmtime engine (shared across all gadgets)
+// and provides per-gadget instances that wrap a Store and
 // typed component bindings.
 //
 // Architecture:
 //   WasmRuntime (one per app, owns Engine + Component cache)
-//    ├── compile(plugin_id, wasm_bytes)
-//    └── instantiate(plugin_id) → WasmGadgetInstance
+//    ├── compile(gadget_id, wasm_bytes)
+//    └── instantiate(gadget_id) → WasmGadgetInstance
 //
-//   WasmGadgetInstance (one per plugin, owns Store + Plugin)
+//   WasmGadgetInstance (one per gadget, owns Store + Gadget)
 //    ├── enable() / disable()
 //    ├── entries() → Vec<CatalogEntry>
 //    └── execute(entry_id, action_id) → PostAction
 //
 // The compile/instantiate split lets the expensive step run
-// once per plugin while instantiation stays cheap enough to
+// once per gadget while instantiation stays cheap enough to
 // repeat on demand. See ADR 0033.
 // =========================================================
 
@@ -37,7 +37,7 @@
 //                  constructors and the `WasiView` impl.
 //   - `instance` — `WasmGadgetInstance` lifecycle wrapper
 //                  with foundational setters
-//                  (`set_path_context`, `set_plugin_source`)
+//                  (`set_path_context`, `set_gadget_source`)
 //                  and guest-call dispatch (`enable`,
 //                  `disable`, `entries`, `search`,
 //                  `execute`, `handle_message`, `run_task`,
@@ -84,7 +84,7 @@ mod tests {
     /// `src-tauri/tests/fixtures/minimal-gadget/` whose guest
     /// implements every WIT export as a no-op. See that
     /// directory's README for rebuild instructions.
-    const MINIMAL_PLUGIN_WASM: &[u8] =
+    const MINIMAL_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/minimal-gadget/minimal_gadget.wasm");
 
     /// Construct a bare `WasmRuntime` for tests. Uses a
@@ -106,7 +106,7 @@ mod tests {
     fn compile_then_instantiate_succeeds() {
         let runtime = test_runtime();
         runtime
-            .compile("minimal", MINIMAL_PLUGIN_WASM)
+            .compile("minimal", MINIMAL_GADGET_WASM)
             .expect("compile valid fixture");
         let instance = runtime.instantiate("minimal").expect("instantiate");
         instance.enable().expect("guest enable no-op");
@@ -119,7 +119,7 @@ mod tests {
         // successful instantiates instead.
         let runtime = test_runtime();
         runtime
-            .compile("minimal", MINIMAL_PLUGIN_WASM)
+            .compile("minimal", MINIMAL_GADGET_WASM)
             .expect("compile");
         let _first = runtime.instantiate("minimal").expect("first instantiate");
         let _second = runtime.instantiate("minimal").expect("second instantiate");
@@ -143,7 +143,7 @@ mod tests {
         let msg = format!("{err:#}");
         assert!(
             msg.contains("never-compiled") && msg.contains("compile"),
-            "error should name the missing plugin and hint at `compile` (got: {msg})"
+            "error should name the missing gadget and hint at `compile` (got: {msg})"
         );
     }
 
@@ -175,10 +175,10 @@ mod tests {
         // would trip this assertion.
         let runtime = test_runtime();
         runtime
-            .compile("minimal", MINIMAL_PLUGIN_WASM)
+            .compile("minimal", MINIMAL_GADGET_WASM)
             .expect("first compile");
         runtime
-            .compile("minimal", MINIMAL_PLUGIN_WASM)
+            .compile("minimal", MINIMAL_GADGET_WASM)
             .expect("second compile replaces");
         runtime.instantiate("minimal").expect("instantiate");
     }
@@ -190,7 +190,7 @@ mod tests {
         // not disturb the other.
         let runtime = test_runtime();
         runtime
-            .compile("minimal", MINIMAL_PLUGIN_WASM)
+            .compile("minimal", MINIMAL_GADGET_WASM)
             .expect("compile");
 
         let first = runtime.instantiate("minimal").expect("first");
@@ -204,27 +204,27 @@ mod tests {
 
     /// Bytes of the committed `website-metadata-gadget` fixture.
     /// See the fixture crate's README for rebuild instructions.
-    const WEBSITE_METADATA_PLUGIN_WASM: &[u8] = include_bytes!(
+    const WEBSITE_METADATA_GADGET_WASM: &[u8] = include_bytes!(
         "../../../tests/fixtures/website-metadata-gadget/website_metadata_gadget.wasm"
     );
 
     /// Bytes of the committed `opener-http-gadget` fixture.
     /// Exercises the `opener` and `http` host interfaces via
     /// `messaging::handle-message` dispatch.
-    const OPENER_HTTP_PLUGIN_WASM: &[u8] =
+    const OPENER_HTTP_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/opener-http-gadget/opener_http_gadget.wasm");
 
     /// Bytes of the committed `assets-gadget` fixture.
     /// Exercises the `assets` host interface via
     /// `messaging::handle-message` dispatch.
-    const ASSETS_PLUGIN_WASM: &[u8] =
+    const ASSETS_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/assets-gadget/assets_gadget.wasm");
 
     /// Bytes of the committed `command-gadget` fixture.
     /// Exercises the `command` host interface via
     /// `messaging::handle-message` dispatch.
     #[cfg(unix)]
-    const COMMAND_PLUGIN_WASM: &[u8] =
+    const COMMAND_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/command-gadget/command_gadget.wasm");
 
     // =========================================================
@@ -587,9 +587,9 @@ mod tests {
     }
 
     // =========================================================
-    // WASM integration tests for opener/http via fixture plugin
+    // WASM integration tests for opener/http via fixture gadget
     //
-    // These tests run the actual `opener-http-plugin` fixture
+    // These tests run the actual `opener-http-gadget` fixture
     // WASM and exercise `opener::open-url` and `http::fetch`
     // end-to-end through `handle_message` dispatch, with a mock
     // opener closure and a `httpmock` HTTP server respectively.
@@ -598,10 +598,10 @@ mod tests {
     fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
-            .compile("opener-http-plugin", OPENER_HTTP_PLUGIN_WASM)
+            .compile("opener-http-gadget", OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-plugin")
+            .instantiate("opener-http-gadget")
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
@@ -702,10 +702,10 @@ mod tests {
     // =========================================================
     // WASM integration tests for the website-metadata host import
     //
-    // The committed `website-metadata-plugin` fixture exposes
+    // The committed `website-metadata-gadget` fixture exposes
     // `lookup-blocking` and `lookup-cached` messaging methods.
     // Tests below stand up a real `WebsiteMetadataService`
-    // pointed at an httpmock server, install it on the plugin
+    // pointed at an httpmock server, install it on the gadget
     // instance via `set_website_metadata`, and verify the WIT
     // boundary round-trip end-to-end.
     // =========================================================
@@ -735,10 +735,10 @@ mod tests {
     fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
-            .compile("website-metadata-plugin", WEBSITE_METADATA_PLUGIN_WASM)
+            .compile("website-metadata-gadget", WEBSITE_METADATA_GADGET_WASM)
             .expect("compile website-metadata fixture");
         let instance = runtime
-            .instantiate("website-metadata-plugin")
+            .instantiate("website-metadata-gadget")
             .expect("instantiate website-metadata fixture");
         (runtime, instance)
     }
@@ -869,14 +869,14 @@ mod tests {
     //
     // These drive the `assets::Host` impl directly against a
     // `GadgetState` built with `default_for_test` and a
-    // `DirectorySource` stashed on `plugin_source`. They cover
+    // `DirectorySource` stashed on `gadget_source`. They cover
     // each variant of `AssetsError` plus the happy paths for
     // both `read` and `exists`. The fixture-driven integration
     // tests (step 1f) exercise the same paths through a real
     // WASM guest call.
     // =========================================================
 
-    fn make_plugin_source_dir() -> (
+    fn make_gadget_source_dir() -> (
         tempfile::TempDir,
         Arc<dyn super::super::source::GadgetSource + Send + Sync>,
     ) {
@@ -889,9 +889,9 @@ mod tests {
             root.join("manifest.toml"),
             r#"
 [gadget]
-id = "assets-unit-plugin"
-name = "Assets Unit Plugin"
-description = "Fixture for runtime unit tests"
+id = "assets-unit-gadget"
+name = "Assets Unit Gadget"
+description = "fixture for runtime unit tests"
 version = "0.0.0"
 wasm = "plugin.wasm"
 icon = "heroicons:beaker"
@@ -913,7 +913,7 @@ icon = "heroicons:beaker"
         src: Arc<dyn super::super::source::GadgetSource + Send + Sync>,
     ) -> GadgetState {
         GadgetState {
-            plugin_source: Some(src),
+            gadget_source: Some(src),
             ..GadgetState::default_for_test()
         }
     }
@@ -922,7 +922,7 @@ icon = "heroicons:beaker"
     fn assets_read_returns_bytes_for_existing_file() {
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let bytes = state
@@ -935,7 +935,7 @@ icon = "heroicons:beaker"
     fn assets_read_preserves_binary_content() {
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let bytes = state
@@ -949,7 +949,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state
@@ -966,7 +966,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state
@@ -986,7 +986,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state
@@ -1006,7 +1006,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state.read("".to_string()).expect_err("empty rejected");
@@ -1018,7 +1018,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state
@@ -1028,11 +1028,11 @@ icon = "heroicons:beaker"
     }
 
     #[test]
-    fn assets_read_without_plugin_source_returns_io_error() {
+    fn assets_read_without_gadget_source_returns_io_error() {
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        // Default state has `plugin_source: None` — mirrors
+        // Default state has `gadget_source: None` — mirrors
         // calling an asset import outside an enable lifetime.
         let mut state = GadgetState::default_for_test();
         let err = state
@@ -1051,7 +1051,7 @@ icon = "heroicons:beaker"
     fn assets_exists_returns_true_when_present() {
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         assert!(
@@ -1065,7 +1065,7 @@ icon = "heroicons:beaker"
     fn assets_exists_returns_false_when_absent() {
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         assert!(
@@ -1080,7 +1080,7 @@ icon = "heroicons:beaker"
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        let (_dir, src) = make_plugin_source_dir();
+        let (_dir, src) = make_gadget_source_dir();
         let mut state = state_with_source(src);
 
         let err = state
@@ -1090,7 +1090,7 @@ icon = "heroicons:beaker"
     }
 
     #[test]
-    fn assets_exists_without_plugin_source_returns_io_error() {
+    fn assets_exists_without_gadget_source_returns_io_error() {
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
@@ -1118,7 +1118,7 @@ icon = "heroicons:beaker"
     }
 
     // =========================================================
-    // WASM integration tests for assets via fixture plugin
+    // WASM integration tests for assets via fixture gadget
     //
     // The assets fixture directory contains `greeting.txt` at
     // the root and `data/payload.bin` nested. These tests
@@ -1131,19 +1131,19 @@ icon = "heroicons:beaker"
     fn compile_assets_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         runtime
-            .compile("assets-plugin", ASSETS_PLUGIN_WASM)
+            .compile("assets-gadget", ASSETS_GADGET_WASM)
             .expect("compile assets fixture");
         let instance = runtime
-            .instantiate("assets-plugin")
+            .instantiate("assets-gadget")
             .expect("instantiate assets fixture");
         (runtime, instance)
     }
 
     /// Build a `GadgetSource` pointing at the committed
-    /// assets-plugin fixture directory. This mirrors what
-    /// the bridge does in production: `DirectorySource::open`
-    /// on the plugin root, wrapped in an `Arc`, then stashed
-    /// on the instance via `set_plugin_source`.
+    /// assets-gadget fixture directory. Mirrors what the bridge
+    /// does in production: `DirectorySource::open` on the gadget
+    /// root, wrapped in an `Arc`, then stashed on the instance
+    /// via `set_gadget_source`.
     fn assets_fixture_source() -> Arc<dyn super::super::source::GadgetSource + Send + Sync> {
         use super::super::source::DirectorySource;
         let fixture_root =
@@ -1154,7 +1154,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_bundled_file_contents() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1171,7 +1171,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_binary_preserves_byte_count() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         // `data/payload.bin` was written with a known
@@ -1195,7 +1195,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_true_for_bundled_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1208,7 +1208,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1221,7 +1221,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_nested_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1234,7 +1234,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_traversal() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1250,7 +1250,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_absolute_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1266,7 +1266,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_not_found_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1282,7 +1282,7 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_succeeds_on_nested_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_plugin_source(assets_fixture_source());
+        instance.set_gadget_source(assets_fixture_source());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1296,11 +1296,11 @@ icon = "heroicons:beaker"
     }
 
     #[test]
-    fn wasm_assets_calls_without_plugin_source_return_io_error() {
-        // Skip `set_plugin_source` — same shape the bridge
-        // would produce if it forgot to stash the source
-        // on enable. The host returns `IoError` and the
-        // guest bubbles the debug form up to our caller.
+    fn wasm_assets_calls_without_gadget_source_return_io_error() {
+        // No `set_gadget_source` call — same shape the bridge
+        // would produce if it forgot to stash the source on
+        // enable. The host returns `IoError` and the guest
+        // bubbles the debug form up to our caller.
         let (_runtime, instance) = compile_assets_fixture();
         instance.enable().expect("enable");
 
@@ -1315,7 +1315,7 @@ icon = "heroicons:beaker"
     // Command host import — integration tests
     //
     // These drive the full `command::run` impl through the
-    // `command-plugin` fixture, which dispatches the test
+    // `command-gadget` fixture, which dispatches the test
     // scenarios from its `messaging::handle-message` impl.
     // Unix-only: the fixture's manifest grants `/bin/echo` and
     // `/bin/sh -c <script>` rules, both of which require Unix
@@ -1330,10 +1330,10 @@ icon = "heroicons:beaker"
 
         let runtime = test_runtime();
         runtime
-            .compile("command-plugin", COMMAND_PLUGIN_WASM)
+            .compile("command-gadget", COMMAND_GADGET_WASM)
             .expect("compile command fixture");
         let instance = runtime
-            .instantiate("command-plugin")
+            .instantiate("command-gadget")
             .expect("instantiate command fixture");
 
         // Stash a path context so the default cwd resolution
@@ -1342,8 +1342,8 @@ icon = "heroicons:beaker"
         // process actually has a valid cwd at spawn time.
         let scratch = tempfile::TempDir::new().expect("scratch tempdir");
         instance.set_path_context(PathContext {
-            plugin_data: scratch.path().to_path_buf(),
-            plugin_archive: scratch.path().to_path_buf(),
+            gadget_data: scratch.path().to_path_buf(),
+            gadget_archive: scratch.path().to_path_buf(),
             home: scratch.path().to_path_buf(),
             xdg_config: scratch.path().to_path_buf(),
             xdg_data: scratch.path().to_path_buf(),

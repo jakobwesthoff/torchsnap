@@ -177,18 +177,18 @@ impl<'de> Deserialize<'de> for GadgetId {
         D: serde::Deserializer<'de>,
     {
         let raw = String::deserialize(deserializer)?;
-        validate_plugin_id(&raw).map_err(serde::de::Error::custom)?;
+        validate_gadget_id(&raw).map_err(serde::de::Error::custom)?;
         Ok(GadgetId(raw))
     }
 }
 
-fn validate_plugin_id(id: &str) -> Result<(), String> {
+fn validate_gadget_id(id: &str) -> Result<(), String> {
     if id.is_empty() {
-        return Err("plugin id must not be empty".into());
+        return Err("gadget id must not be empty".into());
     }
     if id.starts_with('-') || id.ends_with('-') {
         return Err(format!(
-            "plugin id `{id}` must not start or end with a hyphen"
+            "gadget id `{id}` must not start or end with a hyphen"
         ));
     }
     if let Some(ch) = id
@@ -196,7 +196,7 @@ fn validate_plugin_id(id: &str) -> Result<(), String> {
         .find(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && *c != '-')
     {
         return Err(format!(
-            "plugin id `{id}` contains invalid character `{ch}` — \
+            "gadget id `{id}` contains invalid character `{ch}` — \
              only lowercase alphanumeric and hyphens are allowed"
         ));
     }
@@ -435,7 +435,7 @@ mod tests {
     // =====================================================
 
     #[test]
-    fn accept_valid_plugin_ids() {
+    fn accept_valid_gadget_ids() {
         let valid = [
             "a",
             "hello-world",
@@ -446,60 +446,60 @@ mod tests {
             "plugin123",
         ];
         for id in valid {
-            assert!(validate_plugin_id(id).is_ok(), "should accept `{id}`");
+            assert!(validate_gadget_id(id).is_ok(), "should accept `{id}`");
         }
     }
 
     #[test]
-    fn reject_empty_plugin_id() {
-        let err = validate_plugin_id("").unwrap_err();
+    fn reject_empty_gadget_id() {
+        let err = validate_gadget_id("").unwrap_err();
         assert!(err.contains("empty"), "error: {err}");
     }
 
     #[test]
     fn reject_leading_hyphen() {
-        let err = validate_plugin_id("-leading").unwrap_err();
+        let err = validate_gadget_id("-leading").unwrap_err();
         assert!(err.contains("start or end with a hyphen"), "error: {err}");
     }
 
     #[test]
     fn reject_trailing_hyphen() {
-        let err = validate_plugin_id("trailing-").unwrap_err();
+        let err = validate_gadget_id("trailing-").unwrap_err();
         assert!(err.contains("start or end with a hyphen"), "error: {err}");
     }
 
     #[test]
-    fn reject_uppercase_in_plugin_id() {
-        let err = validate_plugin_id("Upper").unwrap_err();
+    fn reject_uppercase_in_gadget_id() {
+        let err = validate_gadget_id("Upper").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
     #[test]
-    fn reject_underscore_in_plugin_id() {
-        let err = validate_plugin_id("under_score").unwrap_err();
+    fn reject_underscore_in_gadget_id() {
+        let err = validate_gadget_id("under_score").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
     #[test]
-    fn reject_spaces_in_plugin_id() {
-        let err = validate_plugin_id("has space").unwrap_err();
+    fn reject_spaces_in_gadget_id() {
+        let err = validate_gadget_id("has space").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
     #[test]
-    fn reject_dots_in_plugin_id() {
-        let err = validate_plugin_id("my.plugin").unwrap_err();
+    fn reject_dots_in_gadget_id() {
+        let err = validate_gadget_id("my.plugin").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
     #[test]
-    fn reject_unicode_in_plugin_id() {
-        let err = validate_plugin_id("plügin").unwrap_err();
+    fn reject_unicode_in_gadget_id() {
+        let err = validate_gadget_id("plügin").unwrap_err();
         assert!(err.contains("invalid character"), "error: {err}");
     }
 
     #[test]
-    fn plugin_id_display_and_as_str() {
+    fn gadget_id_display_and_as_str() {
         let toml = minimal("");
         let m = Manifest::parse(&toml).expect("should parse");
         assert_eq!(m.gadget.id.as_str(), "test-plugin");
@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn plugin_id_equality() {
+    fn gadget_id_equality() {
         let toml = minimal("");
         let m1 = Manifest::parse(&toml).expect("parse 1");
         let m2 = Manifest::parse(&toml).expect("parse 2");

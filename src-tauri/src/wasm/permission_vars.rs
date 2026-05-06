@@ -51,12 +51,12 @@ pub const RECOGNIZED_PERMISSION_VARIABLES: &[&str] = &[
 ];
 
 /// Resolved values for every recognized substitution
-/// variable. Constructed once per plugin instance at
+/// variable. Constructed once per gadget instance at
 /// bridge-construction time.
 #[derive(Debug, Clone)]
 pub struct PathContext {
-    pub plugin_data: PathBuf,
-    pub plugin_archive: PathBuf,
+    pub gadget_data: PathBuf,
+    pub gadget_archive: PathBuf,
     pub home: PathBuf,
     pub xdg_config: PathBuf,
     pub xdg_data: PathBuf,
@@ -68,8 +68,8 @@ impl PathContext {
     /// [`RECOGNIZED_PERMISSION_VARIABLES`].
     pub fn lookup(&self, name: &str) -> Option<&std::path::Path> {
         match name {
-            "gadget-data" => Some(self.plugin_data.as_path()),
-            "gadget-archive" => Some(self.plugin_archive.as_path()),
+            "gadget-data" => Some(self.gadget_data.as_path()),
+            "gadget-archive" => Some(self.gadget_archive.as_path()),
             "home" => Some(self.home.as_path()),
             "xdg-config" => Some(self.xdg_config.as_path()),
             "xdg-data" => Some(self.xdg_data.as_path()),
@@ -233,8 +233,8 @@ mod tests {
 
     fn ctx() -> PathContext {
         PathContext {
-            plugin_data: PathBuf::from("/data/plug"),
-            plugin_archive: PathBuf::from("/archive/plug"),
+            gadget_data: PathBuf::from("/data/plug"),
+            gadget_archive: PathBuf::from("/archive/plug"),
             home: PathBuf::from("/home/jake"),
             xdg_config: PathBuf::from("/home/jake/.config"),
             xdg_data: PathBuf::from("/home/jake/.local/share"),

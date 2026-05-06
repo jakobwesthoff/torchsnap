@@ -146,11 +146,11 @@ impl<R: tauri::Runtime> Clone for GadgetSettings<R> {
 }
 
 impl<R: tauri::Runtime> GadgetSettings<R> {
-    /// Create a new scoped settings reader for the given plugin ID.
-    pub fn new(store: Arc<Store<R>>, plugin_id: &str) -> Self {
+    /// Create a new scoped settings reader for the given gadget ID.
+    pub fn new(store: Arc<Store<R>>, gadget_id: &str) -> Self {
         Self {
             store,
-            prefix: format!("gadgets.{plugin_id}."),
+            prefix: format!("gadgets.{gadget_id}."),
         }
     }
 

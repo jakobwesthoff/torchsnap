@@ -38,12 +38,12 @@ const ICON_EXT: &str = "webp";
 // IconCache
 // =========================================================
 
-/// Disk-based icon cache shared across plugins.
+/// Disk-based icon cache shared across gadgets.
 ///
 /// Directory layout (managed by `FileStorage`):
 /// ```text
 /// base_dir/
-///   <plugin_id>/
+///   <gadget_id>/
 ///     <first-2-hex>/
 ///       <full-hash>.webp
 /// ```
@@ -61,7 +61,7 @@ impl IconCache {
     /// Return the absolute path to a valid cached icon, processing
     /// and storing the result of `image_fn` on cache miss.
     ///
-    /// - `plugin_id` scopes the cache subdirectory.
+    /// - `gadget_id` scopes the cache subdirectory.
     /// - `key` is a blake3-hashed `StorageKey`.
     /// - `source_mtime` controls staleness: `Some(t)` means the
     ///   cached icon must be at least as new as `t`; `None` means
@@ -72,15 +72,15 @@ impl IconCache {
     ///   is available, or `Err` on failure.
     pub fn ensure_icon(
         &self,
-        plugin_id: &str,
+        gadget_id: &str,
         key: &StorageKey,
         source_mtime: Option<SystemTime>,
         image_fn: impl FnOnce() -> anyhow::Result<Option<DynamicImage>>,
     ) -> Option<String> {
-        let plugin_storage = self.storage.scoped(plugin_id);
+        let gadget_storage = self.storage.scoped(gadget_id);
 
-        if self.is_cache_valid(&plugin_storage, key, source_mtime) {
-            let icon_path = plugin_storage.resolve(key, ICON_EXT);
+        if self.is_cache_valid(&gadget_storage, key, source_mtime) {
+            let icon_path = gadget_storage.resolve(key, ICON_EXT);
             return Some(icon_path.to_string_lossy().into_owned());
         }
 
@@ -96,9 +96,9 @@ impl IconCache {
                     }
                 };
 
-                match plugin_storage.store(key, &webp_bytes, ICON_EXT) {
+                match gadget_storage.store(key, &webp_bytes, ICON_EXT) {
                     Ok(()) => {
-                        let icon_path = plugin_storage.resolve(key, ICON_EXT);
+                        let icon_path = gadget_storage.resolve(key, ICON_EXT);
                         Some(icon_path.to_string_lossy().into_owned())
                     }
                     Err(e) => {
@@ -117,19 +117,19 @@ impl IconCache {
 
     /// Remove cached icons not referenced by any active entry.
     ///
-    /// Only touches the subtree for `plugin_id`. Walks all shard
+    /// Only touches the subtree for `gadget_id`. Walks all shard
     /// subdirectories and deletes files whose key is not in the
     /// valid set.
-    pub fn cleanup(&self, plugin_id: &str, valid_keys: &HashSet<StorageKey>) {
-        let plugin_storage = self.storage.scoped(plugin_id);
+    pub fn cleanup(&self, gadget_id: &str, valid_keys: &HashSet<StorageKey>) {
+        let gadget_storage = self.storage.scoped(gadget_id);
 
         // Collect valid hex strings for fast lookup.
         let valid_stems: HashSet<&str> = valid_keys.iter().map(|k| &**k).collect();
 
-        for (key, ext, _meta) in plugin_storage.entries() {
+        for (key, ext, _meta) in gadget_storage.entries() {
             if !valid_stems.contains(&*key) {
                 // Best effort — ignore errors during cleanup.
-                let _ = plugin_storage.delete(&key, &ext);
+                let _ = gadget_storage.delete(&key, &ext);
             }
         }
     }

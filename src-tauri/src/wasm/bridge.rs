@@ -3,16 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WASM Plugin Bridge
+// WASM Gadget Bridge
 //
-// Host-side representation of a WASM plugin. Owns the
-// plugin's full lifecycle: compiles the component at
+// Host-side representation of a WASM gadget. Owns the
+// gadget's full lifecycle: compiles the component at
 // construction, lazily instantiates a `WasmGadgetInstance`
 // on enable, and drops it on disable so the wasmtime
 // `Store` and all guest-side linear memory are reclaimed.
-// Implements the native `Plugin` trait so WASM plugins
+// Implements the native `Gadget` trait so WASM gadgets
 // participate in the existing `GadgetHost` dispatch
-// pipeline alongside native plugins.
+// pipeline alongside native gadgets.
 // =========================================================
 
 use std::path::PathBuf;
@@ -42,19 +42,19 @@ use super::source::GadgetSource;
 // WasmGadgetBridge
 // =========================================================
 
-/// Host-side representation of a WASM plugin. Owns the
+/// Host-side representation of a WASM gadget. Owns the
 /// manifest, a handle to the shared `WasmRuntime`, the
 /// materialized `SqlConfig`, and the currently live
 /// instance slot.
 pub struct WasmGadgetBridge {
     manifest: Manifest,
-    plugin_id: String,
+    gadget_id: String,
     runtime: Arc<WasmRuntime>,
     /// Re-applied to every fresh `WasmGadgetInstance` on
     /// enable — each new `GadgetState` starts with
     /// `SqlConfig::None`, so the bridge holds the
     /// materialized config here to survive disable/re-enable
-    /// cycles without re-reading the plugin source.
+    /// cycles without re-reading the gadget source.
     sql_config: SqlConfig,
     /// Retained so `enable()` can stash it on `GadgetState`
     /// for the `assets::read` / `assets::exists` host
@@ -65,8 +65,8 @@ pub struct WasmGadgetBridge {
     /// Stored as `Arc<_>` because the same underlying source
     /// is simultaneously retained by `wasm::protocol`'s
     /// `GadgetSourceRegistry` for frontend asset serving
-    /// (the `plugin://` custom protocol handler). Two
-    /// independent owners of the same source — shared
+    /// (the `torchsnap-gadget://` custom protocol handler).
+    /// Two independent owners of the same source — shared
     /// ownership = `Arc`. `Box` would force a double-open
     /// (re-mmap'ing the zip for `ArchiveSource`) or break
     /// the registry side of the contract.
@@ -78,10 +78,10 @@ pub struct WasmGadgetBridge {
     /// `pub trait GadgetSource: Send + Sync`, so every impl
     /// already qualifies — the bound here is purely a
     /// compile-time assertion.
-    plugin_source: Arc<dyn GadgetSource + Send + Sync>,
+    gadget_source: Arc<dyn GadgetSource + Send + Sync>,
     /// Permitted URL schemes for `opener::open-url`. Extracted
     /// from `[permissions.opener].schemes` at construction;
-    /// empty means the plugin has no opener access.
+    /// empty means the gadget has no opener access.
     opener_schemes: Vec<String>,
     /// Whether the manifest grants `opener::open-path`.
     opener_open_path: bool,
@@ -89,15 +89,15 @@ pub struct WasmGadgetBridge {
     opener_reveal_path: bool,
     /// Permitted origins for `http::fetch`. Extracted from
     /// `[permissions.http].origins` at construction; empty
-    /// means the plugin has no HTTP access; `"*"` means
+    /// means the gadget has no HTTP access; `"*"` means
     /// trust-all.
     http_origins: Vec<String>,
     /// Raw `[permissions.fs] read = [...]` patterns from the
     /// manifest. `${...}` tokens still in place — the bridge
     /// substitutes against the per-instance `PathContext` and
     /// compiles into a `GlobSet` at `enable()`. `None` when
-    /// the manifest has no `[permissions.fs]` section, which
-    /// makes every fs call return `permission-denied`.
+    /// the manifest has no `[permissions.fs]` section, making
+    /// every fs call return `permission-denied`.
     fs_patterns_raw: Option<Vec<String>>,
     /// Whether the manifest grants access to the shared
     /// `website-metadata` host import. The actual service
@@ -107,20 +107,20 @@ pub struct WasmGadgetBridge {
     /// the manifest. Compiled against the per-instance
     /// `PathContext` at every `enable()` (variable substitution
     /// can change between enable cycles if the host data dirs
-    /// move under the plugin). Empty when the manifest declares
+    /// move under the gadget). Empty when the manifest declares
     /// no rules.
     command_rules_raw: Vec<super::manifest::CommandPermissionDef>,
-    /// Resolved `${gadget-data}` for this plugin —
-    /// `<app_data_dir>/gadget-home/<plugin-id>/`. Re-stashed
+    /// Resolved `${gadget-data}` for this gadget —
+    /// `<app_data_dir>/gadget-home/<gadget-id>/`. Re-stashed
     /// on every fresh instance so per-call `paths::resolve`
     /// substitutions go through one source of truth.
-    plugin_data: PathBuf,
-    /// Resolved `${gadget-archive}` for this plugin — the
+    gadget_data: PathBuf,
+    /// Resolved `${gadget-archive}` for this gadget — the
     /// directory root for `DirectorySource`, or the
     /// `.torchsnap` archive file for `ArchiveSource`. See the
     /// `GadgetSource::root_path` docs for the per-source
     /// contract.
-    plugin_archive: PathBuf,
+    gadget_archive: PathBuf,
     /// Live guest instance, or `None` while disabled.
     ///
     /// **Lock discipline**: never call into the guest while
@@ -138,7 +138,7 @@ pub struct WasmGadgetBridge {
     /// scheduler loop in `enable()`.
     parsed_tasks: Vec<ParsedTask>,
     /// Tokio handle for the running scheduler loop. `None`
-    /// while the plugin is disabled or when the plugin has
+    /// while the gadget is disabled or when the gadget has
     /// no `[[tasks]]` declared. The `Mutex` covers the
     /// `enable()` / `disable()` swap, not the loop itself.
     scheduler_handle: Mutex<Option<JoinHandle<()>>>,
@@ -148,7 +148,7 @@ pub struct WasmGadgetBridge {
     /// the next `await` point — for the scheduler that
     /// is the next `tokio::time::sleep`. Without this
     /// flag, an in-flight `run_task` would still finish
-    /// against a half-disabled plugin between
+    /// against a half-disabled gadget between
     /// `stop_scheduler()` and the actual abort. Setting
     /// the flag in `stop_scheduler` and checking it both
     /// before and after every guest call closes the
@@ -164,24 +164,24 @@ struct ParsedTask {
 
 impl WasmGadgetBridge {
     /// Build a bridge from a parsed manifest, a handle to
-    /// the shared runtime, and the plugin source (used
+    /// the shared runtime, and the gadget source (used
     /// once to read the WASM bytes and any SQL migration
     /// files). `app_data_dir` is the host's per-app data
-    /// root; the plugin's database lives at
-    /// `<app_data_dir>/gadget-home/<plugin-id>/sql/storage.sqlite3`.
+    /// root; the gadget's database lives at
+    /// `<app_data_dir>/gadget-home/<gadget-id>/sql/storage.sqlite3`.
     ///
-    /// The `gadget-home/<plugin-id>/` tree is the plugin's
+    /// The `gadget-home/<gadget-id>/` tree is the gadget's
     /// host-managed state root — `sql/` sits alongside
     /// future sibling slots (e.g. `files/`, `cache/`).
-    /// Separating state from code lets `plugins/` remain a
+    /// Separating state from code lets `gadgets/` remain a
     /// pure code directory that the install/uninstall flow
     /// owns.
     ///
     /// Compiles the WASM component into the runtime's
-    /// cache right here so broken plugins fail fast at
+    /// cache right here so broken gadgets fail fast at
     /// load time. Does **not** instantiate — a fresh
     /// `WasmGadgetInstance` is created later on demand by
-    /// `Plugin::enable`, so disabled plugins consume only
+    /// `Gadget::enable`, so disabled gadgets consume only
     /// their cached `Component` until the user turns them
     /// on.
     pub fn new(
@@ -191,18 +191,18 @@ impl WasmGadgetBridge {
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let plugin_id = manifest.gadget.id.as_str().to_string();
+        let gadget_id = manifest.gadget.id.as_str().to_string();
 
         // Compile the component into the runtime's cache
         // once; every subsequent `instantiate` reads from
-        // there. A failure here surfaces as a plugin load
+        // there. A failure here surfaces as a gadget load
         // error (manifest bug or broken build).
         runtime
-            .compile(&plugin_id, &source.read_wasm()?)
-            .with_context(|| format!("compile WASM component for `{plugin_id}`"))?;
+            .compile(&gadget_id, &source.read_wasm()?)
+            .with_context(|| format!("compile WASM component for `{gadget_id}`"))?;
 
         // Materialize the SQL configuration from the
-        // manifest. Plugins without `[storage.sql]` get
+        // manifest. Gadgets without `[storage.sql]` get
         // `SqlConfig::None`; the bridge's `enable()` path
         // is a no-op for database setup in that case.
         let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
@@ -221,7 +221,7 @@ impl WasmGadgetBridge {
 
                 let db_path: PathBuf = app_data_dir
                     .join("gadget-home")
-                    .join(plugin_id.as_str())
+                    .join(gadget_id.as_str())
                     .join("sql")
                     .join("storage.sqlite3");
 
@@ -271,11 +271,11 @@ impl WasmGadgetBridge {
         // Pre-resolve the host filesystem paths the
         // `paths::resolve` host import (and, in the next
         // sub-phase, command-rule compilation) will need.
-        // Plugin-archive comes from the source's filesystem
-        // root; gadget-data is the per-plugin host-managed
+        // Gadget-archive comes from the source's filesystem
+        // root; gadget-data is the per-gadget host-managed
         // state directory under `<app_data_dir>/gadget-home/`.
-        let plugin_data = app_data_dir.join("gadget-home").join(plugin_id.as_str());
-        let plugin_archive = source.root_path().to_path_buf();
+        let gadget_data = app_data_dir.join("gadget-home").join(gadget_id.as_str());
+        let gadget_archive = source.root_path().to_path_buf();
 
         // Pre-parse every `[[tasks]]` schedule. The manifest
         // loader has already validated that they're well-
@@ -302,10 +302,10 @@ impl WasmGadgetBridge {
 
         Ok(Self {
             manifest,
-            plugin_id,
+            gadget_id,
             runtime,
             sql_config,
-            plugin_source: source,
+            gadget_source: source,
             opener_schemes,
             opener_open_path,
             opener_reveal_path,
@@ -313,8 +313,8 @@ impl WasmGadgetBridge {
             fs_patterns_raw,
             website_metadata_enabled,
             command_rules_raw,
-            plugin_data,
-            plugin_archive,
+            gadget_data,
+            gadget_archive,
             instance: Mutex::new(None),
             log_sender,
             parsed_tasks,
@@ -336,8 +336,8 @@ impl WasmGadgetBridge {
 
         let instance = self
             .runtime
-            .instantiate(&self.plugin_id)
-            .with_context(|| format!("instantiate WASM plugin `{}`", self.plugin_id))?;
+            .instantiate(&self.gadget_id)
+            .with_context(|| format!("instantiate WASM gadget `{}`", self.gadget_id))?;
         instance.set_sql_config(self.sql_config.clone());
 
         let arc = Arc::new(instance);
@@ -355,21 +355,21 @@ impl WasmGadgetBridge {
             .take()
     }
 
-    /// Spawn the per-plugin scheduler tokio task that walks
+    /// Spawn the per-gadget scheduler tokio task that walks
     /// every `[[tasks]]` entry, sleeps until the earliest
     /// next fire across all of them, and invokes the WIT
     /// `tasks::run-task` guest export.
     ///
     /// The `instance` argument is passed in by
-    /// `Plugin::enable` from the already-cloned `Arc` it
+    /// `Gadget::enable` from the already-cloned `Arc` it
     /// holds — the scheduler task needs its own clone so
     /// it can keep the instance alive for as long as the
     /// task is running, independent of the bridge's
     /// instance slot.
     ///
-    /// Plugins without `[[tasks]]` get nothing — no tokio
+    /// Gadgets without `[[tasks]]` get nothing — no tokio
     /// task is spawned at all, so the cost is zero for
-    /// plugins that don't use the API.
+    /// gadgets that don't use the API.
     fn spawn_scheduler(&self, instance: Arc<WasmGadgetInstance>) {
         if self.parsed_tasks.is_empty() {
             return;
@@ -383,12 +383,12 @@ impl WasmGadgetBridge {
 
         // Snapshot what the scheduler loop needs into Send
         // clones — the parsed schedules, the log sender,
-        // the shutdown flag, and a plugin id for log
+        // the shutdown flag, and a gadget id for log
         // tagging. The `instance` clone is already held by
         // the caller and handed to us by value.
         let shutdown = Arc::clone(&self.scheduler_shutdown);
         let log_sender = self.log_sender.clone();
-        let plugin_id = self.plugin_id.clone();
+        let gadget_id = self.gadget_id.clone();
         let schedules: Vec<(String, Schedule)> = self
             .parsed_tasks
             .iter()
@@ -396,7 +396,7 @@ impl WasmGadgetBridge {
             .collect();
 
         let handle = tauri::async_runtime::spawn(async move {
-            scheduler_loop(instance, schedules, shutdown, log_sender, plugin_id).await;
+            scheduler_loop(instance, schedules, shutdown, log_sender, gadget_id).await;
         });
 
         let mut slot = self.scheduler_handle.lock().expect("not poisoned");
@@ -431,7 +431,7 @@ impl WasmGadgetBridge {
 }
 
 // =========================================================
-// Per-plugin scheduler loop
+// Per-gadget scheduler loop
 //
 // Sequential by construction: a single tokio task walks
 // every `[[tasks]]` entry, sleeps until the earliest next
@@ -451,7 +451,7 @@ async fn scheduler_loop(
     schedules: Vec<(String, Schedule)>,
     shutdown: Arc<AtomicBool>,
     log_sender: LogSender,
-    plugin_id: String,
+    gadget_id: String,
 ) {
     loop {
         // Top-of-iteration shutdown check. Exits cleanly
@@ -514,19 +514,19 @@ async fn scheduler_loop(
             // inline here rather than wrapping in `spawn_blocking`
             // because v1 task workloads are tiny (the calculator's
             // retention cleanup is a single SQL DELETE that takes
-            // sub-millisecond time). If a plugin author writes a
+            // sub-millisecond time). If a gadget author writes a
             // pathological task — e.g. a multi-second web scrape or a
             // large file scan — it will block one tokio worker
             // thread for the duration. With the default Tauri
-            // runtime (4 worker threads), four such plugins
+            // runtime (4 worker threads), four such gadgets
             // scheduling simultaneously would saturate the runtime.
             // The fix when this happens is to wrap `instance.run_task`
             // in `tokio::task::spawn_blocking(...).await?`; nothing
             // about the guest interface needs to change.
             match instance.run_task(id) {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => log_task_error(&log_sender, &plugin_id, id, &e),
-                Err(e) => log_task_error(&log_sender, &plugin_id, id, &format!("{e:#}")),
+                Ok(Err(e)) => log_task_error(&log_sender, &gadget_id, id, &e),
+                Err(e) => log_task_error(&log_sender, &gadget_id, id, &format!("{e:#}")),
             }
         }
     }
@@ -534,7 +534,7 @@ async fn scheduler_loop(
 
 /// Build a [`PathContext`] resolving the five `${...}`
 /// substitution variables (`gadget-data`, `gadget-archive`,
-/// `home`, `xdg-config`, `xdg-data`) for one plugin
+/// `home`, `xdg-config`, `xdg-data`) for one gadget
 /// instance. Called from `enable()` once per re-enable
 /// cycle. The gadget-data and gadget-archive paths come
 /// from the bridge (the bridge already has them); the
@@ -544,8 +544,8 @@ async fn scheduler_loop(
 /// with fallback on Linux).
 fn build_path_context(
     app: &tauri::AppHandle,
-    plugin_data: &PathBuf,
-    plugin_archive: &PathBuf,
+    gadget_data: &PathBuf,
+    gadget_archive: &PathBuf,
 ) -> anyhow::Result<PathContext> {
     use tauri::Manager;
 
@@ -557,19 +557,19 @@ fn build_path_context(
     let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
 
     Ok(PathContext {
-        plugin_data: plugin_data.clone(),
-        plugin_archive: plugin_archive.clone(),
+        gadget_data: gadget_data.clone(),
+        gadget_archive: gadget_archive.clone(),
         home,
         xdg_config,
         xdg_data,
     })
 }
 
-fn log_task_error(log_sender: &LogSender, plugin_id: &str, task_id: &str, error: &str) {
+fn log_task_error(log_sender: &LogSender, gadget_id: &str, task_id: &str, error: &str) {
     log_sender.send(LogItem {
         seq: 0,
         timestamp: SystemTime::now(),
-        source: LogSource::Gadget(plugin_id.to_string()),
+        source: LogSource::Gadget(gadget_id.to_string()),
         kind: LogItemKind::Message {
             level: LogLevel::Error,
             message: format!("scheduled task `{task_id}` failed: {error}"),
@@ -589,7 +589,7 @@ impl WasmGadgetBridge {
         self.log_sender.send(LogItem {
             seq: 0,
             timestamp: SystemTime::now(),
-            source: LogSource::Gadget(self.plugin_id.clone()),
+            source: LogSource::Gadget(self.gadget_id.clone()),
             kind: LogItemKind::Message {
                 level,
                 message,
@@ -605,7 +605,7 @@ impl WasmGadgetBridge {
     /// current `AtomicBool` gating, but can occur
     /// transiently if the bridge tore its instance down
     /// after a guest `enable()` failure — see the
-    /// `Plugin::enable → Result` follow-up todo).
+    /// `Gadget::enable → Result` follow-up todo).
     fn current_instance(&self) -> Option<Arc<WasmGadgetInstance>> {
         self.instance
             .lock()
@@ -614,17 +614,17 @@ impl WasmGadgetBridge {
             .map(Arc::clone)
     }
 
-    /// Log a "dispatched into disabled plugin" event with a
+    /// Log a "dispatched into disabled gadget" event with a
     /// uniform `bug:` prefix. The only path that reaches
     /// this today is the known transient window after a
-    /// guest `enable()` failure; once the `Plugin::enable →
+    /// guest `enable()` failure; once the `Gadget::enable →
     /// Result` follow-up closes that window the branch is
     /// dead and the call sites should be upgraded to
     /// `debug_assert!` / `unreachable!()`.
     fn log_dispatched_while_disabled(&self, method: &str) {
         self.log(
             LogLevel::Error,
-            format!("bug: {method} dispatched on disabled plugin"),
+            format!("bug: {method} dispatched on disabled gadget"),
         );
     }
 }
@@ -652,7 +652,7 @@ impl Gadget for WasmGadgetBridge {
             Err(e) => {
                 self.log(
                     LogLevel::Error,
-                    format!("failed to instantiate plugin: {e:#}"),
+                    format!("failed to instantiate gadget: {e:#}"),
                 );
                 return;
             }
@@ -739,7 +739,7 @@ impl Gadget for WasmGadgetBridge {
         // `xdg-config`, and `xdg-data`; on macOS and Windows
         // the XDG names are mapped to the closest equivalent
         // (Application Support / AppData).
-        let ctx_for_rules = match build_path_context(app, &self.plugin_data, &self.plugin_archive) {
+        let ctx_for_rules = match build_path_context(app, &self.gadget_data, &self.gadget_archive) {
             Ok(ctx) => {
                 instance.set_path_context(ctx.clone());
                 Some(ctx)
@@ -747,7 +747,7 @@ impl Gadget for WasmGadgetBridge {
             Err(e) => {
                 self.log(
                     LogLevel::Warn,
-                    format!("paths::resolve unavailable for `{}`: {e:#}", self.plugin_id),
+                    format!("paths::resolve unavailable for `{}`: {e:#}", self.gadget_id),
                 );
                 None
             }
@@ -757,7 +757,7 @@ impl Gadget for WasmGadgetBridge {
         // against the resolved PathContext. Variable
         // substitution + regex/glob compilation happen here;
         // the matcher then operates on the compiled forms at
-        // call time. A plugin without a PathContext gets an
+        // call time. A gadget without a PathContext gets an
         // empty rule set — every `command::run` call will
         // return `permission-denied`, matching the deny-by-
         // default contract.
@@ -772,7 +772,7 @@ impl Gadget for WasmGadgetBridge {
                                 LogLevel::Error,
                                 format!(
                                     "compiling command rule {index} for `{}`: {e:#}",
-                                    self.plugin_id
+                                    self.gadget_id
                                 ),
                             );
                         }
@@ -797,7 +797,7 @@ impl Gadget for WasmGadgetBridge {
                     Err(e) => {
                         self.log(
                             LogLevel::Error,
-                            format!("compiling fs allowlist for `{}`: {e:#}", self.plugin_id),
+                            format!("compiling fs allowlist for `{}`: {e:#}", self.gadget_id),
                         );
                         None
                     }
@@ -811,10 +811,10 @@ impl Gadget for WasmGadgetBridge {
 
         // Assets: stash a clone of the source `Arc` the
         // bridge already holds. No permission allowlist —
-        // plugins can always read their own bundled files;
-        // the guarantee is spatial (validate_plugin_path
-        // confines reads to the plugin root).
-        instance.set_plugin_source(Arc::clone(&self.plugin_source));
+        // gadgets can always read their own bundled files;
+        // the guarantee is spatial (validate_gadget_path
+        // confines reads to the gadget root).
+        instance.set_gadget_source(Arc::clone(&self.gadget_source));
 
         // Materialize the SQL database before the guest's
         // enable() runs. Failure here leaves the guest in a
@@ -831,7 +831,7 @@ impl Gadget for WasmGadgetBridge {
         // A guest that failed its own `enable()` is not in
         // a useful state, so drop the instance and skip
         // the scheduler. The host's enabled flag stays
-        // `true` until the `Plugin::enable → Result`
+        // `true` until the `Gadget::enable → Result`
         // follow-up gives us a channel to report failure
         // upward.
         if let Err(e) = instance.enable() {
@@ -869,7 +869,7 @@ impl Gadget for WasmGadgetBridge {
         instance.clear_fs_allowlist();
         instance.clear_http_client();
         instance.clear_website_metadata();
-        instance.clear_plugin_source();
+        instance.clear_gadget_source();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {
@@ -909,7 +909,7 @@ impl Gadget for WasmGadgetBridge {
             Ok(mut entries) => {
                 let warnings = super::bindings::resolve_catalog_entries_asset_icons(
                     &mut entries,
-                    &self.plugin_id,
+                    &self.gadget_id,
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);
@@ -931,7 +931,7 @@ impl Gadget for WasmGadgetBridge {
     ) -> anyhow::Result<PostAction> {
         let Some(instance) = self.current_instance() else {
             self.log_dispatched_while_disabled("execute()");
-            anyhow::bail!("execute() called on disabled plugin");
+            anyhow::bail!("execute() called on disabled gadget");
         };
         instance.execute(entry_id, action_id)
     }
@@ -942,14 +942,14 @@ impl Gadget for WasmGadgetBridge {
             return None;
         };
         match instance.search(query, matched_prefix) {
-            // `None` is reserved for "plugin not participating"
+            // `None` is reserved for "gadget not participating"
             // (disabled / errored); an empty Results must pass
             // through so the host can forward it and evict stale
             // per-source entries on the frontend.
             Ok(mut response) => {
                 let warnings = super::bindings::resolve_search_response_asset_icons(
                     &mut response,
-                    &self.plugin_id,
+                    &self.gadget_id,
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);
@@ -971,14 +971,14 @@ impl Gadget for WasmGadgetBridge {
     /// `messaging::handle-message` export.
     ///
     /// The streaming `_channel` parameter is intentionally
-    /// ignored — WASM plugins are strictly request/response.
-    /// Plugins that need streaming should stay native, or
+    /// ignored — WASM gadgets are strictly request/response.
+    /// Gadgets that need streaming should stay native, or
     /// wait for a future `messaging-stream` sub-interface.
     ///
     /// Errors are wrapped with explicit prefixes so log
     /// readers can distinguish bridge-level failures
     /// (linker, serialization, store lock) from
-    /// plugin-reported failures (the inner `err(string)`
+    /// gadget-reported failures (the inner `err(string)`
     /// arm of the WIT `result`).
     fn handle_message(
         &self,
@@ -988,7 +988,7 @@ impl Gadget for WasmGadgetBridge {
     ) -> anyhow::Result<serde_json::Value> {
         let Some(instance) = self.current_instance() else {
             self.log_dispatched_while_disabled(&format!("handle_message({method})"));
-            anyhow::bail!("handle_message() called on disabled plugin");
+            anyhow::bail!("handle_message() called on disabled gadget");
         };
 
         // Re-encode the payload as a JSON string for the WIT
@@ -998,14 +998,14 @@ impl Gadget for WasmGadgetBridge {
 
         // Two layers of error: the outer `Result` is the
         // wasmtime / store-lock layer; the inner
-        // `Result<String, String>` is what the plugin
-        // returned. Plugin-reported errors get a
-        // `"plugin error: "` prefix to disambiguate them
+        // `Result<String, String>` is what the gadget
+        // returned. Gadget-reported errors get a
+        // `"gadget error: "` prefix to disambiguate them
         // from bridge failures in logs.
         let result_json = instance
             .handle_message(method, &payload_json)
             .context("invoke guest handle-message")?
-            .map_err(|e| anyhow::anyhow!("plugin error: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("gadget error: {e}"))?;
 
         serde_json::from_str(&result_json).context("parse guest handle-message response")
     }
@@ -1051,7 +1051,7 @@ mod tests {
     //!
     //! These exercise the `ensure_instance`/`take_instance`
     //! lifecycle and the constructor's fail-fast behavior
-    //! directly. The full `Plugin::enable` path is not
+    //! directly. The full `Gadget::enable` path is not
     //! covered because `GadgetContext.settings` needs a
     //! real Tauri store; the primitives it composes are
     //! driven directly instead.
@@ -1106,14 +1106,14 @@ mod tests {
     #[test]
     fn new_surfaces_compile_errors() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let bad_plugin_dir = tmp.path().join("bad-plugin");
-        std::fs::create_dir_all(&bad_plugin_dir).expect("mkdir");
+        let bad_gadget_dir = tmp.path().join("bad-gadget");
+        std::fs::create_dir_all(&bad_gadget_dir).expect("mkdir");
         std::fs::write(
-            bad_plugin_dir.join("manifest.toml"),
+            bad_gadget_dir.join("manifest.toml"),
             r#"
 [gadget]
-id = "bad-plugin"
-name = "Bad Plugin"
+id = "bad-gadget"
+name = "Bad Gadget"
 description = "broken wasm"
 version = "0.0.0"
 wasm = "bad.wasm"
@@ -1121,11 +1121,11 @@ icon = "heroicons:x-mark"
 "#,
         )
         .expect("write manifest");
-        std::fs::write(bad_plugin_dir.join("bad.wasm"), b"not a wasm file at all")
+        std::fs::write(bad_gadget_dir.join("bad.wasm"), b"not a wasm file at all")
             .expect("write bad wasm");
 
         let source: Arc<dyn GadgetSource + Send + Sync> =
-            Arc::new(DirectorySource::open(&bad_plugin_dir).expect("open directory"));
+            Arc::new(DirectorySource::open(&bad_gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
@@ -1142,21 +1142,21 @@ icon = "heroicons:x-mark"
     #[test]
     fn new_surfaces_missing_migration_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let plugin_dir = tmp.path().join("sql-plugin");
-        std::fs::create_dir_all(&plugin_dir).expect("mkdir");
+        let gadget_dir = tmp.path().join("sql-gadget");
+        std::fs::create_dir_all(&gadget_dir).expect("mkdir");
 
         // Copy the minimal-gadget wasm so the compile step
         // passes; we want the migration-read step to fail.
         let wasm_src =
             std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
+        std::fs::copy(&wasm_src, gadget_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
-            plugin_dir.join("manifest.toml"),
+            gadget_dir.join("manifest.toml"),
             r#"
 [gadget]
-id = "sql-plugin"
-name = "SQL Plugin"
+id = "sql-gadget"
+name = "SQL Gadget"
 description = "missing migration"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
@@ -1169,7 +1169,7 @@ migrations = ["migrations/001_init.sql"]
         .expect("write manifest");
 
         let source: Arc<dyn GadgetSource + Send + Sync> =
-            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
+            Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let app_data = tempfile::tempdir().expect("tempdir");
 
@@ -1281,25 +1281,25 @@ migrations = ["migrations/001_init.sql"]
         // the cached config onto the new `GadgetState`
         // (which would otherwise default to `SqlConfig::None`).
         let tmp = tempfile::tempdir().expect("tempdir");
-        let plugin_dir = tmp.path().join("sql-plugin");
-        std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
+        let gadget_dir = tmp.path().join("sql-gadget");
+        std::fs::create_dir_all(gadget_dir.join("migrations")).expect("mkdir");
 
         let wasm_src =
             std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
+        std::fs::copy(&wasm_src, gadget_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
-            plugin_dir.join("migrations/001_init.sql"),
+            gadget_dir.join("migrations/001_init.sql"),
             "CREATE TABLE IF NOT EXISTS probe (id INTEGER PRIMARY KEY);",
         )
         .expect("write migration");
         std::fs::write(
-            plugin_dir.join("manifest.toml"),
+            gadget_dir.join("manifest.toml"),
             r#"
 [gadget]
-id = "sql-plugin"
-name = "SQL Plugin"
-description = "plugin with sql config"
+id = "sql-gadget"
+name = "SQL Gadget"
+description = "gadget with sql config"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
@@ -1312,7 +1312,7 @@ migrations = ["migrations/001_init.sql"]
 
         let app_data = tempfile::tempdir().expect("app data tempdir");
         let source: Arc<dyn GadgetSource + Send + Sync> =
-            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
+            Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let bridge = WasmGadgetBridge::new(
             manifest,
@@ -1348,36 +1348,36 @@ migrations = ["migrations/001_init.sql"]
 
     /// Construct a WASM bridge with a `[storage.sql]` block
     /// declared in its manifest. `source_root` is where the
-    /// plugin files are written (typically a tempdir owned
+    /// gadget files are written (typically a tempdir owned
     /// by the caller so the on-disk layout can be inspected
     /// before cleanup). The single migration creates a
     /// trivial `probe` table; tests do not care about the
     /// contents, only that the path is correct.
     fn bridge_with_sql(
-        plugin_id: &str,
+        gadget_id: &str,
         source_root: &std::path::Path,
         app_data_dir: &std::path::Path,
     ) -> anyhow::Result<WasmGadgetBridge> {
-        let plugin_dir = source_root.join(plugin_id);
-        std::fs::create_dir_all(plugin_dir.join("migrations")).expect("mkdir");
+        let gadget_dir = source_root.join(gadget_id);
+        std::fs::create_dir_all(gadget_dir.join("migrations")).expect("mkdir");
 
         let wasm_src =
             std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
+        std::fs::copy(&wasm_src, gadget_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
-            plugin_dir.join("migrations/001_init.sql"),
+            gadget_dir.join("migrations/001_init.sql"),
             "CREATE TABLE IF NOT EXISTS probe (id INTEGER PRIMARY KEY);",
         )
         .expect("write migration");
         std::fs::write(
-            plugin_dir.join("manifest.toml"),
+            gadget_dir.join("manifest.toml"),
             format!(
                 r#"
 [gadget]
-id = "{plugin_id}"
-name = "SQL Plugin"
-description = "plugin with sql config"
+id = "{gadget_id}"
+name = "SQL Gadget"
+description = "gadget with sql config"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
@@ -1390,7 +1390,7 @@ migrations = ["migrations/001_init.sql"]
         .expect("write manifest");
 
         let source: Arc<dyn GadgetSource + Send + Sync> =
-            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
+            Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         WasmGadgetBridge::new(
             manifest,
@@ -1403,23 +1403,23 @@ migrations = ["migrations/001_init.sql"]
 
     /// The host-managed storage path must follow the
     /// `gadget-home/<id>/sql/storage.sqlite3` layout.
-    /// This is a structural guarantee for both plugin
+    /// This is a structural guarantee for both gadget
     /// authors (who reason about where their data lives)
     /// and the uninstall flow (which deletes the
     /// `gadget-home/<id>/` subtree to clean up).
     #[test]
-    fn sql_config_uses_plugin_home_layout() {
+    fn sql_config_uses_gadget_home_layout() {
         let source_root = tempfile::tempdir().expect("source tempdir");
         let app_data = tempfile::tempdir().expect("app data tempdir");
         let bridge =
-            bridge_with_sql("layout-plugin", source_root.path(), app_data.path()).expect("bridge");
+            bridge_with_sql("layout-gadget", source_root.path(), app_data.path()).expect("bridge");
 
         match bridge.sql_config_for_tests() {
             SqlConfig::Configured { db_path, .. } => {
                 let expected = app_data
                     .path()
                     .join("gadget-home")
-                    .join("layout-plugin")
+                    .join("layout-gadget")
                     .join("sql")
                     .join("storage.sqlite3");
                 assert_eq!(db_path, &expected);
@@ -1428,13 +1428,13 @@ migrations = ["migrations/001_init.sql"]
         }
     }
 
-    /// Plugin IDs that share a textual prefix (e.g. `foo` vs
+    /// Gadget IDs that share a textual prefix (e.g. `foo` vs
     /// `foo-bar`) must land in separate directories. A bug
     /// that used the ID as a flat filename prefix instead of
     /// a directory segment would let `foo-bar` stomp on
     /// `foo`'s storage.
     #[test]
-    fn sql_config_path_isolated_by_plugin_id() {
+    fn sql_config_path_isolated_by_gadget_id() {
         let short_root = tempfile::tempdir().expect("short source tempdir");
         let long_root = tempfile::tempdir().expect("long source tempdir");
         let app_data = tempfile::tempdir().expect("app data tempdir");
@@ -1462,7 +1462,7 @@ migrations = ["migrations/001_init.sql"]
         assert_ne!(short_root, long_root);
     }
 
-    /// A plugin with no `[storage.sql]` block must not cause
+    /// A gadget with no `[storage.sql]` block must not cause
     /// any `gadget-home/` directory to be created: the bridge
     /// constructor is a no-op for storage in that case.
     #[test]
@@ -1470,10 +1470,10 @@ migrations = ["migrations/001_init.sql"]
         let app_data = tempfile::tempdir().expect("app data tempdir");
         let _bridge = test_bridge("minimal-gadget", app_data.path()).expect("bridge construction");
 
-        let plugin_home = app_data.path().join("gadget-home");
+        let gadget_home = app_data.path().join("gadget-home");
         assert!(
-            !plugin_home.exists(),
-            "gadget-home/ must not be created for a plugin without [storage.sql]"
+            !gadget_home.exists(),
+            "gadget-home/ must not be created for a gadget without [storage.sql]"
         );
     }
 
@@ -1482,20 +1482,20 @@ migrations = ["migrations/001_init.sql"]
         // Tempdir manifest because no committed fixture
         // declares `[[tasks]]`.
         let tmp = tempfile::tempdir().expect("tempdir");
-        let plugin_dir = tmp.path().join("task-plugin");
-        std::fs::create_dir_all(&plugin_dir).expect("mkdir");
+        let gadget_dir = tmp.path().join("task-gadget");
+        std::fs::create_dir_all(&gadget_dir).expect("mkdir");
 
         let wasm_src =
             std::path::Path::new(FIXTURE_ROOT).join("minimal-gadget/minimal_gadget.wasm");
-        std::fs::copy(&wasm_src, plugin_dir.join("minimal_gadget.wasm")).expect("copy wasm");
+        std::fs::copy(&wasm_src, gadget_dir.join("minimal_gadget.wasm")).expect("copy wasm");
 
         std::fs::write(
-            plugin_dir.join("manifest.toml"),
+            gadget_dir.join("manifest.toml"),
             r#"
 [gadget]
-id = "task-plugin"
-name = "Task Plugin"
-description = "plugin with scheduled tasks"
+id = "task-gadget"
+name = "Task Gadget"
+description = "gadget with scheduled tasks"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:clock"
@@ -1513,7 +1513,7 @@ schedule = "*/5 * * * *"
 
         let app_data = tempfile::tempdir().expect("tempdir");
         let source: Arc<dyn GadgetSource + Send + Sync> =
-            Arc::new(DirectorySource::open(&plugin_dir).expect("open directory"));
+            Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
         let bridge = WasmGadgetBridge::new(
             manifest,
