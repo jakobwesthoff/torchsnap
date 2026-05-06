@@ -36,16 +36,16 @@ export type WebviewContext = "launcher" | "settings";
  * only the CSS relevant to the current webview is loaded.
  */
 export function registerWasmGadget(manifest: WasmGadgetManifest, webview: WebviewContext): void {
-  const gadgetId = manifest.plugin.id;
+  const gadgetId = manifest.gadget.id;
   const baseUrl = `torchsnap-gadget://localhost/${gadgetId}`;
 
   // Every WASM plugin gets metadata for the settings sidebar.
   // The GadgetSettingsWrapper uses icon + description to render
   // the standardized header and enable/disable toggle.
   const entry: GadgetRegistryEntry = {
-    label: manifest.plugin.name,
-    description: manifest.plugin.description,
-    icon: manifest.plugin.icon,
+    label: manifest.gadget.name,
+    description: manifest.gadget.description,
+    icon: manifest.gadget.icon,
   };
 
   const frontend = manifest.frontend;
