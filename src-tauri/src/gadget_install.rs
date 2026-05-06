@@ -85,7 +85,7 @@ pub struct UninstallResult {
 // =========================================================
 
 /// Install a user-supplied `.torchsnap` archive into the
-/// app data plugins directory. Returns an error string that
+/// app data gadgets directory. Returns an error string that
 /// the frontend can surface directly in a toast or banner.
 ///
 /// Runs the blocking filesystem and zip work on a
@@ -115,27 +115,27 @@ fn install_impl(
     // manifest-referenced file. If any of those fail the
     // archive is not a safe install candidate.
     let source =
-        ArchiveSource::open(archive_path).context("open plugin archive for installation")?;
+        ArchiveSource::open(archive_path).context("open gadget archive for installation")?;
     let manifest = source.manifest().clone();
-    let plugin_id = manifest.gadget.id.as_str().to_string();
+    let gadget_id = manifest.gadget.id.as_str().to_string();
 
     // Collision check against every already-registered source
     // kind. Each kind gets a distinct error message so the user
     // can tell which rejection applies and what remediation (if
     // any) fits their case.
-    if let Some(kind) = host.plugin_sources().get(&plugin_id).copied() {
+    if let Some(kind) = host.gadget_sources().get(&gadget_id).copied() {
         match kind {
             GadgetSourceKind::Builtin => anyhow::bail!(
-                "A built-in plugin with id `{plugin_id}` already exists. Built-in plugins cannot be replaced."
+                "A built-in gadget with id `{gadget_id}` already exists. Built-in gadgets cannot be replaced."
             ),
             GadgetSourceKind::System => anyhow::bail!(
-                "A system plugin with id `{plugin_id}` is bundled with the app. Overriding system plugins is not supported."
+                "A system gadget with id `{gadget_id}` is bundled with the app. Overriding system gadgets is not supported."
             ),
             GadgetSourceKind::Dev => anyhow::bail!(
-                "A development plugin with id `{plugin_id}` is loaded from the repository. Edit the dev plugin directly or change its id before installing."
+                "A development gadget with id `{gadget_id}` is loaded from the repository. Edit the dev gadget directly or change its id before installing."
             ),
             GadgetSourceKind::User => anyhow::bail!(
-                "A user plugin with id `{plugin_id}` is already installed. Uninstall the existing version, then retry."
+                "A user gadget with id `{gadget_id}` is already installed. Uninstall the existing version, then retry."
             ),
         }
     }
@@ -143,11 +143,11 @@ fn install_impl(
     let app_data_dir = app
         .path()
         .app_data_dir()
-        .context("resolve app data dir for plugin install")?;
+        .context("resolve app data dir for gadget install")?;
     let gadgets_dir = app_data_dir.join("gadgets");
     std::fs::create_dir_all(&gadgets_dir).context("create gadgets directory")?;
 
-    let final_path = gadgets_dir.join(format!("{plugin_id}.torchsnap"));
+    let final_path = gadgets_dir.join(format!("{gadget_id}.torchsnap"));
 
     // Drop the source handle before the copy/rename — on
     // Windows the archive file would otherwise still be open
@@ -161,12 +161,12 @@ fn install_impl(
     // the directory scan skips (it is not a plain
     // `*.torchsnap` entry); a crash after rename leaves a
     // valid install.
-    let tmp_path = gadgets_dir.join(format!(".{plugin_id}.torchsnap.tmp"));
+    let tmp_path = gadgets_dir.join(format!(".{gadget_id}.torchsnap.tmp"));
     std::fs::copy(archive_path, &tmp_path).context("copy archive into staging location")?;
     std::fs::rename(&tmp_path, &final_path).context("publish staged archive")?;
 
     Ok(InstalledGadgetInfo {
-        id: plugin_id,
+        id: gadget_id,
         name: manifest.gadget.name,
         version: manifest.gadget.version,
         requires_restart: true,
@@ -177,10 +177,10 @@ fn install_impl(
 // Uninstall
 // =========================================================
 
-/// Uninstall a user-installed plugin. Rejects built-in,
-/// system, and dev plugins. Removes the archive, the
+/// Uninstall a user-installed gadget. Rejects built-in,
+/// system, and dev gadgets. Removes the archive, the
 /// optional unpacked dir, the gadget-home state tree, and
-/// the plugin's settings keys.
+/// the gadget's settings keys.
 #[tauri::command]
 pub async fn uninstall_user_gadget(
     app: AppHandle,
@@ -197,29 +197,29 @@ pub async fn uninstall_user_gadget(
 fn uninstall_impl(
     app: &AppHandle,
     host: &GadgetHost,
-    plugin_id: &str,
+    gadget_id: &str,
 ) -> anyhow::Result<UninstallResult> {
     let kind = host
-        .plugin_sources()
-        .get(plugin_id)
+        .gadget_sources()
+        .get(gadget_id)
         .copied()
-        .ok_or_else(|| anyhow::anyhow!("unknown plugin id `{plugin_id}`"))?;
+        .ok_or_else(|| anyhow::anyhow!("unknown gadget id `{gadget_id}`"))?;
 
     if kind != GadgetSourceKind::User {
         anyhow::bail!(
-            "plugin `{plugin_id}` is a {kind:?} plugin — only user-installed plugins can be uninstalled"
+            "gadget `{gadget_id}` is a {kind:?} gadget — only user-installed gadgets can be uninstalled"
         );
     }
 
     let app_data_dir = app
         .path()
         .app_data_dir()
-        .context("resolve app data dir for plugin uninstall")?;
+        .context("resolve app data dir for gadget uninstall")?;
 
     // Archive form: `<app_data_dir>/gadgets/<id>.torchsnap`.
     let archive = app_data_dir
         .join("gadgets")
-        .join(format!("{plugin_id}.torchsnap"));
+        .join(format!("{gadget_id}.torchsnap"));
     if archive.exists() {
         std::fs::remove_file(&archive).context("remove gadget archive")?;
     }
@@ -227,32 +227,32 @@ fn uninstall_impl(
     // Directory form: `<app_data_dir>/gadgets/<id>/`. A
     // dev-style user gadget may be shipped this way by a gadget
     // author testing a release flow.
-    let dir = app_data_dir.join("gadgets").join(plugin_id);
+    let dir = app_data_dir.join("gadgets").join(gadget_id);
     if dir.exists() {
-        std::fs::remove_dir_all(&dir).context("remove plugin directory")?;
+        std::fs::remove_dir_all(&dir).context("remove gadget directory")?;
     }
 
     // State tree: `<app_data_dir>/gadget-home/<id>/`. Dropped
-    // unconditionally; the plugin can never reach it after the
+    // unconditionally; the gadget can never reach it after the
     // restart the caller is about to perform.
-    let home = app_data_dir.join("gadget-home").join(plugin_id);
+    let home = app_data_dir.join("gadget-home").join(gadget_id);
     if home.exists() {
         std::fs::remove_dir_all(&home).context("remove gadget-home directory")?;
     }
 
-    // Strip the plugin's settings keys. The store API has no
+    // Strip the gadget's settings keys. The store API has no
     // bulk delete, so we snapshot the matching keys first and
     // delete them by name. A `gadgets.<id>.` prefix test plus
     // the exact `enabled.<id>` key together cover every key
-    // the host writes for a plugin; unrelated plugins whose id
+    // the host writes for a gadget; unrelated gadgets whose id
     // shares a text prefix (e.g. `calc` vs `calculator`) are
     // left alone because `gadgets.calc.` does not match
     // `gadgets.calculator.foo`.
     let store = app
         .store("settings.json")
         .context("open settings store for uninstall cleanup")?;
-    let enabled_key = format!("enabled.{plugin_id}");
-    let prefix = format!("gadgets.{plugin_id}.");
+    let enabled_key = format!("enabled.{gadget_id}");
+    let prefix = format!("gadgets.{gadget_id}.");
     let mut to_delete: Vec<String> = Vec::new();
     for (key, _) in store.entries() {
         if key == enabled_key || key.starts_with(&prefix) {
@@ -289,9 +289,9 @@ mod tests {
     // =========================================================
     // settings-key cleanup regression coverage
     //
-    // A plugin id that shares a textual prefix with another
+    // A gadget id that shares a textual prefix with another
     // must not strip the other's keys. The host writes only
-    // `enabled.<id>` and `plugins.<id>.*`, so these two
+    // `enabled.<id>` and `gadgets.<id>.*`, so these two
     // patterns are the authoritative matchers. A bug using
     // `starts_with("enabled.")` or a naive prefix-only match
     // would silently nuke unrelated state.
@@ -301,9 +301,9 @@ mod tests {
     /// so the behaviour is testable without a real Store.
     /// Any future refactor that changes the matcher must
     /// keep these tests passing.
-    fn keys_to_strip_for(plugin_id: &str, all_keys: &[&str]) -> Vec<String> {
-        let enabled_key = format!("enabled.{plugin_id}");
-        let prefix = format!("gadgets.{plugin_id}.");
+    fn keys_to_strip_for(gadget_id: &str, all_keys: &[&str]) -> Vec<String> {
+        let enabled_key = format!("enabled.{gadget_id}");
+        let prefix = format!("gadgets.{gadget_id}.");
         all_keys
             .iter()
             .filter(|k| **k == enabled_key || k.starts_with(&prefix))
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_matches_plugin_settings_prefix() {
+    fn cleanup_matches_gadget_settings_prefix() {
         let keys = [
             "gadgets.foo.alpha",
             "gadgets.foo.beta",
@@ -329,12 +329,12 @@ mod tests {
         assert_eq!(stripped.len(), 3);
     }
 
-    /// Regression: a plugin id that is a textual prefix of
+    /// Regression: a gadget id that is a textual prefix of
     /// another must not match the longer id's keys. Uninstall
     /// of `calc` would have otherwise stripped every
     /// `calculator.*` setting — a silent data-loss bug.
     #[test]
-    fn cleanup_ignores_other_plugins_with_longer_ids() {
+    fn cleanup_ignores_other_gadgets_with_longer_ids() {
         let keys = [
             "enabled.calc",
             "enabled.calculator",
@@ -354,13 +354,13 @@ mod tests {
             "appearance.theme",
             "frecency.enabled",
             "websiteMetadata.cacheTtlDays",
-            "enabled.other-plugin",
-            "gadgets.other-plugin.key",
+            "enabled.other-gadget",
+            "gadgets.other-gadget.key",
         ];
         let stripped = keys_to_strip_for("foo", &keys);
         assert!(
             stripped.is_empty(),
-            "no keys should be stripped for an absent plugin"
+            "no keys should be stripped for an absent gadget"
         );
     }
 
@@ -378,7 +378,7 @@ mod tests {
     /// install command surfaces this error to the UI as a
     /// "not a torchsnap archive" banner — pinning the failure
     /// mode here guards against a regression where a broken
-    /// zip slips past and gets renamed into the plugins dir.
+    /// zip slips past and gets renamed into the gadgets dir.
     #[test]
     fn install_rejects_non_zip_source_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -390,7 +390,7 @@ mod tests {
     }
 
     /// A zip that exists but contains no `manifest.toml` is
-    /// not a valid plugin archive — installing such a file
+    /// not a valid gadget archive — installing such a file
     /// would leave a registered entry with no manifest.
     #[test]
     fn install_rejects_zip_without_manifest() {

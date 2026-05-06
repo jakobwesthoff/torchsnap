@@ -89,7 +89,7 @@ pub fn enumerate_search_roots(
     roots
 }
 
-/// List every plugin entry inside a single root, applying the
+/// List every gadget entry inside a single root, applying the
 /// per-root archive-over-directory precedence rule. Returns
 /// `Ok(Vec::new())` when the root does not exist or is not
 /// readable — a missing root is not an error.
@@ -100,11 +100,11 @@ pub fn enumerate_search_roots(
 ///   other than `.torchsnap` is skipped).
 /// - A directory at the root containing a `manifest.toml` at
 ///   its top level (plain directories without a manifest are
-///   not plugins and are skipped).
+///   not gadgets and are skipped).
 ///
 /// When both forms coexist (`foo.torchsnap` alongside
 /// `foo/`), the archive is kept and the directory is dropped.
-pub fn scan_plugin_entries(root: &Path) -> Vec<PathBuf> {
+pub fn scan_gadget_entries(root: &Path) -> Vec<PathBuf> {
     let read_dir = match std::fs::read_dir(root) {
         Ok(d) => d,
         Err(_) => return Vec::new(),
@@ -167,9 +167,9 @@ mod tests {
         std::fs::write(path, &[]).expect("write stub file");
     }
 
-    /// Create a directory-form plugin with a minimal
+    /// Create a directory-form gadget with a minimal
     /// manifest.toml so the scanner recognizes it.
-    fn make_dir_plugin(root: &Path, name: &str) {
+    fn make_dir_gadget(root: &Path, name: &str) {
         let dir = root.join(name);
         std::fs::create_dir_all(&dir).expect("mkdir");
         std::fs::write(dir.join("manifest.toml"), "[gadget]\n").expect("write manifest");
@@ -179,13 +179,13 @@ mod tests {
     fn scan_returns_empty_when_root_is_missing() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let missing = tmp.path().join("does-not-exist");
-        assert!(scan_plugin_entries(&missing).is_empty());
+        assert!(scan_gadget_entries(&missing).is_empty());
     }
 
     #[test]
     fn scan_returns_empty_when_root_is_empty() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        assert!(scan_plugin_entries(tmp.path()).is_empty());
+        assert!(scan_gadget_entries(tmp.path()).is_empty());
     }
 
     #[test]
@@ -194,7 +194,7 @@ mod tests {
         touch(&tmp.path().join("alpha.torchsnap"));
         touch(&tmp.path().join("beta.torchsnap"));
 
-        let entries = scan_plugin_entries(tmp.path());
+        let entries = scan_gadget_entries(tmp.path());
         let names: Vec<String> = entries
             .iter()
             .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
@@ -205,20 +205,20 @@ mod tests {
     }
 
     #[test]
-    fn scan_finds_directory_plugins() {
+    fn scan_finds_directory_gadgets() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_dir_plugin(tmp.path(), "alpha");
-        make_dir_plugin(tmp.path(), "beta");
+        make_dir_gadget(tmp.path(), "alpha");
+        make_dir_gadget(tmp.path(), "beta");
 
-        let entries = scan_plugin_entries(tmp.path());
+        let entries = scan_gadget_entries(tmp.path());
         assert_eq!(entries.len(), 2);
     }
 
     #[test]
     fn scan_skips_directories_without_manifest() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        std::fs::create_dir_all(tmp.path().join("not-a-plugin")).expect("mkdir");
-        assert!(scan_plugin_entries(tmp.path()).is_empty());
+        std::fs::create_dir_all(tmp.path().join("not-a-gadget")).expect("mkdir");
+        assert!(scan_gadget_entries(tmp.path()).is_empty());
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         touch(&tmp.path().join("README.md"));
         touch(&tmp.path().join("notes.txt"));
-        assert!(scan_plugin_entries(tmp.path()).is_empty());
+        assert!(scan_gadget_entries(tmp.path()).is_empty());
     }
 
     /// The precedence rule exists so a developer can keep a
@@ -238,9 +238,9 @@ mod tests {
     fn archive_wins_over_sibling_directory_with_same_stem() {
         let tmp = tempfile::tempdir().expect("tempdir");
         touch(&tmp.path().join("calculator.torchsnap"));
-        make_dir_plugin(tmp.path(), "calculator");
+        make_dir_gadget(tmp.path(), "calculator");
 
-        let entries = scan_plugin_entries(tmp.path());
+        let entries = scan_gadget_entries(tmp.path());
         assert_eq!(entries.len(), 1);
         assert_eq!(
             entries[0].file_name().and_then(|n| n.to_str()),
@@ -249,14 +249,14 @@ mod tests {
     }
 
     /// An archive whose stem does *not* match any sibling
-    /// directory leaves other directory plugins untouched.
+    /// directory leaves other directory gadgets untouched.
     #[test]
     fn archive_without_matching_directory_does_not_block_other_dirs() {
         let tmp = tempfile::tempdir().expect("tempdir");
         touch(&tmp.path().join("archive-only.torchsnap"));
-        make_dir_plugin(tmp.path(), "dir-only");
+        make_dir_gadget(tmp.path(), "dir-only");
 
-        let entries = scan_plugin_entries(tmp.path());
+        let entries = scan_gadget_entries(tmp.path());
         assert_eq!(entries.len(), 2);
     }
 
@@ -277,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_includes_system_when_resource_plugins_exists() {
+    fn enumerate_includes_system_when_resource_gadgets_exists() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let resource = tmp.path().join("res");
         let resource_gadgets = resource.join("gadgets");
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_includes_user_when_app_data_plugins_exists() {
+    fn enumerate_includes_user_when_app_data_gadgets_exists() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let app_data = tmp.path().join("app-data");
         std::fs::create_dir_all(app_data.join("gadgets")).expect("mkdir");
@@ -309,7 +309,7 @@ mod tests {
 
     /// Precedence of the returned roots is load-bearing for
     /// collision handling: the loader processes them in order
-    /// and the *first* occurrence of a plugin id wins.
+    /// and the *first* occurrence of a gadget id wins.
     /// System must therefore precede Dev and User when all
     /// three are present.
     #[test]
@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_skips_system_when_resource_dir_lacks_plugins_subdir() {
+    fn enumerate_skips_system_when_resource_dir_lacks_gadgets_subdir() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let resource = tmp.path().join("res");
         std::fs::create_dir_all(&resource).expect("mkdir");
@@ -341,7 +341,7 @@ mod tests {
         let roots = enumerate_search_roots(Some(&resource), &app_data);
         assert!(
             roots.iter().all(|(k, _)| *k != GadgetSourceKind::System),
-            "System should not be included when res/plugins is missing"
+            "System should not be included when res/gadgets is missing"
         );
     }
 }

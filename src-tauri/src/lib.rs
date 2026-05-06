@@ -528,10 +528,10 @@ fn website_metadata_clear_cache(
 }
 
 // =========================================================
-// WASM Plugin Manifests
+// WASM Gadget Manifests
 // =========================================================
 
-/// Returns the full manifest for every loaded WASM plugin.
+/// Returns the full manifest for every loaded WASM gadget.
 /// Called once per webview at startup to register dynamic
 /// gadget components and settings entries.
 #[tauri::command]
@@ -550,7 +550,7 @@ fn wasm_gadgets(
 fn gadget_sources(
     host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
 ) -> std::collections::HashMap<String, wasm::source::GadgetSourceKind> {
-    host.plugin_sources()
+    host.gadget_sources()
 }
 
 // =========================================================
@@ -614,12 +614,12 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
 
-    // Shared registry mapping plugin IDs to their sources.
+    // Shared registry mapping gadget IDs to their sources.
     // The protocol handler reads from these to serve frontend
-    // assets; plugin loading populates the registry.
-    let plugin_source_registry = wasm::protocol::new_registry();
+    // assets; gadget loading populates the registry.
+    let source_registry = wasm::protocol::new_registry();
     let builder =
-        wasm::protocol::register_plugin_protocol(builder, Arc::clone(&plugin_source_registry));
+        wasm::protocol::register_gadget_protocol(builder, Arc::clone(&source_registry));
 
     // Host favicon URI scheme. Custom schemes must be registered
     // on the builder before `.setup()` runs, but
@@ -664,16 +664,16 @@ pub fn run() {
             let frecency_store = Arc::new(frecency_store);
 
             // =========================================================
-            // Plugin host
+            // Gadget host
             //
-            // Central authority for plugin lifecycle: registration,
+            // Central authority for gadget lifecycle: registration,
             // settings init, parallel enable, shortcut management,
             // search routing, and shutdown.
             // =========================================================
             let mut host =
                 gadget_host::GadgetHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
-            // All built-in plugins are native Rust code compiled
-            // into the binary — tag them `Builtin`. The Plugins
+            // All built-in gadgets are native Rust code compiled
+            // into the binary — tag them `Builtin`. The Gadgets
             // settings panel uses this to suppress the uninstall
             // action for built-ins.
             host.register(
@@ -716,7 +716,7 @@ pub fn run() {
             // Website metadata service
             //
             // Shared service for fetching and caching website metadata
-            // (title, description, favicon). Plugins that need domain
+            // (title, description, favicon). Gadgets that need domain
             // favicons receive an Arc to this service at construction.
             // =========================================================
             let metadata_cache_dir = app
@@ -750,9 +750,9 @@ pub fn run() {
             // =========================================================
             // Logging system
             //
-            // Structured logging for WASM plugins. Started before
-            // plugin loading so that compilation and instantiation
-            // timing is captured from the very first plugin.
+            // Structured logging for WASM gadgets. Started before
+            // gadget loading so that compilation and instantiation
+            // timing is captured from the very first gadget.
             // =========================================================
             let logging_system = wasm::logging::channel::LoggingSystem::start();
             let log_sender = logging_system.sender();
@@ -760,27 +760,27 @@ pub fn run() {
             let logging_system = Arc::new(logging_system);
 
             // =========================================================
-            // WASM plugins
+            // WASM gadgets
             //
-            // Load plugins from the `plugins/` development directory.
+            // Load gadgets from the `gadgets/` development directory.
             // Each subdirectory with a manifest.toml is loaded as a
             // DirectorySource, instantiated via wasmtime, and bridged
-            // to the native Plugin trait.
+            // to the native Gadget trait.
             //
             // Roots scanned (see `wasm::discovery` for details):
             //
-            // - `resource_dir/plugins/` — bundled System plugins
+            // - `resource_dir/gadgets/` — bundled System gadgets
             //   (release + debug if the resource dir exists).
-            // - `CARGO_MANIFEST_DIR/../plugins/` — Dev plugins
+            // - `CARGO_MANIFEST_DIR/../gadgets/` — Dev gadgets
             //   (debug builds only, stripped in release).
-            // - `app_data_dir/plugins/` — User-installed plugins.
+            // - `app_data_dir/gadgets/` — User-installed gadgets.
             // =========================================================
             let resource_dir = app.path().resource_dir().ok();
-            match load_wasm_plugins(
+            match load_wasm_gadgets(
                 &mut host,
                 &log_sender,
                 &span_registry,
-                &plugin_source_registry,
+                &source_registry,
                 &app_data_dir,
                 resource_dir.as_deref(),
                 Arc::clone(&metadata_service),
@@ -793,7 +793,7 @@ pub fn run() {
                             source: wasm::logging::LogSource::Host,
                             kind: wasm::logging::LogItemKind::Message {
                                 level: wasm::logging::LogLevel::Info,
-                                message: format!("Loaded {count} WASM plugin(s)"),
+                                message: format!("Loaded {count} WASM gadget(s)"),
                                 metadata: vec![],
                                 span_id: None,
                             },
@@ -807,7 +807,7 @@ pub fn run() {
                         source: wasm::logging::LogSource::Host,
                         kind: wasm::logging::LogItemKind::Message {
                             level: wasm::logging::LogLevel::Error,
-                            message: format!("Failed to initialize WASM plugins: {e:#}"),
+                            message: format!("Failed to initialize WASM gadgets: {e:#}"),
                             metadata: vec![],
                             span_id: None,
                         },
@@ -829,15 +829,15 @@ pub fn run() {
             app.manage(Arc::clone(&metadata_service));
             app.manage(Arc::clone(&logging_system));
             app.manage(Arc::clone(&span_registry));
-            app.manage(plugin_source_registry);
+            app.manage(source_registry);
 
             // =========================================================
             // Settings-changed listener
             //
             // Propagates store changes to:
-            // 1. Watch channels (SettingsNotifier) for non-plugin
+            // 1. Watch channels (SettingsNotifier) for non-gadget
             //    SettingsWatch subscribers (FrecencyStore, control, etc.)
-            // 2. Host-managed plugin lifecycle (enable/disable) and
+            // 2. Host-managed gadget lifecycle (enable/disable) and
             //    settings dispatch (setting_changed) via
             //    CoalescingDispatcher
             // 3. Shortcut reactor for re-registration
@@ -866,7 +866,7 @@ pub fn run() {
                         );
 
                         // Signal shortcut re-registration if the changed
-                        // key affects shortcuts or plugin enabled state.
+                        // key affects shortcuts or gadget enabled state.
                         if host_for_listener.is_key_watched(&payload.key) {
                             host_for_listener.notify_shortcut_change();
                         }
@@ -941,7 +941,7 @@ pub fn run() {
     // so the menubar app keeps running. The settings window is allowed to
     // close normally — it will be recreated on demand next time the user
     // opens it, keeping RAM usage low while it is not visible.
-    // On exit, disable all plugins.
+    // On exit, disable all gadgets.
     app.run(|app, event| match &event {
         RunEvent::WindowEvent {
             label,
@@ -972,25 +972,25 @@ pub fn run() {
 }
 
 // =========================================================
-// WASM Plugin Loader
+// WASM Gadget Loader
 //
 // Scans every configured search root (see
-// `wasm::discovery`) for plugin archives and directory-form
-// plugins, instantiates each one once, and registers it with
+// `wasm::discovery`) for gadget archives and directory-form
+// gadgets, instantiates each one once, and registers it with
 // the `GadgetHost` tagged with its `GadgetSourceKind`.
 //
 // Cross-root collision rule: the first root that registers a
-// given plugin id wins. Since `enumerate_search_roots` orders
-// the roots System → Dev → User, a bundled plugin always
+// given gadget id wins. Since `enumerate_search_roots` orders
+// the roots System → Dev → User, a bundled gadget always
 // shadows a user copy that happens to share its id. A
 // warning is logged for the skipped copy so the user can see
 // why their install did not take effect.
 //
 // Per-root precedence (archive-over-directory) is owned by
-// `wasm::discovery::scan_plugin_entries`.
+// `wasm::discovery::scan_gadget_entries`.
 // =========================================================
 
-fn load_wasm_plugins(
+fn load_wasm_gadgets(
     host: &mut gadget_host::GadgetHost,
     log_sender: &wasm::logging::channel::LogSender,
     span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
@@ -1011,13 +1011,13 @@ fn load_wasm_plugins(
     let mut count: usize = 0;
 
     for (source_kind, root) in roots {
-        for path in wasm::discovery::scan_plugin_entries(&root) {
+        for path in wasm::discovery::scan_gadget_entries(&root) {
             // Open the source once. On any error — corrupt
             // archive, missing manifest, failing path guard —
-            // log and move on so one broken plugin does not
+            // log and move on so one broken gadget does not
             // prevent the rest from loading.
             let source: Arc<dyn wasm::source::GadgetSource + Send + Sync> =
-                match open_plugin_source(&path) {
+                match open_gadget_source(&path) {
                     Ok(s) => s,
                     Err(e) => {
                         log_loader_error(log_sender, &path, source_kind, &e);
@@ -1030,8 +1030,8 @@ fn load_wasm_plugins(
             // Subsequent appearances are skipped with a warning
             // so an install-time collision bug surfaces visibly
             // instead of silently.
-            let plugin_id = source.manifest().gadget.id.as_str().to_string();
-            if !loaded_ids.insert(plugin_id.clone()) {
+            let gadget_id = source.manifest().gadget.id.as_str().to_string();
+            if !loaded_ids.insert(gadget_id.clone()) {
                 log_sender.send(wasm::logging::LogItem {
                     seq: 0,
                     timestamp: std::time::SystemTime::now(),
@@ -1039,11 +1039,11 @@ fn load_wasm_plugins(
                     kind: wasm::logging::LogItemKind::Message {
                         level: wasm::logging::LogLevel::Warn,
                         message: format!(
-                            "plugin id `{plugin_id}` already loaded from an earlier root — skipping {}",
+                            "gadget id `{gadget_id}` already loaded from an earlier root — skipping {}",
                             path.display()
                         ),
                         metadata: vec![
-                            ("plugin_id".to_string(), plugin_id.clone()),
+                            ("gadget_id".to_string(), gadget_id.clone()),
                             ("source".to_string(), format!("{source_kind:?}")),
                             ("skipped_path".to_string(), path.display().to_string()),
                         ],
@@ -1053,7 +1053,7 @@ fn load_wasm_plugins(
                 continue;
             }
 
-            match load_single_wasm_plugin(
+            match load_single_wasm_gadget(
                 Arc::clone(&runtime),
                 source,
                 source_kind,
@@ -1062,16 +1062,16 @@ fn load_wasm_plugins(
                 source_registry,
                 app_data_dir,
             ) {
-                Ok(plugin_id) => {
+                Ok(gadget_id) => {
                     log_sender.send(wasm::logging::LogItem {
                         seq: 0,
                         timestamp: std::time::SystemTime::now(),
                         source: wasm::logging::LogSource::Host,
                         kind: wasm::logging::LogItemKind::Message {
                             level: wasm::logging::LogLevel::Info,
-                            message: format!("Loaded plugin: {plugin_id} ({source_kind:?})"),
+                            message: format!("Loaded gadget: {gadget_id} ({source_kind:?})"),
                             metadata: vec![
-                                ("plugin_id".to_string(), plugin_id),
+                                ("gadget_id".to_string(), gadget_id),
                                 ("source".to_string(), format!("{source_kind:?}")),
                             ],
                             span_id: None,
@@ -1084,9 +1084,9 @@ fn load_wasm_plugins(
                     // copy in a later root could still get a
                     // chance. The registration itself is already
                     // rolled back — `register` is the last step
-                    // in `load_single_wasm_plugin` and the error
+                    // in `load_single_wasm_gadget` and the error
                     // happens before it.
-                    loaded_ids.remove(&plugin_id);
+                    loaded_ids.remove(&gadget_id);
                     log_loader_error(log_sender, &path, source_kind, &e);
                 }
             }
@@ -1096,12 +1096,12 @@ fn load_wasm_plugins(
     Ok(count)
 }
 
-/// Open a plugin source from a filesystem path, choosing
+/// Open a gadget source from a filesystem path, choosing
 /// `DirectorySource` vs `ArchiveSource` by directory-ness.
-/// Split out of `load_wasm_plugins` so the collision check
+/// Split out of `load_wasm_gadgets` so the collision check
 /// can run against the manifest id *before* the expensive
 /// WASM compile in `WasmGadgetBridge::new`.
-fn open_plugin_source(
+fn open_gadget_source(
     path: &std::path::Path,
 ) -> anyhow::Result<Arc<dyn wasm::source::GadgetSource + Send + Sync>> {
     if path.is_dir() {
@@ -1136,7 +1136,7 @@ fn log_loader_error(
     });
 }
 
-fn load_single_wasm_plugin(
+fn load_single_wasm_gadget(
     runtime: Arc<wasm::runtime::WasmRuntime>,
     source: Arc<dyn wasm::source::GadgetSource + Send + Sync>,
     source_kind: wasm::source::GadgetSourceKind,
@@ -1145,7 +1145,7 @@ fn load_single_wasm_plugin(
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<String> {
-    let plugin_id = source.manifest().gadget.id.as_str().to_string();
+    let gadget_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();
     let bridge = wasm::bridge::WasmGadgetBridge::new(
         manifest,
@@ -1161,7 +1161,7 @@ fn load_single_wasm_plugin(
     source_registry
         .write()
         .expect("source registry not poisoned")
-        .insert(plugin_id.clone(), source);
+        .insert(gadget_id.clone(), source);
 
-    Ok(plugin_id)
+    Ok(gadget_id)
 }
