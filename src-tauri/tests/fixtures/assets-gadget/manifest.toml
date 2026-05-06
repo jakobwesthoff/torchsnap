@@ -1,6 +1,6 @@
 [gadget]
-id = "assets-plugin"
-name = "Assets Test Plugin"
+id = "assets-gadget"
+name = "Assets Test Gadget"
 description = "Test-only fixture exercising the assets host interface"
 version = "0.0.0"
 wasm = "assets_gadget.wasm"

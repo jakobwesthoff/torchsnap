@@ -37,7 +37,7 @@ resolver = "3"
 # - `opt-level = 3`    — optimise for speed on the search
 #                        hot path.
 # - `lto = "fat"`      — cross-crate inlining across
-#                        wit-bindgen / plugin code.
+#                        wit-bindgen / gadget code.
 # - `codegen-units = 1` — required for `lto = "fat"` to
 #                        inline across compilation units.
 # - `panic = "abort"`  — strips unwind tables; wasmtime

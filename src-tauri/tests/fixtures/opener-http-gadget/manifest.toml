@@ -1,6 +1,6 @@
 [gadget]
-id = "opener-http-plugin"
-name = "Opener/HTTP Test Plugin"
+id = "opener-http-gadget"
+name = "Opener/HTTP Test Gadget"
 description = "Test-only fixture exercising the opener and http host interfaces"
 version = "0.0.0"
 wasm = "opener_http_gadget.wasm"

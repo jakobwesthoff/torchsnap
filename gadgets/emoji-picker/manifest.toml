@@ -7,10 +7,10 @@ wasm = "emoji_picker_gadget.wasm"
 icon = "heroicons:face-smile"
 prefixes = [":"]
 
-# No `[settings]` — the plugin has no user-configurable
+# No `[settings]` — the gadget has no user-configurable
 # options. Empty-query browse order is driven by the host's
 # frecency store (read via the `frecency` WIT import), not a
-# per-plugin setting.
+# per-gadget setting.
 #
 # No `[storage.sql]` — all selection history lives in the
 # host's frecency database. The guest only reads it via

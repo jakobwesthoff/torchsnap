@@ -1,6 +1,6 @@
 [gadget]
-id = "command-plugin"
-name = "Command Test Plugin"
+id = "command-gadget"
+name = "Command Test Gadget"
 description = "Test-only fixture exercising the `command` host interface"
 version = "0.0.0"
 wasm = "command_gadget.wasm"

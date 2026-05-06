@@ -30,7 +30,7 @@ launcher-css = "frontend/dist/launcher.css"
 settings-bundle = "frontend/dist/settings.js"
 settings-css = "frontend/dist/settings.css"
 
-# Prefix-mode custom UI. The plugin's `search()` returns
+# Prefix-mode custom UI. The gadget's `search()` returns
 # `CustomUI { view = "history" }` and the host mounts the
 # named export below, replacing the standard result list
 # with the calculator's own layout (inline result + history
@@ -38,7 +38,7 @@ settings-css = "frontend/dist/settings.css"
 [frontend.views]
 history = "CalculatorView"
 
-# Heuristic-mode inline UI. The plugin's `search()` returns
+# Heuristic-mode inline UI. The gadget's `search()` returns
 # `InlineUI { view = "result" }` for queries that look like
 # math expressions; the host mounts this above the standard
 # result list.

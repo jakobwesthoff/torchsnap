@@ -1,4 +1,4 @@
--- Calculator plugin — initial schema.
+-- Calculator gadget — initial schema.
 --
 -- Stores evaluated math expressions and their results so the
 -- prefix-mode UI can show a history list. Each row carries a

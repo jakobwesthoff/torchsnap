@@ -6,7 +6,7 @@ publish = false
 
 [lib]
 # The SDK is a regular Rust library — not a cdylib. It only
-# exists to be depended on by each plugin crate; the plugin
+# exists to be depended on by each gadget crate; the gadget
 # crates themselves are the wasm components that actually get
 # shipped. We still build against `wasm32-wasip2` (inherited
 # from `.cargo/config.toml`) because the `wit_bindgen::generate!`

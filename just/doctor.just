@@ -43,8 +43,8 @@ doctor:
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
 
     echo ""
-    echo "WASM plugin toolchain:"
-    check zip             "create .torchsnap plugin archives" "brew install zip"
+    echo "WASM gadget toolchain:"
+    check zip             "create .torchsnap gadget archives" "brew install zip"
     check wasm-tools      "inspect/validate WASM components"  "cargo install wasm-tools"
 
     # Check that the wasm32-wasip2 target is installed.
@@ -52,7 +52,7 @@ doctor:
         printf "  ${green}✓${reset}  %-14s installed\n" "wasm32-wasip2"
         ok=$((ok + 1))
     else
-        printf "  ${red}✗${reset}  %-14s missing — Rust compilation target for WASM plugins\n" "wasm32-wasip2"
+        printf "  ${red}✗${reset}  %-14s missing — Rust compilation target for WASM gadgets\n" "wasm32-wasip2"
         printf "     %-14s install: %s\n" "" "rustup target add wasm32-wasip2"
         missing=$((missing + 1))
     fi

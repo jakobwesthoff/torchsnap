@@ -13,8 +13,8 @@ install: assets install-packages install-crates
 install-packages:
     bun install
 
-# The native host under `src-tauri/` and the plugin workspace under
-# `plugins/` resolve independently because the two trees target
+# The native host under `src-tauri/` and the gadget workspace under
+# `gadgets/` resolve independently because the two trees target
 # different triples.
 
 # Fetch Rust dependencies for both the src-tauri/ and gadgets/ workspaces

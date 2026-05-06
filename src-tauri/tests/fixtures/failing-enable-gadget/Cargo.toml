@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 # Test-only fixture crate. Targets wasm32-wasip2 and is built via the
-# `just build-test-fixtures` recipe. Variant of `minimal-plugin` whose
+# `just build-test-fixtures` recipe. Variant of `minimal-gadget` whose
 # guest `lifecycle::enable` panics — used to exercise the bridge's
 # drop-instance-on-guest-enable-failure path.
 
