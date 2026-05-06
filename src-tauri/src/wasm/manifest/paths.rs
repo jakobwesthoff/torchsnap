@@ -25,10 +25,10 @@ use crate::wasm::source::validate_plugin_path;
 /// values — those are JavaScript export names, not paths.
 pub(super) fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
     validate_plugin_path(&manifest.gadget.wasm)
-        .map_err(|e| anyhow::anyhow!("invalid `plugin.wasm`: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("invalid `gadget.wasm`: {e}"))?;
 
     if let GadgetIcon::Asset(ref path) = manifest.gadget.icon {
-        validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `plugin.icon`: {e}"))?;
+        validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `gadget.icon`: {e}"))?;
     }
 
     if let Some(ref frontend) = manifest.frontend {
@@ -94,11 +94,11 @@ mod tests {
             icon = "heroicons:beaker"
         "#;
         let err = Manifest::parse(toml).unwrap_err();
-        assert!(err.to_string().contains("plugin.wasm"), "{err}");
+        assert!(err.to_string().contains("gadget.wasm"), "{err}");
         assert!(err.to_string().contains("escapes"), "{err}");
     }
 
-    /// Absolute paths in `plugin.wasm` are equally dangerous
+    /// Absolute paths in `gadget.wasm` are equally dangerous
     /// and must fail.
     #[test]
     fn reject_plugin_wasm_absolute_path() {
@@ -112,7 +112,7 @@ mod tests {
             icon = "heroicons:beaker"
         "#;
         let err = Manifest::parse(toml).unwrap_err();
-        assert!(err.to_string().contains("plugin.wasm"), "{err}");
+        assert!(err.to_string().contains("gadget.wasm"), "{err}");
     }
 
     /// The asset-icon path is also user-controlled and reaches
@@ -129,7 +129,7 @@ mod tests {
             icon = "../../.ssh/id_rsa"
         "#;
         let err = Manifest::parse(toml).unwrap_err();
-        assert!(err.to_string().contains("plugin.icon"), "{err}");
+        assert!(err.to_string().contains("gadget.icon"), "{err}");
     }
 
     /// `heroicons:beaker` is not a path — the guard must

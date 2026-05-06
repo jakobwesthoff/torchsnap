@@ -25,7 +25,7 @@ import { GadgetSettingsWrapper } from "./GadgetSettingsWrapper";
 
 const GENERAL_SECTIONS: SidebarItem[] = [
   { id: "general", label: "General", icon: "heroicons:cog-6-tooth" },
-  { id: "plugins", label: "Gadgets", icon: "heroicons:puzzle-piece" },
+  { id: "gadgets", label: "Gadgets", icon: "heroicons:puzzle-piece" },
 ];
 
 const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
@@ -106,7 +106,7 @@ function SectionContent({
   if (activeSection === "general") {
     return <GeneralSection />;
   }
-  if (activeSection === "plugins") {
+  if (activeSection === "gadgets") {
     return <GadgetsManagementPanel />;
   }
   if (activeSection === "appearance") {
@@ -119,47 +119,42 @@ function SectionContent({
     return <WebsiteMetadataSection />;
   }
 
-  // Plugin sections — wrapped in GadgetSettingsWrapper for the
+  // Gadget sections — wrapped in GadgetSettingsWrapper for the
   // standardized header + enable/disable toggle. Custom settings
   // components (if any) are rendered as children.
-  const plugin = gadgetSections.find((p) => p.id === activeSection);
-  if (!plugin) {
+  const gadget = gadgetSections.find((g) => g.id === activeSection);
+  if (!gadget) {
     return null;
   }
 
   // Stable reference — registry returns the same component instance per ID.
-  const CustomSettings = getGadgetSettingsComponent(plugin.id);
+  const CustomSettings = getGadgetSettingsComponent(gadget.id);
 
   return (
     <Suspense fallback={<div className="text-text-muted text-sm">Loading settings…</div>}>
-      <PluginSectionContent plugin={plugin} CustomSettings={CustomSettings} />
+      <GadgetSectionContent gadget={gadget} CustomSettings={CustomSettings} />
     </Suspense>
   );
 }
 
 // =========================================================
-// Plugin section content
+// Gadget section content
 //
 // Renders the GadgetSettingsWrapper (header + enable/disable)
 // with an optional custom settings component as children.
-// Memoizes the scoped hook factory per plugin ID.
+// Memoizes the scoped hook factory per gadget ID.
 // =========================================================
 
-function PluginSectionContent({
-  plugin,
+function GadgetSectionContent({
+  gadget,
   CustomSettings,
 }: {
-  plugin: ReturnType<typeof getGadgetsWithSettings>[number];
+  gadget: ReturnType<typeof getGadgetsWithSettings>[number];
   CustomSettings?: ComponentType<GadgetSettingsProps>;
 }) {
-  // The plugin's enabled flag flows through GadgetContext so
-  // setting components can read it via useGadgetInfo() and
-  // visually disable controls when the plugin is off.
-  const [enabled] = useSetting<boolean>(`enabled.${plugin.id}`);
-  const logger = useMemo(() => createLogger(plugin.id), [plugin.id]);
+  const [enabled] = useSetting<boolean>(`enabled.${gadget.id}`);
+  const logger = useMemo(() => createLogger(gadget.id), [gadget.id]);
 
-  // sendMessage is bound to the active plugin id; the closure
-  // never changes for a given mount.
   const sendMessage = useMemo(
     () =>
       <TPayload = unknown, TResult = unknown, TStream = never>(
@@ -167,19 +162,19 @@ function PluginSectionContent({
         payload: TPayload,
         onMessage?: (msg: TStream) => void,
       ): Promise<TResult> =>
-        sendGadgetMessage<TPayload, TResult, TStream>(plugin.id, method, payload, onMessage),
-    [plugin.id],
+        sendGadgetMessage<TPayload, TResult, TStream>(gadget.id, method, payload, onMessage),
+    [gadget.id],
   );
 
-  const info = useMemo<GadgetInfo>(() => ({ id: plugin.id, enabled }), [plugin.id, enabled]);
+  const info = useMemo<GadgetInfo>(() => ({ id: gadget.id, enabled }), [gadget.id, enabled]);
   const runtime = useMemo<GadgetRuntime>(() => ({ sendMessage, logger }), [sendMessage, logger]);
 
   return (
     <GadgetSettingsWrapper
-      gadgetId={plugin.id}
-      icon={plugin.icon ?? "heroicons:puzzle-piece"}
-      name={plugin.label}
-      description={plugin.description ?? ""}
+      gadgetId={gadget.id}
+      icon={gadget.icon ?? "heroicons:puzzle-piece"}
+      name={gadget.label}
+      description={gadget.description ?? ""}
     >
       {CustomSettings && (
         <GadgetContextProvider info={info} runtime={runtime}>

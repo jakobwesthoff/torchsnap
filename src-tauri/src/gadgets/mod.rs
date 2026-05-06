@@ -230,7 +230,7 @@ pub trait Gadget: Send + Sync {
         _payload: serde_json::Value,
         _channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        anyhow::bail!("plugin does not handle custom messages")
+        anyhow::bail!("gadget does not handle custom messages")
     }
 
     /// Prefixes that activate exclusive search routing for this plugin.

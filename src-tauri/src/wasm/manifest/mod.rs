@@ -443,7 +443,7 @@ mod tests {
             "x1",
             "abc",
             "a-b-c-d",
-            "plugin123",
+            "gadget123",
         ];
         for id in valid {
             assert!(validate_gadget_id(id).is_ok(), "should accept `{id}`");

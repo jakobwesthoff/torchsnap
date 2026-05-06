@@ -92,7 +92,7 @@ export function MockGadgetContextProvider({
 
   const value = useMemo<GadgetContextValue>(() => {
     const fullInfo: GadgetInfo = {
-      id: "test-plugin",
+      id: "test-gadget",
       enabled: true,
       ...info,
     };
