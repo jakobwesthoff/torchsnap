@@ -1,7 +1,7 @@
 # Logging System
 
 Torchsnap's logging system is a single, unified pipeline for structured log
-messages and timing spans produced by WASM plugins, host-side Rust code, and
+messages and timing spans produced by WASM gadgets, host-side Rust code, and
 the React frontend. There is one destination: an in-memory ring buffer that
 broadcasts items live to the Developer Tools console window.
 
@@ -19,7 +19,7 @@ and can be inspected when it is opened.
 
 - [Architecture](#architecture)
 - [Log Item Model](#log-item-model)
-- [Plugin Authors (WASM Guest)](#plugin-authors-wasm-guest)
+- [Gadget Authors (WASM Guest)](#gadget-authors-wasm-guest)
 - [Host Developers (Rust)](#host-developers-rust)
 - [Frontend Developers (React)](#frontend-developers-react)
 - [Developer Tools Console](#developer-tools-console)
@@ -31,12 +31,12 @@ and can be inspected when it is opened.
 ## Architecture
 
 ```
-WASM Plugin                Host Rust                 Frontend (React)
+WASM Gadget               Host Rust                 Frontend (React)
   guest call                Logger / SpanGuard         Logger.info / .spanStart
        │                          │                          │
        ▼                          │                          ▼
-PluginState::log / span_start ────┤                  log worker (singleton)
-PluginState::span_end             │                  - allocates local span IDs
+GadgetState::log / span_start ────┤                  log worker (singleton)
+GadgetState::span_end             │                  - allocates local span IDs
        │                          │                  - awaits backend ID
        │                          │                  - serializes IPC
        ▼                          ▼                          ▼
@@ -83,8 +83,8 @@ Source files:
   `RingBufferStorage`
 - `src-tauri/src/wasm/logging/commands.rs` — Tauri commands
 - `src-tauri/src/wasm/runtime/host/logging.rs` — WIT host-import bridge
-- `plugins/plugin-sdk/src/logging.rs` — plugin SDK facade and macros
-- `plugins/plugin-sdk/wit/torchsnap-plugin.wit` — WIT `logging` interface
+- `gadgets/gadget-sdk/src/logging.rs` — gadget SDK facade and macros
+- `gadgets/gadget-sdk/wit/torchsnap-gadget.wit` — WIT `logging` interface
 - `src/lib/logger.ts`, `src/lib/logWorker.ts` — frontend `Logger` and worker
 
 ---
@@ -100,7 +100,7 @@ Envelope:
 |-------|------|-------|
 | `seq` | `u64` | Assigned by the logging task, strictly increasing across the lifetime of the system. Producers send `0`. |
 | `timestamp` | `SystemTime` | Wall-clock time, serialized as milliseconds since Unix epoch. |
-| `source` | `LogSource` | `Plugin(<id>)` or `Host`. |
+| `source` | `LogSource` | `Gadget(<id>)` or `Host`. |
 | `kind` | `LogItemKind` | One of `Message`, `SpanStart`, `SpanEnd`. |
 
 Payloads:
@@ -133,10 +133,10 @@ registry).
 
 ---
 
-## Plugin Authors (WASM Guest)
+## Gadget Authors (WASM Guest)
 
-Plugins talk to the `logging` WIT interface (defined in
-`plugins/plugin-sdk/wit/torchsnap-plugin.wit`):
+Gadgets talk to the `logging` WIT interface (defined in
+`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`):
 
 ```wit
 interface logging {
@@ -151,15 +151,15 @@ interface logging {
 }
 ```
 
-The plugin SDK re-exports the generated bindings as `logging` (functions and
+The gadget SDK re-exports the generated bindings as `logging` (functions and
 the `LogLevel` enum) and provides convenience macros for the common case.
 
 ### Macros (preferred for plain messages)
 
 ```rust
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
-log_info!("Plugin initialized");
+log_info!("Gadget initialized");
 log_warn!("Network slow", "host" => "example.com", "rtt_ms" => 1234);
 log_error!("Failed to load index", "error" => err);
 log_debug!("Cache miss", "key" => key);
@@ -177,7 +177,7 @@ Use the direct call when you need a `span` handle, or when you already
 have the metadata as a slice:
 
 ```rust
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
 logging::log(
     logging::LogLevel::Info,
@@ -247,19 +247,19 @@ use crate::wasm::logging::spans::Logger;
 let logger = Logger::new(
     logging_system.sender(),
     Arc::clone(&span_registry),
-    LogSource::Host,                  // or LogSource::Plugin("id".into())
+    LogSource::Host,                  // or LogSource::Gadget("id".into())
 );
 ```
 
 `Logger` is `Clone` — clone freely into subsystems. The runtime constructs
-a per-plugin `Logger` with `LogSource::Plugin(<id>)` for use by host-side
-code that operates on behalf of that plugin (compilation, instantiation,
+a per-gadget `Logger` with `LogSource::Gadget(<id>)` for use by host-side
+code that operates on behalf of that gadget (compilation, instantiation,
 bridge errors).
 
 ### Messages
 
 ```rust
-logger.log(LogLevel::Info, "Plugin loaded");
+logger.log(LogLevel::Info, "Gadget loaded");
 
 logger.log_with_meta(
     LogLevel::Debug,
@@ -278,7 +278,7 @@ the nesting limit is exceeded.
 
 ```rust
 let span = logger.span("compile")
-    .meta("plugin_id", plugin_id)
+    .meta("gadget_id", gadget_id)
     .start()
     .expect("compile span within nesting limit");
 
@@ -325,7 +325,7 @@ log in `wasm::bridge`), construct `LogItem` values directly:
 log_sender.send(LogItem {
     seq: 0,                          // assigned by the logging task
     timestamp: SystemTime::now(),
-    source: LogSource::Plugin(plugin_id.clone()),
+    source: LogSource::Gadget(gadget_id.clone()),
     kind: LogItemKind::Message {
         level: LogLevel::Info,
         message: "...".into(),
@@ -339,11 +339,11 @@ Prefer `Logger` for everything else.
 
 ### WIT host-import bridge
 
-`PluginState` carries `log_sender: LogSender` and
+`GadgetState` carries `log_sender: LogSender` and
 `span_registry: Arc<SpanRegistry>` as foundational fields set at instance
-construction. The `bindings::torchsnap::plugin::logging::Host` impl in
+construction. The `bindings::torchsnap::gadget::logging::Host` impl in
 `wasm/runtime/host/logging.rs` translates the WIT enum into the host
-`LogLevel`, tags every item with `LogSource::Plugin(<plugin_id>)`, and
+`LogLevel`, tags every item with `LogSource::Gadget(<gadget_id>)`, and
 forwards to the registry / sender. `span_start` emits the `SpanStart` item
 and returns the registry-assigned ID; `span_end` returns silently if the ID
 is unknown (already ended, or a sentinel `0` from a depth-rejected start).
@@ -358,16 +358,16 @@ drains an internal queue and performs the Tauri IPC.
 
 ### Acquiring a logger
 
-Plugin views receive a pre-bound logger via props:
+Gadget views receive a pre-bound logger via props:
 
 ```typescript
-function ClipboardView({ logger, sendMessage, ...props }: PluginViewProps) {
+function ClipboardView({ logger, sendMessage, ...props }: GadgetViewProps) {
   logger.info("Clipboard view mounted");
 }
 ```
 
-Deeper components in a plugin tree can use the `useLogger()` hook —
-plugin views are wrapped in `<LoggerProvider source={pluginId}>` by the
+Deeper components in a gadget tree can use the `useLogger()` hook —
+gadget views are wrapped in `<LoggerProvider source={gadgetId}>` by the
 host:
 
 ```typescript
@@ -379,7 +379,7 @@ function DeepChild() {
 }
 ```
 
-Non-plugin (host) UI code creates its own logger directly:
+Non-gadget (host) UI code creates its own logger directly:
 
 ```typescript
 import { createLogger } from "../lib/logger";
@@ -388,7 +388,7 @@ const logger = createLogger("host");
 
 The string `"host"` is the only special source value — `commands::resolve_source`
 maps it to `LogSource::Host`. Any other string is wrapped as
-`LogSource::Plugin(<string>)`.
+`LogSource::Gadget(<string>)`.
 
 ### Messages and spans
 
