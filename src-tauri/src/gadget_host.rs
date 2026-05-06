@@ -510,7 +510,7 @@ impl GadgetHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let plugins: Vec<Arc<dyn Gadget>> = self
+        let gadgets: Vec<Arc<dyn Gadget>> = self
             .slots
             .iter()
             .filter(|s| s.is_active())
@@ -522,7 +522,7 @@ impl GadgetHost {
         let catalog_results = tokio::task::spawn_blocking({
             let query = query_owned.clone();
             let frecency = frecency.clone();
-            move || Self::search_catalogs_static(&plugins, &frecency, &query)
+            move || Self::search_catalogs_static(&gadgets, &frecency, &query)
         })
         .await
         .expect("catalog search task not panicked");
@@ -625,7 +625,7 @@ impl GadgetHost {
     /// return their entry list, query-only gadgets return the
     /// default empty vec (zero cost).
     fn search_catalogs_static(
-        plugins: &[Arc<dyn Gadget>],
+        gadgets: &[Arc<dyn Gadget>],
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<SourcedEntry> {
@@ -642,7 +642,7 @@ impl GadgetHost {
         let mut char_buf = Vec::new();
         let mut title_indices = Vec::new();
 
-        for gadget in plugins {
+        for gadget in gadgets {
             // Disabled gadgets are already filtered out by the caller.
             let source = gadget.id().to_string();
 
@@ -1082,8 +1082,8 @@ mod tests {
     /// they exercise host routing logic, not source-kind
     /// plumbing — dedicated tests below cover the source-kind
     /// path.
-    fn gadget_slots(plugins: Vec<MockGadget>) -> Vec<GadgetSlot> {
-        plugins
+    fn gadget_slots(gadgets: Vec<MockGadget>) -> Vec<GadgetSlot> {
+        gadgets
             .into_iter()
             .map(|p| {
                 let enabled = p.enabled;
