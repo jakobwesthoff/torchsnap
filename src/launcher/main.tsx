@@ -29,11 +29,11 @@ async function main() {
   // a handler. On macOS / Windows the hook is a no-op.
   void setupLauncherVisibilityChoreography();
 
-  // Initialize the plugin SDK global before any plugin code loads.
+  // Initialize the gadget SDK global before any gadget code loads.
   initGadgetSdk();
 
-  // Register WASM plugin frontend components before preloading.
-  // This ensures dynamic import() factories for WASM plugins are
+  // Register WASM gadget frontend components before preloading.
+  // This ensures dynamic import() factories for WASM gadgets are
   // set up and included in the preload batch.
   const wasmGadgets = await command("wasm_gadgets");
   registerAllWasmGadgets(wasmGadgets, "launcher");

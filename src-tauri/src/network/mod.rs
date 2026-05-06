@@ -7,12 +7,12 @@
 //
 // HTTP client abstraction that hides the underlying driver
 // (reqwest) behind a simple, WASM-boundary-compatible API.
-// Plugins construct their own `Http` instance in `enable()`,
-// similar to how `SqlStorage` is used for per-plugin databases.
+// Gadgets construct their own `Http` instance in `enable()`,
+// similar to how `SqlStorage` is used for per-gadget databases.
 //
 // The `website_metadata` submodule builds on the HTTP layer
 // to provide a shared, cached website metadata service
-// (title, description, favicon) for plugins.
+// (title, description, favicon) for gadgets.
 // =========================================================
 
 mod http;

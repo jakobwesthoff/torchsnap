@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// JSX Runtime Shim for WASM Plugins
+// JSX Runtime Shim for WASM Gadgets
 //
 // Bridges `react/jsx-runtime` (used by the automatic JSX
 // transform) to the host-provided runtime on

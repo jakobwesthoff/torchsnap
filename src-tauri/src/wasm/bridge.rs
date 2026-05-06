@@ -1243,7 +1243,7 @@ migrations = ["migrations/001_init.sql"]
     fn guest_enable_failure_reports_err() {
         // The fixture's guest `enable()` panics → wasmtime
         // turns the panic into a trap → host sees `Err`.
-        // This is the signal `Plugin::enable` uses to tear
+        // This is the signal `Gadget::enable` uses to tear
         // the slot back down.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("failing-enable-gadget", tmp.path()).expect("bridge construction");

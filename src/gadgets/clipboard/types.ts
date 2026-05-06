@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Types for the clipboard manager plugin frontend.
+ * Types for the clipboard manager gadget frontend.
  *
  * These mirror the Rust-side serialized types from
- * `plugins::clipboard::schema`.
+ * `gadgets::clipboard::schema`.
  */
 
 /** Lightweight entry used for list display — sent via subscribe/notify. */

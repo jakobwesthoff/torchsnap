@@ -6,7 +6,7 @@
 // Logger Interface
 //
 // Minimal interface matching the public surface of the
-// host's Logger class (src/lib/logger.ts). Plugins receive
+// host's Logger class (src/lib/logger.ts). Gadgets receive
 // a Logger instance as a prop — this interface describes
 // what methods are available without coupling to the host's
 // concrete implementation or its internal dependencies

@@ -33,7 +33,7 @@ pub struct SettingsPane {
     pub bundle_path: Option<String>,
 
     /// Absolute filesystem path to the cached icon file. Populated
-    /// by `IconCache::ensure_icon()` during plugin setup; `None`
+    /// by `IconCache::ensure_icon()` during gadget setup; `None`
     /// until then or if icon extraction failed.
     pub icon_path: Option<String>,
 }
@@ -42,7 +42,7 @@ pub struct SettingsPane {
 /// platform.
 ///
 /// Implementations must be `Send + Sync` because discovery runs
-/// on a background thread during plugin setup.
+/// on a background thread during gadget setup.
 pub trait SettingsDiscovery: Send + Sync {
     /// Scan the system for available settings panes.
     ///

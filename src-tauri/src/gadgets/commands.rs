@@ -3,12 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Built-in Commands Plugin
+// Built-in Commands Gadget
 //
 // Provides always-available app commands: Quit, Settings, and
 // Developer Tools.
 // These appear in the launcher's result list alongside results
-// from other plugins.
+// from other gadgets.
 // =========================================================
 
 use super::Gadget;

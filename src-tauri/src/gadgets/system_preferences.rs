@@ -3,16 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// System Preferences Plugin
+// System Preferences Gadget
 //
-// Catalog plugin that exposes system settings panes as
+// Catalog gadget that exposes system settings panes as
 // searchable entries. Settings panes are discovered at startup
 // via the platform's `SettingsDiscovery` implementation.
 //
 // Icons are rendered via `SettingsDiscovery::render_icon` and
 // cached on disk as WebP. Opening a pane delegates to
 // `SettingsDiscovery::open`. All platform-specific behavior is
-// encapsulated in the discovery trait so this plugin stays
+// encapsulated in the discovery trait so this gadget stays
 // fully platform-agnostic.
 //
 // No background refresh is needed — the set of settings panes

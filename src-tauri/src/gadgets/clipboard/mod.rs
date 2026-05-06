@@ -107,7 +107,7 @@ pub struct ClipboardGadget {
     /// Updated by the host via `setting_changed("bringToFrontOnPaste", ...)`.
     bring_to_front: AtomicBool,
 
-    /// Plugin settings handle for reading settings outside of
+    /// Gadget settings handle for reading settings outside of
     /// `enable()`. Initialized in `enable()`.
     settings: Mutex<Option<crate::settings::GadgetSettings>>,
 }
@@ -250,7 +250,7 @@ fn retention_cleanup_loop(
 }
 
 // =========================================================
-// Plugin Implementation
+// Gadget Implementation
 // =========================================================
 
 impl Gadget for ClipboardGadget {

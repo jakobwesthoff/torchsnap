@@ -8,7 +8,7 @@
 // Provides a Logger instance via React context so that deep
 // component trees can access the logger without prop drilling.
 //
-// Plugin views are wrapped in <LoggerProvider source={pluginId}>
+// Gadget views are wrapped in <LoggerProvider source={gadgetId}>
 // by the host. Components call useLogger() to get the logger.
 // =========================================================
 

@@ -7,7 +7,7 @@
  *
  * Renders a generic `FooterState`: primary hint on the left,
  * secondary hints on the right. Both the host (deriving from
- * entry actions) and plugin custom UIs (setting state directly)
+ * entry actions) and gadget custom UIs (setting state directly)
  * produce the same `FooterState` shape.
  */
 

@@ -5,9 +5,9 @@
 // =========================================================
 // Storage Infrastructure
 //
-// Generic storage primitives shared across plugins. File-
+// Generic storage primitives shared across gadgets. File-
 // based blob storage uses a sharded directory layout; SQL
-// storage (added later) provides structured per-plugin
+// storage (added later) provides structured per-gadget
 // databases.
 // =========================================================
 

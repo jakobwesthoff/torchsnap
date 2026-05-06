@@ -5,7 +5,7 @@
 // =========================================================
 // Host Utilities Shim
 //
-// Bridges plugin code's
+// Bridges gadget code's
 // `import { highlightText } from "@torchsnap/gadget-sdk/utils"`
 // to the host-provided utility implementations on
 // `window.__torchsnap.utils`.
@@ -16,7 +16,7 @@
 // produced by the Rust backend and must stay in lockstep
 // with the host's rendering logic. Shimming keeps the
 // single source of truth on the host so a future change to
-// the positions format updates every plugin at once.
+// the positions format updates every gadget at once.
 // =========================================================
 
 import "./global";
@@ -54,7 +54,7 @@ function hostUtils() {
   const t = window.__torchsnap;
   if (!t) {
     throw new Error(
-      "@torchsnap/gadget-sdk/utils: window.__torchsnap is not initialized — call initGadgetSdk() before loading plugin bundles",
+      "@torchsnap/gadget-sdk/utils: window.__torchsnap is not initialized — call initGadgetSdk() before loading gadget bundles",
     );
   }
   return t.utils;
@@ -70,7 +70,7 @@ function hostUtils() {
  * indexing.
  *
  * `highlightClassName` defaults to the host's standard
- * accent styling when omitted; plugins that want a custom
+ * accent styling when omitted; gadgets that want a custom
  * look (e.g. underlined monochrome in a footer) pass their
  * own tailwind classes.
  */

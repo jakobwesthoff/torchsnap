@@ -6,7 +6,7 @@
 // Async Logging Channel
 //
 // Non-blocking log transport from producers to the logging
-// task. Producers (plugin host imports, bridge, runtime) send
+// task. Producers (gadget host imports, bridge, runtime) send
 // log items via `LogSender::send()` which never blocks —
 // if the bounded channel is full, the item is dropped and a
 // counter is incremented.

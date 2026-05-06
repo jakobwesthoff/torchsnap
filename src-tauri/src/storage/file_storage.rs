@@ -97,7 +97,7 @@ impl FileStorage {
 
     /// Create a sub-storage rooted at `base_dir/<subdir>`.
     ///
-    /// Useful for scoping storage per plugin or per content type
+    /// Useful for scoping storage per gadget or per content type
     /// without creating a whole new directory tree.
     pub fn scoped(&self, subdir: &str) -> Self {
         Self {

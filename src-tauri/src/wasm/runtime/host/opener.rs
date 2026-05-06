@@ -33,7 +33,7 @@ use super::super::{GadgetState, WasmGadgetInstance};
 /// `tauri::AppHandle` so this module never imports
 /// Tauri-specific types directly. The bridge constructs the
 /// closure from its own `AppHandle` at `enable()` time and
-/// stashes it on the per-plugin `OpenerState`.
+/// stashes it on the per-gadget `OpenerState`.
 pub type UrlOpenerFn = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// Opener state. Aggregates the URL scheme allowlist, the
@@ -43,18 +43,18 @@ pub type UrlOpenerFn = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 /// capability grouping.
 #[derive(Default)]
 pub(crate) struct OpenerState {
-    /// URL schemes this plugin is permitted to open via
+    /// URL schemes this gadget is permitted to open via
     /// `opener::open-url`. Populated by the bridge from
     /// `[permissions.opener].schemes` in the manifest. Empty
     /// means deny-all. Compared case-insensitively against
     /// the scheme extracted by the `url` crate (which always
     /// lowercases per RFC 3986).
     pub(crate) schemes: Vec<String>,
-    /// Whether the plugin's manifest grants
+    /// Whether the gadget's manifest grants
     /// `opener::open-path`. Drives the gate; the actual
     /// host-side delegation goes through `open_path_writer`.
     pub(crate) open_path: bool,
-    /// Whether the plugin's manifest grants
+    /// Whether the gadget's manifest grants
     /// `opener::reveal-path`. Same shape as `open_path`.
     pub(crate) reveal_path: bool,
     /// Closure that opens a URL in the OS default handler.

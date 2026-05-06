@@ -45,7 +45,7 @@ use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ControlCommand {
-    /// Reset the launcher UI state (query, selection, plugin view).
+    /// Reset the launcher UI state (query, selection, gadget view).
     Dismiss,
     /// Set the search input text.
     SetQuery { text: String },

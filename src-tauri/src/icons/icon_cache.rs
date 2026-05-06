@@ -5,19 +5,19 @@
 // =========================================================
 // Icon Cache
 //
-// Generic, multi-plugin disk cache for processed icon images.
-// Each plugin scopes its icons under a separate subdirectory,
+// Generic, multi-gadget disk cache for processed icon images.
+// Each gadget scopes its icons under a separate subdirectory,
 // and files are sharded by the first two hex characters of
 // the cache key to avoid large flat directories.
 //
 // Callers provide:
-//   - A plugin ID (directory scope)
+//   - A gadget ID (directory scope)
 //   - A typesafe `StorageKey` (blake3 hash of arbitrary input)
 //   - An optional source mtime for staleness checks
 //   - A lazy closure that produces a `DynamicImage` on cache miss
 //
 // File I/O is delegated to `FileStorage` from the storage
-// module. The icon-specific logic (WebP encoding, per-plugin
+// module. The icon-specific logic (WebP encoding, per-gadget
 // subdirectories, mtime-based invalidation) stays here.
 // =========================================================
 

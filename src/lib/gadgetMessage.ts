@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Send a message to a plugin's backend `handle_message` handler.
+ * Send a message to a gadget's backend `handle_message` handler.
  *
  * Wraps the `gadget_message` Tauri command with automatic Channel
  * creation. Callers that don't need streaming can omit `onMessage`

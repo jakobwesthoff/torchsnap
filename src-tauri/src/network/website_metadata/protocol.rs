@@ -7,9 +7,9 @@
 //
 // Registers a `torchsnap-favicon://` custom URI scheme that
 // serves cached favicons from the host-owned `FaviconStore`.
-// Mirrors `wasm/protocol.rs` (the plugin asset scheme) — the
-// host owns two parallel asset roots, one for plugin-bundled
-// files and one for cached favicons, so plugin- and host-
+// Mirrors `wasm/protocol.rs` (the gadget asset scheme) — the
+// host owns two parallel asset roots, one for gadget-bundled
+// files and one for cached favicons, so gadget- and host-
 // issued icons can both ride a typed URL through the
 // renderer without ever needing absolute filesystem paths.
 //

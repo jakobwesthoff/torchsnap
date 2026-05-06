@@ -8,7 +8,7 @@
 // Generates typed Rust bindings from the WIT definitions via
 // `wasmtime::component::bindgen!`. This produces:
 //
-// - A `Plugin` struct with methods to call guest exports
+// - A `Gadget` struct with methods to call guest exports
 //   (e.g., `call_enable`, `call_entries`, `call_execute`)
 // - Traits for each host import interface that we implement
 //   on the store state (e.g., `logging::Host`)

@@ -23,7 +23,7 @@ use crate::wasm::bindings;
 
 use super::super::{GadgetState, WasmGadgetInstance};
 
-/// Per-plugin website-metadata state. Populated by the bridge
+/// Per-gadget website-metadata state. Populated by the bridge
 /// on `enable()` from the manifest's `[permissions]\nwebsite-metadata`
 /// flag plus a clone of the shared service handle.
 #[derive(Default)]
@@ -32,7 +32,7 @@ pub(crate) struct WebsiteMetadataState {
     pub(crate) enabled: bool,
     /// Handle to the host-shared service. `None` until the bridge
     /// installs it on `enable()` (only happens when `enabled` is
-    /// `true` — disabled plugins never get a handle).
+    /// `true` — disabled gadgets never get a handle).
     pub(crate) service: Option<Arc<WebsiteMetadataService>>,
 }
 

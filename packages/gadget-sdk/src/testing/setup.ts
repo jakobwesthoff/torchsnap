@@ -7,7 +7,7 @@
 //
 // Populates `window.__torchsnap` with the host's React, JSX
 // runtime, components, hooks, and keybinding implementations
-// so that plugin component tests can resolve the
+// so that gadget component tests can resolve the
 // `@torchsnap/gadget-sdk/...` shims at runtime.
 //
 // Call this once in a test setup file (e.g.

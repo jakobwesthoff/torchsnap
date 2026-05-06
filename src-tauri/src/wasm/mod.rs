@@ -3,17 +3,17 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WASM Plugin System
+// WASM Gadget System
 //
-// Self-contained plugin modules loaded at runtime from
+// Self-contained gadget modules loaded at runtime from
 // `.torchsnap` zip archives or plain directories (during
-// development). Each plugin carries a WASM component
+// development). Each gadget carries a WASM component
 // (backend) and optional frontend bundles.
 //
 // This module provides:
 // - `manifest`    — typed representation of `manifest.toml`
-// - `source`      — abstraction over how plugin files are read
-// - `discovery`   — enumerates plugin search roots and entries
+// - `source`      — abstraction over how gadget files are read
+// - `discovery`   — enumerates gadget search roots and entries
 // - `path_safety` — canonical-under-root path resolution
 // =========================================================
 

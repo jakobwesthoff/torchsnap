@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Settings component for the clipboard manager plugin.
+ * Settings component for the clipboard manager gadget.
  *
  * Controls:
  * - Enable/disable toggle (starts/stops the clipboard watcher)

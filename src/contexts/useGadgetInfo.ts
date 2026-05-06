@@ -5,10 +5,10 @@
 // =========================================================
 // useGadgetInfo
 //
-// Returns the identity / static info slice of the plugin
-// context: the plugin id and its reactive enabled flag.
+// Returns the identity / static info slice of the gadget
+// context: the gadget id and its reactive enabled flag.
 //
-// Available in every plugin component context (settings,
+// Available in every gadget component context (settings,
 // launcher view, inline view).
 // =========================================================
 

@@ -41,8 +41,8 @@ const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
 export function SettingsPanel() {
   const [activeSection, setActiveSection] = useState("general");
 
-  // Discover which plugins have settings components. This is
-  // evaluated once per mount — plugins are registered statically.
+  // Discover which gadgets have settings components. This is
+  // evaluated once per mount — gadgets are registered statically.
   const gadgetSections = useMemo(() => getGadgetsWithSettings(), []);
 
   return (

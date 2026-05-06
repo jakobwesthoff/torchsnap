@@ -14,7 +14,7 @@
 //
 // The trait is cfg-dispatched as `PlatformAppDiscovery` in
 // the parent module. All platform-specific behavior is
-// encapsulated here so the app launcher plugin itself stays
+// encapsulated here so the app launcher gadget itself stays
 // fully platform-agnostic.
 // =========================================================
 
@@ -44,7 +44,7 @@ pub struct DiscoveredApp {
     pub bundle_id: Option<String>,
 
     /// Absolute filesystem path to the cached icon file. Populated
-    /// by `IconCache::ensure_icon()` during plugin setup; `None`
+    /// by `IconCache::ensure_icon()` during gadget setup; `None`
     /// until then or if icon extraction failed.
     pub icon_path: Option<String>,
 }
@@ -53,7 +53,7 @@ pub struct DiscoveredApp {
 /// platform.
 ///
 /// Implementations must be `Send + Sync` because discovery and
-/// icon extraction run on background threads during plugin setup
+/// icon extraction run on background threads during gadget setup
 /// and cache refresh.
 pub trait AppDiscovery: Send + Sync {
     /// Scan the system for installed applications.

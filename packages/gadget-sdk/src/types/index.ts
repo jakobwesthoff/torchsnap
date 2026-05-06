@@ -5,7 +5,7 @@
 // =========================================================
 // @torchsnap/gadget-sdk — Public Type Exports
 //
-// Everything a plugin needs to type its components and
+// Everything a gadget needs to type its components and
 // interact with host-provided data structures.
 //
 // Usage:

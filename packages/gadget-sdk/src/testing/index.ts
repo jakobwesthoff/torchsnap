@@ -5,7 +5,7 @@
 // =========================================================
 // @torchsnap/gadget-sdk/testing — barrel
 //
-// Single import surface for plugin component tests:
+// Single import surface for gadget component tests:
 //
 //   import {
 //     setupSdkGlobalsForTesting,

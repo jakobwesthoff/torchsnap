@@ -6,11 +6,11 @@
 // useGadgetSetting
 //
 // Reactive accessor for a single setting in the active
-// plugin's namespace. Reads from `gadgets.<id>.<key>` in the
+// gadget's namespace. Reads from `gadgets.<id>.<key>` in the
 // global settings store; writes propagate cross-window.
 //
-// The plugin id is derived from the surrounding
-// GadgetContextProvider via `useGadgetInfo()`, so plugin
+// The gadget id is derived from the surrounding
+// GadgetContextProvider via `useGadgetInfo()`, so gadget
 // authors only deal with short relative key names:
 //
 //   const [days, setDays] = useGadgetSetting<number>("retentionDays");

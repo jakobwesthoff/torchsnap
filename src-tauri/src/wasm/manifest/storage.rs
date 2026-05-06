@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 // =========================================================
 // Storage configuration
 //
-// Plugins opt into per-plugin storage by declaring a
+// Gadgets opt into per-gadget storage by declaring a
 // `[storage]` table in their manifest. The host materializes
-// the requested backends on first use — plugins that never
+// the requested backends on first use — gadgets that never
 // touch their storage never get a database file on disk.
 // =========================================================
 
@@ -17,25 +17,25 @@ use serde::{Deserialize, Serialize};
 /// `[storage.files]`, etc. without breaking existing manifests.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StorageDef {
-    /// `[storage.sql]` — per-plugin SQLite database.
+    /// `[storage.sql]` — per-gadget SQLite database.
     pub sql: Option<SqlStorageDef>,
 }
 
 /// `[storage.sql]` block.
 ///
 /// Migrations are declared as a list of file paths relative
-/// to the plugin root. The host reads the file contents via
-/// `GadgetSource::read_file` at plugin load time and applies
+/// to the gadget root. The host reads the file contents via
+/// `GadgetSource::read_file` at gadget load time and applies
 /// them during `enable()` before the guest runs.
 ///
-/// Single source of truth: the `.sql` files. Plugin tests can
+/// Single source of truth: the `.sql` files. Gadget tests can
 /// `include_str!` the same files the manifest references —
 /// no duplication, no drift.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SqlStorageDef {
     /// Ordered list of migration file paths. Each path is
-    /// relative to the plugin root and should resolve to a
-    /// `.sql` text file inside the plugin's directory or
+    /// relative to the gadget root and should resolve to a
+    /// `.sql` text file inside the gadget's directory or
     /// archive.
     #[serde(default)]
     pub migrations: Vec<String>,

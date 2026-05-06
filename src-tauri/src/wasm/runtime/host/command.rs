@@ -32,9 +32,9 @@ use super::super::{GadgetState, WasmGadgetInstance};
 /// disable-time termination.
 #[derive(Default)]
 pub(crate) struct CommandState {
-    /// Compiled rules for this plugin instance. Built by the
+    /// Compiled rules for this gadget instance. Built by the
     /// bridge from the raw manifest rules + the resolved
-    /// `PathContext` at `enable()`. Empty means the plugin
+    /// `PathContext` at `enable()`. Empty means the gadget
     /// has no `command::run` access — every call returns
     /// `permission-denied`.
     pub(crate) rules: Vec<argv_matcher::CompiledCommandRule>,
@@ -62,10 +62,10 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
             )));
         }
 
-        // 2. Resolve the working directory. The plugin can override
+        // 2. Resolve the working directory. The gadget can override
         //    per call via `options.cwd`; otherwise we default to
         //    `<gadget-data>/exec-cwd/`, lazily created. Without a
-        //    `PathContext` the plugin is effectively pre-enable, so
+        //    `PathContext` the gadget is effectively pre-enable, so
         //    we can't resolve the default — surface that as a
         //    spawn-failed error for clarity.
         let cwd = match options.cwd.as_deref() {
@@ -91,11 +91,11 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
         // 3. Build the environment. Inherit the host process env
         //    minus a credential denylist; PATH gets empty entries
         //    stripped (empty entries resolve to cwd, an injection
-        //    footgun); plugin overrides land last and replace any
+        //    footgun); gadget overrides land last and replace any
         //    inherited key.
         let env = build_command_env(&options.env);
 
-        // 4. Apply host-level caps. Plugin-supplied values are
+        // 4. Apply host-level caps. Gadget-supplied values are
         //    clamped — manifest-side per-rule ceilings are not
         //    yet wired (they would shrink these further once we
         //    look up the matched rule's overrides). For v1 the
@@ -145,7 +145,7 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
 impl WasmGadgetInstance {
     /// Stash the compiled `[[permissions.command]]` rules.
     /// Called by the bridge at `enable()` after compiling
-    /// the raw manifest rules against the per-plugin
+    /// the raw manifest rules against the per-gadget
     /// `PathContext`.
     pub fn set_command_rules(&self, rules: Vec<argv_matcher::CompiledCommandRule>) {
         self.with_state_mut(|state| state.command.rules = rules);
@@ -170,7 +170,7 @@ const MAX_COMMAND_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 /// before a child is spawned. These are the dynamic-loader
 /// hooks plus a small set of "give me your secrets" sockets
 /// — none of them have a legitimate reason to flow into a
-/// plugin-spawned process by default.
+/// gadget-spawned process by default.
 const ENV_HARD_DENYLIST: &[&str] = &[
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
@@ -207,7 +207,7 @@ fn is_credential_var(name: &str) -> bool {
 
 /// Build the env vec for a child spawn: host process env
 /// minus the credential denylist, with `PATH` empty entries
-/// stripped, plus the plugin's per-call overrides.
+/// stripped, plus the gadget's per-call overrides.
 fn build_command_env(
     plugin_overrides: &[(String, String)],
 ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
@@ -253,7 +253,7 @@ fn strip_empty_path_entries(path: &str) -> String {
 /// timeout. On timeout the child is signalled SIGTERM, given
 /// 250ms to clean up, then SIGKILL'd. On output overflow the
 /// already-captured bytes are returned via `output-too-large`
-/// so the plugin can debug what was written before the cap.
+/// so the gadget can debug what was written before the cap.
 async fn run_child_with_caps(
     binary: &str,
     args: &[String],
@@ -388,7 +388,7 @@ async fn run_child_with_caps(
             // separate path. WIT only carries one of the four
             // error variants per call; `timeout` does not carry
             // output, so partial bytes are lost in the WIT
-            // crossing. Plugin authors who want the bytes can
+            // crossing. Gadget authors who want the bytes can
             // lower their timeout and watch for `timeout`
             // explicitly. The audit log captures sizes.
             let _ = (stdout_bytes, stderr_bytes);

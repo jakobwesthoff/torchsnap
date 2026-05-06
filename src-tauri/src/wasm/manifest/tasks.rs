@@ -18,13 +18,13 @@ use serde::{Deserialize, Serialize};
 /// (de)serialization stays straightforward.
 ///
 /// Sub-minute scheduling is rejected — `cron`'s
-/// underlying syntax is 6/7-field, but plugins use the
+/// underlying syntax is 6/7-field, but gadgets use the
 /// stricter 5-field POSIX form so the schedule space is
 /// predictable and there's no chance of accidentally
 /// scheduling a task at the second-resolution.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TaskDef {
-    /// Unique task identifier within the plugin. Passed
+    /// Unique task identifier within the gadget. Passed
     /// back to the guest via `tasks::run-task(task-id)`
     /// when the cron schedule fires.
     pub id: String,
@@ -43,7 +43,7 @@ pub struct TaskDef {
 /// share the same id.
 ///
 /// Both checks happen at manifest load time so that broken
-/// schedules surface as clean plugin-load errors instead of
+/// schedules surface as clean gadget-load errors instead of
 /// crashing the scheduler later.
 pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()> {
     let mut seen_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -71,7 +71,7 @@ pub(crate) fn validate_task_definitions(tasks: &[TaskDef]) -> anyhow::Result<()>
 pub(crate) fn parse_cron_schedule(schedule: &str) -> anyhow::Result<cron::Schedule> {
     use std::str::FromStr;
 
-    // Pre-check the field count so plugin authors who pass
+    // Pre-check the field count so gadget authors who pass
     // a 4/6/7-field expression get a clear "expected
     // 5-field POSIX cron" message instead of an opaque
     // Quartz-internal error from the `cron` crate. The
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn six_field_cron_rejected() {
         // Quartz-style 6-field input — explicitly out of
-        // scope so plugins don't accidentally schedule at
+        // scope so gadgets don't accidentally schedule at
         // second resolution. The cron crate's parser
         // rejects the resulting 8-field intermediate.
         let err = validate_task_definitions(&[task("bad", "0 */30 * * * *")]).unwrap_err();

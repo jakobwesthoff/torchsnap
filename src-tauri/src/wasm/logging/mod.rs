@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WASM Plugin Logging
+// WASM Gadget Logging
 //
-// Structured logging infrastructure for WASM plugins.
+// Structured logging infrastructure for WASM gadgets.
 // Provides a non-blocking async channel, ring buffer storage,
 // span-based timing, and Tauri commands for the Developer
 // Tools console.
@@ -88,7 +88,7 @@ pub enum LogLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub enum LogSource {
-    /// From a WASM plugin via the logging WIT import.
+    /// From a WASM gadget via the logging WIT import.
     Gadget(String),
     /// From host-side code (runtime, bridge, loader, etc.).
     Host,

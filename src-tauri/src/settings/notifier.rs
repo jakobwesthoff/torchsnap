@@ -13,7 +13,7 @@
 //
 // `SettingsNotifier` is the app-wide layer that manages watch
 // channels per full key (e.g., `frecency.enabled`). Used by
-// non-plugin subsystems like FrecencyStore, control socket,
+// non-gadget subsystems like FrecencyStore, control socket,
 // and WebsiteMetadataService.
 // =========================================================
 

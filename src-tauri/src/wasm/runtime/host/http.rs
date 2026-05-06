@@ -5,7 +5,7 @@
 // =========================================================
 // HTTP host import
 //
-// A minimal synchronous HTTP client for WASM plugins. The
+// A minimal synchronous HTTP client for WASM gadgets. The
 // host function body must NOT call `Http::send()` directly
 // from within a tokio async task — that would cause
 // `Handle::block_on()` inside `Http::send()` to panic.
@@ -31,20 +31,20 @@ use crate::wasm::bindings;
 
 use super::super::{GadgetState, WasmGadgetInstance};
 
-/// HTTP state. Origin allowlist + per-plugin clients.
+/// HTTP state. Origin allowlist + per-gadget clients.
 #[derive(Default)]
 pub(crate) struct HttpState {
-    /// Origins this plugin is permitted to fetch. Already
+    /// Origins this gadget is permitted to fetch. Already
     /// normalized to `ascii_serialization()` at manifest
     /// parse. Empty means deny-all; `["*"]` means trust-all.
     pub(crate) origins: Vec<String>,
-    /// HTTP client for this plugin, created on `enable()`
+    /// HTTP client for this gadget, created on `enable()`
     /// and cleared on `disable()`. Used for normal requests
     /// (TLS verification on).
     pub(crate) client: Option<Arc<Http>>,
     /// Parallel client with TLS certificate verification
     /// disabled. Built lazily on the first request that sets
-    /// `insecure-tls: true`, so plugins that never use the
+    /// `insecure-tls: true`, so gadgets that never use the
     /// flag don't pay the construction cost. Cleared on
     /// `disable()`.
     pub(crate) insecure_client: Arc<OnceLock<Arc<Http>>>,
@@ -266,7 +266,7 @@ impl WasmGadgetInstance {
         self.with_state_mut(|state| state.http.origins = origins);
     }
 
-    /// Install the HTTP client for this plugin's `enable()`
+    /// Install the HTTP client for this gadget's `enable()`
     /// lifetime. Called by the bridge.
     pub fn set_http_client(&self, client: Arc<Http>) {
         self.with_state_mut(|state| {

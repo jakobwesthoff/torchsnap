@@ -13,19 +13,19 @@
 //
 // 1. Manifest validation (`validate_variable_references`)
 //    runs at parse time. It does not have a `PathContext`
-//    yet — the actual paths are not known until plugin
+//    yet — the actual paths are not known until gadget
 //    enable. It only checks that every `${...}` token uses
 //    a recognized variable name.
 //
 // 2. Argv-matcher rule compilation (`substitute_variables`
-//    via `compile_rule`) runs at plugin enable. By then
+//    via `compile_rule`) runs at gadget enable. By then
 //    the host has constructed a `PathContext` and can
 //    resolve every variable to a real absolute path.
 //
-// 3. The `paths::resolve` host import lets plugins resolve
+// 3. The `paths::resolve` host import lets gadgets resolve
 //    the same template syntax at runtime, so a manifest
 //    declaration like `path-under = "${gadget-archive}/foo"`
-//    has a 1:1 plugin-side equivalent
+//    has a 1:1 gadget-side equivalent
 //    `paths::resolve("${gadget-archive}/foo")`.
 //
 // Keeping the recognized list, the parser, and the
@@ -103,7 +103,7 @@ pub enum ResolveError {
 /// Parse-time check: every `${name}` token in `s` must use
 /// a name from [`RECOGNIZED_PERMISSION_VARIABLES`]. The
 /// recognized list is closed at parse time, so a typo in a
-/// variable name fails plugin load rather than silently
+/// variable name fails gadget load rather than silently
 /// matching nothing at runtime.
 ///
 /// `field` and `rule_index` are diagnostic context for the

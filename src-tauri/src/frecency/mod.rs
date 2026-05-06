@@ -124,7 +124,7 @@ pub struct FrecencyStats {
 // =========================================================
 
 /// Central frecency tracking store. Thread-safe, shareable
-/// via `Arc`. Used by `GadgetHost` directly — plugins get
+/// via `Arc`. Used by `GadgetHost` directly — gadgets get
 /// [`GadgetFrecency`] instead.
 pub struct FrecencyStore {
     db: SqlStorage,

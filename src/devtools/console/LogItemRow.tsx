@@ -10,7 +10,7 @@
 // - Depth-based indentation for nested spans
 // - Timestamp in monospace
 // - Level badge ("SPAN" for span entries)
-// - Plugin source with colored dot
+// - Gadget source with colored dot
 // - Message / span name in monospace
 // - Duration badge (span-end) or "..." (span-start)
 // - Chevron (always allocated, invisible when no metadata)

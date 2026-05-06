@@ -6,10 +6,10 @@
 // useGadgetRuntime
 //
 // Returns the runtime capabilities the host provides for the
-// plugin: `sendMessage` for backend RPC and `logger` for
+// gadget: `sendMessage` for backend RPC and `logger` for
 // structured logging.
 //
-// Available in every plugin component context.
+// Available in every gadget component context.
 // =========================================================
 
 import { useContext } from "react";

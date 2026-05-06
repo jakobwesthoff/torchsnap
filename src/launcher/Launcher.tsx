@@ -140,7 +140,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // =========================================================
   // Query split: displayQuery vs searchQuery
   //
-  // Normally in sync (user typing updates both). Plugins can
+  // Normally in sync (user typing updates both). Gadgets can
   // call setDisplayQuery to update the input visually without
   // triggering a new search. When the user next types,
   // searchQuery syncs to displayQuery.
@@ -167,7 +167,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     }
   }, []);
 
-  // Plugin-only: update display without triggering search.
+  // Gadget-only: update display without triggering search.
   const setDisplayQuery = useCallback((value: string) => {
     setDisplayQueryState(value);
   }, []);
@@ -259,7 +259,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     matchedPrefix,
   } = useSearch(searchQuery);
 
-  // Resolve the active custom plugin view. Both execute-triggered
+  // Resolve the active custom gadget view. Both execute-triggered
   // and search-triggered views are full GadgetViewRef objects with
   // explicit view names — no fallback needed.
   const customGadgetView: GadgetViewRef | null = executeGadgetView ?? searchGadgetView;
@@ -275,8 +275,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // render leaving a stale value that an event handler then reads
   // before the committed render overwrites it. Safe here because
   // callbacks only read `.gadgetId`, which is invariant across
-  // re-renders of the same plugin — a stale ref still holds the
-  // correct plugin ID.
+  // re-renders of the same gadget — a stale ref still holds the
+  // correct gadget ID.
   const customGadgetViewRef = useRef(customGadgetView);
   // eslint-disable-next-line react-hooks/refs
   customGadgetViewRef.current = customGadgetView;
@@ -288,7 +288,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // cycle). Done during render (prev-vs-current pattern) to avoid
   // an extra render cycle from a useEffect.
   //
-  // Incremental plugin results within the same query do NOT reset
+  // Incremental gadget results within the same query do NOT reset
   // selection — the selected entry is preserved at its new sorted
   // position via binary search (handled in useWindowedList / the
   // selection stability logic).
@@ -305,7 +305,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     // eslint-disable-next-line react-hooks/refs
     mouseActiveRef.current = false;
   } else if (prevResults !== results) {
-    // Same query, but results changed (incremental plugin merge).
+    // Same query, but results changed (incremental gadget merge).
     // Find the previously selected entry in the new sorted array
     // so the selection stays on the same item.
     setPrevResults(results);
@@ -320,18 +320,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   }
 
   // =========================================================
-  // Plugin Custom UI
+  // Gadget Custom UI
   // =========================================================
 
   const hasGadgetView = customGadgetView != null;
 
-  // Footer state set by the active plugin or inline view via
-  // their onFooterChange callback. `null` means no plugin/inline
+  // Footer state set by the active gadget or inline view via
+  // their onFooterChange callback. `null` means no gadget/inline
   // footer — fall back to deriving from the selected entry's actions.
   const [gadgetFooter, setGadgetFooter] = useState<FooterState | null>(null);
   const [inlineFooter, setInlineFooter] = useState<FooterState | null>(null);
 
-  // Reset plugin footer when leaving plugin mode.
+  // Reset gadget footer when leaving gadget mode.
   useEffect(() => {
     if (!customGadgetView) {
       setGadgetFooter(null);
@@ -348,7 +348,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const inlineSelected = activeInlineView != null && selectedIndex === 0;
   const listSelectedIndex = activeInlineView != null ? selectedIndex - 1 : selectedIndex;
 
-  // Footer priority: plugin footer (custom UI) > inline footer
+  // Footer priority: gadget footer (custom UI) > inline footer
   // (when inline slot is selected) > entry actions (list mode).
   const footer =
     gadgetFooter ??
@@ -356,8 +356,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       ? inlineFooter
       : actionsToFooterState(results[listSelectedIndex]?.actions ?? []));
 
-  // Plugin execute handler — wraps the Tauri invoke with the
-  // plugin's source ID and handles PostAction.
+  // Gadget execute handler — wraps the Tauri invoke with the
+  // gadget's source ID and handles PostAction.
   const handleGadgetExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
       const view = customGadgetViewRef.current;
@@ -372,14 +372,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       if (postAction === "Dismiss") {
         dismiss();
       }
-      // ShowCustomUI is not meaningful from within a plugin view;
+      // ShowCustomUI is not meaningful from within a gadget view;
       // Nothing and KeepOpen require no action.
     },
     [dismiss],
   );
 
   // Inline view execute handler — routes through the inline
-  // view's plugin ID.
+  // view's gadget ID.
   const handleInlineExecute = useCallback(
     async (entryId: string, actionId: ActionId) => {
       const view = activeInlineViewRef.current;
@@ -400,8 +400,8 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [dismiss],
   );
 
-  // Inline view message handler — same pattern as the plugin
-  // sendMessage but routed through the inline view's plugin ID.
+  // Inline view message handler — same pattern as the gadget
+  // sendMessage but routed through the inline view's gadget ID.
   const sendInlineMessage = useCallback(
     <TPayload = unknown, TResult = unknown, TStream = never>(
       method: string,
@@ -429,18 +429,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     setSelectedIndex(activeInlineViewRef.current != null ? idx + 1 : idx);
   }, []);
 
-  // Pop back from plugin UI: clear the execute override and
-  // reset the query. For prefix-triggered plugins this deactivates
-  // the plugin through the normal search flow; for execute-triggered
-  // plugins it returns to the empty launcher state.
+  // Pop back from gadget UI: clear the execute override and
+  // reset the query. For prefix-triggered gadgets this deactivates
+  // the gadget through the normal search flow; for execute-triggered
+  // gadgets it returns to the empty launcher state.
   // TODO(state-snapshot): see todos/plugins/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
   const handleGoBack = useCallback(() => {
     setExecuteGadgetView(null);
     setQuery("");
   }, [setQuery]);
 
-  // Plugin message handler — delegates to the shared utility
-  // with the active plugin view as the source.
+  // Gadget message handler — delegates to the shared utility
+  // with the active gadget view as the source.
   const sendMessage = useCallback(
     <TPayload = unknown, TResult = unknown, TStream = never>(
       method: string,
@@ -588,7 +588,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   );
 
   // =========================================================
-  // Keyboard Navigation (disabled when plugin UI is active)
+  // Keyboard Navigation (disabled when gadget UI is active)
   // =========================================================
 
   // When an inline view is active, the total navigable count
@@ -624,7 +624,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     mascotMode as "center" | "sidekick" | "off",
   );
 
-  // The prefix and stripped query for the plugin component. The
+  // The prefix and stripped query for the gadget component. The
   // backend sends the matched prefix so we don't have to guess.
   const gadgetPrefix = matchedPrefix ?? "";
   const strippedQuery = gadgetPrefix ? searchQuery.slice(gadgetPrefix.length) : searchQuery;
@@ -636,7 +636,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   //   1. Measurement  — full-height placeholder + dummy footer
   //   2. Empty        — search bar only, no content section
   //   3. List view    — result rows + footer
-  //   4. Plugin view  — plugin custom UI + footer
+  //   4. Gadget view  — gadget custom UI + footer
   //   5. Inline + list — inline component above result list
   //
   // The max-h-[448px] constraint on the content wrapper defines

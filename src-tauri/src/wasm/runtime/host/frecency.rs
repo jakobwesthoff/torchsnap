@@ -6,7 +6,7 @@
 // Frecency host import
 //
 // Routes guest `frecency::is-enabled` / `frecency::top-items`
-// calls through the per-plugin `GadgetFrecency` handle
+// calls through the per-gadget `GadgetFrecency` handle
 // stashed on `GadgetState`. Same "degrade gracefully when
 // the handle is missing" contract as the settings import:
 // an accidental call outside an enable lifetime returns
@@ -15,7 +15,7 @@
 // Record and boost are intentionally NOT exposed here —
 // the host already records selections before `execute()`
 // dispatches and applies score bonuses to `search()` results
-// before they reach the frontend, so plugins never need to
+// before they reach the frontend, so gadgets never need to
 // touch those paths directly.
 // =========================================================
 
@@ -45,7 +45,7 @@ impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
 }
 
 impl WasmGadgetInstance {
-    /// Stash a per-plugin `GadgetFrecency` handle on the store
+    /// Stash a per-gadget `GadgetFrecency` handle on the store
     /// data so the `frecency::*` host imports can resolve
     /// reads. Called by the bridge from `enable()` before the
     /// guest's own `enable()` runs — same contract as

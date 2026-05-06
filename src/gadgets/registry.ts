@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Dynamic plugin registry mapping plugin IDs to their React components.
+ * Dynamic gadget registry mapping gadget IDs to their React components.
  *
- * Internal plugins register at module load time; WASM plugins register
- * at startup via `registerWasmPlugin()` after querying the backend for
- * loaded plugin manifests.
+ * Internal gadgets register at module load time; WASM gadgets register
+ * at startup via `registerWasmGadget()` after querying the backend for
+ * loaded gadget manifests.
  */
 
 import { type ComponentType } from "react";
@@ -41,7 +41,7 @@ export interface GadgetRegistryEntry {
 const registry = new Map<string, GadgetRegistryEntry>();
 
 /**
- * Register a plugin in the registry. Overwrites any existing
+ * Register a gadget in the registry. Overwrites any existing
  * entry for the same ID.
  */
 export function registerGadget(id: string, entry: GadgetRegistryEntry): void {
@@ -49,14 +49,14 @@ export function registerGadget(id: string, entry: GadgetRegistryEntry): void {
 }
 
 /**
- * Remove a plugin from the registry (e.g., on uninstall).
+ * Remove a gadget from the registry (e.g., on uninstall).
  */
 export function unregisterGadget(id: string): void {
   registry.delete(id);
 }
 
 // =========================================================
-// Internal plugin registrations
+// Internal gadget registrations
 //
 // Commands and system_commands are intentionally excluded
 // (internal, always-on).
@@ -89,7 +89,7 @@ registerGadget("clipboard-manager", {
 // =========================================================
 
 /**
- * Look up a named view component for a plugin's CustomUI response.
+ * Look up a named view component for a gadget's CustomUI response.
  * The view name is always provided — if missing, it's a bug.
  */
 export function getGadgetView(
@@ -100,7 +100,7 @@ export function getGadgetView(
 }
 
 /**
- * Look up a named inline view component for a plugin's InlineUI response.
+ * Look up a named inline view component for a gadget's InlineUI response.
  */
 export function getGadgetInlineView(
   gadgetId: string,
@@ -110,7 +110,7 @@ export function getGadgetInlineView(
 }
 
 /**
- * Look up the settings component for a plugin.
+ * Look up the settings component for a gadget.
  */
 export function getGadgetSettingsComponent(
   gadgetId: string,
@@ -119,8 +119,8 @@ export function getGadgetSettingsComponent(
 }
 
 /**
- * Return all plugins that have settings metadata, for building
- * the settings sidebar navigation. A plugin appears in settings
+ * Return all gadgets that have settings metadata, for building
+ * the settings sidebar navigation. A gadget appears in settings
  * if it has either a custom settings component or at minimum an
  * icon + description (for the generic enable/disable wrapper).
  */
@@ -138,7 +138,7 @@ export function getGadgetsWithSettings(): Array<{
   }> = [];
 
   for (const [id, entry] of registry) {
-    // A plugin appears in settings if it has a custom settings
+    // A gadget appears in settings if it has a custom settings
     // component OR has metadata (icon + description) for the
     // generic wrapper.
     if (entry.settings != null || (entry.icon != null && entry.description != null)) {

@@ -34,7 +34,7 @@ export interface UseLogFiltersReturn {
   levelCounts: Record<LogLevel, number>;
   /** Count of completed spans (unfiltered, spanEnd only). */
   spanCount: number;
-  /** Set of all known plugin sources. */
+  /** Set of all known gadget sources. */
   knownSources: string[];
 }
 

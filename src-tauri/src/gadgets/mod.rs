@@ -3,20 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin System
+// Gadget System
 //
-// A single `Plugin` trait covers both search modes (ADR 0012):
+// A single `Gadget` trait covers both search modes (ADR 0012):
 //
-// - Catalog plugins override `entries()` to provide a finite
+// - Catalog gadgets override `entries()` to provide a finite
 //   entry list that the host filters with nucleo.
-// - Query plugins override `search()` (and optionally
+// - Query gadgets override `search()` (and optionally
 //   `search_prefixes()`) to receive the raw query and return
 //   pre-scored results.
-// - Hybrid plugins override both — the host calls both paths
+// - Hybrid gadgets override both — the host calls both paths
 //   unconditionally.
 //
 // The trait is structured so it can later become the boundary
-// for a WASM plugin interface.
+// for a WASM gadget interface.
 // =========================================================
 
 pub mod app_launcher;
@@ -33,16 +33,16 @@ use crate::settings::{GadgetSettings, SettingsInit};
 // GadgetShortcut — global shortcut declaration
 // =========================================================
 
-/// A global keyboard shortcut that a plugin wants to register.
+/// A global keyboard shortcut that a gadget wants to register.
 ///
-/// Plugins declare shortcuts via `shortcuts()`. The host registers
+/// Gadgets declare shortcuts via `shortcuts()`. The host registers
 /// them with the OS at startup and routes activations back through
 /// `handle_shortcut()`. The actual key combo is persisted in the
-/// plugin's settings namespace under `shortcut.<id>`, so users
+/// gadget's settings namespace under `shortcut.<id>`, so users
 /// can reconfigure it.
 pub struct GadgetShortcut {
     /// Stable identifier for this shortcut (e.g., "open-clipboard").
-    /// Used for routing activations back to the plugin.
+    /// Used for routing activations back to the gadget.
     pub id: &'static str,
     /// Human-readable label shown in the settings UI.
     pub label: &'static str,
@@ -56,12 +56,12 @@ pub struct GadgetShortcut {
 }
 
 // =========================================================
-// GadgetContext — bundled runtime context for plugin activation
+// GadgetContext — bundled runtime context for gadget activation
 // =========================================================
 
-/// Runtime context passed to plugins during `enable()`.
+/// Runtime context passed to gadgets during `enable()`.
 ///
-/// Bundles scoped settings access so plugins don't need an
+/// Bundles scoped settings access so gadgets don't need an
 /// ever-growing parameter list.
 pub struct GadgetContext {
     pub settings: GadgetSettings,
@@ -69,32 +69,32 @@ pub struct GadgetContext {
 }
 
 // =========================================================
-// Plugin Trait
+// Gadget Trait
 // =========================================================
 
-/// Unified plugin trait for both catalog and query plugins.
+/// Unified gadget trait for both catalog and query gadgets.
 ///
-/// Catalog-only plugins override `entries()` to provide a finite
+/// Catalog-only gadgets override `entries()` to provide a finite
 /// list of entries that the host filters with nucleo. Query-only
-/// plugins override `search()` (and optionally `search_prefixes()`)
+/// gadgets override `search()` (and optionally `search_prefixes()`)
 /// to receive the raw query and return pre-scored results. Hybrid
-/// plugins override both.
+/// gadgets override both.
 ///
 /// ## Prefix routing (ADR 0012)
 ///
-/// Plugins may register one or more prefixes via `search_prefixes()`.
+/// Gadgets may register one or more prefixes via `search_prefixes()`.
 /// When the user's query starts with a registered prefix:
 ///
-/// - Only the owning plugin is called (exclusive routing).
-/// - Other plugins are skipped entirely.
+/// - Only the owning gadget is called (exclusive routing).
+/// - Other gadgets are skipped entirely.
 /// - The prefix is stripped before passing the query.
-/// - `matched_prefix` tells the plugin which prefix triggered.
+/// - `matched_prefix` tells the gadget which prefix triggered.
 ///
 /// ## Lifecycle
 ///
-/// The host manages the plugin lifecycle through these phases:
+/// The host manages the gadget lifecycle through these phases:
 ///
-/// 1. Plugin is constructed and registered via `GadgetHost::register`
+/// 1. Gadget is constructed and registered via `GadgetHost::register`
 /// 2. `initialize_settings()` is called synchronously at startup
 /// 3. `enable()` is called on a background thread if `enabled.<id>`
 ///    is `true` in the settings store (default)
@@ -102,23 +102,23 @@ pub struct GadgetContext {
 ///    (only while enabled — the host gates on the enabled flag)
 /// 5. `execute()` is called when the user triggers an action
 /// 6. `setting_changed()` is called whenever a key in
-///    `plugins.<id>.*` changes at runtime
-/// 7. `disable()` is called when the user toggles the plugin off
+///    `gadgets.<id>.*` changes at runtime
+/// 7. `disable()` is called when the user toggles the gadget off
 ///    or during `RunEvent::Exit`
 ///
 /// Enable/disable may be called multiple times during the app's
-/// lifetime as the user toggles the plugin on and off.
+/// lifetime as the user toggles the gadget on and off.
 ///
 pub trait Gadget: Send + Sync {
-    /// Unique identifier for this plugin. Used as the `source`
+    /// Unique identifier for this gadget. Used as the `source`
     /// field in `SourcedEntry` and for routing `execute_action`.
     fn id(&self) -> &str;
 
-    /// Declare default settings for this plugin.
+    /// Declare default settings for this gadget.
     ///
     /// Called synchronously at startup *before* `enable()`. The
     /// `current` parameter contains any previously persisted values
-    /// for this plugin. Use `ensure()` to fill in missing defaults:
+    /// for this gadget. Use `ensure()` to fill in missing defaults:
     ///
     /// ```ignore
     /// fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
@@ -131,12 +131,12 @@ pub trait Gadget: Send + Sync {
     /// The default implementation is a pass-through (no settings).
     ///
     /// Note: The `enabled` key is managed by the host at
-    /// `enabled.<plugin-id>` — plugins should not declare it here.
+    /// `enabled.<gadget-id>` — gadgets should not declare it here.
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
     }
 
-    /// Activate the plugin. Called on startup (if enabled) and on
+    /// Activate the gadget. Called on startup (if enabled) and on
     /// each re-enable after a user toggle.
     ///
     /// Implementations should acquire resources, start background
@@ -149,23 +149,23 @@ pub trait Gadget: Send + Sync {
     ///
     // FIXME: Find a cleaner way to provide context without passing
     // AppHandle and GadgetContext on every enable() call. These are
-    // immutable after construction — ideally the plugin would hold
+    // immutable after construction — ideally the gadget would hold
     // a reference from registration time.
     fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {}
 
-    /// Deactivate the plugin. Called when the user toggles the
-    /// plugin off and during `RunEvent::Exit`.
+    /// Deactivate the gadget. Called when the user toggles the
+    /// gadget off and during `RunEvent::Exit`.
     ///
     /// Implementations should release resources, stop background
-    /// threads, and clean up state. The plugin may be re-enabled
+    /// threads, and clean up state. The gadget may be re-enabled
     /// later — resources acquired in `enable()` should be released
     /// here.
     fn disable(&self) {}
 
-    /// React to a settings change in this plugin's namespace.
+    /// React to a settings change in this gadget's namespace.
     ///
     /// Called by the host whenever a key in `gadgets.<id>.*` changes
-    /// at runtime. The `key` is relative to the plugin namespace
+    /// at runtime. The `key` is relative to the gadget namespace
     /// (e.g., `"retentionDays"`, not `"gadgets.calculator.retentionDays"`).
     ///
     /// This is dispatched through a `CoalescingDispatcher` — rapid
@@ -175,7 +175,7 @@ pub trait Gadget: Send + Sync {
     /// The default implementation is a no-op.
     fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
-    /// Execute an action on an entry owned by this plugin.
+    /// Execute an action on an entry owned by this gadget.
     fn execute(
         &self,
         entry_id: &str,
@@ -183,7 +183,7 @@ pub trait Gadget: Send + Sync {
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
 
-    /// Declare global keyboard shortcuts this plugin wants to register.
+    /// Declare global keyboard shortcuts this gadget wants to register.
     ///
     /// The host reads the actual key combos from settings (falling
     /// back to `GadgetShortcut::default_shortcut`) and registers
@@ -197,9 +197,9 @@ pub trait Gadget: Send + Sync {
 
     /// Handle a global shortcut activation.
     ///
-    /// Called when one of this plugin's registered shortcuts fires.
+    /// Called when one of this gadget's registered shortcuts fires.
     /// Returns a `PostAction` that tells the host what to do (e.g.,
-    /// `ShowCustomUI` to open the launcher with this plugin's view).
+    /// `ShowCustomUI` to open the launcher with this gadget's view).
     ///
     /// The default implementation does nothing.
     fn handle_shortcut(
@@ -210,18 +210,18 @@ pub trait Gadget: Send + Sync {
         Ok(PostAction::Nothing)
     }
 
-    /// Handle a custom message from the plugin's frontend component.
+    /// Handle a custom message from the gadget's frontend component.
     ///
-    /// This is the plugin-side handler for the `sendMessage` prop
-    /// in the plugin UI (ADR 0016). The `channel` can be used to
+    /// This is the gadget-side handler for the `sendMessage` prop
+    /// in the gadget UI (ADR 0016). The `channel` can be used to
     /// stream live updates back to the frontend. The default
-    /// returns an error — override only when the plugin needs
+    /// returns an error — override only when the gadget needs
     /// custom frontend ↔ backend communication.
     ///
-    /// **WASM plugins:** The `WasmGadgetBridge` adapter that
+    /// **WASM gadgets:** The `WasmGadgetBridge` adapter that
     /// wraps a WIT guest export ignores the `channel`
-    /// parameter — WASM plugins are strictly request/response
-    /// (per ADR 0030). If a plugin needs streaming support,
+    /// parameter — WASM gadgets are strictly request/response
+    /// (per ADR 0030). If a gadget needs streaming support,
     /// it must stay native or wait for a future
     /// `messaging-stream` WIT sub-interface.
     fn handle_message(
@@ -233,9 +233,9 @@ pub trait Gadget: Send + Sync {
         anyhow::bail!("gadget does not handle custom messages")
     }
 
-    /// Prefixes that activate exclusive search routing for this plugin.
+    /// Prefixes that activate exclusive search routing for this gadget.
     ///
-    /// Return an empty slice (the default) if this plugin does not
+    /// Return an empty slice (the default) if this gadget does not
     /// use prefix routing. Prefixes can be multi-character (e.g.,
     /// `":"`, `"g "`, `"http://"`). Longest prefix wins when
     /// multiple match.
@@ -249,24 +249,24 @@ pub trait Gadget: Send + Sync {
     /// trivially cheap. Plugins with dynamic content (e.g. if
     /// settings change) can rebuild the list on each call.
     ///
-    /// The default returns an empty list (query-only plugins).
+    /// The default returns an empty list (query-only gadgets).
     fn entries(&self) -> Vec<CatalogEntry> {
         vec![]
     }
 
-    /// Plugin-driven search. Called on every query for plugins
+    /// Gadget-driven search. Called on every query for gadgets
     /// that handle their own matching logic.
     ///
     /// `matched_prefix` is `Some(prefix)` when a registered prefix
     /// triggered this call (query is already stripped), or `None`
-    /// when running as an always-on plugin. Note:
+    /// when running as an always-on gadget. Note:
     /// [`GadgetResponse::CustomUI`] is only honoured in prefix mode;
     /// in always-on mode it is downgraded to plain results.
     ///
-    /// Returns `None` when the plugin has no results for this query,
+    /// Returns `None` when the gadget has no results for this query,
     /// or `Some(GadgetResponse)` with the results/UI payload.
     ///
-    /// The default is a no-op returning `None` (catalog-only plugins).
+    /// The default is a no-op returning `None` (catalog-only gadgets).
     fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<GadgetResponse> {
         None
     }
