@@ -1,105 +1,105 @@
-# Plugin Development Guide
+# Gadget Development Guide
 
-This guide is the canonical reference for authoring Torchsnap plugins. The
-plugin system is built on the WebAssembly Component Model: plugins are
+This guide is the canonical reference for authoring Torchsnap gadgets. The
+gadget system is built on the WebAssembly Component Model: gadgets are
 sandboxed WASM components, written in Rust against a fixed WIT interface,
 shipped as `.torchsnap` zip archives, and loaded at runtime by the host.
 
-The single source of truth for the plugin contract is the WIT file at
-`plugins/plugin-sdk/wit/torchsnap-plugin.wit`. The Rust SDK
-(`plugins/plugin-sdk/`) generates bindings from it and layers
+The single source of truth for the gadget contract is the WIT file at
+`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`. The Rust SDK
+(`gadgets/gadget-sdk/`) generates bindings from it and layers
 ergonomic helpers on top. When this guide and the WIT disagree, the
 WIT wins.
 
 ## Contents
 
-- [Plugin model](#plugin-model)
-- [Building a plugin from scratch](#building-a-plugin-from-scratch)
+- [Gadget model](#gadget-model)
+- [Building a gadget from scratch](#building-a-gadget-from-scratch)
 - [The four guest traits](#the-four-guest-traits)
 - [Lifecycle and instance management](#lifecycle-and-instance-management)
 - [Search: catalog vs query, prefix routing, response variants](#search-catalog-vs-query-prefix-routing-response-variants)
 - [Actions and execute()](#actions-and-execute)
-- [Messaging (frontend ↔ plugin RPC)](#messaging-frontend--plugin-rpc)
+- [Messaging (frontend ↔ gadget RPC)](#messaging-frontend--gadget-rpc)
 - [Scheduled tasks](#scheduled-tasks)
 - [Manifest (`manifest.toml`)](#manifest-manifesttoml)
 - [Host APIs (WIT imports)](#host-apis-wit-imports)
 - [Frontend components](#frontend-components)
 - [Storage layout on disk](#storage-layout-on-disk)
 - [Discovery, bundling, and distribution](#discovery-bundling-and-distribution)
-- [Worked example: the `calculator` plugin](#worked-example-the-calculator-plugin)
+- [Worked example: the `calculator` gadget](#worked-example-the-calculator-gadget)
 
 ---
 
-## Plugin model
+## Gadget model
 
-A Torchsnap plugin is a WASM **component** built for the
+A Torchsnap gadget is a WASM **component** built for the
 `wasm32-wasip2` target. It exports four interfaces (`lifecycle`,
 `search`, `messaging`, `tasks`) and imports a fixed set of host
 capabilities (logging, sql, settings, http, …) defined in the WIT
-`plugin` world (`plugins/plugin-sdk/wit/torchsnap-plugin.wit`,
+`gadget` world (`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`,
 lines 887–907).
 
 The component is shipped inside a **`.torchsnap` zip archive**
 containing:
 
-- `manifest.toml` — plugin metadata, settings defaults, declared
+- `manifest.toml` — gadget metadata, settings defaults, declared
   permissions, scheduled tasks, frontend bundles.
-- `<id>_plugin.wasm` (or whatever path `manifest.toml`'s
-  `plugin.wasm` field points at) — the compiled component.
+- `<id>_gadget.wasm` (or whatever path `manifest.toml`'s
+  `gadget.wasm` field points at) — the compiled component.
 - Optional asset files (SQL migration scripts, JSON seed data,
   bundled icon images, frontend `dist/` output).
 
 At launcher startup the host scans three roots
-(`<resource_dir>/plugins/`, `<CARGO_MANIFEST_DIR>/../plugins/` in
-debug builds, and `<app_data_dir>/plugins/`), parses each
-manifest, **compiles** every plugin's component, and stages it.
-Components are **instantiated lazily on enable** — disabled plugins
+(`<resource_dir>/gadgets/`, `<CARGO_MANIFEST_DIR>/../gadgets/` in
+debug builds, and `<app_data_dir>/gadgets/`), parses each
+manifest, **compiles** every gadget's component, and stages it.
+Components are **instantiated lazily on enable** — disabled gadgets
 do not pay the per-instance memory cost (ADR 0033). Each enable
 produces a fresh wasmtime `Store`; disable drops it.
 
-There is **no `cargo-component`**. Plugin crates depend on the
-`torchsnap-plugin-sdk` crate, which owns the
+There is **no `cargo-component`**. Gadget crates depend on the
+`torchsnap-gadget-sdk` crate, which owns the
 `wit_bindgen::generate!` invocation and re-exports the generated
 trait surface. A plain `cargo build --release` from the
-`plugins/` workspace is all that is needed; the
+`gadgets/` workspace is all that is needed; the
 `wasm32-wasip2` target is set as the workspace default via
-`plugins/.cargo/config.toml`.
+`gadgets/.cargo/config.toml`.
 
 ---
 
-## Building a plugin from scratch
+## Building a gadget from scratch
 
-The fastest path is to copy `plugins/template/`. It is a
+The fastest path is to copy `gadgets/template/`. It is a
 working, self-documenting starter that exercises every guest
 export, the SQL store, scheduled tasks, settings, messaging,
 and a custom frontend view.
 
 ### Workspace layout
 
-Every plugin lives under `plugins/<id>/` and is a member of the
-plugin virtual workspace declared in `plugins/Cargo.toml`. To
-add a new plugin:
+Every gadget lives under `gadgets/<id>/` and is a member of the
+gadget virtual workspace declared in `gadgets/Cargo.toml`. To
+add a new gadget:
 
-1. Create `plugins/<your-id>/` with `Cargo.toml`, `manifest.toml`,
+1. Create `gadgets/<your-id>/` with `Cargo.toml`, `manifest.toml`,
    and `src/lib.rs`.
-2. Add `<your-id>` to the `members` list in `plugins/Cargo.toml`.
-3. (Optional) Add a `frontend/` directory if the plugin ships UI
+2. Add `<your-id>` to the `members` list in `gadgets/Cargo.toml`.
+3. (Optional) Add a `frontend/` directory if the gadget ships UI
    bundles, plus `migrations/` if it uses SQL storage.
 
 ### `Cargo.toml`
 
-Plugin crates are `cdylib` libraries that depend on the SDK by
+Gadget crates are `cdylib` libraries that depend on the SDK by
 relative path. The release profile is shared at the workspace
-level (`plugins/Cargo.toml`, `[profile.release]`):
+level (`gadgets/Cargo.toml`, `[profile.release]`):
 
 ```toml
 [package]
-name = "myplugin-plugin"
+name = "mygadget-gadget"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-torchsnap-plugin-sdk = { path = "../plugin-sdk" }
+torchsnap-gadget-sdk = { path = "../gadget-sdk" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -115,27 +115,27 @@ threads).
 
 ### `src/lib.rs` skeleton
 
-Every plugin opens with a `define_plugin!` macro call and four
+Every gadget opens with a `define_gadget!` macro call and four
 trait implementations. The traits take **no `self` receiver** —
 `wasm32-wasip2` is single-threaded and the component holds its
 state through `thread_local!` `Cell`s, `LazyLock`s, or static
 `OnceCell`s.
 
 ```rust
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
-struct MyPlugin;
-define_plugin!(MyPlugin);
+struct MyGadget;
+define_gadget!(MyGadget);
 
-impl LifecycleGuest for MyPlugin {
+impl LifecycleGuest for MyGadget {
     fn enable() {
-        log_info!("plugin enabled");
+        log_info!("gadget enabled");
     }
     fn disable() {}
     fn on_setting_changed(_key: String, _value: String) {}
 }
 
-impl SearchGuest for MyPlugin {
+impl SearchGuest for MyGadget {
     fn entries() -> Vec<CatalogEntry> { Vec::new() }
     fn search(_query: String, _matched_prefix: Option<String>) -> SearchResponse {
         SearchResponse::Nothing
@@ -145,33 +145,33 @@ impl SearchGuest for MyPlugin {
     }
 }
 
-// Plugins that don't use messaging or scheduled tasks still have
+// Gadgets that don't use messaging or scheduled tasks still have
 // to satisfy the WIT contract. The SDK provides one-line stubs.
-impl_noop_messaging!(MyPlugin);
-impl_noop_tasks!(MyPlugin);
+impl_noop_messaging!(MyGadget);
+impl_noop_tasks!(MyGadget);
 ```
 
-`define_plugin!(MyPlugin)` (`plugins/plugin-sdk/src/lib.rs:150`)
+`define_gadget!(MyGadget)` (`gadgets/gadget-sdk/src/lib.rs:150`)
 expands to the `wit_bindgen`-generated `export!` macro, wiring
 the type to every component-model FFI shim. `impl_noop_messaging!`
 and `impl_noop_tasks!` provide the stub implementations of the
-two exports a plugin almost always still has to declare even when
+two exports a gadget almost always still has to declare even when
 it does not use them.
 
 ### Building
 
-From anywhere inside the plugin workspace:
+From anywhere inside the gadget workspace:
 
 ```sh
-cargo build --release -p myplugin-plugin
+cargo build --release -p mygadget-gadget
 ```
 
 The `wasm32-wasip2` target is inherited from
-`plugins/.cargo/config.toml`. The output lands at
-`plugins/target/wasm32-wasip2/release/myplugin_plugin.wasm`. The
+`gadgets/.cargo/config.toml`. The output lands at
+`gadgets/target/wasm32-wasip2/release/mygadget_gadget.wasm`. The
 debug-build loader picks it up directly from your source
 directory (see [Discovery](#discovery-bundling-and-distribution));
-for shipping, the `just build-plugin` / `just package-plugin`
+for shipping, the `just build-gadget` / `just package-gadget`
 recipes assemble the `.torchsnap` archive.
 
 ---
@@ -179,8 +179,8 @@ recipes assemble the `.torchsnap` archive.
 ## The four guest traits
 
 The SDK re-exports the four `wit_bindgen`-generated guest traits
-flatly through `torchsnap_plugin_sdk::prelude` so plugin code only
-ever needs `use torchsnap_plugin_sdk::prelude::*;`:
+flatly through `torchsnap_gadget_sdk::prelude` so gadget code only
+ever needs `use torchsnap_gadget_sdk::prelude::*;`:
 
 | Trait              | WIT export      | Methods                                           |
 |--------------------|-----------------|---------------------------------------------------|
@@ -198,7 +198,7 @@ type** (no `&self`). State is held in `thread_local!`,
 ## Lifecycle and instance management
 
 ADR 0033 specifies the bridge model: the host **compiles**
-every plugin's component once at launcher startup and caches the
+every gadget's component once at launcher startup and caches the
 resulting `wasmtime::Component`. **Instantiation** (linker setup,
 `Store` creation, guest-side initial-state allocation) happens
 lazily, on the first enable, and is repeated on every subsequent
@@ -206,8 +206,8 @@ re-enable after a disable.
 
 ### `enable()`
 
-Called every time the plugin transitions from disabled to
-enabled. The host has already created the per-plugin SQLite
+Called every time the gadget transitions from disabled to
+enabled. The host has already created the per-gadget SQLite
 database file and applied any declared migrations *before* this
 runs, so `sql::connection()` is immediately usable. Typical
 work:
@@ -219,31 +219,31 @@ work:
 
 ### `disable()`
 
-Called when the user toggles the plugin off, and once on
+Called when the user toggles the gadget off, and once on
 application exit. The bridge drops the `Store` after this
 returns, so any state held in linear memory is reclaimed
 automatically — `disable()` only needs to flush anything
-not already persisted (most plugins do nothing).
+not already persisted (most gadgets do nothing).
 
 ### `on_setting_changed(key, value)`
 
-Called when a setting under `plugins.<plugin-id>.*` changes.
+Called when a setting under `gadgets.<gadget-id>.*` changes.
 `value` is a JSON-encoded string, same encoding as
 `settings::get`. Rapid same-key writes are coalesced by the
 host's `CoalescingDispatcher` (ADR 0026) before this fires, so
 each invocation already carries the latest value — no debouncing
-needed on the plugin side.
+needed on the gadget side.
 
 ---
 
 ## Search: catalog vs query, prefix routing, response variants
 
-A plugin can serve any combination of three search modes:
+A gadget can serve any combination of three search modes:
 
 | Mode          | Implements              | When to use                                      |
 |---------------|-------------------------|--------------------------------------------------|
 | Catalog       | `entries()`             | Static/semi-static lists; host fuzzy-matches.    |
-| Query (always)| `search()`              | Dynamic results merged with all other plugins.   |
+| Query (always)| `search()`              | Dynamic results merged with all other gadgets.   |
 | Query (prefix)| `search()` + manifest `prefixes` | Exclusive routing when the query starts with the prefix. |
 
 ### `entries()`
@@ -275,17 +275,17 @@ Returns a `SearchResponse` variant (WIT lines 733–745):
 
 | Variant                 | Effect                                                         |
 |-------------------------|----------------------------------------------------------------|
-| `Nothing`               | Plugin contributes nothing this keystroke.                     |
+| `Nothing`               | Gadget contributes nothing this keystroke.                     |
 | `Results(Vec<ScoredEntry>)` | Pre-scored entries merged into the host's list.            |
-| `CustomUi(ViewResponse)`| Host mounts the plugin's named view component, replacing the result list. |
-| `InlineUi(ViewResponse)`| Host renders the plugin's inline view above the result list (only one plugin per search may claim the slot). |
+| `CustomUi(ViewResponse)`| Host mounts the gadget's named view component, replacing the result list. |
+| `InlineUi(ViewResponse)`| Host renders the gadget's inline view above the result list (only one gadget per search may claim the slot). |
 
 `ViewResponse { view, data, results }`:
 
 - `view` resolves against the manifest's `[frontend.views]` /
   `[frontend.inline-views]` map.
 - `data` is `Option<String>` carrying a JSON-encoded payload
-  (the WIT has no opaque JSON type — plugins serialize and
+  (the WIT has no opaque JSON type — gadgets serialize and
   deserialize with `serde_json`).
 - `results` is forwarded to the React component as props; use
   it or ignore it depending on whether the view wants to
@@ -293,14 +293,14 @@ Returns a `SearchResponse` variant (WIT lines 733–745):
 
 ### Prefix routing (ADR 0012)
 
-If `manifest.toml` declares `plugin.prefixes = ["="]`, the host
+If `manifest.toml` declares `gadget.prefixes = ["="]`, the host
 strips the matched prefix and routes the query **exclusively**
-to that plugin. Other catalog plugins and prefix-less query
-plugins are bypassed for the keystroke. The `matched_prefix`
+to that gadget. Other catalog gadgets and prefix-less query
+gadgets are bypassed for the keystroke. The `matched_prefix`
 parameter receives the prefix string when this fires (`Some("=")`),
 and `None` otherwise.
 
-Longest prefix wins when multiple plugins register prefixes that
+Longest prefix wins when multiple gadgets register prefixes that
 could both match.
 
 ### `ScoredEntry`
@@ -318,10 +318,10 @@ pub struct ScoredEntry {
 }
 ```
 
-The plugin is responsible for scoring and for computing the
+The gadget is responsible for scoring and for computing the
 highlight offsets that the launcher renders as bold characters
 in the title/subtitle. Frecency bonuses are applied **by the
-host** after `search()` returns — plugins do not need to layer
+host** after `search()` returns — gadgets do not need to layer
 them in themselves.
 
 ### `EntryIcon`
@@ -353,14 +353,14 @@ pub enum ActionId {
     Reveal,
     OpenWith,
     Delete,
-    OpenSettings,           // Jumps to this plugin's settings panel.
-    Custom(String),         // Plugin-defined action.
+    OpenSettings,           // Jumps to this gadget's settings panel.
+    Custom(String),         // Gadget-defined action.
 }
 ```
 
 `Open`, `Copy`, etc. are well-known so the launcher can render
 default icons and key hints. `Custom("save-as-bookmark")` covers
-plugin-specific actions.
+gadget-specific actions.
 
 `execute()` is called when the user activates an action. Returns
 `Result<PostAction, String>`:
@@ -391,12 +391,12 @@ string verbatim.
 
 ---
 
-## Messaging (frontend ↔ plugin RPC)
+## Messaging (frontend ↔ gadget RPC)
 
 The WIT `messaging::handle-message` export (lines 790–793) is the
-single entry point a plugin's frontend component calls into when
+single entry point a gadget's frontend component calls into when
 it needs backend work done. The SDK helpers in
-`plugins/plugin-sdk/src/messaging.rs` cover the JSON encode /
+`gadgets/gadget-sdk/src/messaging.rs` cover the JSON encode /
 decode boilerplate.
 
 ```rust
@@ -408,7 +408,7 @@ struct LookupRequest { domain: String }
 #[derive(Serialize)]
 struct LookupResponse { title: Option<String> }
 
-impl MessagingGuest for MyPlugin {
+impl MessagingGuest for MyGadget {
     fn handle_message(method: String, payload: String) -> Result<String, String> {
         match method.as_str() {
             "lookup" => {
@@ -422,11 +422,11 @@ impl MessagingGuest for MyPlugin {
 }
 ```
 
-**WASM plugins cannot stream.** The export is strictly request /
+**WASM gadgets cannot stream.** The export is strictly request /
 response. The TypeScript `sendMessage(method, payload, onMessage)`
-overload exists for symmetry with native plugins but
-WASM-backed plugins drop the channel callback silently — see ADR
-0030 and `packages/plugin-sdk/src/shims/hooks.ts:88` for the
+overload exists for symmetry with native gadgets but
+WASM-backed gadgets drop the channel callback silently — see ADR
+0030 and `packages/gadget-sdk/src/shims/hooks.ts:88` for the
 rationale and the future `messaging-stream` sub-interface that
 would lift the restriction.
 
@@ -434,7 +434,7 @@ would lift the restriction.
 
 ## Scheduled tasks
 
-WASM has no thread support, so plugins cannot run their own
+WASM has no thread support, so gadgets cannot run their own
 timers. Instead, declare `[[tasks]]` entries in `manifest.toml`
 and implement `TasksGuest::run_task` to dispatch by `task_id`:
 
@@ -445,7 +445,7 @@ schedule = "*/30 * * * *"
 ```
 
 ```rust
-impl TasksGuest for MyPlugin {
+impl TasksGuest for MyGadget {
     fn run_task(task_id: String) -> Result<(), String> {
         match task_id.as_str() {
             "retention-cleanup" => {
@@ -464,24 +464,24 @@ impl TasksGuest for MyPlugin {
 
 `schedule` is a 5-field POSIX cron expression
 (`minute hour day month weekday`); sub-minute scheduling is not
-supported. The host runs a per-plugin tokio scheduler that walks
+supported. The host runs a per-gadget tokio scheduler that walks
 every entry, sleeps until the earliest next fire, and invokes
 `run-task` on the configured cadence (ADR 0032).
 
 Semantics:
 
 - **First fire is at the next cron match.** No automatic
-  immediate fire on enable. Plugins that want startup work
+  immediate fire on enable. Gadgets that want startup work
   should do it in `enable()`.
 - **Failures are logged, not fatal.** Returning `Err(string)`
   is logged at error level and does not auto-disable the
-  plugin.
+  gadget.
 - **Missed fires across launcher restarts are not made up.**
 - **Sequential execution.** Two tasks scheduled at the same
   instant run back-to-back in manifest order; the wasmtime
   store mutex serializes every guest call.
-- **Plugins without `[[tasks]]` pay zero cost** — the host
-  never spawns the scheduler loop. `impl_noop_tasks!(MyPlugin);`
+- **Gadgets without `[[tasks]]` pay zero cost** — the host
+  never spawns the scheduler loop. `impl_noop_tasks!(MyGadget);`
   is enough to satisfy the WIT contract.
 
 ---
@@ -491,16 +491,16 @@ Semantics:
 The full schema is in `src-tauri/src/wasm/manifest.rs`. Every
 table is documented inline there.
 
-### `[plugin]` (required)
+### `[gadget]` (required)
 
 ```toml
-[plugin]
-id          = "myplugin"            # lowercase a-z 0-9 hyphens; no leading/trailing -
-name        = "My Plugin"
+[gadget]
+id          = "mygadget"            # lowercase a-z 0-9 hyphens; no leading/trailing -
+name        = "My Gadget"
 description = "Short one-liner"
 version     = "0.1.0"
-wasm        = "myplugin_plugin.wasm" # plugin-relative path to the component
-icon        = "heroicons:bolt"       # or a plugin-relative path to a WebP image
+wasm        = "mygadget_gadget.wasm" # gadget-relative path to the component
+icon        = "heroicons:bolt"       # or a gadget-relative path to a WebP image
 prefixes    = ["="]                  # optional — exclusive query routing
 ```
 
@@ -522,7 +522,7 @@ retentionDays    = 30
 
 ### `[storage.sql]`
 
-Per-plugin SQLite database. The host creates the database file
+Per-gadget SQLite database. The host creates the database file
 and applies migrations *before* the guest's `enable()` runs.
 
 ```toml
@@ -533,7 +533,7 @@ migrations = [
 ]
 ```
 
-Each path is plugin-relative. Files are plain SQL — diffable,
+Each path is gadget-relative. Files are plain SQL — diffable,
 shareable with unit tests via `include_str!`, and `query_one` /
 `query_all` helpers in the SDK consume the host's response rows.
 
@@ -547,8 +547,8 @@ Repeat-table form for scheduled background tasks. Fields:
 
 ### `[frontend]`
 
-Frontend bundle declarations. Omit entirely if the plugin has no
-UI. All paths are plugin-relative.
+Frontend bundle declarations. Omit entirely if the gadget has no
+UI. All paths are gadget-relative.
 
 ```toml
 [frontend]
@@ -575,7 +575,7 @@ component` names the export the settings webview mounts.
 ### `[permissions]`
 
 Capability opt-ins. **Deny by default**: a permission table that
-is omitted entirely means the plugin has no access to that
+is omitted entirely means the gadget has no access to that
 interface. Detail tables:
 
 ```toml
@@ -606,8 +606,8 @@ argv   = [
 
 The argv-constraint vocabulary (`literal`, `enum`, `glob`,
 `regex`, `path-under`, `any-string`, `rest`) is documented in
-`manifest.rs:570–610` and ADR 0040. `${plugin-data}`,
-`${plugin-archive}`, `${home}`, `${xdg-config}`, `${xdg-data}`
+`manifest.rs:570–610` and ADR 0040. `${gadget-data}`,
+`${gadget-archive}`, `${home}`, `${xdg-config}`, `${xdg-data}`
 substitution applies in both `[permissions.fs] read` patterns
 and `[[permissions.command]]` `path-under` roots / per-rule
 `cwd`.
@@ -617,15 +617,15 @@ and `[[permissions.command]]` `path-under` roots / per-rule
 `manifest.rs:54` accepts a `[shortcuts]` table but the WIT does
 not currently expose a `handle-shortcut` guest export, so any
 declared shortcuts are parsed and stored but never fire for
-WASM plugins. Native (built-in) plugins still use them. Treat
+WASM gadgets. Native (built-in) gadgets still use them. Treat
 this section as reserved for a future API; do not plan around
 it.
 
 ### Path-safety rules
 
-Every plugin-relative path the manifest references (`wasm`,
+Every gadget-relative path the manifest references (`wasm`,
 asset `icon`, `frontend.*-bundle`, `frontend.*-css`, every
-migration path) must satisfy `validate_plugin_path`:
+migration path) must satisfy `validate_gadget_path`:
 
 - No `..` segments.
 - No leading `/`.
@@ -634,15 +634,15 @@ migration path) must satisfy `validate_plugin_path`:
 - No NUL bytes.
 
 A manifest that violates any of these fails to parse and the
-plugin never loads.
+gadget never loads.
 
 ---
 
 ## Host APIs (WIT imports)
 
-The WIT `plugin` world (`torchsnap-plugin.wit:887–907`) imports
+The WIT `gadget` world (`torchsnap-gadget.wit:887–907`) imports
 fourteen interfaces. The SDK re-exports each one — either flat
-under `torchsnap_plugin_sdk::prelude::*` (`logging`, `clipboard`,
+under `torchsnap_gadget_sdk::prelude::*` (`logging`, `clipboard`,
 `sql`, `frecency`, `settings`, `opener`, `http`, `fs`, `assets`,
 `command`, `platform`, `paths`, `messaging`, `website_metadata`)
 or under a `_host` alias when the SDK adds an ergonomic wrapper
@@ -651,7 +651,7 @@ that would otherwise shadow the raw bindings.
 ### `logging`
 
 Structured logging with optional spans. The SDK's
-`plugins/plugin-sdk/src/logging.rs` provides `log_info!`,
+`gadgets/gadget-sdk/src/logging.rs` provides `log_info!`,
 `log_warn!`, `log_error!`, `log_debug!`, `log_trace!` macros
 modelled on `tracing`:
 
@@ -665,14 +665,14 @@ For explicit timing spans, call `logging::span_start` /
 ### `clipboard`
 
 Single operation: `clipboard::write_text(text) -> Result<(), String>`.
-Read access is intentionally not exposed — sandboxed plugins must
+Read access is intentionally not exposed — sandboxed gadgets must
 not be able to slurp arbitrary host clipboard contents (WIT
 lines 35–55).
 
-### `sql` — per-plugin SQLite
+### `sql` — per-gadget SQLite
 
 Available only when the manifest declares `[storage.sql]`.
-`sql::connection()` is **infallible** for plugins that opted in
+`sql::connection()` is **infallible** for gadgets that opted in
 (the host has already initialized the database). The SDK's
 `sql::query_one` / `sql::query_all` collect rows into a typed
 `Row` newtype with `integer` / `text` / `real` / `blob` /
@@ -680,7 +680,7 @@ Available only when the manifest declares `[storage.sql]`.
 parameter types:
 
 ```rust
-use torchsnap_plugin_sdk::sql::{query_all, SqlValue};
+use torchsnap_gadget_sdk::sql::{query_all, SqlValue};
 
 let db = sql::connection();
 db.execute(
@@ -697,23 +697,23 @@ for row in &rows {
 ```
 
 The WIT `sql-value` variant deliberately omits the host's
-internal `List` variant — plugins build their own `IN (?, ?, ?)`
+internal `List` variant — gadgets build their own `IN (?, ?, ?)`
 clauses (one `?` per element) before calling `query` / `execute`.
 Transactions are not currently exposed; raise the API gap if a
-plugin needs them.
+gadget needs them.
 
-> The WIT doc-comment on `interface sql` (`torchsnap-plugin.wit:60-61`)
+> The WIT doc-comment on `interface sql` (`torchsnap-gadget.wit:60-61`)
 > states the database file lives at
-> `app_data_dir/plugins/<plugin-id>/storage.db`. That comment is
+> `app_data_dir/gadgets/<gadget-id>/storage.db`. That comment is
 > stale. The actual path used by the bridge is
-> `<app_data_dir>/plugin-home/<plugin-id>/sql/storage.sqlite3`
+> `<app_data_dir>/gadget-home/<gadget-id>/sql/storage.sqlite3`
 > (see [Storage layout on disk](#storage-layout-on-disk)).
 
 ### `frecency`
 
 Read-only. The host already records selections automatically
 before dispatching `execute()` and applies score bonuses to
-`search()` results — neither requires plugin code. The interface
+`search()` results — neither requires gadget code. The interface
 exposes only:
 
 ```rust
@@ -723,23 +723,23 @@ frecency::top_items(limit: u32) -> Vec<FrecencyItem>
 
 Use `top_items` to drive empty-query "most-used first" ordering
 in custom UIs (e.g. the emoji picker's browse mode). There is
-**no `record` operation** in the WIT — plugins cannot push
+**no `record` operation** in the WIT — gadgets cannot push
 synthetic frecency events from custom UIs.
 
 ### `settings`
 
-Plugin-namespaced reads only. The raw WIT (`settings::get(key) -> Option<String>`)
+Gadget-namespaced reads only. The raw WIT (`settings::get(key) -> Option<String>`)
 returns JSON-encoded values; the SDK's
-`plugins/plugin-sdk/src/settings.rs` wraps it:
+`gadgets/gadget-sdk/src/settings.rs` wraps it:
 
 ```rust
 let verbose: bool = settings::get_or("verbose", false);
 let greeting: String = settings::get_or_else("greeting", || "(unset)".into());
 ```
 
-Writes from the plugin side are deliberately not exposed — the
+Writes from the gadget side are deliberately not exposed — the
 launcher's settings UI is the single source of mutation. The
-plugin reacts to changes through `LifecycleGuest::on_setting_changed`.
+gadget reacts to changes through `LifecycleGuest::on_setting_changed`.
 
 ### `opener`
 
@@ -774,7 +774,7 @@ origins = ["https://api.duckduckgo.com"]    # or ["*"] for trust-all
 ```
 
 ```rust
-use torchsnap_plugin_sdk::http::{HttpMethod, HttpRequest};
+use torchsnap_gadget_sdk::http::{HttpMethod, HttpRequest};
 
 let response = http::fetch(&HttpRequest {
     url: "https://api.duckduckgo.com/?q=rust&format=json".into(),
@@ -798,7 +798,7 @@ form. HTTP status codes (`4xx`, `5xx`) are **not errors** —
 `insecure_tls: true` disables certificate validation — needed
 for self-signed local daemons (Docker over TLS, k3s,
 zerotier-one). The origin allowlist still gates which endpoint
-the plugin can reach.
+the gadget can reach.
 
 ### `fs`
 
@@ -833,13 +833,13 @@ matches.
 
 ### `assets`
 
-Read files from inside the plugin's own `.torchsnap` archive (or
-development directory). **No manifest opt-in** — every plugin
+Read files from inside the gadget's own `.torchsnap` archive (or
+development directory). **No manifest opt-in** — every gadget
 can read its own bundled files. Spatial isolation is enforced
-by `validate_plugin_path`.
+by `validate_gadget_path`.
 
 ```rust
-use torchsnap_plugin_sdk::assets::AssetsError;
+use torchsnap_gadget_sdk::assets::AssetsError;
 
 match assets::read("data/seed.json") {
     Ok(bytes) => /* parse and use */,
@@ -852,20 +852,20 @@ match assets::read("data/seed.json") {
 `assets::exists(path) -> Result<bool, AssetsError>` is cheap
 (central-directory lookup for archives, `stat` for directories)
 and useful for optional bundle-conditional fallbacks. Bytes
-cross the WIT boundary in full on every `read`; plugins that
+cross the WIT boundary in full on every `read`; gadgets that
 need to keep an asset around should hold one copy in their own
 linear memory after the first read.
 
 ### `command`
 
-Run a system process. Plugins declare repeated
+Run a system process. Gadgets declare repeated
 `[[permissions.command]]` rules; each `run` call must match
 exactly one rule. The SDK's
-`plugins/plugin-sdk/src/command.rs` provides a builder:
+`gadgets/gadget-sdk/src/command.rs` provides a builder:
 
 ```rust
 use std::time::Duration;
-use torchsnap_plugin_sdk::command;
+use torchsnap_gadget_sdk::command;
 
 let result = command::run("git")
     .arg("log")
@@ -883,14 +883,14 @@ shell, no PTY, no streaming; the host's store mutex serializes
 calls. See ADR 0040 for the full trust model.
 
 `opener`-class binaries (`open`, `xdg-open`, `start`, `cmd /c
-start`) are rejected at manifest parse time — plugins that want
+start`) are rejected at manifest parse time — gadgets that want
 "open with the registered application" use
 `[permissions.opener] open-path = true` instead.
 
 ### `platform`
 
 Runtime OS / arch detection. WASI does not expose either to
-guests, and plugins making platform-conditional decisions
+guests, and gadgets making platform-conditional decisions
 (different binaries, different default paths, OS-gated
 features) need the signal:
 
@@ -912,18 +912,18 @@ constructing argv strings that must satisfy a `path-under`
 constraint referencing host-resolved paths:
 
 ```rust
-let helper = paths::resolve("${plugin-archive}/bin/helper")?;
+let helper = paths::resolve("${gadget-archive}/bin/helper")?;
 let result = command::run(&helper).arg("status").invoke()?;
 ```
 
-Recognized variables: `plugin-data`, `plugin-archive`, `home`,
+Recognized variables: `gadget-data`, `gadget-archive`, `home`,
 `xdg-config`, `xdg-data`.
 
 ### `website-metadata`
 
 Shared host cache for per-domain title / description /
 favicon. Gate with `[permissions]\nwebsite-metadata = true`.
-The SDK's `plugins/plugin-sdk/src/website_metadata.rs` flattens
+The SDK's `gadgets/gadget-sdk/src/website_metadata.rs` flattens
 the WIT's nested `Result<LookupResult, WebsiteMetadataError>`
 into a `Metadata` enum and folds the (programmer-bug) error
 variants into `Unreachable` after logging:
@@ -946,34 +946,34 @@ domain). In a per-keystroke `search()` loop, prefer
 
 ## Frontend components
 
-Plugin frontends are React components bundled with Vite and
+Gadget frontends are React components bundled with Vite and
 loaded into the launcher / settings webviews via dynamic
-`import()` over the host-side `torchsnap-plugin://` URL scheme
+`import()` over the host-side `torchsnap-gadget://` URL scheme
 (ADR 0028).
 
-### `@torchsnap/plugin-sdk` package
+### `@torchsnap/gadget-sdk` package
 
-Plugins declare a `file:`-protocol dependency on the in-tree
-SDK package at `packages/plugin-sdk/`. Subpath exports
-(`packages/plugin-sdk/package.json`):
+Gadgets declare a `file:`-protocol dependency on the in-tree
+SDK package at `packages/gadget-sdk/`. Subpath exports
+(`packages/gadget-sdk/package.json`):
 
 | Subpath                            | What it exports                                                |
 |------------------------------------|----------------------------------------------------------------|
-| `@torchsnap/plugin-sdk`            | Type-only: `PluginViewProps`, `InlineViewProps`, `PluginSettingsProps`, `ActionId`, `EntryIcon`, `SourcedEntry`, `Action`, `Logger`. |
-| `@torchsnap/plugin-sdk/hooks`      | The four host hooks (see below).                               |
-| `@torchsnap/plugin-sdk/components` | Shared launcher building blocks.                               |
-| `@torchsnap/plugin-sdk/keybindings`| Keybinding helper utilities.                                   |
-| `@torchsnap/plugin-sdk/utils`      | Misc helpers.                                                  |
-| `@torchsnap/plugin-sdk/testing`    | Test-only mocks.                                               |
-| `@torchsnap/plugin-sdk/vite`       | The `torchsnap()` Vite plugin.                                 |
-| `@torchsnap/plugin-sdk/theme.css`  | Shared design-token CSS.                                       |
+| `@torchsnap/gadget-sdk`            | Type-only: `GadgetViewProps`, `InlineViewProps`, `GadgetSettingsProps`, `ActionId`, `EntryIcon`, `SourcedEntry`, `Action`, `Logger`. |
+| `@torchsnap/gadget-sdk/hooks`      | The four host hooks (see below).                               |
+| `@torchsnap/gadget-sdk/components` | Shared launcher building blocks.                               |
+| `@torchsnap/gadget-sdk/keybindings`| Keybinding helper utilities.                                   |
+| `@torchsnap/gadget-sdk/utils`      | Misc helpers.                                                  |
+| `@torchsnap/gadget-sdk/testing`    | Test-only mocks.                                               |
+| `@torchsnap/gadget-sdk/vite`       | The `torchsnap()` Vite plugin.                                 |
+| `@torchsnap/gadget-sdk/theme.css`  | Shared design-token CSS.                                       |
 
 ### `vite.config.ts`
 
 ```ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { torchsnap } from "@torchsnap/plugin-sdk/vite";
+import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 
 export default defineConfig({
   plugins: [torchsnap(), react()],
@@ -986,37 +986,37 @@ export default defineConfig({
 ```
 
 The `torchsnap()` plugin
-(`packages/plugin-sdk/src/vite/index.ts`) aliases `react` and
+(`packages/gadget-sdk/src/vite/index.ts`) aliases `react` and
 `react/jsx-runtime` to SDK shims that read the host-supplied
-React off `window.__torchsnap.React`. Plugin bundles ship only
+React off `window.__torchsnap.React`. Gadget bundles ship only
 import declarations — the React runtime stays in the host.
 
 ### Component contract (ADR 0028)
 
-The host wraps every plugin mount in a `<PluginContextProvider>`
+The host wraps every gadget mount in a `<GadgetContextProvider>`
 that supplies identity, runtime capabilities, launcher actions,
-and reactive setting accessors. Plugin components receive
+and reactive setting accessors. Gadget components receive
 **only** per-render data through their props; everything else
-flows through hooks. Sub-components extracted from a plugin
+flows through hooks. Sub-components extracted from a gadget
 component can call hooks directly — no prop threading required.
 
-The four hooks (`packages/plugin-sdk/src/shims/hooks.ts`):
+The four hooks (`packages/gadget-sdk/src/shims/hooks.ts`):
 
 ```tsx
 import {
-  usePluginInfo,
-  usePluginRuntime,
+  useGadgetInfo,
+  useGadgetRuntime,
   useLauncher,
-  usePluginSetting,
-} from "@torchsnap/plugin-sdk/hooks";
+  useGadgetSetting,
+} from "@torchsnap/gadget-sdk/hooks";
 
-import type { PluginViewProps } from "@torchsnap/plugin-sdk";
+import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
 
-export function MyView({ data, results, query, matchedPrefix }: PluginViewProps) {
-  const { id, enabled } = usePluginInfo();              // identity (always)
-  const { sendMessage, logger } = usePluginRuntime();   // RPC + logging (always)
+export function MyView({ data, results, query, matchedPrefix }: GadgetViewProps) {
+  const { id, enabled } = useGadgetInfo();              // identity (always)
+  const { sendMessage, logger } = useGadgetRuntime();   // RPC + logging (always)
   const { dismiss, onExecute, onFooterChange } = useLauncher(); // launcher tree only
-  const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
+  const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
   // ...
 }
 ```
@@ -1028,23 +1028,23 @@ other three are safe everywhere.
 
 | Prop kind            | Carries                                                       |
 |----------------------|---------------------------------------------------------------|
-| `PluginViewProps`    | `results`, `data`, `query`, `matchedPrefix`                   |
+| `GadgetViewProps`    | `results`, `data`, `query`, `matchedPrefix`                   |
 | `InlineViewProps`    | `data`, `query`, `matchedPrefix`, `selected`                  |
-| `PluginSettingsProps`| (empty — every value comes from hooks)                        |
+| `GadgetSettingsProps`| (empty — every value comes from hooks)                        |
 
-`data` is whatever the plugin's `search()` set on
+`data` is whatever the gadget's `search()` set on
 `ViewResponse.data` (a JSON-encoded string the host decodes
-before passing). The plugin defines its own request / response
+before passing). The gadget defines its own request / response
 shapes.
 
-### `sendMessage` is one-shot for WASM plugins
+### `sendMessage` is one-shot for WASM gadgets
 
 ```ts
 const result = await sendMessage<Req, Resp>("lookup", { domain: "example.com" });
 ```
 
 The `onMessage` streaming callback is silently dropped by the
-WASM bridge (`packages/plugin-sdk/src/shims/hooks.ts:88`).
+WASM bridge (`packages/gadget-sdk/src/shims/hooks.ts:88`).
 
 ### Icons (ADR 0027)
 
@@ -1057,21 +1057,21 @@ Heroicons set; `DataUrl` and `AssetIcon` render directly;
 
 ## Storage layout on disk
 
-Per-plugin host-managed state lives under
-`<app_data_dir>/plugin-home/<plugin-id>/`, separate from
-plugin **code** which lives under
-`<app_data_dir>/plugins/`. SQLite databases use the
+Per-gadget host-managed state lives under
+`<app_data_dir>/gadget-home/<gadget-id>/`, separate from
+gadget **code** which lives under
+`<app_data_dir>/gadgets/`. SQLite databases use the
 `.sqlite3` extension project-wide.
 
 | Path                                                              | Owner           |
 |-------------------------------------------------------------------|-----------------|
-| `<app_data_dir>/plugins/<id>.torchsnap`                           | User-installed plugin archives. |
-| `<app_data_dir>/plugin-home/<id>/sql/storage.sqlite3`             | Per-plugin SQLite database. |
-| `<app_data_dir>/plugin-home/<id>/exec-cwd/`                       | Default cwd for `command::run` calls. |
-| `<resource_dir>/plugins/`                                         | App-bundle plugins (read-only). |
+| `<app_data_dir>/gadgets/<id>.torchsnap`                           | User-installed gadget archives. |
+| `<app_data_dir>/gadget-home/<id>/sql/storage.sqlite3`             | Per-gadget SQLite database. |
+| `<app_data_dir>/gadget-home/<id>/exec-cwd/`                       | Default cwd for `command::run` calls. |
+| `<resource_dir>/gadgets/`                                         | App-bundle gadgets (read-only). |
 
-Uninstalling a user plugin removes both `plugins/<id>.torchsnap`
-and `plugin-home/<id>/`. See ADR 0035 (distribution) and
+Uninstalling a user gadget removes both `gadgets/<id>.torchsnap`
+and `gadget-home/<id>/`. See ADR 0035 (distribution) and
 ADR 0018 (SQL storage).
 
 ---
@@ -1082,47 +1082,47 @@ ADR 0018 (SQL storage).
 
 The host scans three roots at startup, in precedence order:
 
-1. **System** — `<resource_dir>/plugins/`. Shipped inside the
+1. **System** — `<resource_dir>/gadgets/`. Shipped inside the
    app bundle; populated at build time from
-   `plugins/bundled.toml`.
-2. **Dev** — `<CARGO_MANIFEST_DIR>/../plugins/`. Debug builds
+   `gadgets/bundled.toml`.
+2. **Dev** — `<CARGO_MANIFEST_DIR>/../gadgets/`. Debug builds
    only; release builds never touch this root.
-3. **User** — `<app_data_dir>/plugins/`. Where user-installed
+3. **User** — `<app_data_dir>/gadgets/`. Where user-installed
    `.torchsnap` archives land.
 
-A plugin id can only be registered once; the first root to
+A gadget id can only be registered once; the first root to
 claim a given id wins. Inside a single root, an archive
 (`foo.torchsnap`) wins over a sibling directory (`foo/`).
 
-The host tags each loaded plugin with a `PluginSourceKind`
-(`system`, `dev`, `user`, `builtin`); the Plugins settings
+The host tags each loaded gadget with a `GadgetSourceKind`
+(`system`, `dev`, `user`, `builtin`); the Gadgets settings
 panel renders this as a badge and gates the uninstall action
 to `user` only.
 
 ### Shipping with the app
 
-The release bundle includes only plugins listed in
-`plugins/bundled.toml`. To add one:
+The release bundle includes only gadgets listed in
+`gadgets/bundled.toml`. To add one:
 
-1. Add the plugin id (a directory name under `plugins/`) to the
+1. Add the gadget id (a directory name under `gadgets/`) to the
    list.
 2. Run `just build`.
 
-The `stage-bundled-plugins` recipe rebuilds each listed plugin,
+The `stage-bundled-gadgets` recipe rebuilds each listed gadget,
 packages it as `.torchsnap`, copies it into
-`target/bundled-plugins/`, and Tauri picks it up via the
+`target/bundled-gadgets/`, and Tauri picks it up via the
 `resources` entry in `tauri.conf.json`.
 
 The repo-root `target/` directory is gitignored and owned
 entirely by this staging flow. Cargo itself uses
-`src-tauri/target/` (host) and `plugins/target/` (plugin
+`src-tauri/target/` (host) and `gadgets/target/` (gadget
 workspace) — those are unrelated.
 
-### Sharing a plugin with users
+### Sharing a gadget with users
 
 Send users the `.torchsnap` file. They drop it onto the
-Plugins settings panel (file picker or drag-drop); the app
-copies it to `<app_data_dir>/plugins/<id>.torchsnap` and
+Gadgets settings panel (file picker or drag-drop); the app
+copies it to `<app_data_dir>/gadgets/<id>.torchsnap` and
 prompts for a restart.
 
 ### Trust model (ADR 0036)
@@ -1132,28 +1132,28 @@ capability surface: no ambient network access, read-only
 filesystem through a manifest allowlist, write-only clipboard,
 no thread spawning, no arbitrary process exec (only
 manifest-declared rules). Users trust the source they got the
-archive from; the host limits what the plugin can reach beyond
+archive from; the host limits what the gadget can reach beyond
 that. ADR 0036 documents the rationale and the triggers for
 revisiting.
 
 ---
 
-## Worked example: the `calculator` plugin
+## Worked example: the `calculator` gadget
 
-`plugins/calculator/` exercises the full plugin authoring
+`gadgets/calculator/` exercises the full gadget authoring
 surface in one place: prefix routing, custom UI, inline UI,
 SQL persistence, scheduled retention, and reactive settings.
 
 ### Manifest
 
 ```toml
-# plugins/calculator/manifest.toml
-[plugin]
+# gadgets/calculator/manifest.toml
+[gadget]
 id          = "calculator"
 name        = "Calculator"
 description = "Evaluate math expressions with history tracking"
 version     = "0.1.0"
-wasm        = "calculator_plugin.wasm"
+wasm        = "calculator_gadget.wasm"
 icon        = "heroicons:calculator"
 prefixes    = ["="]                            # exclusive routing on `=`
 
@@ -1185,7 +1185,7 @@ result  = "CalculatorInline"                   # SearchResponse::InlineUi
 component = "CalculatorSettings"
 ```
 
-### Plugin code (highlights)
+### Gadget code (highlights)
 
 State lives in `thread_local!` `Cell`s — `wasm32-wasip2` is
 single-threaded, so plain interior mutability is sufficient.
@@ -1193,7 +1193,7 @@ single-threaded, so plain interior mutability is sufficient.
 refreshes them when the user toggles the setting:
 
 ```rust
-// plugins/calculator/src/lib.rs (excerpt)
+// gadgets/calculator/src/lib.rs (excerpt)
 
 thread_local! {
     static HEURISTIC_ENABLED: Cell<bool> = const { Cell::new(true) };
@@ -1272,14 +1272,14 @@ impl TasksGuest for CalculatorPlugin {
 }
 ```
 
-The frontend uses `usePluginRuntime().sendMessage("save",
-{ … })` to persist new history rows, `usePluginSetting<number>("retentionDays")`
+The frontend uses `useGadgetRuntime().sendMessage("save",
+{ … })` to persist new history rows, `useGadgetSetting<number>("retentionDays")`
 to render the settings slider, and `useLauncher().onExecute` to
 trigger the standard "copy result" action through the host's
 action palette. The Rust `MessagingGuest::handle_message`
 implementation dispatches `"save" | "load" | "delete"` against
 the SQL store.
 
-The full source is at `plugins/calculator/src/lib.rs`; reading
+The full source is at `gadgets/calculator/src/lib.rs`; reading
 it end-to-end is the fastest way to see every piece in
 context.
