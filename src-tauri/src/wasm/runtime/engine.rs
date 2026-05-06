@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, Store, Strategy};
 use wasmtime_wasi::WasiCtxBuilder;
 
 use crate::network::website_metadata::WebsiteMetadataService;
@@ -67,6 +67,10 @@ impl WasmRuntime {
     ) -> anyhow::Result<Arc<Self>> {
         let mut config = Config::new();
         config.wasm_component_model(true);
+        // Winch is a single-pass compiler that produces ~60% less
+        // compiled code than Cranelift, cutting idle RSS from ~242 MB
+        // to ~110 MB with 7 gadgets loaded. See ADR 0043.
+        config.strategy(Strategy::Winch);
 
         let engine =
             Engine::new(&config).map_err(|e| anyhow::anyhow!("creating wasmtime engine: {e}"))?;
