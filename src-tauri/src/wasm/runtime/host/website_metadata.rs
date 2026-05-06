@@ -49,7 +49,7 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
 
         if !self.website_metadata.enabled {
             return Err(WitError::PermissionDenied(
-                "plugin manifest does not declare permissions.website-metadata = true".into(),
+                "gadget manifest does not declare permissions.website-metadata = true".into(),
             ));
         }
 

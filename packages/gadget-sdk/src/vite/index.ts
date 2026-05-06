@@ -29,7 +29,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export function torchsnap(): Plugin {
   return {
-    name: "torchsnap-plugin-sdk",
+    name: "torchsnap-gadget-sdk",
     config() {
       return {
         resolve: {

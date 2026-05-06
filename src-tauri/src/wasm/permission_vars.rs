@@ -267,8 +267,8 @@ mod tests {
 
     #[test]
     fn validate_rejects_unknown_variable() {
-        let err = validate_variable_references("${plugin-typo}/foo", "test", 0).unwrap_err();
-        assert!(err.to_string().contains("plugin-typo"));
+        let err = validate_variable_references("${gadget-typo}/foo", "test", 0).unwrap_err();
+        assert!(err.to_string().contains("gadget-typo"));
     }
 
     #[test]
@@ -317,9 +317,9 @@ mod tests {
 
     #[test]
     fn substitute_returns_unknown_variable_error() {
-        let err = substitute_variables("${plugin-typo}", &ctx()).unwrap_err();
+        let err = substitute_variables("${gadget-typo}", &ctx()).unwrap_err();
         match err {
-            ResolveError::UnknownVariable(name) => assert_eq!(name, "plugin-typo"),
+            ResolveError::UnknownVariable(name) => assert_eq!(name, "gadget-typo"),
             other => panic!("expected UnknownVariable, got {other:?}"),
         }
     }
