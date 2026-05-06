@@ -2,15 +2,15 @@
 
 ## Overview
 
-Plugin settings are persisted in the `tauri-plugin-store` JSON file
+Gadget settings are persisted in the `tauri-plugin-store` JSON file
 (`settings.json`). Writes always originate from a frontend webview;
 the host listens for the resulting Tauri event and routes the change
 through three independent paths: an in-process watch-channel notifier
-for non-plugin subsystems, a per-plugin coalescing dispatcher for
-plugin reactivity, and a shortcut-reactor signal for global hotkey
+for non-gadget subsystems, a per-gadget coalescing dispatcher for
+gadget reactivity, and a shortcut-reactor signal for global hotkey
 re-registration.
 
-Cross-window propagation (ADR 0006), per-plugin coalescing (ADR 0026),
+Cross-window propagation (ADR 0006), per-gadget coalescing (ADR 0026),
 and the WASM `settings` / `lifecycle::on-setting-changed` interfaces
 (ADR 0029) are the three load-bearing mechanisms.
 
@@ -18,12 +18,12 @@ and the WASM `settings` / `lifecycle::on-setting-changed` interfaces
 
 | Key                              | Owner                     | Purpose                              |
 | -------------------------------- | ------------------------- | ------------------------------------ |
-| `enabled.<plugin-id>`            | host                      | plugin enable toggle                 |
-| `plugins.<plugin-id>.<setting>`  | plugin                    | plugin's own settings namespace      |
-| `<top-level-key>`                | host / non-plugin systems | global app settings                  |
+| `enabled.<gadget-id>`            | host                      | gadget enable toggle                 |
+| `gadgets.<gadget-id>.<setting>`  | gadget                    | gadget's own settings namespace      |
+| `<top-level-key>`                | host / non-gadget systems | global app settings                  |
 
 The enabled toggle lives at top level (`enabled.<id>`), *outside*
-the `plugins.<id>.*` namespace. Plugins never observe their own
+the `gadgets.<id>.*` namespace. Gadgets never observe their own
 enabled-state writes — only the host acts on that key.
 
 ## Cross-Window Store (ADR 0006)
@@ -46,9 +46,9 @@ the wrapper adds:
 
 `useSetting<T>(key)` (`src/hooks/useSetting.ts`) sits on top:
 `useState` seeded from the cache, `subscribe` for updates,
-`setSetting` for writes. `usePluginSetting<T>(key)`
-(`src/contexts/usePluginSetting.ts`) prepends `plugins.<id>.` derived
-from the surrounding `PluginContextProvider`.
+`setSetting` for writes. `useGadgetSetting<T>(key)`
+(`src/contexts/useGadgetSetting.ts`) prepends `gadgets.<id>.` derived
+from the surrounding `GadgetContextProvider`.
 
 ## Backend Listener
 
@@ -72,36 +72,36 @@ app.listen("settings-changed", move |event| {
 The three callees are independent:
 
 - `SettingsNotifier::notify` — feeds `tokio::sync::watch` channels
-  consumed by non-plugin subsystems via `SettingsWatch<T>`.
-- `PluginHost::handle_setting_changed` — routes to the affected plugin
+  consumed by non-gadget subsystems via `SettingsWatch<T>`.
+- `GadgetHost::handle_setting_changed` — routes to the affected gadget
   through its `CoalescingDispatcher`.
 - `notify_shortcut_change` — wakes the shortcut reactor so global
   hotkeys are re-registered.
 
 ## Host Routing — `handle_setting_changed`
 
-`src-tauri/src/plugin_host.rs`. Two prefix branches:
+`src-tauri/src/gadget_host.rs`. Two prefix branches:
 
-**Path 1 — `enabled.<plugin-id>`**
+**Path 1 — `enabled.<gadget-id>`**
 
 The dispatcher is reused as a serialization point even for the
 enable/disable toggle. The callback flips
-`PluginSlot::enabled: AtomicBool` and, on a real transition, calls
-`plugin.enable(app, &PluginContext { settings, frecency })` or
+`GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
+`plugin.enable(app, &GadgetContext { settings, frecency })` or
 `plugin.disable()`. Always signals shortcut re-registration before
 returning.
 
-**Path 2 — `plugins.<plugin-id>.<setting-key>`**
+**Path 2 — `gadgets.<gadget-id>.<setting-key>`**
 
 Splits at the first `.` after the prefix, looks up the slot, and
 enqueues the relative `setting-key` into the slot's
 `CoalescingDispatcher`. The callback simply forwards
-`(key, value)` to `plugin.setting_changed(key, value)`. Plugins see
+`(key, value)` to `plugin.setting_changed(key, value)`. Gadgets see
 relative keys (`"retentionDays"`), never the full path.
 
 ## CoalescingDispatcher (ADR 0026)
 
-`src-tauri/src/coalescing_dispatcher.rs`. One per plugin slot. Two
+`src-tauri/src/coalescing_dispatcher.rs`. One per gadget slot. Two
 mutexes:
 
 - `pending: Mutex<Vec<(String, Value)>>` — the queue.
@@ -120,16 +120,16 @@ Threading model:
 - `enqueue` is called from the Tauri event listener (main thread),
   briefly holding `pending`.
 - `dispatch` runs the callback inline. For Path 2 the callback is
-  `plugin.setting_changed(k, v.clone())`, which for native plugins
-  is whatever the plugin implements and for WASM plugins crosses the
+  `plugin.setting_changed(k, v.clone())`, which for native gadgets
+  is whatever the gadget implements and for WASM gadgets crosses the
   wasmtime boundary.
 
 `pending` is always released before the callback runs, so the two
 mutexes never nest.
 
-## Native Plugin API
+## Native Gadget API
 
-`Plugin` trait (`src-tauri/src/plugins/mod.rs`):
+`Plugin` trait (`src-tauri/src/gadgets/mod.rs`):
 
 ```rust
 fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
@@ -138,22 +138,22 @@ fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
 `initialize_settings` runs once at startup, before `enable()`. It
 receives a `SettingsInit` already loaded from the store under the
-plugin's prefix; the plugin chains `.ensure(key, default)` calls to
+gadget's prefix; the gadget chains `.ensure(key, default)` calls to
 fill missing keys without overwriting user values.
 
 `setting_changed` is the runtime hook, called by the dispatcher with
 relative keys.
 
-## WASM Plugin API (ADR 0029)
+## WASM Gadget API (ADR 0029)
 
 ### Bridge wiring
 
-`WasmPluginBridge` (`src-tauri/src/wasm/bridge.rs`):
+`WasmGadgetBridge` (`src-tauri/src/wasm/bridge.rs`):
 
 - `initialize_settings` reads `[settings]` from the manifest
   (`manifest.toml`) and calls `settings.ensure(key, json_value)` for
   every entry, converting TOML values to JSON.
-- `enable()` clones `ctx.settings` (a `PluginSettings`) and stashes
+- `enable()` clones `ctx.settings` (a `GadgetSettings`) and stashes
   it on the wasmtime store data via `instance.set_settings(...)`
   *before* invoking the guest's `enable()`, so the guest can call
   `settings::get` from within its own initialization.
@@ -164,8 +164,8 @@ relative keys.
   time this fires, the `CoalescingDispatcher` has already collapsed
   rapid same-key writes.
 
-`PluginSettings` (`src-tauri/src/settings.rs`) carries the
-`Arc<Store>` plus a `plugins.<id>.` prefix. `get_raw(key)` returns the
+`GadgetSettings` (`src-tauri/src/settings.rs`) carries the
+`Arc<Store>` plus a `gadgets.<id>.` prefix. `get_raw(key)` returns the
 raw JSON-encoded string for the WIT crossing; guests cannot escape
 their bucket regardless of the key string they pass.
 
@@ -174,7 +174,7 @@ their bucket regardless of the key string they pass.
 ```wit
 interface settings {
   /// Returns JSON-encoded value for `key`, or `none` if unset.
-  /// `key` is relative to the plugin's namespace.
+  /// `key` is relative to the gadget's namespace.
   get: func(key: string) -> option<string>;
 }
 
@@ -192,7 +192,7 @@ defaults nor by a runtime write.
 
 ### SDK helpers
 
-`plugins/plugin-sdk/src/settings.rs`:
+`gadgets/gadget-sdk/src/settings.rs`:
 
 ```rust
 pub fn get<T: DeserializeOwned>(key: &str) -> Option<T>
@@ -207,7 +207,7 @@ deserialize"; callers that need to distinguish use the lower-level
 Typical guest code:
 
 ```rust
-use torchsnap_plugin_sdk::prelude::*;
+use torchsnap_gadget_sdk::prelude::*;
 
 let manual: String = settings::get_or_else("manualToken", String::new);
 ```
@@ -215,7 +215,7 @@ let manual: String = settings::get_or_else("manualToken", String::new);
 ### Reacting to changes
 
 ```rust
-impl LifecycleGuest for ZeroTierPlugin {
+impl LifecycleGuest for ZeroTierGadget {
     fn on_setting_changed(key: String, _value: String) {
         if key == "manualToken" {
             // re-resolve token, invalidate caches, etc.
@@ -224,14 +224,14 @@ impl LifecycleGuest for ZeroTierPlugin {
 }
 ```
 
-`value` is the new JSON-encoded string. Plugins typically re-read
+`value` is the new JSON-encoded string. Gadgets typically re-read
 through the typed `settings::get_or` helper rather than parsing
 `value` inline — the WIT argument exists so the guest doesn't have to
 cross the boundary again, but type-safe access is more ergonomic.
 
 ## Manifest Defaults
 
-`plugins/<id>/manifest.toml`:
+`gadgets/<id>/manifest.toml`:
 
 ```toml
 [settings]
@@ -243,16 +243,16 @@ The bridge converts each value with `serde_json::to_value(toml_value)`
 and feeds it to `SettingsInit::ensure`. Defaults never overwrite
 existing user values.
 
-## SettingsWatch (non-plugin only)
+## SettingsWatch (non-gadget only)
 
 `src-tauri/src/settings_notifier.rs` keeps `SettingsWatch<T>`, a typed
 wrapper over `tokio::sync::watch::Receiver<Value>`. Subscribers obtain
 one via `SettingsNotifier::watch_with_initial(key, initial)` and call
 `.get()`, `.changed().await`, or `.blocking_changed()`.
 
-This is **not** part of the plugin-facing API; plugins use
+This is **not** part of the gadget-facing API; gadgets use
 `setting_changed` / `on-setting-changed`. `SettingsWatch` survives
-for non-plugin subsystems that observe global settings:
+for non-gadget subsystems that observe global settings:
 
 - `FrecencyStore` — watches its own retention / enable settings.
 - `control` — watches the `controlChannel.*` keys to start/stop
@@ -261,12 +261,12 @@ for non-plugin subsystems that observe global settings:
 
 ## Frontend Settings UI
 
-The Settings window builds plugin panels by importing each plugin's
-React settings component. Components consume `usePluginSetting<T>`:
+The Settings window builds gadget panels by importing each gadget's
+React settings component. Components consume `useGadgetSetting<T>`:
 
 ```tsx
-const [retentionDays, setRetentionDays] = usePluginSetting<number>("retentionDays");
-const [bringToFront, setBringToFront]  = usePluginSetting<boolean>("bringToFrontOnPaste");
+const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
+const [bringToFront, setBringToFront]  = useGadgetSetting<boolean>("bringToFrontOnPaste");
 ```
 
 Writes go through `setSetting` → `emit("settings-changed", { key })` →
@@ -276,6 +276,6 @@ self-emitted events), so its own `useSetting` cache stays consistent
 with the rest of the app through one code path.
 
 The host also routes the `OpenSettings` action variant: when a search
-result triggers `ActionId::OpenSettings`, `PluginHost::execute_action`
-emits `"open-plugin-settings"` with the originating plugin id so the
-settings window can jump straight to that plugin's panel.
+result triggers `ActionId::OpenSettings`, `GadgetHost::execute_action`
+emits `"open-gadget-settings"` with the originating gadget id so the
+settings window can jump straight to that gadget's panel.

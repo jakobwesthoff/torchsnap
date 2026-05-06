@@ -1,8 +1,8 @@
-# Plugin Messaging
+# Gadget Messaging
 
 ## Overview
 
-Plugin messaging is the custom RPC channel between a plugin's frontend
+Gadget messaging is the custom RPC channel between a gadget's frontend
 view and its backend handler. It runs *parallel* to the search pipeline
 — a search query never travels through this path, and a custom
 message never travels through the search path.
@@ -10,53 +10,53 @@ message never travels through the search path.
 End-to-end shape:
 
 ```
-plugin frontend
+gadget frontend
     │   sendMessage(method, payload, onMessage?)
     ▼
-@torchsnap/plugin-sdk/hooks (shim → window.__torchsnap)
+@torchsnap/gadget-sdk/hooks (shim → window.__torchsnap)
     │
     ▼
-src/lib/pluginMessage.ts → invoke("plugin_message", { source, method, payload, channel })
+src/lib/gadgetMessage.ts → invoke("gadget_message", { source, method, payload, channel })
     │
     ▼
-src-tauri search::plugin_message  (Tauri command, async, spawn_blocking)
+src-tauri search::gadget_message  (Tauri command, async, spawn_blocking)
     │
     ▼
-PluginHost::handle_message(source, method, payload, channel)
-    │   match by plugin id (source)
+GadgetHost::handle_message(source, method, payload, channel)
+    │   match by gadget id (source)
     ▼
 Plugin::handle_message(method, payload, channel)
     │
     ├── native impl  → may use channel for streaming
-    └── WasmPluginBridge::handle_message  → discards channel,
+    └── WasmGadgetBridge::handle_message  → discards channel,
                                             calls WIT messaging::handle-message
 ```
 
 ## Tauri Command
 
-`src-tauri/src/search/mod.rs::plugin_message`:
+`src-tauri/src/search/mod.rs::gadget_message`:
 
 ```rust
 #[tauri::command]
-pub async fn plugin_message(
+pub async fn gadget_message(
     source: String,
     method: String,
     payload: serde_json::Value,
     channel: tauri::ipc::Channel<serde_json::Value>,
-    state: State<'_, Arc<PluginHost>>,
+    state: State<'_, Arc<GadgetHost>>,
 ) -> Result<serde_json::Value, String>
 ```
 
-Async because plugin handlers run on `tokio::task::spawn_blocking`
+Async because gadget handlers run on `tokio::task::spawn_blocking`
 (handlers may issue `reqwest` HTTP calls that need a Tokio runtime
 context). Only the outermost error is formatted into the rejection
 string — the full `anyhow` chain stays in host logs.
 
 ## Host Routing
 
-`PluginHost::handle_message` (`plugin_host.rs`) walks the registered
-`PluginSlot`s and dispatches to the slot whose `plugin.id() == source`.
-Unknown ids return `anyhow!("unknown plugin source: {source}")`.
+`GadgetHost::handle_message` (`gadget_host.rs`) walks the registered
+`GadgetSlot`s and dispatches to the slot whose `plugin.id() == source`.
+Unknown ids return `anyhow!("unknown gadget source: {source}")`.
 
 The host does no payload validation. Both `payload` and the return
 value are arbitrary `serde_json::Value`; meaning is opaque to the
@@ -64,7 +64,7 @@ host.
 
 ## Plugin Trait
 
-`Plugin::handle_message` in `src-tauri/src/plugins/mod.rs`:
+`Plugin::handle_message` in `src-tauri/src/gadgets/mod.rs`:
 
 ```rust
 fn handle_message(
@@ -73,18 +73,18 @@ fn handle_message(
     _payload: serde_json::Value,
     _channel: tauri::ipc::Channel<serde_json::Value>,
 ) -> anyhow::Result<serde_json::Value> {
-    anyhow::bail!("plugin does not handle custom messages")
+    anyhow::bail!("gadget does not handle custom messages")
 }
 ```
 
-The default rejects everything; plugins opt in by overriding. The
+The default rejects everything; gadgets opt in by overriding. The
 return value is the resolved Promise on the frontend side. The
 `channel` allows pushing zero or more streamed updates *before* the
-return value resolves (native plugins only).
+return value resolves (native gadgets only).
 
 ## WASM Bridge
 
-`WasmPluginBridge::handle_message` (`src-tauri/src/wasm/bridge.rs`)
+`WasmGadgetBridge::handle_message` (`src-tauri/src/wasm/bridge.rs`)
 re-encodes the `serde_json::Value` payload as a JSON string, calls the
 guest's `messaging::handle-message` export, and parses the JSON-string
 response back to `Value`. The streaming `_channel` is intentionally
@@ -92,16 +92,16 @@ ignored.
 
 Errors split into three categories with explicit identities in logs:
 
-- **Plugin-reported** — inner `err(string)` arm of the WIT `result`.
-  Wrapped as `"plugin error: <string>"`.
+- **Gadget-reported** — inner `err(string)` arm of the WIT `result`.
+  Wrapped as `"gadget error: <string>"`.
 - **Bridge-level** — wasmtime trap, payload serialization, malformed
   response JSON. Wrapped via `anyhow::Context` with strings like
   `"serialize handle_message payload"`,
   `"invoke guest handle-message"`,
   `"parse guest handle-message response"`.
-- **Disabled-plugin guard** — `handle_message()` called while the
+- **Disabled-gadget guard** — `handle_message()` called while the
   instance slot is empty. Logged via `log_dispatched_while_disabled`,
-  returns `"handle_message() called on disabled plugin"`.
+  returns `"handle_message() called on disabled gadget"`.
 
 ### WIT contract
 
@@ -121,13 +121,13 @@ convention as `settings::get`. The guest parses with
 
 WASM guests run inside wasmtime with no Tauri runtime access — they
 cannot hold a `Channel<Value>` across async boundaries. The bridge
-silently drops the channel rather than forwarding it; plugins that
+silently drops the channel rather than forwarding it; gadgets that
 genuinely need streaming must stay native or wait for an additive
 `messaging-stream` sub-interface.
 
 ## Rust SDK helpers
 
-`plugins/plugin-sdk/src/messaging.rs`:
+`gadgets/gadget-sdk/src/messaging.rs`:
 
 ```rust
 pub fn parse_payload<T: DeserializeOwned>(payload: &str) -> Result<T, String>
@@ -135,20 +135,20 @@ pub fn to_response<T: Serialize>(value: &T) -> Result<String, String>
 ```
 
 Both fold the `serde_json` diagnostic into the error string so log
-readers can distinguish a malformed payload from a plugin-level
+readers can distinguish a malformed payload from a gadget-level
 rejection.
 
-Plugins that don't expose RPC implement the noop stub via
-`impl_noop_messaging!(MyPlugin)`. The stub returns
-`Err(format!("plugin does not handle messages: {method}"))` so
+Gadgets that don't expose RPC implement the noop stub via
+`impl_noop_messaging!(MyGadget)`. The stub returns
+`Err(format!("gadget does not handle messages: {method}"))` so
 misrouted calls still surface in logs.
 
-### Plugin-side example
+### Gadget-side example
 
-From `plugins/zerotier/src/lib.rs`:
+From `gadgets/zerotier/src/lib.rs`:
 
 ```rust
-impl MessagingGuest for ZeroTierPlugin {
+impl MessagingGuest for ZeroTierGadget {
     fn handle_message(method: String, payload: String) -> Result<String, String> {
         match method.as_str() {
             "refresh"  => { /* ... */ Ok(r#"{"ok":true}"#.into()) }
@@ -167,10 +167,10 @@ impl MessagingGuest for ZeroTierPlugin {
 
 ## Frontend Side
 
-### `sendPluginMessage` (`src/lib/pluginMessage.ts`)
+### `sendGadgetMessage` (`src/lib/gadgetMessage.ts`)
 
 ```ts
-export function sendPluginMessage<TPayload, TResult, TStream = never>(
+export function sendGadgetMessage<TPayload, TResult, TStream = never>(
   source: string,
   method: string,
   payload: TPayload,
@@ -180,29 +180,29 @@ export function sendPluginMessage<TPayload, TResult, TStream = never>(
 
 Always allocates an internal `Channel<TStream>` (Tauri requires the
 parameter even when unused) and wires `channel.onmessage` to
-`onMessage` when provided. Calls the `plugin_message` Tauri command.
+`onMessage` when provided. Calls the `gadget_message` Tauri command.
 
-### Plugin runtime hook
+### Gadget runtime hook
 
-Plugin frontends do not call `sendPluginMessage` directly. They consume
-`PluginRuntime` from `@torchsnap/plugin-sdk/hooks`:
+Gadget frontends do not call `sendGadgetMessage` directly. They consume
+`GadgetRuntime` from `@torchsnap/gadget-sdk/hooks`:
 
 ```ts
-const { sendMessage, logger } = usePluginRuntime();
+const { sendMessage, logger } = useGadgetRuntime();
 await sendMessage<RefreshReq, RefreshResp>("refresh", { force: true });
 ```
 
-`sendMessage` is bound to the plugin id of the surrounding
-`PluginContextProvider` — plugins cannot address each other. The
+`sendMessage` is bound to the gadget id of the surrounding
+`GadgetContextProvider` — gadgets cannot address each other. The
 provider in `src/launcher/Launcher.tsx` constructs the bound function
-by partial-applying `sendPluginMessage` with the context's plugin id.
+by partial-applying `sendGadgetMessage` with the context's gadget id.
 
 The `onMessage` parameter is part of the type signature for symmetry
-with native plugins, but the WASM bridge silently drops channel pushes.
-Frontend code that runs against a WASM plugin must treat the resolved
+with native gadgets, but the WASM bridge silently drops channel pushes.
+Frontend code that runs against a WASM gadget must treat the resolved
 Promise as the only data path.
 
-### `usePluginStream` (`src/hooks/usePluginStream.ts`)
+### `useGadgetStream` (`src/hooks/useGadgetStream.ts`)
 
 Wraps `sendMessage` in `useSyncExternalStore` and returns three
 strictly separate states:
@@ -213,29 +213,29 @@ strictly separate states:
   snapshot: TSnapshot | undefined }
 ```
 
-- `snapshot` updates on every channel push (native streaming plugins).
+- `snapshot` updates on every channel push (native streaming gadgets).
 - `result` updates once when the Promise resolves.
 - `established` flips true alongside `result`.
 
 Re-issues the command when `method` or `payload` identity changes; on
 unmount the channel is dropped and the backend is expected to detect
-the close and stop pushing. With WASM plugins `snapshot` stays
+the close and stop pushing. With WASM gadgets `snapshot` stays
 `undefined` for the lifetime of the call.
 
 ## Long-lived subscriptions (native only)
 
-The native clipboard plugin reuses the channel as a long-lived
+The native clipboard gadget reuses the channel as a long-lived
 subscription: its `"search"` method stashes the frontend's `Channel`
 in `SharedState::ActiveQuery`. When clipboard contents change, the
-plugin re-runs the stashed query and pushes results through the
+gadget re-runs the stashed query and pushes results through the
 stored channel — one channel covers an entire session of result
 updates. This pattern depends on holding `Channel<Value>` across
-async events and is therefore not available to WASM plugins.
+async events and is therefore not available to WASM gadgets.
 
 ## Control Channel (out of scope)
 
 The Unix-domain `control.sock` JSON-RPC server in
-`src-tauri/src/control/` is unrelated to plugin messaging. It exists
+`src-tauri/src/control/` is unrelated to gadget messaging. It exists
 for external automation (CLI driving the launcher) and routes
 `Dismiss` / `SetQuery` commands through a separate Tauri channel
 consumed by the launcher's `useControlChannel` hook.
