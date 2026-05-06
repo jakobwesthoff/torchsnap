@@ -5,16 +5,20 @@
 // =========================================================
 // WasmRuntime — stateless compile/instantiate service
 //
-// Holds the wasmtime `Engine` (one per process) and shared
-// logging infrastructure. Provides two operations:
+// Wraps the wasmtime `Engine` (one per process) and nothing
+// else. Provides three operations:
 //
 // - `compile(wasm_bytes)` → `Component`
-// - `instantiate(gadget_id, &component)` → `WasmGadgetInstance`
+// - `deserialize_component(path)` → `Component`
+// - `instantiate(gadget_id, component, &LogContext)`
+//   → `WasmGadgetInstance`
 //
-// The runtime does not store components — callers own the
-// `Component` lifecycle. `CachedComponent` wraps this
-// runtime with a disk-backed cache and acquire/release
-// semantics for in-memory residency.
+// Logging plumbing is deliberately not stored on the runtime.
+// Callers thread a `LogContext` into `instantiate` so
+// `GadgetState` can route guest log items and the
+// per-instance `Logger` can be built. Span creation around
+// `acquire` and `instantiate` is the orchestrator's
+// responsibility — see `CachedComponent`.
 // =========================================================
 
 use std::sync::Arc;
@@ -25,8 +29,7 @@ use wasmtime_wasi::WasiCtxBuilder;
 
 use crate::wasm::bindings;
 use crate::wasm::logging::LogSource;
-use crate::wasm::logging::channel::LogSender;
-use crate::wasm::logging::spans::{Logger, SpanRegistry};
+use crate::wasm::logging::channel::LogContext;
 
 use super::instance::WasmGadgetInstance;
 use super::state::GadgetState;
@@ -39,8 +42,6 @@ use super::state::GadgetState;
 /// tests directly) owns the `Component` lifetime.
 pub struct WasmRuntime {
     engine: Engine,
-    log_sender: LogSender,
-    span_registry: Arc<SpanRegistry>,
 }
 
 impl WasmRuntime {
@@ -49,10 +50,7 @@ impl WasmRuntime {
     /// Returns `Arc<Self>` so every `CachedComponent` can
     /// hold a cheap clone for on-demand compilation and
     /// instantiation.
-    pub fn new(
-        log_sender: LogSender,
-        span_registry: Arc<SpanRegistry>,
-    ) -> anyhow::Result<Arc<Self>> {
+    pub fn new() -> anyhow::Result<Arc<Self>> {
         let mut config = Config::new();
         config.wasm_component_model(true);
         // Winch is a single-pass compiler that produces ~60% less
@@ -62,11 +60,7 @@ impl WasmRuntime {
 
         let engine = Engine::new(&config)
             .map_err(|e| anyhow::anyhow!("create wasmtime engine: {e}"))?;
-        Ok(Arc::new(Self {
-            engine,
-            log_sender,
-            span_registry,
-        }))
+        Ok(Arc::new(Self { engine }))
     }
 
     /// Deserialize a compiled component from a cache file.
@@ -109,16 +103,6 @@ impl WasmRuntime {
         format!("{:016x}", hasher.finish())
     }
 
-    /// Create a Logger for a specific gadget, used for
-    /// host-side span creation around guest calls.
-    fn logger_for(&self, gadget_id: &str) -> Logger {
-        Logger::new(
-            self.log_sender.clone(),
-            Arc::clone(&self.span_registry),
-            LogSource::Gadget(gadget_id.to_string()),
-        )
-    }
-
     /// Compile WASM bytes into a wasmtime `Component`.
     ///
     /// The returned `Component` is heap-allocated. Callers
@@ -139,17 +123,18 @@ impl WasmRuntime {
     /// on every call because it references `GadgetState`, but
     /// construction is just map inserts (no WASM compilation)
     /// and this method is not in a hot path.
+    ///
+    /// No span is started here — orchestrators create their
+    /// own (`CachedComponent::instantiate` wraps this call in
+    /// an `instantiate` child of the `init` span). Tests that
+    /// hit this directly need no logging context other than
+    /// what `LogContext::test_context()` provides.
     pub fn instantiate(
         &self,
         gadget_id: &str,
         component: &Component,
+        log_ctx: &LogContext,
     ) -> anyhow::Result<WasmGadgetInstance> {
-        let logger = self.logger_for(gadget_id);
-        let _instantiate_span = logger
-            .span("instantiate")
-            .meta("gadget_id", gadget_id)
-            .start();
-
         let mut linker = Linker::<GadgetState>::new(&self.engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| anyhow::anyhow!("link WASI imports: {e}"))?;
@@ -170,8 +155,8 @@ impl WasmRuntime {
         let state = GadgetState::new(
             gadget_id.to_string(),
             wasi,
-            self.log_sender.clone(),
-            Arc::clone(&self.span_registry),
+            log_ctx.sender.clone(),
+            Arc::clone(&log_ctx.span_registry),
         );
 
         let mut store = Store::new(&self.engine, state);
@@ -179,6 +164,7 @@ impl WasmRuntime {
         let gadget = bindings::Gadget::instantiate(&mut store, component, &linker)
             .map_err(|e| anyhow::anyhow!("instantiate WASM gadget: {e}"))?;
 
+        let logger = log_ctx.logger(LogSource::Gadget(gadget_id.to_string()));
         Ok(WasmGadgetInstance::from_parts(store, gadget, logger))
     }
 }

@@ -30,7 +30,7 @@ use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction}
 use crate::gadgets::Gadget;
 use crate::settings::SettingsInit;
 
-use super::logging::channel::LogSender;
+use super::logging::channel::{LogContext, LogSender};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::permission_vars::PathContext;
@@ -183,11 +183,15 @@ impl WasmGadgetBridge {
     pub fn new(
         manifest: Manifest,
         runtime: Arc<WasmRuntime>,
-        log_sender: LogSender,
+        log_ctx: LogContext,
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
         metadata_service: Option<Arc<WebsiteMetadataService>>,
     ) -> anyhow::Result<Self> {
+        // Bridge code that emits log items directly (scheduler
+        // task errors, lifecycle messages) only needs the
+        // sender half; pull it out once for storage.
+        let log_sender = log_ctx.sender.clone();
         let gadget_id = manifest.gadget.id.as_str().to_string();
 
         // Materialize the SQL configuration from the
@@ -291,6 +295,7 @@ impl WasmGadgetBridge {
 
         let cached = CachedComponent::new(
             runtime,
+            log_ctx,
             Arc::clone(&source),
             gadget_data.clone(),
         );
@@ -1063,19 +1068,14 @@ mod tests {
     //! driven directly instead.
 
     use super::*;
-    use crate::wasm::logging::channel::LogSender;
-    use crate::wasm::logging::spans::SpanRegistry;
+    use crate::wasm::logging::channel::LogContext;
     use crate::wasm::runtime::WasmRuntime;
     use crate::wasm::source::DirectorySource;
 
     const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
     fn test_runtime() -> Arc<WasmRuntime> {
-        WasmRuntime::new(
-            LogSender::test_sender(),
-            Arc::new(SpanRegistry::new()),
-        )
-        .expect("runtime construction succeeds")
+        WasmRuntime::new().expect("runtime construction succeeds")
     }
 
     /// Build a bridge from a committed fixture directory.
@@ -1094,7 +1094,7 @@ mod tests {
         WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data_dir,
             None,
@@ -1138,7 +1138,7 @@ icon = "heroicons:x-mark"
         let result = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data.path(),
             None,
@@ -1186,7 +1186,7 @@ migrations = ["migrations/001_init.sql"]
         let result = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data.path(),
             None,
@@ -1328,7 +1328,7 @@ migrations = ["migrations/001_init.sql"]
         let bridge = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data.path(),
             None,
@@ -1407,7 +1407,7 @@ migrations = ["migrations/001_init.sql"]
         WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data_dir,
             None,
@@ -1531,7 +1531,7 @@ schedule = "*/5 * * * *"
         let bridge = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
-            LogSender::test_sender(),
+            LogContext::test_context(),
             source,
             app_data.path(),
             None,

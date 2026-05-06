@@ -9,7 +9,8 @@
 //
 //   WasmRuntime (one per app, stateless service)
 //    ├── compile(wasm_bytes) → Component
-//    └── instantiate(gadget_id, &component) → WasmGadgetInstance
+//    └── instantiate(gadget_id, &component, &LogContext)
+//                                   → WasmGadgetInstance
 //
 //   CachedComponent (one per gadget, owned by bridge)
 //    ├── acquire() → &Component  (deserialize from disk cache)
@@ -66,9 +67,7 @@ use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use super::bindings;
 #[cfg(test)]
-use super::logging::channel::LogSender;
-#[cfg(test)]
-use super::logging::spans::SpanRegistry;
+use super::logging::channel::LogContext;
 #[cfg(test)]
 use host::http::HttpState;
 #[cfg(test)]
@@ -86,15 +85,11 @@ mod tests {
     const MINIMAL_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/minimal-gadget/minimal_gadget.wasm");
 
-    /// Construct a bare `WasmRuntime` for tests. Uses a
-    /// discarding `LogSender` and a fresh `SpanRegistry` so
-    /// tests do not depend on a running logging task.
+    /// Construct a bare `WasmRuntime` for tests. Engine-only
+    /// — logging plumbing flows through `instantiate` via the
+    /// `LogContext` argument, not through the runtime.
     fn test_runtime() -> Arc<WasmRuntime> {
-        WasmRuntime::new(
-            LogSender::test_sender(),
-            Arc::new(SpanRegistry::new()),
-        )
-        .expect("WasmRuntime::new should succeed with default config")
+        WasmRuntime::new().expect("WasmRuntime::new should succeed with default config")
     }
 
     /// Compile and return the minimal-gadget fixture component.
@@ -113,7 +108,7 @@ mod tests {
         let runtime = test_runtime();
         let component = compile_minimal(&runtime);
         let instance = runtime
-            .instantiate("minimal", &component)
+            .instantiate("minimal", &component, &LogContext::test_context())
             .expect("instantiate");
         instance.enable().expect("guest enable no-op");
     }
@@ -129,8 +124,12 @@ mod tests {
         let runtime = test_runtime();
         let component = compile_minimal(&runtime);
 
-        let first = runtime.instantiate("minimal", &component).expect("first");
-        let second = runtime.instantiate("minimal", &component).expect("second");
+        let first = runtime
+            .instantiate("minimal", &component, &LogContext::test_context())
+            .expect("first");
+        let second = runtime
+            .instantiate("minimal", &component, &LogContext::test_context())
+            .expect("second");
 
         first.clear_sql_storage();
         second
@@ -537,7 +536,7 @@ mod tests {
             .compile(OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-gadget", &component)
+            .instantiate("opener-http-gadget", &component, &LogContext::test_context())
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
@@ -674,7 +673,11 @@ mod tests {
             .compile(WEBSITE_METADATA_GADGET_WASM)
             .expect("compile website-metadata fixture");
         let instance = runtime
-            .instantiate("website-metadata-gadget", &component)
+            .instantiate(
+                "website-metadata-gadget",
+                &component,
+                &LogContext::test_context(),
+            )
             .expect("instantiate website-metadata fixture");
         (runtime, instance)
     }
@@ -1070,7 +1073,7 @@ icon = "heroicons:beaker"
             .compile(ASSETS_GADGET_WASM)
             .expect("compile assets fixture");
         let instance = runtime
-            .instantiate("assets-gadget", &component)
+            .instantiate("assets-gadget", &component, &LogContext::test_context())
             .expect("instantiate assets fixture");
         (runtime, instance)
     }
@@ -1269,7 +1272,7 @@ icon = "heroicons:beaker"
             .compile(COMMAND_GADGET_WASM)
             .expect("compile command fixture");
         let instance = runtime
-            .instantiate("command-gadget", &component)
+            .instantiate("command-gadget", &component, &LogContext::test_context())
             .expect("instantiate command fixture");
 
         // Stash a path context so the default cwd resolution

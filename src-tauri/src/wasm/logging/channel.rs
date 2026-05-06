@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::{broadcast, mpsc};
 
+use super::spans::SpanRegistry;
 use super::storage::{LogStorage, RingBufferStorage};
 use super::{BROADCAST_CAPACITY, CHANNEL_CAPACITY, DEFAULT_RING_BUFFER_CAPACITY, LogItem};
 
@@ -40,8 +41,8 @@ use super::{BROADCAST_CAPACITY, CHANNEL_CAPACITY, DEFAULT_RING_BUFFER_CAPACITY, 
 // =========================================================
 
 /// Cheaply cloneable handle for sending log items without
-/// blocking. Held by `GadgetState`, `Logger`, and any host
-/// code that needs to emit log items.
+/// blocking. Held inside `LogContext`, `Logger`, and any
+/// host code that needs to emit log items directly.
 ///
 /// If the bounded channel is full, `send()` drops the item
 /// and increments a counter. The frontend can query the
@@ -85,6 +86,53 @@ impl LogSender {
 }
 
 // =========================================================
+// LogContext — producer-side handle
+// =========================================================
+
+/// Producer-side handle to the logging system.
+///
+/// Bundles exactly what a code path needs in order to emit
+/// log items and start spans — `LogSender` plus the shared
+/// `SpanRegistry`. Cheap to clone (each field is itself an
+/// `Arc`-backed handle); pass by value at constructor
+/// boundaries and store directly.
+///
+/// Consumers that need storage queries or broadcast
+/// subscriptions (the devtools log commands) keep using
+/// `Arc<LoggingSystem>` directly. Those are receiver-side
+/// concerns and intentionally not part of this handle, so
+/// producer code cannot reach for them by accident.
+#[derive(Clone)]
+pub struct LogContext {
+    pub sender: LogSender,
+    pub span_registry: Arc<SpanRegistry>,
+}
+
+impl LogContext {
+    /// Build a `Logger` bound to a specific `LogSource`.
+    /// Convenience over calling `Logger::new` with the three
+    /// parts inline at every call site.
+    pub fn logger(&self, source: super::LogSource) -> super::spans::Logger {
+        super::spans::Logger::new(
+            self.sender.clone(),
+            Arc::clone(&self.span_registry),
+            source,
+        )
+    }
+
+    /// Build a `LogContext` with a discarding sender and a
+    /// fresh registry. For tests that don't read the log
+    /// stream back.
+    #[cfg(test)]
+    pub fn test_context() -> Self {
+        Self {
+            sender: LogSender::test_sender(),
+            span_registry: Arc::new(SpanRegistry::new()),
+        }
+    }
+}
+
+// =========================================================
 // LoggingSystem
 // =========================================================
 
@@ -92,13 +140,17 @@ impl LogSender {
 /// `setup()`, before any gadgets are loaded.
 ///
 /// Owns the ring buffer storage (behind a Mutex for Tauri
-/// command access) and the broadcast sender for live
-/// subscribers. The async logging task runs for the lifetime
-/// of the app.
+/// command access), the broadcast sender for live
+/// subscribers, and the shared `SpanRegistry`. The async
+/// logging task runs for the lifetime of the app.
+///
+/// Producer-side code does not consume `LoggingSystem`
+/// directly — see `LogContext` for the producer-side handle.
 pub struct LoggingSystem {
     sender: LogSender,
     storage: Arc<Mutex<Box<dyn LogStorage>>>,
     broadcast_tx: broadcast::Sender<LogItem>,
+    span_registry: Arc<SpanRegistry>,
 }
 
 impl LoggingSystem {
@@ -128,12 +180,30 @@ impl LoggingSystem {
             sender: LogSender { tx, dropped },
             storage,
             broadcast_tx,
+            span_registry: Arc::new(SpanRegistry::new()),
         }
     }
 
     /// Get a cloneable sender for producing log items.
     pub fn sender(&self) -> LogSender {
         self.sender.clone()
+    }
+
+    /// Shared span registry. The same `Arc` is handed out to
+    /// every consumer so span ids are unique process-wide.
+    pub fn span_registry(&self) -> &Arc<SpanRegistry> {
+        &self.span_registry
+    }
+
+    /// Producer-side handle bundling `LogSender` plus the
+    /// shared `SpanRegistry`. Threaded into orchestrators
+    /// (`WasmGadgetBridge`, `CachedComponent`) and on into
+    /// `WasmRuntime::instantiate` and `GadgetState::new`.
+    pub fn context(&self) -> LogContext {
+        LogContext {
+            sender: self.sender.clone(),
+            span_registry: Arc::clone(&self.span_registry),
+        }
     }
 
     /// Subscribe to live log items. Returns a broadcast
@@ -252,6 +322,68 @@ mod tests {
             LogItemKind::Message { message, .. } => assert_eq!(message, "test message"),
             other => panic!("expected Message, got {other:?}"),
         }
+    }
+
+    // ---------------------------------------------------------
+    // LogContext + LoggingSystem::context()
+    // ---------------------------------------------------------
+
+    #[tokio::test]
+    async fn log_context_logger_emits_with_provided_source() {
+        let system = LoggingSystem::start();
+        let ctx = system.context();
+
+        // The logger built from a context binds to the source
+        // we pass in, regardless of any other source already
+        // in use elsewhere.
+        let logger = ctx.logger(LogSource::Gadget("test-gadget".to_string()));
+        logger.log(LogLevel::Info, "hello");
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let storage = system.storage().lock().expect("lock");
+        let items = storage.tail(10);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, LogSource::Gadget("test-gadget".to_string()));
+        match &items[0].kind {
+            LogItemKind::Message { message, level, .. } => {
+                assert_eq!(message, "hello");
+                assert_eq!(*level, LogLevel::Info);
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn logging_system_context_shares_sender_and_registry() {
+        let system = LoggingSystem::start();
+        let ctx = system.context();
+
+        // The registry handed out by `context()` must be the
+        // same `Arc` the system holds — span ids would
+        // otherwise collide between code paths that started
+        // spans through different registries.
+        assert!(Arc::ptr_eq(&ctx.span_registry, system.span_registry()));
+
+        // Items sent through the context's sender must land
+        // in the system's storage (proves the sender is wired
+        // to the same logging task, not a fresh one).
+        ctx.sender.send(test_item());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert_eq!(system.storage().lock().expect("lock").len(), 1);
+    }
+
+    #[test]
+    fn log_context_clone_shares_underlying_state() {
+        // `LogContext` is `Clone` and clones must share the
+        // underlying sender + registry. This is what makes it
+        // safe to thread copies through every constructor that
+        // touches logging.
+        let ctx = LogContext::test_context();
+        let cloned = ctx.clone();
+
+        assert!(Arc::ptr_eq(&ctx.span_registry, &cloned.span_registry));
     }
 
     #[tokio::test]
