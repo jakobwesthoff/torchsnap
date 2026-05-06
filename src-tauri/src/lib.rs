@@ -753,10 +753,10 @@ pub fn run() {
             // gadget loading so that compilation and instantiation
             // timing is captured from the very first gadget.
             // =========================================================
-            let logging_system = wasm::logging::channel::LoggingSystem::start();
-            let log_sender = logging_system.sender();
-            let span_registry = Arc::new(wasm::logging::spans::SpanRegistry::new());
-            let logging_system = Arc::new(logging_system);
+            let logging_system = Arc::new(wasm::logging::channel::LoggingSystem::start());
+            let log_ctx = logging_system.context();
+            let log_sender = log_ctx.sender.clone();
+            let span_registry = Arc::clone(logging_system.span_registry());
 
             // =========================================================
             // WASM gadgets
@@ -777,8 +777,7 @@ pub fn run() {
             let resource_dir = app.path().resource_dir().ok();
             match load_wasm_gadgets(
                 &mut host,
-                &log_sender,
-                &span_registry,
+                &log_ctx,
                 &source_registry,
                 &app_data_dir,
                 resource_dir.as_deref(),
@@ -991,17 +990,14 @@ pub fn run() {
 
 fn load_wasm_gadgets(
     host: &mut gadget_host::GadgetHost,
-    log_sender: &wasm::logging::channel::LogSender,
-    span_registry: &Arc<wasm::logging::spans::SpanRegistry>,
+    log_ctx: &wasm::logging::channel::LogContext,
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
     resource_dir: Option<&std::path::Path>,
     metadata_service: Arc<network::website_metadata::WebsiteMetadataService>,
 ) -> anyhow::Result<usize> {
-    let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new(
-        log_sender.clone(),
-        Arc::clone(span_registry),
-    )?;
+    let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new()?;
+    let log_sender = &log_ctx.sender;
 
     let roots = wasm::discovery::enumerate_search_roots(resource_dir, app_data_dir);
 
@@ -1056,7 +1052,7 @@ fn load_wasm_gadgets(
                 source,
                 source_kind,
                 host,
-                log_sender,
+                log_ctx,
                 source_registry,
                 app_data_dir,
                 Some(Arc::clone(&metadata_service)),
@@ -1140,7 +1136,7 @@ fn load_single_wasm_gadget(
     source: Arc<dyn wasm::source::GadgetSource + Send + Sync>,
     source_kind: wasm::source::GadgetSourceKind,
     host: &mut gadget_host::GadgetHost,
-    log_sender: &wasm::logging::channel::LogSender,
+    log_ctx: &wasm::logging::channel::LogContext,
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
     metadata_service: Option<Arc<network::website_metadata::WebsiteMetadataService>>,
@@ -1150,7 +1146,7 @@ fn load_single_wasm_gadget(
     let bridge = wasm::bridge::WasmGadgetBridge::new(
         manifest,
         runtime,
-        log_sender.clone(),
+        log_ctx.clone(),
         Arc::clone(&source),
         app_data_dir,
         metadata_service,
