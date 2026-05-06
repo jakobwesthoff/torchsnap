@@ -76,7 +76,7 @@ export function SettingsPanel() {
           <SettingsSidebar
             generalItems={GENERAL_SECTIONS}
             customizationItems={CUSTOMIZATION_SECTIONS}
-            pluginItems={gadgetSections}
+            gadgetItems={gadgetSections}
             activeId={activeSection}
             onSelect={setActiveSection}
           />

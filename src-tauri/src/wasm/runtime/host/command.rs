@@ -209,7 +209,7 @@ fn is_credential_var(name: &str) -> bool {
 /// minus the credential denylist, with `PATH` empty entries
 /// stripped, plus the gadget's per-call overrides.
 fn build_command_env(
-    plugin_overrides: &[(String, String)],
+    gadget_overrides: &[(String, String)],
 ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     use std::ffi::OsString;
 
@@ -228,7 +228,7 @@ fn build_command_env(
         })
         .collect();
 
-    for (override_key, override_value) in plugin_overrides {
+    for (override_key, override_value) in gadget_overrides {
         let key = OsString::from(override_key);
         env.retain(|(existing, _)| existing != &key);
         env.push((key, OsString::from(override_value)));

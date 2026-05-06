@@ -769,7 +769,7 @@ mod tests {
     }
 
     #[test]
-    fn reject_missing_plugin_section() {
+    fn reject_missing_gadget_section() {
         let toml = r#"
             [settings]
             key = "value"
@@ -796,7 +796,7 @@ mod tests {
     // =====================================================
 
     #[test]
-    fn ignore_unknown_fields_in_plugin_section() {
+    fn ignore_unknown_fields_in_gadget_section() {
         let toml = r#"
             [gadget]
             id = "test"

@@ -42,7 +42,7 @@ try {
 const config = parse(raw);
 
 // =========================================================
-// Validate and extract the plugin list
+// Validate and extract the gadget list
 // =========================================================
 
 // An absent or empty `gadgets` key is allowed — it means the author

@@ -16,8 +16,8 @@
 //   tools/toml-get <file> <dotted.key.path>
 //
 // Examples:
-//   tools/toml-get plugins/calculator/manifest.toml plugin.wasm
-//   tools/toml-get plugins/calculator/Cargo.toml    package.name
+//   tools/toml-get gadgets/calculator/manifest.toml gadget.wasm
+//   tools/toml-get gadgets/calculator/Cargo.toml    package.name
 //
 
 import { readFileSync } from "fs";

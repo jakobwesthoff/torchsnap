@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::{GadgetIcon, Manifest};
-use crate::wasm::source::validate_plugin_path;
+use crate::wasm::source::validate_gadget_path;
 
 /// Walk every path-like field of a parsed manifest and run
-/// it through [`validate_plugin_path`]. Rejects any manifest
+/// it through [`validate_gadget_path`]. Rejects any manifest
 /// that references an absolute path, a traversal, a Windows-
 /// style prefix, a backslash, or a NUL byte. Called from
 /// [`Manifest::parse`] — no caller needs to invoke it
@@ -24,28 +24,28 @@ use crate::wasm::source::validate_plugin_path;
 /// Not covered: `frontend.views` and `frontend.inline_views`
 /// values — those are JavaScript export names, not paths.
 pub(super) fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()> {
-    validate_plugin_path(&manifest.gadget.wasm)
+    validate_gadget_path(&manifest.gadget.wasm)
         .map_err(|e| anyhow::anyhow!("invalid `gadget.wasm`: {e}"))?;
 
     if let GadgetIcon::Asset(ref path) = manifest.gadget.icon {
-        validate_plugin_path(path).map_err(|e| anyhow::anyhow!("invalid `gadget.icon`: {e}"))?;
+        validate_gadget_path(path).map_err(|e| anyhow::anyhow!("invalid `gadget.icon`: {e}"))?;
     }
 
     if let Some(ref frontend) = manifest.frontend {
         if let Some(ref path) = frontend.launcher_bundle {
-            validate_plugin_path(path)
+            validate_gadget_path(path)
                 .map_err(|e| anyhow::anyhow!("invalid `frontend.launcher-bundle`: {e}"))?;
         }
         if let Some(ref path) = frontend.settings_bundle {
-            validate_plugin_path(path)
+            validate_gadget_path(path)
                 .map_err(|e| anyhow::anyhow!("invalid `frontend.settings-bundle`: {e}"))?;
         }
         if let Some(ref path) = frontend.launcher_css {
-            validate_plugin_path(path)
+            validate_gadget_path(path)
                 .map_err(|e| anyhow::anyhow!("invalid `frontend.launcher-css`: {e}"))?;
         }
         if let Some(ref path) = frontend.settings_css {
-            validate_plugin_path(path)
+            validate_gadget_path(path)
                 .map_err(|e| anyhow::anyhow!("invalid `frontend.settings-css`: {e}"))?;
         }
     }
@@ -54,7 +54,7 @@ pub(super) fn validate_manifest_paths(manifest: &Manifest) -> anyhow::Result<()>
         && let Some(ref sql) = storage.sql
     {
         for path in &sql.migrations {
-            validate_plugin_path(path).map_err(|e| {
+            validate_gadget_path(path).map_err(|e| {
                 anyhow::anyhow!("invalid `storage.sql.migrations` entry `{path}`: {e}")
             })?;
         }
@@ -71,7 +71,7 @@ mod tests {
     // Manifest path guard
     //
     // Every path-like field routes through
-    // `validate_plugin_path`. These tests cover both the
+    // `validate_gadget_path`. These tests cover both the
     // per-field plumbing (did the parser call the guard on
     // THIS field?) and one happy-path full-manifest case so
     // regressions that skip the validator wholesale are
