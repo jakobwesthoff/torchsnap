@@ -89,7 +89,7 @@ impl LogSender {
 // =========================================================
 
 /// Central logging coordinator. Created once during app
-/// `setup()`, before any plugins are loaded.
+/// `setup()`, before any gadgets are loaded.
 ///
 /// Owns the ring buffer storage (behind a Mutex for Tauri
 /// command access) and the broadcast sender for live

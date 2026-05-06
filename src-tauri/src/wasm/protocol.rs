@@ -737,7 +737,7 @@ mod tests {
             name = "Hello World"
             description = "Test gadget"
             version = "0.1.0"
-            wasm = "hello_world_plugin.wasm"
+            wasm = "hello_world_gadget.wasm"
             icon = "heroicons:hand-raised"
             prefixes = ["!"]
 

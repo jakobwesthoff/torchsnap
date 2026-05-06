@@ -25,7 +25,7 @@
      * must be explicit. */
     "types": ["vite/client"],
 
-    /* Path aliases — stable import paths for plugin SDK surface.
+    /* Path aliases — stable import paths for gadget SDK surface.
      * Internal aliases now, real packages later. Must be kept in
      * sync with vite.config.ts resolve.alias. */
     "paths": {

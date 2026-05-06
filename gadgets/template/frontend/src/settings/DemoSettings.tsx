@@ -50,7 +50,7 @@ export function DemoSettings() {
             placeholder="Enter a greeting..."
           />
           <p className="text-xs text-text-muted">
-            Stored at <code>plugins.template.greeting</code>.
+            Stored at <code>gadgets.template.greeting</code>.
           </p>
         </div>
       </Section>

@@ -253,7 +253,7 @@ mod tests {
     // ----- LogSource serde -----
 
     #[test]
-    fn log_source_plugin_serialization() {
+    fn log_source_gadget_serialization() {
         let source = LogSource::Gadget("hello-world".into());
         let json = serde_json::to_value(&source).unwrap();
         assert_eq!(json["type"], "gadget");

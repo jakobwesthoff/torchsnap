@@ -22,7 +22,7 @@ interface SettingsSidebarProps {
   /** Customization group items (Appearance, Frecency, …). */
   customizationItems: SidebarItem[];
   /** Gadget-provided sections. */
-  pluginItems: SidebarItem[];
+  gadgetItems: SidebarItem[];
   /** Currently selected section ID. */
   activeId: string;
   /** Called when a section is selected. */
@@ -36,7 +36,7 @@ interface SettingsSidebarProps {
 export function SettingsSidebar({
   generalItems,
   customizationItems,
-  pluginItems,
+  gadgetItems,
   activeId,
   onSelect,
 }: SettingsSidebarProps) {
@@ -53,8 +53,8 @@ export function SettingsSidebar({
         />
       )}
 
-      {pluginItems.length > 0 && (
-        <SidebarGroup label="Gadgets" items={pluginItems} activeId={activeId} onSelect={onSelect} />
+      {gadgetItems.length > 0 && (
+        <SidebarGroup label="Gadgets" items={gadgetItems} activeId={activeId} onSelect={onSelect} />
       )}
     </nav>
   );

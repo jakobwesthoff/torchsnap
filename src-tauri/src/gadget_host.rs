@@ -1186,76 +1186,76 @@ mod tests {
 
     #[test]
     fn no_gadgets_no_match() {
-        let plugins = gadget_slots(vec![]);
-        assert!(find_prefix_match(&plugins, "=2+2").is_none());
+        let gadgets = gadget_slots(vec![]);
+        assert!(find_prefix_match(&gadgets, "=2+2").is_none());
     }
 
     #[test]
     fn no_prefix_gadgets_no_match() {
-        let plugins = gadget_slots(vec![MockGadget::new("a"), MockGadget::new("b")]);
-        assert!(find_prefix_match(&plugins, "hello").is_none());
+        let gadgets = gadget_slots(vec![MockGadget::new("a"), MockGadget::new("b")]);
+        assert!(find_prefix_match(&gadgets, "hello").is_none());
     }
 
     #[test]
     fn single_prefix_match() {
-        let plugins = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
-        let (gadget, prefix) = find_prefix_match(&plugins, "=2+2").unwrap();
+        let gadgets = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
+        let (gadget, prefix) = find_prefix_match(&gadgets, "=2+2").unwrap();
         assert_eq!(gadget.id(), "calc");
         assert_eq!(prefix, "=");
     }
 
     #[test]
     fn longest_prefix_wins() {
-        let plugins = gadget_slots(vec![
+        let gadgets = gadget_slots(vec![
             MockGadget::new("short").with_prefixes(&["!"]),
             MockGadget::new("long").with_prefixes(&["!g"]),
         ]);
 
         // "!google" matches both "!" and "!g" — longest wins.
-        let (gadget, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        let (gadget, prefix) = find_prefix_match(&gadgets, "!google").unwrap();
         assert_eq!(gadget.id(), "long");
         assert_eq!(prefix, "!g");
     }
 
     #[test]
     fn prefix_must_be_at_start() {
-        let plugins = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
+        let gadgets = gadget_slots(vec![MockGadget::new("calc").with_prefixes(&["="])]);
         // "hello =" doesn't start with "=".
-        assert!(find_prefix_match(&plugins, "hello =").is_none());
+        assert!(find_prefix_match(&gadgets, "hello =").is_none());
     }
 
     #[test]
     fn disabled_gadget_prefix_skipped() {
-        let plugins = gadget_slots(vec![
+        let gadgets = gadget_slots(vec![
             MockGadget::new("calc")
                 .with_prefixes(&["="])
                 .with_enabled(false),
         ]);
-        assert!(find_prefix_match(&plugins, "=2+2").is_none());
+        assert!(find_prefix_match(&gadgets, "=2+2").is_none());
     }
 
     #[test]
     fn disabled_gadget_skipped_fallback_to_shorter() {
-        let plugins = gadget_slots(vec![
+        let gadgets = gadget_slots(vec![
             MockGadget::new("disabled-long")
                 .with_prefixes(&["!g"])
                 .with_enabled(false),
             MockGadget::new("enabled-short").with_prefixes(&["!"]),
         ]);
 
-        let (gadget, prefix) = find_prefix_match(&plugins, "!google").unwrap();
+        let (gadget, prefix) = find_prefix_match(&gadgets, "!google").unwrap();
         assert_eq!(gadget.id(), "enabled-short");
         assert_eq!(prefix, "!");
     }
 
     #[test]
     fn multi_char_prefix() {
-        let plugins = gadget_slots(vec![
+        let gadgets = gadget_slots(vec![
             MockGadget::new("emoji").with_prefixes(&[":"]),
             MockGadget::new("http").with_prefixes(&["http://", "https://"]),
         ]);
 
-        let (gadget, prefix) = find_prefix_match(&plugins, "https://example.com").unwrap();
+        let (gadget, prefix) = find_prefix_match(&gadgets, "https://example.com").unwrap();
         assert_eq!(gadget.id(), "http");
         assert_eq!(prefix, "https://");
     }
@@ -1263,22 +1263,22 @@ mod tests {
     #[test]
     fn exact_prefix_query() {
         // Query is exactly the prefix with nothing after it.
-        let plugins = gadget_slots(vec![MockGadget::new("emoji").with_prefixes(&[":"])]);
-        let (gadget, prefix) = find_prefix_match(&plugins, ":").unwrap();
+        let gadgets = gadget_slots(vec![MockGadget::new("emoji").with_prefixes(&[":"])]);
+        let (gadget, prefix) = find_prefix_match(&gadgets, ":").unwrap();
         assert_eq!(gadget.id(), "emoji");
         assert_eq!(prefix, ":");
     }
 
     #[test]
     fn multiple_prefixes_same_gadget() {
-        let plugins = gadget_slots(vec![
+        let gadgets = gadget_slots(vec![
             MockGadget::new("multi").with_prefixes(&["http://", "https://"]),
         ]);
 
-        let (_, prefix) = find_prefix_match(&plugins, "http://foo.com").unwrap();
+        let (_, prefix) = find_prefix_match(&gadgets, "http://foo.com").unwrap();
         assert_eq!(prefix, "http://");
 
-        let (_, prefix) = find_prefix_match(&plugins, "https://foo.com").unwrap();
+        let (_, prefix) = find_prefix_match(&gadgets, "https://foo.com").unwrap();
         assert_eq!(prefix, "https://");
     }
 
