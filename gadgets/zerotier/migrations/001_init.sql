@@ -1,4 +1,4 @@
--- ZeroTier plugin storage — initial schema.
+-- ZeroTier gadget storage — initial schema.
 --
 -- Persists "remembered networks": every network the
 -- daemon has reported plus everything imported from the

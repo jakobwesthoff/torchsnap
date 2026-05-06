@@ -81,7 +81,7 @@ build-gadget name:
 #
 # - `target/`        — Rust build output, the compiled `.wasm`
 #                       lives at the gadget root after
-#                       `build-plugin` copies it there
+#                       `build-gadget` copies it there
 # - `Cargo.toml`,
 #   `Cargo.lock`     — Rust build manifests, not runtime config
 # - `src/`           — Rust source, only the compiled binary
@@ -145,7 +145,7 @@ package-gadget name:
 
     echo "Packaged → $archive"
 
-# Stage the curated set of bundled WASM plugins into
+# Stage the curated set of bundled WASM gadgets into
 # `target/bundled-gadgets/` so Tauri's bundler can embed them
 # as resources. The list comes from `gadgets/bundled.toml`:
 # each entry must match a subdirectory under `gadgets/`.
@@ -154,7 +154,7 @@ package-gadget name:
 #
 # - Missing `bundled.toml` → stage zero gadgets and emit a
 #   clear warning. A release built in this state still works
-#   but ships no system plugins.
+#   but ships no system gadgets.
 # - Duplicate ids in `bundled.toml` → hard error so the
 #   mistake surfaces at build time, not at runtime.
 # - Listed gadget id that does not exist under `gadgets/` →

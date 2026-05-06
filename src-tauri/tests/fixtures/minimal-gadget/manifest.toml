@@ -1,6 +1,6 @@
 [gadget]
-id = "minimal-plugin"
-name = "Minimal Test Plugin"
+id = "minimal-gadget"
+name = "Minimal Test Gadget"
 description = "Test-only fixture used by src-tauri bridge/runtime tests"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"

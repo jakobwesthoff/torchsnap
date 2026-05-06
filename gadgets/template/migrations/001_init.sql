@@ -1,4 +1,4 @@
--- Template plugin SQL storage — initial schema.
+-- Template gadget SQL storage — initial schema.
 --
 -- Keep migrations small, additive, and named in
 -- numeric order (`001_…`, `002_…`). The host applies
@@ -7,8 +7,8 @@
 -- breaks every existing user. Add a new
 -- `002_…` file instead.
 --
--- This example tracks how often the plugin has been
--- enabled. Real plugins use storage for whatever fits
+-- This example tracks how often the gadget has been
+-- enabled. Real gadgets use storage for whatever fits
 -- their domain — history rows, cached metadata, indices,
 -- and so on.
 

@@ -1,7 +1,7 @@
 [gadget]
 id = "template"
-name = "Template Plugin"
-description = "Starting point for new Torchsnap plugins"
+name = "Template Gadget"
+description = "Starting point for new Torchsnap gadgets"
 version = "0.1.0"
 wasm = "template_gadget.wasm"
 icon = "heroicons:puzzle-piece"
@@ -16,7 +16,7 @@ migrations = [
     "migrations/001_init.sql",
 ]
 
-# Scheduled background tasks. The host runs a per-plugin
+# Scheduled background tasks. The host runs a per-gadget
 # tokio scheduler that walks every entry below, sleeps until
 # the earliest next fire across all of them, and invokes the
 # `tasks::run-task` guest export with the task's `id`.

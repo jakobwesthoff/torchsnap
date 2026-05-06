@@ -1,15 +1,15 @@
-# Plugins included in release bundles.
+# Gadgets included in release bundles.
 #
-# The `stage-bundled-plugins` recipe reads this list, rebuilds
-# each listed plugin via `just build-plugin <name>`, and copies
+# The `stage-bundled-gadgets` recipe reads this list, rebuilds
+# each listed gadget via `just build-gadget <name>`, and copies
 # the resulting `.torchsnap` archive into
-# `target/bundled-plugins/` where Tauri picks it up as a
+# `target/bundled-gadgets/` where Tauri picks it up as a
 # resource. Anything missing from this list never ships in the
-# bundle — even if it sits under `plugins/` and builds cleanly.
+# bundle — even if it sits under `gadgets/` and builds cleanly.
 #
-# Each entry must match a subdirectory of `plugins/`. IDs are
+# Each entry must match a subdirectory of `gadgets/`. IDs are
 # listed one-per-line (trailing comma allowed) so that adding
-# or removing a plugin produces a clean, one-line diff.
+# or removing a gadget produces a clean, one-line diff.
 gadgets = [
     "calculator",
     "emoji-picker",

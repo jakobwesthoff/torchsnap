@@ -1,6 +1,6 @@
 [gadget]
-id = "failing-enable-plugin"
-name = "Failing-Enable Test Plugin"
+id = "failing-enable-gadget"
+name = "Failing-Enable Test Gadget"
 description = "Test-only fixture whose guest enable() panics"
 version = "0.0.0"
 wasm = "failing_enable_gadget.wasm"
