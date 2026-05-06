@@ -99,7 +99,7 @@ On any non-GNOME desktop you can skip this section entirely.
 ### 1.3 Build and asset pipeline tools
 
 The `just assets` recipe regenerates icons, mascots, and tray bitmaps;
-the WASM plugin pipeline uses `zip` to pack `.torchsnap` archives; and
+the WASM gadget pipeline uses `zip` to pack `.torchsnap` archives; and
 `shellcheck` gates the shell recipes during quality checks. On a
 default Fedora 43 Workstation install, `zip`, `ImageMagick`, and `jq`
 are usually already present — install anything missing.
@@ -125,7 +125,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 After the installer finishes, open a new shell (or source
 `~/.cargo/env`) so `cargo` and `rustup` are on `PATH`, then add the
-WASM plugin target:
+WASM gadget target:
 
 ```sh
 rustup target add wasm32-wasip2
@@ -177,8 +177,8 @@ Re-run until the summary line reports all tools found.
 ## 7. Fetch project dependencies
 
 This pulls the JS packages via Bun and fetches the Rust crates for
-both the host workspace (`src-tauri/`) and the plugin workspace
-(`plugins/`):
+both the host workspace (`src-tauri/`) and the gadget workspace
+(`gadgets/`):
 
 ```sh
 just install
@@ -196,7 +196,7 @@ just start
 
 ### 8.2 Release bundle
 
-Builds the bundled plugins, the frontend, and the native host, then
+Builds the bundled gadgets, the frontend, and the native host, then
 invokes `tauri build` to produce the distributable bundle under
 `src-tauri/target/release/bundle/`.
 
@@ -243,12 +243,12 @@ Open a new terminal, or `source ~/.cargo/env`, then re-run
 Install `ImageMagick` (step 1.2). Torchsnap requires ImageMagick 7+;
 Fedora 43 ships `ImageMagick-7.1.x`, which is new enough.
 
-### Clipboard plugin panics at startup with `SetupFailed`
+### Clipboard gadget panics at startup with `SetupFailed`
 
 Full error:
 
 ```
-thread 'tokio-rt-worker' panicked at src/plugins/clipboard/mod.rs:166:44:
+thread 'tokio-rt-worker' panicked at src/gadgets/clipboard/mod.rs:166:44:
 clipboard context: SetupFailed(SetupFailed { .. })
 ```
 
@@ -262,7 +262,7 @@ Cause: your shell has a **stale `XAUTHORITY`** pointing at a Mutter
 X11 cookie file that no longer exists. Every GNOME login cycle
 generates a fresh cookie under `/run/user/$UID/.mutter-Xwaylandauth.*`
 with a new random suffix, and shells that were started before the
-most recent log-in never see the update. The clipboard plugin's
+most recent log-in never see the update. The clipboard gadget's
 underlying `clipboard-rs` dependency is X11-backed on Linux, so it
 cannot connect to XWayland and crashes the worker thread.
 
