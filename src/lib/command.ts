@@ -149,7 +149,7 @@ export type GadgetSourceKind = "builtin" | "system" | "user" | "dev";
 // =========================================================
 
 export interface WasmGadgetManifest {
-  plugin: {
+  gadget: {
     id: string;
     name: string;
     description: string;
