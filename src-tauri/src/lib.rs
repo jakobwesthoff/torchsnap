@@ -1001,7 +1001,6 @@ fn load_wasm_gadgets(
     let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new(
         log_sender.clone(),
         Arc::clone(span_registry),
-        Some(metadata_service),
     )?;
 
     let roots = wasm::discovery::enumerate_search_roots(resource_dir, app_data_dir);
@@ -1060,6 +1059,7 @@ fn load_wasm_gadgets(
                 log_sender,
                 source_registry,
                 app_data_dir,
+                Some(Arc::clone(&metadata_service)),
             ) {
                 Ok(gadget_id) => {
                     log_sender.send(wasm::logging::LogItem {
@@ -1143,6 +1143,7 @@ fn load_single_wasm_gadget(
     log_sender: &wasm::logging::channel::LogSender,
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
+    metadata_service: Option<Arc<network::website_metadata::WebsiteMetadataService>>,
 ) -> anyhow::Result<String> {
     let gadget_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();
@@ -1152,6 +1153,7 @@ fn load_single_wasm_gadget(
         log_sender.clone(),
         Arc::clone(&source),
         app_data_dir,
+        metadata_service,
     )?;
     host.register(Box::new(bridge), source_kind);
 

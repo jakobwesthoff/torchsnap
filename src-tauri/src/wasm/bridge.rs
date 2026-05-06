@@ -34,8 +34,10 @@ use super::logging::channel::LogSender;
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
 use super::permission_vars::PathContext;
+use crate::network::website_metadata::WebsiteMetadataService;
+
 use super::runtime::host::opener::UrlOpenerFn;
-use super::runtime::{SqlConfig, WasmGadgetInstance, WasmRuntime};
+use super::runtime::{CachedComponent, SqlConfig, WasmGadgetInstance, WasmRuntime};
 use super::source::GadgetSource;
 
 // =========================================================
@@ -49,7 +51,9 @@ use super::source::GadgetSource;
 pub struct WasmGadgetBridge {
     manifest: Manifest,
     gadget_id: String,
-    runtime: Arc<WasmRuntime>,
+    /// Disk-cached compiled component with lazy acquire/release.
+    /// Owns the `Arc<WasmRuntime>` reference internally.
+    cached: Mutex<CachedComponent>,
     /// Re-applied to every fresh `WasmGadgetInstance` on
     /// enable — each new `GadgetState` starts with
     /// `SqlConfig::None`, so the bridge holds the
@@ -100,9 +104,11 @@ pub struct WasmGadgetBridge {
     /// every fs call return `permission-denied`.
     fs_patterns_raw: Option<Vec<String>>,
     /// Whether the manifest grants access to the shared
-    /// `website-metadata` host import. The actual service
-    /// handle is read from `runtime.metadata_service`.
+    /// `website-metadata` host import.
     website_metadata_enabled: bool,
+    /// Shared website-metadata service. `None` in tests;
+    /// production always supplies a real service.
+    metadata_service: Option<Arc<WebsiteMetadataService>>,
     /// Raw `[[permissions.command]]` rules pre-extracted from
     /// the manifest. Compiled against the per-instance
     /// `PathContext` at every `enable()` (variable substitution
@@ -164,42 +170,25 @@ struct ParsedTask {
 
 impl WasmGadgetBridge {
     /// Build a bridge from a parsed manifest, a handle to
-    /// the shared runtime, and the gadget source (used
-    /// once to read the WASM bytes and any SQL migration
-    /// files). `app_data_dir` is the host's per-app data
-    /// root; the gadget's database lives at
-    /// `<app_data_dir>/gadget-home/<gadget-id>/sql/storage.sqlite3`.
+    /// the shared runtime, and the gadget source.
     ///
-    /// The `gadget-home/<gadget-id>/` tree is the gadget's
-    /// host-managed state root — `sql/` sits alongside
-    /// future sibling slots (e.g. `files/`, `cache/`).
-    /// Separating state from code lets `gadgets/` remain a
-    /// pure code directory that the install/uninstall flow
-    /// owns.
+    /// `app_data_dir` is the host's per-app data root; the
+    /// gadget's state lives at
+    /// `<app_data_dir>/gadget-home/<gadget-id>/`.
     ///
-    /// Compiles the WASM component into the runtime's
-    /// cache right here so broken gadgets fail fast at
-    /// load time. Does **not** instantiate — a fresh
-    /// `WasmGadgetInstance` is created later on demand by
-    /// `Gadget::enable`, so disabled gadgets consume only
-    /// their cached `Component` until the user turns them
-    /// on.
+    /// Construction is cheap — no WASM compilation happens
+    /// here. The `CachedComponent` compiles (or deserializes
+    /// from the disk cache) on first `acquire()`, which is
+    /// triggered by `ensure_instance()` during `enable()`.
     pub fn new(
         manifest: Manifest,
         runtime: Arc<WasmRuntime>,
         log_sender: LogSender,
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
+        metadata_service: Option<Arc<WebsiteMetadataService>>,
     ) -> anyhow::Result<Self> {
         let gadget_id = manifest.gadget.id.as_str().to_string();
-
-        // Compile the component into the runtime's cache
-        // once; every subsequent `instantiate` reads from
-        // there. A failure here surfaces as a gadget load
-        // error (manifest bug or broken build).
-        runtime
-            .compile(&gadget_id, &source.read_wasm()?)
-            .with_context(|| format!("compile WASM component for `{gadget_id}`"))?;
 
         // Materialize the SQL configuration from the
         // manifest. Gadgets without `[storage.sql]` get
@@ -300,10 +289,16 @@ impl WasmGadgetBridge {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
+        let cached = CachedComponent::new(
+            runtime,
+            Arc::clone(&source),
+            gadget_data.clone(),
+        );
+
         Ok(Self {
             manifest,
             gadget_id,
-            runtime,
+            cached: Mutex::new(cached),
             sql_config,
             gadget_source: source,
             opener_schemes,
@@ -312,6 +307,7 @@ impl WasmGadgetBridge {
             http_origins,
             fs_patterns_raw,
             website_metadata_enabled,
+            metadata_service,
             command_rules_raw,
             gadget_data,
             gadget_archive,
@@ -335,8 +331,10 @@ impl WasmGadgetBridge {
         }
 
         let instance = self
-            .runtime
-            .instantiate(&self.gadget_id)
+            .cached
+            .lock()
+            .expect("cached component not poisoned")
+            .instantiate()
             .with_context(|| format!("instantiate WASM gadget `{}`", self.gadget_id))?;
         instance.set_sql_config(self.sql_config.clone());
 
@@ -692,8 +690,8 @@ impl Gadget for WasmGadgetBridge {
         // handle (production always does; tests omit it unless
         // they specifically exercise this capability).
         instance.set_website_metadata(
-            self.website_metadata_enabled && self.runtime.metadata_service.is_some(),
-            self.runtime.metadata_service.clone(),
+            self.website_metadata_enabled && self.metadata_service.is_some(),
+            self.metadata_service.clone(),
         );
 
         let opener_handle = app.clone();
@@ -870,6 +868,14 @@ impl Gadget for WasmGadgetBridge {
         instance.clear_http_client();
         instance.clear_website_metadata();
         instance.clear_gadget_source();
+
+        // Release the compiled component from memory. The
+        // cache file on disk is retained so the next
+        // enable() re-acquires cheaply via deserialization.
+        self.cached
+            .lock()
+            .expect("cached component not poisoned")
+            .release();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {
@@ -1068,7 +1074,6 @@ mod tests {
         WasmRuntime::new(
             LogSender::test_sender(),
             Arc::new(SpanRegistry::new()),
-            None,
         )
         .expect("runtime construction succeeds")
     }
@@ -1092,6 +1097,7 @@ mod tests {
             LogSender::test_sender(),
             source,
             app_data_dir,
+            None,
         )
     }
 
@@ -1135,8 +1141,12 @@ icon = "heroicons:x-mark"
             LogSender::test_sender(),
             source,
             app_data.path(),
+            None,
         );
-        assert!(result.is_err());
+        // Construction is lazy — the error surfaces on first
+        // acquire/instantiate, not at bridge construction time.
+        let bridge = result.expect("lazy construction succeeds");
+        assert!(bridge.ensure_instance().is_err());
     }
 
     #[test]
@@ -1179,6 +1189,7 @@ migrations = ["migrations/001_init.sql"]
             LogSender::test_sender(),
             source,
             app_data.path(),
+            None,
         );
         let err = result.err().expect("missing migration file must error");
         let msg = format!("{err:#}");
@@ -1320,6 +1331,7 @@ migrations = ["migrations/001_init.sql"]
             LogSender::test_sender(),
             source,
             app_data.path(),
+            None,
         )
         .expect("bridge construction");
 
@@ -1398,6 +1410,7 @@ migrations = ["migrations/001_init.sql"]
             LogSender::test_sender(),
             source,
             app_data_dir,
+            None,
         )
     }
 
@@ -1521,6 +1534,7 @@ schedule = "*/5 * * * *"
             LogSender::test_sender(),
             source,
             app_data.path(),
+            None,
         )
         .expect("bridge construction");
 
