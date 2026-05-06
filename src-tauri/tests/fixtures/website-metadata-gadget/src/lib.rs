@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Website-metadata Test Plugin
+// Website-metadata Test Gadget
 //
-// Test-only WASM plugin used by the Rust integration suite in
+// Test-only WASM gadget used by the Rust integration suite in
 // `src-tauri/src/wasm/runtime.rs`. Exercises the
 // `website-metadata::lookup` host import via
 // `messaging::handle-message` dispatch so tests get a clean

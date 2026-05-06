@@ -9,10 +9,10 @@ import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 import { resolve } from "path";
 
 // =========================================================
-// Vite Configuration for a Torchsnap WASM Plugin
+// Vite Configuration for a Torchsnap WASM Gadget
 //
-// Builds the plugin's frontend as ES module bundles that the
-// host dynamically imports via `torchsnap-plugin://` protocol.
+// Builds the gadget's frontend as ES module bundles that the
+// host dynamically imports via `torchsnap-gadget://` protocol.
 //
 // Key design decisions:
 //
@@ -39,7 +39,7 @@ import { resolve } from "path";
 // entry to build.
 // =========================================================
 
-// ZeroTier ships only a settings panel — the plugin surfaces
+// ZeroTier ships only a settings panel — the gadget surfaces
 // results through the standard `ScoredEntry` path with no
 // custom launcher view, so there is one entry point.
 const entryName = "settings";

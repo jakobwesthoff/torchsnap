@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Minimal Test Plugin
+// Minimal Test Gadget
 //
-// Test-only WASM plugin used by the Rust test suite in
+// Test-only WASM gadget used by the Rust test suite in
 // `src-tauri/src/wasm/{runtime,bridge}.rs`. Implements every
 // guest export of the shared WIT world with a no-op body so
 // the bridge / runtime can instantiate it and exercise its

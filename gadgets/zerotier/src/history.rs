@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Plugin-owned `networks` history table.
+//! Gadget-owned `networks` history table.
 //!
 //! Persists every network the daemon has ever surfaced plus
 //! every entry imported from the macOS UI's

@@ -3,15 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Settings component for the DuckDuckGo Bangs plugin.
+ * Settings component for the DuckDuckGo Bangs gadget.
  *
  * Surfaces the bang database stats reported by the guest's
  * `stats` message, plus a "Refresh" button that triggers a
  * fresh network download via the guest's `refresh` message.
  *
  * RPC calls go through `useGadgetRuntime().sendMessage` — the
- * plugin id is inferred from the surrounding
- * `PluginContextProvider`, so no `PLUGIN_ID` constant is
+ * gadget id is inferred from the surrounding
+ * `GadgetContextProvider`, so no `GADGET_ID` constant is
  * needed. Styling primitives come from the SDK's shared
  * `@torchsnap/gadget-sdk/components` module.
  */

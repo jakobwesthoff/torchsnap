@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Template Plugin
+// Template Gadget
 //
-// Starting point for new Torchsnap WASM plugins. Showcases
-// the full plugin authoring surface so you can copy this
-// directory, rename the plugin ID in `manifest.toml` and
+// Starting point for new Torchsnap WASM gadgets. Showcases
+// the full gadget authoring surface so you can copy this
+// directory, rename the gadget ID in `manifest.toml` and
 // `Cargo.toml`, and build from here.
 //
 // What this file demonstrates:
@@ -16,21 +16,21 @@
 // - Custom UI via prefix-triggered `search()`
 // - Action execution via `execute()`
 // - Structured logging with metadata
-// - Reading plugin settings via the `settings::get` host
+// - Reading gadget settings via the `settings::get` host
 //   import and parsing the JSON-encoded values
 // - Reacting to user setting changes via the
 //   `on_setting_changed` lifecycle export
-// - Custom frontend ↔ plugin RPC via the
+// - Custom frontend ↔ gadget RPC via the
 //   `messaging::handle-message` guest export — your frontend
 //   calls `sendMessage(method, payload)` and this method
 //   dispatches by name
-// - Per-plugin SQLite storage via the `sql::connection` host
+// - Per-gadget SQLite storage via the `sql::connection` host
 //   import and a `[storage.sql]` block in `manifest.toml`
 //   listing migration files. The host creates the database
 //   and applies migrations before the guest's `enable()` runs
 // - Scheduled background tasks via `[[tasks]]` entries in
 //   `manifest.toml` and the `tasks::run-task` guest export.
-//   The host runs a per-plugin tokio scheduler that fires
+//   The host runs a per-gadget tokio scheduler that fires
 //   the export at the cron-scheduled time
 //
 // Optional capabilities (see usage snippets at the bottom of
@@ -38,7 +38,7 @@
 //
 // - `website-metadata::lookup` — host-shared website metadata
 //   cache. Resolves a domain to its title, description, and
-//   favicon (cached and coalesced across all plugins). Opt in
+//   favicon (cached and coalesced across all gadgets). Opt in
 //   via `[permissions]\nwebsite-metadata = true` in
 //   `manifest.toml`.
 // =========================================================
@@ -78,7 +78,7 @@ impl LifecycleGuest for TemplatePlugin {
 
         logging::log(
             logging::LogLevel::Info,
-            "Template plugin enabled",
+            "Template gadget enabled",
             &[
                 ("greeting".into(), greeting),
                 ("verbose".into(), verbose.to_string()),
@@ -90,7 +90,7 @@ impl LifecycleGuest for TemplatePlugin {
     fn disable() {
         logging::log(
             logging::LogLevel::Info,
-            "Template plugin disabled",
+            "Template gadget disabled",
             &[],
             None,
         );
@@ -100,7 +100,7 @@ impl LifecycleGuest for TemplatePlugin {
         // The host coalesces rapid same-key writes (e.g. a
         // slider being dragged) before this fires, so it is
         // safe to react to every invocation — there is no
-        // need to debounce on the plugin side. Push the
+        // need to debounce on the gadget side. Push the
         // parsed value into your in-memory cache here so
         // subsequent reads see the latest state. This example
         // just logs the change.
@@ -114,10 +114,10 @@ impl LifecycleGuest for TemplatePlugin {
 }
 
 // =========================================================
-// Custom frontend ↔ plugin messaging
+// Custom frontend ↔ gadget messaging
 //
 // Your React frontend calls `sendMessage(method, payload)`
-// (from `usePluginRuntime()`); the host routes the call to
+// (from `useGadgetRuntime()`); the host routes the call to
 // `handle_message` below. Dispatch by `method` and return a
 // JSON-encoded response on success or `Err(string)` on
 // failure — the frontend's promise will resolve / reject
@@ -141,7 +141,7 @@ impl LifecycleGuest for TemplatePlugin {
 // supposed to do.
 //
 // Returning `Err(string)` is logged by the host but does
-// NOT auto-disable the plugin — scheduled tasks are
+// NOT auto-disable the gadget — scheduled tasks are
 // best-effort background work.
 // =========================================================
 
@@ -150,7 +150,7 @@ impl TasksGuest for TemplatePlugin {
         match task_id.as_str() {
             // The `heartbeat` task fires every 5 minutes per
             // the manifest schedule. It records a row in the
-            // SQL table and logs the timestamp so plugin
+            // SQL table and logs the timestamp so gadget
             // authors can see the scheduler firing in
             // devtools.
             "heartbeat" => {
@@ -187,7 +187,7 @@ impl MessagingGuest for TemplatePlugin {
             }
 
             // `enable-count` returns the number of rows in
-            // `enable_log` — i.e. how many times this plugin
+            // `enable_log` — i.e. how many times this gadget
             // has been enabled. Demonstrates composing the
             // SQL API with the messaging API and round-
             // tripping a typed result row across the WIT
@@ -210,7 +210,7 @@ impl SearchGuest for TemplatePlugin {
         vec![CatalogEntry {
             id: "template-demo".into(),
             title: "Template Demo".into(),
-            subtitle: Some("Template WASM plugin demo".into()),
+            subtitle: Some("Template WASM gadget demo".into()),
             icon: Some(EntryIcon::HeroIcon("puzzle-piece".into())),
             keywords: vec!["template".into(), "demo".into()],
             actions: vec![Action {
@@ -227,7 +227,7 @@ impl SearchGuest for TemplatePlugin {
 
         // When triggered via the "tpl:" prefix, show a custom
         // frontend view. This demonstrates the full dynamic
-        // loading pipeline: WASM → host → torchsnap-plugin://
+        // loading pipeline: WASM → host → torchsnap-gadget://
         // protocol → dynamic import() → React component.
         if matched_prefix.is_some() {
             let data = serde_json::json!({ "query": query });
@@ -255,7 +255,7 @@ impl SearchGuest for TemplatePlugin {
 // =========================================================
 // Snippet: website-metadata host import
 //
-// Reference examples for plugins that surface websites in
+// Reference examples for gadgets that surface websites in
 // their results. Not wired into this template's runtime
 // search path — copy into your `search()` body when you
 // want enriched URL entries.
@@ -279,9 +279,9 @@ impl SearchGuest for TemplatePlugin {
 // Two demos below: `favicon_or` covers the one-line
 // "give me a favicon or this fallback" case, and
 // `website_metadata_demo` shows the full `Metadata` match
-// for plugins that also want title/description. The raw
+// for gadgets that also want title/description. The raw
 // WIT bindings remain available under `website_metadata_host`
-// when a plugin needs to distinguish `ReachableNoData` from
+// when a gadget needs to distinguish `ReachableNoData` from
 // `Unreachable` or surface the underlying error string.
 // =========================================================
 
@@ -299,7 +299,7 @@ fn website_metadata_favicon_demo(domain: &str) -> EntryIcon {
 /// blocks the search loop. On a cold cache `Pending` is
 /// treated the same as "no data yet" — the result is suppressed
 /// for this render, and the next keystroke will see the
-/// populated cache. Plugins that genuinely need to wait for the
+/// populated cache. Gadgets that genuinely need to wait for the
 /// fetch should swap in [`website_metadata::lookup_blocking`].
 #[allow(dead_code)]
 fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {

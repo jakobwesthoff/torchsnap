@@ -3,25 +3,25 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Calculator Plugin (WASM port)
+// Calculator Gadget (WASM port)
 //
 // Evaluates math expressions inline using `evalexpr`.
 //
 // Two modes:
 //
 // - Prefix mode (`=`): exclusive routing, full custom UI
-//   with a history list below the inline result. The plugin
+//   with a history list below the inline result. The gadget
 //   returns `CustomUI { view = "history" }` from `search()`
 //   and the frontend's `CalculatorView` component renders
 //   it.
 //
-// - Heuristic mode (no prefix): the plugin's `search()`
+// - Heuristic mode (no prefix): the gadget's `search()`
 //   detects math-looking queries via regex heuristics and
 //   returns `InlineUI { view = "result" }` so the frontend's
 //   `CalculatorInline` component renders an inline result
 //   above the standard search list.
 //
-// History is persisted to per-plugin SQLite via the WIT
+// History is persisted to per-gadget SQLite via the WIT
 // `sql` host import. Retention cleanup runs as a scheduled
 // background task declared in `manifest.toml` — no
 // dedicated cleanup thread (which would be impossible
@@ -78,7 +78,7 @@ thread_local! {
 }
 
 // =========================================================
-// Plugin trait wiring
+// Gadget trait wiring
 // =========================================================
 
 struct CalculatorPlugin;
@@ -236,7 +236,7 @@ fn heuristic_mode_search(query: &str) -> SearchResponse {
 }
 
 // =========================================================
-// Frontend ↔ plugin messaging
+// Frontend ↔ gadget messaging
 // =========================================================
 
 impl MessagingGuest for CalculatorPlugin {

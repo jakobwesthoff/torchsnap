@@ -5,7 +5,7 @@
 //! Ergonomic wrappers around the host's `sql` interface.
 //!
 //! The WIT `sql-handle` resource exposes a raw
-//! `query(sql, params) -> Vec<Vec<SqlValue>>` API; real plugin
+//! `query(sql, params) -> Vec<Vec<SqlValue>>` API; real gadget
 //! code always wants typed column access, so this module
 //! layers:
 //!
@@ -18,7 +18,7 @@
 //!
 //! Higher-level patterns (`derive(FromRow)`,
 //! `transaction(|tx| …)`, named bind parameters) are left for
-//! a future iteration once plugin authors actually motivate
+//! a future iteration once gadget authors actually motivate
 //! them.
 
 pub use crate::torchsnap::gadget::sql::{SqlHandle, SqlValue, connection};
@@ -31,7 +31,7 @@ pub use crate::torchsnap::gadget::sql::{SqlHandle, SqlValue, connection};
 ///
 /// Each accessor returns `None` when the column doesn't exist
 /// OR when the stored value is of a different storage class;
-/// plugins that need to distinguish "missing column" from
+/// gadgets that need to distinguish "missing column" from
 /// "wrong type" can match on the underlying `Vec<SqlValue>`
 /// directly (it's a public field).
 pub struct Row(pub Vec<SqlValue>);
@@ -85,7 +85,7 @@ impl Row {
 // SqlValue construction
 //
 // `From` instead of a trait full of `v()` / `to_sql()`
-// helpers — plugin call sites then read
+// helpers — gadget call sites then read
 // `&[SqlValue::from(expr), SqlValue::from(days)]` which is
 // marginally more keystrokes than a custom helper but
 // doesn't pollute the namespace, and survives type inference

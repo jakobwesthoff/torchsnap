@@ -3,15 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Failing-Enable Test Plugin
+// Failing-Enable Test Gadget
 //
-// Variant of `minimal-plugin` whose guest `lifecycle::enable`
+// Variant of `minimal-gadget` whose guest `lifecycle::enable`
 // panics. Used by the bridge test suite to drive the
 // "guest enable() failed → bridge drops the instance" path.
 //
 // A Rust panic inside a guest export becomes a wasmtime trap
 // on the host side, which surfaces as an `Err` from
-// `WasmPluginInstance::enable()`. That is the signal the
+// `WasmGadgetInstance::enable()`. That is the signal the
 // bridge uses to tear the instance back down to `None`.
 //
 // All other guest exports are no-ops — the fixture is only
@@ -37,7 +37,7 @@ export!(FailingEnablePlugin);
 
 impl LifecycleGuest for FailingEnablePlugin {
     fn enable() {
-        panic!("failing-enable-plugin: enable() intentionally panics");
+        panic!("failing-enable-gadget: enable() intentionally panics");
     }
 
     fn disable() {}

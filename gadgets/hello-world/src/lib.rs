@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Hello World Plugin
+// Hello World Gadget
 //
-// Validates the end-to-end WASM plugin pipeline with both
+// Validates the end-to-end WASM gadget pipeline with both
 // catalog and query search modes:
 //
 // - Catalog: returns a single "Say Hello" entry
@@ -39,7 +39,7 @@ impl LifecycleGuest for HelloWorld {
         let names = petnames::generate_petnames(50_000);
         logging::log(
             logging::LogLevel::Info,
-            &format!("Hello World plugin enabled with {} petnames", names.len()),
+            &format!("Hello World gadget enabled with {} petnames", names.len()),
             &[],
             Some(span),
         );
@@ -52,7 +52,7 @@ impl LifecycleGuest for HelloWorld {
 
     fn disable() {
         PETNAMES.with(|cell| cell.borrow_mut().clear());
-        logging::log(logging::LogLevel::Info, "Hello World plugin disabled", &[], None);
+        logging::log(logging::LogLevel::Info, "Hello World gadget disabled", &[], None);
     }
 
     /// Hello-world has no settings, so the host never invokes
@@ -66,7 +66,7 @@ impl SearchGuest for HelloWorld {
         vec![CatalogEntry {
             id: "greet".into(),
             title: "Say Hello".into(),
-            subtitle: Some("Hello World WASM plugin".into()),
+            subtitle: Some("Hello World WASM gadget".into()),
             icon: Some(EntryIcon::HeroIcon("hand-raised".into())),
             keywords: vec!["hello".into(), "greet".into(), "test".into()],
             actions: vec![Action {

@@ -71,9 +71,9 @@ pub use exports::torchsnap::gadget::tasks::Guest as TasksGuest;
 // =========================================================
 // WIT-generated record / variant re-exports
 //
-// Plugins work with `SearchResponse`, `ScoredEntry`,
+// Gadgets work with `SearchResponse`, `ScoredEntry`,
 // `CatalogEntry`, … constantly; surfacing them at the crate
-// root keeps per-plugin `use` blocks short.
+// root keeps per-gadget `use` blocks short.
 // =========================================================
 pub use exports::torchsnap::gadget::search::{
     Action, ActionId, CatalogEntry, EntryIcon, Guest as _SearchGuest, PostAction, ScoredEntry,

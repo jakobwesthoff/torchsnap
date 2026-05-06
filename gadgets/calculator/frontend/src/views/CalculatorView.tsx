@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Prefix mode custom UI for the calculator plugin.
+ * Prefix mode custom UI for the calculator gadget.
  *
- * Registered as `views["history"]` in the plugin manifest. Layout:
+ * Registered as `views["history"]` in the gadget manifest. Layout:
  * - Top: CalculatorResult (or CalculatorHelp if no result)
  * - Divider
  * - History list (windowed, most recent first)
@@ -63,7 +63,7 @@ export const CalculatorView = memo(function CalculatorView({
   const { sendMessage } = useGadgetRuntime();
 
   // The backend's search() returns the eval result in the `data`
-  // field of the CustomUI response, threaded through PluginViewRef.
+  // field of the CustomUI response, threaded through GadgetViewRef.
   const rawData = data as CalcData | null | undefined;
   // Separate success (has result) from error (has error message).
   const evalResult =

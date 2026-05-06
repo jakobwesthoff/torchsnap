@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Open URL Plugin (WASM)
+// Open URL Gadget (WASM)
 //
 // Detects URLs in the search query — both explicit
 // `http(s)://...` and bare domains like `example.com` — and
@@ -14,7 +14,7 @@
 //
 // Metadata enrichment (page title, favicon) goes through the
 // host's `website-metadata` interface in `Blocking` mode,
-// mirroring the pre-WASM native plugin's behaviour. The
+// mirroring the pre-WASM native gadget's behaviour. The
 // asymmetric explicit-vs-bare handling on lookup outcomes is
 // load-bearing: bare domains that the host can't reach are
 // suppressed entirely, while explicit-scheme URLs always
@@ -33,8 +33,8 @@ use torchsnap_gadget_sdk::website_metadata::Metadata;
 // =========================================================
 // Pending-URL thread-local
 //
-// Same per-instance stash pattern as the bangs plugin (see
-// `plugins/bangs/src/lib.rs` for the full safety argument).
+// Same per-instance stash pattern as the bangs gadget (see
+// `gadgets/bangs/src/lib.rs` for the full safety argument).
 // Disappears once the arbitrary-data parameter for execute()
 // lands (todo 01kn7v6ynyf580ax9jyyt25jgc).
 // =========================================================
@@ -136,7 +136,7 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
 }
 
 // =========================================================
-// Lifecycle — stateless, query-only plugin
+// Lifecycle — stateless, query-only gadget
 // =========================================================
 
 impl LifecycleGuest for OpenUrlPlugin {

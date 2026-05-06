@@ -3,25 +3,25 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// DemoSettings — Template Plugin Settings Component
+// DemoSettings — Template Gadget Settings Component
 //
-// Rendered in the settings sidebar when the Template Plugin
+// Rendered in the settings sidebar when the Template Gadget
 // is selected. Showcases the typical settings authoring
-// surface so new plugin authors can copy-and-adapt:
+// surface so new gadget authors can copy-and-adapt:
 //
-// - `useGadgetInfo()` for the plugin's identity and reactive
-//   `enabled` flag (used to disable controls when the plugin
+// - `useGadgetInfo()` for the gadget's identity and reactive
+//   `enabled` flag (used to disable controls when the gadget
 //   is off)
 // - `useGadgetSetting()` for namespaced reactive settings;
-//   the plugin id is inferred from the surrounding
-//   PluginContextProvider
+//   the gadget id is inferred from the surrounding
+//   GadgetContextProvider
 // - `Switch`, `Section`, `Entry` from the host's design-system
 //   primitives, shared via the SDK
 //
-// This file is meant to be **read** by new plugin authors and
-// adapted into real plugin code. End-to-end test coverage of
+// This file is meant to be **read** by new gadget authors and
+// adapted into real gadget code. End-to-end test coverage of
 // the SDK shim machinery lives in the dedicated
-// `plugins/test-fixture/` crate, not here.
+// `gadgets/test-fixture/` crate, not here.
 // =========================================================
 
 import { useGadgetInfo, useGadgetSetting } from "@torchsnap/gadget-sdk/hooks";

@@ -6,7 +6,7 @@
 // Launcher entry barrel
 //
 // Re-exports every component the launcher webview loads
-// from this plugin so vite's lib mode can produce a single
+// from this gadget so vite's lib mode can produce a single
 // `launcher.js` bundle with both named exports. The names
 // here must match the manifest's `[frontend.views]` /
 // `[frontend.inline-views]` mappings:

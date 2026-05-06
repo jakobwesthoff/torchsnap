@@ -9,10 +9,10 @@ import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 import { resolve } from "path";
 
 // =========================================================
-// Vite Configuration for a Torchsnap WASM Plugin
+// Vite Configuration for a Torchsnap WASM Gadget
 //
-// Builds the plugin's frontend as ES module bundles that the
-// host dynamically imports via `torchsnap-plugin://` protocol.
+// Builds the gadget's frontend as ES module bundles that the
+// host dynamically imports via `torchsnap-gadget://` protocol.
 //
 // Key design decisions:
 //
@@ -41,7 +41,7 @@ import { resolve } from "path";
 
 // Bangs has only a settings surface — no launcher view, no
 // inline results UI. `PLUGIN_ENTRY` is still honoured for
-// parity with other plugins but `"settings"` is the only
+// parity with other gadgets but `"settings"` is the only
 // accepted value.
 const entryName = process.env.PLUGIN_ENTRY ?? "settings";
 

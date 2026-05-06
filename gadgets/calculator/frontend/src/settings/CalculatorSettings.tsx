@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Settings component for the calculator plugin.
+ * Settings component for the calculator gadget.
  *
  * Controls:
  * - Heuristic (prefix-free) parsing toggle
@@ -11,7 +11,7 @@
  * - Retention period slider
  * - Storage stats + clear history
  *
- * The plugin's enabled flag (used to disable controls when the
+ * The gadget's enabled flag (used to disable controls when the
  * user has turned the calculator off) comes from
  * `useGadgetInfo().enabled`. The three settings come from
  * `useGadgetSetting<T>(key)` and the `stats` / `clear_history`
