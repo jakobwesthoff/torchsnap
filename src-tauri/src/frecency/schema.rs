@@ -20,7 +20,7 @@ pub const MIGRATIONS: &[&str] = &[
     // three columns ARE the primary key, this eliminates the redundant
     // rowid-based table storage entirely.
     //
-    // All lookup queries filter by (plugin_id, item_id) which is a
+    // All lookup queries filter by (gadget_id, item_id) which is a
     // prefix of the PK, so they're served directly from this single
     // B-tree with no extra index needed.
     //
@@ -28,10 +28,10 @@ pub const MIGRATIONS: &[&str] = &[
     // (WHERE timestamp < cutoff) which the PK ordering cannot
     // accelerate.
     "CREATE TABLE frecency_events (
-        plugin_id TEXT    NOT NULL,
+        gadget_id TEXT    NOT NULL,
         item_id   TEXT    NOT NULL,
         timestamp INTEGER NOT NULL,
-        PRIMARY KEY (plugin_id, item_id, timestamp)
+        PRIMARY KEY (gadget_id, item_id, timestamp)
     ) WITHOUT ROWID;
 
     CREATE INDEX idx_frecency_age
