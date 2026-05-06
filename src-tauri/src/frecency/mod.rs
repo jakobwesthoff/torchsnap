@@ -179,7 +179,7 @@ impl FrecencyStore {
         // INSERT OR IGNORE handles the (practically impossible)
         // same-millisecond collision gracefully.
         let _ = self.db.execute(
-            "INSERT OR IGNORE INTO frecency_events (plugin_id, item_id, timestamp) \
+            "INSERT OR IGNORE INTO frecency_events (gadget_id, item_id, timestamp) \
              VALUES (?, ?, ?)",
             &[
                 SqlValue::from(gadget_id),
@@ -191,9 +191,9 @@ impl FrecencyStore {
         // Prune oldest events beyond the per-item cap.
         let _ = self.db.execute(
             "DELETE FROM frecency_events \
-             WHERE plugin_id = ? AND item_id = ? AND timestamp NOT IN (\
+             WHERE gadget_id = ? AND item_id = ? AND timestamp NOT IN (\
                  SELECT timestamp FROM frecency_events \
-                 WHERE plugin_id = ? AND item_id = ? \
+                 WHERE gadget_id = ? AND item_id = ? \
                  ORDER BY timestamp DESC LIMIT ?\
              )",
             &[
@@ -218,7 +218,7 @@ impl FrecencyStore {
             .db
             .query_map(
                 "SELECT timestamp FROM frecency_events \
-                 WHERE plugin_id = ? AND item_id = ?",
+                 WHERE gadget_id = ? AND item_id = ?",
                 &[SqlValue::from(gadget_id), SqlValue::from(item_id)],
                 |row| row.get::<i64>(0),
             )
@@ -285,7 +285,7 @@ impl FrecencyStore {
         let rows = self
             .db
             .query_map(
-                "SELECT item_id, timestamp FROM frecency_events WHERE plugin_id = ?",
+                "SELECT item_id, timestamp FROM frecency_events WHERE gadget_id = ?",
                 &[SqlValue::from(gadget_id)],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
@@ -333,7 +333,7 @@ impl FrecencyStore {
         let unique_items: u64 = self
             .db
             .query_map(
-                "SELECT COUNT(DISTINCT plugin_id || '::' || item_id) FROM frecency_events",
+                "SELECT COUNT(DISTINCT gadget_id || '::' || item_id) FROM frecency_events",
                 &[],
                 |row| row.get::<i64>(0),
             )
@@ -345,7 +345,7 @@ impl FrecencyStore {
         let gadget_rows = self
             .db
             .query_map(
-                "SELECT plugin_id, COUNT(*) FROM frecency_events GROUP BY plugin_id",
+                "SELECT gadget_id, COUNT(*) FROM frecency_events GROUP BY gadget_id",
                 &[],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
@@ -407,7 +407,7 @@ impl FrecencyStore {
             .db
             .query_map(
                 "SELECT item_id, timestamp FROM frecency_events \
-                 WHERE plugin_id = ? AND item_id IN (?)",
+                 WHERE gadget_id = ? AND item_id IN (?)",
                 &[SqlValue::from(gadget_id), SqlValue::List(id_list)],
                 |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
             )
@@ -472,8 +472,8 @@ mod tests {
     #[test]
     fn record_and_score() {
         let (store, _dir) = test_store();
-        store.record("test-plugin", "item-1");
-        let score = store.score("test-plugin", "item-1");
+        store.record("test-gadget", "item-1");
+        let score = store.score("test-gadget", "item-1");
         // Single recent event: weight 100
         assert_eq!(score, 100);
     }
@@ -481,20 +481,20 @@ mod tests {
     #[test]
     fn score_missing_item_is_zero() {
         let (store, _dir) = test_store();
-        assert_eq!(store.score("test-plugin", "nonexistent"), 0);
+        assert_eq!(store.score("test-gadget", "nonexistent"), 0);
     }
 
     #[test]
     fn multiple_events_accumulate() {
         let (store, _dir) = test_store();
         for _ in 0..5 {
-            store.record("test-plugin", "item-1");
+            store.record("test-gadget", "item-1");
             // Insert with different timestamps by directly writing.
         }
         // All events are within 4 hours, so each gets weight 100.
         // Due to INSERT OR IGNORE and millisecond precision, some
         // events might collide — but at least one should succeed.
-        let score = store.score("test-plugin", "item-1");
+        let score = store.score("test-gadget", "item-1");
         assert!(score >= 100);
     }
 
@@ -519,7 +519,7 @@ mod tests {
         let now = now_ms();
         for i in 0..3 {
             let _ = store.db.execute(
-                "INSERT OR IGNORE INTO frecency_events (plugin_id, item_id, timestamp) \
+                "INSERT OR IGNORE INTO frecency_events (gadget_id, item_id, timestamp) \
                  VALUES (?, ?, ?)",
                 &[
                     SqlValue::from("p"),
@@ -529,7 +529,7 @@ mod tests {
             );
         }
         let _ = store.db.execute(
-            "INSERT OR IGNORE INTO frecency_events (plugin_id, item_id, timestamp) \
+            "INSERT OR IGNORE INTO frecency_events (gadget_id, item_id, timestamp) \
              VALUES (?, ?, ?)",
             &[
                 SqlValue::from("p"),
@@ -615,7 +615,7 @@ mod tests {
         let base_ts = now_ms() - 1000;
         for i in 0..count {
             let _ = store.db.execute(
-                "INSERT OR IGNORE INTO frecency_events (plugin_id, item_id, timestamp) \
+                "INSERT OR IGNORE INTO frecency_events (gadget_id, item_id, timestamp) \
                  VALUES (?, ?, ?)",
                 &[
                     SqlValue::from("p"),
@@ -632,7 +632,7 @@ mod tests {
         let timestamps = store
             .db
             .query_map(
-                "SELECT timestamp FROM frecency_events WHERE plugin_id = ? AND item_id = ?",
+                "SELECT timestamp FROM frecency_events WHERE gadget_id = ? AND item_id = ?",
                 &[SqlValue::from("p"), SqlValue::from("item")],
                 |row| row.get::<i64>(0),
             )
