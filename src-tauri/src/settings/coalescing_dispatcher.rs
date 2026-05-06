@@ -6,7 +6,7 @@
 // Coalescing Dispatcher
 //
 // Serializes and deduplicates settings change dispatch for a
-// single plugin. The host enqueues `(key, value)` pairs as
+// single gadget. The host enqueues `(key, value)` pairs as
 // settings change events arrive; the dispatcher ensures:
 //
 // 1. Only one callback runs at a time (serialization via

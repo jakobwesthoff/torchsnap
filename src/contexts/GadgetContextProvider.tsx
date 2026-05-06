@@ -5,8 +5,8 @@
 // =========================================================
 // GadgetContextProvider
 //
-// The host wraps every plugin component mount in this
-// provider before rendering the plugin's React component
+// The host wraps every gadget component mount in this
+// provider before rendering the gadget's React component
 // tree. It packs the three slices (info, runtime, optional
 // launcher) into a single context value and also drives the
 // legacy LoggerContext path so any host component still

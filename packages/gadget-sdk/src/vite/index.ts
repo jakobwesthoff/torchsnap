@@ -5,14 +5,14 @@
 // =========================================================
 // Torchsnap Vite Plugin
 //
-// Configures the build aliases that every plugin needs:
+// Configures the build aliases that every gadget needs:
 //
 // - `react` → SDK shim that re-exports from window.__torchsnap.React
 // - `react/jsx-runtime` → SDK shim for the automatic JSX transform
 //
-// This keeps plugin vite configs clean — instead of manually
-// wiring up resolve aliases to shim files, plugins just add
-// `torchsnap()` to their plugin array:
+// This keeps gadget vite configs clean — instead of manually
+// wiring up resolve aliases to shim files, gadgets just add
+// `torchsnap()` to their Vite plugin array:
 //
 //   import { torchsnap } from "@torchsnap/gadget-sdk/vite";
 //

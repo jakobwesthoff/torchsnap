@@ -112,9 +112,9 @@ interface CommandMap {
 }
 
 // =========================================================
-// Plugin Install / Uninstall
+// Gadget Install / Uninstall
 //
-// Response shapes mirror `plugin_install.rs`. Serialized
+// Response shapes mirror `gadget_install.rs`. Serialized
 // as JSON with camelCase field names so the TypeScript call
 // sites stay idiomatic.
 // =========================================================
@@ -131,18 +131,18 @@ export interface UninstallResult {
 }
 
 // =========================================================
-// Plugin Source Kind
+// Gadget Source Kind
 //
 // Mirrors the Rust `GadgetSourceKind` enum. Serialized as
 // lowercase strings across the Tauri IPC boundary. Used by
-// the Plugins settings panel to render source badges and
-// gate the uninstall action to `user` plugins.
+// the Gadgets settings panel to render source badges and
+// gate the uninstall action to `user` gadgets.
 // =========================================================
 
 export type GadgetSourceKind = "builtin" | "system" | "user" | "dev";
 
 // =========================================================
-// WASM Plugin Manifest
+// WASM Gadget Manifest
 //
 // TypeScript mirror of the Rust `Manifest` struct. Sent from
 // the backend as JSON with camelCase field names.

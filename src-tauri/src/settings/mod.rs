@@ -12,10 +12,10 @@ pub mod notifier;
 //
 // - SettingsInit: used once at startup to ensure default values
 //   exist in the store. Works for both global app settings and
-//   per-plugin settings via a key prefix.
+//   per-gadget settings via a key prefix.
 //
-// - GadgetSettings: runtime read wrapper injected into plugins
-//   during setup. Scopes all reads to `plugins.<id>.` so plugins
+// - GadgetSettings: runtime read wrapper injected into gadgets
+//   during setup. Scopes all reads to `gadgets.<id>.` so gadgets
 //   can only access their own namespace.
 // =========================================================
 
@@ -120,13 +120,13 @@ impl SettingsInit {
 // GadgetSettings
 // =========================================================
 
-/// Scoped read-only access to a plugin's settings namespace.
+/// Scoped read-only access to a gadget's settings namespace.
 ///
 /// Wraps the app-wide settings store with a fixed key prefix
-/// (`gadgets.<id>.`) so plugins can read their own settings
+/// (`gadgets.<id>.`) so gadgets can read their own settings
 /// without knowing the full key path.
 ///
-/// Injected into `Plugin::enable()` (via `GadgetContext`)
+/// Injected into `Gadget::enable()` (via `GadgetContext`)
 /// after defaults have been initialized via `SettingsInit`.
 pub struct GadgetSettings<R: tauri::Runtime = tauri::Wry> {
     store: Arc<Store<R>>,
@@ -168,7 +168,7 @@ impl<R: tauri::Runtime> GadgetSettings<R> {
     /// Read the raw JSON-encoded value for `key` as a string.
     ///
     /// Returns `None` if the key does not exist. Used by the WASM
-    /// plugin bridge — WIT has no opaque JSON value type, so the
+    /// gadget bridge — WIT has no opaque JSON value type, so the
     /// host hands the JSON across the boundary as a string and the
     /// guest parses it on its side.
     ///

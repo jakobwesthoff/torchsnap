@@ -21,7 +21,7 @@ interface SettingsSidebarProps {
   generalItems: SidebarItem[];
   /** Customization group items (Appearance, Frecency, …). */
   customizationItems: SidebarItem[];
-  /** Plugin-provided sections. */
+  /** Gadget-provided sections. */
   pluginItems: SidebarItem[];
   /** Currently selected section ID. */
   activeId: string;

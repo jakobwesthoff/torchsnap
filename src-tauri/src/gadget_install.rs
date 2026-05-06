@@ -9,7 +9,7 @@
 // uninstall flows. Both commands return
 // `requires_restart: true` because the `GadgetHost` slot
 // list is frozen after setup — a hot lifecycle path is
-// tracked in `todos/wasm/…-plugin-hot-lifecycle.md`.
+// tracked in `todos/wasm/…-gadget-hot-lifecycle.md`.
 //
 // Install steps:
 //

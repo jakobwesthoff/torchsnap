@@ -5,7 +5,7 @@
 /**
  * Settings-page record list with per-row actions.
  *
- * Shared component for plugins that need to render a manageable
+ * Shared component for gadgets that need to render a manageable
  * collection — recent history, remembered networks, saved
  * presets — inside their settings panel. Each row carries a
  * primary text, an optional secondary descriptor, and zero or

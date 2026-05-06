@@ -45,7 +45,7 @@ export interface Action {
 // Mirrors `PostAction` in `src-tauri/src/search/types.rs`.
 //
 // Returned by the `search_execute` Tauri command to tell the
-// frontend what to do after a plugin handles an action.
+// frontend what to do after a gadget handles an action.
 // =========================================================
 
 export type PostAction =
@@ -93,7 +93,7 @@ export interface FooterState {
 }
 
 // =========================================================
-// Plugin View Reference
+// Gadget View Reference
 //
 // Mirrors `src-tauri/src/search/types.rs`.
 // =========================================================
@@ -114,8 +114,8 @@ export interface GadgetViewRef {
 /**
  * Discriminated union mirroring the Rust `ResultSource` enum.
  * `Catalog` is one aggregated batch mixing rows from every
- * catalog-providing plugin — it replaces the catalog layer
- * wholesale, not per-plugin.
+ * catalog-providing gadget — it replaces the catalog layer
+ * wholesale, not per-gadget.
  */
 export type ResultSource = { type: "gadget"; id: string } | { type: "catalog" };
 

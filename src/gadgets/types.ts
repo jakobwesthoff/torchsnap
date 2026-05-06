@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Plugin component prop interfaces — host-side mirror of
+ * Gadget component prop interfaces — host-side mirror of
  * `@torchsnap/gadget-sdk`'s `plugin.ts`.
  *
- * Per ADR 0028, ambient capabilities (`pluginId`, `sendMessage`,
+ * Per ADR 0028, ambient capabilities (`gadgetId`, `sendMessage`,
  * `logger`, launcher actions, reactive setting accessors) are
  * provided via the React context exposed by `src/contexts/`. The
  * three prop interfaces here carry only per-render data — the
@@ -17,21 +17,21 @@
 import type { SourcedEntry } from "@torchsnap/types";
 
 export interface GadgetViewProps {
-  /** Search results from the normal search() flow. The plugin
+  /** Search results from the normal search() flow. The gadget
    *  decides whether to use them or ignore them. */
   results: SourcedEntry[];
   /** Opaque data from the backend's GadgetViewRef.data field.
-   *  Only present when the plugin returned CustomUI or InlineUI
+   *  Only present when the gadget returned CustomUI or InlineUI
    *  with a data payload. */
   data?: unknown;
   /** Current query, stripped of the matched prefix. */
   query: string;
-  /** Which prefix activated the plugin. */
+  /** Which prefix activated the gadget. */
   matchedPrefix: string;
 }
 
 // =========================================================
-// Plugin View Reference
+// Gadget View Reference
 // =========================================================
 
 /**
@@ -60,20 +60,20 @@ export interface InlineViewProps {
   data: unknown;
   /** Current search query (stripped of prefix). */
   query: string;
-  /** Prefix that activated the plugin (empty in heuristic mode). */
+  /** Prefix that activated the gadget (empty in heuristic mode). */
   matchedPrefix: string;
   /** Whether the inline slot is currently selected (index 0). */
   selected: boolean;
 }
 
 // =========================================================
-// Plugin Settings UI
+// Gadget Settings UI
 // =========================================================
 
 /**
  * Settings panels receive no per-render data. Identity, runtime
  * capabilities, and reactive setting accessors all come from the
- * plugin context hooks (`useGadgetInfo`, `useGadgetRuntime`,
+ * gadget context hooks (`useGadgetInfo`, `useGadgetRuntime`,
  * `useGadgetSetting`). The interface stays as a named (empty)
  * type so `ComponentType<GadgetSettingsProps>` continues to
  * typecheck consistently with the SDK mirror.

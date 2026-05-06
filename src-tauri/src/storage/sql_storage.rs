@@ -6,14 +6,14 @@
 // SQL Storage
 //
 // Lightweight wrapper around a single SQLite database with
-// WAL-mode pragmas and schema migration support. Each plugin
+// WAL-mode pragmas and schema migration support. Each gadget
 // gets its own database file; this struct manages the
 // connection, configuration, and migration lifecycle.
 //
 // The public API uses `SqlValue` and `SqlRow` instead of
 // rusqlite types, so callers never depend on the underlying
 // database driver. This abstraction is designed to be
-// serde-serializable for a future WASM plugin boundary.
+// serde-serializable for a future WASM gadget boundary.
 // =========================================================
 
 use std::path::PathBuf;
@@ -254,7 +254,7 @@ impl<T: FromSqlValue> FromSqlValue for Option<T> {
 // SqlStorage
 // =========================================================
 
-/// Per-plugin SQLite database with WAL mode and migrations.
+/// Per-gadget SQLite database with WAL mode and migrations.
 ///
 /// The connection is protected by a `Mutex` so the struct can
 /// be shared across threads via `Arc`. All methods lock the

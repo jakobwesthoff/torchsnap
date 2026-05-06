@@ -92,7 +92,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Listen for the toggle-theme event emitted by the built-in
-  // commands plugin. Switches between dark and light only —
+  // commands gadget. Switches between dark and light only —
   // "system" is excluded because the command is an explicit
   // user action ("make it dark" / "make it light").
   useEffect(() => {

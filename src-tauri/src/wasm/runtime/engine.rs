@@ -3,12 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// WasmRuntime — shared across all plugins
+// WasmRuntime — shared across all gadgets
 //
 // Holds the wasmtime `Engine` (one per process) plus a
-// per-plugin compiled-component cache. The
+// per-gadget compiled-component cache. The
 // compile/instantiate split lets the expensive step run
-// once per plugin while instantiation stays cheap enough
+// once per gadget while instantiation stays cheap enough
 // to repeat on demand. See ADR 0033.
 // =========================================================
 
@@ -29,25 +29,25 @@ use super::instance::WasmGadgetInstance;
 use super::state::GadgetState;
 
 /// Shared WASM runtime holding the wasmtime Engine and a
-/// per-plugin compiled-component cache.
+/// per-gadget compiled-component cache.
 ///
 /// One instance per application. A cached `Component` is
 /// small relative to the `Store` that backs a live instance
 /// — it holds native code for the guest's imports/exports
 /// but no linear memory, resource tables, or per-enable
 /// state — so keeping compiled components around for
-/// disabled plugins is cheap.
+/// disabled gadgets is cheap.
 pub struct WasmRuntime {
     engine: Engine,
     log_sender: LogSender,
     span_registry: Arc<SpanRegistry>,
-    /// Keyed by plugin ID. Populated by `compile()`,
+    /// Keyed by gadget ID. Populated by `compile()`,
     /// consumed by `instantiate()`. Re-compiling the same
     /// ID replaces the existing entry — belt-and-suspenders
     /// for a future hot-reload path, not wired up by any
     /// current code path.
     pub(crate) components: Mutex<HashMap<String, Component>>,
-    /// Shared website-metadata service distributed to plugins
+    /// Shared website-metadata service distributed to gadgets
     /// whose manifest declares `permissions.website-metadata = true`.
     /// `None` in tests that don't need it; production always
     /// supplies a real service.

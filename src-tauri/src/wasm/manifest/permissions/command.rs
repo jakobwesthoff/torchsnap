@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::wasm::permission_vars::validate_variable_references;
 
 /// `[[permissions.command]]` rule — a single binary +
-/// argv-shape pattern the plugin is permitted to invoke
+/// argv-shape pattern the gadget is permitted to invoke
 /// via `command::run`.
 ///
 /// ```toml
@@ -22,7 +22,7 @@ use crate::wasm::permission_vars::validate_variable_references;
 /// (`"/usr/bin/mdfind"`) or a `PATH`-resolved name
 /// (`"mdfind"`). Opener-class binaries (`open`, `xdg-open`,
 /// `start`, etc.) are rejected at manifest parse time —
-/// plugins wanting "open with the registered application"
+/// gadgets wanting "open with the registered application"
 /// use `[permissions.opener] open-path = true` instead.
 ///
 /// `argv` is a per-position constraint list. Each element
@@ -44,8 +44,8 @@ pub struct CommandPermissionDef {
     pub argv: Vec<ArgvConstraint>,
 
     /// Optional default working directory for invocations
-    /// matching this rule. Plugin can override per-call;
-    /// when omitted, the host falls back to the per-plugin
+    /// matching this rule. Gadget can override per-call;
+    /// when omitted, the host falls back to the per-gadget
     /// scratch directory at `${gadget-data}/exec-cwd/`.
     pub cwd: Option<String>,
 
@@ -360,7 +360,7 @@ fn validate_argv_constraint(
             }
         }
         ArgvConstraint::Regex { pattern } => {
-            // Anchor before compile-checking so plugin authors
+            // Anchor before compile-checking so gadget authors
             // get the exact same syntax behaviour the matcher
             // will use at runtime.
             let anchored = format!("^(?:{pattern})$");

@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// `[permissions.http]` — declares which origins the plugin
+/// `[permissions.http]` — declares which origins the gadget
 /// is allowed to reach via `http::fetch`.
 ///
 /// ```toml
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// Origins must be valid `scheme + host` pairs
 /// (e.g. `"https://api.example.com"`). They are normalized
 /// to `ascii_serialization()` form at parse time. The
-/// special value `"*"` opts the plugin into trust-all mode.
+/// special value `"*"` opts the gadget into trust-all mode.
 ///
 /// An empty `origins` list is a manifest authoring error.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -42,7 +42,7 @@ impl HttpPermissionsDef {
 
         // Normalize each declared origin to ascii_serialization().
         // Reject malformed entries immediately so authors discover
-        // errors at plugin-load time rather than at the first fetch.
+        // errors at gadget-load time rather than at the first fetch.
         let origins = self
             .origins
             .into_iter()

@@ -3,19 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugins Management Panel
+// Gadgets Management Panel
 //
 // Top-level settings section that lists every user-visible
-// plugin, shows its source badge, lets users enable/disable
-// it, and — for user-installed plugins only — uninstall it.
+// gadget, shows its source badge, lets users enable/disable
+// it, and — for user-installed gadgets only — uninstall it.
 // Also hosts the Install flow: a file-picker button plus a
 // drop zone accepting `.torchsnap` archives.
 //
 // Both install and uninstall require an app restart to take
-// effect because `GadgetHost::register` freezes the plugin
+// effect because `GadgetHost::register` freezes the gadget
 // set after setup. The banner at the top of the panel
 // surfaces that requirement with a single-click restart
-// button; `todos/wasm/…-plugin-hot-lifecycle.md` tracks the
+// button; `todos/wasm/…-gadget-hot-lifecycle.md` tracks the
 // follow-up work that will remove the restart.
 // =========================================================
 
@@ -56,7 +56,7 @@ export function GadgetsManagementPanel() {
   const [dragActive, setDragActive] = useState(false);
 
   // Fetch the authoritative id→kind map from the backend.
-  // Plugins registered in the frontend registry but absent
+  // Gadgets registered in the frontend registry but absent
   // from the backend snapshot (a shouldn't-happen edge case)
   // fall out of the list rather than being shown with a
   // guessed kind.
@@ -202,7 +202,7 @@ export function GadgetsManagementPanel() {
 }
 
 // =========================================================
-// Row — one plugin with badge, enable toggle, uninstall.
+// Row — one gadget with badge, enable toggle, uninstall.
 // =========================================================
 
 function PluginRowView({
@@ -231,7 +231,7 @@ function PluginRowView({
         )}
       </div>
       <Switch checked={enabled ?? true} onChange={setEnabled} />
-      {/* Trailing slot: Uninstall for user plugins, source badge
+      {/* Trailing slot: Uninstall for user gadgets, source badge
           for every other kind. Mutually exclusive by design. */}
       {canUninstall ? (
         <button
@@ -251,7 +251,7 @@ function PluginRowView({
 
 // =========================================================
 // Source badge — visual + tooltip carries the rationale for
-// why a given plugin is (or is not) uninstallable.
+// why a given gadget is (or is not) uninstallable.
 // =========================================================
 
 function SourceBadge({ kind }: { kind: GadgetSourceKind }) {

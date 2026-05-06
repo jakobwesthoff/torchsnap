@@ -14,8 +14,8 @@ use crate::wasm::source::validate_plugin_path;
 ///
 /// Fields covered:
 ///
-/// - `plugin.wasm`
-/// - `plugin.icon` (Asset variant only — `heroicons:…` is
+/// - `gadget.wasm`
+/// - `gadget.icon` (Asset variant only — `heroicons:…` is
 ///   not a path and is skipped).
 /// - `frontend.launcher_bundle`, `frontend.settings_bundle`,
 ///   `frontend.launcher_css`, `frontend.settings_css`.
@@ -79,8 +79,8 @@ mod tests {
     // =====================================================
 
     /// Regression guard: a manifest that uses traversal in
-    /// `plugin.wasm` must fail parsing. Failing silently
-    /// would let a crafted plugin have the host `read_file`
+    /// `gadget.wasm` must fail parsing. Failing silently
+    /// would let a crafted gadget have the host `read_file`
     /// an arbitrary file as "the WASM component".
     #[test]
     fn reject_plugin_wasm_with_traversal() {
@@ -134,7 +134,7 @@ mod tests {
 
     /// `heroicons:beaker` is not a path — the guard must
     /// leave HeroIcon references alone. Rejecting them would
-    /// break every real-world plugin.
+    /// break every real-world gadget.
     #[test]
     fn accept_heroicon_icon_reference() {
         let toml = r#"

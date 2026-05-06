@@ -3,14 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Plugin SDK global injection.
+ * Gadget SDK global injection.
  *
  * Exposes host-provided modules on `window.__torchsnap` so that
- * dynamically loaded plugin bundles can use React, the plugin
+ * dynamically loaded gadget bundles can use React, the gadget
  * component context, host components, and host hooks without
  * bundling their own copies.
  *
- * Plugin bundles access these via shim files in
+ * Gadget bundles access these via shim files in
  * `packages/gadget-sdk/src/shims/` that re-export from the global.
  * At build time, Vite aliases `"react"` and `"react/jsx-runtime"`
  * to the React shims; the other subpaths are real package paths
@@ -44,12 +44,12 @@ import { highlightText } from "./highlightText";
 // here using `typeof` the actual implementations, because the
 // shim augmentations are only visible in files that import the
 // shims. The shim type simplifications (e.g. `string[]` instead
-// of `ModifierKey[]`) are intentional for plugin ergonomics and
+// of `ModifierKey[]`) are intentional for gadget ergonomics and
 // do not affect the host assignment below.
 // =========================================================
 
 declare global {
-  // `React` and `jsxRuntime` are host-only slices that the plugin
+  // `React` and `jsxRuntime` are host-only slices that the gadget
   // shims don't expose. `keybindings` and `components` are declared
   // here because the shim augmentations for those slices are not in
   // `sdk.ts`'s transitive import graph (they come from
@@ -87,8 +87,8 @@ declare global {
 // =========================================================
 
 /**
- * Set `window.__torchsnap` so plugin bundles can access
- * host-provided modules. Must be called before any plugin
+ * Set `window.__torchsnap` so gadget bundles can access
+ * host-provided modules. Must be called before any gadget
  * frontend code loads.
  */
 export function initGadgetSdk(): void {

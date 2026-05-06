@@ -6,7 +6,7 @@
 // Settings host import
 //
 // Routes guest `settings::get(key)` calls through the
-// per-plugin `GadgetSettings` handle stashed on
+// per-gadget `GadgetSettings` handle stashed on
 // `GadgetState`. The handle is bridge-stashed at `enable()`;
 // reads outside an enable lifetime degrade gracefully to
 // `None` rather than trapping.
@@ -36,7 +36,7 @@ impl bindings::torchsnap::gadget::settings::Host for GadgetState {
 }
 
 impl WasmGadgetInstance {
-    /// Stash a per-plugin `GadgetSettings` handle on the
+    /// Stash a per-gadget `GadgetSettings` handle on the
     /// store data so the `settings::get` host import can
     /// resolve reads. Called by the bridge from `enable()`
     /// before the guest's own `enable()` runs.

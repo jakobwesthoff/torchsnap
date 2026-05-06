@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::wasm::permission_vars::validate_variable_references;
 
 /// `[permissions.fs]` — declares read-only filesystem paths
-/// the plugin may access via the `fs` host import.
+/// the gadget may access via the `fs` host import.
 ///
 /// ```toml
 /// [permissions.fs]
@@ -24,7 +24,7 @@ use crate::wasm::permission_vars::validate_variable_references;
 /// An empty `read` list is a manifest authoring error.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FsPermissionsDef {
-    /// Patterns the plugin may read from. `${...}` tokens are
+    /// Patterns the gadget may read from. `${...}` tokens are
     /// preserved verbatim — substitution and glob compilation
     /// happen at bridge construction, when the per-instance
     /// `PathContext` is available.

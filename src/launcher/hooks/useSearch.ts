@@ -5,12 +5,12 @@
 /**
  * Search hook — streams results from the Rust search pipeline
  * via a Tauri channel, one `searchResults` message per source
- * (catalog layer + each query plugin).
+ * (catalog layer + each query gadget).
  *
  * Each message replaces that source's entries in a per-source
  * Map; the displayed list is always the flattened sorted view
  * of the Map. A source emitting an empty batch evicts its
- * prior contribution — that's how a plugin transitioning from
+ * prior contribution — that's how a gadget transitioning from
  * results to empty (e.g. bangs losing its trigger mid-query)
  * disappears from the list atomically.
  *
@@ -31,9 +31,9 @@ import {
 
 interface UseSearchResult {
   results: SourcedEntry[];
-  /** View reference when the active plugin requested custom UI. */
+  /** View reference when the active gadget requested custom UI. */
   customGadgetView: GadgetViewRef | null;
-  /** View reference when the active plugin requested inline UI. */
+  /** View reference when the active gadget requested inline UI. */
   inlineGadgetView: GadgetViewRef | null;
   /** The prefix that triggered exclusive routing (e.g., ":"). */
   matchedPrefix: string | null;
@@ -61,7 +61,7 @@ export function useSearch(query: string): UseSearchResult {
   // atomically from the accumulator on every message, but view
   // refs accumulate "first non-null wins" within a generation
   // so the catalog's null views don't clobber a pending inline
-  // view from a later plugin message. The `isFirstMessageOfGeneration`
+  // view from a later gadget message. The `isFirstMessageOfGeneration`
   // flag flips that rule for the first message, which
   // unconditionally overwrites even with null so stale refs
   // from the previous generation don't leak through.
@@ -75,7 +75,7 @@ export function useSearch(query: string): UseSearchResult {
     setLoading(true);
 
     // Empty query (Escape / goBack) needs a synchronous reset
-    // so plugin view components unmount on the same render and
+    // so gadget view components unmount on the same render and
     // their effects don't re-inject a matched-prefix echo into
     // the display query. For non-empty query changes the
     // channel handler replaces the accumulator atomically on

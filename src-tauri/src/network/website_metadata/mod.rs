@@ -6,7 +6,7 @@
 // Website Metadata Service
 //
 // Host-level shared service that fetches, caches, and serves
-// website metadata (title, description, favicon) to plugins.
+// website metadata (title, description, favicon) to gadgets.
 //
 // Two access modes via `lookup(domain, mode)`:
 //

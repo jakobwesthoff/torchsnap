@@ -21,7 +21,7 @@
  * "fresh" instead of flashing.
  *
  * Every dismiss path in the launcher — tray blur, ESC, Escape
- * keybinding, plugin-execute completion, Rust-initiated
+ * keybinding, gadget-execute completion, Rust-initiated
  * `launcher-dismiss-requested` events — must route through
  * `dismissLauncher()` below. A direct `command("launcher_hide")`
  * call skips the blanking step and reintroduces the flash.

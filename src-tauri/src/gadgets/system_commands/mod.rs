@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// System Commands Plugin
+// System Commands Gadget
 //
 // Provides platform-specific system commands (lock screen,
 // sleep, restart, shutdown, appearance toggle, etc.) as
@@ -20,11 +20,11 @@ use crate::gadgets::Gadget;
 //
 // Each system command declares its own identity, availability,
 // catalog entry (title, icon, keywords), and execution logic.
-// The plugin simply collects and delegates to these.
+// The gadget simply collects and delegates to these.
 // =========================================================
 
 pub(crate) trait SystemCommand: Send + Sync {
-    /// Unique identifier within the plugin (e.g., "sleep", "lock-screen").
+    /// Unique identifier within the gadget (e.g., "sleep", "lock-screen").
     fn id(&self) -> &str;
 
     /// Whether this command should appear in the launcher right now.

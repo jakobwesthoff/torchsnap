@@ -46,7 +46,7 @@ pub struct FrontendDef {
 
     /// Path to the CSS file loaded alongside the launcher
     /// bundle. Served via `torchsnap-gadget://` and scoped to
-    /// the plugin's container with `@scope`.
+    /// the gadget's container with `@scope`.
     #[serde(
         default,
         rename(deserialize = "launcher-css", serialize = "launcherCss")

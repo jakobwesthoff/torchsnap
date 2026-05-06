@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// `[permissions.opener]` — declares the plugin's
+/// `[permissions.opener]` — declares the gadget's
 /// `opener` capabilities: which URL schemes it may pass to
 /// `open-url`, and whether it may invoke `open-path` /
 /// `reveal-path`.
@@ -27,13 +27,13 @@ pub struct OpenerPermissionsDef {
     #[serde(default)]
     pub schemes: Vec<String>,
 
-    /// Whether the plugin may invoke `opener::open-path`
+    /// Whether the gadget may invoke `opener::open-path`
     /// (open a filesystem path with the registered
     /// application).
     #[serde(default, rename = "open-path")]
     pub open_path: bool,
 
-    /// Whether the plugin may invoke `opener::reveal-path`
+    /// Whether the gadget may invoke `opener::reveal-path`
     /// (reveal a filesystem path in the OS file manager).
     #[serde(default, rename = "reveal-path")]
     pub reveal_path: bool,

@@ -12,7 +12,7 @@
 //
 // Read access is intentionally not exposed by the WIT
 // interface — see the doc comment on the `clipboard`
-// interface in `torchsnap-plugin.wit`.
+// interface in `torchsnap-gadget.wit`.
 // =========================================================
 
 use crate::wasm::bindings;

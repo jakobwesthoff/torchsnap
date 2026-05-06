@@ -5,11 +5,11 @@
 // =========================================================
 // Shared Data Types
 //
-// Plugin-facing subset of the data types shared between the
-// host and plugin frontends. These mirror the Rust-side
+// Gadget-facing subset of the data types shared between the
+// host and gadget frontends. These mirror the Rust-side
 // types in src-tauri/src/search/types.rs.
 //
-// Only types that plugins need to consume or produce are
+// Only types that gadgets need to consume or produce are
 // included here. Host-only types (SearchMessage,
 // ControlCommand, etc.) are intentionally excluded.
 // =========================================================

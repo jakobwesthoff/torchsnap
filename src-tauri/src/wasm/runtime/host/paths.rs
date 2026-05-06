@@ -6,7 +6,7 @@
 // Paths host import
 //
 // Resolves `${...}` substitution variables at runtime
-// against the per-plugin `PathContext` stashed on
+// against the per-gadget `PathContext` stashed on
 // `GadgetState`. The recognized-variable list and the
 // substitution implementation live in
 // `crate::wasm::permission_vars`, shared with the manifest-
@@ -37,7 +37,7 @@ impl bindings::torchsnap::gadget::paths::Host for GadgetState {
             // bridge has not stashed the context yet, surface
             // it as an error rather than panicking.
             return Err(WitResolveError::Unterminated(
-                "paths interface not initialized for this plugin instance".into(),
+                "paths interface not initialized for this gadget instance".into(),
             ));
         };
 

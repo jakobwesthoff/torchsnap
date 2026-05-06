@@ -5,7 +5,7 @@
 // =========================================================
 // GadgetContext
 //
-// The plugin component contract. The host wraps every plugin
+// The gadget component contract. The host wraps every gadget
 // component mount in a <GadgetContextProvider> (see
 // GadgetContextProvider.tsx) that carries:
 //
@@ -16,7 +16,7 @@
 //                inside the launcher tree; absent for settings
 //                panels.
 //
-// Plugin components read what they need via the four hooks
+// Gadget components read what they need via the four hooks
 // exposed alongside this file:
 //
 //   - useGadgetInfo()       → info slice
@@ -45,7 +45,7 @@ import type { Logger } from "../lib/logger";
 // ---------------------------------------------------------
 
 export interface GadgetInfo {
-  /** Plugin id (e.g. "calculator", "clipboard-manager"). */
+  /** Gadget id (e.g. "calculator", "clipboard-manager"). */
   id: string;
   /** Reactive enabled flag from the host's `enabled.<id>` setting. */
   enabled: boolean;
@@ -93,8 +93,8 @@ export const GadgetContext = createContext<GadgetContextValue | null>(null);
 //
 // `packages/gadget-sdk/src/shims/hooks.ts` mirrors `GadgetInfo`,
 // `GadgetRuntime`, `LauncherActions`, and `GadgetSendMessage`
-// for the WASM plugin SDK consumers. The shim re-declares
-// the shapes locally so plugins don't need to reach into
+// for the WASM gadget SDK consumers. The shim re-declares
+// the shapes locally so gadgets don't need to reach into
 // host source via path-based imports for IDE completion.
 // The assertions below fail compilation the moment either
 // side drifts from the other, ensuring the mirror stays in

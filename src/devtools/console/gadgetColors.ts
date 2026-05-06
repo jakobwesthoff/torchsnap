@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Color Palette
+// Gadget Color Palette
 //
-// 16 deterministic colors assigned by hashing the plugin ID.
+// 16 deterministic colors assigned by hashing the gadget ID.
 // Shared between LogItemRow (source dot) and ConsoleToolbar
 // (source filter chips).
 // =========================================================

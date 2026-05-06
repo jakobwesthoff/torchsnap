@@ -7,7 +7,7 @@
 //
 // Shared state holding the SQL database, file storage, and the
 // active search query. Provides query, store, delete, retention,
-// and update-push methods used by both the plugin message handler
+// and update-push methods used by both the gadget message handler
 // and the watcher thread.
 //
 // All clipboard content is stored format-agnostically as raw

@@ -3,17 +3,17 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Registers WASM plugin frontend components in the dynamic registry.
+ * Registers WASM gadget frontend components in the dynamic registry.
  *
- * For each WASM plugin, this module:
+ * For each WASM gadget, this module:
  * - Creates dynamic `import()` factories for views, inline views,
  *   and settings components served via `torchsnap-gadget://`
  * - Injects scoped CSS if declared in the manifest
- * - Registers the plugin with metadata (icon, description) so it
+ * - Registers the gadget with metadata (icon, description) so it
  *   appears in the settings sidebar with the generic wrapper
  *
- * All WASM plugins get a settings entry (for enable/disable at
- * minimum). Plugins with a `[frontend]` section additionally get
+ * All WASM gadgets get a settings entry (for enable/disable at
+ * minimum). Gadgets with a `[frontend]` section additionally get
  * their view components registered.
  */
 
@@ -25,13 +25,13 @@ import type { WasmGadgetManifest } from "../lib/command";
 import type { GadgetViewProps, InlineViewProps } from "./types";
 
 // =========================================================
-// WASM Plugin Registration
+// WASM Gadget Registration
 // =========================================================
 
 export type WebviewContext = "launcher" | "settings";
 
 /**
- * Register a single WASM plugin based on its manifest data.
+ * Register a single WASM gadget based on its manifest data.
  * The `webview` parameter controls which CSS bundle is injected —
  * only the CSS relevant to the current webview is loaded.
  */
@@ -39,7 +39,7 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
   const gadgetId = manifest.gadget.id;
   const baseUrl = `torchsnap-gadget://localhost/${gadgetId}`;
 
-  // Every WASM plugin gets metadata for the settings sidebar.
+  // Every WASM gadget gets metadata for the settings sidebar.
   // The GadgetSettingsWrapper uses icon + description to render
   // the standardized header and enable/disable toggle.
   const entry: GadgetRegistryEntry = {
@@ -109,7 +109,7 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
 }
 
 /**
- * Register all WASM plugins from the backend's manifest data.
+ * Register all WASM gadgets from the backend's manifest data.
  * Called once per webview at startup.
  */
 export function registerAllWasmGadgets(

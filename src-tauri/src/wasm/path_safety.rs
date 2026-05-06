@@ -18,7 +18,7 @@
 // ancestor. The lexical pre-pass strips `.` and `..`
 // components so the tail can never escape upward.
 //
-// Distinct from the lexical-only `validate_plugin_path`
+// Distinct from the lexical-only `validate_gadget_path`
 // helper in `source.rs`, which solves a different problem
 // (manifest-relative paths inside an archive — no fs touch
 // allowed). The two coexist.
@@ -73,7 +73,7 @@ pub enum PathError {
 ///
 /// 1. Both inputs must be absolute. Relative paths would
 ///    canonicalize against the host cwd, which has no
-///    meaningful relationship to the plugin's view of the
+///    meaningful relationship to the gadget's view of the
 ///    filesystem.
 /// 2. Lexically resolve `.` and `..` in the candidate
 ///    (purely string-level, no fs touch). This means a

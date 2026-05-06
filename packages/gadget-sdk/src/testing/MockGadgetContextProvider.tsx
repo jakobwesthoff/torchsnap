@@ -5,9 +5,9 @@
 // =========================================================
 // MockGadgetContextProvider
 //
-// Test helper that wraps a plugin component under test in
+// Test helper that wraps a gadget component under test in
 // the host's real GadgetContextProvider with sensible mock
-// defaults. Plugin authors only need to override the slices
+// defaults. Gadget authors only need to override the slices
 // the test cares about — everything else gets a no-op
 // stand-in.
 //
@@ -65,7 +65,7 @@ const noopSendMessage = async () => undefined as never;
 
 export interface MockGadgetContextProviderProps {
   /** Override fields for the `info` slice. Defaults:
-   *  `{ id: "test-plugin", enabled: true }`. */
+   *  `{ id: "test-gadget", enabled: true }`. */
   info?: Partial<GadgetInfo>;
   /** Override fields for the `runtime` slice. Defaults to
    *  no-op `sendMessage` and a no-op `logger`. */

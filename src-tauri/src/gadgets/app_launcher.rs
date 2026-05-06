@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Application Launcher Plugin
+// Application Launcher Gadget
 //
-// Catalog plugin that exposes installed applications as
+// Catalog gadget that exposes installed applications as
 // searchable entries. Applications are discovered at startup
 // via the platform's `AppDiscovery` implementation and cached
 // in memory. A background refresh runs every 5 minutes to

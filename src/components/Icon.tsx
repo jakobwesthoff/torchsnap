@@ -14,7 +14,7 @@
  * - `asset:<path-or-url>` — either an absolute filesystem
  *   path (run through Tauri's `convertFileSrc`) or a fully-
  *   qualified URL such as `torchsnap-gadget://...` produced
- *   by the WASM bridge for plugin-relative `AssetIcon`s; URLs
+ *   by the WASM bridge for gadget-relative `AssetIcon`s; URLs
  *   are passed through to `<img src>` directly.
  *
  * Sizing and color are controlled via `className` — the component
@@ -72,7 +72,7 @@ export function Icon({ icon, className }: IconProps) {
 
   // asset:<path-or-url>
   // Fully-qualified URLs (e.g. `torchsnap-gadget://...` produced
-  // by the WASM bridge for plugin-relative AssetIcons) bypass
+  // by the WASM bridge for gadget-relative AssetIcons) bypass
   // `convertFileSrc` — they're already resolvable as `<img src>`.
   // Bare filesystem paths still go through Tauri's asset protocol.
   if (icon.startsWith("asset:")) {

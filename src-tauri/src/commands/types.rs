@@ -19,10 +19,10 @@ use crate::unicode::Utf16Positions;
 // Post-Action Behavior
 // =========================================================
 
-/// What the launcher should do after executing a plugin action.
+/// What the launcher should do after executing a gadget action.
 ///
-/// Returned by `Plugin::execute()`
-/// to let the plugin control whether the launcher stays open.
+/// Returned by `Gadget::execute()`
+/// to let the gadget control whether the launcher stays open.
 /// Serialized to the frontend so it can act on the decision.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -34,11 +34,11 @@ pub enum PostAction {
     /// Keep the launcher open (e.g., for multi-select workflows).
     #[allow(dead_code)]
     KeepOpen,
-    /// Switch to the plugin's custom UI component. The frontend
-    /// mounts the component registered for the executing plugin's
+    /// Switch to the gadget's custom UI component. The frontend
+    /// mounts the component registered for the executing gadget's
     /// ID and view name, replacing the standard result list.
     ShowCustomUI {
-        /// Named view to mount (must match a key in the plugin's
+        /// Named view to mount (must match a key in the gadget's
         /// `views` registry on the frontend).
         view: String,
         /// Optional data payload forwarded to the view component.
@@ -50,7 +50,7 @@ pub enum PostAction {
 // Action Types
 // =========================================================
 
-/// Well-known action IDs with an escape hatch for custom plugin actions.
+/// Well-known action IDs with an escape hatch for custom gadget actions.
 ///
 /// Using an enum rather than bare strings lets us exhaustively match
 /// for default keybinding assignment, display hints, and icon mapping.
@@ -62,7 +62,7 @@ pub enum ActionId {
     Reveal,
     OpenWith,
     Delete,
-    /// Jump to the originating plugin's settings panel.
+    /// Jump to the originating gadget's settings panel.
     /// Useful as the primary action on synthetic
     /// "configuration required" entries.
     OpenSettings,
@@ -105,7 +105,7 @@ pub enum EntryIcon {
     /// Name of a Heroicon (e.g. "x-circle", "cog-6-tooth").
     HeroIcon(String),
     /// Base64-encoded data URL for inline images.
-    /// Not currently constructed but available for future plugins.
+    /// Not currently constructed but available for future gadgets.
     #[allow(dead_code)]
     DataUrl(String),
     /// Absolute filesystem path to a cached image file. The frontend
@@ -116,9 +116,9 @@ pub enum EntryIcon {
     Emoji(String),
 }
 
-/// A pre-scored result returned by a `Plugin`'s `search()` method.
+/// A pre-scored result returned by a `Gadget`'s `search()` method.
 ///
-/// Intentionally omits `source` — plugin authors should not set or
+/// Intentionally omits `source` — gadget authors should not set or
 /// even think about this field. The host attaches it when wrapping
 /// into `SourcedEntry` via `SourcedEntry::new`.
 #[derive(Debug, Clone, Serialize)]
@@ -144,7 +144,7 @@ impl FrecencyTarget for ScoredEntry {
 }
 
 /// A raw catalog entry before scoring. Internal to the Rust side —
-/// plugins produce these, the catalog registry scores them, and
+/// gadgets produce these, the catalog registry scores them, and
 /// `SourcedEntry` is what crosses the bridge to the frontend.
 #[derive(Debug, Clone)]
 pub struct CatalogEntry {
@@ -160,7 +160,7 @@ pub struct CatalogEntry {
     pub actions: Vec<Action>,
 }
 
-/// A `ScoredEntry` attributed to its originating plugin, ready
+/// A `ScoredEntry` attributed to its originating gadget, ready
 /// for the frontend.
 ///
 /// Uses `#[serde(flatten)]` so the serialized form is a flat
@@ -172,14 +172,14 @@ pub struct CatalogEntry {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourcedEntry {
-    /// Which plugin produced this entry (plugin ID).
+    /// Which gadget produced this entry (gadget ID).
     pub source: String,
     #[serde(flatten)]
     pub inner: ScoredEntry,
 }
 
 impl SourcedEntry {
-    /// Wrap a `ScoredEntry` with its originating plugin ID.
+    /// Wrap a `ScoredEntry` with its originating gadget ID.
     pub fn new(source: String, inner: ScoredEntry) -> Self {
         Self { source, inner }
     }
@@ -211,26 +211,26 @@ impl FrecencyTarget for SourcedEntry {
 }
 
 // =========================================================
-// Plugin-to-Host Channel
+// Gadget-to-Host Channel
 //
-// Plugins push results into a `ResultChannel` during search.
+// Gadgets push results into a `ResultChannel` during search.
 // The host reads `GadgetResponse` values from the receiving end
 // and translates them into `SearchMessage`s for the frontend.
 // =========================================================
 
-/// Return type for `Plugin::search()`. Not serialized — only
-/// used between plugin and host within the same process.
+/// Return type for `Gadget::search()`. Not serialized — only
+/// used between gadget and host within the same process.
 #[derive(Debug, Clone)]
 pub enum GadgetResponse {
     /// Standard result list entries.
     Results(Vec<ScoredEntry>),
-    /// Plugin requests full custom UI (replaces the result list).
+    /// Gadget requests full custom UI (replaces the result list).
     CustomUI {
         view: String,
         data: Option<serde_json::Value>,
         results: Vec<ScoredEntry>,
     },
-    /// Plugin requests inline UI (rendered above the result list).
+    /// Gadget requests inline UI (rendered above the result list).
     InlineUI {
         view: String,
         data: Option<serde_json::Value>,
@@ -242,7 +242,7 @@ pub enum GadgetResponse {
 // Channel Messages
 // =========================================================
 
-/// Reference to a plugin view component for frontend resolution.
+/// Reference to a gadget view component for frontend resolution.
 ///
 /// Sent to the frontend so it can look up the correct React component
 /// in the gadget registry: `registry[gadgetId].views[view]` for
@@ -259,11 +259,11 @@ pub struct GadgetViewRef {
 ///
 /// The frontend receives these progressively: catalog results
 /// arrive first (sub-millisecond for static catalogs), then
-/// query plugin results stream in as each plugin completes, and
-/// `Done` signals that all plugins have finished.
+/// query gadget results stream in as each gadget completes, and
+/// `Done` signals that all gadgets have finished.
 ///
 /// There is a single `SearchResults` variant for all result
-/// sources (catalogs and query plugins alike). The frontend
+/// sources (catalogs and query gadgets alike). The frontend
 /// merges each message into its accumulated sorted array using
 /// the same algorithm — no special-casing needed.
 // The size gap between `SearchResults` and `Done` is large, but
@@ -276,7 +276,7 @@ pub struct GadgetViewRef {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SearchMessage {
-    /// A batch of search results from a catalog or query plugin.
+    /// A batch of search results from a catalog or query gadget.
     ///
     /// The `rename_all` on the enum only renames variant tags, not
     /// fields within variants. Fields need explicit renaming.
@@ -287,8 +287,8 @@ pub enum SearchMessage {
         /// later keystroke can evict its prior entries.
         source: ResultSource,
         entries: Vec<SourcedEntry>,
-        /// When a query plugin requested custom UI, this contains
-        /// a view reference so the frontend can mount the plugin's
+        /// When a query gadget requested custom UI, this contains
+        /// a view reference so the frontend can mount the gadget's
         /// React component. `None` for standard list rendering.
         custom_gadget_view: Option<GadgetViewRef>,
         /// When a query gadget requested inline UI, this contains
@@ -296,7 +296,7 @@ pub enum SearchMessage {
         /// the result list.
         inline_gadget_view: Option<GadgetViewRef>,
         /// The prefix that triggered exclusive routing. Sent to the
-        /// frontend so the plugin component knows which prefix was
+        /// frontend so the gadget component knows which prefix was
         /// matched. `None` when no prefix routing occurred.
         matched_prefix: Option<String>,
     },
@@ -304,8 +304,8 @@ pub enum SearchMessage {
 }
 
 /// `Catalog` is one aggregated batch mixing rows from every
-/// catalog-providing plugin — it replaces the catalog layer
-/// wholesale, not per-plugin.
+/// catalog-providing gadget — it replaces the catalog layer
+/// wholesale, not per-gadget.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ResultSource {

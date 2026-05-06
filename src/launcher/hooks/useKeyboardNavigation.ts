@@ -8,17 +8,17 @@
  * Registers three groups of keybindings via `useKeyBindings`:
  *
  * 1. **Global bindings** — always active regardless of whether a
- *    plugin custom UI is mounted. Tab trap (prevent focus escape)
- *    and Escape (clear query → dismiss). Plugin UIs can override
+ *    gadget custom UI is mounted. Tab trap (prevent focus escape)
+ *    and Escape (clear query → dismiss). Gadget UIs can override
  *    these at a higher layer.
  *
  * 2. **Navigation bindings** — arrow keys, page up/down, enter.
- *    Disabled when a plugin custom UI is active (`enabled=false`),
- *    since the plugin handles its own navigation.
+ *    Disabled when a gadget custom UI is active (`enabled=false`),
+ *    since the gadget handles its own navigation.
  *
  * 3. **Dynamic action bindings** — derived from the currently
  *    selected entry's secondary actions. Also disabled when a
- *    plugin is active.
+ *    gadget is active.
  *
  * All handler state is read from a ref that is updated after each
  * commit via `useEffect`. This keeps the `useMemo` arrays stable
@@ -74,7 +74,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   //
   // Tab trap prevents browser focus navigation from moving
   // focus out of the search input. Escape clears the query
-  // first, dismisses the launcher when already empty. Plugin
+  // first, dismisses the launcher when already empty. Gadget
   // UIs can override these at a higher keybinding layer.
   // =========================================================
 
@@ -111,7 +111,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   useKeyBindings(globalBindings);
 
   // =========================================================
-  // Navigation Bindings (disabled when plugin UI is active)
+  // Navigation Bindings (disabled when gadget UI is active)
   //
   // Arrow keys, page up/down, and Enter for primary action.
   // =========================================================
@@ -167,7 +167,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   useKeyBindings(navigationBindings);
 
   // =========================================================
-  // Dynamic Action Bindings (disabled when plugin UI is active)
+  // Dynamic Action Bindings (disabled when gadget UI is active)
   //
   // Derived from the currently selected entry's secondary
   // actions. When the selection changes, the definitions change

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Clipboard History — plugin custom UI component.
+ * Clipboard History — gadget custom UI component.
  *
  * Split-pane layout: left panel is a virtually-scrolled entry list,
  * right panel shows a detail preview of the selected entry. The list

@@ -6,7 +6,7 @@
 // Clipboard Schema & Types
 //
 // Database migration SQL, serialized types for frontend
-// communication, and plugin-level constants.
+// communication, and gadget-level constants.
 // =========================================================
 
 use std::collections::HashMap;

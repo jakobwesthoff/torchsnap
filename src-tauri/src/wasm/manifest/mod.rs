@@ -3,12 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Plugin Manifest
+// Gadget Manifest
 //
 // Typed representation of the `manifest.toml` that every
-// `.torchsnap` plugin archive (or development directory)
+// `.torchsnap` gadget archive (or development directory)
 // must contain. The manifest carries all metadata the host
-// needs to display, configure, and load the plugin without
+// needs to display, configure, and load the gadget without
 // instantiating the WASM module.
 // =========================================================
 
@@ -58,24 +58,24 @@ pub(crate) mod test_helpers;
 pub struct Manifest {
     pub gadget: GadgetMeta,
 
-    /// Plugin-specific settings defaults. Each key-value pair
+    /// Gadget-specific settings defaults. Each key-value pair
     /// is applied to the settings store on first load (existing
     /// user values are never overwritten). The values are
     /// arbitrary JSON-compatible types.
     #[serde(default)]
     pub settings: HashMap<String, toml::Value>,
 
-    /// Global keyboard shortcuts the plugin wants to register.
+    /// Global keyboard shortcuts the gadget wants to register.
     /// Keys are stable shortcut IDs (e.g., `"open-clipboard"`),
     /// values describe the shortcut.
     #[serde(default)]
     pub shortcuts: HashMap<String, ShortcutDef>,
 
     /// Frontend component declarations. Omitted when the
-    /// plugin has no UI.
+    /// gadget has no UI.
     pub frontend: Option<FrontendDef>,
 
-    /// Per-plugin storage configuration. Currently only the
+    /// Per-gadget storage configuration. Currently only the
     /// SQL sub-table is supported, but the wrapping
     /// `[storage]` namespace leaves room for future
     /// `[storage.kv]` / `[storage.files]` blocks without
@@ -84,13 +84,13 @@ pub struct Manifest {
 
     /// Scheduled background tasks. Each `[[tasks]]` entry
     /// declares a unique `id` and a 5-field POSIX cron
-    /// expression. The host's per-plugin scheduler walks
+    /// expression. The host's per-gadget scheduler walks
     /// the list, sleeps until the earliest next fire, and
     /// invokes the WIT `tasks::run-task` guest export.
     #[serde(default, rename = "tasks")]
     pub tasks: Vec<TaskDef>,
 
-    /// Host capability permissions. Plugins opt into `opener`,
+    /// Host capability permissions. Gadgets opt into `opener`,
     /// `http`, and `command` by declaring the relevant sub-tables
     /// or `[[permissions.command]]` arrays. Omitting `[permissions]`
     /// entirely means no capability is available (deny by default).
@@ -98,7 +98,7 @@ pub struct Manifest {
 }
 
 // =========================================================
-// Plugin Identity & Core Properties
+// Gadget Identity & Core Properties
 // =========================================================
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -114,10 +114,10 @@ pub struct GadgetMeta {
     pub name: String,
 
     /// Short description shown in the settings section header
-    /// below the plugin name.
+    /// below the gadget name.
     pub description: String,
 
-    /// Plugin version (e.g., `"0.1.0"`). For display and
+    /// Gadget version (e.g., `"0.1.0"`). For display and
     /// future update checking.
     pub version: String,
 
@@ -125,26 +125,26 @@ pub struct GadgetMeta {
     /// or directory (e.g., `"hello_world.wasm"`).
     pub wasm: String,
 
-    /// Plugin icon for the settings sidebar and section header.
+    /// Gadget icon for the settings sidebar and section header.
     ///
     /// Two formats are supported:
     /// - `"heroicons:<name>"` — resolved to a HeroIcon component
     /// - Any other string — treated as a path to a WebP image
-    ///   within the plugin archive/directory
+    ///   within the gadget archive/directory
     pub icon: GadgetIcon,
 
     /// Optional search prefixes for exclusive query routing
     /// (e.g., `[":"]` for the emoji picker). Omit for catalog
-    /// or always-on query plugins.
+    /// or always-on query gadgets.
     #[serde(default)]
     pub prefixes: Vec<String>,
 }
 
 // =========================================================
-// Plugin ID (validated newtype)
+// Gadget ID (validated newtype)
 // =========================================================
 
-/// A validated plugin identifier. Lowercase ASCII alphanumeric
+/// A validated gadget identifier. Lowercase ASCII alphanumeric
 /// characters and hyphens only, must not be empty, must not
 /// start or end with a hyphen.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -204,13 +204,13 @@ fn validate_gadget_id(id: &str) -> Result<(), String> {
 }
 
 // =========================================================
-// Plugin Icon
+// Gadget Icon
 // =========================================================
 
 /// Either a HeroIcon reference or a path to an image file
-/// within the plugin source (archive or directory).
+/// within the gadget source (archive or directory).
 ///
-/// The image variant stores a path relative to the plugin
+/// The image variant stores a path relative to the gadget
 /// root — it is not a filesystem path. At load time the host
 /// reads the image bytes via `GadgetSource::read_file`.
 #[derive(Debug, Clone)]
@@ -218,7 +218,7 @@ pub enum GadgetIcon {
     /// A HeroIcon name (e.g., `"clipboard-document-list"`).
     HeroIcon(String),
 
-    /// A relative path to a WebP image within the plugin
+    /// A relative path to a WebP image within the gadget
     /// source (e.g., `"assets/icon.webp"`). MUST be read via
     /// `GadgetSource::read_file` — this is never a filesystem
     /// path.
@@ -283,7 +283,7 @@ impl Manifest {
             toml::from_str(toml_source).map_err(|e| anyhow::anyhow!("invalid manifest: {e}"))?;
 
         // Validate `[[tasks]]` entries early so a malformed
-        // cron expression or a duplicate id fails plugin
+        // cron expression or a duplicate id fails gadget
         // load instead of waiting for the scheduler to
         // crash at runtime.
         tasks::validate_task_definitions(&manifest.tasks)?;
@@ -300,10 +300,10 @@ impl Manifest {
             ..manifest
         };
 
-        // Every user-supplied path must be plugin-relative and
+        // Every user-supplied path must be gadget-relative and
         // free of traversal. Rejecting at parse time keeps the
         // guarantee load-bearing: no downstream code ever sees
-        // an unvalidated path. See the "Plugin Path Guard"
+        // an unvalidated path. See the "Gadget Path Guard"
         // comment in `source.rs` for the rationale.
         paths::validate_manifest_paths(&manifest)?;
 
@@ -431,7 +431,7 @@ mod tests {
     }
 
     // =====================================================
-    // Plugin ID validation
+    // Gadget ID validation
     // =====================================================
 
     #[test]

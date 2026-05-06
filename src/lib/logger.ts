@@ -6,7 +6,7 @@
 // Frontend Logger
 //
 // Provides a structured logging API for frontend code.
-// Each Logger instance is bound to a source (plugin ID or
+// Each Logger instance is bound to a source (gadget ID or
 // "host") and emits messages and spans into the same log
 // stream used by the backend.
 //
@@ -16,7 +16,7 @@
 // immediately; the worker resolves it to a backend ID.
 //
 // Usage:
-//   const logger = createLogger("my-plugin");
+//   const logger = createLogger("my-gadget");
 //   logger.info("Something happened");
 //
 //   const span = logger.spanStart("search");

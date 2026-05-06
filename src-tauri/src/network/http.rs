@@ -12,7 +12,7 @@
 //
 // reqwest::blocking::Client is deliberately avoided because
 // it panics when used inside a tokio runtime, which is where
-// both `spawn_blocking` (native plugins) and future WASM host
+// both `spawn_blocking` (native gadgets) and future WASM host
 // functions execute.
 //
 // The response type wraps a live reqwest stream. Body data is
@@ -23,7 +23,7 @@
 //
 // All public types use owned, primitive data (u16, String,
 // Vec<u8>) so they can be mapped 1:1 onto WIT records and
-// resources when WASM plugin support is added.
+// resources when WASM gadget support is added.
 // =========================================================
 
 use std::time::Duration;
@@ -36,7 +36,7 @@ use anyhow::{Context, Result, bail};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// No size limit by default. Callers opt into limits per-plugin
+/// No size limit by default. Callers opt into limits per-gadget
 /// or per-request via `HttpBuilder::max_size` or
 /// `RequestBuilder::max_size`.
 const DEFAULT_MAX_SIZE: u64 = u64::MAX;
@@ -52,10 +52,10 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 // Http — the client handle
 // =========================================================
 
-/// Per-plugin HTTP client with configurable defaults.
+/// Per-gadget HTTP client with configurable defaults.
 ///
 /// Wraps a `reqwest::Client` (which is internally `Arc`-based,
-/// so cloning `Http` is cheap). Each plugin constructs its own
+/// so cloning `Http` is cheap). Each gadget constructs its own
 /// instance in `enable()`, matching the `SqlStorage` ownership
 /// pattern.
 pub struct Http {
@@ -155,7 +155,7 @@ impl HttpBuilder {
 
     /// Disable TLS certificate verification on the underlying
     /// reqwest client. Used to construct a parallel "insecure"
-    /// client for plugins that need to talk to local daemons
+    /// client for gadgets that need to talk to local daemons
     /// shipped with self-signed certificates (e.g. Docker over
     /// TLS, k3s API server).
     pub fn accept_invalid_certs(mut self, accept: bool) -> Self {

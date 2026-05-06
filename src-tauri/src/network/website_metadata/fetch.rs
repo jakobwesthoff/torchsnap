@@ -35,7 +35,7 @@ const MAX_DOWNLOAD_SIZE: usize = 512 * 1024;
 /// Request timeout for page and favicon fetches. Covers the
 /// whole request (connect + headers + body), so an unreachable
 /// or slow host fails after this bound. Tight on purpose: the
-/// open-url plugin runs this synchronously per-keystroke and
+/// open-url gadget runs this synchronously per-keystroke and
 /// anything longer noticeably stalls the search UI.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(2);
 

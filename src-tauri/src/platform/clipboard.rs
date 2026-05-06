@@ -6,7 +6,7 @@
 // Clipboard Platform Trait
 //
 // Platform-specific clipboard introspection for the clipboard
-// manager plugin. The main concern is distinguishing "our own"
+// manager gadget. The main concern is distinguishing "our own"
 // writes from user-originated changes, and respecting macOS
 // sensitive content markers (e.g., password managers that set
 // `org.nspasteboard.ConcealedType`).

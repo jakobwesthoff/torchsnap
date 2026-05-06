@@ -166,7 +166,7 @@ pub fn devtools_log_stats(state: State<'_, Arc<LoggingSystem>>) -> LogStats {
 // =========================================================
 // Frontend Logging Commands
 //
-// These commands allow frontend code (plugin React views,
+// These commands allow frontend code (gadget React views,
 // app UI) to emit log messages and spans into the same
 // log stream used by the backend.
 // =========================================================
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn resolve_source_empty_string_is_plugin() {
-        // An empty string is not "host" — treated as a plugin
+        // An empty string is not "host" — treated as a gadget
         // with an empty ID. Not a useful case, but the behavior
         // should be defined.
         assert_eq!(resolve_source(""), LogSource::Gadget("".into()),);

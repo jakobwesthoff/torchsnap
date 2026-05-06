@@ -80,7 +80,7 @@ impl From<CompletedSpan> for LogItemKind {
 /// Thread-safe registry of open spans.
 ///
 /// Created once and shared via `Arc`. Any part of the app
-/// (plugin host imports, bridge, runtime, host code) can
+/// (gadget host imports, bridge, runtime, host code) can
 /// start and end spans through this registry.
 pub struct SpanRegistry {
     id_gen: AtomicU64,

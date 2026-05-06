@@ -5,7 +5,7 @@
 // =========================================================
 // FS host import
 //
-// Read-only filesystem access for WASM plugins. The plugin
+// Read-only filesystem access for WASM gadgets. The gadget
 // declares an allowlist of path patterns under
 // `[permissions.fs]` in its manifest; the bridge expands
 // `${...}` substitution variables, canonicalizes the static
@@ -23,7 +23,7 @@
 // `std::fs::read` / `std::fs::canonicalize` block the OS
 // thread, so the host trait impl wraps the I/O in
 // `tokio::task::block_in_place` to keep other guest tasks
-// runnable while one plugin is reading.
+// runnable while one gadget is reading.
 // =========================================================
 
 use std::path::{Path, PathBuf};
@@ -38,7 +38,7 @@ use crate::wasm::permission_vars::{PathContext, substitute_variables};
 use super::super::{GadgetState, WasmGadgetInstance};
 
 /// FS state stashed on `GadgetState`. `allowlist` is `None`
-/// when the plugin's manifest has no `[permissions.fs]`
+/// when the gadget's manifest has no `[permissions.fs]`
 /// section, which means every fs call returns
 /// `permission-denied`.
 #[derive(Default)]
@@ -46,7 +46,7 @@ pub(crate) struct FsState {
     pub(crate) allowlist: Option<Arc<FsAllowlist>>,
 }
 
-/// Compiled fs allowlist for a single plugin instance.
+/// Compiled fs allowlist for a single gadget instance.
 ///
 /// `globset` is the matcher built from each pattern;
 /// `canonical_patterns` is the human-readable form retained
@@ -220,7 +220,7 @@ fn canonicalize_pattern(pattern: &str) -> String {
 }
 
 /// Reject syntactically invalid request paths. The fs API
-/// requires absolute, canonical-shape paths from plugins —
+/// requires absolute, canonical-shape paths from gadgets —
 /// `..` / `.` / `//` segments are refused before any I/O.
 pub(crate) fn validate_request_path(path: &str) -> Result<(), WasmFsError> {
     if path.is_empty() {
@@ -310,7 +310,7 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
         let allowlist = self.fs.allowlist.clone();
         tokio::task::block_in_place(|| -> Result<FileMetadata, WasmFsError> {
             // `is_symlink` is observed before canonicalization
-            // so the plugin can detect when its allowlist
+            // so the gadget can detect when its allowlist
             // resolved through a symlink rather than landing
             // on a real file directly.
             let is_symlink = std::fs::symlink_metadata(&path)
@@ -344,7 +344,7 @@ impl WasmGadgetInstance {
     /// Stash the compiled fs allowlist on this instance.
     /// Called by the bridge on `enable()` from the manifest's
     /// `[permissions.fs] read = [...]` after substitution and
-    /// canonicalization. Pass `None` for plugins whose
+    /// canonicalization. Pass `None` for gadgets whose
     /// manifest has no fs section.
     pub fn set_fs_allowlist(&self, allowlist: Option<Arc<FsAllowlist>>) {
         self.with_state_mut(|state| state.fs.allowlist = allowlist);
