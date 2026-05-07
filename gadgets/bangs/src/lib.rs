@@ -21,47 +21,12 @@
 // download on demand via the `refresh` messaging method.
 // =========================================================
 
-use std::cell::RefCell;
-
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use torchsnap_gadget_sdk::http::{HttpMethod, HttpRequest};
 use torchsnap_gadget_sdk::prelude::*;
 use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
-
-// =========================================================
-// Pending-URL thread-local
-//
-// SAFETY INVARIANT (load-bearing):
-//
-//   `wasm32-wasip2` is single-threaded per guest instance,
-//   so a `thread_local!` here is effectively per-instance
-//   static storage. The host's UI flow writes via search()
-//   and reads via execute() with no other caller that
-//   touches the cell — search() runs synchronously per
-//   query cycle, the UI can only execute the currently
-//   displayed result, and the host serializes guest calls
-//   on the store mutex as a belt-and-suspenders second
-//   line of defense.
-//
-// Therefore the URL written by search() is always the URL
-// the user sees when they trigger execute(). If either
-// condition breaks (multi-threaded guest runtime, a
-// background task that touches the cell, pipelined WIT
-// calls that overlap), this mechanism breaks silently —
-// execute() would open a stale or wrong URL.
-//
-// HACK(gadget-execute-data-param): see todos/gadget-host/api/01kn7v6ynyf580ax9jyyt25jgc-gadget-execute-data-param.md — remove once execute() carries an arbitrary data parameter.
-//
-// `RefCell<Option<String>>` rather than `Cell<Option<String>>`
-// because `Option<String>` is not `Copy`. Calculator uses
-// `Cell<bool>` / `Cell<u32>` which are Copy; we can't.
-// =========================================================
-
-thread_local! {
-    static PENDING_URL: RefCell<Option<String>> = const { RefCell::new(None) };
-}
 
 /// Score assigned to bang results. High enough to appear
 /// near the top (above mediocre fuzzy matches) but below a
@@ -120,7 +85,6 @@ impl LifecycleGuest for BangsPlugin {
     }
 
     fn disable() {
-        PENDING_URL.with(|cell| cell.borrow_mut().take());
         logging::log(logging::LogLevel::Info, "Bangs disabled", &[], None);
     }
 
@@ -163,12 +127,6 @@ impl SearchGuest for BangsPlugin {
             bang.url_template.replace("{{{s}}}", &encoded)
         };
 
-        // Stash the URL for `execute()` — see the PENDING_URL
-        // module comment for the invariant that makes this safe.
-        PENDING_URL.with(|cell| {
-            *cell.borrow_mut() = Some(resolved_url.clone());
-        });
-
         let title = if clean_query.is_empty() {
             format!("Open {}", bang.service_name)
         } else {
@@ -192,6 +150,8 @@ impl SearchGuest for BangsPlugin {
             EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
         );
 
+        let entry_data = data::encode(&resolved_url).expect("URL is serializable");
+
         let entry = ScoredEntry {
             id: format!("!{bang_trigger}"),
             title,
@@ -210,21 +170,16 @@ impl SearchGuest for BangsPlugin {
                     label: "Copy URL".to_string(),
                 },
             ],
-            data: None,
+            data: Some(entry_data),
         };
 
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(_entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        // Pop the pending URL. Taking (not cloning) means a
-        // stray second execute() without an intervening
-        // search() correctly errors out rather than
-        // re-opening the last URL — defensive against
-        // double-fire UI bugs.
-        let url = PENDING_URL
-            .with(|cell| cell.borrow_mut().take())
-            .ok_or_else(|| "no pending URL to act on".to_string())?;
+    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
+        let url: String = data::decode(
+            entry.data.as_deref().ok_or("no data attached to entry")?,
+        )?;
 
         match action_id {
             ActionId::Open => {

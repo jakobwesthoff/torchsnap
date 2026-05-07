@@ -48,6 +48,7 @@ wit_bindgen::generate!({
 });
 
 pub mod command;
+pub mod data;
 pub mod logging;
 pub mod messaging;
 pub mod settings;
@@ -116,7 +117,7 @@ pub mod prelude {
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{command, logging, messaging, settings, sql, website_metadata};
+    pub use super::{command, data, logging, messaging, settings, sql, website_metadata};
     pub use super::{
         assets, clipboard, frecency, fs, http, opener, paths, platform, website_metadata_host,
     };
