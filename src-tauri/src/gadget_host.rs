@@ -762,8 +762,16 @@ impl GadgetHost {
             return Ok(PostAction::Dismiss);
         }
 
+        let Some(entry) = self.entry_store.get(source, entry_id) else {
+            eprintln!(
+                "execute: entry '{entry_id}' from gadget '{source}' not found in entry store \
+                 (bug — the UI should only execute entries from the current search)"
+            );
+            return Ok(PostAction::Nothing);
+        };
+
         if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            return slot.gadget.execute(entry_id, action_id, app);
+            return slot.gadget.execute(&entry, action_id, app);
         }
         anyhow::bail!("unknown gadget source: {source}");
     }
@@ -1081,7 +1089,7 @@ mod tests {
 
         fn execute(
             &self,
-            _entry_id: &str,
+            _entry: &ScoredEntry,
             _action_id: &ActionId,
             _app: &tauri::AppHandle,
         ) -> anyhow::Result<PostAction> {

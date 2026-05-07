@@ -40,7 +40,7 @@ use clipboard_rs::{
 use tauri::Manager;
 use tauri::ipc::Channel;
 
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::settings::SettingsInit;
 use crate::storage::{FileStorage, SqlStorage};
@@ -388,7 +388,7 @@ impl Gadget for ClipboardGadget {
 
     fn execute(
         &self,
-        _entry_id: &str,
+        _entry: &ScoredEntry,
         action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> Result<PostAction> {
