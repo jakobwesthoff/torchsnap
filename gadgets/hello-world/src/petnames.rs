@@ -213,6 +213,7 @@ pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
                     id: ActionId::Copy,
                     label: "Copy".into(),
                 }],
+                data: None,
             });
         }
 

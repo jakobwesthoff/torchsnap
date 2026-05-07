@@ -132,6 +132,11 @@ pub struct ScoredEntry {
     pub title_positions: Utf16Positions,
     pub subtitle_positions: Utf16Positions,
     pub actions: Vec<Action>,
+    /// Opaque gadget-defined payload round-tripped by the host.
+    /// Set in `search()`, passed back to `execute()` via the
+    /// entry store. Never serialized to the frontend.
+    #[serde(skip)]
+    pub data: Option<String>,
 }
 
 impl FrecencyTarget for ScoredEntry {
@@ -331,7 +336,25 @@ mod scored_entry_tests {
                 label: "Open".to_string(),
                 keybinding: None,
             }],
+            data: None,
         }
+    }
+
+    #[test]
+    fn data_field_excluded_from_serialization() {
+        let mut entry = sample_scored_entry();
+        entry.data = Some("secret payload".to_string());
+        let json = serde_json::to_value(&entry).expect("serialize");
+        assert!(json.get("data").is_none(), "data must not appear in serialized JSON");
+    }
+
+    #[test]
+    fn data_field_excluded_from_sourced_entry_serialization() {
+        let mut entry = sample_scored_entry();
+        entry.data = Some("secret payload".to_string());
+        let sourced = SourcedEntry::new("gadget".to_string(), entry);
+        let json = serde_json::to_value(&sourced).expect("serialize");
+        assert!(json.get("data").is_none(), "data must not leak through flatten");
     }
 
     #[test]

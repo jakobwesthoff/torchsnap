@@ -210,6 +210,7 @@ impl SearchGuest for BangsPlugin {
                     label: "Copy URL".to_string(),
                 },
             ],
+            data: None,
         };
 
         SearchResponse::Results(vec![entry])

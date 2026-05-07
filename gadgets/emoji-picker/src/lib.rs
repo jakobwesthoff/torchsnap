@@ -476,6 +476,7 @@ fn build_scored_entry(
             id: ActionId::Copy,
             label: "Copy to Clipboard".into(),
         }],
+        data: None,
     }
 }
 

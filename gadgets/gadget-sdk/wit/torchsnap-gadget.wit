@@ -725,6 +725,10 @@ interface search {
     /// UTF-16 code unit offsets to highlight in the subtitle.
     subtitle-highlight-positions: list<u32>,
     actions: list<action>,
+    /// Opaque gadget-defined payload round-tripped by the host.
+    /// Attached in `search()`, passed back in `execute()`. The
+    /// host never inspects the contents.
+    data: option<string>,
   }
 
   /// Payload for custom-ui and inline-ui search responses.

@@ -203,6 +203,32 @@ impl From<wit::ScoredEntry> for native::ScoredEntry {
             title_positions: crate::unicode::Utf16Positions(entry.title_highlight_positions),
             subtitle_positions: crate::unicode::Utf16Positions(entry.subtitle_highlight_positions),
             actions: entry.actions.into_iter().map(Into::into).collect(),
+            data: entry.data,
+        }
+    }
+}
+
+impl From<native::ScoredEntry> for wit::ScoredEntry {
+    fn from(entry: native::ScoredEntry) -> Self {
+        wit::ScoredEntry {
+            id: entry.id,
+            title: entry.title,
+            subtitle: entry.subtitle,
+            icon: entry.icon.map(Into::into),
+            score: entry.score,
+            title_highlight_positions: entry.title_positions.0,
+            subtitle_highlight_positions: entry.subtitle_positions.0,
+            actions: entry.actions.into_iter().map(Into::into).collect(),
+            data: entry.data,
+        }
+    }
+}
+
+impl From<native::Action> for wit::Action {
+    fn from(action: native::Action) -> Self {
+        wit::Action {
+            id: action.id.into(),
+            label: action.label,
         }
     }
 }
@@ -387,6 +413,7 @@ mod tests {
             title_highlight_positions: vec![],
             subtitle_highlight_positions: vec![],
             actions: vec![],
+            data: None,
         }
     }
 
@@ -534,12 +561,11 @@ mod tests {
     }
 
     // =====================================================
-    // ScoredEntry conversion
+    // ScoredEntry conversion (WIT → native)
     // =====================================================
 
-    #[test]
-    fn scored_entry_maps_all_fields() {
-        let wit_entry = wit::ScoredEntry {
+    fn full_wit_scored_entry() -> wit::ScoredEntry {
+        wit::ScoredEntry {
             id: "e1".to_string(),
             title: "Title".to_string(),
             subtitle: Some("Sub".to_string()),
@@ -551,8 +577,13 @@ mod tests {
                 id: wit::ActionId::Open,
                 label: "Open".to_string(),
             }],
-        };
-        let native_entry: native::ScoredEntry = wit_entry.into();
+            data: Some("payload".to_string()),
+        }
+    }
+
+    #[test]
+    fn scored_entry_maps_all_fields() {
+        let native_entry: native::ScoredEntry = full_wit_scored_entry().into();
         assert_eq!(native_entry.id, "e1");
         assert_eq!(native_entry.title, "Title");
         assert_eq!(native_entry.subtitle.as_deref(), Some("Sub"));
@@ -562,6 +593,83 @@ mod tests {
         assert_eq!(native_entry.subtitle_positions.0, vec![5]);
         assert_eq!(native_entry.actions.len(), 1);
         assert_eq!(native_entry.actions[0].label, "Open");
+        assert_eq!(native_entry.data.as_deref(), Some("payload"));
+    }
+
+    #[test]
+    fn scored_entry_data_none_preserved() {
+        let mut wit_entry = full_wit_scored_entry();
+        wit_entry.data = None;
+        let native_entry: native::ScoredEntry = wit_entry.into();
+        assert!(native_entry.data.is_none());
+    }
+
+    // =====================================================
+    // ScoredEntry conversion (native → WIT)
+    // =====================================================
+
+    fn full_native_scored_entry() -> native::ScoredEntry {
+        native::ScoredEntry {
+            id: "n1".to_string(),
+            title: "Native Title".to_string(),
+            subtitle: Some("Native Sub".to_string()),
+            icon: Some(native::EntryIcon::Emoji("🔥".to_string())),
+            score: 77,
+            title_positions: crate::unicode::Utf16Positions(vec![3, 4]),
+            subtitle_positions: crate::unicode::Utf16Positions(vec![]),
+            actions: vec![native::Action {
+                id: native::ActionId::Copy,
+                label: "Copy".to_string(),
+                keybinding: Some(native::ActionKeybinding {
+                    modifiers: vec!["Meta".to_string()],
+                    key: "c".to_string(),
+                }),
+            }],
+            data: Some(r#"{"url":"https://example.com"}"#.to_string()),
+        }
+    }
+
+    #[test]
+    fn native_to_wit_scored_entry_maps_all_fields() {
+        let wit_entry: wit::ScoredEntry = full_native_scored_entry().into();
+        assert_eq!(wit_entry.id, "n1");
+        assert_eq!(wit_entry.title, "Native Title");
+        assert_eq!(wit_entry.subtitle.as_deref(), Some("Native Sub"));
+        assert!(matches!(wit_entry.icon, Some(wit::EntryIcon::Emoji(ref s)) if s == "🔥"));
+        assert_eq!(wit_entry.score, 77);
+        assert_eq!(wit_entry.title_highlight_positions, vec![3, 4]);
+        assert!(wit_entry.subtitle_highlight_positions.is_empty());
+        assert_eq!(wit_entry.actions.len(), 1);
+        assert!(matches!(wit_entry.actions[0].id, wit::ActionId::Copy));
+        assert_eq!(wit_entry.data.as_deref(), Some(r#"{"url":"https://example.com"}"#));
+    }
+
+    #[test]
+    fn native_to_wit_action_drops_keybinding() {
+        let action = native::Action {
+            id: native::ActionId::Reveal,
+            label: "Show".to_string(),
+            keybinding: Some(native::ActionKeybinding {
+                modifiers: vec!["Meta".to_string(), "Shift".to_string()],
+                key: "r".to_string(),
+            }),
+        };
+        let wit_action: wit::Action = action.into();
+        assert!(matches!(wit_action.id, wit::ActionId::Reveal));
+        assert_eq!(wit_action.label, "Show");
+    }
+
+    #[test]
+    fn scored_entry_round_trips_through_wit() {
+        let original = full_native_scored_entry();
+        let wit: wit::ScoredEntry = original.clone().into();
+        let back: native::ScoredEntry = wit.into();
+        assert_eq!(back.id, original.id);
+        assert_eq!(back.title, original.title);
+        assert_eq!(back.subtitle, original.subtitle);
+        assert_eq!(back.score, original.score);
+        assert_eq!(back.title_positions.0, original.title_positions.0);
+        assert_eq!(back.data, original.data);
     }
 
     // =====================================================

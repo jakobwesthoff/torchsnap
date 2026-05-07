@@ -345,6 +345,7 @@ fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
             id: action_id,
             label: label.to_string(),
         }],
+        data: None,
     })
 }
 
@@ -384,6 +385,7 @@ fn synthetic_connect_entry(id: &str) -> ScoredEntry {
                 label: "Copy network id".to_string(),
             },
         ],
+        data: None,
     }
 }
 
@@ -450,6 +452,7 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
                 label: "Forget".to_string(),
             },
         ],
+        data: None,
     }
 }
 

@@ -225,6 +225,7 @@ impl SearchGuest for OpenUrlPlugin {
                     label: "Copy URL".to_string(),
                 },
             ],
+            data: None,
         };
 
         SearchResponse::Results(vec![entry])

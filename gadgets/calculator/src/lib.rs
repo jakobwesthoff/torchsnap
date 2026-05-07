@@ -644,6 +644,7 @@ fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry> {
                     id: ActionId::Copy,
                     label: "Copy to Clipboard".to_string(),
                 }],
+                data: None,
             })
         })
         .collect()
