@@ -25,23 +25,8 @@
 // URL kind once we have UX data to motivate it.
 // =========================================================
 
-use std::cell::RefCell;
-
 use torchsnap_gadget_sdk::prelude::*;
 use torchsnap_gadget_sdk::website_metadata::Metadata;
-
-// =========================================================
-// Pending-URL thread-local
-//
-// Same per-instance stash pattern as the bangs gadget (see
-// `gadgets/bangs/src/lib.rs` for the full safety argument).
-// Disappears once the arbitrary-data parameter for execute()
-// lands (todo 01kn7v6ynyf580ax9jyyt25jgc).
-// =========================================================
-
-thread_local! {
-    static PENDING_URL: RefCell<Option<String>> = const { RefCell::new(None) };
-}
 
 /// Same priority tier as bangs. Lower than a perfect title
 /// match plus heavy frecency, high enough to stay near the top
@@ -145,7 +130,6 @@ impl LifecycleGuest for OpenUrlPlugin {
     }
 
     fn disable() {
-        PENDING_URL.with(|cell| cell.borrow_mut().take());
         logging::log(logging::LogLevel::Info, "Open URL disabled", &[], None);
     }
 
@@ -203,10 +187,6 @@ impl SearchGuest for OpenUrlPlugin {
             Metadata::Pending => unreachable!("lookup_blocking never returns Pending"),
         };
 
-        PENDING_URL.with(|cell| {
-            *cell.borrow_mut() = Some(detected.full_url.clone());
-        });
-
         let entry = ScoredEntry {
             id: detected.domain,
             title,
@@ -225,19 +205,16 @@ impl SearchGuest for OpenUrlPlugin {
                     label: "Copy URL".to_string(),
                 },
             ],
-            data: None,
+            data: Some(data::encode(&detected.full_url).expect("URL is serializable")),
         };
 
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(_entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        // Take (not clone) so a stray second execute() without
-        // an intervening search() errors instead of re-opening
-        // the last URL.
-        let url = PENDING_URL
-            .with(|cell| cell.borrow_mut().take())
-            .ok_or_else(|| "no pending URL to act on".to_string())?;
+    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
+        let url: String = data::decode(
+            entry.data.as_deref().ok_or("no data attached to entry")?,
+        )?;
 
         match action_id {
             ActionId::Open => {
