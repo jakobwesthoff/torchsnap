@@ -314,6 +314,89 @@ pub enum ResultSource {
 }
 
 #[cfg(test)]
+mod scored_entry_tests {
+    use super::*;
+
+    fn sample_scored_entry() -> ScoredEntry {
+        ScoredEntry {
+            id: "test-id".to_string(),
+            title: "Test Title".to_string(),
+            subtitle: Some("A subtitle".to_string()),
+            icon: Some(EntryIcon::HeroIcon("star".to_string())),
+            score: 42,
+            title_positions: Utf16Positions(vec![0, 1, 2]),
+            subtitle_positions: Utf16Positions::empty(),
+            actions: vec![Action {
+                id: ActionId::Open,
+                label: "Open".to_string(),
+                keybinding: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn serialization_contains_expected_fields() {
+        let json = serde_json::to_value(sample_scored_entry()).expect("serialize");
+        assert!(json.get("id").is_some());
+        assert!(json.get("title").is_some());
+        assert!(json.get("subtitle").is_some());
+        assert!(json.get("icon").is_some());
+        assert!(json.get("score").is_some());
+        assert!(json.get("titlePositions").is_some());
+        assert!(json.get("subtitlePositions").is_some());
+        assert!(json.get("actions").is_some());
+    }
+
+    #[test]
+    fn serialization_field_values_match() {
+        let json = serde_json::to_value(sample_scored_entry()).expect("serialize");
+        assert_eq!(json["id"], "test-id");
+        assert_eq!(json["title"], "Test Title");
+        assert_eq!(json["subtitle"], "A subtitle");
+        assert_eq!(json["score"], 42);
+    }
+
+    #[test]
+    fn sourced_entry_serializes_flat() {
+        let sourced = SourcedEntry::new("my-gadget".to_string(), sample_scored_entry());
+        let json = serde_json::to_value(&sourced).expect("serialize");
+
+        assert_eq!(json["source"], "my-gadget");
+        assert_eq!(json["id"], "test-id");
+        assert_eq!(json["title"], "Test Title");
+        assert!(
+            json.get("inner").is_none(),
+            "flatten must not produce an 'inner' key"
+        );
+    }
+
+    #[test]
+    fn cmp_sort_key_score_descending() {
+        let high = SourcedEntry::new("a".into(), ScoredEntry { score: 100, ..sample_scored_entry() });
+        let low = SourcedEntry::new("a".into(), ScoredEntry { score: 50, ..sample_scored_entry() });
+        assert!(high.cmp_sort_key(&low).is_lt(), "higher score sorts first");
+    }
+
+    #[test]
+    fn cmp_sort_key_source_ascending_on_tie() {
+        let a = SourcedEntry::new("alpha".into(), sample_scored_entry());
+        let b = SourcedEntry::new("beta".into(), sample_scored_entry());
+        assert!(a.cmp_sort_key(&b).is_lt(), "lower source sorts first on score tie");
+    }
+
+    #[test]
+    fn cmp_sort_key_id_ascending_on_double_tie() {
+        let mut e1 = sample_scored_entry();
+        e1.id = "aaa".to_string();
+        let mut e2 = sample_scored_entry();
+        e2.id = "zzz".to_string();
+        let a = SourcedEntry::new("same".into(), e1);
+        let b = SourcedEntry::new("same".into(), e2);
+        assert!(a.cmp_sort_key(&b).is_lt(), "lower id sorts first on source+score tie");
+    }
+}
+
+#[cfg(test)]
 mod result_source_tests {
     use super::ResultSource;
 
