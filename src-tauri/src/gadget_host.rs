@@ -39,6 +39,7 @@ use crate::commands::types::{
     ActionId, GadgetResponse, GadgetViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
     SourcedEntry,
 };
+use crate::entry_store::EntryStore;
 use crate::frecency::{FrecencyStore, GadgetFrecency};
 use crate::gadgets::{Gadget, GadgetContext, GadgetShortcut};
 use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
@@ -131,6 +132,7 @@ pub struct GadgetHost {
     slots: Vec<GadgetSlot>,
     store: Arc<Store<tauri::Wry>>,
     frecency: Arc<FrecencyStore>,
+    entry_store: EntryStore,
 
     /// Settings keys that affect shortcut registration. When
     /// any of these change, the reactor re-registers all shortcuts.
@@ -152,6 +154,7 @@ impl GadgetHost {
             slots: Vec::new(),
             store,
             frecency,
+            entry_store: EntryStore::new(),
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
@@ -441,6 +444,8 @@ impl GadgetHost {
     /// their results stream to the frontend as each gadget
     /// completes.
     pub async fn search(&self, query: &str, on_results: &tauri::ipc::Channel<SearchMessage>) {
+        self.entry_store.clear();
+
         if query.is_empty() {
             let _ = on_results.send(SearchMessage::Done);
             return;
@@ -493,6 +498,8 @@ impl GadgetHost {
                 entries.sort_by_key(|entry| std::cmp::Reverse(entry.inner.score));
             }
 
+            self.store_sourced_entries(&entries);
+
             let _ = on_results.send(SearchMessage::SearchResults {
                 source: ResultSource::Gadget { id: source.clone() },
                 entries,
@@ -530,6 +537,7 @@ impl GadgetHost {
         // Always emit — the frontend uses the catalog batch as
         // the canonical "new generation, recompute" signal, so
         // an empty catalog must still cross the wire.
+        self.store_sourced_entries(&catalog_results);
         let _ = on_results.send(SearchMessage::SearchResults {
             source: ResultSource::Catalog,
             entries: catalog_results,
@@ -589,6 +597,8 @@ impl GadgetHost {
                 _ => None,
             };
 
+            self.store_sourced_entries(&entries);
+
             // Always emit; a gadget going from results to empty
             // relies on this message to evict its prior entries.
             let _ = on_results.send(SearchMessage::SearchResults {
@@ -601,6 +611,14 @@ impl GadgetHost {
         }
 
         let _ = on_results.send(SearchMessage::Done);
+    }
+
+    /// Insert all entries from a `SourcedEntry` slice into the
+    /// entry store, grouped by their `source` field.
+    fn store_sourced_entries(&self, entries: &[SourcedEntry]) {
+        for entry in entries {
+            self.entry_store.insert(&entry.source, std::slice::from_ref(&entry.inner));
+        }
     }
 
     /// Delegate to the standalone function for testability.

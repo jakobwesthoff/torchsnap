@@ -4,6 +4,7 @@
 
 mod commands;
 mod control;
+mod entry_store;
 mod frecency;
 mod gadget_host;
 mod gadget_install;
