@@ -683,6 +683,7 @@ impl GadgetHost {
                             title_positions,
                             subtitle_positions: Utf16Positions::empty(),
                             actions: entry.actions,
+                            data: None,
                         },
                     ));
                 }
@@ -1081,6 +1082,7 @@ mod tests {
             title_positions: Utf16Positions::empty(),
             subtitle_positions: Utf16Positions::empty(),
             actions: vec![],
+            data: None,
         }
     }
 

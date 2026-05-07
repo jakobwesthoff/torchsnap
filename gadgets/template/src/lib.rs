@@ -329,5 +329,6 @@ fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
             id: ActionId::Open,
             label: "Open in Browser".into(),
         }],
+        data: None,
     })
 }
