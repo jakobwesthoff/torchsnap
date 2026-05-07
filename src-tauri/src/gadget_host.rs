@@ -1007,6 +1007,7 @@ mod tests {
         prefixes: Vec<String>,
         catalog_entries: Vec<CatalogEntry>,
         search_response: Option<GadgetResponse>,
+        execute_response: PostAction,
     }
 
     impl MockGadget {
@@ -1017,6 +1018,7 @@ mod tests {
                 prefixes: vec![],
                 catalog_entries: vec![],
                 search_response: None,
+                execute_response: PostAction::Nothing,
             }
         }
 
@@ -1032,6 +1034,11 @@ mod tests {
 
         fn with_search_response(mut self, response: GadgetResponse) -> Self {
             self.search_response = Some(response);
+            self
+        }
+
+        fn with_execute_response(mut self, response: PostAction) -> Self {
+            self.execute_response = response;
             self
         }
     }
@@ -1059,7 +1066,7 @@ mod tests {
             _action_id: &ActionId,
             _app: &tauri::AppHandle,
         ) -> anyhow::Result<PostAction> {
-            Ok(PostAction::Nothing)
+            Ok(self.execute_response.clone())
         }
     }
 
@@ -1414,6 +1421,30 @@ mod tests {
     /// coverage for the command's output without constructing
     /// a full `GadgetHost` (which would require a real
     /// `Store` + `FrecencyStore`).
+    // =======================================================
+    // MockGadget::execute() contract tests
+    // =======================================================
+
+    #[test]
+    fn mock_execute_returns_default_nothing() {
+        let gadget = MockGadget::new("test");
+        // Cannot call execute() directly without an AppHandle,
+        // but we can verify the configured response is used via
+        // the trait method through a slot. For now, verify the
+        // field default.
+        assert!(matches!(gadget.execute_response, PostAction::Nothing));
+    }
+
+    #[test]
+    fn mock_execute_returns_configured_response() {
+        let gadget = MockGadget::new("test").with_execute_response(PostAction::Dismiss);
+        assert!(matches!(gadget.execute_response, PostAction::Dismiss));
+    }
+
+    // =======================================================
+    // GadgetSourceKind plumbing through the slot
+    // =======================================================
+
     #[test]
     fn slot_aggregation_produces_expected_source_map() {
         let slots = vec![

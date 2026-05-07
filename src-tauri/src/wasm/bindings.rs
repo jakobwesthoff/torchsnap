@@ -534,6 +534,106 @@ mod tests {
     }
 
     // =====================================================
+    // ScoredEntry conversion
+    // =====================================================
+
+    #[test]
+    fn scored_entry_maps_all_fields() {
+        let wit_entry = wit::ScoredEntry {
+            id: "e1".to_string(),
+            title: "Title".to_string(),
+            subtitle: Some("Sub".to_string()),
+            icon: Some(wit::EntryIcon::HeroIcon("star".to_string())),
+            score: 99,
+            title_highlight_positions: vec![0, 1, 2],
+            subtitle_highlight_positions: vec![5],
+            actions: vec![wit::Action {
+                id: wit::ActionId::Open,
+                label: "Open".to_string(),
+            }],
+        };
+        let native_entry: native::ScoredEntry = wit_entry.into();
+        assert_eq!(native_entry.id, "e1");
+        assert_eq!(native_entry.title, "Title");
+        assert_eq!(native_entry.subtitle.as_deref(), Some("Sub"));
+        assert!(matches!(native_entry.icon, Some(native::EntryIcon::HeroIcon(ref s)) if s == "star"));
+        assert_eq!(native_entry.score, 99);
+        assert_eq!(native_entry.title_positions.0, vec![0, 1, 2]);
+        assert_eq!(native_entry.subtitle_positions.0, vec![5]);
+        assert_eq!(native_entry.actions.len(), 1);
+        assert_eq!(native_entry.actions[0].label, "Open");
+    }
+
+    // =====================================================
+    // ActionId conversions
+    // =====================================================
+
+    #[test]
+    fn action_id_wit_to_native_all_variants() {
+        assert!(matches!(native::ActionId::from(wit::ActionId::Open), native::ActionId::Open));
+        assert!(matches!(native::ActionId::from(wit::ActionId::Copy), native::ActionId::Copy));
+        assert!(matches!(native::ActionId::from(wit::ActionId::Reveal), native::ActionId::Reveal));
+        assert!(matches!(native::ActionId::from(wit::ActionId::OpenWith), native::ActionId::OpenWith));
+        assert!(matches!(native::ActionId::from(wit::ActionId::Delete), native::ActionId::Delete));
+        assert!(matches!(native::ActionId::from(wit::ActionId::OpenSettings), native::ActionId::OpenSettings));
+        match native::ActionId::from(wit::ActionId::Custom("foo".into())) {
+            native::ActionId::Custom(s) => assert_eq!(s, "foo"),
+            other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn action_id_native_to_wit_all_variants() {
+        assert!(matches!(wit::ActionId::from(native::ActionId::Open), wit::ActionId::Open));
+        assert!(matches!(wit::ActionId::from(native::ActionId::Copy), wit::ActionId::Copy));
+        assert!(matches!(wit::ActionId::from(native::ActionId::Reveal), wit::ActionId::Reveal));
+        assert!(matches!(wit::ActionId::from(native::ActionId::OpenWith), wit::ActionId::OpenWith));
+        assert!(matches!(wit::ActionId::from(native::ActionId::Delete), wit::ActionId::Delete));
+        assert!(matches!(wit::ActionId::from(native::ActionId::OpenSettings), wit::ActionId::OpenSettings));
+        match wit::ActionId::from(native::ActionId::Custom("bar".into())) {
+            wit::ActionId::Custom(s) => assert_eq!(s, "bar"),
+            other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+
+    // =====================================================
+    // CatalogEntry conversion
+    // =====================================================
+
+    #[test]
+    fn catalog_entry_maps_all_fields() {
+        let wit_entry = wit::CatalogEntry {
+            id: "cat-1".to_string(),
+            title: "Preferences".to_string(),
+            subtitle: Some("System settings".to_string()),
+            icon: Some(wit::EntryIcon::Emoji("⚙️".to_string())),
+            keywords: vec!["settings".to_string(), "config".to_string()],
+            actions: vec![wit::Action {
+                id: wit::ActionId::Open,
+                label: "Open".to_string(),
+            }],
+        };
+        let native_entry: native::CatalogEntry = wit_entry.into();
+        assert_eq!(native_entry.id, "cat-1");
+        assert_eq!(native_entry.title, "Preferences");
+        assert_eq!(native_entry.subtitle.as_deref(), Some("System settings"));
+        assert!(matches!(native_entry.icon, Some(native::EntryIcon::Emoji(ref s)) if s == "⚙️"));
+        assert_eq!(native_entry.keywords, vec!["settings", "config"]);
+        assert_eq!(native_entry.actions.len(), 1);
+    }
+
+    // =====================================================
+    // PostAction conversion
+    // =====================================================
+
+    #[test]
+    fn post_action_all_variants() {
+        assert!(matches!(native::PostAction::from(wit::PostAction::Nothing), native::PostAction::Nothing));
+        assert!(matches!(native::PostAction::from(wit::PostAction::Dismiss), native::PostAction::Dismiss));
+        assert!(matches!(native::PostAction::from(wit::PostAction::KeepOpen), native::PostAction::KeepOpen));
+    }
+
+    // =====================================================
     // resolve_entry_icon
     // =====================================================
 
