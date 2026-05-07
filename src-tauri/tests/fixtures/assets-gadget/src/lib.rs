@@ -24,7 +24,7 @@ wit_bindgen::generate!({
 use exports::torchsnap::gadget::lifecycle::Guest as LifecycleGuest;
 use exports::torchsnap::gadget::messaging::Guest as MessagingGuest;
 use exports::torchsnap::gadget::search::{
-    ActionId, CatalogEntry, Guest as SearchGuest, PostAction, SearchResponse,
+    ActionId, CatalogEntry, Guest as SearchGuest, PostAction, ScoredEntry, SearchResponse,
 };
 use exports::torchsnap::gadget::tasks::Guest as TasksGuest;
 use torchsnap::gadget::assets::{exists as asset_exists, read as asset_read};
@@ -48,7 +48,7 @@ impl SearchGuest for AssetsPlugin {
         SearchResponse::Nothing
     }
 
-    fn execute(_entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(_entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
         Ok(PostAction::Nothing)
     }
 }

@@ -212,7 +212,7 @@ impl SearchGuest for ZeroTierPlugin {
         })
     }
 
-    fn execute(entry_id: String, action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
         // `OpenSettings` is host-routed and never reaches us,
         // but defend in depth — return Dismiss so we
         // gracefully no-op if the host ever forwards it.
@@ -220,8 +220,8 @@ impl SearchGuest for ZeroTierPlugin {
             return Ok(PostAction::Dismiss);
         }
 
-        let Some(network_id) = query::parse_entry_id(&entry_id) else {
-            return Err(format!("not a network entry: {entry_id}"));
+        let Some(network_id) = query::parse_entry_id(&entry.id) else {
+            return Err(format!("not a network entry: {}", entry.id));
         };
 
         // Copy is independent of the daemon, network cache,

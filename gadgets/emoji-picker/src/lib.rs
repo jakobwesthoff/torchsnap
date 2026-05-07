@@ -555,12 +555,12 @@ impl SearchGuest for EmojiPickerPlugin {
         })
     }
 
-    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
-        // `entry_id` is the emoji character itself — we set
+    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
+        // `entry.id` is the emoji character itself — we set
         // `ScoredEntry.id = entry.emoji` when building the
         // response. The host has already recorded the
         // frecency selection by the time this runs.
-        clipboard::write_text(&entry_id)
+        clipboard::write_text(&entry.id)
             .map_err(|e| format!("write emoji to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }

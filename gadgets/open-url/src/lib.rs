@@ -231,7 +231,7 @@ impl SearchGuest for OpenUrlPlugin {
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(_entry_id: String, action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(_entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
         // Take (not clone) so a stray second execute() without
         // an intervening search() errors instead of re-opening
         // the last URL.

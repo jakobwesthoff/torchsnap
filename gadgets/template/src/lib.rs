@@ -241,11 +241,11 @@ impl SearchGuest for TemplatePlugin {
         SearchResponse::Nothing
     }
 
-    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
         logging::log(
             logging::LogLevel::Info,
-            &format!("Executed entry: {entry_id}"),
-            &[("entry_id".into(), entry_id)],
+            &format!("Executed entry: {}", entry.id),
+            &[("entry_id".into(), entry.id)],
             None,
         );
         Ok(PostAction::Dismiss)

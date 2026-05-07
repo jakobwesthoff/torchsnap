@@ -216,7 +216,7 @@ impl SearchGuest for BangsPlugin {
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(_entry_id: String, action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(_entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
         // Pop the pending URL. Taking (not cloning) means a
         // stray second execute() without an intervening
         // search() correctly errors out rather than
