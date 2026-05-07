@@ -944,9 +944,7 @@ impl Gadget for WasmGadgetBridge {
             self.log_dispatched_while_disabled("execute()");
             anyhow::bail!("execute() called on disabled gadget");
         };
-        // TODO(Phase 4): pass full entry to instance once WIT
-        // execute signature is updated.
-        instance.execute(&entry.id, action_id)
+        instance.execute(entry, action_id)
     }
 
     fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {

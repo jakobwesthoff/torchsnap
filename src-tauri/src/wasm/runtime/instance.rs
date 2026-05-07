@@ -286,23 +286,25 @@ impl WasmGadgetInstance {
     /// Call the guest's `execute` export and convert to native types.
     pub fn execute(
         &self,
-        entry_id: &str,
+        entry: &crate::commands::types::ScoredEntry,
         action_id: &crate::commands::types::ActionId,
     ) -> anyhow::Result<crate::commands::types::PostAction> {
         let _span = self
             .logger
             .span("execute")
-            .meta("entry_id", entry_id)
+            .meta("entry_id", &entry.id)
             .start();
         let mut store = self.store.lock().expect("store not poisoned");
 
+        let wit_entry: bindings::exports::torchsnap::gadget::search::ScoredEntry =
+            entry.clone().into();
         let wit_action_id: bindings::exports::torchsnap::gadget::search::ActionId =
             action_id.clone().into();
 
         let result = self
             .gadget
             .torchsnap_gadget_search()
-            .call_execute(&mut *store, entry_id, &wit_action_id)
+            .call_execute(&mut *store, &wit_entry, &wit_action_id)
             .map_err(|e| anyhow::anyhow!("calling gadget execute(): {e}"))?;
 
         match result {

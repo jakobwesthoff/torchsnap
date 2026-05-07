@@ -141,7 +141,7 @@ impl SearchGuest for CalculatorPlugin {
         }
     }
 
-    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
         // The launcher passes the result string as the
         // entry id when it executes a copy action — both
         // the inline view (`onExecute(calcData.result, ...)`)
@@ -150,7 +150,7 @@ impl SearchGuest for CalculatorPlugin {
         // text to copy. Write it to the system clipboard
         // via the WIT host import, then dismiss the
         // launcher.
-        clipboard::write_text(&entry_id).map_err(|e| format!("copy to clipboard: {e}"))?;
+        clipboard::write_text(&entry.id).map_err(|e| format!("copy to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }
 }

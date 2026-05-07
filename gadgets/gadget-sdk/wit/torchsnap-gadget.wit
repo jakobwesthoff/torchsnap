@@ -769,7 +769,7 @@ interface search {
   /// Returns scored results directly (call-return, no streaming).
   search: func(query: string, matched-prefix: option<string>) -> search-response;
 
-  execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
+  execute: func(entry: scored-entry, action-id: action-id) -> result<post-action, string>;
 }
 
 /// Custom frontend ↔ gadget RPC.

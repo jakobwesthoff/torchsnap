@@ -118,11 +118,11 @@ impl SearchGuest for HelloWorld {
         }
     }
 
-    fn execute(entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
         logging::log(
             logging::LogLevel::Info,
-            &format!("Executed entry: {entry_id}"),
-            &[("entry_id".into(), entry_id.clone())],
+            &format!("Executed entry: {}", entry.id),
+            &[("entry_id".into(), entry.id.clone())],
             None,
         );
         Ok(PostAction::Dismiss)
