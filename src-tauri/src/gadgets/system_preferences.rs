@@ -27,7 +27,7 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
@@ -132,19 +132,20 @@ impl Gadget for SystemPreferencesGadget {
 
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         match action_id {
             ActionId::Open => {
                 self.discovery
-                    .open(entry_id, app)
+                    .open(&entry.id, app)
                     .context("open settings pane")?;
             }
             other => {
                 anyhow::bail!(
-                    "unsupported action {other:?} for system-preferences entry {entry_id}"
+                    "unsupported action {other:?} for system-preferences entry {}",
+                    entry.id
                 );
             }
         }

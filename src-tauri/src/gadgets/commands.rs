@@ -12,7 +12,7 @@
 // =========================================================
 
 use super::Gadget;
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
+use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 
 pub struct BuiltInCommandsGadget;
 
@@ -69,11 +69,11 @@ impl Gadget for BuiltInCommandsGadget {
 
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         _action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        match entry_id {
+        match entry.id.as_str() {
             "quit" => {
                 app.exit(0);
             }

@@ -26,7 +26,7 @@ use chrono::Utc;
 use cron::Schedule;
 use tauri::async_runtime::JoinHandle;
 
-use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction};
+use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
 use crate::gadgets::Gadget;
 use crate::settings::SettingsInit;
 
@@ -936,7 +936,7 @@ impl Gadget for WasmGadgetBridge {
 
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
@@ -944,7 +944,9 @@ impl Gadget for WasmGadgetBridge {
             self.log_dispatched_while_disabled("execute()");
             anyhow::bail!("execute() called on disabled gadget");
         };
-        instance.execute(entry_id, action_id)
+        // TODO(Phase 4): pass full entry to instance once WIT
+        // execute signature is updated.
+        instance.execute(&entry.id, action_id)
     }
 
     fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {

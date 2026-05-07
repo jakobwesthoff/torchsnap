@@ -25,7 +25,7 @@ pub mod commands;
 pub mod system_commands;
 pub mod system_preferences;
 
-use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction};
+use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
 use crate::frecency::GadgetFrecency;
 use crate::settings::{GadgetSettings, SettingsInit};
 
@@ -176,9 +176,13 @@ pub trait Gadget: Send + Sync {
     fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
     /// Execute an action on an entry owned by this gadget.
+    /// The host passes the full `ScoredEntry` from the current
+    /// search session — gadgets can read `entry.id` for the
+    /// identifier and `entry.data` for any opaque payload
+    /// attached during `search()`.
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;

@@ -12,7 +12,7 @@
 // platform-specific factory function.
 // =========================================================
 
-use crate::commands::types::{ActionId, CatalogEntry, PostAction};
+use crate::commands::types::{ActionId, CatalogEntry, PostAction, ScoredEntry};
 use crate::gadgets::Gadget;
 
 // =========================================================
@@ -96,15 +96,15 @@ impl Gadget for SystemCommandsGadget {
 
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         _action_id: &ActionId,
         _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         let cmd = self
             .commands
             .iter()
-            .find(|cmd| cmd.id() == entry_id)
-            .ok_or_else(|| anyhow::anyhow!("unknown system command: {entry_id}"))?;
+            .find(|cmd| cmd.id() == entry.id)
+            .ok_or_else(|| anyhow::anyhow!("unknown system command: {}", entry.id))?;
 
         cmd.execute()
     }

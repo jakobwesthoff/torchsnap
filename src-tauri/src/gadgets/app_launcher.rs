@@ -30,7 +30,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::Context;
 
 use crate::commands::types::{
-    Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction,
+    Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction, ScoredEntry,
 };
 use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
@@ -213,23 +213,23 @@ impl Gadget for AppLauncherGadget {
 
     fn execute(
         &self,
-        entry_id: &str,
+        entry: &ScoredEntry,
         action_id: &ActionId,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         match action_id {
             ActionId::Open => {
                 self.discovery
-                    .open(entry_id, app)
+                    .open(&entry.id, app)
                     .context("open application")?;
             }
             ActionId::Reveal => {
                 self.discovery
-                    .reveal(entry_id, app)
+                    .reveal(&entry.id, app)
                     .context("reveal application in file manager")?;
             }
             other => {
-                anyhow::bail!("unsupported action {other:?} for app-launcher entry {entry_id}");
+                anyhow::bail!("unsupported action {other:?} for app-launcher entry {}", entry.id);
             }
         }
 
