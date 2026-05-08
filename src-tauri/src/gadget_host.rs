@@ -189,7 +189,7 @@ impl GadgetHost {
     ///
     /// Must be called exactly once after all gadgets are registered
     /// and before `app.manage()` stores the host.
-    pub fn initialize_and_start(&mut self, ctx: ProvisioningContext) {
+    pub fn initialize_and_start(&mut self, app: &tauri::AppHandle, ctx: ProvisioningContext) {
         // -------------------------------------------------------
         // Phase 1: Initialize gadget settings defaults (synchronous)
         // -------------------------------------------------------
@@ -240,7 +240,7 @@ impl GadgetHost {
         // -------------------------------------------------------
         // Register initial shortcuts
         // -------------------------------------------------------
-        self.register_all_shortcuts(&ctx.app);
+        self.register_all_shortcuts(app);
 
         // -------------------------------------------------------
         // Phase 2: Parallel gadget startup (background)
