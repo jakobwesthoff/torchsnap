@@ -144,7 +144,6 @@ pub trait Gadget: Send + Sync {
     fn handle_shortcut(
         &self,
         _shortcut_id: &str,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         Ok(PostAction::Nothing)
     }
@@ -197,7 +196,6 @@ pub trait AnyGadget: Send + Sync {
     fn handle_shortcut(
         &self,
         shortcut_id: &str,
-        app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
     fn handle_message(
         &self,
@@ -249,9 +247,8 @@ impl<G: Gadget> AnyGadget for G {
     fn handle_shortcut(
         &self,
         shortcut_id: &str,
-        app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        Gadget::handle_shortcut(self, shortcut_id, app)
+        Gadget::handle_shortcut(self, shortcut_id)
     }
 
     fn handle_message(

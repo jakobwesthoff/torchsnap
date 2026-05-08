@@ -291,7 +291,6 @@ impl Gadget for ClipboardGadget {
     fn handle_shortcut(
         &self,
         _shortcut_id: &str,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         Ok(PostAction::ShowCustomUI {
             view: "history".into(),

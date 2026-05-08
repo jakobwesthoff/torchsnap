@@ -368,7 +368,7 @@ impl GadgetHost {
                         return;
                     };
 
-                    let result = r.owner.handle_shortcut(&r.shortcut_id, &handle);
+                    let result = r.owner.handle_shortcut(&r.shortcut_id);
 
                     match result {
                         Ok(PostAction::ShowCustomUI { view, data }) => {
