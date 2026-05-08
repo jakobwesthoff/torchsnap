@@ -163,7 +163,7 @@ impl Gadget for AppLauncherGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<AppLauncherCaps> {
         Ok(AppLauncherCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::clone(&ctx.opener),
+            opener: Arc::new(OpenerCaps::from_app(&ctx.app)),
         })
     }
 

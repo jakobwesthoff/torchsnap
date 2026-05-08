@@ -94,7 +94,7 @@ impl Gadget for SystemPreferencesGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<SystemPreferencesCaps> {
         Ok(SystemPreferencesCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::clone(&ctx.opener),
+            opener: Arc::new(OpenerCaps::from_app(&ctx.app)),
         })
     }
 
