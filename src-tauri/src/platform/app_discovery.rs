@@ -5,8 +5,8 @@
 // =========================================================
 // Application Discovery
 //
-// Platform-abstracted trait for discovering, launching, and
-// extracting icons from installed applications.
+// Platform-abstracted trait for discovering installed
+// applications and extracting their icons.
 //
 // Each platform provides its own implementation:
 //   - macOS: Spotlight (mdfind) + Info.plist + NSWorkspace icons
@@ -71,10 +71,4 @@ pub trait AppDiscovery: Send + Sync {
     /// The returned image may be any resolution — the icon cache
     /// handles resizing and format conversion.
     fn icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>>;
-
-    /// Launch the application identified by `entry_id`.
-    fn open(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
-
-    /// Reveal the application in the platform's file manager.
-    fn reveal(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
 }

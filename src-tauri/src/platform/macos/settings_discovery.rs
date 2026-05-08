@@ -19,7 +19,6 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
-use tauri_plugin_opener::OpenerExt;
 
 use super::cgimage_conversion::nsworkspace_icon_for_file;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
@@ -28,6 +27,13 @@ use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 const EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
 
 pub struct MacosSettingsDiscovery;
+
+impl MacosSettingsDiscovery {
+    /// Format the System Settings deep-link URL for a pane.
+    pub fn pane_url(pane_id: &str) -> String {
+        format!("x-apple.systempreferences:{pane_id}")
+    }
+}
 
 impl SettingsDiscovery for MacosSettingsDiscovery {
     fn discover(&self) -> anyhow::Result<Vec<SettingsPane>> {
@@ -69,13 +75,6 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
             Some(path) => nsworkspace_icon_for_file(path),
             None => Ok(None),
         }
-    }
-
-    fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
-        let url = format!("x-apple.systempreferences:{pane_id}");
-        app.opener()
-            .open_url(&url, None::<&str>)
-            .context("open system preferences pane")
     }
 }
 
