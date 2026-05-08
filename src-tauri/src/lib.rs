@@ -823,12 +823,37 @@ pub fn run() {
             }
 
             // Settings init + shortcut registration + parallel setup.
+            let opener_app = app.handle().clone();
+            let opener = Arc::new(gadgets::OpenerCaps {
+                open_url: Box::new({
+                    let app = opener_app.clone();
+                    move |url: &str| {
+                        use tauri_plugin_opener::OpenerExt;
+                        app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+                    }
+                }),
+                open_path: Box::new({
+                    let app = opener_app.clone();
+                    move |path: &str| {
+                        use tauri_plugin_opener::OpenerExt;
+                        app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
+                    }
+                }),
+                reveal_path: Box::new({
+                    let app = opener_app;
+                    move |path: &str| {
+                        use tauri_plugin_opener::OpenerExt;
+                        app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+                    }
+                }),
+            });
             let prov_ctx = gadgets::ProvisioningContext {
                 app: app.handle().clone(),
                 store: Arc::clone(&store),
                 frecency: Arc::clone(&frecency_store),
                 icon_cache: Arc::clone(&icon_cache),
                 metadata_service: Arc::clone(&metadata_service),
+                opener,
             };
             host.initialize_and_start(prov_ctx);
 

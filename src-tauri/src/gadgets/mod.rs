@@ -49,6 +49,18 @@ pub struct GadgetShortcut {
 }
 
 // =========================================================
+// OpenerCaps — closure-based opener capabilities
+// =========================================================
+
+/// Closure-based opener capabilities, built once from AppHandle
+/// during host setup. Shared by native and WASM gadgets alike.
+pub struct OpenerCaps {
+    pub open_url: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+    pub open_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+    pub reveal_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+// =========================================================
 // ProvisioningContext — shared resources for gadget activation
 // =========================================================
 
@@ -64,6 +76,7 @@ pub struct ProvisioningContext {
     pub frecency: Arc<FrecencyStore>,
     pub icon_cache: Arc<IconCache>,
     pub metadata_service: Arc<WebsiteMetadataService>,
+    pub opener: Arc<OpenerCaps>,
 }
 
 impl Clone for ProvisioningContext {
@@ -74,6 +87,7 @@ impl Clone for ProvisioningContext {
             frecency: Arc::clone(&self.frecency),
             icon_cache: Arc::clone(&self.icon_cache),
             metadata_service: Arc::clone(&self.metadata_service),
+            opener: Arc::clone(&self.opener),
         }
     }
 }
