@@ -673,52 +673,12 @@ pub fn run() {
                 .context("initialize frecency store")?;
             let frecency_store = Arc::new(frecency_store);
 
-            // =========================================================
-            // Gadget host
-            //
-            // Central authority for gadget lifecycle: registration,
-            // settings init, parallel enable, shortcut management,
-            // search routing, and shutdown.
-            // =========================================================
-            let mut host =
-                gadget_host::GadgetHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
-            // All built-in gadgets are native Rust code compiled
-            // into the binary — tag them `Builtin`. The Gadgets
-            // settings panel uses this to suppress the uninstall
-            // action for built-ins.
-            host.register(
-                gadgets::commands::BuiltInCommandsGadget,
-                wasm::source::GadgetSourceKind::Builtin,
-            );
-            host.register(
-                gadgets::system_commands::SystemCommandsGadget::new(),
-                wasm::source::GadgetSourceKind::Builtin,
-            );
-
             let icon_cache_dir = app
                 .path()
                 .app_cache_dir()
                 .context("resolve app cache dir")?
                 .join("icons");
             let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
-            host.register(
-                gadgets::app_launcher::AppLauncherGadget::new(
-                    platform::PlatformAppDiscovery,
-                ),
-                wasm::source::GadgetSourceKind::Builtin,
-            );
-            host.register(
-                gadgets::system_preferences::SystemPreferencesGadget::new(
-                    platform::PlatformSettingsDiscovery,
-                ),
-                wasm::source::GadgetSourceKind::Builtin,
-            );
-            host.register(
-                gadgets::clipboard::ClipboardGadget::new(
-                    platform::PlatformClipboard,
-                ),
-                wasm::source::GadgetSourceKind::Builtin,
-            );
 
             // =========================================================
             // Website metadata service
@@ -766,6 +726,46 @@ pub fn run() {
             let log_ctx = logging_system.context();
             let log_sender = log_ctx.sender.clone();
             let span_registry = Arc::clone(logging_system.span_registry());
+
+            // =========================================================
+            // Gadget host
+            //
+            // Central authority for gadget lifecycle: registration,
+            // settings init, parallel enable, shortcut management,
+            // search routing, and shutdown.
+            // =========================================================
+            let mut host =
+                gadget_host::GadgetHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
+            // All built-in gadgets are native Rust code compiled
+            // into the binary — tag them `Builtin`. The Gadgets
+            // settings panel uses this to suppress the uninstall
+            // action for built-ins.
+            host.register(
+                gadgets::commands::BuiltInCommandsGadget,
+                wasm::source::GadgetSourceKind::Builtin,
+            );
+            host.register(
+                gadgets::system_commands::SystemCommandsGadget::new(),
+                wasm::source::GadgetSourceKind::Builtin,
+            );
+            host.register(
+                gadgets::app_launcher::AppLauncherGadget::new(
+                    platform::PlatformAppDiscovery,
+                ),
+                wasm::source::GadgetSourceKind::Builtin,
+            );
+            host.register(
+                gadgets::system_preferences::SystemPreferencesGadget::new(
+                    platform::PlatformSettingsDiscovery,
+                ),
+                wasm::source::GadgetSourceKind::Builtin,
+            );
+            host.register(
+                gadgets::clipboard::ClipboardGadget::new(
+                    platform::PlatformClipboard,
+                ),
+                wasm::source::GadgetSourceKind::Builtin,
+            );
 
             // =========================================================
             // WASM gadgets
