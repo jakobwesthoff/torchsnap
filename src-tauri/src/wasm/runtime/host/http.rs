@@ -29,31 +29,18 @@ use std::time::Duration;
 use crate::network::Http;
 use crate::wasm::bindings;
 
-use super::super::{GadgetState, WasmGadgetInstance};
+use super::super::GadgetState;
 
 /// HTTP state. Origin allowlist + per-gadget clients.
 #[derive(Default)]
 pub(crate) struct HttpState {
-    /// Origins this gadget is permitted to fetch. Already
-    /// normalized to `ascii_serialization()` at manifest
-    /// parse. Empty means deny-all; `["*"]` means trust-all.
     pub(crate) origins: Vec<String>,
-    /// HTTP client for this gadget, created on `enable()`
-    /// and cleared on `disable()`. Used for normal requests
-    /// (TLS verification on).
     pub(crate) client: Option<Arc<Http>>,
-    /// Parallel client with TLS certificate verification
-    /// disabled. Built lazily on the first request that sets
-    /// `insecure-tls: true`, so gadgets that never use the
-    /// flag don't pay the construction cost. Cleared on
-    /// `disable()`.
     pub(crate) insecure_client: Arc<OnceLock<Arc<Http>>>,
 }
 
 /// Internal error type that classifies transport-level
 /// failures before mapping to the WIT `http-error` variant.
-/// One arm per WIT variant — the conversion is a 1:1 match
-/// at the bottom of this module.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum WasmHttpError {
     #[error("origin not permitted: {0}")]
@@ -73,26 +60,13 @@ pub(crate) enum WasmHttpError {
 }
 
 impl WasmHttpError {
-    /// Classify an `anyhow::Error` from `Http::send()` or
-    /// `HttpResponse::bytes()` into the matching WIT variant.
-    ///
-    /// `reqwest::Error` exposes `is_timeout()` directly but
-    /// does not expose typed accessors for connection-refused,
-    /// DNS, or TLS failures — those live in the source chain
-    /// as opaque error types from hyper-util / rustls /
-    /// std::io. Inspecting the chain by stringification is
-    /// the only practical option.
     fn from_request_error(e: anyhow::Error) -> Self {
-        // Direct reqwest classification when available.
         if let Some(re) = e.downcast_ref::<reqwest::Error>()
             && re.is_timeout()
         {
             return Self::Timeout;
         }
 
-        // `Http` wraps reqwest errors in `anyhow::Context`,
-        // hiding them from `downcast_ref` on the outer error.
-        // The chain still carries the original message.
         let chain: Vec<String> = e.chain().map(|c| c.to_string()).collect();
         let chain_lower: Vec<String> = chain.iter().map(|s| s.to_lowercase()).collect();
         let any_contains = |needle: &str| chain_lower.iter().any(|s| s.contains(needle));
@@ -143,12 +117,6 @@ impl From<WasmHttpError> for bindings::torchsnap::gadget::http::HttpError {
 }
 
 /// Verify that `url`'s origin is in the `allowed` list.
-///
-/// `"*"` short-circuits before URL parsing (trust-all). All
-/// other entries are compared against the request URL's
-/// ASCII-serialized origin, which normalizes scheme,
-/// host, and port identically to how the manifest validation
-/// stored them.
 pub(crate) fn check_http_origin(allowed: &[String], url: &str) -> Result<(), WasmHttpError> {
     if allowed.iter().any(|o| o == "*") {
         return Ok(());
@@ -164,9 +132,6 @@ pub(crate) fn check_http_origin(allowed: &[String], url: &str) -> Result<(), Was
 }
 
 /// Map a WIT `http-method` variant to a `reqwest::Method`.
-/// `other(string)` is validated via `Method::from_bytes` —
-/// an invalid method string is rejected before the request
-/// is sent.
 pub(crate) fn wit_method_to_reqwest(
     method: bindings::torchsnap::gadget::http::HttpMethod,
 ) -> Result<reqwest::Method, WasmHttpError> {
@@ -194,15 +159,14 @@ impl bindings::torchsnap::gadget::http::Host for GadgetState {
         use bindings::torchsnap::gadget::http::HttpError as WitHttpError;
         use bindings::torchsnap::gadget::http::HttpResponse as WitHttpResponse;
 
-        check_http_origin(&self.http.origins, &request.url).map_err(WitHttpError::from)?;
+        let caps = self.caps().map_err(|e| WitHttpError::from(WasmHttpError::Other(e)))?;
+
+        check_http_origin(&caps.http.origins, &request.url).map_err(WitHttpError::from)?;
 
         let method = wit_method_to_reqwest(request.method).map_err(WitHttpError::from)?;
 
-        // Normal requests use the always-installed client; insecure-TLS
-        // requests use a lazily-built parallel client whose underlying
-        // reqwest client has `danger_accept_invalid_certs(true)`.
         let client = if request.insecure_tls {
-            self.http
+            caps.http
                 .insecure_client
                 .get_or_init(|| {
                     Arc::new(
@@ -214,7 +178,7 @@ impl bindings::torchsnap::gadget::http::Host for GadgetState {
                 })
                 .clone()
         } else {
-            self.http.client.clone().ok_or_else(|| {
+            caps.http.client.clone().ok_or_else(|| {
                 WitHttpError::from(WasmHttpError::Other("http client not initialized".into()))
             })?
         };
@@ -233,11 +197,6 @@ impl bindings::torchsnap::gadget::http::Host for GadgetState {
             builder = builder.max_size(max);
         }
 
-        // `Http::send()` uses `Handle::block_on()` internally, which panics
-        // if called from within a tokio async task. WASM guest calls are
-        // dispatched inline from async tasks (see bridge.rs task scheduler),
-        // so we use `block_in_place` to move this thread out of the async
-        // pool before blocking.
         let (status, headers, body) =
             tokio::task::block_in_place(|| -> Result<_, WasmHttpError> {
                 let mut response = builder.send().map_err(WasmHttpError::from_request_error)?;
@@ -255,35 +214,5 @@ impl bindings::torchsnap::gadget::http::Host for GadgetState {
             headers,
             body,
         })
-    }
-}
-
-impl WasmGadgetInstance {
-    /// Stash the origin allowlist for `http::fetch`. Called
-    /// by the bridge at `enable()` from the manifest's
-    /// `[permissions.http].origins` list (already normalized).
-    pub fn set_http_origins(&self, origins: Vec<String>) {
-        self.with_state_mut(|state| state.http.origins = origins);
-    }
-
-    /// Install the HTTP client for this gadget's `enable()`
-    /// lifetime. Called by the bridge.
-    pub fn set_http_client(&self, client: Arc<Http>) {
-        self.with_state_mut(|state| {
-            state.http.client = Some(client);
-            // Reset the insecure-client cell so the next
-            // insecure request rebuilds it for this enable
-            // cycle; otherwise a previously-cached client
-            // could leak across enable / disable boundaries.
-            state.http.insecure_client = Arc::new(OnceLock::new());
-        });
-    }
-
-    /// Drop the HTTP client on `disable()`.
-    pub fn clear_http_client(&self) {
-        self.with_state_mut(|state| {
-            state.http.client = None;
-            state.http.insecure_client = Arc::new(OnceLock::new());
-        });
     }
 }

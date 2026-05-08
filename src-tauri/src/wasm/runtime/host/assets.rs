@@ -10,12 +10,6 @@
 // gadget-file read on the host side. No permission section
 // in the manifest — the guarantee is spatial: paths are
 // confined to the gadget root.
-//
-// `read` and `exists` both pre-validate then delegate to
-// the `GadgetSource` trait stashed on `GadgetState`. The
-// `into_assets_io_error` helper maps the trait's
-// `anyhow::Error` into the WIT `assets-error::io-error`
-// variant.
 // =========================================================
 
 use crate::wasm::bindings;
@@ -36,23 +30,17 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
     ) -> Result<Vec<u8>, bindings::torchsnap::gadget::assets::AssetsError> {
         use bindings::torchsnap::gadget::assets::AssetsError;
 
-        // Validate first so a structured `InvalidPath`
-        // variant is returned without having to grep the
-        // trait's `anyhow::Error` for a guard message.
         if let Err(e) = source::validate_gadget_path(&path) {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let gadget_source = self
-            .gadget_source
-            .as_ref()
-            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
+        let caps = self.caps.as_ref().ok_or_else(|| {
+            AssetsError::IoError("capability accessed outside enable lifetime".into())
+        })?;
+        let gadget_source = caps.gadget_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("assets not initialized".into())
+        })?;
 
-        // Pre-probe so the "missing" case becomes a
-        // structural `NotFound` variant; the alternative —
-        // attempting the read and matching on the error
-        // string — would be fragile across filesystem /
-        // archive backends.
         match gadget_source.file_exists(&path) {
             Ok(true) => {}
             Ok(false) => return Err(AssetsError::NotFound),
@@ -72,10 +60,12 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let gadget_source = self
-            .gadget_source
-            .as_ref()
-            .ok_or_else(|| AssetsError::IoError("assets not initialized".into()))?;
+        let caps = self.caps.as_ref().ok_or_else(|| {
+            AssetsError::IoError("capability accessed outside enable lifetime".into())
+        })?;
+        let gadget_source = caps.gadget_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("assets not initialized".into())
+        })?;
 
         gadget_source
             .file_exists(&path)

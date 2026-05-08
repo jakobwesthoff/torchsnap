@@ -11,7 +11,7 @@
 // permission gating, type translation across the WIT
 // boundary, and wrapping `Http::send`'s `block_on` in
 // `block_in_place` so it can be called from a tokio worker
-// thread (same pattern as `host/http.rs`).
+// thread.
 // =========================================================
 
 use std::sync::Arc;
@@ -21,18 +21,12 @@ use crate::network::website_metadata::{
 };
 use crate::wasm::bindings;
 
-use super::super::{GadgetState, WasmGadgetInstance};
+use super::super::GadgetState;
 
-/// Per-gadget website-metadata state. Populated by the bridge
-/// on `enable()` from the manifest's `[permissions]\nwebsite-metadata`
-/// flag plus a clone of the shared service handle.
+/// Per-gadget website-metadata state.
 #[derive(Default)]
 pub(crate) struct WebsiteMetadataState {
-    /// Manifest gate. `false` denies every `lookup` call.
     pub(crate) enabled: bool,
-    /// Handle to the host-shared service. `None` until the bridge
-    /// installs it on `enable()` (only happens when `enabled` is
-    /// `true` — disabled gadgets never get a handle).
     pub(crate) service: Option<Arc<WebsiteMetadataService>>,
 }
 
@@ -47,16 +41,15 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
     > {
         use bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError as WitError;
 
-        if !self.website_metadata.enabled {
+        let caps = self.caps().map_err(|e| WitError::PermissionDenied(e))?;
+
+        if !caps.website_metadata.enabled {
             return Err(WitError::PermissionDenied(
                 "gadget manifest does not declare permissions.website-metadata = true".into(),
             ));
         }
 
-        // The flag is only true when the bridge installed a handle,
-        // so this `expect` reflects an internal invariant rather than
-        // input validation.
-        let service = self
+        let service = caps
             .website_metadata
             .service
             .as_ref()
@@ -64,10 +57,6 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
 
         let native_mode = wit_mode_to_native(mode);
 
-        // `service.lookup` ultimately calls `Http::send → Handle::block_on`.
-        // The shim runs inside a tokio task (the bridge dispatches WIT
-        // calls without `spawn_blocking`), so we move the current thread
-        // out of the async pool while the synchronous fetch runs.
         let result = tokio::task::block_in_place(|| service.lookup(&domain, native_mode));
 
         match result {
@@ -99,10 +88,6 @@ fn native_to_wit(
         LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
             title: meta.title,
             description: meta.description,
-            // `entry-icon` lives in `interface types` and is `use`d
-            // by both `search` and `website-metadata`, so the
-            // bindings-level `From<native::EntryIcon>` conversion
-            // works for both sites.
             favicon: meta.favicon.into(),
         }),
         LookupResult::ReachableNoData => WitResult::ReachableNoData,
@@ -112,47 +97,8 @@ fn native_to_wit(
 }
 
 // =========================================================
-// Bridge setters
-// =========================================================
-
-impl WasmGadgetInstance {
-    /// Install the manifest gate flag and (when enabled) the shared
-    /// service handle. Mirrors `set_http_origins` / `set_http_client`.
-    pub fn set_website_metadata(
-        &self,
-        enabled: bool,
-        service: Option<Arc<WebsiteMetadataService>>,
-    ) {
-        self.with_state_mut(|state| {
-            state.website_metadata.enabled = enabled;
-            state.website_metadata.service = if enabled { service } else { None };
-        });
-    }
-
-    /// Clear the service handle on `disable()`. The flag is left
-    /// in place to keep `permission-denied` errors stable across
-    /// restarts (the next `enable()` re-installs the handle).
-    pub fn clear_website_metadata(&self) {
-        self.with_state_mut(|state| {
-            state.website_metadata.service = None;
-        });
-    }
-}
-
-// =========================================================
 // Tests
 // =========================================================
-//
-// The shim is a thin trait impl on `GadgetState`. Tests
-// construct a `GadgetState` directly (no wasmtime instance
-// or guest WASM needed), wire a `WebsiteMetadataState` with
-// the shared service pointed at an httpmock server, and
-// invoke `Host::lookup` like the bindgen-generated code
-// would. Coverage of the underlying service lives in the
-// `network::website_metadata::service_tests` module —
-// these tests verify only the WIT-boundary behaviour:
-// permission gating, error mapping, mode dispatch, and
-// `entry-icon` translation.
 
 #[cfg(test)]
 mod tests {
@@ -164,11 +110,8 @@ mod tests {
 
     use crate::settings::notifier::SettingsNotifier;
     use crate::wasm::bindings::torchsnap::gadget::website_metadata as wit;
+    use crate::wasm::runtime::caps::WasmGadgetCaps;
 
-    /// Test harness: a per-test temp dir, mock server, and a
-    /// `GadgetState` whose `website_metadata` field is fully wired
-    /// to the shared service. The notifier is held to keep its
-    /// settings-watch thread alive across the test.
     struct ShimEnv {
         server: MockServer,
         state: GadgetState,
@@ -188,10 +131,15 @@ mod tests {
             svc.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}")),
         );
 
-        let mut state = GadgetState::default_for_test();
-        state.website_metadata = WebsiteMetadataState {
+        let mut caps = WasmGadgetCaps::default_for_test();
+        caps.website_metadata = WebsiteMetadataState {
             enabled,
             service: if enabled { Some(svc) } else { None },
+        };
+
+        let state = GadgetState {
+            caps: Some(caps),
+            ..GadgetState::default_for_test()
         };
 
         ShimEnv {
@@ -223,14 +171,6 @@ mod tests {
         buf
     }
 
-    /// Invoke `Host::lookup` synchronously from inside an async
-    /// test via `tokio::task::block_in_place`. The shim's own
-    /// `block_in_place` then lets `Http::send`'s internal
-    /// `block_on` run without nesting runtimes.
-    ///
-    /// Borrowing the state directly (rather than moving it through
-    /// `spawn_blocking`) lets the caller hold `Mock` references
-    /// on the same `MockServer` across the call.
     fn lookup_sync(
         state: &mut GadgetState,
         domain: &str,
@@ -258,7 +198,6 @@ mod tests {
             other => panic!("expected PermissionDenied, got {other:?}"),
         }
 
-        // Service must NOT have been invoked when permission is denied.
         mock.assert_calls(0);
     }
 
@@ -286,10 +225,6 @@ mod tests {
             when.method(GET).path(format!("/{domain}/"));
             then.status(200)
                 .header("content-type", "text/html")
-                // Relative href so URL resolution stays inside the
-                // per-domain path on the mock server. A path-absolute
-                // `/icon.png` would resolve to the server origin and
-                // miss the route registered below.
                 .body(html_with_icon("My Title", "Some desc", "icon.png"));
         });
         let _icon = env.server.mock(|when, then| {
@@ -304,9 +239,6 @@ mod tests {
             wit::LookupResult::Hit(entry) => {
                 assert_eq!(entry.title.as_deref(), Some("My Title"));
                 assert_eq!(entry.description.as_deref(), Some("Some desc"));
-                // Favicon decoded → cached → resolved to a
-                // `torchsnap-favicon://` URL the launcher renders
-                // through the host's protocol handler.
                 match &entry.favicon {
                     wit::EntryIcon::AssetIcon(url) => {
                         assert!(
@@ -361,10 +293,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn shim_maps_native_hero_icon_to_wit_variant() {
-        // Force the host to fall through to the `globe-alt` HeroIcon
-        // path by serving HTML with no extractable favicon and no
-        // favicon route. The shim should map `EntryIcon::HeroIcon`
-        // onto the WIT variant correctly.
         let mut env = make_env(true);
         let domain = "iconless.test";
 
@@ -387,8 +315,4 @@ mod tests {
             other => panic!("expected Hit, got {other:?}"),
         }
     }
-
-    // bindgen auto-derives `Debug` on the generated WIT types,
-    // so panic-message formatting works out of the box — no
-    // manual impls needed here.
 }
