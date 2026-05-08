@@ -498,6 +498,15 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 // Frecency Commands
 // =========================================================
 
+/// Both values are embedded at compile time via `env!()`.
+#[tauri::command]
+fn build_info() -> serde_json::Value {
+    serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "gitHash": env!("GIT_HASH"),
+    })
+}
+
 #[tauri::command]
 fn frecency_stats(
     frecency: tauri::State<'_, Arc<frecency::FrecencyStore>>,
@@ -599,6 +608,7 @@ pub fn run() {
             gadget_sources,
             gadget_install::install_gadget_archive,
             gadget_install::uninstall_user_gadget,
+            build_info,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

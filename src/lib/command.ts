@@ -109,6 +109,7 @@ interface CommandMap {
     params: { gadgetId: string };
     result: UninstallResult;
   };
+  build_info: { params: void; result: { version: string; gitHash: string } };
 }
 
 // =========================================================
