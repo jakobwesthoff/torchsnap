@@ -23,7 +23,7 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -42,22 +42,28 @@ use super::{Gadget, ProvisioningContext};
 /// a background refresh is triggered.
 const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
+pub struct AppLauncherCaps {
+    pub icon_cache: Arc<IconCache>,
+}
+
 pub struct AppLauncherGadget {
     cache: Arc<RwLock<Vec<DiscoveredApp>>>,
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
-    icon_cache: Arc<IconCache>,
+    // Set once by `enable()`. Background refresh threads access it after
+    // enable() completes, so the OnceLock is always initialized by then.
+    icon_cache: OnceLock<Arc<IconCache>>,
 }
 
 impl AppLauncherGadget {
-    pub fn new(discovery: impl AppDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
+    pub fn new(discovery: impl AppDiscovery + 'static) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
-            icon_cache,
+            icon_cache: OnceLock::new(),
         }
     }
 
@@ -87,7 +93,11 @@ impl AppLauncherGadget {
         let timestamp = Arc::clone(&self.last_refresh);
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
-        let icon_cache = Arc::clone(&self.icon_cache);
+        let icon_cache = Arc::clone(
+            self.icon_cache
+                .get()
+                .expect("icon_cache initialized before background refresh"),
+        );
 
         thread::spawn(move || {
             match discovery.discover() {
@@ -140,17 +150,27 @@ fn extract_icons(
 }
 
 impl Gadget for AppLauncherGadget {
-    type Caps = ();
+    type Caps = AppLauncherCaps;
 
     fn id(&self) -> &str {
         "app-launcher"
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
+    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<AppLauncherCaps> {
+        Ok(AppLauncherCaps {
+            icon_cache: Arc::clone(&ctx.icon_cache),
+        })
     }
 
-    fn enable(&self, _caps: ()) {
+    fn enable(&self, caps: AppLauncherCaps) {
+        // Install the icon cache so background refresh threads can use it.
+        // The OnceLock guarantees this assignment happens exactly once.
+        let _ = self.icon_cache.set(caps.icon_cache);
+        let icon_cache = self
+            .icon_cache
+            .get()
+            .expect("icon_cache set immediately above");
+
         // Called on a dedicated background thread by the host.
         //
         // Phase 1: Discover apps and publish immediately so search
@@ -168,8 +188,8 @@ impl Gadget for AppLauncherGadget {
 
                 // Now extract icons (the slow part). Once done,
                 // swap the cache with icon-enriched entries.
-                let valid_keys = extract_icons(&self.icon_cache, &*self.discovery, &mut apps);
-                self.icon_cache.cleanup("app-launcher", &valid_keys);
+                let valid_keys = extract_icons(icon_cache, &*self.discovery, &mut apps);
+                icon_cache.cleanup("app-launcher", &valid_keys);
 
                 let mut guard = self.cache.write().expect("app cache not poisoned");
                 *guard = apps;

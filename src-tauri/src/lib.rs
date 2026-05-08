@@ -704,14 +704,12 @@ pub fn run() {
             host.register(
                 gadgets::app_launcher::AppLauncherGadget::new(
                     platform::PlatformAppDiscovery,
-                    Arc::clone(&icon_cache),
                 ),
                 wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
                 gadgets::system_preferences::SystemPreferencesGadget::new(
                     platform::PlatformSettingsDiscovery,
-                    Arc::clone(&icon_cache),
                 ),
                 wasm::source::GadgetSourceKind::Builtin,
             );
