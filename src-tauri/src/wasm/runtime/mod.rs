@@ -566,10 +566,14 @@ mod tests {
         instance.set_caps(WasmGadgetCaps {
             opener: host::opener::OpenerState {
                 schemes: vec!["https".into()],
-                open_url_writer: Some(Box::new(move |url: &str| {
-                    *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
-                    Ok(())
-                })),
+                caps: Arc::new(crate::gadgets::OpenerCaps {
+                    open_url: Box::new(move |url: &str| {
+                        *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
+                        Ok(())
+                    }),
+                    open_path: Box::new(|_| Ok(())),
+                    reveal_path: Box::new(|_| Ok(())),
+                }),
                 ..Default::default()
             },
             ..WasmGadgetCaps::default_for_test()
@@ -596,7 +600,11 @@ mod tests {
         instance.set_caps(WasmGadgetCaps {
             opener: host::opener::OpenerState {
                 schemes: vec!["https".into()],
-                open_url_writer: Some(Box::new(|_: &str| Ok(()))),
+                caps: Arc::new(crate::gadgets::OpenerCaps {
+                    open_url: Box::new(|_: &str| Ok(())),
+                    open_path: Box::new(|_| Ok(())),
+                    reveal_path: Box::new(|_| Ok(())),
+                }),
                 ..Default::default()
             },
             ..WasmGadgetCaps::default_for_test()
@@ -611,32 +619,6 @@ mod tests {
         let err = result.expect_err("guest should return Err for ftp://");
         assert!(
             err.contains("scheme not permitted: ftp"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn opener_writer_not_set_returns_error() {
-        let (_runtime, instance) = compile_opener_http_fixture();
-
-        instance.set_caps(WasmGadgetCaps {
-            opener: host::opener::OpenerState {
-                schemes: vec!["https".into()],
-                // Intentionally omit open_url_writer.
-                ..Default::default()
-            },
-            ..WasmGadgetCaps::default_for_test()
-        });
-
-        instance.enable().expect("enable");
-
-        let result = instance
-            .handle_message("opener.open-url", "https://example.com")
-            .expect("handle_message call succeeded");
-
-        let err = result.expect_err("guest should return Err when writer missing");
-        assert!(
-            err.contains("opener not initialized"),
             "unexpected error: {err}"
         );
     }

@@ -41,7 +41,7 @@ use super::runtime::host::clipboard::ClipboardState;
 use super::runtime::host::command::CommandState;
 use super::runtime::host::fs::FsState;
 use super::runtime::host::http::HttpState;
-use super::runtime::host::opener::{OpenerState, UrlOpenerFn};
+use super::runtime::host::opener::OpenerState;
 use super::runtime::host::sql::SqlState;
 use super::runtime::host::website_metadata::WebsiteMetadataState;
 use super::runtime::{
@@ -704,19 +704,7 @@ impl Gadget for WasmGadgetBridge {
                 .map_err(|e| format!("write to clipboard: {e}"))
         });
 
-        let opener = Arc::new(crate::gadgets::OpenerCaps::from_app(app));
-        let opener_fn: UrlOpenerFn = Box::new({
-            let opener = Arc::clone(&opener);
-            move |url: &str| (opener.open_url)(url)
-        });
-        let open_path_fn: UrlOpenerFn = Box::new({
-            let opener = Arc::clone(&opener);
-            move |path: &str| (opener.open_path)(path)
-        });
-        let reveal_path_fn: UrlOpenerFn = Box::new({
-            let opener = Arc::clone(&opener);
-            move |path: &str| (opener.reveal_path)(path)
-        });
+        let opener_caps = Arc::new(crate::gadgets::OpenerCaps::from_app(app));
 
         // Materialize SQL storage from the bridge's cached config.
         let mut sql = SqlState {
@@ -754,9 +742,7 @@ impl Gadget for WasmGadgetBridge {
                 schemes: self.opener_schemes.clone(),
                 open_path: self.opener_open_path,
                 reveal_path: self.opener_reveal_path,
-                open_url_writer: Some(opener_fn),
-                open_path_writer: Some(open_path_fn),
-                reveal_path_writer: Some(reveal_path_fn),
+                caps: opener_caps,
             },
             http: HttpState {
                 origins: self.http_origins.clone(),
