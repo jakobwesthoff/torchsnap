@@ -77,7 +77,6 @@ impl Gadget for BuiltInCommandsGadget {
         &self,
         entry: &ScoredEntry,
         _action_id: &ActionId,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         match entry.id.as_str() {
             "quit" => Ok(PostAction::Quit),

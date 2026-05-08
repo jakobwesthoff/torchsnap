@@ -148,7 +148,6 @@ pub trait Gadget: Send + Sync {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
 
     fn shortcuts(&self) -> Vec<GadgetShortcut> {
@@ -204,7 +203,6 @@ pub trait AnyGadget: Send + Sync {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
     fn shortcuts(&self) -> Vec<GadgetShortcut>;
     fn handle_shortcut(
@@ -249,9 +247,8 @@ impl<G: Gadget> AnyGadget for G {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        Gadget::execute(self, entry, action_id, app)
+        Gadget::execute(self, entry, action_id)
     }
 
     fn shortcuts(&self) -> Vec<GadgetShortcut> {

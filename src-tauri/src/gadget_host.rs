@@ -760,7 +760,7 @@ impl GadgetHost {
         };
 
         if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            let post_action = slot.gadget.execute(&entry, action_id, app)?;
+            let post_action = slot.gadget.execute(&entry, action_id)?;
             // Host-level PostActions are handled here and mapped to Dismiss
             // before returning, since the frontend has no use for them.
             return Ok(match post_action {
@@ -1098,7 +1098,6 @@ mod tests {
             &self,
             _entry: &ScoredEntry,
             _action_id: &ActionId,
-            _app: &tauri::AppHandle,
         ) -> anyhow::Result<PostAction> {
             Ok(self.execute_response.clone())
         }

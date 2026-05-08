@@ -155,7 +155,6 @@ impl Gadget for SystemPreferencesGadget {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         let opener = self
             .opener

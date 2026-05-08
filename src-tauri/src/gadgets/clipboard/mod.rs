@@ -413,7 +413,6 @@ impl Gadget for ClipboardGadget {
         &self,
         _entry: &ScoredEntry,
         action_id: &ActionId,
-        _app: &tauri::AppHandle,
     ) -> Result<PostAction> {
         match action_id {
             ActionId::Open => Ok(PostAction::ShowCustomUI {
