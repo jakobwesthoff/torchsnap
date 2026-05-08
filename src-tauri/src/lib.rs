@@ -847,40 +847,15 @@ pub fn run() {
                     }
                 }),
             });
-            let clipboard_app = app.handle().clone();
-            let clipboard = Arc::new(gadgets::ClipboardCaps {
-                write_text: Box::new(move |text: &str| {
-                    use tauri_plugin_clipboard_manager::ClipboardExt;
-                    clipboard_app
-                        .clipboard()
-                        .write_text(text)
-                        .map_err(|e| format!("write to clipboard: {e}"))
-                }),
-            });
-
-            let resolved_paths = {
-                use tauri::Manager;
-                let path = app.path();
-                gadgets::ResolvedPaths {
-                    home: path.home_dir().context("resolve home directory")?,
-                    config: path.config_dir().context("resolve config directory")?,
-                    data: path.data_dir().context("resolve data directory")?,
-                    app_data: path
-                        .app_data_dir()
-                        .context("resolve app data directory")?,
-                }
-            };
-
             let prov_ctx = gadgets::ProvisioningContext {
-                paths: resolved_paths,
+                app: app.handle().clone(),
                 store: Arc::clone(&store),
                 frecency: Arc::clone(&frecency_store),
                 icon_cache: Arc::clone(&icon_cache),
                 metadata_service: Arc::clone(&metadata_service),
                 opener,
-                clipboard,
             };
-            host.initialize_and_start(app.handle(), prov_ctx);
+            host.initialize_and_start(prov_ctx);
 
             let host = Arc::new(host);
 

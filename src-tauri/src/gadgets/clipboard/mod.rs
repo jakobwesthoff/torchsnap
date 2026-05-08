@@ -37,6 +37,7 @@ use anyhow::{Context, Result};
 use clipboard_rs::{
     Clipboard, ClipboardContext, ClipboardWatcher, ClipboardWatcherContext, WatcherShutdown,
 };
+use tauri::Manager;
 use tauri::ipc::Channel;
 
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
@@ -298,7 +299,13 @@ impl Gadget for ClipboardGadget {
     }
 
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<ClipboardCaps> {
-        let data_dir = ctx.paths.app_data.join("gadget-home").join(PLUGIN_ID);
+        let data_dir = ctx
+            .app
+            .path()
+            .app_data_dir()
+            .expect("resolve app data dir")
+            .join("gadget-home")
+            .join(PLUGIN_ID);
 
         let settings =
             crate::settings::GadgetSettings::new(Arc::clone(&ctx.store), PLUGIN_ID);
