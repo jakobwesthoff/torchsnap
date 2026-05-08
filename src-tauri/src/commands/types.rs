@@ -44,6 +44,12 @@ pub enum PostAction {
         /// Optional data payload forwarded to the view component.
         data: Option<serde_json::Value>,
     },
+    /// Exit the application. Handled by the host; never forwarded to the frontend.
+    Quit,
+    /// Open the settings window. Handled by the host; never forwarded to the frontend.
+    ShowSettings,
+    /// Open the developer tools window. Handled by the host; never forwarded to the frontend.
+    ShowDevtools,
 }
 
 // =========================================================

@@ -760,7 +760,24 @@ impl GadgetHost {
         };
 
         if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            return slot.gadget.execute(&entry, action_id, app);
+            let post_action = slot.gadget.execute(&entry, action_id, app)?;
+            // Host-level PostActions are handled here and mapped to Dismiss
+            // before returning, since the frontend has no use for them.
+            return Ok(match post_action {
+                PostAction::Quit => {
+                    app.exit(0);
+                    PostAction::Dismiss
+                }
+                PostAction::ShowSettings => {
+                    crate::show_settings_window(app);
+                    PostAction::Dismiss
+                }
+                PostAction::ShowDevtools => {
+                    crate::show_devtools_window(app);
+                    PostAction::Dismiss
+                }
+                other => other,
+            });
         }
         anyhow::bail!("unknown gadget source: {source}");
     }

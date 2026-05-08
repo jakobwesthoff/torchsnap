@@ -77,20 +77,13 @@ impl Gadget for BuiltInCommandsGadget {
         &self,
         entry: &ScoredEntry,
         _action_id: &ActionId,
-        app: &tauri::AppHandle,
+        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         match entry.id.as_str() {
-            "quit" => {
-                app.exit(0);
-            }
-            "settings" => {
-                crate::show_settings_window(app);
-            }
-            "devtools" => {
-                crate::show_devtools_window(app);
-            }
+            "quit" => Ok(PostAction::Quit),
+            "settings" => Ok(PostAction::ShowSettings),
+            "devtools" => Ok(PostAction::ShowDevtools),
             other => anyhow::bail!("unknown built-in command entry: {other}"),
         }
-        Ok(PostAction::Dismiss)
     }
 }
