@@ -23,30 +23,37 @@
 // wasmtime instance.
 // =========================================================
 
+use std::sync::Arc;
+
+use crate::gadgets::OpenerCaps;
 use crate::wasm::bindings;
 
 use super::super::GadgetState;
 
-/// Closure type for any of the opener writer slots.
-///
-/// Boxed and stored on `OpenerState` rather than holding a
-/// `tauri::AppHandle` so this module never imports
-/// Tauri-specific types directly. The bridge constructs the
-/// closure from its own `AppHandle` at `enable()` time and
-/// stashes it on the per-gadget `OpenerState`.
-pub type UrlOpenerFn = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
-
-/// Opener state. Aggregates the URL scheme allowlist, the
-/// `open-path` / `reveal-path` capability flags, and the
-/// three writer closures.
-#[derive(Default)]
+/// Opener state: manifest-declared permission gates plus
+/// the capability closures. Both are always present when
+/// caps exist — the `OpenerCaps` provides the raw ability,
+/// the permission fields restrict it per-gadget.
 pub(crate) struct OpenerState {
     pub(crate) schemes: Vec<String>,
     pub(crate) open_path: bool,
     pub(crate) reveal_path: bool,
-    pub(crate) open_url_writer: Option<UrlOpenerFn>,
-    pub(crate) open_path_writer: Option<UrlOpenerFn>,
-    pub(crate) reveal_path_writer: Option<UrlOpenerFn>,
+    pub(crate) caps: Arc<OpenerCaps>,
+}
+
+impl Default for OpenerState {
+    fn default() -> Self {
+        Self {
+            schemes: Vec::new(),
+            open_path: false,
+            reveal_path: false,
+            caps: Arc::new(OpenerCaps {
+                open_url: Box::new(|_| Err("opener not initialized".into())),
+                open_path: Box::new(|_| Err("opener not initialized".into())),
+                reveal_path: Box::new(|_| Err("opener not initialized".into())),
+            }),
+        }
+    }
 }
 
 /// Outcome of a scheme-permission check on a URL passed to
@@ -94,12 +101,7 @@ impl bindings::torchsnap::gadget::opener::Host for GadgetState {
             }
         }
 
-        let writer = caps
-            .opener
-            .open_url_writer
-            .as_ref()
-            .ok_or_else(|| OpenerError::BackendFailure("opener not initialized".into()))?;
-        writer(&url).map_err(OpenerError::BackendFailure)
+        (caps.opener.caps.open_url)(&url).map_err(OpenerError::BackendFailure)
     }
 
     fn open_path(
@@ -115,12 +117,7 @@ impl bindings::torchsnap::gadget::opener::Host for GadgetState {
                 "open-path not granted: set `[permissions.opener] open-path = true`".into(),
             ));
         }
-        let writer = caps
-            .opener
-            .open_path_writer
-            .as_ref()
-            .ok_or_else(|| OpenerError::BackendFailure("open-path not initialized".into()))?;
-        writer(&path).map_err(OpenerError::BackendFailure)
+        (caps.opener.caps.open_path)(&path).map_err(OpenerError::BackendFailure)
     }
 
     fn reveal_path(
@@ -136,11 +133,6 @@ impl bindings::torchsnap::gadget::opener::Host for GadgetState {
                 "reveal-path not granted: set `[permissions.opener] reveal-path = true`".into(),
             ));
         }
-        let writer = caps
-            .opener
-            .reveal_path_writer
-            .as_ref()
-            .ok_or_else(|| OpenerError::BackendFailure("reveal-path not initialized".into()))?;
-        writer(&path).map_err(OpenerError::BackendFailure)
+        (caps.opener.caps.reveal_path)(&path).map_err(OpenerError::BackendFailure)
     }
 }
