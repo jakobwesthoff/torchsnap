@@ -36,7 +36,7 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use super::{Gadget, ProvisioningContext};
+use super::{Gadget, OpenerCaps, ProvisioningContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
@@ -44,6 +44,7 @@ const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
 pub struct AppLauncherCaps {
     pub icon_cache: Arc<IconCache>,
+    pub opener: Arc<OpenerCaps>,
 }
 
 pub struct AppLauncherGadget {
@@ -51,9 +52,11 @@ pub struct AppLauncherGadget {
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
-    // Set once by `enable()`. Background refresh threads access it after
-    // enable() completes, so the OnceLock is always initialized by then.
+    // Set once by `enable()`. Background refresh threads and `execute()`
+    // access these after enable() completes, so the OnceLocks are always
+    // initialized by then.
     icon_cache: OnceLock<Arc<IconCache>>,
+    opener: OnceLock<Arc<OpenerCaps>>,
 }
 
 impl AppLauncherGadget {
@@ -64,6 +67,7 @@ impl AppLauncherGadget {
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
             icon_cache: OnceLock::new(),
+            opener: OnceLock::new(),
         }
     }
 
@@ -159,12 +163,15 @@ impl Gadget for AppLauncherGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<AppLauncherCaps> {
         Ok(AppLauncherCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
+            opener: Arc::clone(&ctx.opener),
         })
     }
 
     fn enable(&self, caps: AppLauncherCaps) {
-        // Install the icon cache so background refresh threads can use it.
-        // The OnceLock guarantees this assignment happens exactly once.
+        // Install the icon cache and opener so background refresh threads
+        // and execute() can use them. The OnceLocks guarantee each
+        // assignment happens exactly once.
+        let _ = self.opener.set(caps.opener);
         let _ = self.icon_cache.set(caps.icon_cache);
         let icon_cache = self
             .icon_cache
@@ -241,17 +248,22 @@ impl Gadget for AppLauncherGadget {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        app: &tauri::AppHandle,
+        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
+        let opener = self
+            .opener
+            .get()
+            .expect("opener initialized during enable");
+
         match action_id {
             ActionId::Open => {
-                self.discovery
-                    .open(&entry.id, app)
+                (opener.open_path)(&entry.id)
+                    .map_err(|e| anyhow::anyhow!(e))
                     .context("open application")?;
             }
             ActionId::Reveal => {
-                self.discovery
-                    .reveal(&entry.id, app)
+                (opener.reveal_path)(&entry.id)
+                    .map_err(|e| anyhow::anyhow!(e))
                     .context("reveal application in file manager")?;
             }
             other => {

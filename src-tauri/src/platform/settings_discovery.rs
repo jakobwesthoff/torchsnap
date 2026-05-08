@@ -56,7 +56,4 @@ pub trait SettingsDiscovery: Send + Sync {
     /// On macOS this uses `NSWorkspace.iconForFile` on the `.appex`
     /// bundle. Returns `Ok(None)` if no icon is available.
     fn icon(&self, pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>>;
-
-    /// Open a settings pane by its platform-specific ID.
-    fn open(&self, pane_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()>;
 }

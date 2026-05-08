@@ -9,10 +9,10 @@
 // searchable entries. Settings panes are discovered at startup
 // via the platform's `SettingsDiscovery` implementation.
 //
-// Icons are rendered via `SettingsDiscovery::render_icon` and
-// cached on disk as WebP. Opening a pane delegates to
-// `SettingsDiscovery::open`. All platform-specific behavior is
-// encapsulated in the discovery trait so this gadget stays
+// Icons are rendered via `SettingsDiscovery::icon` and cached
+// on disk as WebP. Opening a pane uses `OpenerCaps::open_url`
+// with a platform-specific deep-link URL. Discovery behavior
+// is encapsulated in the discovery trait so this gadget stays
 // fully platform-agnostic.
 //
 // No background refresh is needed — the set of settings panes
@@ -23,7 +23,7 @@
 // =========================================================
 
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use anyhow::Context;
 
@@ -32,15 +32,19 @@ use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use super::{Gadget, ProvisioningContext};
+use super::{Gadget, OpenerCaps, ProvisioningContext};
 
 pub struct SystemPreferencesCaps {
     pub icon_cache: Arc<IconCache>,
+    pub opener: Arc<OpenerCaps>,
 }
 
 pub struct SystemPreferencesGadget {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
     discovery: Arc<dyn SettingsDiscovery>,
+    // Set once by `enable()`. `execute()` accesses this after
+    // enable() completes, so the OnceLock is always initialized by then.
+    opener: OnceLock<Arc<OpenerCaps>>,
 }
 
 impl SystemPreferencesGadget {
@@ -48,6 +52,7 @@ impl SystemPreferencesGadget {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             discovery: Arc::new(discovery),
+            opener: OnceLock::new(),
         }
     }
 }
@@ -89,10 +94,15 @@ impl Gadget for SystemPreferencesGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<SystemPreferencesCaps> {
         Ok(SystemPreferencesCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
+            opener: Arc::clone(&ctx.opener),
         })
     }
 
     fn enable(&self, caps: SystemPreferencesCaps) {
+        // Install the opener so execute() can use it.
+        // The OnceLock guarantees this assignment happens exactly once.
+        let _ = self.opener.set(caps.opener);
+
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.
@@ -145,13 +155,27 @@ impl Gadget for SystemPreferencesGadget {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        app: &tauri::AppHandle,
+        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
+        let opener = self
+            .opener
+            .get()
+            .expect("opener initialized during enable");
+
         match action_id {
             ActionId::Open => {
-                self.discovery
-                    .open(&entry.id, app)
-                    .context("open settings pane")?;
+                #[cfg(target_os = "macos")]
+                {
+                    let url = crate::platform::macos::MacosSettingsDiscovery::pane_url(&entry.id);
+                    (opener.open_url)(&url)
+                        .map_err(|e| anyhow::anyhow!(e))
+                        .context("open settings pane")?;
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = opener;
+                    anyhow::bail!("system-preferences open not implemented on this platform");
+                }
             }
             other => {
                 anyhow::bail!(

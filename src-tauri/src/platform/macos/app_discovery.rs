@@ -18,7 +18,6 @@ use std::process::Command;
 
 use anyhow::Context;
 use image::DynamicImage;
-use tauri_plugin_opener::OpenerExt;
 
 use super::cgimage_conversion::nsworkspace_icon_for_file;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
@@ -135,17 +134,5 @@ impl AppDiscovery for MdfindDiscovery {
 
     fn icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>> {
         nsworkspace_icon_for_file(&app.path.to_string_lossy())
-    }
-
-    fn open(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
-        app.opener()
-            .open_path(entry_id, None::<&str>)
-            .context("open application")
-    }
-
-    fn reveal(&self, entry_id: &str, app: &tauri::AppHandle) -> anyhow::Result<()> {
-        app.opener()
-            .reveal_item_in_dir(entry_id)
-            .context("reveal application in file manager")
     }
 }
