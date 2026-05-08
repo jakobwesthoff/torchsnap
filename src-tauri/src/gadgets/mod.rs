@@ -52,12 +52,43 @@ pub struct GadgetShortcut {
 // OpenerCaps — closure-based opener capabilities
 // =========================================================
 
-/// Closure-based opener capabilities, built once from AppHandle
-/// during host setup. Shared by native and WASM gadgets alike.
+/// Closure-based opener capabilities. Each gadget that needs
+/// opener access builds this in its `provision()` from `ctx.app`.
 pub struct OpenerCaps {
     pub open_url: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
     pub open_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
     pub reveal_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+impl OpenerCaps {
+    pub fn from_app(app: &tauri::AppHandle) -> Self {
+        use tauri_plugin_opener::OpenerExt;
+
+        let url_app = app.clone();
+        let path_app = app.clone();
+        let reveal_app = app.clone();
+
+        Self {
+            open_url: Box::new(move |url: &str| {
+                url_app
+                    .opener()
+                    .open_url(url, None::<&str>)
+                    .map_err(|e| e.to_string())
+            }),
+            open_path: Box::new(move |path: &str| {
+                path_app
+                    .opener()
+                    .open_path(path, None::<&str>)
+                    .map_err(|e| e.to_string())
+            }),
+            reveal_path: Box::new(move |path: &str| {
+                reveal_app
+                    .opener()
+                    .reveal_item_in_dir(path)
+                    .map_err(|e| e.to_string())
+            }),
+        }
+    }
 }
 
 // =========================================================
@@ -76,7 +107,6 @@ pub struct ProvisioningContext {
     pub frecency: Arc<FrecencyStore>,
     pub icon_cache: Arc<IconCache>,
     pub metadata_service: Arc<WebsiteMetadataService>,
-    pub opener: Arc<OpenerCaps>,
 }
 
 impl Clone for ProvisioningContext {
@@ -87,7 +117,6 @@ impl Clone for ProvisioningContext {
             frecency: Arc::clone(&self.frecency),
             icon_cache: Arc::clone(&self.icon_cache),
             metadata_service: Arc::clone(&self.metadata_service),
-            opener: Arc::clone(&self.opener),
         }
     }
 }

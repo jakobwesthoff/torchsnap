@@ -695,17 +695,16 @@ impl Gadget for WasmGadgetBridge {
             None => None,
         };
 
-        // Build opener closures from the AppHandle.
-        let app_handle = app.clone();
+        let clipboard_handle = app.clone();
         let clipboard_writer = Box::new(move |text: &str| {
             use tauri_plugin_clipboard_manager::ClipboardExt;
-            app_handle
+            clipboard_handle
                 .clipboard()
                 .write_text(text)
                 .map_err(|e| format!("write to clipboard: {e}"))
         });
 
-        let opener = Arc::clone(&ctx.opener);
+        let opener = Arc::new(crate::gadgets::OpenerCaps::from_app(app));
         let opener_fn: UrlOpenerFn = Box::new({
             let opener = Arc::clone(&opener);
             move |url: &str| (opener.open_url)(url)
