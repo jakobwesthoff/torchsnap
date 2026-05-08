@@ -880,7 +880,6 @@ impl Gadget for WasmGadgetBridge {
         &self,
         entry: &ScoredEntry,
         action_id: &ActionId,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         let Some(instance) = self.current_instance() else {
             self.log_dispatched_while_disabled("execute()");

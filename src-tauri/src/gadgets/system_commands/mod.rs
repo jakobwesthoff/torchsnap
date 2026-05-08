@@ -104,7 +104,6 @@ impl Gadget for SystemCommandsGadget {
         &self,
         entry: &ScoredEntry,
         _action_id: &ActionId,
-        _app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         let cmd = self
             .commands
