@@ -6,34 +6,33 @@
 // Frecency host import
 //
 // Routes guest `frecency::is-enabled` / `frecency::top-items`
-// calls through the per-gadget `GadgetFrecency` handle
-// stashed on `GadgetState`. Same "degrade gracefully when
-// the handle is missing" contract as the settings import:
-// an accidental call outside an enable lifetime returns
-// empty results rather than trapping.
-//
-// Record and boost are intentionally NOT exposed here —
-// the host already records selections before `execute()`
-// dispatches and applies score bonuses to `search()` results
-// before they reach the frontend, so gadgets never need to
-// touch those paths directly.
+// calls through the per-gadget `GadgetFrecency` handle in
+// the caps bundle. Same "degrade gracefully when absent"
+// contract as the settings import: an accidental call outside
+// an enable lifetime returns empty results rather than
+// trapping.
 // =========================================================
 
-use crate::frecency::GadgetFrecency;
 use crate::wasm::bindings;
 
-use super::super::{GadgetState, WasmGadgetInstance};
+use super::super::GadgetState;
 
 impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
     fn is_enabled(&mut self) -> bool {
-        self.frecency.as_ref().is_some_and(|f| f.is_enabled())
+        self.caps
+            .as_ref()
+            .and_then(|c| c.frecency.as_ref())
+            .is_some_and(|f| f.is_enabled())
     }
 
     fn top_items(
         &mut self,
         limit: u32,
     ) -> Vec<bindings::torchsnap::gadget::frecency::FrecencyItem> {
-        let Some(frecency) = self.frecency.as_ref() else {
+        let Some(caps) = self.caps.as_ref() else {
+            return Vec::new();
+        };
+        let Some(frecency) = caps.frecency.as_ref() else {
             return Vec::new();
         };
         frecency
@@ -41,21 +40,5 @@ impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
             .into_iter()
             .map(Into::into)
             .collect()
-    }
-}
-
-impl WasmGadgetInstance {
-    /// Stash a per-gadget `GadgetFrecency` handle on the store
-    /// data so the `frecency::*` host imports can resolve
-    /// reads. Called by the bridge from `enable()` before the
-    /// guest's own `enable()` runs — same contract as
-    /// `set_settings`.
-    pub fn set_frecency(&self, frecency: GadgetFrecency) {
-        self.with_state_mut(|state| state.frecency = Some(frecency));
-    }
-
-    /// Drop the stashed frecency handle on `disable()`.
-    pub fn clear_frecency(&self) {
-        self.with_state_mut(|state| state.frecency = None);
     }
 }

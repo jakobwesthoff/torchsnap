@@ -35,7 +35,7 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use crate::wasm::bindings;
 use crate::wasm::permission_vars::{PathContext, substitute_variables};
 
-use super::super::{GadgetState, WasmGadgetInstance};
+use super::super::GadgetState;
 
 /// FS state stashed on `GadgetState`. `allowlist` is `None`
 /// when the gadget's manifest has no `[permissions.fs]`
@@ -282,7 +282,10 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
     ) -> Result<Vec<u8>, bindings::torchsnap::gadget::fs::FsError> {
         use bindings::torchsnap::gadget::fs::FsError as WitFsError;
 
-        let allowlist = self.fs.allowlist.clone();
+        let allowlist = self
+            .caps
+            .as_ref()
+            .and_then(|c| c.fs.allowlist.clone());
         tokio::task::block_in_place(|| -> Result<Vec<u8>, WasmFsError> {
             let canonical = resolve_request(allowlist.as_deref(), &path)?;
             std::fs::read(&canonical).map_err(|e| match e.kind() {
@@ -294,7 +297,10 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
     }
 
     fn file_exists(&mut self, path: String) -> bool {
-        let allowlist = self.fs.allowlist.clone();
+        let allowlist = self
+            .caps
+            .as_ref()
+            .and_then(|c| c.fs.allowlist.clone());
         tokio::task::block_in_place(|| resolve_request(allowlist.as_deref(), &path).is_ok())
     }
 
@@ -307,12 +313,11 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
     > {
         use bindings::torchsnap::gadget::fs::{FileMetadata, FsError as WitFsError};
 
-        let allowlist = self.fs.allowlist.clone();
+        let allowlist = self
+            .caps
+            .as_ref()
+            .and_then(|c| c.fs.allowlist.clone());
         tokio::task::block_in_place(|| -> Result<FileMetadata, WasmFsError> {
-            // `is_symlink` is observed before canonicalization
-            // so the gadget can detect when its allowlist
-            // resolved through a symlink rather than landing
-            // on a real file directly.
             let is_symlink = std::fs::symlink_metadata(&path)
                 .map(|m| m.file_type().is_symlink())
                 .unwrap_or(false);
@@ -337,22 +342,6 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
             })
         })
         .map_err(WitFsError::from)
-    }
-}
-
-impl WasmGadgetInstance {
-    /// Stash the compiled fs allowlist on this instance.
-    /// Called by the bridge on `enable()` from the manifest's
-    /// `[permissions.fs] read = [...]` after substitution and
-    /// canonicalization. Pass `None` for gadgets whose
-    /// manifest has no fs section.
-    pub fn set_fs_allowlist(&self, allowlist: Option<Arc<FsAllowlist>>) {
-        self.with_state_mut(|state| state.fs.allowlist = allowlist);
-    }
-
-    /// Drop the fs allowlist on `disable()`.
-    pub fn clear_fs_allowlist(&self) {
-        self.with_state_mut(|state| state.fs.allowlist = None);
     }
 }
 

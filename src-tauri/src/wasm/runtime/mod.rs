@@ -57,6 +57,7 @@ pub mod instance;
 pub mod state;
 
 pub use cached_component::CachedComponent;
+pub(crate) use caps::WasmGadgetCaps;
 pub use engine::WasmRuntime;
 pub use host::sql::{SqlConfig, SqlHandleEntry};
 pub use instance::WasmGadgetInstance;
@@ -132,7 +133,7 @@ mod tests {
             .instantiate("minimal", &component, &LogContext::test_context())
             .expect("second");
 
-        first.clear_sql_storage();
+        first.clear_caps();
         second
             .enable()
             .expect("second instance untouched by operations on the first");
@@ -394,11 +395,14 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            http: HttpState {
-                origins: vec!["*".into()],
-                client: Some(Arc::new(client)),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            caps: Some(WasmGadgetCaps {
+                http: HttpState {
+                    origins: vec!["*".into()],
+                    client: Some(Arc::new(client)),
+                    insecure_client: Arc::new(std::sync::OnceLock::new()),
+                },
+                ..WasmGadgetCaps::default_for_test()
+            }),
             ..GadgetState::default_for_test()
         };
 
@@ -431,11 +435,14 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            http: HttpState {
-                origins: vec!["*".into()],
-                client: Some(Arc::new(client)),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            caps: Some(WasmGadgetCaps {
+                http: HttpState {
+                    origins: vec!["*".into()],
+                    client: Some(Arc::new(client)),
+                    insecure_client: Arc::new(std::sync::OnceLock::new()),
+                },
+                ..WasmGadgetCaps::default_for_test()
+            }),
             ..GadgetState::default_for_test()
         };
 
@@ -468,11 +475,14 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            http: HttpState {
-                origins: vec!["*".into()],
-                client: Some(Arc::new(client)),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            caps: Some(WasmGadgetCaps {
+                http: HttpState {
+                    origins: vec!["*".into()],
+                    client: Some(Arc::new(client)),
+                    insecure_client: Arc::new(std::sync::OnceLock::new()),
+                },
+                ..WasmGadgetCaps::default_for_test()
+            }),
             ..GadgetState::default_for_test()
         };
 
@@ -509,11 +519,14 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            http: HttpState {
-                origins: vec!["*".into()],
-                client: Some(Arc::new(client)),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            caps: Some(WasmGadgetCaps {
+                http: HttpState {
+                    origins: vec!["*".into()],
+                    client: Some(Arc::new(client)),
+                    insecure_client: Arc::new(std::sync::OnceLock::new()),
+                },
+                ..WasmGadgetCaps::default_for_test()
+            }),
             ..GadgetState::default_for_test()
         };
 
@@ -550,11 +563,17 @@ mod tests {
             std::sync::Arc::new(Mutex::new(None));
         let called_url_clone = called_url.clone();
 
-        instance.set_opener_schemes(vec!["https".into()]);
-        instance.set_opener_writer(Box::new(move |url: &str| {
-            *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
-            Ok(())
-        }));
+        instance.set_caps(WasmGadgetCaps {
+            opener: host::opener::OpenerState {
+                schemes: vec!["https".into()],
+                open_url_writer: Some(Box::new(move |url: &str| {
+                    *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
+                    Ok(())
+                })),
+                ..Default::default()
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         instance.enable().expect("enable");
 
@@ -574,8 +593,14 @@ mod tests {
     fn opener_forbidden_scheme_returns_error() {
         let (_runtime, instance) = compile_opener_http_fixture();
 
-        instance.set_opener_schemes(vec!["https".into()]);
-        instance.set_opener_writer(Box::new(|_: &str| Ok(())));
+        instance.set_caps(WasmGadgetCaps {
+            opener: host::opener::OpenerState {
+                schemes: vec!["https".into()],
+                open_url_writer: Some(Box::new(|_: &str| Ok(()))),
+                ..Default::default()
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         instance.enable().expect("enable");
 
@@ -594,8 +619,14 @@ mod tests {
     fn opener_writer_not_set_returns_error() {
         let (_runtime, instance) = compile_opener_http_fixture();
 
-        instance.set_opener_schemes(vec!["https".into()]);
-        // Intentionally omit set_opener_writer.
+        instance.set_caps(WasmGadgetCaps {
+            opener: host::opener::OpenerState {
+                schemes: vec!["https".into()],
+                // Intentionally omit open_url_writer.
+                ..Default::default()
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         instance.enable().expect("enable");
 
@@ -622,8 +653,14 @@ mod tests {
         });
 
         let (_runtime, instance) = compile_opener_http_fixture();
-        instance.set_http_origins(vec!["*".into()]);
-        instance.set_http_client(Arc::new(crate::network::Http::new()));
+        instance.set_caps(WasmGadgetCaps {
+            http: HttpState {
+                origins: vec!["*".into()],
+                client: Some(Arc::new(crate::network::Http::new())),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         instance.enable().expect("enable");
 
@@ -718,7 +755,13 @@ mod tests {
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_website_metadata(true, Some(svc));
+        instance.set_caps(WasmGadgetCaps {
+            website_metadata: host::website_metadata::WebsiteMetadataState {
+                enabled: true,
+                service: Some(svc),
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -745,7 +788,13 @@ mod tests {
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_website_metadata(true, Some(svc));
+        instance.set_caps(WasmGadgetCaps {
+            website_metadata: host::website_metadata::WebsiteMetadataState {
+                enabled: true,
+                service: Some(svc),
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -776,7 +825,13 @@ mod tests {
         let server = httpmock::MockServer::start();
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_website_metadata(true, Some(svc));
+        instance.set_caps(WasmGadgetCaps {
+            website_metadata: host::website_metadata::WebsiteMetadataState {
+                enabled: true,
+                service: Some(svc),
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -790,9 +845,15 @@ mod tests {
     #[test]
     fn http_blocked_origin_returns_permission_denied() {
         let (_runtime, instance) = compile_opener_http_fixture();
-        // Empty origins = deny all.
-        instance.set_http_origins(vec![]);
-        instance.set_http_client(Arc::new(crate::network::Http::new()));
+        instance.set_caps(WasmGadgetCaps {
+            http: HttpState {
+                // Empty origins = deny all.
+                origins: vec![],
+                client: Some(Arc::new(crate::network::Http::new())),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
+            },
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         instance.enable().expect("enable");
 
@@ -853,7 +914,10 @@ icon = "heroicons:beaker"
         src: Arc<dyn super::super::source::GadgetSource + Send + Sync>,
     ) -> GadgetState {
         GadgetState {
-            gadget_source: Some(src),
+            caps: Some(WasmGadgetCaps {
+                gadget_source: Some(src),
+                ..WasmGadgetCaps::default_for_test()
+            }),
             ..GadgetState::default_for_test()
         }
     }
@@ -968,20 +1032,20 @@ icon = "heroicons:beaker"
     }
 
     #[test]
-    fn assets_read_without_gadget_source_returns_io_error() {
+    fn assets_read_without_caps_returns_io_error() {
         use bindings::torchsnap::gadget::assets::AssetsError;
         use bindings::torchsnap::gadget::assets::Host;
 
-        // Default state has `gadget_source: None` — mirrors
-        // calling an asset import outside an enable lifetime.
+        // Default state has `caps: None` — mirrors calling
+        // an asset import outside an enable lifetime.
         let mut state = GadgetState::default_for_test();
         let err = state
             .read("greeting.txt".to_string())
             .expect_err("uninitialized returns Err");
         match err {
             AssetsError::IoError(msg) => assert!(
-                msg.contains("not initialized"),
-                "expected `not initialized` message, got: {msg}"
+                msg.contains("capability accessed outside enable lifetime"),
+                "expected caps chokepoint message, got: {msg}"
             ),
             other => panic!("expected IoError, got {other:?}"),
         }
@@ -1094,7 +1158,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_bundled_file_contents() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1111,7 +1178,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_binary_preserves_byte_count() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         // `data/payload.bin` was written with a known
@@ -1135,7 +1205,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_true_for_bundled_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1148,7 +1221,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1161,7 +1237,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_nested_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1174,7 +1253,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_traversal() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1190,7 +1272,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_absolute_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1206,7 +1291,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_not_found_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1222,7 +1310,10 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_succeeds_on_nested_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps {
+            gadget_source: Some(assets_fixture_source()),
+            ..WasmGadgetCaps::default_for_test()
+        });
         instance.enable().expect("enable");
 
         let result = instance
@@ -1281,32 +1372,37 @@ icon = "heroicons:beaker"
         // create. The tempdir lives on so the test's child
         // process actually has a valid cwd at spawn time.
         let scratch = tempfile::TempDir::new().expect("scratch tempdir");
-        instance.set_path_context(PathContext {
-            gadget_data: scratch.path().to_path_buf(),
-            gadget_archive: scratch.path().to_path_buf(),
-            home: scratch.path().to_path_buf(),
-            xdg_config: scratch.path().to_path_buf(),
-            xdg_data: scratch.path().to_path_buf(),
-        });
 
         // Compile rules matching the fixture's manifest:
         //   /bin/echo with [{any-string}]
         //   /bin/sh   with [{literal:"-c"}, {any-string}]
         // The fixture's `handle-message` dispatches into
         // these via the four test methods.
-        instance.set_command_rules(vec![
-            CompiledCommandRule {
-                binary: "/bin/echo".to_string(),
-                argv: vec![CompiledArgvConstraint::AnyString],
+        instance.set_caps(WasmGadgetCaps {
+            path_context: PathContext {
+                gadget_data: scratch.path().to_path_buf(),
+                gadget_archive: scratch.path().to_path_buf(),
+                home: scratch.path().to_path_buf(),
+                xdg_config: scratch.path().to_path_buf(),
+                xdg_data: scratch.path().to_path_buf(),
             },
-            CompiledCommandRule {
-                binary: "/bin/sh".to_string(),
-                argv: vec![
-                    CompiledArgvConstraint::Literal("-c".to_string()),
-                    CompiledArgvConstraint::AnyString,
+            command: super::host::command::CommandState {
+                rules: vec![
+                    CompiledCommandRule {
+                        binary: "/bin/echo".to_string(),
+                        argv: vec![CompiledArgvConstraint::AnyString],
+                    },
+                    CompiledCommandRule {
+                        binary: "/bin/sh".to_string(),
+                        argv: vec![
+                            CompiledArgvConstraint::Literal("-c".to_string()),
+                            CompiledArgvConstraint::AnyString,
+                        ],
+                    },
                 ],
             },
-        ]);
+            ..WasmGadgetCaps::default_for_test()
+        });
 
         (runtime, instance, scratch)
     }

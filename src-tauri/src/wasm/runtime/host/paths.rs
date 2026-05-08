@@ -6,17 +6,11 @@
 // Paths host import
 //
 // Resolves `${...}` substitution variables at runtime
-// against the per-gadget `PathContext` stashed on
-// `GadgetState`. The recognized-variable list and the
-// substitution implementation live in
-// `crate::wasm::permission_vars`, shared with the manifest-
-// time validator so the two cannot drift apart.
-//
-// No permission gate; the resolved values are
-// informational. The host import returns
-// `unterminated` when no `PathContext` has been stashed
-// yet (a "not initialized" placeholder, since the WIT
-// variant has no dedicated arm for it).
+// against the per-gadget `PathContext` in the caps bundle.
+// The recognized-variable list and the substitution
+// implementation live in `crate::wasm::permission_vars`,
+// shared with the manifest-time validator so the two
+// cannot drift apart.
 // =========================================================
 
 use crate::wasm::bindings;
@@ -31,17 +25,9 @@ impl bindings::torchsnap::gadget::paths::Host for GadgetState {
     ) -> Result<String, bindings::torchsnap::gadget::paths::ResolveError> {
         use bindings::torchsnap::gadget::paths::ResolveError as WitResolveError;
 
-        let Some(ctx) = self.path_context.as_ref() else {
-            // Mirrors the contract of other capability stashes
-            // (`http::client`, `clipboard::writer`): if the
-            // bridge has not stashed the context yet, surface
-            // it as an error rather than panicking.
-            return Err(WitResolveError::Unterminated(
-                "paths interface not initialized for this gadget instance".into(),
-            ));
-        };
+        let caps = self.caps().map_err(|e| WitResolveError::Unterminated(e))?;
 
-        substitute_variables(&template, ctx).map_err(|e| match e {
+        substitute_variables(&template, &caps.path_context).map_err(|e| match e {
             ResolveError::UnknownVariable(name) => WitResolveError::UnknownVariable(name),
             ResolveError::Unterminated(rest) => WitResolveError::Unterminated(rest),
         })

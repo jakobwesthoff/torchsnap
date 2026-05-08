@@ -36,8 +36,16 @@ use super::manifest::Manifest;
 use super::permission_vars::PathContext;
 use crate::network::website_metadata::WebsiteMetadataService;
 
-use super::runtime::host::opener::UrlOpenerFn;
-use super::runtime::{CachedComponent, SqlConfig, WasmGadgetInstance, WasmRuntime};
+use super::runtime::host::clipboard::ClipboardState;
+use super::runtime::host::command::CommandState;
+use super::runtime::host::fs::FsState;
+use super::runtime::host::http::HttpState;
+use super::runtime::host::opener::{OpenerState, UrlOpenerFn};
+use super::runtime::host::sql::SqlState;
+use super::runtime::host::website_metadata::WebsiteMetadataState;
+use super::runtime::{
+    CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
+};
 use super::source::GadgetSource;
 
 // =========================================================
@@ -326,9 +334,6 @@ impl WasmGadgetBridge {
 
     /// Return a clone of the live instance, creating one
     /// via `runtime.instantiate` if the slot is empty.
-    /// Re-applies the bridge's `sql_config` on every fresh
-    /// instance — each new `GadgetState` starts with
-    /// `SqlConfig::None`.
     fn ensure_instance(&self) -> anyhow::Result<Arc<WasmGadgetInstance>> {
         let mut slot = self.instance.lock().expect("instance slot not poisoned");
         if let Some(existing) = slot.as_ref() {
@@ -341,7 +346,6 @@ impl WasmGadgetBridge {
             .expect("cached component not poisoned")
             .instantiate()
             .with_context(|| format!("instantiate WASM gadget `{}`", self.gadget_id))?;
-        instance.set_sql_config(self.sql_config.clone());
 
         let arc = Arc::new(instance);
         *slot = Some(Arc::clone(&arc));
@@ -661,141 +665,45 @@ impl Gadget for WasmGadgetBridge {
             }
         };
 
-        // Stash settings BEFORE invoking the guest's
-        // `enable()` so the guest can call `settings::get`
-        // during its own initialization.
-        instance.set_settings(ctx.settings.clone());
-
-        // Frecency follows the same pre-enable lifecycle: the
-        // guest may read `frecency::top-items` from its own
-        // `enable()` (e.g. an empty-query browse mode that
-        // primes a cache on startup).
-        instance.set_frecency(ctx.frecency.clone());
-
-        let app_handle = app.clone();
-        instance.set_clipboard_writer(Box::new(move |text| {
-            use tauri_plugin_clipboard_manager::ClipboardExt;
-            app_handle
-                .clipboard()
-                .write_text(text)
-                .map_err(|e| format!("write to clipboard: {e}"))
-        }));
-
-        // Stash the permission allowlists and wire up the
-        // opener and HTTP client. The opener closure captures
-        // an `AppHandle` clone — same lifetime model as the
-        // clipboard writer above. The HTTP client is a fresh
-        // `Http` instance per enable cycle.
-        instance.set_opener_schemes(self.opener_schemes.clone());
-        instance.set_opener_path_capabilities(self.opener_open_path, self.opener_reveal_path);
-        instance.set_http_origins(self.http_origins.clone());
-
-        // Plug in the shared website-metadata service when the
-        // manifest opts in *and* the runtime carries a service
-        // handle (production always does; tests omit it unless
-        // they specifically exercise this capability).
-        instance.set_website_metadata(
-            self.website_metadata_enabled && self.metadata_service.is_some(),
-            self.metadata_service.clone(),
-        );
-
-        let opener_handle = app.clone();
-        let opener_fn: UrlOpenerFn = Box::new(move |url: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            opener_handle
-                .opener()
-                .open_url(url, None::<&str>)
-                .map_err(|e| e.to_string())
-        });
-        instance.set_opener_writer(opener_fn);
-
-        // The Tauri opener crate's `open_path` invokes the
-        // OS-registered application for the given path —
-        // LaunchServices on macOS, GIO on Linux, ShellExecute
-        // on Windows. The host doesn't need to know which
-        // platform-specific path it routes through; that's
-        // Tauri's responsibility.
-        let open_path_handle = app.clone();
-        let open_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            open_path_handle
-                .opener()
-                .open_path(path, None::<&str>)
-                .map_err(|e| e.to_string())
-        });
-        instance.set_open_path_writer(open_path_fn);
-
-        let reveal_path_handle = app.clone();
-        let reveal_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            reveal_path_handle
-                .opener()
-                .reveal_item_in_dir(path)
-                .map_err(|e| e.to_string())
-        });
-        instance.set_reveal_path_writer(reveal_path_fn);
-
-        // Build and stash the substitution context for
-        // `paths::resolve` (and, in the next sub-phase,
-        // command-rule compilation). Tauri's path resolver
-        // produces the platform-correct values for `home`,
-        // `xdg-config`, and `xdg-data`; on macOS and Windows
-        // the XDG names are mapped to the closest equivalent
-        // (Application Support / AppData).
-        let ctx_for_rules = match build_path_context(app, &self.gadget_data, &self.gadget_archive) {
-            Ok(ctx) => {
-                instance.set_path_context(ctx.clone());
-                Some(ctx)
-            }
-            Err(e) => {
-                self.log(
-                    LogLevel::Warn,
-                    format!("paths::resolve unavailable for `{}`: {e:#}", self.gadget_id),
-                );
-                None
-            }
-        };
-
-        // Compile the raw `[[permissions.command]]` rules
-        // against the resolved PathContext. Variable
-        // substitution + regex/glob compilation happen here;
-        // the matcher then operates on the compiled forms at
-        // call time. A gadget without a PathContext gets an
-        // empty rule set — every `command::run` call will
-        // return `permission-denied`, matching the deny-by-
-        // default contract.
-        let compiled_rules: Vec<super::argv_matcher::CompiledCommandRule> =
-            if let Some(ctx) = ctx_for_rules.as_ref() {
-                let mut compiled = Vec::with_capacity(self.command_rules_raw.len());
-                for (index, raw) in self.command_rules_raw.iter().enumerate() {
-                    match super::argv_matcher::compile_rule(raw, index, ctx) {
-                        Ok(rule) => compiled.push(rule),
-                        Err(e) => {
-                            self.log(
-                                LogLevel::Error,
-                                format!(
-                                    "compiling command rule {index} for `{}`: {e:#}",
-                                    self.gadget_id
-                                ),
-                            );
-                        }
-                    }
+        // PathContext is mandatory — if it can't be resolved,
+        // the gadget doesn't enable at all. The underlying
+        // calls (home_dir, config_dir, data_dir) don't fail
+        // on real systems.
+        let path_context =
+            match build_path_context(app, &self.gadget_data, &self.gadget_archive) {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    self.log(
+                        LogLevel::Error,
+                        format!("path context unavailable for `{}`: {e:#}", self.gadget_id),
+                    );
+                    drop(instance);
+                    let _ = self.take_instance();
+                    return;
                 }
-                compiled
-            } else {
-                Vec::new()
             };
-        instance.set_command_rules(compiled_rules);
 
-        // Compile the `[permissions.fs]` allowlist against the
-        // resolved PathContext. Substitution + GlobSet
-        // assembly happen here; the matcher then tests
-        // canonicalized request paths at call time. Without a
-        // PathContext, no allowlist is installed and every fs
-        // call returns `permission-denied`.
-        let fs_allowlist = match (self.fs_patterns_raw.as_ref(), ctx_for_rules.as_ref()) {
-            (Some(patterns), Some(ctx)) => {
-                match super::runtime::host::fs::compile_fs_patterns(patterns, ctx) {
+        // Compile command rules against the resolved PathContext.
+        let mut compiled_rules = Vec::with_capacity(self.command_rules_raw.len());
+        for (index, raw) in self.command_rules_raw.iter().enumerate() {
+            match super::argv_matcher::compile_rule(raw, index, &path_context) {
+                Ok(rule) => compiled_rules.push(rule),
+                Err(e) => {
+                    self.log(
+                        LogLevel::Error,
+                        format!(
+                            "compiling command rule {index} for `{}`: {e:#}",
+                            self.gadget_id
+                        ),
+                    );
+                }
+            }
+        }
+
+        // Compile fs allowlist against the resolved PathContext.
+        let fs_allowlist = match self.fs_patterns_raw.as_ref() {
+            Some(patterns) => {
+                match super::runtime::host::fs::compile_fs_patterns(patterns, &path_context) {
                     Ok(allow) => Some(Arc::new(allow)),
                     Err(e) => {
                         self.log(
@@ -806,39 +714,116 @@ impl Gadget for WasmGadgetBridge {
                     }
                 }
             }
-            _ => None,
+            None => None,
         };
-        instance.set_fs_allowlist(fs_allowlist);
 
-        instance.set_http_client(Arc::new(crate::network::Http::new()));
+        // Build opener closures from the AppHandle.
+        let app_handle = app.clone();
+        let clipboard_writer = Box::new(move |text: &str| {
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            app_handle
+                .clipboard()
+                .write_text(text)
+                .map_err(|e| format!("write to clipboard: {e}"))
+        });
 
-        // Assets: stash a clone of the source `Arc` the
-        // bridge already holds. No permission allowlist —
-        // gadgets can always read their own bundled files;
-        // the guarantee is spatial (validate_gadget_path
-        // confines reads to the gadget root).
-        instance.set_gadget_source(Arc::clone(&self.gadget_source));
+        let opener_handle = app.clone();
+        let opener_fn: UrlOpenerFn = Box::new(move |url: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            opener_handle
+                .opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| e.to_string())
+        });
 
-        // Materialize the SQL database before the guest's
-        // enable() runs. Failure here leaves the guest in a
-        // bad state (any `sql::connection()` call would
-        // panic in the host import), so tear the instance
-        // back down before returning.
-        if let Err(e) = instance.open_sql_storage() {
-            self.log(LogLevel::Error, format!("SQL storage init failed: {e:#}"));
-            drop(instance);
-            let _ = self.take_instance();
-            return;
+        let open_path_handle = app.clone();
+        let open_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            open_path_handle
+                .opener()
+                .open_path(path, None::<&str>)
+                .map_err(|e| e.to_string())
+        });
+
+        let reveal_path_handle = app.clone();
+        let reveal_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            reveal_path_handle
+                .opener()
+                .reveal_item_in_dir(path)
+                .map_err(|e| e.to_string())
+        });
+
+        // Materialize SQL storage from the bridge's cached config.
+        let mut sql = SqlState {
+            config: self.sql_config.clone(),
+            storage: None,
+            handle_reps: Vec::new(),
+        };
+        if let SqlConfig::Configured {
+            ref db_path,
+            ref migrations,
+        } = sql.config
+        {
+            let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
+            match crate::storage::SqlStorage::open(db_path.clone(), &migration_strs) {
+                Ok(storage) => sql.storage = Some(Arc::new(storage)),
+                Err(e) => {
+                    self.log(LogLevel::Error, format!("SQL storage init failed: {e:#}"));
+                    drop(instance);
+                    let _ = self.take_instance();
+                    return;
+                }
+            }
         }
 
-        // A guest that failed its own `enable()` is not in
-        // a useful state, so drop the instance and skip
-        // the scheduler. The host's enabled flag stays
-        // `true` until the `Gadget::enable → Result`
-        // follow-up gives us a channel to report failure
-        // upward.
+        let website_metadata_enabled =
+            self.website_metadata_enabled && self.metadata_service.is_some();
+
+        // Build the unified capability bundle.
+        let caps = WasmGadgetCaps {
+            settings: Some(ctx.settings.clone()),
+            frecency: Some(ctx.frecency.clone()),
+            gadget_source: Some(Arc::clone(&self.gadget_source)),
+            path_context,
+            sql,
+            clipboard: ClipboardState {
+                writer: Some(clipboard_writer),
+            },
+            opener: OpenerState {
+                schemes: self.opener_schemes.clone(),
+                open_path: self.opener_open_path,
+                reveal_path: self.opener_reveal_path,
+                open_url_writer: Some(opener_fn),
+                open_path_writer: Some(open_path_fn),
+                reveal_path_writer: Some(reveal_path_fn),
+            },
+            http: HttpState {
+                origins: self.http_origins.clone(),
+                client: Some(Arc::new(crate::network::Http::new())),
+                insecure_client: Arc::new(std::sync::OnceLock::new()),
+            },
+            fs: FsState {
+                allowlist: fs_allowlist,
+            },
+            command: CommandState {
+                rules: compiled_rules,
+            },
+            website_metadata: WebsiteMetadataState {
+                enabled: website_metadata_enabled,
+                service: if website_metadata_enabled {
+                    self.metadata_service.clone()
+                } else {
+                    None
+                },
+            },
+        };
+
+        instance.set_caps(caps);
+
         if let Err(e) = instance.enable() {
             self.log(LogLevel::Error, format!("guest enable() failed: {e:#}"));
+            instance.clear_caps();
             drop(instance);
             let _ = self.take_instance();
             return;
@@ -848,9 +833,6 @@ impl Gadget for WasmGadgetBridge {
     }
 
     fn disable(&self) {
-        // Stop the scheduler before touching the instance:
-        // it holds its own `Arc` clone and must release it
-        // before the strong count can drop to zero.
         self.stop_scheduler();
 
         let Some(instance) = self.take_instance() else {
@@ -860,23 +842,9 @@ impl Gadget for WasmGadgetBridge {
         if let Err(e) = instance.disable() {
             self.log(LogLevel::Error, format!("disable() failed: {e:#}"));
         }
-        instance.clear_settings();
-        instance.clear_frecency();
-        instance.clear_sql_storage();
-        instance.clear_clipboard_writer();
-        instance.clear_opener_writer();
-        instance.clear_open_path_writer();
-        instance.clear_reveal_path_writer();
-        instance.clear_path_context();
-        instance.clear_command_rules();
-        instance.clear_fs_allowlist();
-        instance.clear_http_client();
-        instance.clear_website_metadata();
-        instance.clear_gadget_source();
 
-        // Release the compiled component from memory. The
-        // cache file on disk is retained so the next
-        // enable() re-acquires cheaply via deserialization.
+        instance.clear_caps();
+
         self.cached
             .lock()
             .expect("cached component not poisoned")
@@ -1069,6 +1037,7 @@ mod tests {
 
     use super::*;
     use crate::wasm::logging::channel::LogContext;
+    use crate::wasm::runtime::caps::WasmGadgetCaps;
     use crate::wasm::runtime::WasmRuntime;
     use crate::wasm::source::DirectorySource;
 
@@ -1099,6 +1068,33 @@ mod tests {
             app_data_dir,
             None,
         )
+    }
+
+    /// Build a `WasmGadgetCaps` from a bridge's SQL config
+    /// for tests that verify SQL storage across enable cycles.
+    fn build_test_caps(bridge: &WasmGadgetBridge) -> WasmGadgetCaps {
+        use crate::wasm::runtime::host::sql::SqlState;
+
+        let mut sql = SqlState {
+            config: bridge.sql_config.clone(),
+            storage: None,
+            handle_reps: Vec::new(),
+        };
+        if let SqlConfig::Configured {
+            ref db_path,
+            ref migrations,
+        } = sql.config
+        {
+            let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
+            let storage =
+                crate::storage::SqlStorage::open(db_path.clone(), &migration_strs).expect("open");
+            sql.storage = Some(Arc::new(storage));
+        }
+
+        WasmGadgetCaps {
+            sql,
+            ..WasmGadgetCaps::default_for_test()
+        }
     }
 
     #[test]
@@ -1341,14 +1337,27 @@ migrations = ["migrations/001_init.sql"]
         ));
 
         // Two instantiations across an explicit teardown
-        // exercise the re-application path.
+        // exercise that the bridge retains the SQL config
+        // and can build working caps for each.
         let first = bridge.ensure_instance().expect("first ensure");
-        first.open_sql_storage().expect("first SQL open");
+        let caps = build_test_caps(&bridge);
+        assert!(
+            caps.sql.storage.is_some(),
+            "first caps should have SQL storage"
+        );
+        first.set_caps(caps);
+        first.clear_caps();
         drop(first);
         let _ = bridge.take_instance();
 
         let second = bridge.ensure_instance().expect("second ensure");
-        second.open_sql_storage().expect("second SQL open");
+        let caps = build_test_caps(&bridge);
+        assert!(
+            caps.sql.storage.is_some(),
+            "second caps should have SQL storage"
+        );
+        drop(caps);
+        drop(second);
     }
 
     #[test]

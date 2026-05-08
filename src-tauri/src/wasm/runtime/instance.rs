@@ -11,26 +11,20 @@
 // handle_message / run_task / on_setting_changed) lives
 // here.
 //
-// Capability-specific setters/clearers
-// (`set_clipboard_writer`, `set_opener_schemes`, etc.)
-// land via `impl WasmGadgetInstance` extension blocks in
-// the `host/<capability>.rs` files. The foundational
-// setters defined here cover the cross-capability state
-// (`gadget_source`, `path_context`) plus the
-// `with_state_mut` chokepoint every other setter routes
-// through.
+// Capability state is managed atomically through
+// `set_caps` / `clear_caps` — individual per-capability
+// setters are no longer needed.
 // =========================================================
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use wasmtime::Store;
 
 use crate::wasm::bindings;
 use crate::wasm::logging::spans::Logger;
-use crate::wasm::permission_vars::PathContext;
-use crate::wasm::source::GadgetSource;
 
+use super::caps::WasmGadgetCaps;
 use super::state::GadgetState;
 
 /// A loaded WASM gadget instance.
@@ -82,7 +76,7 @@ impl WasmGadgetInstance {
     /// `GadgetState`, holding the store lock for its duration.
     /// The single chokepoint every capability setter routes
     /// through, so the lock-acquire / `data_mut()` pattern
-    /// lives in one place rather than 30 setters.
+    /// lives in one place.
     pub(crate) fn with_state_mut<R>(&self, f: impl FnOnce(&mut GadgetState) -> R) -> R {
         let mut store = self.store.lock().expect("store not poisoned");
         f(store.data_mut())
@@ -90,40 +84,28 @@ impl WasmGadgetInstance {
 }
 
 // =========================================================
-// Foundational setters — cross-capability state
-//
-// `path_context` is consumed by both `paths::resolve` and
-// `command::run`; `gadget_source` is consumed by
-// `assets::*`. Both are bridge-stashed at `enable()`.
+// Capability lifecycle — atomic set/clear
 // =========================================================
 
 impl WasmGadgetInstance {
-    /// Stash the resolved `${...}` substitution context.
-    /// Called by the bridge at `enable()` after computing the
-    /// per-gadget paths.
-    pub fn set_path_context(&self, ctx: PathContext) {
-        self.with_state_mut(|state| state.path_context = Some(ctx));
+    /// Install the full capability bundle on the store data.
+    /// Called by the bridge at `enable()` after building the
+    /// caps from the manifest, PathContext, and host services.
+    pub fn set_caps(&self, caps: WasmGadgetCaps) {
+        self.with_state_mut(|state| state.caps = Some(caps));
     }
 
-    /// Drop the substitution context on `disable()`.
-    pub fn clear_path_context(&self) {
-        self.with_state_mut(|state| state.path_context = None);
-    }
-
-    /// Stash the gadget's own `GadgetSource` handle. Called
-    /// by the bridge on `enable()`. The `assets::*` host
-    /// imports use this Arc to read the gadget's bundled
-    /// files on demand.
-    pub fn set_gadget_source(&self, source: Arc<dyn GadgetSource + Send + Sync>) {
-        self.with_state_mut(|state| state.gadget_source = Some(source));
-    }
-
-    /// Drop the gadget source on `disable()`. Eager release
-    /// so the underlying `ArchiveSource` file handle (or
-    /// the `DirectorySource` path) doesn't linger across
-    /// enable cycles.
-    pub fn clear_gadget_source(&self) {
-        self.with_state_mut(|state| state.gadget_source = None);
+    /// Tear down and drop the capability bundle. Drains SQL
+    /// handle reps from the resource table before dropping
+    /// so the rusqlite connection is closed eagerly.
+    ///
+    /// No-op when caps are already `None`.
+    pub fn clear_caps(&self) {
+        self.with_state_mut(|state| {
+            if let Some(mut caps) = state.caps.take() {
+                caps.teardown(&mut state.wasi_table);
+            }
+        });
     }
 }
 
