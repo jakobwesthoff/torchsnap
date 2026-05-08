@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useSetting } from "../../hooks/useSetting";
+import { command } from "../../lib/command";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { Entry } from "../Entry";
@@ -18,6 +19,11 @@ export function GeneralSection() {
 
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [buildInfo, setBuildInfo] = useState<{ version: string; gitHash: string } | null>(null);
+
+  useEffect(() => {
+    command("build_info").then(setBuildInfo);
+  }, []);
 
   useEffect(() => {
     isEnabled().then((enabled) => {
@@ -36,7 +42,7 @@ export function GeneralSection() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-h-full">
       <SectionHeader
         icon="heroicons:cog-6-tooth"
         title="General"
@@ -60,6 +66,12 @@ export function GeneralSection() {
           <Switch checked={controlApiEnabled} onChange={setControlApiEnabled} />
         </Entry>
       </Section>
+
+      {buildInfo && (
+        <p className="mt-auto pt-4 text-right text-[11px] text-text-muted/90">
+          Build: v{buildInfo.version} ({buildInfo.gitHash})
+        </p>
+      )}
     </div>
   );
 }
