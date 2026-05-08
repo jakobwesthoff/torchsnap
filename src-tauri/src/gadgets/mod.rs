@@ -49,7 +49,7 @@ pub struct GadgetShortcut {
 }
 
 // =========================================================
-// OpenerCaps — closure-based opener capabilities
+// Shared capability structs
 // =========================================================
 
 /// Closure-based opener capabilities, built once from AppHandle
@@ -58,6 +58,21 @@ pub struct OpenerCaps {
     pub open_url: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
     pub open_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
     pub reveal_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+/// Closure-based clipboard write capability.
+pub struct ClipboardCaps {
+    pub write_text: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+/// Pre-resolved host filesystem paths. These don't change at
+/// runtime, so they're resolved once during setup.
+#[derive(Clone)]
+pub struct ResolvedPaths {
+    pub home: std::path::PathBuf,
+    pub config: std::path::PathBuf,
+    pub data: std::path::PathBuf,
+    pub app_data: std::path::PathBuf,
 }
 
 // =========================================================
@@ -70,24 +85,29 @@ pub struct OpenerCaps {
 /// need to build its capabilities. Constructed once in
 /// `lib.rs::setup` after all shared resources exist, stored
 /// on `GadgetHost` for re-enable cycles.
+///
+/// No Tauri types cross this boundary — every host service
+/// is modeled as a pre-built capability or pre-resolved value.
 pub struct ProvisioningContext {
-    pub app: tauri::AppHandle,
+    pub paths: ResolvedPaths,
     pub store: Arc<Store<tauri::Wry>>,
     pub frecency: Arc<FrecencyStore>,
     pub icon_cache: Arc<IconCache>,
     pub metadata_service: Arc<WebsiteMetadataService>,
     pub opener: Arc<OpenerCaps>,
+    pub clipboard: Arc<ClipboardCaps>,
 }
 
 impl Clone for ProvisioningContext {
     fn clone(&self) -> Self {
         Self {
-            app: self.app.clone(),
+            paths: self.paths.clone(),
             store: Arc::clone(&self.store),
             frecency: Arc::clone(&self.frecency),
             icon_cache: Arc::clone(&self.icon_cache),
             metadata_service: Arc::clone(&self.metadata_service),
             opener: Arc::clone(&self.opener),
+            clipboard: Arc::clone(&self.clipboard),
         }
     }
 }
