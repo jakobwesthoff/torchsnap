@@ -540,6 +540,38 @@ async fn scheduler_loop(
     }
 }
 
+/// Build a [`PathContext`] resolving the five `${...}`
+/// substitution variables (`gadget-data`, `gadget-archive`,
+/// `home`, `xdg-config`, `xdg-data`) for one gadget
+/// instance. Called from `enable()` once per re-enable
+/// cycle. The gadget-data and gadget-archive paths come
+/// from the bridge (the bridge already has them); the
+/// XDG-style paths come from Tauri's path resolver, which
+/// produces platform-correct values (`Application Support`
+/// on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME`
+/// with fallback on Linux).
+fn build_path_context(
+    app: &tauri::AppHandle,
+    gadget_data: &PathBuf,
+    gadget_archive: &PathBuf,
+) -> anyhow::Result<PathContext> {
+    use tauri::Manager;
+
+    let path_resolver = app.path();
+    let home = path_resolver.home_dir().context("resolve home directory")?;
+    let xdg_config = path_resolver
+        .config_dir()
+        .context("resolve config directory")?;
+    let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
+
+    Ok(PathContext {
+        gadget_data: gadget_data.clone(),
+        gadget_archive: gadget_archive.clone(),
+        home,
+        xdg_config,
+        xdg_data,
+    })
+}
 
 fn log_task_error(log_sender: &LogSender, gadget_id: &str, task_id: &str, error: &str) {
     log_sender.send(LogItem {
@@ -622,13 +654,12 @@ impl Gadget for WasmGadgetBridge {
     }
 
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<WasmGadgetCaps> {
-        let path_context = PathContext {
-            gadget_data: self.gadget_data.clone(),
-            gadget_archive: self.gadget_archive.clone(),
-            home: ctx.paths.home.clone(),
-            xdg_config: ctx.paths.config.clone(),
-            xdg_data: ctx.paths.data.clone(),
-        };
+        use anyhow::Context;
+
+        let app = &ctx.app;
+
+        let path_context = build_path_context(app, &self.gadget_data, &self.gadget_archive)
+            .context("resolve path context")?;
 
         // Compile command rules against the resolved PathContext.
         let mut compiled_rules = Vec::with_capacity(self.command_rules_raw.len());
@@ -664,9 +695,14 @@ impl Gadget for WasmGadgetBridge {
             None => None,
         };
 
-        let clipboard_caps = Arc::clone(&ctx.clipboard);
+        // Build opener closures from the AppHandle.
+        let app_handle = app.clone();
         let clipboard_writer = Box::new(move |text: &str| {
-            (clipboard_caps.write_text)(text)
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            app_handle
+                .clipboard()
+                .write_text(text)
+                .map_err(|e| format!("write to clipboard: {e}"))
         });
 
         let opener = Arc::clone(&ctx.opener);
