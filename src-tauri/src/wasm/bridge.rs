@@ -705,31 +705,18 @@ impl Gadget for WasmGadgetBridge {
                 .map_err(|e| format!("write to clipboard: {e}"))
         });
 
-        let opener_handle = app.clone();
-        let opener_fn: UrlOpenerFn = Box::new(move |url: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            opener_handle
-                .opener()
-                .open_url(url, None::<&str>)
-                .map_err(|e| e.to_string())
+        let opener = Arc::clone(&ctx.opener);
+        let opener_fn: UrlOpenerFn = Box::new({
+            let opener = Arc::clone(&opener);
+            move |url: &str| (opener.open_url)(url)
         });
-
-        let open_path_handle = app.clone();
-        let open_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            open_path_handle
-                .opener()
-                .open_path(path, None::<&str>)
-                .map_err(|e| e.to_string())
+        let open_path_fn: UrlOpenerFn = Box::new({
+            let opener = Arc::clone(&opener);
+            move |path: &str| (opener.open_path)(path)
         });
-
-        let reveal_path_handle = app.clone();
-        let reveal_path_fn: UrlOpenerFn = Box::new(move |path: &str| {
-            use tauri_plugin_opener::OpenerExt;
-            reveal_path_handle
-                .opener()
-                .reveal_item_in_dir(path)
-                .map_err(|e| e.to_string())
+        let reveal_path_fn: UrlOpenerFn = Box::new({
+            let opener = Arc::clone(&opener);
+            move |path: &str| (opener.reveal_path)(path)
         });
 
         // Materialize SQL storage from the bridge's cached config.
