@@ -50,6 +50,7 @@
 // =========================================================
 
 pub mod cached_component;
+pub(crate) mod caps;
 pub mod engine;
 pub mod host;
 pub mod instance;
