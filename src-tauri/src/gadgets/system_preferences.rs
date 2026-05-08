@@ -34,18 +34,20 @@ use crate::storage::StorageKey;
 
 use super::{Gadget, ProvisioningContext};
 
+pub struct SystemPreferencesCaps {
+    pub icon_cache: Arc<IconCache>,
+}
+
 pub struct SystemPreferencesGadget {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
     discovery: Arc<dyn SettingsDiscovery>,
-    icon_cache: Arc<IconCache>,
 }
 
 impl SystemPreferencesGadget {
-    pub fn new(discovery: impl SettingsDiscovery + 'static, icon_cache: Arc<IconCache>) -> Self {
+    pub fn new(discovery: impl SettingsDiscovery + 'static) -> Self {
         Self {
             cache: Arc::new(RwLock::new(Vec::new())),
             discovery: Arc::new(discovery),
-            icon_cache,
         }
     }
 }
@@ -78,17 +80,19 @@ fn cache_pane_icons(
 }
 
 impl Gadget for SystemPreferencesGadget {
-    type Caps = ();
+    type Caps = SystemPreferencesCaps;
 
     fn id(&self) -> &str {
         "system-preferences"
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
+    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<SystemPreferencesCaps> {
+        Ok(SystemPreferencesCaps {
+            icon_cache: Arc::clone(&ctx.icon_cache),
+        })
     }
 
-    fn enable(&self, _caps: ()) {
+    fn enable(&self, caps: SystemPreferencesCaps) {
         match self.discovery.discover() {
             Ok(mut panes) => {
                 // Publish the pane list right away with fallback icons.
@@ -98,8 +102,9 @@ impl Gadget for SystemPreferencesGadget {
                 }
 
                 // Render and cache SF Symbol icons for each pane.
-                let valid_keys = cache_pane_icons(&self.icon_cache, &*self.discovery, &mut panes);
-                self.icon_cache.cleanup("system-preferences", &valid_keys);
+                let valid_keys =
+                    cache_pane_icons(&caps.icon_cache, &*self.discovery, &mut panes);
+                caps.icon_cache.cleanup("system-preferences", &valid_keys);
 
                 // Swap in icon-enriched entries.
                 let mut guard = self.cache.write().expect("settings cache not poisoned");
