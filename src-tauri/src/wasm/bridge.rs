@@ -27,8 +27,9 @@ use cron::Schedule;
 use tauri::async_runtime::JoinHandle;
 
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
-use crate::gadgets::Gadget;
-use crate::settings::SettingsInit;
+use crate::frecency::GadgetFrecency;
+use crate::gadgets::{Gadget, ProvisioningContext};
+use crate::settings::{GadgetSettings, SettingsInit};
 
 use super::logging::channel::{LogContext, LogSender};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
@@ -637,13 +638,12 @@ impl WasmGadgetBridge {
 }
 
 impl Gadget for WasmGadgetBridge {
+    type Caps = WasmGadgetCaps;
+
     fn id(&self) -> &str {
         self.manifest.gadget.id.as_str()
     }
 
-    /// Write the `[settings]` table defaults from the manifest to
-    /// the settings store. Each entry is an `ensure()` call —
-    /// existing user values are never overwritten.
     fn initialize_settings(&self, mut settings: SettingsInit) -> SettingsInit {
         for (key, toml_value) in &self.manifest.settings {
             if let Ok(json_value) = serde_json::to_value(toml_value) {
@@ -653,35 +653,13 @@ impl Gadget for WasmGadgetBridge {
         settings
     }
 
-    fn enable(&self, app: &tauri::AppHandle, ctx: &crate::gadgets::GadgetContext) {
-        let instance = match self.ensure_instance() {
-            Ok(instance) => instance,
-            Err(e) => {
-                self.log(
-                    LogLevel::Error,
-                    format!("failed to instantiate gadget: {e:#}"),
-                );
-                return;
-            }
-        };
+    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<WasmGadgetCaps> {
+        use anyhow::Context;
 
-        // PathContext is mandatory — if it can't be resolved,
-        // the gadget doesn't enable at all. The underlying
-        // calls (home_dir, config_dir, data_dir) don't fail
-        // on real systems.
-        let path_context =
-            match build_path_context(app, &self.gadget_data, &self.gadget_archive) {
-                Ok(ctx) => ctx,
-                Err(e) => {
-                    self.log(
-                        LogLevel::Error,
-                        format!("path context unavailable for `{}`: {e:#}", self.gadget_id),
-                    );
-                    drop(instance);
-                    let _ = self.take_instance();
-                    return;
-                }
-            };
+        let app = &ctx.app;
+
+        let path_context = build_path_context(app, &self.gadget_data, &self.gadget_archive)
+            .context("resolve path context")?;
 
         // Compile command rules against the resolved PathContext.
         let mut compiled_rules = Vec::with_capacity(self.command_rules_raw.len());
@@ -766,24 +744,20 @@ impl Gadget for WasmGadgetBridge {
         } = sql.config
         {
             let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
-            match crate::storage::SqlStorage::open(db_path.clone(), &migration_strs) {
-                Ok(storage) => sql.storage = Some(Arc::new(storage)),
-                Err(e) => {
-                    self.log(LogLevel::Error, format!("SQL storage init failed: {e:#}"));
-                    drop(instance);
-                    let _ = self.take_instance();
-                    return;
-                }
-            }
+            let storage = crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
+                .context("open SQL storage")?;
+            sql.storage = Some(Arc::new(storage));
         }
+
+        let settings = GadgetSettings::new(Arc::clone(&ctx.store), self.id());
+        let frecency = GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id());
 
         let website_metadata_enabled =
             self.website_metadata_enabled && self.metadata_service.is_some();
 
-        // Build the unified capability bundle.
-        let caps = WasmGadgetCaps {
-            settings: Some(ctx.settings.clone()),
-            frecency: Some(ctx.frecency.clone()),
+        Ok(WasmGadgetCaps {
+            settings: Some(settings),
+            frecency: Some(frecency),
             gadget_source: Some(Arc::clone(&self.gadget_source)),
             path_context,
             sql,
@@ -817,6 +791,19 @@ impl Gadget for WasmGadgetBridge {
                     None
                 },
             },
+        })
+    }
+
+    fn enable(&self, caps: WasmGadgetCaps) {
+        let instance = match self.ensure_instance() {
+            Ok(instance) => instance,
+            Err(e) => {
+                self.log(
+                    LogLevel::Error,
+                    format!("failed to instantiate gadget: {e:#}"),
+                );
+                return;
+            }
         };
 
         instance.set_caps(caps);

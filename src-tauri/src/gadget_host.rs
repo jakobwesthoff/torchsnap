@@ -40,11 +40,10 @@ use crate::commands::types::{
     SourcedEntry,
 };
 use crate::entry_store::EntryStore;
-use crate::frecency::{FrecencyStore, GadgetFrecency};
-use crate::gadgets::{Gadget, GadgetContext, GadgetShortcut};
-use crate::platform::{LauncherPanel as _, PlatformLauncherPanel};
+use crate::frecency::FrecencyStore;
+use crate::gadgets::{AnyGadget, Gadget, GadgetShortcut, ProvisioningContext};
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
-use crate::settings::{GadgetSettings, SettingsInit};
+use crate::settings::SettingsInit;
 use crate::unicode::Utf16Positions;
 use crate::wasm::source::GadgetSourceKind;
 
@@ -68,7 +67,7 @@ struct RegisteredShortcut {
     shortcut: Shortcut,
     gadget_id: String,
     shortcut_id: String,
-    owner: Arc<dyn Gadget>,
+    owner: Arc<dyn AnyGadget>,
 }
 
 /// Payload emitted with the `activate-gadget-custom-ui` event.
@@ -88,7 +87,7 @@ struct ActivateGadgetPayload {
 /// owns the enabled flag and the settings dispatcher — gadgets
 /// never manage their own enabled state.
 struct GadgetSlot {
-    gadget: Arc<dyn Gadget>,
+    gadget: Arc<dyn AnyGadget>,
 
     /// Where this gadget was loaded from. Surfaced to the
     /// frontend so the Gadgets settings panel can badge each
@@ -108,7 +107,7 @@ struct GadgetSlot {
 }
 
 impl GadgetSlot {
-    fn new(gadget: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
+    fn new(gadget: Arc<dyn AnyGadget>, source_kind: GadgetSourceKind) -> Self {
         Self {
             gadget,
             source_kind,
@@ -134,16 +133,11 @@ pub struct GadgetHost {
     frecency: Arc<FrecencyStore>,
     entry_store: EntryStore,
 
-    /// Settings keys that affect shortcut registration. When
-    /// any of these change, the reactor re-registers all shortcuts.
+    /// Retained for runtime re-enable cycles (settings toggle).
+    provisioning_ctx: Option<ProvisioningContext>,
+
     watched_keys: HashSet<String>,
-
-    /// Sender side of the shortcut re-registration signal.
-    /// Capacity 1 — rapid changes coalesce naturally.
     shortcut_signal_tx: mpsc::Sender<()>,
-
-    /// Receiver is taken out once in `initialize_and_start` and
-    /// moved into the reactor task. `None` after that.
     shortcut_signal_rx: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
 }
 
@@ -155,6 +149,7 @@ impl GadgetHost {
             store,
             frecency,
             entry_store: EntryStore::new(),
+            provisioning_ctx: None,
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
@@ -167,9 +162,11 @@ impl GadgetHost {
     /// surfaced through [`Self::gadget_sources`] to the frontend
     /// so the Gadgets settings panel can badge and gate each
     /// entry appropriately.
-    pub fn register(&mut self, gadget: Box<dyn Gadget>, source_kind: GadgetSourceKind) {
-        self.slots
-            .push(GadgetSlot::new(Arc::from(gadget), source_kind));
+    pub fn register(&mut self, gadget: impl Gadget + 'static, source_kind: GadgetSourceKind) {
+        self.slots.push(GadgetSlot::new(
+            Arc::new(gadget) as Arc<dyn AnyGadget>,
+            source_kind,
+        ));
     }
 
     /// Snapshot of the gadget-id → source-kind mapping. Exposed
@@ -192,7 +189,7 @@ impl GadgetHost {
     ///
     /// Must be called exactly once after all gadgets are registered
     /// and before `app.manage()` stores the host.
-    pub fn initialize_and_start(&mut self, app: &tauri::AppHandle) {
+    pub fn initialize_and_start(&mut self, ctx: ProvisioningContext) {
         // -------------------------------------------------------
         // Phase 1: Initialize gadget settings defaults (synchronous)
         // -------------------------------------------------------
@@ -243,35 +240,27 @@ impl GadgetHost {
         // -------------------------------------------------------
         // Register initial shortcuts
         // -------------------------------------------------------
-        self.register_all_shortcuts(app);
+        self.register_all_shortcuts(&ctx.app);
 
         // -------------------------------------------------------
         // Phase 2: Parallel gadget startup (background)
-        //
-        // Call enable() on each gadget that is initially enabled.
-        //
-        // We obtain the runtime handle explicitly because this
-        // method is called from Tauri's synchronous setup()
-        // callback, where no Tokio guard is active on the current
-        // thread.
         // -------------------------------------------------------
         let runtime = tauri::async_runtime::handle();
-        let handle = app.clone();
         for slot in &self.slots {
             if !slot.enabled.load(Ordering::Relaxed) {
                 continue;
             }
 
             let gadget = Arc::clone(&slot.gadget);
-            let h = handle.clone();
-            let ctx = GadgetContext {
-                settings: GadgetSettings::new(Arc::clone(&self.store), gadget.id()),
-                frecency: GadgetFrecency::new(Arc::clone(&self.frecency), gadget.id()),
-            };
+            let prov = ctx.clone();
             runtime.spawn_blocking(move || {
-                gadget.enable(&h, &ctx);
+                if let Err(e) = gadget.provision_and_enable(&prov) {
+                    eprintln!("gadget `{}` enable failed: {e:#}", gadget.id());
+                }
             });
         }
+
+        self.provisioning_ctx = Some(ctx);
     }
 
     /// Spawn the shortcut reactor task. Called once after the host
@@ -403,7 +392,7 @@ impl GadgetHost {
         &self,
         gadget_id: &str,
         decl: &GadgetShortcut,
-        owner: Arc<dyn Gadget>,
+        owner: Arc<dyn AnyGadget>,
     ) -> Option<RegisteredShortcut> {
         let full_key = format!("gadgets.{gadget_id}.{}", decl.settings_key);
 
@@ -517,7 +506,7 @@ impl GadgetHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let gadgets: Vec<Arc<dyn Gadget>> = self
+        let gadgets: Vec<Arc<dyn AnyGadget>> = self
             .slots
             .iter()
             .filter(|s| s.is_active())
@@ -632,7 +621,7 @@ impl GadgetHost {
     }
 
     /// Delegate to the standalone function for testability.
-    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn AnyGadget>, &'a str)> {
         find_prefix_match(&self.slots, query)
     }
 
@@ -643,7 +632,7 @@ impl GadgetHost {
     /// return their entry list, query-only gadgets return the
     /// default empty vec (zero cost).
     fn search_catalogs_static(
-        gadgets: &[Arc<dyn Gadget>],
+        gadgets: &[Arc<dyn AnyGadget>],
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<SourcedEntry> {
@@ -815,7 +804,6 @@ impl GadgetHost {
         &self,
         key: &str,
         value: serde_json::Value,
-        app: &tauri::AppHandle,
     ) {
         // -------------------------------------------------------
         // Path 1: enabled.<gadget-id>
@@ -828,14 +816,11 @@ impl GadgetHost {
             slot.dispatcher.enqueue(key.to_string(), value);
 
             let gadget = Arc::clone(&slot.gadget);
-            let store = Arc::clone(&self.store);
-            let frecency = Arc::clone(&self.frecency);
             let enabled_flag = &slot.enabled;
-            let app = app.clone();
+            let prov = self.provisioning_ctx.clone();
 
             slot.dispatcher.dispatch(|dispatch_key, dispatch_value| {
-                // Only handle enabled keys in this path.
-                let Some(id) = dispatch_key.strip_prefix("enabled.") else {
+                let Some(_id) = dispatch_key.strip_prefix("enabled.") else {
                     return;
                 };
 
@@ -843,15 +828,14 @@ impl GadgetHost {
                 let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
 
                 if new_enabled && !was_enabled {
-                    let ctx = GadgetContext {
-                        settings: GadgetSettings::new(Arc::clone(&store), id),
-                        frecency: GadgetFrecency::new(Arc::clone(&frecency), id),
-                    };
-                    gadget.enable(&app, &ctx);
+                    if let Some(ref ctx) = prov {
+                        if let Err(e) = gadget.provision_and_enable(ctx) {
+                            eprintln!("gadget `{}` re-enable failed: {e:#}", gadget.id());
+                        }
+                    }
                 } else if !new_enabled && was_enabled {
                     gadget.disable();
                 }
-                // If same state → no-op (coalesced to identical value)
             });
 
             // Always signal shortcut reactor on enabled changes
@@ -956,8 +940,8 @@ fn process_gadget_response(
 fn find_prefix_match<'a>(
     slots: &'a [GadgetSlot],
     query: &str,
-) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
-    let mut best: Option<(&Arc<dyn Gadget>, &str)> = None;
+) -> Option<(&'a Arc<dyn AnyGadget>, &'a str)> {
+    let mut best: Option<(&Arc<dyn AnyGadget>, &str)> = None;
     let mut best_len = 0;
 
     for slot in slots {
@@ -1071,8 +1055,14 @@ mod tests {
     }
 
     impl Gadget for MockGadget {
+        type Caps = ();
+
         fn id(&self) -> &str {
             &self.id
+        }
+
+        fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+            Ok(())
         }
 
         fn search_prefixes(&self) -> &[String] {
@@ -1136,7 +1126,7 @@ mod tests {
     #[test]
     fn default_search_returns_none() {
         let gadget = MockGadget::new("empty");
-        assert!(gadget.search("anything", None).is_none());
+        assert!(Gadget::search(&gadget,"anything", None).is_none());
     }
 
     #[test]
@@ -1144,7 +1134,7 @@ mod tests {
         let gadget = MockGadget::new("test")
             .with_search_response(GadgetResponse::Results(vec![scored_entry("r1", 100)]));
 
-        let result = gadget.search("query", None);
+        let result = Gadget::search(&gadget,"query", None);
         assert!(result.is_some());
 
         match result.unwrap() {
@@ -1164,7 +1154,7 @@ mod tests {
             results: vec![scored_entry("h1", 50)],
         });
 
-        let result = gadget.search("=2+2", Some("="));
+        let result = Gadget::search(&gadget,"=2+2", Some("="));
         match result.unwrap() {
             GadgetResponse::CustomUI {
                 view,
@@ -1187,7 +1177,7 @@ mod tests {
             results: vec![],
         });
 
-        let result = gadget.search("42", None);
+        let result = Gadget::search(&gadget,"42", None);
         match result.unwrap() {
             GadgetResponse::InlineUI { view, .. } => {
                 assert_eq!(view, "result");
@@ -1203,13 +1193,13 @@ mod tests {
     #[test]
     fn default_prefixes_are_empty() {
         let gadget = MockGadget::new("no-prefix");
-        assert!(gadget.search_prefixes().is_empty());
+        assert!(Gadget::search_prefixes(&gadget).is_empty());
     }
 
     #[test]
     fn configured_prefixes_returned() {
         let gadget = MockGadget::new("calc").with_prefixes(&["=", "calc "]);
-        let prefixes = gadget.search_prefixes();
+        let prefixes = Gadget::search_prefixes(&gadget);
         assert_eq!(prefixes.len(), 2);
         assert_eq!(prefixes[0], "=");
         assert_eq!(prefixes[1], "calc ");

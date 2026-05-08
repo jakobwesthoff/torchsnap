@@ -33,7 +33,7 @@ use super::host::opener::OpenerState;
 use super::host::sql::{SqlHandleEntry, SqlState};
 use super::host::website_metadata::WebsiteMetadataState;
 
-pub(crate) struct WasmGadgetCaps {
+pub struct WasmGadgetCaps {
     // Provided by the host — `None` only in unit tests that
     // don't exercise settings/frecency/assets.
     pub(crate) settings: Option<GadgetSettings>,
