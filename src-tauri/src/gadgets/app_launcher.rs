@@ -36,7 +36,7 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use super::{Gadget, GadgetContext};
+use super::{Gadget, ProvisioningContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
@@ -140,11 +140,17 @@ fn extract_icons(
 }
 
 impl Gadget for AppLauncherGadget {
+    type Caps = ();
+
     fn id(&self) -> &str {
         "app-launcher"
     }
 
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn enable(&self, _caps: ()) {
         // Called on a dedicated background thread by the host.
         //
         // Phase 1: Discover apps and publish immediately so search

@@ -57,7 +57,7 @@ pub mod instance;
 pub mod state;
 
 pub use cached_component::CachedComponent;
-pub(crate) use caps::WasmGadgetCaps;
+pub use caps::WasmGadgetCaps;
 pub use engine::WasmRuntime;
 pub use host::sql::{SqlConfig, SqlHandleEntry};
 pub use instance::WasmGadgetInstance;

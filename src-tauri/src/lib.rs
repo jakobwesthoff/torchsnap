@@ -687,11 +687,11 @@ pub fn run() {
             // settings panel uses this to suppress the uninstall
             // action for built-ins.
             host.register(
-                Box::new(gadgets::commands::BuiltInCommandsGadget),
+                gadgets::commands::BuiltInCommandsGadget,
                 wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(gadgets::system_commands::SystemCommandsGadget::new()),
+                gadgets::system_commands::SystemCommandsGadget::new(),
                 wasm::source::GadgetSourceKind::Builtin,
             );
 
@@ -702,23 +702,23 @@ pub fn run() {
                 .join("icons");
             let icon_cache = Arc::new(icons::IconCache::new(icon_cache_dir));
             host.register(
-                Box::new(gadgets::app_launcher::AppLauncherGadget::new(
+                gadgets::app_launcher::AppLauncherGadget::new(
                     platform::PlatformAppDiscovery,
                     Arc::clone(&icon_cache),
-                )),
+                ),
                 wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(gadgets::system_preferences::SystemPreferencesGadget::new(
+                gadgets::system_preferences::SystemPreferencesGadget::new(
                     platform::PlatformSettingsDiscovery,
                     Arc::clone(&icon_cache),
-                )),
+                ),
                 wasm::source::GadgetSourceKind::Builtin,
             );
             host.register(
-                Box::new(gadgets::clipboard::ClipboardGadget::new(
+                gadgets::clipboard::ClipboardGadget::new(
                     platform::PlatformClipboard,
-                )),
+                ),
                 wasm::source::GadgetSourceKind::Builtin,
             );
 
@@ -825,7 +825,14 @@ pub fn run() {
             }
 
             // Settings init + shortcut registration + parallel setup.
-            host.initialize_and_start(app.handle());
+            let prov_ctx = gadgets::ProvisioningContext {
+                app: app.handle().clone(),
+                store: Arc::clone(&store),
+                frecency: Arc::clone(&frecency_store),
+                icon_cache: Arc::clone(&icon_cache),
+                metadata_service: Arc::clone(&metadata_service),
+            };
+            host.initialize_and_start(prov_ctx);
 
             let host = Arc::new(host);
 
@@ -855,7 +862,6 @@ pub fn run() {
                 let notifier = Arc::clone(&notifier);
                 let store_for_listener = Arc::clone(&store);
                 let host_for_listener = Arc::clone(&host);
-                let app_for_listener = app.handle().clone();
                 app.listen("settings-changed", move |event: tauri::Event| {
                     #[derive(serde::Deserialize)]
                     struct Payload {
@@ -871,7 +877,6 @@ pub fn run() {
                         host_for_listener.handle_setting_changed(
                             &payload.key,
                             value,
-                            &app_for_listener,
                         );
 
                         // Signal shortcut re-registration if the changed
@@ -1162,7 +1167,7 @@ fn load_single_wasm_gadget(
         app_data_dir,
         metadata_service,
     )?;
-    host.register(Box::new(bridge), source_kind);
+    host.register(bridge, source_kind);
 
     // Retain the source in the registry so the protocol
     // handler can serve frontend assets from it.

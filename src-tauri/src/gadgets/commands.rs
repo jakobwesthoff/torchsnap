@@ -11,14 +11,20 @@
 // from other gadgets.
 // =========================================================
 
-use super::Gadget;
+use super::{Gadget, ProvisioningContext};
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 
 pub struct BuiltInCommandsGadget;
 
 impl Gadget for BuiltInCommandsGadget {
+    type Caps = ();
+
     fn id(&self) -> &str {
         "builtin-commands"
+    }
+
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {

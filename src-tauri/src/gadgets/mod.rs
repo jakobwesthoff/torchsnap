@@ -15,8 +15,9 @@
 // - Hybrid gadgets override both — the host calls both paths
 //   unconditionally.
 //
-// The trait is structured so it can later become the boundary
-// for a WASM gadget interface.
+// The trait uses an associated `type Caps` for per-gadget
+// capability provisioning. `AnyGadget` provides the object-
+// safe wrapper for dynamic dispatch in `GadgetHost`.
 // =========================================================
 
 pub mod app_launcher;
@@ -25,47 +26,56 @@ pub mod commands;
 pub mod system_commands;
 pub mod system_preferences;
 
+use std::sync::Arc;
+
+use tauri_plugin_store::Store;
+
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
-use crate::frecency::GadgetFrecency;
-use crate::settings::{GadgetSettings, SettingsInit};
+use crate::frecency::FrecencyStore;
+use crate::icons::IconCache;
+use crate::network::website_metadata::WebsiteMetadataService;
+use crate::settings::SettingsInit;
 
 // =========================================================
 // GadgetShortcut — global shortcut declaration
 // =========================================================
 
 /// A global keyboard shortcut that a gadget wants to register.
-///
-/// Gadgets declare shortcuts via `shortcuts()`. The host registers
-/// them with the OS at startup and routes activations back through
-/// `handle_shortcut()`. The actual key combo is persisted in the
-/// gadget's settings namespace under `shortcut.<id>`, so users
-/// can reconfigure it.
 pub struct GadgetShortcut {
-    /// Stable identifier for this shortcut (e.g., "open-clipboard").
-    /// Used for routing activations back to the gadget.
     pub id: &'static str,
-    /// Human-readable label shown in the settings UI.
     pub label: &'static str,
-    /// Default key combo in Tauri shortcut syntax
-    /// (e.g., "CmdOrCtrl+Shift+V").
     pub default_shortcut: &'static str,
-    /// Gadget-scoped settings key where the current combo is stored
-    /// (e.g., "shortcut.open-clipboard"). The manager reads
-    /// `gadgets.<gadget_id>.<settings_key>` from the store.
     pub settings_key: &'static str,
 }
 
 // =========================================================
-// GadgetContext — bundled runtime context for gadget activation
+// ProvisioningContext — shared resources for gadget activation
 // =========================================================
 
-/// Runtime context passed to gadgets during `enable()`.
+/// Bundled runtime context passed to `Gadget::provision()`.
 ///
-/// Bundles scoped settings access so gadgets don't need an
-/// ever-growing parameter list.
-pub struct GadgetContext {
-    pub settings: GadgetSettings,
-    pub frecency: GadgetFrecency,
+/// Carries all host-managed shared resources a gadget might
+/// need to build its capabilities. Constructed once in
+/// `lib.rs::setup` after all shared resources exist, stored
+/// on `GadgetHost` for re-enable cycles.
+pub struct ProvisioningContext {
+    pub app: tauri::AppHandle,
+    pub store: Arc<Store<tauri::Wry>>,
+    pub frecency: Arc<FrecencyStore>,
+    pub icon_cache: Arc<IconCache>,
+    pub metadata_service: Arc<WebsiteMetadataService>,
+}
+
+impl Clone for ProvisioningContext {
+    fn clone(&self) -> Self {
+        Self {
+            app: self.app.clone(),
+            store: Arc::clone(&self.store),
+            frecency: Arc::clone(&self.frecency),
+            icon_cache: Arc::clone(&self.icon_cache),
+            metadata_service: Arc::clone(&self.metadata_service),
+        }
+    }
 }
 
 // =========================================================
@@ -74,112 +84,52 @@ pub struct GadgetContext {
 
 /// Unified gadget trait for both catalog and query gadgets.
 ///
-/// Catalog-only gadgets override `entries()` to provide a finite
-/// list of entries that the host filters with nucleo. Query-only
-/// gadgets override `search()` (and optionally `search_prefixes()`)
-/// to receive the raw query and return pre-scored results. Hybrid
-/// gadgets override both.
+/// ## Capability provisioning
 ///
-/// ## Prefix routing (ADR 0012)
-///
-/// Gadgets may register one or more prefixes via `search_prefixes()`.
-/// When the user's query starts with a registered prefix:
-///
-/// - Only the owning gadget is called (exclusive routing).
-/// - Other gadgets are skipped entirely.
-/// - The prefix is stripped before passing the query.
-/// - `matched_prefix` tells the gadget which prefix triggered.
+/// Each gadget declares an associated `type Caps` representing
+/// the resources it needs during its enable lifetime.
+/// `provision()` builds the caps from the shared
+/// `ProvisioningContext`; `enable()` installs them and starts
+/// the gadget. The host calls these through the object-safe
+/// `AnyGadget` wrapper, which combines them into a single
+/// `provision_and_enable()` call.
 ///
 /// ## Lifecycle
 ///
-/// The host manages the gadget lifecycle through these phases:
-///
 /// 1. Gadget is constructed and registered via `GadgetHost::register`
 /// 2. `initialize_settings()` is called synchronously at startup
-/// 3. `enable()` is called on a background thread if `enabled.<id>`
-///    is `true` in the settings store (default)
+/// 3. `provision()` + `enable()` are called on a background thread
+///    if `enabled.<id>` is `true` in the settings store
 /// 4. `entries()` / `search()` are called on every search keystroke
-///    (only while enabled — the host gates on the enabled flag)
 /// 5. `execute()` is called when the user triggers an action
 /// 6. `setting_changed()` is called whenever a key in
 ///    `gadgets.<id>.*` changes at runtime
 /// 7. `disable()` is called when the user toggles the gadget off
 ///    or during `RunEvent::Exit`
-///
-/// Enable/disable may be called multiple times during the app's
-/// lifetime as the user toggles the gadget on and off.
-///
 pub trait Gadget: Send + Sync {
-    /// Unique identifier for this gadget. Used as the `source`
-    /// field in `SourcedEntry` and for routing `execute_action`.
+    /// Per-gadget capability type, built by `provision()` and
+    /// consumed by `enable()`. Gadgets without capabilities
+    /// use `()`.
+    type Caps: Send + Sync;
+
     fn id(&self) -> &str;
 
-    /// Declare default settings for this gadget.
-    ///
-    /// Called synchronously at startup *before* `enable()`. The
-    /// `current` parameter contains any previously persisted values
-    /// for this gadget. Use `ensure()` to fill in missing defaults:
-    ///
-    /// ```ignore
-    /// fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
-    ///     settings
-    ///         .ensure("pollingInterval", 500)
-    ///         .ensure("retentionDays", 30)
-    /// }
-    /// ```
-    ///
-    /// The default implementation is a pass-through (no settings).
-    ///
-    /// Note: The `enabled` key is managed by the host at
-    /// `enabled.<gadget-id>` — gadgets should not declare it here.
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
     }
 
-    /// Activate the gadget. Called on startup (if enabled) and on
-    /// each re-enable after a user toggle.
-    ///
-    /// Implementations should acquire resources, start background
-    /// threads, and prepare for search queries. This may be called
-    /// multiple times during the app's lifetime — each call should
-    /// be idempotent if resources are already initialized.
-    ///
-    /// Runs on a `spawn_blocking` thread — implementations are free
-    /// to block.
-    ///
-    // FIXME: Find a cleaner way to provide context without passing
-    // AppHandle and GadgetContext on every enable() call. These are
-    // immutable after construction — ideally the gadget would hold
-    // a reference from registration time.
-    fn enable(&self, _app: &tauri::AppHandle, _ctx: &GadgetContext) {}
+    /// Build the capability bundle from shared host resources.
+    /// Called before `enable()` on every activation cycle.
+    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<Self::Caps>;
 
-    /// Deactivate the gadget. Called when the user toggles the
-    /// gadget off and during `RunEvent::Exit`.
-    ///
-    /// Implementations should release resources, stop background
-    /// threads, and clean up state. The gadget may be re-enabled
-    /// later — resources acquired in `enable()` should be released
-    /// here.
+    /// Activate the gadget with provisioned capabilities.
+    /// Runs on a `spawn_blocking` thread.
+    fn enable(&self, _caps: Self::Caps) {}
+
     fn disable(&self) {}
 
-    /// React to a settings change in this gadget's namespace.
-    ///
-    /// Called by the host whenever a key in `gadgets.<id>.*` changes
-    /// at runtime. The `key` is relative to the gadget namespace
-    /// (e.g., `"retentionDays"`, not `"gadgets.calculator.retentionDays"`).
-    ///
-    /// This is dispatched through a `CoalescingDispatcher` — rapid
-    /// changes to the same key are deduplicated to the latest value.
-    /// Different keys preserve chronological order.
-    ///
-    /// The default implementation is a no-op.
     fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
-    /// Execute an action on an entry owned by this gadget.
-    /// The host passes the full `ScoredEntry` from the current
-    /// search session — gadgets can read `entry.id` for the
-    /// identifier and `entry.data` for any opaque payload
-    /// attached during `search()`.
     fn execute(
         &self,
         entry: &ScoredEntry,
@@ -187,25 +137,10 @@ pub trait Gadget: Send + Sync {
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction>;
 
-    /// Declare global keyboard shortcuts this gadget wants to register.
-    ///
-    /// The host reads the actual key combos from settings (falling
-    /// back to `GadgetShortcut::default_shortcut`) and registers
-    /// them with the OS. When a shortcut fires, the host calls
-    /// `handle_shortcut()` with the matching shortcut ID.
-    ///
-    /// The default implementation declares no shortcuts.
     fn shortcuts(&self) -> Vec<GadgetShortcut> {
         vec![]
     }
 
-    /// Handle a global shortcut activation.
-    ///
-    /// Called when one of this gadget's registered shortcuts fires.
-    /// Returns a `PostAction` that tells the host what to do (e.g.,
-    /// `ShowCustomUI` to open the launcher with this gadget's view).
-    ///
-    /// The default implementation does nothing.
     fn handle_shortcut(
         &self,
         _shortcut_id: &str,
@@ -214,20 +149,6 @@ pub trait Gadget: Send + Sync {
         Ok(PostAction::Nothing)
     }
 
-    /// Handle a custom message from the gadget's frontend component.
-    ///
-    /// This is the gadget-side handler for the `sendMessage` prop
-    /// in the gadget UI (ADR 0016). The `channel` can be used to
-    /// stream live updates back to the frontend. The default
-    /// returns an error — override only when the gadget needs
-    /// custom frontend ↔ backend communication.
-    ///
-    /// **WASM gadgets:** The `WasmGadgetBridge` adapter that
-    /// wraps a WIT guest export ignores the `channel`
-    /// parameter — WASM gadgets are strictly request/response
-    /// (per ADR 0030). If a gadget needs streaming support,
-    /// it must stay native or wait for a future
-    /// `messaging-stream` WIT sub-interface.
     fn handle_message(
         &self,
         _method: &str,
@@ -237,41 +158,120 @@ pub trait Gadget: Send + Sync {
         anyhow::bail!("gadget does not handle custom messages")
     }
 
-    /// Prefixes that activate exclusive search routing for this gadget.
-    ///
-    /// Return an empty slice (the default) if this gadget does not
-    /// use prefix routing. Prefixes can be multi-character (e.g.,
-    /// `":"`, `"g "`, `"http://"`). Longest prefix wins when
-    /// multiple match.
     fn search_prefixes(&self) -> &[String] {
         &[]
     }
 
-    /// Return catalog entries for host-side nucleo matching.
-    ///
-    /// Called on every search. For small static catalogs this is
-    /// trivially cheap. Plugins with dynamic content (e.g. if
-    /// settings change) can rebuild the list on each call.
-    ///
-    /// The default returns an empty list (query-only gadgets).
     fn entries(&self) -> Vec<CatalogEntry> {
         vec![]
     }
 
-    /// Gadget-driven search. Called on every query for gadgets
-    /// that handle their own matching logic.
-    ///
-    /// `matched_prefix` is `Some(prefix)` when a registered prefix
-    /// triggered this call (query is already stripped), or `None`
-    /// when running as an always-on gadget. Note:
-    /// [`GadgetResponse::CustomUI`] is only honoured in prefix mode;
-    /// in always-on mode it is downgraded to plain results.
-    ///
-    /// Returns `None` when the gadget has no results for this query,
-    /// or `Some(GadgetResponse)` with the results/UI payload.
-    ///
-    /// The default is a no-op returning `None` (catalog-only gadgets).
     fn search(&self, _query: &str, _matched_prefix: Option<&str>) -> Option<GadgetResponse> {
         None
+    }
+}
+
+// =========================================================
+// AnyGadget — object-safe dynamic dispatch wrapper
+// =========================================================
+
+/// Object-safe trait for `GadgetHost` to dispatch through.
+///
+/// The blanket impl on `Gadget` erases the associated `Caps`
+/// type by combining `provision()` + `enable()` into a single
+/// `provision_and_enable()` call. All other methods delegate
+/// directly.
+pub trait AnyGadget: Send + Sync {
+    fn id(&self) -> &str;
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit;
+    fn provision_and_enable(&self, ctx: &ProvisioningContext) -> anyhow::Result<()>;
+    fn disable(&self);
+    fn setting_changed(&self, key: &str, value: serde_json::Value);
+    fn execute(
+        &self,
+        entry: &ScoredEntry,
+        action_id: &ActionId,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction>;
+    fn shortcuts(&self) -> Vec<GadgetShortcut>;
+    fn handle_shortcut(
+        &self,
+        shortcut_id: &str,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction>;
+    fn handle_message(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+        channel: tauri::ipc::Channel<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value>;
+    fn search_prefixes(&self) -> &[String];
+    fn entries(&self) -> Vec<CatalogEntry>;
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse>;
+}
+
+impl<G: Gadget> AnyGadget for G {
+    fn id(&self) -> &str {
+        Gadget::id(self)
+    }
+
+    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
+        Gadget::initialize_settings(self, settings)
+    }
+
+    fn provision_and_enable(&self, ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        let caps = Gadget::provision(self, ctx)?;
+        Gadget::enable(self, caps);
+        Ok(())
+    }
+
+    fn disable(&self) {
+        Gadget::disable(self);
+    }
+
+    fn setting_changed(&self, key: &str, value: serde_json::Value) {
+        Gadget::setting_changed(self, key, value);
+    }
+
+    fn execute(
+        &self,
+        entry: &ScoredEntry,
+        action_id: &ActionId,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction> {
+        Gadget::execute(self, entry, action_id, app)
+    }
+
+    fn shortcuts(&self) -> Vec<GadgetShortcut> {
+        Gadget::shortcuts(self)
+    }
+
+    fn handle_shortcut(
+        &self,
+        shortcut_id: &str,
+        app: &tauri::AppHandle,
+    ) -> anyhow::Result<PostAction> {
+        Gadget::handle_shortcut(self, shortcut_id, app)
+    }
+
+    fn handle_message(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+        channel: tauri::ipc::Channel<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        Gadget::handle_message(self, method, payload, channel)
+    }
+
+    fn search_prefixes(&self) -> &[String] {
+        Gadget::search_prefixes(self)
+    }
+
+    fn entries(&self) -> Vec<CatalogEntry> {
+        Gadget::entries(self)
+    }
+
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {
+        Gadget::search(self, query, matched_prefix)
     }
 }

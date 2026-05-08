@@ -50,7 +50,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::{Gadget, GadgetContext};
+use super::{Gadget, ProvisioningContext};
 
 /// How often the retention cleanup thread wakes to delete expired
 /// entries. Chosen to be infrequent enough to be negligible, but
@@ -250,10 +250,24 @@ fn retention_cleanup_loop(
 }
 
 // =========================================================
+// ClipboardCaps — provisioned resources for enable()
+// =========================================================
+
+/// Capabilities built during `provision()` and consumed by `enable()`.
+pub struct ClipboardCaps {
+    /// Base directory for host-managed gadget state (`gadget-home/<id>/`).
+    data_dir: std::path::PathBuf,
+    /// Scoped read access to this gadget's settings namespace.
+    settings: crate::settings::GadgetSettings,
+}
+
+// =========================================================
 // Gadget Implementation
 // =========================================================
 
 impl Gadget for ClipboardGadget {
+    type Caps = ClipboardCaps;
+
     fn id(&self) -> &str {
         PLUGIN_ID
     }
@@ -285,19 +299,29 @@ impl Gadget for ClipboardGadget {
         })
     }
 
-    fn enable(&self, app: &tauri::AppHandle, ctx: &GadgetContext) {
+    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<ClipboardCaps> {
+        let data_dir = ctx
+            .app
+            .path()
+            .app_data_dir()
+            .expect("resolve app data dir")
+            .join("gadget-home")
+            .join(PLUGIN_ID);
+
+        let settings =
+            crate::settings::GadgetSettings::new(Arc::clone(&ctx.store), PLUGIN_ID);
+
+        Ok(ClipboardCaps { data_dir, settings })
+    }
+
+    fn enable(&self, caps: ClipboardCaps) {
         // ----- Initialize state (DB + file storage) -----
         //
         // State lives under `gadget-home/<id>/`: code lives
         // under `gadgets/` and is owned by the installer, so
         // host-managed state gets its own root with reserved
         // sibling slots (`sql/`, `files/`, future additions).
-        let data_dir = app
-            .path()
-            .app_data_dir()
-            .expect("resolve app data dir")
-            .join("gadget-home")
-            .join(PLUGIN_ID);
+        let data_dir = caps.data_dir;
 
         let db_path = data_dir.join("sql").join("clipboard.sqlite3");
         let files_dir = data_dir.join("files");
@@ -312,13 +336,13 @@ impl Gadget for ClipboardGadget {
         });
 
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
-        *self.settings.lock().expect("settings not poisoned") = Some(ctx.settings.clone());
+        *self.settings.lock().expect("settings not poisoned") = Some(caps.settings.clone());
 
         // Read initial values for settings managed via setting_changed.
-        let retention: u32 = ctx.settings.get("retentionDays").unwrap_or(30);
+        let retention: u32 = caps.settings.get("retentionDays").unwrap_or(30);
         self.retention_days.store(retention, Ordering::Relaxed);
 
-        let bring_to_front: bool = ctx.settings.get("bringToFrontOnPaste").unwrap_or(true);
+        let bring_to_front: bool = caps.settings.get("bringToFrontOnPaste").unwrap_or(true);
         self.bring_to_front.store(bring_to_front, Ordering::Relaxed);
 
         // Reset the shutdown flag in case this is a re-enable.
