@@ -37,7 +37,7 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use super::{Gadget, ProvisioningContext};
+use super::Gadget;
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.

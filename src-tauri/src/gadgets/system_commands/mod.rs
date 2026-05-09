@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use crate::caps::{CapRequest, ProvisionedCaps};
 use crate::commands::types::{ActionId, CatalogEntry, PostAction, ScoredEntry};
-use crate::gadgets::{Gadget, ProvisioningContext};
+use crate::gadgets::Gadget;
 
 // =========================================================
 // SystemCommand Trait

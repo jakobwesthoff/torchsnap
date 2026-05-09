@@ -41,11 +41,42 @@ use crate::commands::types::{
 };
 use crate::entry_store::EntryStore;
 use crate::frecency::FrecencyStore;
-use crate::gadgets::{Gadget, GadgetShortcut, ProvisioningContext};
+use crate::gadgets::{Gadget, GadgetShortcut};
+use crate::icons::IconCache;
+use crate::network::website_metadata::WebsiteMetadataService;
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::settings::SettingsInit;
 use crate::unicode::Utf16Positions;
 use crate::wasm::source::GadgetSourceKind;
+
+// =========================================================
+// ProvisioningContext — host-internal
+// =========================================================
+
+/// Bundled runtime context for building gadget capabilities.
+///
+/// Host-internal — gadgets never see this struct. Constructed
+/// once in `lib.rs::setup` and passed to `register_with_caps`
+/// and `initialize_and_start`.
+pub(crate) struct ProvisioningContext {
+    pub app: tauri::AppHandle,
+    pub store: Arc<Store<tauri::Wry>>,
+    pub frecency: Arc<FrecencyStore>,
+    pub icon_cache: Arc<IconCache>,
+    pub metadata_service: Arc<WebsiteMetadataService>,
+}
+
+impl Clone for ProvisioningContext {
+    fn clone(&self) -> Self {
+        Self {
+            app: self.app.clone(),
+            store: Arc::clone(&self.store),
+            frecency: Arc::clone(&self.frecency),
+            icon_cache: Arc::clone(&self.icon_cache),
+            metadata_service: Arc::clone(&self.metadata_service),
+        }
+    }
+}
 
 // =========================================================
 // Internal Helpers

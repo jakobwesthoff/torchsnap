@@ -51,7 +51,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::{Gadget, ProvisioningContext};
+use super::Gadget;
 
 /// How often the retention cleanup thread wakes to delete expired
 /// entries. Chosen to be infrequent enough to be negligible, but

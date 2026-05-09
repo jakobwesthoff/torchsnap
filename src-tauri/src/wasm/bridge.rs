@@ -28,7 +28,7 @@ use tauri::async_runtime::JoinHandle;
 
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
 use crate::frecency::GadgetFrecency;
-use crate::gadgets::{Gadget, ProvisioningContext};
+use crate::gadgets::Gadget;
 use crate::settings::{GadgetSettings, SettingsInit};
 
 use super::logging::channel::{LogContext, LogSender};
