@@ -1,6 +1,6 @@
 # Unified Capability Permission System
 
-## Status: Design discussion in progress
+## Status: Implementation in progress
 
 ## Problem
 
@@ -41,10 +41,10 @@ at the permission level.
 
 Each capability type defines its own fine-grained permission surface:
 
-- `OpenerCaps`: allowed schemes, open-path, reveal-path
-- `HttpCaps`: allowed origins
-- `FsCaps`: read/write path patterns (globs)
-- `CommandCaps`: allowed binary + argv rules
+- `OpenerCap`: allowed schemes, open-path, reveal-path
+- `HttpCap`: allowed origins
+- `FilesystemCap`: read/write path patterns (globs)
+- `CommandCap`: allowed binary + argv rules
 - etc.
 
 These constraints are passed into each capability at construction time and
@@ -63,16 +63,78 @@ the already-permissioned capabilities.
   manifest parsing, native gadget declarations, and (future) install-time UI
   presentation to the user.
 
-- **Capabilities enforce their own permissions.** Only `OpenerCaps` knows how
-  to check URL schemes. Only `FsCaps` knows how path canonicalization and glob
-  matching work. The permission logic lives inside the capability, not in a
-  wrapper or bridge layer.
+- **Capabilities enforce their own permissions.** Only `OpenerCap` knows how
+  to check URL schemes. Only `FilesystemCap` knows how path canonicalization
+  and glob matching work. The permission logic lives inside the capability,
+  not in a wrapper or bridge layer.
 
 - **No unchecked path.** Every capability instance has a permission
   configuration. Wildcards/full-access are valid configurations, not bypasses
   of the system.
 
-## Decided: Gadget trait shape
+## Decided: Capability type system
+
+### Naming convention
+
+All capability types use singular `Cap` suffix: `OpenerCap`, `HttpCap`,
+`FilesystemCap`, `CommandCap`, `ClipboardCap`, `SqlStorageCap`,
+`WebsiteMetadataCap`, `IconCacheCap`, `SettingsCap`, `FrecencyCap`.
+
+The `Gadget` prefix is dropped (e.g., `FrecencyCap` not `GadgetFrecencyCap`)
+— being a cap implies the gadget association.
+
+### Module structure
+
+Each cap lives in its own file under `src-tauri/src/caps/`:
+
+```
+src-tauri/src/caps/
+├── mod.rs              // ProvisionedCaps, cap_accessor! macro, re-exports
+├── opener.rs           // OpenerCap
+├── http.rs             // HttpCap
+├── filesystem.rs       // FilesystemCap
+├── command.rs          // CommandCap
+├── clipboard.rs        // ClipboardCap
+├── sql_storage.rs      // SqlStorageCap
+├── website_metadata.rs // WebsiteMetadataCap
+├── icon_cache.rs       // IconCacheCap
+├── settings.rs         // SettingsCap
+└── frecency.rs         // FrecencyCap
+```
+
+### Cap type internals
+
+Each cap type holds:
+- The underlying implementation (closures, clients, storage, etc.)
+- Permission configuration (schemes, origins, path patterns, etc.)
+- Enforces permissions internally on every call
+
+These are built by extracting logic from the current WASM bridge `*State`
+wrappers. The `*State` structs are deleted once their corresponding cap
+type is complete.
+
+### ProvisionedCaps
+
+All fields are `Option<Arc<XxxCap>>`, uniformly. A `cap_accessor!` macro
+generates per-field accessor methods that panic with a clear message if
+the cap wasn't provisioned.
+
+```rust
+pub struct ProvisionedCaps {
+    pub opener: Option<Arc<OpenerCap>>,
+    pub http: Option<Arc<HttpCap>>,
+    pub filesystem: Option<Arc<FilesystemCap>>,
+    pub command: Option<Arc<CommandCap>>,
+    pub clipboard: Option<Arc<ClipboardCap>>,
+    pub sql_storage: Option<Arc<SqlStorageCap>>,
+    pub website_metadata: Option<Arc<WebsiteMetadataCap>>,
+    pub icon_cache: Option<Arc<IconCacheCap>>,
+    pub settings: Option<Arc<SettingsCap>>,
+    pub frecency: Option<Arc<FrecencyCap>>,
+}
+```
+
+## Decided: Gadget trait shape (future)
 
 The `Gadget` trait drops `type Caps` and `provision()`. With no associated
 type to erase, the trait is object-safe and `AnyGadget` is eliminated.
@@ -83,72 +145,39 @@ them as plain fields — no `OnceLock`, no `Mutex<Option<...>>`.
 `enable()`/`disable()` are pure lifecycle signals (start/stop background
 work) with no capability delivery.
 
-```rust
-trait Gadget: Send + Sync {
-    fn id(&self) -> &str;
-    fn enable(&self);
-    fn disable(&self);
-    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction>;
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse>;
-    // ...other methods without caps parameters
-}
-```
+## Decided: Setup ordering (done)
 
-`ProvisionedCaps` is an Option-field struct:
+All services are created before gadget host construction and registration.
+Commit `cecb74a` reordered `lib.rs` setup to establish this. Gadgets are
+constructed in a fully initialized environment.
 
-```rust
-struct ProvisionedCaps {
-    pub opener: Option<Arc<OpenerCaps>>,
-    pub http: Option<Arc<HttpCaps>>,
-    pub fs: Option<Arc<FsCaps>>,
-    pub command: Option<Arc<CommandCaps>>,
-    pub clipboard: Option<Arc<ClipboardCaps>>,
-    pub sql: Option<Arc<SqlCaps>>,
-    pub website_metadata: Option<Arc<WebsiteMetadataCaps>>,
-    pub icon_cache: Option<Arc<IconCache>>,
-}
-```
+## Decided: Deferred items
 
-## Decided: Registration and construction split
+- `GadgetSource` and `PathContext` remain WASM bridge internals for now.
+  Future encapsulation as caps tracked in
+  `todos/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-path-context-caps.md`.
 
-Gadget registration and construction are separated into two phases so that
-construction happens after all host services are ready.
+## Implementation strategy
 
-**Registration** (early in setup): declares the gadget's identity, source
-kind, permission requirements, and a factory to construct it. The gadget
-does not exist yet.
+### Migration order
 
-**Construction** (after services are ready): the system reads the
-registration's permission declaration, builds `ProvisionedCaps`, calls the
-factory to construct the gadget with its caps already available.
+One cap at a time. Each migration:
 
-This eliminates `ProvisioningContext` — gadgets never see raw `AppHandle`
-or other platform handles. The system is the sole builder of capabilities.
+1. Create the cap type in `src-tauri/src/caps/<name>.rs` — extract from
+   corresponding `*State` wrapper, move permission checking inside
+2. Update WASM bridge to use the new cap type (host impl becomes passthrough)
+3. Update native gadgets to use the new cap type
+4. Write tests covering default and edge cases
+5. Delete the `*State` wrapper
+6. Verify everything compiles and passes tests
+7. Commit
 
-## Implementation phasing
+Start with `OpenerCap` (already partially exists, used by both native
+and WASM gadgets), then proceed through the remaining caps.
 
-### Phase 1: Defer gadget construction (prerequisite, no capability changes)
+### Future phases (after all caps migrated)
 
-Move gadget instantiation from early in `setup()` to after all services
-(`AppHandle`, `Store`, `IconCache`, `WebsiteMetadataService`, etc.) are
-ready. The current `provision()` logic collapses into the constructors.
-`AnyGadget` and `type Caps` can remain during this phase — the goal is
-purely to reorder setup so that gadgets are born in a fully initialized
-environment.
-
-This is a mechanical refactor with no design decisions about the capability
-system.
-
-### Phase 2: Unified capability/permission system
-
-Introduce the `CapRequest` enum, `ProvisionedCaps`, permission-constrained
-capability construction, and the registration/factory pattern. Remove
-`type Caps`, `AnyGadget`, `provision()`, `ProvisioningContext`, and the
-WASM bridge's `*State` wrappers. Each capability type absorbs its own
-permission checking logic.
-
-## Future: Install-time permission UI
-
-Parsing permission declarations from manifests/registrations to display to
-the user before installing a plugin. The uniform `CapRequest` data enables
-this directly.
+- Introduce `CapRequest` enum and system-level provisioning
+- Remove `type Caps`, `AnyGadget`, `provision()`, `ProvisioningContext`
+- Gadgets receive `Arc<ProvisionedCaps>` at construction
+- Install-time permission UI for plugins
