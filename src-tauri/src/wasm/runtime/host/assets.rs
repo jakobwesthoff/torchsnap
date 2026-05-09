@@ -34,11 +34,8 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let caps = self.caps.as_ref().ok_or_else(|| {
-            AssetsError::IoError("capability accessed outside enable lifetime".into())
-        })?;
-        let gadget_source = caps.gadget_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("assets not initialized".into())
+        let gadget_source = self.gadget_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("gadget source not set".into())
         })?;
 
         match gadget_source.file_exists(&path) {
@@ -60,11 +57,8 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let caps = self.caps.as_ref().ok_or_else(|| {
-            AssetsError::IoError("capability accessed outside enable lifetime".into())
-        })?;
-        let gadget_source = caps.gadget_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("assets not initialized".into())
+        let gadget_source = self.gadget_source.as_ref().ok_or_else(|| {
+            AssetsError::IoError("gadget source not set".into())
         })?;
 
         gadget_source

@@ -21,7 +21,6 @@ use std::sync::Arc;
 use wasmtime::component::{Resource, ResourceTable};
 
 use crate::paths::GadgetPaths;
-use crate::wasm::source::GadgetSource;
 
 use crate::caps::{
     ClipboardCap, CommandCap, FilesystemCap, FrecencyCap, HttpCap, OpenerCap, SettingsCap,
@@ -32,7 +31,6 @@ use super::host::sql::SqlHandleEntry;
 pub struct WasmGadgetCaps {
     pub(crate) settings: Option<Arc<SettingsCap>>,
     pub(crate) frecency: Option<Arc<FrecencyCap>>,
-    pub(crate) gadget_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
 
     pub(crate) gadget_paths: GadgetPaths,
 
@@ -74,7 +72,6 @@ impl WasmGadgetCaps {
         Self {
             settings: None,
             frecency: None,
-            gadget_source: None,
             gadget_paths: GadgetPaths {
                 platform: std::sync::Arc::new(crate::paths::PlatformPaths {
                     home: std::path::PathBuf::from("/tmp/test-home"),

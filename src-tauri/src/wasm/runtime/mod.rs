@@ -679,10 +679,8 @@ icon = "heroicons:beaker"
         src: Arc<dyn super::super::source::GadgetSource + Send + Sync>,
     ) -> GadgetState {
         GadgetState {
-            caps: Some(WasmGadgetCaps {
-                gadget_source: Some(src),
-                ..WasmGadgetCaps::default_for_test()
-            }),
+            gadget_source: Some(src),
+            caps: Some(WasmGadgetCaps::default_for_test()),
             ..GadgetState::default_for_test()
         }
     }
@@ -809,8 +807,8 @@ icon = "heroicons:beaker"
             .expect_err("uninitialized returns Err");
         match err {
             AssetsError::IoError(msg) => assert!(
-                msg.contains("capability accessed outside enable lifetime"),
-                "expected caps chokepoint message, got: {msg}"
+                msg.contains("gadget source not set"),
+                "expected gadget source error, got: {msg}"
             ),
             other => panic!("expected IoError, got {other:?}"),
         }
@@ -923,10 +921,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_bundled_file_contents() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -943,10 +939,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_binary_preserves_byte_count() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         // `data/payload.bin` was written with a known
@@ -970,10 +964,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_true_for_bundled_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -986,10 +978,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1002,10 +992,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_exists_false_for_nested_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1018,10 +1006,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_traversal() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1037,10 +1023,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_rejects_absolute_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1056,10 +1040,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_returns_not_found_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1075,10 +1057,8 @@ icon = "heroicons:beaker"
     #[test]
     fn wasm_assets_read_succeeds_on_nested_path() {
         let (_runtime, instance) = compile_assets_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            gadget_source: Some(assets_fixture_source()),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_gadget_source(assets_fixture_source());
+        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance

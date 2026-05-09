@@ -95,13 +95,24 @@ impl WasmGadgetInstance {
         self.with_state_mut(|state| state.caps = Some(caps));
     }
 
+    /// Install the gadget source for asset resolution. Called
+    /// by the bridge at `enable()` before `set_caps()`.
+    pub fn set_gadget_source(
+        &self,
+        source: std::sync::Arc<dyn crate::wasm::source::GadgetSource + Send + Sync>,
+    ) {
+        self.with_state_mut(|state| state.gadget_source = Some(source));
+    }
+
     /// Tear down and drop the capability bundle. Drains SQL
     /// handle reps from the resource table before dropping
-    /// so the rusqlite connection is closed eagerly.
+    /// so the rusqlite connection is closed eagerly. Also
+    /// clears the gadget source.
     ///
     /// No-op when caps are already `None`.
     pub fn clear_caps(&self) {
         self.with_state_mut(|state| {
+            state.gadget_source = None;
             if let Some(mut caps) = state.caps.take() {
                 caps.teardown(&mut state.sql_handle_reps, &mut state.wasi_table);
             }
