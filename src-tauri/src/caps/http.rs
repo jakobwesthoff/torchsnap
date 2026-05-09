@@ -44,6 +44,7 @@ pub struct HttpRequest {
     pub insecure_tls: bool,
 }
 
+#[derive(Debug)]
 pub struct HttpResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -338,5 +339,134 @@ mod tests {
     fn new_creates_with_origins() {
         let cap = cap_with_origins(&["https://example.com"]);
         assert_eq!(cap.origins, vec!["https://example.com".to_string()]);
+    }
+
+    // ─── Insecure client lazy init ───────────────────────────
+
+    #[test]
+    fn insecure_client_not_initialized_until_needed() {
+        let cap = cap_with_origins(&["*"]);
+        assert!(
+            cap.insecure_client.get().is_none(),
+            "insecure client should not exist before first insecure request"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn insecure_client_initialized_on_first_insecure_request() {
+        use httpmock::prelude::*;
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/test");
+            then.status(200).body("ok");
+        });
+
+        let client = Arc::new(Http::new());
+        let cap = HttpCap::with_client(vec!["*".into()], client);
+
+        assert!(cap.insecure_client.get().is_none());
+
+        let _ = cap.fetch(HttpRequest {
+            url: server.url("/test"),
+            method: HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: None,
+            max_body_size: None,
+            insecure_tls: true,
+        });
+
+        assert!(
+            cap.insecure_client.get().is_some(),
+            "insecure client should be initialized after insecure request"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn normal_request_does_not_init_insecure_client() {
+        use httpmock::prelude::*;
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/test");
+            then.status(200).body("ok");
+        });
+
+        let client = Arc::new(Http::new());
+        let cap = HttpCap::with_client(vec!["*".into()], client);
+
+        let _ = cap.fetch(HttpRequest {
+            url: server.url("/test"),
+            method: HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: None,
+            max_body_size: None,
+            insecure_tls: false,
+        });
+
+        assert!(
+            cap.insecure_client.get().is_none(),
+            "insecure client should not be initialized for normal requests"
+        );
+    }
+
+    // ─── Timeout forwarding ──────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn timeout_ms_causes_timeout_error_on_slow_server() {
+        use httpmock::prelude::*;
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/slow");
+            then.status(200)
+                .body("ok")
+                .delay(std::time::Duration::from_secs(5));
+        });
+
+        let client = Arc::new(Http::new());
+        let cap = HttpCap::with_client(vec!["*".into()], client);
+
+        let result = cap.fetch(HttpRequest {
+            url: server.url("/slow"),
+            method: HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: Some(50),
+            max_body_size: None,
+            insecure_tls: false,
+        });
+
+        assert!(
+            matches!(result, Err(HttpCapError::Timeout)),
+            "expected Timeout error, got {result:?}"
+        );
+    }
+
+    // ─── Max body size forwarding ────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn max_body_size_limits_response() {
+        use httpmock::prelude::*;
+        let server = MockServer::start();
+        let large_body = "x".repeat(10_000);
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/large");
+            then.status(200).body(&large_body);
+        });
+
+        let client = Arc::new(Http::new());
+        let cap = HttpCap::with_client(vec!["*".into()], client);
+
+        let result = cap.fetch(HttpRequest {
+            url: server.url("/large"),
+            method: HttpMethod::Get,
+            headers: vec![],
+            body: None,
+            timeout_ms: None,
+            max_body_size: Some(100),
+            insecure_tls: false,
+        });
+
+        assert!(result.is_err(), "should fail when response exceeds max_body_size");
     }
 }
