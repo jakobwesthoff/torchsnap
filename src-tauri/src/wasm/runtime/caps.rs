@@ -25,28 +25,32 @@ use crate::settings::GadgetSettings;
 use crate::paths::GadgetPaths;
 use crate::wasm::source::GadgetSource;
 
-use crate::caps::{ClipboardCap, CommandCap, FilesystemCap, HttpCap, OpenerCap, WebsiteMetadataCap};
-use super::host::sql::{SqlHandleEntry, SqlState};
+use crate::caps::{
+    ClipboardCap, CommandCap, FilesystemCap, HttpCap, OpenerCap, SqlStorageCap,
+    WebsiteMetadataCap,
+};
+use super::host::sql::SqlHandleEntry;
 
 pub struct WasmGadgetCaps {
-    // Provided by the host — `None` only in unit tests that
-    // don't exercise settings/frecency/assets.
     pub(crate) settings: Option<GadgetSettings>,
     pub(crate) frecency: Option<GadgetFrecency>,
     pub(crate) gadget_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
 
-    // Mandatory — construction fails if GadgetPaths cannot
-    // be resolved.
     pub(crate) gadget_paths: GadgetPaths,
 
-    // Capability sub-structs.
-    pub(crate) sql: SqlState,
+    // Capability types.
+    pub(crate) sql_storage: Option<Arc<SqlStorageCap>>,
     pub(crate) clipboard: Arc<ClipboardCap>,
     pub(crate) opener: Arc<OpenerCap>,
     pub(crate) http: Arc<HttpCap>,
     pub(crate) filesystem: Option<Arc<FilesystemCap>>,
     pub(crate) command: Option<Arc<CommandCap>>,
     pub(crate) website_metadata: Option<Arc<WebsiteMetadataCap>>,
+
+    // WASM-specific resource lifecycle tracking — not a
+    // capability, kept here because wasmtime ResourceTable
+    // handle management is bridge-level concern.
+    pub(crate) sql_handle_reps: Vec<u32>,
 }
 
 impl WasmGadgetCaps {
@@ -55,21 +59,17 @@ impl WasmGadgetCaps {
     /// disable time rather than lingering until the
     /// `WasmGadgetInstance` itself is dropped.
     pub(crate) fn teardown(&mut self, wasi_table: &mut ResourceTable) {
-        let reps = std::mem::take(&mut self.sql.handle_reps);
+        let reps = std::mem::take(&mut self.sql_handle_reps);
         for rep in reps {
             let resource: Resource<SqlHandleEntry> = Resource::new_own(rep);
             let _ = wasi_table.delete(resource);
         }
-        self.sql.storage = None;
+        self.sql_storage = None;
     }
 }
 
 #[cfg(test)]
 impl WasmGadgetCaps {
-    /// Construct a `WasmGadgetCaps` with all capability fields
-    /// set to their "absent" defaults. Tests override specific
-    /// fields with struct update syntax
-    /// (`..WasmGadgetCaps::default_for_test()`).
     pub(crate) fn default_for_test() -> Self {
         Self {
             settings: None,
@@ -84,7 +84,8 @@ impl WasmGadgetCaps {
                 gadget_data: std::path::PathBuf::from("/tmp/test-gadget-data"),
                 gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
             },
-            sql: SqlState::default(),
+            sql_storage: None,
+            sql_handle_reps: Vec::new(),
             clipboard: Arc::new(ClipboardCap::new(Box::new(|_| {
                 Err("clipboard not initialized".into())
             }))),
