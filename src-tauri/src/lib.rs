@@ -767,12 +767,15 @@ pub fn run() {
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register system-commands gadget");
-            host.register(
-                gadgets::app_launcher::AppLauncherGadget::new(
-                    platform::PlatformAppDiscovery,
-                ),
+            host.register_with_caps::<gadgets::app_launcher::AppLauncherGadget, _>(
+                "app-launcher",
+                gadgets::app_launcher::AppLauncherGadget::cap_requests(),
+                &prov_ctx,
+                None,
+                |caps| gadgets::app_launcher::AppLauncherGadget::new(caps, platform::PlatformAppDiscovery),
                 wasm::source::GadgetSourceKind::Builtin,
-            );
+            )
+            .expect("register app-launcher gadget");
             host.register(
                 gadgets::system_preferences::SystemPreferencesGadget::new(
                     platform::PlatformSettingsDiscovery,

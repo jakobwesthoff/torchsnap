@@ -23,12 +23,13 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 
+use crate::caps::{CapRequest, OpenerPermissions, ProvisionedCaps};
 use crate::commands::types::{
     Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction, ScoredEntry,
 };
@@ -36,37 +37,41 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use crate::caps::{OpenerCap, OpenerPermissions};
-
 use super::{Gadget, ProvisioningContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
 const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
-pub struct AppLauncherCaps {
-    pub icon_cache: Arc<IconCache>,
-    pub opener: Arc<OpenerCap>,
-}
-
 pub struct AppLauncherGadget {
+    caps: Arc<ProvisionedCaps>,
     cache: Arc<RwLock<Vec<DiscoveredApp>>>,
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
-    icon_cache: OnceLock<Arc<IconCache>>,
-    opener: OnceLock<Arc<OpenerCap>>,
 }
 
 impl AppLauncherGadget {
-    pub fn new(discovery: impl AppDiscovery + 'static) -> Self {
+    pub fn cap_requests() -> Vec<CapRequest> {
+        vec![
+            CapRequest::IconCache,
+            CapRequest::Opener {
+                permissions: OpenerPermissions {
+                    schemes: vec!["*".into()],
+                    open_path: true,
+                    reveal_path: true,
+                },
+            },
+        ]
+    }
+
+    pub fn new(caps: Arc<ProvisionedCaps>, discovery: impl AppDiscovery + 'static) -> Self {
         Self {
+            caps,
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
-            icon_cache: OnceLock::new(),
-            opener: OnceLock::new(),
         }
     }
 
@@ -96,11 +101,7 @@ impl AppLauncherGadget {
         let timestamp = Arc::clone(&self.last_refresh);
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
-        let icon_cache = Arc::clone(
-            self.icon_cache
-                .get()
-                .expect("icon_cache initialized before background refresh"),
-        );
+        let icon_cache = Arc::clone(self.caps.icon_cache());
 
         thread::spawn(move || {
             match discovery.discover() {
@@ -153,36 +154,18 @@ fn extract_icons(
 }
 
 impl Gadget for AppLauncherGadget {
-    type Caps = AppLauncherCaps;
+    type Caps = ();
 
     fn id(&self) -> &str {
         "app-launcher"
     }
 
-    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<AppLauncherCaps> {
-        Ok(AppLauncherCaps {
-            icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::new(OpenerCap::from_app(
-                &ctx.app,
-                OpenerPermissions {
-                    schemes: vec!["*".into()],
-                    open_path: true,
-                    reveal_path: true,
-                },
-            )),
-        })
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
     }
 
-    fn enable(&self, caps: AppLauncherCaps) {
-        // Install the icon cache and opener so background refresh threads
-        // and execute() can use them. The OnceLocks guarantee each
-        // assignment happens exactly once.
-        let _ = self.opener.set(caps.opener);
-        let _ = self.icon_cache.set(caps.icon_cache);
-        let icon_cache = self
-            .icon_cache
-            .get()
-            .expect("icon_cache set immediately above");
+    fn enable(&self, _caps: ()) {
+        let icon_cache = self.caps.icon_cache();
 
         // Called on a dedicated background thread by the host.
         //
@@ -255,10 +238,7 @@ impl Gadget for AppLauncherGadget {
         entry: &ScoredEntry,
         action_id: &ActionId,
     ) -> anyhow::Result<PostAction> {
-        let opener = self
-            .opener
-            .get()
-            .expect("opener initialized during enable");
+        let opener = self.caps.opener();
 
         match action_id {
             ActionId::Open => {
