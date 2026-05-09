@@ -11,7 +11,6 @@
 // managed by the WASM bridge, not by this cap.
 // =========================================================
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::storage::SqlStorage;
@@ -20,10 +19,12 @@ use crate::storage::SqlStorage;
 // SqlStorageConfig
 // =========================================================
 
-/// Configuration for constructing a `SqlStorageCap`.
+/// Configuration for constructing a `SqlStorageCap`. Contains
+/// only the gadget-declared data (migration SQL). The `db_path`
+/// is a provisioning concern computed by the host from the
+/// gadget ID and app data directory.
 pub struct SqlStorageConfig {
-    pub db_path: PathBuf,
-    pub migrations: Arc<Vec<String>>,
+    pub migrations: Vec<String>,
 }
 
 // =========================================================
@@ -52,20 +53,18 @@ mod tests {
     // ─── SqlStorageConfig ─────────────────────────────────
 
     #[test]
-    fn sql_storage_config_stores_fields() {
+    fn sql_storage_config_stores_migrations() {
         let config = SqlStorageConfig {
-            db_path: PathBuf::from("/data/test.sqlite3"),
-            migrations: Arc::new(vec!["CREATE TABLE t (id INTEGER);".into()]),
+            migrations: vec!["CREATE TABLE t (id INTEGER);".into()],
         };
-        assert_eq!(config.db_path, PathBuf::from("/data/test.sqlite3"));
         assert_eq!(config.migrations.len(), 1);
+        assert_eq!(config.migrations[0], "CREATE TABLE t (id INTEGER);");
     }
 
     #[test]
     fn sql_storage_config_empty_migrations() {
         let config = SqlStorageConfig {
-            db_path: PathBuf::from("/data/test.sqlite3"),
-            migrations: Arc::new(vec![]),
+            migrations: vec![],
         };
         assert!(config.migrations.is_empty());
     }

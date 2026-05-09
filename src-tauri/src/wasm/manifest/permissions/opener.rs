@@ -39,6 +39,26 @@ pub struct OpenerPermissionsDef {
     pub reveal_path: bool,
 }
 
+// ─── Domain conversions ──────────────────────────────────
+
+impl From<OpenerPermissionsDef> for crate::caps::OpenerPermissions {
+    fn from(def: OpenerPermissionsDef) -> Self {
+        Self {
+            schemes: def.schemes,
+            open_path: def.open_path,
+            reveal_path: def.reveal_path,
+        }
+    }
+}
+
+impl From<OpenerPermissionsDef> for crate::caps::CapRequest {
+    fn from(def: OpenerPermissionsDef) -> Self {
+        Self::Opener {
+            permissions: def.into(),
+        }
+    }
+}
+
 impl OpenerPermissionsDef {
     /// Reject an opener section declared without granting any
     /// capability (no schemes, both booleans `false`).
@@ -51,5 +71,53 @@ impl OpenerPermissionsDef {
             );
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::caps::{CapRequest, OpenerPermissions};
+
+    #[test]
+    fn into_opener_permissions_maps_all_fields() {
+        let def = OpenerPermissionsDef {
+            schemes: vec!["https".into(), "http".into()],
+            open_path: true,
+            reveal_path: false,
+        };
+        let perms: OpenerPermissions = def.into();
+        assert_eq!(perms.schemes, vec!["https", "http"]);
+        assert!(perms.open_path);
+        assert!(!perms.reveal_path);
+    }
+
+    #[test]
+    fn into_opener_permissions_empty_schemes() {
+        let def = OpenerPermissionsDef {
+            schemes: vec![],
+            open_path: false,
+            reveal_path: true,
+        };
+        let perms: OpenerPermissions = def.into();
+        assert!(perms.schemes.is_empty());
+        assert!(perms.reveal_path);
+    }
+
+    #[test]
+    fn into_cap_request_produces_opener_variant() {
+        let def = OpenerPermissionsDef {
+            schemes: vec!["https".into()],
+            open_path: true,
+            reveal_path: false,
+        };
+        let req: CapRequest = def.into();
+        match req {
+            CapRequest::Opener { permissions } => {
+                assert_eq!(permissions.schemes, vec!["https"]);
+                assert!(permissions.open_path);
+            }
+            _ => panic!("expected Opener variant"),
+        }
     }
 }

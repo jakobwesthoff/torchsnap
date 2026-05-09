@@ -31,6 +31,24 @@ pub struct FsPermissionsDef {
     pub read: Vec<String>,
 }
 
+// ─── Domain conversions ──────────────────────────────────
+
+impl From<FsPermissionsDef> for crate::caps::FilesystemPermissions {
+    fn from(def: FsPermissionsDef) -> Self {
+        Self {
+            read_patterns: def.read,
+        }
+    }
+}
+
+impl From<FsPermissionsDef> for crate::caps::CapRequest {
+    fn from(def: FsPermissionsDef) -> Self {
+        Self::Filesystem {
+            permissions: def.into(),
+        }
+    }
+}
+
 impl FsPermissionsDef {
     /// Reject an empty read list and validate each pattern for
     /// traversal attempts and unknown substitution variables.
@@ -83,8 +101,45 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::caps::{CapRequest, FilesystemPermissions};
     use crate::wasm::manifest::Manifest;
     use crate::wasm::manifest::test_helpers::minimal;
+
+    // ─── Domain conversions ─────────────────────────────────
+
+    #[test]
+    fn into_filesystem_permissions_maps_read_to_read_patterns() {
+        let def = FsPermissionsDef {
+            read: vec!["${xdg-config}/*.txt".into(), "/etc/hosts".into()],
+        };
+        let perms: FilesystemPermissions = def.into();
+        assert_eq!(
+            perms.read_patterns,
+            vec!["${xdg-config}/*.txt", "/etc/hosts"]
+        );
+    }
+
+    #[test]
+    fn into_filesystem_permissions_empty() {
+        let def = FsPermissionsDef { read: vec![] };
+        let perms: FilesystemPermissions = def.into();
+        assert!(perms.read_patterns.is_empty());
+    }
+
+    #[test]
+    fn into_cap_request_produces_filesystem_variant() {
+        let def = FsPermissionsDef {
+            read: vec!["/tmp/*.log".into()],
+        };
+        let req: CapRequest = def.into();
+        match req {
+            CapRequest::Filesystem { permissions } => {
+                assert_eq!(permissions.read_patterns, vec!["/tmp/*.log"]);
+            }
+            _ => panic!("expected Filesystem variant"),
+        }
+    }
 
     // =====================================================
     // Permissions: fs

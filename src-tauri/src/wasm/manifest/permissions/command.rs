@@ -69,6 +69,22 @@ pub struct CommandPermissionDef {
     pub max_stdin_bytes: Option<u64>,
 }
 
+// ─── Domain conversions ──────────────────────────────────
+
+impl From<Vec<CommandPermissionDef>> for crate::caps::CommandPermissions {
+    fn from(rules: Vec<CommandPermissionDef>) -> Self {
+        Self { rules }
+    }
+}
+
+impl From<Vec<CommandPermissionDef>> for crate::caps::CapRequest {
+    fn from(rules: Vec<CommandPermissionDef>) -> Self {
+        Self::Command {
+            permissions: rules.into(),
+        }
+    }
+}
+
 impl CommandPermissionDef {
     /// Validate a single rule's argv shape and binary name.
     /// Errors include the rule index for actionable diagnostics.
@@ -397,8 +413,55 @@ fn validate_argv_constraint(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::caps::{CapRequest, CommandPermissions};
     use crate::wasm::manifest::Manifest;
     use crate::wasm::manifest::test_helpers::minimal;
+
+    // ─── Domain conversions ─────────────────────────────────
+
+    #[test]
+    fn into_command_permissions_maps_rules() {
+        let rules = vec![CommandPermissionDef {
+            binary: "/usr/bin/echo".into(),
+            argv: vec![],
+            cwd: None,
+            timeout_ms_max: None,
+            max_output_bytes: None,
+            max_stdin_bytes: None,
+        }];
+        let perms: CommandPermissions = rules.into();
+        assert_eq!(perms.rules.len(), 1);
+        assert_eq!(perms.rules[0].binary, "/usr/bin/echo");
+    }
+
+    #[test]
+    fn into_command_permissions_empty_rules() {
+        let rules: Vec<CommandPermissionDef> = vec![];
+        let perms: CommandPermissions = rules.into();
+        assert!(perms.rules.is_empty());
+    }
+
+    #[test]
+    fn into_cap_request_produces_command_variant() {
+        let rules = vec![CommandPermissionDef {
+            binary: "ls".into(),
+            argv: vec![ArgvConstraint::AnyString],
+            cwd: Some("/tmp".into()),
+            timeout_ms_max: Some(5000),
+            max_output_bytes: Some(1024),
+            max_stdin_bytes: None,
+        }];
+        let req: CapRequest = rules.into();
+        match req {
+            CapRequest::Command { permissions } => {
+                assert_eq!(permissions.rules.len(), 1);
+                assert_eq!(permissions.rules[0].binary, "ls");
+                assert_eq!(permissions.rules[0].timeout_ms_max, Some(5000));
+            }
+            _ => panic!("expected Command variant"),
+        }
+    }
 
     // =====================================================
     // Permissions: command rules

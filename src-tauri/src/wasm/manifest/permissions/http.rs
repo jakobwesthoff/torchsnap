@@ -28,6 +28,24 @@ pub struct HttpPermissionsDef {
     pub origins: Vec<String>,
 }
 
+// ─── Domain conversions ──────────────────────────────────
+
+impl From<HttpPermissionsDef> for crate::caps::HttpPermissions {
+    fn from(def: HttpPermissionsDef) -> Self {
+        Self {
+            origins: def.origins,
+        }
+    }
+}
+
+impl From<HttpPermissionsDef> for crate::caps::CapRequest {
+    fn from(def: HttpPermissionsDef) -> Self {
+        Self::Http {
+            permissions: def.into(),
+        }
+    }
+}
+
 impl HttpPermissionsDef {
     /// Reject an empty origins list; normalize all other
     /// entries to `ascii_serialization()` form so runtime
@@ -65,8 +83,44 @@ impl HttpPermissionsDef {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::caps::{CapRequest, HttpPermissions};
     use crate::wasm::manifest::Manifest;
     use crate::wasm::manifest::test_helpers::minimal;
+
+    // ─── Domain conversions ─────────────────────────────────
+
+    #[test]
+    fn into_http_permissions_maps_origins() {
+        let def = HttpPermissionsDef {
+            origins: vec!["https://example.com".into(), "https://other.com".into()],
+        };
+        let perms: HttpPermissions = def.into();
+        assert_eq!(perms.origins, vec!["https://example.com", "https://other.com"]);
+    }
+
+    #[test]
+    fn into_http_permissions_wildcard() {
+        let def = HttpPermissionsDef {
+            origins: vec!["*".into()],
+        };
+        let perms: HttpPermissions = def.into();
+        assert_eq!(perms.origins, vec!["*"]);
+    }
+
+    #[test]
+    fn into_cap_request_produces_http_variant() {
+        let def = HttpPermissionsDef {
+            origins: vec!["https://api.example.com".into()],
+        };
+        let req: CapRequest = def.into();
+        match req {
+            CapRequest::Http { permissions } => {
+                assert_eq!(permissions.origins, vec!["https://api.example.com"]);
+            }
+            _ => panic!("expected Http variant"),
+        }
+    }
 
     // =====================================================
     // Permissions: origin normalization
