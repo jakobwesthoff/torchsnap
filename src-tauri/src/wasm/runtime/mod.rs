@@ -1339,7 +1339,7 @@ icon = "heroicons:beaker"
     #[cfg(unix)]
     fn compile_command_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance, tempfile::TempDir) {
         use super::super::argv_matcher::{CompiledArgvConstraint, CompiledCommandRule};
-        use super::super::permission_vars::PathContext;
+        use crate::paths::{GadgetPaths, PlatformPaths};
 
         let runtime = test_runtime();
         let component = runtime
@@ -1361,12 +1361,14 @@ icon = "heroicons:beaker"
         // The fixture's `handle-message` dispatches into
         // these via the four test methods.
         instance.set_caps(WasmGadgetCaps {
-            path_context: PathContext {
+            gadget_paths: GadgetPaths {
+                platform: std::sync::Arc::new(PlatformPaths {
+                    home: scratch.path().to_path_buf(),
+                    xdg_config: scratch.path().to_path_buf(),
+                    xdg_data: scratch.path().to_path_buf(),
+                }),
                 gadget_data: scratch.path().to_path_buf(),
                 gadget_archive: scratch.path().to_path_buf(),
-                home: scratch.path().to_path_buf(),
-                xdg_config: scratch.path().to_path_buf(),
-                xdg_data: scratch.path().to_path_buf(),
             },
             command: super::host::command::CommandState {
                 rules: vec![
