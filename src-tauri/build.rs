@@ -13,5 +13,14 @@ fn main() {
 
     println!("cargo:rustc-env=GIT_HASH={git_hash}");
 
+    // Cargo caches proc macro expansions based on input tokens,
+    // not external files the macro reads. Both wasmtime's
+    // bindgen! (host side) and wit_bindgen's generate! (gadget
+    // SDK) read this WIT file at compile time. Without this
+    // directive, editing the WIT file does not trigger a host
+    // recompile — leaving the linker with stale interface
+    // signatures that reject rebuilt WASM gadgets.
+    println!("cargo:rerun-if-changed=../gadgets/gadget-sdk/wit/torchsnap-gadget.wit");
+
     tauri_build::build()
 }
