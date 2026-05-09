@@ -11,9 +11,7 @@
 // type conversion and the enable-lifetime guard.
 // =========================================================
 
-use std::sync::Arc;
-
-use crate::caps::{OpenerCap, OpenerError, OpenerPermissions};
+use crate::caps::OpenerError;
 use crate::wasm::bindings;
 
 use super::super::GadgetState;
@@ -33,29 +31,20 @@ impl bindings::torchsnap::gadget::opener::Host for GadgetState {
         &mut self,
         url: String,
     ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
-        let caps = self
-            .caps()
-            .map_err(bindings::torchsnap::gadget::opener::OpenerError::BackendFailure)?;
-        caps.opener.open_url(&url).map_err(Into::into)
+        self.caps().opener().open_url(&url).map_err(Into::into)
     }
 
     fn open_path(
         &mut self,
         path: String,
     ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
-        let caps = self
-            .caps()
-            .map_err(bindings::torchsnap::gadget::opener::OpenerError::BackendFailure)?;
-        caps.opener.open_path(&path).map_err(Into::into)
+        self.caps().opener().open_path(&path).map_err(Into::into)
     }
 
     fn reveal_path(
         &mut self,
         path: String,
     ) -> Result<(), bindings::torchsnap::gadget::opener::OpenerError> {
-        let caps = self
-            .caps()
-            .map_err(bindings::torchsnap::gadget::opener::OpenerError::BackendFailure)?;
-        caps.opener.reveal_path(&path).map_err(Into::into)
+        self.caps().opener().reveal_path(&path).map_err(Into::into)
     }
 }

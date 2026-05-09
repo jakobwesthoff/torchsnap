@@ -41,11 +41,7 @@ pub struct SqlHandleEntry {
 
 impl bindings::torchsnap::gadget::sql::Host for GadgetState {
     fn connection(&mut self) -> Resource<SqlHandleEntry> {
-        let caps = self
-            .caps
-            .as_mut()
-            .expect("sql::connection() called outside enable lifetime");
-        let sql_cap = caps.sql_storage.as_ref().expect(
+        let sql_cap = self.caps.sql_storage.as_ref().expect(
             "sql::connection() called but no SQL storage is initialized — \
              declare [storage.sql] in manifest.toml",
         );

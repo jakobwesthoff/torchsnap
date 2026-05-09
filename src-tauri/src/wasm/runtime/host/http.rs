@@ -10,7 +10,7 @@
 // request execution happen inside `HttpCap`.
 // =========================================================
 
-use crate::caps::{HttpCap, HttpCapError, HttpMethod, HttpRequest, HttpResponse};
+use crate::caps::{HttpCapError, HttpMethod, HttpRequest, HttpResponse};
 use crate::wasm::bindings;
 
 use super::super::GadgetState;
@@ -88,13 +88,10 @@ impl bindings::torchsnap::gadget::http::Host for GadgetState {
         bindings::torchsnap::gadget::http::HttpResponse,
         bindings::torchsnap::gadget::http::HttpError,
     > {
-        let caps = self
-            .caps()
-            .map_err(|e| bindings::torchsnap::gadget::http::HttpError::Other(e))?;
-
         let native_request: HttpRequest = request.into();
-        let response = caps
-            .http
+        let response = self
+            .caps()
+            .http()
             .fetch(native_request)
             .map_err(bindings::torchsnap::gadget::http::HttpError::from)?;
         Ok(response.into())

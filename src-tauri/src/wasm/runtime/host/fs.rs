@@ -51,11 +51,7 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
         &mut self,
         path: String,
     ) -> Result<Vec<u8>, bindings::torchsnap::gadget::fs::FsError> {
-        let caps = self
-            .caps()
-            .map_err(|e| bindings::torchsnap::gadget::fs::FsError::Io(e))?;
-
-        let filesystem = caps.filesystem.as_ref().ok_or_else(|| {
+        let filesystem = self.caps().filesystem.as_ref().ok_or_else(|| {
             bindings::torchsnap::gadget::fs::FsError::PermissionDenied(path.clone())
         })?;
 
@@ -65,11 +61,7 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
     }
 
     fn file_exists(&mut self, path: String) -> bool {
-        let Ok(caps) = self.caps() else {
-            return false;
-        };
-
-        let Some(filesystem) = caps.filesystem.as_ref() else {
+        let Some(filesystem) = self.caps().filesystem.as_ref() else {
             return false;
         };
 
@@ -83,11 +75,7 @@ impl bindings::torchsnap::gadget::fs::Host for GadgetState {
         bindings::torchsnap::gadget::fs::FileMetadata,
         bindings::torchsnap::gadget::fs::FsError,
     > {
-        let caps = self
-            .caps()
-            .map_err(|e| bindings::torchsnap::gadget::fs::FsError::Io(e))?;
-
-        let filesystem = caps.filesystem.as_ref().ok_or_else(|| {
+        let filesystem = self.caps().filesystem.as_ref().ok_or_else(|| {
             bindings::torchsnap::gadget::fs::FsError::PermissionDenied(path.clone())
         })?;
 

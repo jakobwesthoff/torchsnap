@@ -23,7 +23,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use crate::wasm::logging::channel::LogSender;
 use crate::wasm::logging::spans::SpanRegistry;
 
-use super::caps::WasmGadgetCaps;
+use crate::caps::ProvisionedCaps;
 
 pub struct GadgetState {
     pub(crate) gadget_id: String,
@@ -31,10 +31,10 @@ pub struct GadgetState {
     pub(crate) wasi_table: ResourceTable,
     pub(crate) log_sender: LogSender,
     pub(crate) span_registry: Arc<SpanRegistry>,
-    /// Per-enable-cycle capability bundle. `None` outside an
-    /// enable lifetime — the `caps()` chokepoint returns a
-    /// uniform error in that case.
-    pub(crate) caps: Option<WasmGadgetCaps>,
+    /// Host-built capability bundle. Set at instance construction
+    /// (via `set_caps`) and available for the lifetime of the
+    /// instance. All host imports access caps through this field.
+    pub(crate) caps: Arc<ProvisionedCaps>,
     /// Gadget source for asset resolution. Set by the bridge in
     /// enable(), cleared in clear_caps(). Lives here (not on
     /// caps) because it's a WASM bridge concern, not a capability.
@@ -47,15 +47,15 @@ pub struct GadgetState {
 }
 
 impl GadgetState {
-    /// Build a fresh `GadgetState` with capabilities absent.
-    /// Called from `WasmRuntime::instantiate`. The bridge
-    /// populates `caps` via `WasmGadgetInstance::set_caps()`
-    /// on `enable()`.
+    /// Build a fresh `GadgetState` with the given caps.
+    /// Called from `WasmRuntime::instantiate` and populated
+    /// by the bridge at `enable()`.
     pub(crate) fn new(
         gadget_id: String,
         wasi: WasiCtx,
         log_sender: LogSender,
         span_registry: Arc<SpanRegistry>,
+        caps: Arc<ProvisionedCaps>,
     ) -> Self {
         Self {
             gadget_id,
@@ -63,20 +63,16 @@ impl GadgetState {
             wasi_table: ResourceTable::new(),
             log_sender,
             span_registry,
-            caps: None,
+            caps,
             gadget_source: None,
             sql_handle_reps: Vec::new(),
         }
     }
 
-    /// Single chokepoint for host imports that need per-enable
-    /// capability state. Returns a uniform error when the
-    /// gadget is not enabled — replaces 14 scattered
-    /// None-guards across individual host import files.
-    pub(crate) fn caps(&mut self) -> Result<&mut WasmGadgetCaps, String> {
-        self.caps
-            .as_mut()
-            .ok_or_else(|| "capability accessed outside enable lifetime".into())
+    /// Access the provisioned capabilities. Always available —
+    /// if the instance exists, caps exist.
+    pub(crate) fn caps(&self) -> &Arc<ProvisionedCaps> {
+        &self.caps
     }
 }
 
@@ -95,18 +91,53 @@ impl WasiView for GadgetState {
 
 #[cfg(test)]
 impl GadgetState {
-    /// Construct a `GadgetState` with capabilities absent.
+    /// Construct a test `GadgetState` with default caps.
     /// Tests override specific fields with struct update
     /// syntax (`..GadgetState::default_for_test()`).
     pub(crate) fn default_for_test() -> Self {
         use wasmtime_wasi::WasiCtxBuilder;
 
         let wasi = WasiCtxBuilder::new().build();
+        let caps = Arc::new(ProvisionedCaps {
+            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
+                crate::caps::OpenerPermissions {
+                    schemes: Vec::new(),
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+            ))),
+            http: Some(Arc::new(crate::caps::HttpCap::new(Vec::new()))),
+            filesystem: None,
+            command: None,
+            clipboard: Some(Arc::new(crate::caps::ClipboardCap::new(Box::new(|_| {
+                Err("clipboard not initialized".into())
+            })))),
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: Some(Arc::new(crate::caps::PathResolverCap::new(
+                Arc::new(crate::paths::GadgetPaths {
+                    platform: Arc::new(crate::paths::PlatformPaths {
+                        home: std::path::PathBuf::from("/tmp/test-home"),
+                        xdg_config: std::path::PathBuf::from("/tmp/test-xdg-config"),
+                        xdg_data: std::path::PathBuf::from("/tmp/test-xdg-data"),
+                    }),
+                    gadget_data: std::path::PathBuf::from("/tmp/test-gadget-data"),
+                    gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
+                }),
+            ))),
+        });
         GadgetState::new(
             "test-gadget".to_string(),
             wasi,
             LogSender::test_sender(),
             Arc::new(SpanRegistry::new()),
+            caps,
         )
     }
 }

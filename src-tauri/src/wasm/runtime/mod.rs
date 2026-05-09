@@ -110,7 +110,7 @@ mod tests {
         let runtime = test_runtime();
         let component = compile_minimal(&runtime);
         let instance = runtime
-            .instantiate("minimal", &component, &LogContext::test_context())
+            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
             .expect("instantiate");
         instance.enable().expect("guest enable no-op");
     }
@@ -127,10 +127,10 @@ mod tests {
         let component = compile_minimal(&runtime);
 
         let first = runtime
-            .instantiate("minimal", &component, &LogContext::test_context())
+            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
             .expect("first");
         let second = runtime
-            .instantiate("minimal", &component, &LogContext::test_context())
+            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
             .expect("second");
 
         first.clear_caps();
@@ -197,13 +197,10 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            caps: Some(WasmGadgetCaps {
-                http: Arc::new(HttpCap::with_client(
-                    vec!["*".into()],
-                    Arc::new(client),
-                )),
-                ..WasmGadgetCaps::default_for_test()
-            }),
+            caps: test_caps_with_http(Arc::new(HttpCap::with_client(
+                vec!["*".into()],
+                Arc::new(client),
+            ))),
             ..GadgetState::default_for_test()
         };
 
@@ -236,13 +233,10 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            caps: Some(WasmGadgetCaps {
-                http: Arc::new(HttpCap::with_client(
-                    vec!["*".into()],
-                    Arc::new(client),
-                )),
-                ..WasmGadgetCaps::default_for_test()
-            }),
+            caps: test_caps_with_http(Arc::new(HttpCap::with_client(
+                vec!["*".into()],
+                Arc::new(client),
+            ))),
             ..GadgetState::default_for_test()
         };
 
@@ -275,13 +269,10 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            caps: Some(WasmGadgetCaps {
-                http: Arc::new(HttpCap::with_client(
-                    vec!["*".into()],
-                    Arc::new(client),
-                )),
-                ..WasmGadgetCaps::default_for_test()
-            }),
+            caps: test_caps_with_http(Arc::new(HttpCap::with_client(
+                vec!["*".into()],
+                Arc::new(client),
+            ))),
             ..GadgetState::default_for_test()
         };
 
@@ -318,13 +309,10 @@ mod tests {
         };
 
         let mut state = GadgetState {
-            caps: Some(WasmGadgetCaps {
-                http: Arc::new(HttpCap::with_client(
-                    vec!["*".into()],
-                    Arc::new(client),
-                )),
-                ..WasmGadgetCaps::default_for_test()
-            }),
+            caps: test_caps_with_http(Arc::new(HttpCap::with_client(
+                vec!["*".into()],
+                Arc::new(client),
+            ))),
             ..GadgetState::default_for_test()
         };
 
@@ -348,7 +336,7 @@ mod tests {
             .compile(OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-gadget", &component, &LogContext::test_context())
+            .instantiate("opener-http-gadget", &component, &LogContext::test_context(), test_caps())
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
@@ -361,8 +349,8 @@ mod tests {
             std::sync::Arc::new(Mutex::new(None));
         let called_url_clone = called_url.clone();
 
-        instance.set_caps(WasmGadgetCaps {
-            opener: Arc::new(crate::caps::OpenerCap::from_closures(
+        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
                 crate::caps::OpenerPermissions {
                     schemes: vec!["https".into()],
                     open_path: false,
@@ -374,9 +362,9 @@ mod tests {
                 }),
                 Box::new(|_| Ok(())),
                 Box::new(|_| Ok(())),
-            )),
-            ..WasmGadgetCaps::default_for_test()
-        });
+            ))),
+            ..test_caps_inner()
+        }));
 
         instance.enable().expect("enable");
 
@@ -396,8 +384,8 @@ mod tests {
     fn opener_forbidden_scheme_returns_error() {
         let (_runtime, instance) = compile_opener_http_fixture();
 
-        instance.set_caps(WasmGadgetCaps {
-            opener: Arc::new(crate::caps::OpenerCap::from_closures(
+        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
                 crate::caps::OpenerPermissions {
                     schemes: vec!["https".into()],
                     open_path: false,
@@ -406,9 +394,9 @@ mod tests {
                 Box::new(|_: &str| Ok(())),
                 Box::new(|_| Ok(())),
                 Box::new(|_| Ok(())),
-            )),
-            ..WasmGadgetCaps::default_for_test()
-        });
+            ))),
+            ..test_caps_inner()
+        }));
 
         instance.enable().expect("enable");
 
@@ -435,10 +423,7 @@ mod tests {
         });
 
         let (_runtime, instance) = compile_opener_http_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            http: Arc::new(HttpCap::new(vec!["*".into()])),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        instance.set_caps(test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec!["*".into()]))));
 
         instance.enable().expect("enable");
 
@@ -493,6 +478,7 @@ mod tests {
                 "website-metadata-gadget",
                 &component,
                 &LogContext::test_context(),
+                test_caps(),
             )
             .expect("instantiate website-metadata fixture");
         (runtime, instance)
@@ -533,10 +519,10 @@ mod tests {
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(WasmGadgetCaps {
+        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..WasmGadgetCaps::default_for_test()
-        });
+            ..test_caps_inner()
+        }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -563,10 +549,10 @@ mod tests {
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(WasmGadgetCaps {
+        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..WasmGadgetCaps::default_for_test()
-        });
+            ..test_caps_inner()
+        }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -597,10 +583,10 @@ mod tests {
         let server = httpmock::MockServer::start();
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(WasmGadgetCaps {
+        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..WasmGadgetCaps::default_for_test()
-        });
+            ..test_caps_inner()
+        }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -614,11 +600,8 @@ mod tests {
     #[test]
     fn http_blocked_origin_returns_permission_denied() {
         let (_runtime, instance) = compile_opener_http_fixture();
-        instance.set_caps(WasmGadgetCaps {
-            // Empty origins = deny all.
-            http: Arc::new(HttpCap::new(vec![])),
-            ..WasmGadgetCaps::default_for_test()
-        });
+        // Empty origins = deny all.
+        instance.set_caps(test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec![]))));
 
         instance.enable().expect("enable");
 
@@ -641,6 +624,48 @@ mod tests {
     // tests (step 1f) exercise the same paths through a real
     // WASM guest call.
     // =========================================================
+
+    /// Build the default `ProvisionedCaps` value for tests (not wrapped in
+    /// `Arc`). Tests that need to override a single field use struct update
+    /// syntax against this function.
+    fn test_caps_inner() -> crate::caps::ProvisionedCaps {
+        use crate::caps::*;
+        ProvisionedCaps {
+            opener: Some(Arc::new(OpenerCap::from_closures(
+                OpenerPermissions { schemes: vec![], open_path: false, reveal_path: false },
+                Box::new(|_| Ok(())), Box::new(|_| Ok(())), Box::new(|_| Ok(())),
+            ))),
+            http: Some(Arc::new(HttpCap::new(vec![]))),
+            filesystem: None, command: None,
+            clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| Ok(()))))),
+            sql_storage: None, website_metadata: None, icon_cache: None,
+            settings: None, frecency: None,
+            path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(
+                crate::paths::GadgetPaths {
+                    platform: Arc::new(crate::paths::PlatformPaths {
+                        home: std::path::PathBuf::from("/tmp/test"),
+                        xdg_config: std::path::PathBuf::from("/tmp/test/.config"),
+                        xdg_data: std::path::PathBuf::from("/tmp/test/.local/share"),
+                    }),
+                    gadget_data: std::path::PathBuf::from("/tmp/test-data"),
+                    gadget_archive: std::path::PathBuf::from("/tmp/test-archive"),
+                },
+            )))),
+        }
+    }
+
+    fn test_caps() -> Arc<crate::caps::ProvisionedCaps> {
+        Arc::new(test_caps_inner())
+    }
+
+    /// Build a `ProvisionedCaps` bundle with a custom `http` cap (e.g. an
+    /// injected client for httpmock tests) and defaults for all other fields.
+    fn test_caps_with_http(http: Arc<crate::caps::HttpCap>) -> Arc<crate::caps::ProvisionedCaps> {
+        Arc::new(crate::caps::ProvisionedCaps {
+            http: Some(http),
+            ..test_caps_inner()
+        })
+    }
 
     fn make_gadget_source_dir() -> (
         tempfile::TempDir,
@@ -680,7 +705,6 @@ icon = "heroicons:beaker"
     ) -> GadgetState {
         GadgetState {
             gadget_source: Some(src),
-            caps: Some(WasmGadgetCaps::default_for_test()),
             ..GadgetState::default_for_test()
         }
     }
@@ -901,7 +925,7 @@ icon = "heroicons:beaker"
             .compile(ASSETS_GADGET_WASM)
             .expect("compile assets fixture");
         let instance = runtime
-            .instantiate("assets-gadget", &component, &LogContext::test_context())
+            .instantiate("assets-gadget", &component, &LogContext::test_context(), test_caps())
             .expect("instantiate assets fixture");
         (runtime, instance)
     }
@@ -922,7 +946,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_returns_bundled_file_contents() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -940,7 +963,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_binary_preserves_byte_count() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         // `data/payload.bin` was written with a known
@@ -965,7 +987,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_exists_true_for_bundled_file() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -979,7 +1000,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_exists_false_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -993,7 +1013,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_exists_false_for_nested_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1007,7 +1026,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_rejects_traversal() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1024,7 +1042,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_rejects_absolute_path() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1041,7 +1058,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_returns_not_found_for_missing_file() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1058,7 +1074,6 @@ icon = "heroicons:beaker"
     fn wasm_assets_read_succeeds_on_nested_path() {
         let (_runtime, instance) = compile_assets_fixture();
         instance.set_gadget_source(assets_fixture_source());
-        instance.set_caps(WasmGadgetCaps::default_for_test());
         instance.enable().expect("enable");
 
         let result = instance
@@ -1109,49 +1124,54 @@ icon = "heroicons:beaker"
         let component = runtime
             .compile(COMMAND_GADGET_WASM)
             .expect("compile command fixture");
-        let instance = runtime
-            .instantiate("command-gadget", &component, &LogContext::test_context())
-            .expect("instantiate command fixture");
-
         // Stash a path context so the default cwd resolution
         // (`<gadget-data>/exec-cwd/`) has somewhere real to
         // create. The tempdir lives on so the test's child
         // process actually has a valid cwd at spawn time.
         let scratch = tempfile::TempDir::new().expect("scratch tempdir");
 
-        // Compile rules matching the fixture's manifest:
-        //   /bin/echo with [{any-string}]
-        //   /bin/sh   with [{literal:"-c"}, {any-string}]
-        // The fixture's `handle-message` dispatches into
-        // these via the four test methods.
-        instance.set_caps(WasmGadgetCaps {
-            gadget_paths: GadgetPaths {
-                platform: std::sync::Arc::new(PlatformPaths {
-                    home: scratch.path().to_path_buf(),
-                    xdg_config: scratch.path().to_path_buf(),
-                    xdg_data: scratch.path().to_path_buf(),
-                }),
-                gadget_data: scratch.path().to_path_buf(),
-                gadget_archive: scratch.path().to_path_buf(),
-            },
-            command: Some(Arc::new(CommandCap::from_compiled_rules(
-                vec![
-                    CompiledCommandRule {
-                        binary: "/bin/echo".to_string(),
-                        argv: vec![CompiledArgvConstraint::AnyString],
-                    },
-                    CompiledCommandRule {
-                        binary: "/bin/sh".to_string(),
-                        argv: vec![
-                            CompiledArgvConstraint::Literal("-c".to_string()),
-                            CompiledArgvConstraint::AnyString,
+        let instance = runtime
+            .instantiate(
+                "command-gadget",
+                &component,
+                &LogContext::test_context(),
+                Arc::new(crate::caps::ProvisionedCaps {
+                    // Compile rules matching the fixture's manifest:
+                    //   /bin/echo with [{any-string}]
+                    //   /bin/sh   with [{literal:"-c"}, {any-string}]
+                    // The fixture's `handle-message` dispatches into
+                    // these via the four test methods.
+                    command: Some(Arc::new(CommandCap::from_compiled_rules(
+                        vec![
+                            CompiledCommandRule {
+                                binary: "/bin/echo".to_string(),
+                                argv: vec![CompiledArgvConstraint::AnyString],
+                            },
+                            CompiledCommandRule {
+                                binary: "/bin/sh".to_string(),
+                                argv: vec![
+                                    CompiledArgvConstraint::Literal("-c".to_string()),
+                                    CompiledArgvConstraint::AnyString,
+                                ],
+                            },
                         ],
-                    },
-                ],
-                scratch.path().to_path_buf(),
-            ))),
-            ..WasmGadgetCaps::default_for_test()
-        });
+                        scratch.path().to_path_buf(),
+                    ))),
+                    path_resolver: Some(Arc::new(crate::caps::PathResolverCap::new(Arc::new(
+                        GadgetPaths {
+                            platform: std::sync::Arc::new(PlatformPaths {
+                                home: scratch.path().to_path_buf(),
+                                xdg_config: scratch.path().to_path_buf(),
+                                xdg_data: scratch.path().to_path_buf(),
+                            }),
+                            gadget_data: scratch.path().to_path_buf(),
+                            gadget_archive: scratch.path().to_path_buf(),
+                        },
+                    )))),
+                    ..test_caps_inner()
+                }),
+            )
+            .expect("instantiate command fixture");
 
         (runtime, instance, scratch)
     }

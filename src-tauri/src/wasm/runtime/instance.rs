@@ -89,10 +89,9 @@ impl WasmGadgetInstance {
 
 impl WasmGadgetInstance {
     /// Install the full capability bundle on the store data.
-    /// Called by the bridge at `enable()` after building the
-    /// caps from the manifest, PathContext, and host services.
-    pub fn set_caps(&self, caps: WasmGadgetCaps) {
-        self.with_state_mut(|state| state.caps = Some(caps));
+    /// Called by the bridge at `enable()`.
+    pub fn set_caps(&self, caps: std::sync::Arc<crate::caps::ProvisionedCaps>) {
+        self.with_state_mut(|state| state.caps = caps);
     }
 
     /// Install the gadget source for asset resolution. Called
@@ -104,17 +103,18 @@ impl WasmGadgetInstance {
         self.with_state_mut(|state| state.gadget_source = Some(source));
     }
 
-    /// Tear down and drop the capability bundle. Drains SQL
-    /// handle reps from the resource table before dropping
-    /// so the rusqlite connection is closed eagerly. Also
-    /// clears the gadget source.
-    ///
-    /// No-op when caps are already `None`.
+    /// Clean up WASM-specific lifecycle state at disable time.
+    /// Drains SQL handle reps from the resource table, clears
+    /// the gadget source.
     pub fn clear_caps(&self) {
         self.with_state_mut(|state| {
             state.gadget_source = None;
-            if let Some(mut caps) = state.caps.take() {
-                caps.teardown(&mut state.sql_handle_reps, &mut state.wasi_table);
+            let reps = std::mem::take(&mut state.sql_handle_reps);
+            for rep in reps {
+                let resource: wasmtime::component::Resource<
+                    super::host::sql::SqlHandleEntry,
+                > = wasmtime::component::Resource::new_own(rep);
+                let _ = state.wasi_table.delete(resource);
             }
         });
     }
