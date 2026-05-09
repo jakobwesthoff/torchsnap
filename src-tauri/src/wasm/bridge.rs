@@ -40,7 +40,6 @@ use crate::network::website_metadata::WebsiteMetadataService;
 use super::runtime::host::command::CommandState;
 use super::runtime::host::fs::FsState;
 use super::runtime::host::sql::SqlState;
-use super::runtime::host::website_metadata::WebsiteMetadataState;
 use super::runtime::{
     CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
 };
@@ -727,8 +726,13 @@ impl Gadget for WasmGadgetBridge {
         let settings = GadgetSettings::new(Arc::clone(&ctx.store), self.id());
         let frecency = GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id());
 
-        let website_metadata_enabled =
-            self.website_metadata_enabled && self.metadata_service.is_some();
+        let website_metadata = if self.website_metadata_enabled {
+            self.metadata_service.as_ref().map(|svc| {
+                Arc::new(crate::caps::WebsiteMetadataCap::new(Arc::clone(svc)))
+            })
+        } else {
+            None
+        };
 
         Ok(WasmGadgetCaps {
             settings: Some(settings),
@@ -752,14 +756,7 @@ impl Gadget for WasmGadgetBridge {
             command: CommandState {
                 rules: compiled_rules,
             },
-            website_metadata: WebsiteMetadataState {
-                enabled: website_metadata_enabled,
-                service: if website_metadata_enabled {
-                    self.metadata_service.clone()
-                } else {
-                    None
-                },
-            },
+            website_metadata,
         })
     }
 

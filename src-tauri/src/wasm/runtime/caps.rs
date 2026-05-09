@@ -27,9 +27,8 @@ use crate::wasm::source::GadgetSource;
 
 use super::host::command::CommandState;
 use super::host::fs::FsState;
-use crate::caps::{ClipboardCap, HttpCap, OpenerCap};
+use crate::caps::{ClipboardCap, HttpCap, OpenerCap, WebsiteMetadataCap};
 use super::host::sql::{SqlHandleEntry, SqlState};
-use super::host::website_metadata::WebsiteMetadataState;
 
 pub struct WasmGadgetCaps {
     // Provided by the host — `None` only in unit tests that
@@ -49,7 +48,7 @@ pub struct WasmGadgetCaps {
     pub(crate) http: Arc<HttpCap>,
     pub(crate) fs: FsState,
     pub(crate) command: CommandState,
-    pub(crate) website_metadata: WebsiteMetadataState,
+    pub(crate) website_metadata: Option<Arc<WebsiteMetadataCap>>,
 }
 
 impl WasmGadgetCaps {
@@ -104,7 +103,7 @@ impl WasmGadgetCaps {
             http: Arc::new(HttpCap::new(Vec::new())),
             fs: FsState::default(),
             command: CommandState::default(),
-            website_metadata: WebsiteMetadataState::default(),
+            website_metadata: None,
         }
     }
 }
