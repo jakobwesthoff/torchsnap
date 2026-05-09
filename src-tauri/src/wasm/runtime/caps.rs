@@ -44,11 +44,6 @@ pub struct WasmGadgetCaps {
     pub(crate) filesystem: Option<Arc<FilesystemCap>>,
     pub(crate) command: Option<Arc<CommandCap>>,
     pub(crate) website_metadata: Option<Arc<WebsiteMetadataCap>>,
-
-    // WASM-specific resource lifecycle tracking — not a
-    // capability, kept here because wasmtime ResourceTable
-    // handle management is bridge-level concern.
-    pub(crate) sql_handle_reps: Vec<u32>,
 }
 
 impl WasmGadgetCaps {
@@ -56,8 +51,15 @@ impl WasmGadgetCaps {
     /// drop, so the rusqlite connection is closed eagerly at
     /// disable time rather than lingering until the
     /// `WasmGadgetInstance` itself is dropped.
-    pub(crate) fn teardown(&mut self, wasi_table: &mut ResourceTable) {
-        let reps = std::mem::take(&mut self.sql_handle_reps);
+    ///
+    /// `sql_handle_reps` is passed in from `GadgetState` —
+    /// handle lifecycle tracking lives there, not on the caps.
+    pub(crate) fn teardown(
+        &mut self,
+        sql_handle_reps: &mut Vec<u32>,
+        wasi_table: &mut ResourceTable,
+    ) {
+        let reps = std::mem::take(sql_handle_reps);
         for rep in reps {
             let resource: Resource<SqlHandleEntry> = Resource::new_own(rep);
             let _ = wasi_table.delete(resource);
@@ -83,7 +85,6 @@ impl WasmGadgetCaps {
                 gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
             },
             sql_storage: None,
-            sql_handle_reps: Vec::new(),
             clipboard: Arc::new(ClipboardCap::new(Box::new(|_| {
                 Err("clipboard not initialized".into())
             }))),

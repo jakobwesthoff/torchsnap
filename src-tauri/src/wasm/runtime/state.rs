@@ -35,6 +35,11 @@ pub struct GadgetState {
     /// enable lifetime — the `caps()` chokepoint returns a
     /// uniform error in that case.
     pub(crate) caps: Option<WasmGadgetCaps>,
+    /// WASM resource table handle reps for open SQL connections.
+    /// Tracked here (not on caps) because this is wasmtime
+    /// resource lifecycle, not a capability concern. Drained
+    /// during `clear_caps()`.
+    pub(crate) sql_handle_reps: Vec<u32>,
 }
 
 impl GadgetState {
@@ -55,6 +60,7 @@ impl GadgetState {
             log_sender,
             span_registry,
             caps: None,
+            sql_handle_reps: Vec::new(),
         }
     }
 

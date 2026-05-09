@@ -646,7 +646,6 @@ impl Gadget for WasmGadgetBridge {
             gadget_source: Some(Arc::clone(&self.gadget_source)),
             gadget_paths,
             sql_storage: self.caps.sql_storage.clone(),
-            sql_handle_reps: Vec::new(),
             clipboard: self.caps.clipboard().clone(),
             opener: self.caps.opener().clone(),
             http: self.caps.http().clone(),

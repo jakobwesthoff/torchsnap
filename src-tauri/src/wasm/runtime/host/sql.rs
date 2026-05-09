@@ -58,11 +58,7 @@ impl bindings::torchsnap::gadget::sql::Host for GadgetState {
             .push(entry)
             .expect("allocate SQL handle in resource table");
 
-        let caps = self
-            .caps
-            .as_mut()
-            .expect("caps still present after push");
-        caps.sql_handle_reps.push(handle.rep());
+        self.sql_handle_reps.push(handle.rep());
 
         handle
     }
@@ -112,10 +108,7 @@ impl bindings::torchsnap::gadget::sql::HostSqlHandle for GadgetState {
 
     fn drop(&mut self, handle: Resource<SqlHandleEntry>) -> wasmtime::Result<()> {
         let rep = handle.rep();
-        if let Some(caps) = self.caps.as_mut() {
-            caps.sql_handle_reps.retain(|&r| r != rep);
-        }
-
+        self.sql_handle_reps.retain(|&r| r != rep);
         self.wasi_table.delete(handle)?;
         Ok(())
     }
