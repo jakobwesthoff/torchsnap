@@ -112,6 +112,15 @@ impl HttpCapError {
 }
 
 // =========================================================
+// HttpPermissions
+// =========================================================
+
+/// Permission configuration for constructing an `HttpCap`.
+pub struct HttpPermissions {
+    pub origins: Vec<String>,
+}
+
+// =========================================================
 // HttpCap
 // =========================================================
 
@@ -331,6 +340,31 @@ mod tests {
 
         let err = HttpCapError::InvalidUrl("bad".into());
         assert!(err.to_string().contains("bad"));
+    }
+
+    // ─── HttpPermissions ───────────────────────────────────
+
+    #[test]
+    fn http_permissions_stores_origins() {
+        let perms = HttpPermissions {
+            origins: vec!["https://example.com".into(), "https://other.com".into()],
+        };
+        assert_eq!(perms.origins.len(), 2);
+        assert_eq!(perms.origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn http_permissions_empty_origins() {
+        let perms = HttpPermissions { origins: vec![] };
+        assert!(perms.origins.is_empty());
+    }
+
+    #[test]
+    fn http_permissions_wildcard_origin() {
+        let perms = HttpPermissions {
+            origins: vec!["*".into()],
+        };
+        assert_eq!(perms.origins[0], "*");
     }
 
     // ─── HttpCap construction ────────────────────────────────

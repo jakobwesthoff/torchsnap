@@ -11,9 +11,24 @@
 // managed by the WASM bridge, not by this cap.
 // =========================================================
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::storage::SqlStorage;
+
+// =========================================================
+// SqlStorageConfig
+// =========================================================
+
+/// Configuration for constructing a `SqlStorageCap`.
+pub struct SqlStorageConfig {
+    pub db_path: PathBuf,
+    pub migrations: Arc<Vec<String>>,
+}
+
+// =========================================================
+// SqlStorageCap
+// =========================================================
 
 pub struct SqlStorageCap {
     storage: Arc<SqlStorage>,
@@ -33,6 +48,29 @@ impl SqlStorageCap {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    // ─── SqlStorageConfig ─────────────────────────────────
+
+    #[test]
+    fn sql_storage_config_stores_fields() {
+        let config = SqlStorageConfig {
+            db_path: PathBuf::from("/data/test.sqlite3"),
+            migrations: Arc::new(vec!["CREATE TABLE t (id INTEGER);".into()]),
+        };
+        assert_eq!(config.db_path, PathBuf::from("/data/test.sqlite3"));
+        assert_eq!(config.migrations.len(), 1);
+    }
+
+    #[test]
+    fn sql_storage_config_empty_migrations() {
+        let config = SqlStorageConfig {
+            db_path: PathBuf::from("/data/test.sqlite3"),
+            migrations: Arc::new(vec![]),
+        };
+        assert!(config.migrations.is_empty());
+    }
+
+    // ─── SqlStorageCap ──────────────────────────────────
 
     #[test]
     fn storage_accessor_returns_inner() {
