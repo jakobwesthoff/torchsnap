@@ -136,7 +136,6 @@ pub enum CapRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn cap_request_opener_variant() {
@@ -206,14 +205,13 @@ mod tests {
     fn cap_request_sql_storage_variant() {
         let req = CapRequest::SqlStorage {
             config: SqlStorageConfig {
-                db_path: PathBuf::from("/data/test.sqlite3"),
-                migrations: Arc::new(vec!["CREATE TABLE t (id INT);".into()]),
+                migrations: vec!["CREATE TABLE t (id INT);".into()],
             },
         };
         match req {
             CapRequest::SqlStorage { config } => {
-                assert_eq!(config.db_path, PathBuf::from("/data/test.sqlite3"));
                 assert_eq!(config.migrations.len(), 1);
+                assert_eq!(config.migrations[0], "CREATE TABLE t (id INT);");
             }
             _ => panic!("wrong variant"),
         }

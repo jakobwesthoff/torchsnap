@@ -31,6 +31,12 @@ pub struct StorageDef {
 /// Single source of truth: the `.sql` files. Gadget tests can
 /// `include_str!` the same files the manifest references —
 /// no duplication, no drift.
+///
+/// # Domain conversions
+///
+/// `From<SqlStorageDef> for SqlStorageConfig` carries migration
+/// file paths into the domain type. `From<SqlStorageDef> for
+/// CapRequest` wraps that into a `CapRequest::SqlStorage`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SqlStorageDef {
     /// Ordered list of migration file paths. Each path is
@@ -39,4 +45,60 @@ pub struct SqlStorageDef {
     /// archive.
     #[serde(default)]
     pub migrations: Vec<String>,
+}
+
+// ─── Domain conversions ──────────────────────────────────
+
+impl From<SqlStorageDef> for crate::caps::SqlStorageConfig {
+    fn from(def: SqlStorageDef) -> Self {
+        Self {
+            migrations: def.migrations,
+        }
+    }
+}
+
+impl From<SqlStorageDef> for crate::caps::CapRequest {
+    fn from(def: SqlStorageDef) -> Self {
+        Self::SqlStorage {
+            config: def.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::caps::{CapRequest, SqlStorageConfig};
+
+    #[test]
+    fn into_sql_storage_config_maps_migrations() {
+        let def = SqlStorageDef {
+            migrations: vec!["001_init.sql".into(), "002_add_index.sql".into()],
+        };
+        let config: SqlStorageConfig = def.into();
+        assert_eq!(config.migrations, vec!["001_init.sql", "002_add_index.sql"]);
+    }
+
+    #[test]
+    fn into_sql_storage_config_empty_migrations() {
+        let def = SqlStorageDef {
+            migrations: vec![],
+        };
+        let config: SqlStorageConfig = def.into();
+        assert!(config.migrations.is_empty());
+    }
+
+    #[test]
+    fn into_cap_request_produces_sql_storage_variant() {
+        let def = SqlStorageDef {
+            migrations: vec!["001_init.sql".into()],
+        };
+        let req: CapRequest = def.into();
+        match req {
+            CapRequest::SqlStorage { config } => {
+                assert_eq!(config.migrations, vec!["001_init.sql"]);
+            }
+            _ => panic!("expected SqlStorage variant"),
+        }
+    }
 }
