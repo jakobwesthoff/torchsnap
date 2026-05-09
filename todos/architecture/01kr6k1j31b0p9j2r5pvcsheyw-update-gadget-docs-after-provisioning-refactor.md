@@ -26,10 +26,13 @@ documentation changes needed.
 - Document the `CapRequest` enum and all `*Permissions` structs.
 - Explain the `From` trait implementations that convert manifest permission
   structs into `CapRequest` variants.
-- Document how native gadgets declare caps via the `requested_caps()` trait
-  method directly (no manifest involved).
-- Document that `WasmGadgetBridge` implements `requested_caps()` by parsing
-  the manifest.
+- Document factory-based registration: cap requests are provided at
+  registration time, not via a trait method. Native gadgets provide them
+  via inherent `cap_requests()` static methods. WASM gadgets derive them
+  via `WasmGadgetBridge::cap_requests_from_manifest()`.
+- Document why `requested_caps()` is not on the `Gadget` trait: static
+  method breaks object-safety, instance method can't work because caps
+  must be built before the gadget is constructed.
 
 ## Gadget trait changes
 
