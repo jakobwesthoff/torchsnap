@@ -85,39 +85,12 @@ pub struct WasmGadgetBridge {
     /// already qualifies — the bound here is purely a
     /// compile-time assertion.
     gadget_source: Arc<dyn GadgetSource + Send + Sync>,
-    /// Permitted URL schemes for `opener::open-url`. Extracted
-    /// from `[permissions.opener].schemes` at construction;
-    /// empty means the gadget has no opener access.
-    opener_schemes: Vec<String>,
-    /// Whether the manifest grants `opener::open-path`.
-    opener_open_path: bool,
-    /// Whether the manifest grants `opener::reveal-path`.
-    opener_reveal_path: bool,
-    /// Permitted origins for `http::fetch`. Extracted from
-    /// `[permissions.http].origins` at construction; empty
-    /// means the gadget has no HTTP access; `"*"` means
-    /// trust-all.
-    http_origins: Vec<String>,
-    /// Raw `[permissions.fs] read = [...]` patterns from the
-    /// manifest. `${...}` tokens still in place — the bridge
-    /// substitutes against the per-instance `PathContext` and
-    /// compiles into a `GlobSet` at `enable()`. `None` when
-    /// the manifest has no `[permissions.fs]` section, making
-    /// every fs call return `permission-denied`.
-    fs_patterns_raw: Option<Vec<String>>,
-    /// Whether the manifest grants access to the shared
-    /// `website-metadata` host import.
-    website_metadata_enabled: bool,
-    /// Shared website-metadata service. `None` in tests;
-    /// production always supplies a real service.
-    metadata_service: Option<Arc<WebsiteMetadataService>>,
-    /// Raw `[[permissions.command]]` rules pre-extracted from
-    /// the manifest. Compiled against the per-instance
-    /// `PathContext` at every `enable()` (variable substitution
-    /// can change between enable cycles if the host data dirs
-    /// move under the gadget). Empty when the manifest declares
-    /// no rules.
-    command_rules_raw: Vec<super::manifest::CommandPermissionDef>,
+    /// Host-built capabilities received at construction.
+    caps: Arc<crate::caps::ProvisionedCaps>,
+    /// Platform paths resolved once at construction, used by the
+    /// transitional WasmGadgetCaps adapter in enable() to build
+    /// GadgetPaths. Goes away when WasmGadgetCaps is deleted.
+    platform_paths: Arc<crate::paths::PlatformPaths>,
     /// Resolved `${gadget-data}` for this gadget —
     /// `<app_data_dir>/gadget-home/<gadget-id>/`. Re-stashed
     /// on every fresh instance so per-call `paths::resolve`
@@ -171,12 +144,75 @@ struct ParsedTask {
 }
 
 impl WasmGadgetBridge {
+    /// Build a `Vec<CapRequest>` from a parsed manifest and its
+    /// gadget source. Reads migration SQL files from the source
+    /// when `[storage.sql]` is declared.
+    ///
+    /// This is an inherent associated function (not on the
+    /// `Gadget` trait) because WASM cap requests are
+    /// instance-dependent (derived from the manifest), not
+    /// statically known from the type.
+    pub fn cap_requests_from_manifest(
+        manifest: &Manifest,
+        source: &dyn GadgetSource,
+    ) -> anyhow::Result<Vec<crate::caps::CapRequest>> {
+        use anyhow::Context;
+        use crate::caps::CapRequest;
+
+        let mut requests = Vec::new();
+
+        // Always-on caps for WASM gadgets.
+        requests.push(CapRequest::Settings);
+        requests.push(CapRequest::Frecency);
+        requests.push(CapRequest::Clipboard);
+        requests.push(CapRequest::PathResolver);
+
+        if let Some(perms) = &manifest.permissions {
+            if let Some(opener) = &perms.opener {
+                requests.push(opener.clone().into());
+            }
+            if let Some(http) = &perms.http {
+                requests.push(http.clone().into());
+            }
+            if let Some(fs) = &perms.fs {
+                requests.push(fs.clone().into());
+            }
+            if !perms.command.is_empty() {
+                requests.push(perms.command.clone().into());
+            }
+            if perms.website_metadata {
+                requests.push(CapRequest::WebsiteMetadata);
+            }
+        }
+
+        // SqlStorage: read migration file contents from the source.
+        if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+            let mut migration_contents = Vec::with_capacity(sql_def.migrations.len());
+            for path in &sql_def.migrations {
+                let bytes = source
+                    .read_file(path)
+                    .with_context(|| format!("read SQL migration file `{path}`"))?;
+                let text = String::from_utf8(bytes).with_context(|| {
+                    format!("SQL migration file `{path}` is not valid UTF-8")
+                })?;
+                migration_contents.push(text);
+            }
+            requests.push(CapRequest::SqlStorage {
+                config: crate::caps::SqlStorageConfig {
+                    migrations: migration_contents,
+                },
+            });
+        }
+
+        Ok(requests)
+    }
+
     /// Build a bridge from a parsed manifest, a handle to
     /// the shared runtime, and the gadget source.
     ///
-    /// `app_data_dir` is the host's per-app data root; the
-    /// gadget's state lives at
-    /// `<app_data_dir>/gadget-home/<gadget-id>/`.
+    /// The bridge receives `Arc<ProvisionedCaps>` at construction
+    /// — the host built them from the `cap_requests_from_manifest`
+    /// output.
     ///
     /// Construction is cheap — no WASM compilation happens
     /// here. The `CachedComponent` compiles (or deserializes
@@ -188,95 +224,21 @@ impl WasmGadgetBridge {
         log_ctx: LogContext,
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
-        metadata_service: Option<Arc<WebsiteMetadataService>>,
+        caps: Arc<crate::caps::ProvisionedCaps>,
+        platform_paths: Arc<crate::paths::PlatformPaths>,
     ) -> anyhow::Result<Self> {
-        // Bridge code that emits log items directly (scheduler
-        // task errors, lifecycle messages) only needs the
-        // sender half; pull it out once for storage.
+        use anyhow::Context;
+
         let log_sender = log_ctx.sender.clone();
         let gadget_id = manifest.gadget.id.as_str().to_string();
 
-        // Materialize the SQL configuration from the
-        // manifest. Gadgets without `[storage.sql]` get
-        // `SqlConfig::None`; the bridge's `enable()` path
-        // is a no-op for database setup in that case.
-        let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
-            None => SqlConfig::None,
-            Some(sql) => {
-                let mut migrations: Vec<String> = Vec::with_capacity(sql.migrations.len());
-                for path in &sql.migrations {
-                    let bytes = source
-                        .read_file(path)
-                        .with_context(|| format!("read SQL migration file `{path}`"))?;
-                    let text = String::from_utf8(bytes).with_context(|| {
-                        format!("SQL migration file `{path}` is not valid UTF-8")
-                    })?;
-                    migrations.push(text);
-                }
-
-                let db_path: PathBuf = app_data_dir
-                    .join("gadget-home")
-                    .join(gadget_id.as_str())
-                    .join("sql")
-                    .join("storage.sqlite3");
-
-                SqlConfig::Configured {
-                    db_path,
-                    migrations: Arc::new(migrations),
-                }
-            }
-        };
-
-        // Extract permission allowlists from the manifest.
-        // Each list defaults to empty (deny all) when the
-        // corresponding `[permissions.*]` sub-table is absent.
-        let opener_def = manifest
-            .permissions
-            .as_ref()
-            .and_then(|p| p.opener.as_ref());
-        let opener_schemes = opener_def.map(|o| o.schemes.clone()).unwrap_or_default();
-        let opener_open_path = opener_def.map(|o| o.open_path).unwrap_or(false);
-        let opener_reveal_path = opener_def.map(|o| o.reveal_path).unwrap_or(false);
-
-        let http_origins = manifest
-            .permissions
-            .as_ref()
-            .and_then(|p| p.http.as_ref())
-            .map(|h| h.origins.clone())
-            .unwrap_or_default();
-
-        let fs_patterns_raw = manifest
-            .permissions
-            .as_ref()
-            .and_then(|p| p.fs.as_ref())
-            .map(|fs| fs.read.clone());
-
-        let website_metadata_enabled = manifest
-            .permissions
-            .as_ref()
-            .map(|p| p.website_metadata)
-            .unwrap_or(false);
-
-        let command_rules_raw = manifest
-            .permissions
-            .as_ref()
-            .map(|p| p.command.clone())
-            .unwrap_or_default();
-
-        // Pre-resolve the host filesystem paths the
-        // `paths::resolve` host import (and, in the next
-        // sub-phase, command-rule compilation) will need.
-        // Gadget-archive comes from the source's filesystem
-        // root; gadget-data is the per-gadget host-managed
-        // state directory under `<app_data_dir>/gadget-home/`.
+        // Pre-resolve gadget paths for the WasmGadgetCaps adapter
+        // in enable(). These are also stored on the bridge for
+        // the cached component's disk cache path.
         let gadget_data = app_data_dir.join("gadget-home").join(gadget_id.as_str());
         let gadget_archive = source.root_path().to_path_buf();
 
-        // Pre-parse every `[[tasks]]` schedule. The manifest
-        // loader has already validated that they're well-
-        // formed 5-field POSIX cron expressions, so this
-        // re-parse is purely a unwrap-safe conversion to the
-        // `cron::Schedule` form the scheduler loop wants.
+        // Pre-parse every `[[tasks]]` schedule.
         let parsed_tasks = manifest
             .tasks
             .iter()
@@ -295,6 +257,18 @@ impl WasmGadgetBridge {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
+        // SqlConfig is still needed by the bridge for the
+        // WasmGadgetCaps adapter in enable() — it's used to
+        // check whether sql_handle_reps teardown is needed.
+        // TODO: Remove once WasmGadgetCaps is deleted.
+        let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+            None => SqlConfig::None,
+            Some(_) => SqlConfig::Configured {
+                db_path: gadget_data.join("sql").join("storage.sqlite3"),
+                migrations: Arc::new(vec![]),
+            },
+        };
+
         let cached = CachedComponent::new(
             runtime,
             log_ctx,
@@ -308,14 +282,8 @@ impl WasmGadgetBridge {
             cached: Mutex::new(cached),
             sql_config,
             gadget_source: source,
-            opener_schemes,
-            opener_open_path,
-            opener_reveal_path,
-            http_origins,
-            fs_patterns_raw,
-            website_metadata_enabled,
-            metadata_service,
-            command_rules_raw,
+            caps,
+            platform_paths,
             gadget_data,
             gadget_archive,
             instance: Mutex::new(None),
@@ -637,7 +605,7 @@ impl WasmGadgetBridge {
 }
 
 impl Gadget for WasmGadgetBridge {
-    type Caps = WasmGadgetCaps;
+    type Caps = ();
 
     fn id(&self) -> &str {
         self.manifest.gadget.id.as_str()
@@ -652,112 +620,11 @@ impl Gadget for WasmGadgetBridge {
         settings
     }
 
-    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<WasmGadgetCaps> {
-        use anyhow::Context;
-
-        let app = &ctx.app;
-
-        let gadget_paths = build_gadget_paths(app, &self.gadget_data, &self.gadget_archive)
-            .context("resolve gadget paths")?;
-
-        // Compile command rules against the resolved GadgetPaths.
-        let command = if self.command_rules_raw.is_empty() {
-            None
-        } else {
-            match crate::caps::CommandCap::new(
-                &self.command_rules_raw,
-                &gadget_paths,
-                gadget_paths.gadget_data.clone(),
-            ) {
-                Ok(cap) => Some(Arc::new(cap)),
-                Err(e) => {
-                    self.log(
-                        LogLevel::Error,
-                        format!(
-                            "compiling command rules for `{}`: {e:#}",
-                            self.gadget_id
-                        ),
-                    );
-                    None
-                }
-            }
-        };
-
-        // Compile fs allowlist against the resolved GadgetPaths.
-        let filesystem = match self.fs_patterns_raw.as_ref() {
-            Some(patterns) => {
-                match crate::caps::FilesystemCap::new(patterns, &gadget_paths) {
-                    Ok(cap) => Some(Arc::new(cap)),
-                    Err(e) => {
-                        self.log(
-                            LogLevel::Error,
-                            format!("compiling fs allowlist for `{}`: {e:#}", self.gadget_id),
-                        );
-                        None
-                    }
-                }
-            }
-            None => None,
-        };
-
-        let clipboard_handle = app.clone();
-        let clipboard_writer = Box::new(move |text: &str| {
-            use tauri_plugin_clipboard_manager::ClipboardExt;
-            clipboard_handle
-                .clipboard()
-                .write_text(text)
-                .map_err(|e| format!("write to clipboard: {e}"))
-        });
-
-        // Materialize SQL storage from the bridge's cached config.
-        let sql_storage = match &self.sql_config {
-            SqlConfig::Configured {
-                db_path,
-                migrations,
-            } => {
-                let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
-                let storage = crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
-                    .context("open SQL storage")?;
-                Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
-            }
-            SqlConfig::None => None,
-        };
-
-        let settings = Arc::new(GadgetSettings::new(Arc::clone(&ctx.store), self.id()));
-        let frecency = Arc::new(GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id()));
-
-        let website_metadata = if self.website_metadata_enabled {
-            self.metadata_service.as_ref().map(|svc| {
-                Arc::new(crate::caps::WebsiteMetadataCap::new(Arc::clone(svc)))
-            })
-        } else {
-            None
-        };
-
-        Ok(WasmGadgetCaps {
-            settings: Some(settings),
-            frecency: Some(frecency),
-            gadget_source: Some(Arc::clone(&self.gadget_source)),
-            gadget_paths,
-            sql_storage,
-            sql_handle_reps: Vec::new(),
-            clipboard: Arc::new(crate::caps::ClipboardCap::new(clipboard_writer)),
-            opener: Arc::new(crate::caps::OpenerCap::from_app(
-                app,
-                crate::caps::OpenerPermissions {
-                    schemes: self.opener_schemes.clone(),
-                    open_path: self.opener_open_path,
-                    reveal_path: self.opener_reveal_path,
-                },
-            )),
-            http: Arc::new(crate::caps::HttpCap::new(self.http_origins.clone())),
-            filesystem,
-            command,
-            website_metadata,
-        })
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
     }
 
-    fn enable(&self, caps: WasmGadgetCaps) {
+    fn enable(&self, _caps: ()) {
         let instance = match self.ensure_instance() {
             Ok(instance) => instance,
             Err(e) => {
@@ -769,7 +636,32 @@ impl Gadget for WasmGadgetBridge {
             }
         };
 
-        instance.set_caps(caps);
+        // Transitional adapter: build WasmGadgetCaps from the
+        // host-provisioned ProvisionedCaps. This adapter goes away
+        // when WasmGadgetCaps is merged into ProvisionedCaps
+        // (Phase D of the provisioning restructuring).
+        let gadget_paths = GadgetPaths {
+            platform: Arc::clone(&self.platform_paths),
+            gadget_data: self.gadget_data.clone(),
+            gadget_archive: self.gadget_archive.clone(),
+        };
+
+        let wasm_caps = WasmGadgetCaps {
+            settings: self.caps.settings.clone(),
+            frecency: self.caps.frecency.clone(),
+            gadget_source: Some(Arc::clone(&self.gadget_source)),
+            gadget_paths,
+            sql_storage: self.caps.sql_storage.clone(),
+            sql_handle_reps: Vec::new(),
+            clipboard: self.caps.clipboard().clone(),
+            opener: self.caps.opener().clone(),
+            http: self.caps.http().clone(),
+            filesystem: self.caps.filesystem.clone(),
+            command: self.caps.command.clone(),
+            website_metadata: self.caps.website_metadata.clone(),
+        };
+
+        instance.set_caps(wasm_caps);
 
         if let Err(e) = instance.enable() {
             self.log(LogLevel::Error, format!("guest enable() failed: {e:#}"));
@@ -996,6 +888,18 @@ mod tests {
         WasmRuntime::new().expect("runtime construction succeeds")
     }
 
+    fn test_platform_paths() -> Arc<crate::paths::PlatformPaths> {
+        Arc::new(crate::paths::PlatformPaths {
+            home: std::path::PathBuf::from("/home/test"),
+            xdg_config: std::path::PathBuf::from("/home/test/.config"),
+            xdg_data: std::path::PathBuf::from("/home/test/.local/share"),
+        })
+    }
+
+    fn test_caps() -> Arc<crate::caps::ProvisionedCaps> {
+        Arc::new(test_caps_inner())
+    }
+
     /// Build a bridge from a committed fixture directory.
     /// Uses a fresh tempdir for `app_data_dir` so SQL
     /// storage can open without clobbering real files.
@@ -1015,30 +919,99 @@ mod tests {
             LogContext::test_context(),
             source,
             app_data_dir,
-            None,
+            test_caps(),
+            test_platform_paths(),
         )
     }
 
-    /// Build a `WasmGadgetCaps` from a bridge's SQL config
-    /// for tests that verify SQL storage across enable cycles.
+    /// Build a `WasmGadgetCaps` from a bridge for tests that
+    /// verify SQL storage across enable cycles. Reads migration
+    /// SQL from the bridge's caps (populated by
+    /// cap_requests_from_manifest during test_bridge_with_sql).
     fn build_test_caps(bridge: &WasmGadgetBridge) -> WasmGadgetCaps {
-        let sql_storage = match &bridge.sql_config {
-            SqlConfig::Configured {
-                db_path,
-                migrations,
-            } => {
-                let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
-                let storage =
-                    crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
-                        .expect("open");
-                Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
+        WasmGadgetCaps {
+            sql_storage: bridge.caps.sql_storage.clone(),
+            ..WasmGadgetCaps::default_for_test()
+        }
+    }
+
+    /// Build a bridge from a fixture, reading SQL migrations
+    /// and building proper ProvisionedCaps with SqlStorageCap.
+    fn test_bridge_with_sql(
+        fixture: &str,
+        app_data_dir: &std::path::Path,
+    ) -> anyhow::Result<WasmGadgetBridge> {
+        let fixture_path = std::path::Path::new(FIXTURE_ROOT).join(fixture);
+        let source: Arc<dyn GadgetSource + Send + Sync> = Arc::new(
+            DirectorySource::open(&fixture_path)
+                .with_context(|| format!("open fixture `{fixture}`"))?,
+        );
+        let manifest = source.manifest().clone();
+        let gadget_id = manifest.gadget.id.as_str();
+
+        // Read migration SQL from the source.
+        let sql_storage = if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+            let mut migration_contents = Vec::new();
+            for path in &sql_def.migrations {
+                let bytes = source.read_file(path)?;
+                migration_contents.push(String::from_utf8(bytes)?);
             }
-            SqlConfig::None => None,
+            let db_path = app_data_dir
+                .join("gadget-home")
+                .join(gadget_id)
+                .join("sql")
+                .join("storage.sqlite3");
+            let migration_strs: Vec<&str> = migration_contents.iter().map(String::as_str).collect();
+            let storage = crate::storage::SqlStorage::open(db_path, &migration_strs)?;
+            Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
+        } else {
+            None
         };
 
-        WasmGadgetCaps {
+        let caps = test_caps_with_sql(sql_storage);
+
+        WasmGadgetBridge::new(
+            manifest,
+            test_runtime(),
+            LogContext::test_context(),
+            source,
+            app_data_dir,
+            caps,
+            test_platform_paths(),
+        )
+    }
+
+    fn test_caps_with_sql(
+        sql_storage: Option<Arc<crate::caps::SqlStorageCap>>,
+    ) -> Arc<crate::caps::ProvisionedCaps> {
+        Arc::new(crate::caps::ProvisionedCaps {
             sql_storage,
-            ..WasmGadgetCaps::default_for_test()
+            ..test_caps_inner()
+        })
+    }
+
+    fn test_caps_inner() -> crate::caps::ProvisionedCaps {
+        crate::caps::ProvisionedCaps {
+            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
+                crate::caps::OpenerPermissions {
+                    schemes: vec![],
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+            ))),
+            http: Some(Arc::new(crate::caps::HttpCap::new(vec![]))),
+            filesystem: None,
+            command: None,
+            clipboard: Some(Arc::new(crate::caps::ClipboardCap::new(Box::new(|_| Ok(()))))),
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: None,
         }
     }
 
@@ -1082,7 +1055,8 @@ icon = "heroicons:x-mark"
             LogContext::test_context(),
             source,
             app_data.path(),
-            None,
+            test_caps(),
+            test_platform_paths(),
         );
         // Construction is lazy — the error surfaces on first
         // acquire/instantiate, not at bridge construction time.
@@ -1091,7 +1065,7 @@ icon = "heroicons:x-mark"
     }
 
     #[test]
-    fn new_surfaces_missing_migration_file() {
+    fn cap_requests_surfaces_missing_migration_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let gadget_dir = tmp.path().join("sql-gadget");
         std::fs::create_dir_all(&gadget_dir).expect("mkdir");
@@ -1122,16 +1096,8 @@ migrations = ["migrations/001_init.sql"]
         let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
-        let app_data = tempfile::tempdir().expect("tempdir");
 
-        let result = WasmGadgetBridge::new(
-            manifest,
-            test_runtime(),
-            LogContext::test_context(),
-            source,
-            app_data.path(),
-            None,
-        );
+        let result = WasmGadgetBridge::cap_requests_from_manifest(&manifest, &*source);
         let err = result.err().expect("missing migration file must error");
         let msg = format!("{err:#}");
         assert!(
@@ -1266,13 +1232,34 @@ migrations = ["migrations/001_init.sql"]
         let source: Arc<dyn GadgetSource + Send + Sync> =
             Arc::new(DirectorySource::open(&gadget_dir).expect("open directory"));
         let manifest = source.manifest().clone();
+        let gadget_id = manifest.gadget.id.as_str();
+
+        // Build caps with actual SQL storage from the source.
+        let mut migration_contents = Vec::new();
+        if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+            for path in &sql_def.migrations {
+                let bytes = source.read_file(path).expect("read migration");
+                migration_contents.push(String::from_utf8(bytes).expect("utf8"));
+            }
+        }
+        let db_path = app_data
+            .path()
+            .join("gadget-home")
+            .join(gadget_id)
+            .join("sql")
+            .join("storage.sqlite3");
+        let migration_strs: Vec<&str> = migration_contents.iter().map(String::as_str).collect();
+        let storage = crate::storage::SqlStorage::open(db_path, &migration_strs).expect("open db");
+        let caps = test_caps_with_sql(Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage)))));
+
         let bridge = WasmGadgetBridge::new(
             manifest,
             test_runtime(),
             LogContext::test_context(),
             source,
             app_data.path(),
-            None,
+            caps,
+            test_platform_paths(),
         )
         .expect("bridge construction");
 
@@ -1364,7 +1351,8 @@ migrations = ["migrations/001_init.sql"]
             LogContext::test_context(),
             source,
             app_data_dir,
-            None,
+            test_caps(),
+            test_platform_paths(),
         )
     }
 
@@ -1488,7 +1476,8 @@ schedule = "*/5 * * * *"
             LogContext::test_context(),
             source,
             app_data.path(),
-            None,
+            test_caps(),
+            test_platform_paths(),
         )
         .expect("bridge construction");
 

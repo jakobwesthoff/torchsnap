@@ -20,9 +20,9 @@ use crate::storage::SqlStorage;
 // =========================================================
 
 /// Configuration for constructing a `SqlStorageCap`. Contains
-/// only the gadget-declared data (migration SQL). The `db_path`
-/// is a provisioning concern computed by the host from the
-/// gadget ID and app data directory.
+/// the migration SQL content (already read from the gadget
+/// source). The `db_path` is a provisioning concern computed
+/// by the host from the gadget ID and app data directory.
 pub struct SqlStorageConfig {
     pub migrations: Vec<String>,
 }
