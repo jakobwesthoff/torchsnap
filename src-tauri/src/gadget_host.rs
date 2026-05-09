@@ -1281,14 +1281,8 @@ mod tests {
     }
 
     impl Gadget for MockGadget {
-        type Caps = ();
-
         fn id(&self) -> &str {
             &self.id
-        }
-
-        fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-            Ok(())
         }
 
         fn search_prefixes(&self) -> &[String] {

@@ -605,8 +605,6 @@ impl WasmGadgetBridge {
 }
 
 impl Gadget for WasmGadgetBridge {
-    type Caps = ();
-
     fn id(&self) -> &str {
         self.manifest.gadget.id.as_str()
     }
@@ -620,11 +618,7 @@ impl Gadget for WasmGadgetBridge {
         settings
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn enable(&self, _caps: ()) {
+    fn enable(&self) {
         let instance = match self.ensure_instance() {
             Ok(instance) => instance,
             Err(e) => {

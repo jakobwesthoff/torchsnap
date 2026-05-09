@@ -92,17 +92,11 @@ fn cache_pane_icons(
 }
 
 impl Gadget for SystemPreferencesGadget {
-    type Caps = ();
-
     fn id(&self) -> &str {
         "system-preferences"
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn enable(&self, _caps: ()) {
+    fn enable(&self) {
         let icon_cache = self.caps.icon_cache();
 
         match self.discovery.discover() {
