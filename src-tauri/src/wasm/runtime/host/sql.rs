@@ -23,26 +23,8 @@ use crate::wasm::bindings;
 
 use super::super::GadgetState;
 
-/// SQL storage state. `config` is set once at bridge
-/// construction from the manifest; `storage` and
-/// `handle_reps` track per-enable-cycle runtime state.
-pub(crate) struct SqlState {
-    pub(crate) config: SqlConfig,
-    pub(crate) storage: Option<Arc<SqlStorage>>,
-    pub(crate) handle_reps: Vec<u32>,
-}
-
-impl Default for SqlState {
-    fn default() -> Self {
-        Self {
-            config: SqlConfig::None,
-            storage: None,
-            handle_reps: Vec::new(),
-        }
-    }
-}
-
 /// Whether and how the gadget's SQL storage is configured.
+/// Lives on the bridge across disable/re-enable cycles.
 #[derive(Clone)]
 pub enum SqlConfig {
     None,
@@ -59,33 +41,28 @@ pub struct SqlHandleEntry {
 
 impl bindings::torchsnap::gadget::sql::Host for GadgetState {
     fn connection(&mut self) -> Resource<SqlHandleEntry> {
-        // Access caps and wasi_table through disjoint field
-        // borrows. The borrow checker allows this because
-        // `self.caps` and `self.wasi_table` are separate
-        // fields on GadgetState.
         let caps = self
             .caps
             .as_mut()
             .expect("sql::connection() called outside enable lifetime");
-        let storage = caps.sql.storage.as_ref().expect(
+        let sql_cap = caps.sql_storage.as_ref().expect(
             "sql::connection() called but no SQL storage is initialized — \
-                     declare [storage.sql] in manifest.toml",
+             declare [storage.sql] in manifest.toml",
         );
 
         let entry = SqlHandleEntry {
-            storage: Arc::clone(storage),
+            storage: Arc::clone(sql_cap.storage()),
         };
         let handle = self
             .wasi_table
             .push(entry)
             .expect("allocate SQL handle in resource table");
 
-        // Re-borrow caps after the wasi_table borrow is done.
         let caps = self
             .caps
             .as_mut()
             .expect("caps still present after push");
-        caps.sql.handle_reps.push(handle.rep());
+        caps.sql_handle_reps.push(handle.rep());
 
         handle
     }
@@ -136,7 +113,7 @@ impl bindings::torchsnap::gadget::sql::HostSqlHandle for GadgetState {
     fn drop(&mut self, handle: Resource<SqlHandleEntry>) -> wasmtime::Result<()> {
         let rep = handle.rep();
         if let Some(caps) = self.caps.as_mut() {
-            caps.sql.handle_reps.retain(|&r| r != rep);
+            caps.sql_handle_reps.retain(|&r| r != rep);
         }
 
         self.wasi_table.delete(handle)?;

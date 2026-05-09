@@ -37,7 +37,6 @@ use super::manifest::Manifest;
 use crate::paths::GadgetPaths;
 use crate::network::website_metadata::WebsiteMetadataService;
 
-use super::runtime::host::sql::SqlState;
 use super::runtime::{
     CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
 };
@@ -711,21 +710,18 @@ impl Gadget for WasmGadgetBridge {
         });
 
         // Materialize SQL storage from the bridge's cached config.
-        let mut sql = SqlState {
-            config: self.sql_config.clone(),
-            storage: None,
-            handle_reps: Vec::new(),
+        let sql_storage = match &self.sql_config {
+            SqlConfig::Configured {
+                db_path,
+                migrations,
+            } => {
+                let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
+                let storage = crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
+                    .context("open SQL storage")?;
+                Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
+            }
+            SqlConfig::None => None,
         };
-        if let SqlConfig::Configured {
-            ref db_path,
-            ref migrations,
-        } = sql.config
-        {
-            let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
-            let storage = crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
-                .context("open SQL storage")?;
-            sql.storage = Some(Arc::new(storage));
-        }
 
         let settings = GadgetSettings::new(Arc::clone(&ctx.store), self.id());
         let frecency = GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id());
@@ -743,7 +739,8 @@ impl Gadget for WasmGadgetBridge {
             frecency: Some(frecency),
             gadget_source: Some(Arc::clone(&self.gadget_source)),
             gadget_paths,
-            sql,
+            sql_storage,
+            sql_handle_reps: Vec::new(),
             clipboard: Arc::new(crate::caps::ClipboardCap::new(clipboard_writer)),
             opener: Arc::new(crate::caps::OpenerCap::from_app(
                 app,
@@ -1025,26 +1022,22 @@ mod tests {
     /// Build a `WasmGadgetCaps` from a bridge's SQL config
     /// for tests that verify SQL storage across enable cycles.
     fn build_test_caps(bridge: &WasmGadgetBridge) -> WasmGadgetCaps {
-        use crate::wasm::runtime::host::sql::SqlState;
-
-        let mut sql = SqlState {
-            config: bridge.sql_config.clone(),
-            storage: None,
-            handle_reps: Vec::new(),
+        let sql_storage = match &bridge.sql_config {
+            SqlConfig::Configured {
+                db_path,
+                migrations,
+            } => {
+                let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
+                let storage =
+                    crate::storage::SqlStorage::open(db_path.clone(), &migration_strs)
+                        .expect("open");
+                Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
+            }
+            SqlConfig::None => None,
         };
-        if let SqlConfig::Configured {
-            ref db_path,
-            ref migrations,
-        } = sql.config
-        {
-            let migration_strs: Vec<&str> = migrations.iter().map(String::as_str).collect();
-            let storage =
-                crate::storage::SqlStorage::open(db_path.clone(), &migration_strs).expect("open");
-            sql.storage = Some(Arc::new(storage));
-        }
 
         WasmGadgetCaps {
-            sql,
+            sql_storage,
             ..WasmGadgetCaps::default_for_test()
         }
     }
@@ -1294,7 +1287,7 @@ migrations = ["migrations/001_init.sql"]
         let first = bridge.ensure_instance().expect("first ensure");
         let caps = build_test_caps(&bridge);
         assert!(
-            caps.sql.storage.is_some(),
+            caps.sql_storage.is_some(),
             "first caps should have SQL storage"
         );
         first.set_caps(caps);
@@ -1305,7 +1298,7 @@ migrations = ["migrations/001_init.sql"]
         let second = bridge.ensure_instance().expect("second ensure");
         let caps = build_test_caps(&bridge);
         assert!(
-            caps.sql.storage.is_some(),
+            caps.sql_storage.is_some(),
             "second caps should have SQL storage"
         );
         drop(caps);
