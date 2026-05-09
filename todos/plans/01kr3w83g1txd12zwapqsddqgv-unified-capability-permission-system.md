@@ -262,8 +262,8 @@ Array-of-tables — each entry is one allowed command rule. Maps to
 
 ### Manifest-to-CapRequest conversion
 
-The `WasmGadgetBridge` implements `requested_caps()` by converting its
-parsed `PermissionsDef` into `Vec<CapRequest>`. The manifest module owns
+`WasmGadgetBridge::cap_requests_from_manifest()` converts the parsed
+`PermissionsDef` into `Vec<CapRequest>`. The manifest module owns
 all `Into` implementations — one per cap type, converting from manifest
 deserialization structs to domain types. Boolean caps are collected
 directly:
@@ -274,24 +274,19 @@ if perms.settings { caps.push(CapRequest::Settings); }
 if perms.frecency { caps.push(CapRequest::Frecency); }
 // ...
 
-// Parameterized caps — manifest types convert into domain types
-if let Some(opener) = perms.opener {
-    caps.push(CapRequest::Opener {
-        permissions: opener.into(),
-    });
-}
-if let Some(http) = perms.http {
-    caps.push(CapRequest::Http {
-        permissions: http.into(),
-    });
-}
-// ...
+// Parameterized caps — manifest types convert end-to-end via Into.
+// Each *PermissionsDef implements From<*Def> for CapRequest in the
+// manifest module, composing the intermediate *Permissions conversion.
+if let Some(opener) = perms.opener { caps.push(opener.into()); }
+if let Some(http) = perms.http { caps.push(http.into()); }
+if let Some(fs) = perms.filesystem { caps.push(fs.into()); }
+if !perms.command.is_empty() { caps.push(perms.command.into()); }
 
-// Caps with config — host reads config from separate manifest sections
+// Caps with config
 if perms.sql_storage {
-    caps.push(CapRequest::SqlStorage {
-        config: manifest.storage.sql.into(),  // migrations etc.
-    });
+    if let Some(sql) = &manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+        caps.push(sql.into());
+    }
 }
 ```
 
@@ -420,7 +415,7 @@ enum CapRequest {
     IconCache,
     Settings,
     Frecency,
-    PathResolver,
+    PathResolver,  // unit — host builds GadgetPaths internally
 }
 ```
 
@@ -458,21 +453,50 @@ live in `caps/` as the authoritative domain type. The manifest module has
 its own serde-decorated mirror type with an `Into` implementation in the
 manifest module.
 
-### Cap declaration via trait method
+### Cap declaration at registration time (factory pattern)
 
-The `Gadget` trait gains a method:
+`requested_caps()` is NOT on the `Gadget` trait. A static trait method
+would break object-safety (no `Arc<dyn Gadget>`), and an instance method
+can't work because caps must be available before the gadget is
+constructed. WASM cap requests come from the manifest (instance-specific
+data), which a static method cannot access.
+
+Instead, cap requests are provided at registration time. The host builds
+`ProvisionedCaps` from the requests and passes them to a factory closure
+that constructs the gadget:
 
 ```rust
-fn requested_caps(&self) -> Vec<CapRequest>;
+// Registration API on GadgetHost
+fn register<G, F>(
+    &mut self,
+    gadget_id: &str,
+    requests: Vec<CapRequest>,
+    factory: F,
+    source_kind: GadgetSourceKind,
+) where
+    G: Gadget + 'static,
+    F: FnOnce(Arc<ProvisionedCaps>) -> G,
+
+// Native gadget — cap_requests() is an inherent static method
+host.register(
+    "app-launcher",
+    AppLauncherGadget::cap_requests(),
+    AppLauncherGadget::new,
+    GadgetSourceKind::BuiltIn,
+);
+
+// WASM gadget — cap requests from manifest
+host.register(
+    manifest.gadget.id.as_str(),
+    WasmGadgetBridge::cap_requests_from_manifest(&manifest),
+    |caps| WasmGadgetBridge::new(manifest, runtime, caps, ...),
+    GadgetSourceKind::Wasm,
+);
 ```
 
-- **Native gadgets** implement the method directly, returning a hardcoded
-  or computed list.
-- **`WasmGadgetBridge`** implements the method by parsing its
-  `manifest.toml` `[permissions]` section into the same `Vec<CapRequest>`.
-
-The host calls `requested_caps()`, builds `ProvisionedCaps` from the
-result, and hands them to the gadget. One path for both gadget types.
+Gadgets receive `Arc<ProvisionedCaps>` as a constructor parameter and
+store it as a plain field — no `OnceLock`, no `Mutex<Option<...>>`,
+no `unwrap()`.
 
 ## Decided: Gadget trait shape (future)
 
@@ -519,9 +543,11 @@ The `paths::resolve` WIT import lets the gadget call
 `caps.gadget_paths` directly on `WasmGadgetCaps`.
 
 After refactoring, the `paths::resolve` host import reads
-`ProvisionedCaps.path_resolver`. If `PathResolverCap` was not provisioned
-(gadget didn't request it), the call returns an error. The WIT interface
-definition itself stays unchanged — enforcement is host-side.
+`ProvisionedCaps.path_resolver`. `PathResolverCap` wraps
+`Arc<dyn PathResolver + Send + Sync>` (not the concrete `GadgetPaths`
+type) — it delegates through the trait. If `PathResolverCap` was not
+provisioned (gadget didn't request it), the call returns an error. The WIT
+interface definition itself stays unchanged — enforcement is host-side.
 
 Gadgets that use `paths::resolve` at runtime (e.g., zerotier) must declare
 `PathResolver` in their `CapRequest` / manifest permissions.
@@ -555,8 +581,9 @@ Summary:
 - **Phase B:** Remove `type Caps`, `provision()`, `AnyGadget` from `Gadget`
   trait — trait becomes object-safe, `GadgetSlot` holds `Arc<dyn Gadget>`
 - **Phase C:** Introduce `CapRequest` enum (struct variants with
-  `permissions`/`config` fields), `requested_caps()` trait method, domain
-  types in `caps/`, manifest `Into` impls in `wasm/manifest/`
+  `permissions`/`config` fields), factory-based registration with
+  `cap_requests()` inherent methods and `cap_requests_from_manifest()`,
+  domain types in `caps/`, manifest `Into` impls in `wasm/manifest/`
 - **Phase D:** Merge `WasmGadgetCaps` into `ProvisionedCaps`
 
 ### Phase 3: Future

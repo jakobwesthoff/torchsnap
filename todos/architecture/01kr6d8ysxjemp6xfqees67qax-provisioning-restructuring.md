@@ -72,6 +72,28 @@ own caps in `provision()` from the same context. This creates several issues:
 - `enable()` / `disable()` become pure lifecycle signals.
 - `Arc<dyn Gadget>` used directly in `GadgetSlot`.
 
+### Factory-based registration
+
+`requested_caps()` is NOT on the `Gadget` trait — a static method breaks
+object-safety, and an instance method can't work because caps must be
+built before the gadget is constructed. Cap requests are provided at
+registration time via a factory pattern:
+
+```rust
+host.register(
+    gadget_id,
+    cap_requests,
+    |caps| MyGadget::new(caps),
+    source_kind,
+);
+```
+
+Native gadgets provide cap requests via an inherent `cap_requests()`
+static method. WASM gadgets derive them from the manifest via
+`WasmGadgetBridge::cap_requests_from_manifest()`. Gadgets receive
+`Arc<ProvisionedCaps>` as a constructor parameter and store it as a
+plain field — no `OnceLock`, no `unwrap()`.
+
 ### WasmGadgetCaps → ProvisionedCaps merge
 
 Once the host builds caps, `WasmGadgetCaps` should merge into
@@ -87,10 +109,10 @@ Once the host builds caps, `WasmGadgetCaps` should merge into
 
 ### CapRequest system
 
-Each gadget declares what it needs via `Vec<CapRequest>` returned from
-a `requested_caps()` trait method. Struct variants maintain an explicit
-division between `permissions` (security boundary) and `config`
-(construction data):
+Each gadget declares what it needs via `Vec<CapRequest>` provided at
+registration time (factory pattern — see "Factory-based registration"
+section above). Struct variants maintain an explicit division between
+`permissions` (security boundary) and `config` (construction data):
 
 ```rust
 enum CapRequest {
@@ -127,9 +149,9 @@ Shared domain types like `ArgvConstraint` live in `caps/` as authoritative;
 the manifest module has its own serde-decorated mirror type with an `Into`
 impl.
 
-For WASM: `WasmGadgetBridge` implements `requested_caps()` by parsing
-`manifest.toml` `[permissions]` section through these `Into` conversions.
-For native: gadgets implement `requested_caps()` directly.
+For WASM: `WasmGadgetBridge::cap_requests_from_manifest()` converts the
+parsed `[permissions]` section through these `Into` conversions.
+For native: inherent `cap_requests()` static methods return the list.
 
 ### Manifest `[permissions]` structure
 
@@ -185,22 +207,26 @@ Full details and examples in the unified capability plan
    (e.g., `SqlStorageConfig`), and shared types (e.g., `ArgvConstraint`).
 2. Define `CapRequest` enum with struct variants using named
    `permissions` / `config` fields.
-3. Add `requested_caps(&self) -> Vec<CapRequest>` to the `Gadget` trait.
-4. Create serde-decorated manifest mirror types in
+3. Implement factory-based registration on `GadgetHost` — takes
+   `Vec<CapRequest>` + factory closure, builds `ProvisionedCaps`,
+   constructs gadget with caps as a plain field.
+4. Native gadgets provide cap requests via inherent `cap_requests()`
+   static methods. `WasmGadgetBridge` provides them via
+   `cap_requests_from_manifest()`. Cap declarations are NOT on the
+   `Gadget` trait (static method breaks object-safety, instance method
+   can't work because caps must exist before construction).
+5. Create serde-decorated manifest mirror types in
    `wasm/manifest/permissions/` with `Into` impls converting to domain
    types. Manifest module owns all conversions.
-5. Restructure `PermissionsDef` to match the new manifest format:
+6. Restructure `PermissionsDef` to match the new manifest format:
    add boolean fields for `settings`, `frecency`, `sql-storage`,
    `path-resolver`, `clipboard`, `icon-cache`; rename `fs` →
    `filesystem`.
-6. `WasmGadgetBridge` implements `requested_caps()` by converting
-   parsed `PermissionsDef` + config sections into `Vec<CapRequest>`.
-7. Native gadgets implement `requested_caps()` directly.
-8. Host provisioner reads `Vec<CapRequest>`, validates, and provisions
+7. Host provisioner reads `Vec<CapRequest>`, validates, and provisions
    only requested caps.
-9. Manifest validation: warn on contradictions (e.g., `[storage.sql]`
+8. Manifest validation: warn on contradictions (e.g., `[storage.sql]`
    present without `sql-storage = true`).
-10. Update all existing gadget `manifest.toml` files to the new format.
+9. Update all existing gadget `manifest.toml` files to the new format.
 
 ### Phase D: Merge WasmGadgetCaps into ProvisionedCaps
 
