@@ -46,9 +46,13 @@ own caps in `provision()` from the same context. This creates several issues:
 - **GadgetHost** reads the permission declaration (manifest for WASM,
   trait method / hardcoded for native) and constructs all caps.
 - **GadgetHost** assembles `ProvisionedCaps` and hands it to the gadget.
-- **Gadgets** receive `Arc<ProvisionedCaps>` — either at construction
-  (new design) or via `enable()` (transitional). They never see raw
-  `AppHandle` or `ProvisioningContext`.
+- **`ProvisioningContext`** becomes host-internal — either fields on
+  `GadgetHost` itself or a host-internal struct. It does not disappear
+  (the host still needs `Store`, `FrecencyStore`, `IconCache`,
+  `WebsiteMetadataService` to build caps), but it is never passed to
+  gadgets. `AppHandle` never reaches gadget code.
+- **Gadgets** receive `Arc<ProvisionedCaps>` at construction. They never
+  see raw `AppHandle` or `ProvisioningContext`.
 
 ### PathResolver flow
 
@@ -78,19 +82,34 @@ Once the host builds caps, `WasmGadgetCaps` should merge into
 - `gadget_paths` → replaced by `PathResolverCap` in `ProvisionedCaps`
 - `sql_handle_reps` → stays on `GadgetState` (bridge-level wasmtime
   resource lifecycle, not a capability)
-- `settings` / `frecency` → already on `ProvisionedCaps`
+- `settings` / `frecency` → already on `ProvisionedCaps` (now opt-in
+  via `[permissions]`, no longer unconditionally provisioned)
 
 ### CapRequest system
 
-Each gadget declares what it needs via `Vec<CapRequest>`:
+Each gadget declares what it needs via `Vec<CapRequest>` returned from
+a `requested_caps()` trait method. Struct variants maintain an explicit
+division between `permissions` (security boundary) and `config`
+(construction data):
+
 ```rust
 enum CapRequest {
-    Opener(OpenerPermissions),
-    Http(HttpPermissions),
-    Filesystem(Vec<String>),  // raw patterns
-    Command(Vec<CommandPermissionDef>),  // raw rules
+    Opener {
+        permissions: OpenerPermissions,
+    },
+    Http {
+        permissions: HttpPermissions,
+    },
+    Filesystem {
+        permissions: FilesystemPermissions,
+    },
+    Command {
+        permissions: CommandPermissions,
+    },
+    SqlStorage {
+        config: SqlStorageConfig,       // migrations
+    },
     Clipboard,
-    SqlStorage,
     WebsiteMetadata,
     IconCache,
     Settings,
@@ -99,8 +118,41 @@ enum CapRequest {
 }
 ```
 
-For WASM: extracted from `manifest.toml`. For native: declared via a
-trait method or at registration time.
+`*Permissions` and `*Config` are domain types living in `caps/`. Manifest
+deserialization structs (`*PermissionsDef`) live in
+`wasm/manifest/permissions/` with `Into` impls owned by the manifest
+module. Dependency direction: `wasm/manifest/` → `caps/`, never reverse.
+
+Shared domain types like `ArgvConstraint` live in `caps/` as authoritative;
+the manifest module has its own serde-decorated mirror type with an `Into`
+impl.
+
+For WASM: `WasmGadgetBridge` implements `requested_caps()` by parsing
+`manifest.toml` `[permissions]` section through these `Into` conversions.
+For native: gadgets implement `requested_caps()` directly.
+
+### Manifest `[permissions]` structure
+
+`[permissions]` is the single source of truth for what caps a gadget
+receives. Configuration sections (`[storage.sql]`, `[settings]`) provide
+additional data but do not imply cap provisioning.
+
+Two forms:
+- **Flat boolean** for parameterless caps: `clipboard = true`,
+  `settings = true`, `frecency = true`, `path-resolver = true`, etc.
+- **Subsection** for parameterized caps: `[permissions.opener]`,
+  `[permissions.http]`, `[permissions.filesystem]`,
+  `[[permissions.command]]`.
+
+Presence of a key or subsection = cap requested. Omission = not requested
+(no explicit `= false` needed).
+
+Key naming changes from current format: `fs` → `filesystem`,
+`settings` / `frecency` / `sql-storage` / `path-resolver` are new
+explicit opt-in entries (previously implicit or unavailable).
+
+Full details and examples in the unified capability plan
+(`01kr3w83g1txd12zwapqsddqgv`).
 
 ## Implementation Steps
 
@@ -128,10 +180,27 @@ trait method or at registration time.
 
 ### Phase C: CapRequest and permission declarations
 
-1. Define `CapRequest` enum.
-2. Add `requested_caps()` to the registration interface.
-3. Extract `Vec<CapRequest>` from WASM manifests.
-4. Host validates and provisions only requested caps.
+1. Define domain types in `caps/`: `*Permissions` structs (e.g.,
+   `OpenerPermissions`, `FilesystemPermissions`), `*Config` structs
+   (e.g., `SqlStorageConfig`), and shared types (e.g., `ArgvConstraint`).
+2. Define `CapRequest` enum with struct variants using named
+   `permissions` / `config` fields.
+3. Add `requested_caps(&self) -> Vec<CapRequest>` to the `Gadget` trait.
+4. Create serde-decorated manifest mirror types in
+   `wasm/manifest/permissions/` with `Into` impls converting to domain
+   types. Manifest module owns all conversions.
+5. Restructure `PermissionsDef` to match the new manifest format:
+   add boolean fields for `settings`, `frecency`, `sql-storage`,
+   `path-resolver`, `clipboard`, `icon-cache`; rename `fs` →
+   `filesystem`.
+6. `WasmGadgetBridge` implements `requested_caps()` by converting
+   parsed `PermissionsDef` + config sections into `Vec<CapRequest>`.
+7. Native gadgets implement `requested_caps()` directly.
+8. Host provisioner reads `Vec<CapRequest>`, validates, and provisions
+   only requested caps.
+9. Manifest validation: warn on contradictions (e.g., `[storage.sql]`
+   present without `sql-storage = true`).
+10. Update all existing gadget `manifest.toml` files to the new format.
 
 ### Phase D: Merge WasmGadgetCaps into ProvisionedCaps
 
