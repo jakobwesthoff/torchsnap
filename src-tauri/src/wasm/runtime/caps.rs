@@ -25,8 +25,7 @@ use crate::settings::GadgetSettings;
 use crate::paths::GadgetPaths;
 use crate::wasm::source::GadgetSource;
 
-use super::host::command::CommandState;
-use crate::caps::{ClipboardCap, FilesystemCap, HttpCap, OpenerCap, WebsiteMetadataCap};
+use crate::caps::{ClipboardCap, CommandCap, FilesystemCap, HttpCap, OpenerCap, WebsiteMetadataCap};
 use super::host::sql::{SqlHandleEntry, SqlState};
 
 pub struct WasmGadgetCaps {
@@ -46,7 +45,7 @@ pub struct WasmGadgetCaps {
     pub(crate) opener: Arc<OpenerCap>,
     pub(crate) http: Arc<HttpCap>,
     pub(crate) filesystem: Option<Arc<FilesystemCap>>,
-    pub(crate) command: CommandState,
+    pub(crate) command: Option<Arc<CommandCap>>,
     pub(crate) website_metadata: Option<Arc<WebsiteMetadataCap>>,
 }
 
@@ -101,7 +100,7 @@ impl WasmGadgetCaps {
             )),
             http: Arc::new(HttpCap::new(Vec::new())),
             filesystem: None,
-            command: CommandState::default(),
+            command: None,
             website_metadata: None,
         }
     }

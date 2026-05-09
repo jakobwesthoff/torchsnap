@@ -37,7 +37,6 @@ use super::manifest::Manifest;
 use crate::paths::GadgetPaths;
 use crate::network::website_metadata::WebsiteMetadataService;
 
-use super::runtime::host::command::CommandState;
 use super::runtime::host::sql::SqlState;
 use super::runtime::{
     CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
@@ -663,21 +662,27 @@ impl Gadget for WasmGadgetBridge {
             .context("resolve gadget paths")?;
 
         // Compile command rules against the resolved GadgetPaths.
-        let mut compiled_rules = Vec::with_capacity(self.command_rules_raw.len());
-        for (index, raw) in self.command_rules_raw.iter().enumerate() {
-            match super::argv_matcher::compile_rule(raw, index, &gadget_paths) {
-                Ok(rule) => compiled_rules.push(rule),
+        let command = if self.command_rules_raw.is_empty() {
+            None
+        } else {
+            match crate::caps::CommandCap::new(
+                &self.command_rules_raw,
+                &gadget_paths,
+                gadget_paths.gadget_data.clone(),
+            ) {
+                Ok(cap) => Some(Arc::new(cap)),
                 Err(e) => {
                     self.log(
                         LogLevel::Error,
                         format!(
-                            "compiling command rule {index} for `{}`: {e:#}",
+                            "compiling command rules for `{}`: {e:#}",
                             self.gadget_id
                         ),
                     );
+                    None
                 }
             }
-        }
+        };
 
         // Compile fs allowlist against the resolved GadgetPaths.
         let filesystem = match self.fs_patterns_raw.as_ref() {
@@ -750,9 +755,7 @@ impl Gadget for WasmGadgetBridge {
             )),
             http: Arc::new(crate::caps::HttpCap::new(self.http_origins.clone())),
             filesystem,
-            command: CommandState {
-                rules: compiled_rules,
-            },
+            command,
             website_metadata,
         })
     }
