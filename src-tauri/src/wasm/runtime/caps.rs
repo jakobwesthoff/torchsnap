@@ -29,7 +29,7 @@ use super::host::clipboard::ClipboardState;
 use super::host::command::CommandState;
 use super::host::fs::FsState;
 use super::host::http::HttpState;
-use super::host::opener::OpenerState;
+use crate::caps::OpenerCap;
 use super::host::sql::{SqlHandleEntry, SqlState};
 use super::host::website_metadata::WebsiteMetadataState;
 
@@ -47,7 +47,7 @@ pub struct WasmGadgetCaps {
     // Capability sub-structs.
     pub(crate) sql: SqlState,
     pub(crate) clipboard: ClipboardState,
-    pub(crate) opener: OpenerState,
+    pub(crate) opener: Arc<OpenerCap>,
     pub(crate) http: HttpState,
     pub(crate) fs: FsState,
     pub(crate) command: CommandState,
@@ -91,7 +91,16 @@ impl WasmGadgetCaps {
             },
             sql: SqlState::default(),
             clipboard: ClipboardState::default(),
-            opener: OpenerState::default(),
+            opener: Arc::new(OpenerCap::from_closures(
+                crate::caps::OpenerPermissions {
+                    schemes: Vec::new(),
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+            )),
             http: HttpState::default(),
             fs: FsState::default(),
             command: CommandState::default(),

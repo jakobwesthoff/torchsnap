@@ -41,7 +41,6 @@ use super::runtime::host::clipboard::ClipboardState;
 use super::runtime::host::command::CommandState;
 use super::runtime::host::fs::FsState;
 use super::runtime::host::http::HttpState;
-use super::runtime::host::opener::OpenerState;
 use super::runtime::host::sql::SqlState;
 use super::runtime::host::website_metadata::WebsiteMetadataState;
 use super::runtime::{
@@ -710,8 +709,6 @@ impl Gadget for WasmGadgetBridge {
                 .map_err(|e| format!("write to clipboard: {e}"))
         });
 
-        let opener_caps = Arc::new(crate::gadgets::OpenerCaps::from_app(app));
-
         // Materialize SQL storage from the bridge's cached config.
         let mut sql = SqlState {
             config: self.sql_config.clone(),
@@ -744,12 +741,14 @@ impl Gadget for WasmGadgetBridge {
             clipboard: ClipboardState {
                 writer: Some(clipboard_writer),
             },
-            opener: OpenerState {
-                schemes: self.opener_schemes.clone(),
-                open_path: self.opener_open_path,
-                reveal_path: self.opener_reveal_path,
-                caps: opener_caps,
-            },
+            opener: Arc::new(crate::caps::OpenerCap::from_app(
+                app,
+                crate::caps::OpenerPermissions {
+                    schemes: self.opener_schemes.clone(),
+                    open_path: self.opener_open_path,
+                    reveal_path: self.opener_reveal_path,
+                },
+            )),
             http: HttpState {
                 origins: self.http_origins.clone(),
                 client: Some(Arc::new(crate::network::Http::new())),

@@ -36,7 +36,9 @@ use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
 
-use super::{Gadget, OpenerCaps, ProvisioningContext};
+use crate::caps::{OpenerCap, OpenerPermissions};
+
+use super::{Gadget, ProvisioningContext};
 
 /// How long before the cached app list is considered stale and
 /// a background refresh is triggered.
@@ -44,7 +46,7 @@ const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
 pub struct AppLauncherCaps {
     pub icon_cache: Arc<IconCache>,
-    pub opener: Arc<OpenerCaps>,
+    pub opener: Arc<OpenerCap>,
 }
 
 pub struct AppLauncherGadget {
@@ -52,11 +54,8 @@ pub struct AppLauncherGadget {
     last_refresh: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
-    // Set once by `enable()`. Background refresh threads and `execute()`
-    // access these after enable() completes, so the OnceLocks are always
-    // initialized by then.
     icon_cache: OnceLock<Arc<IconCache>>,
-    opener: OnceLock<Arc<OpenerCaps>>,
+    opener: OnceLock<Arc<OpenerCap>>,
 }
 
 impl AppLauncherGadget {
@@ -163,7 +162,14 @@ impl Gadget for AppLauncherGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<AppLauncherCaps> {
         Ok(AppLauncherCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::new(OpenerCaps::from_app(&ctx.app)),
+            opener: Arc::new(OpenerCap::from_app(
+                &ctx.app,
+                OpenerPermissions {
+                    schemes: vec!["*".into()],
+                    open_path: true,
+                    reveal_path: true,
+                },
+            )),
         })
     }
 
@@ -256,12 +262,14 @@ impl Gadget for AppLauncherGadget {
 
         match action_id {
             ActionId::Open => {
-                (opener.open_path)(&entry.id)
+                opener
+                    .open_path(&entry.id)
                     .map_err(|e| anyhow::anyhow!(e))
                     .context("open application")?;
             }
             ActionId::Reveal => {
-                (opener.reveal_path)(&entry.id)
+                opener
+                    .reveal_path(&entry.id)
                     .map_err(|e| anyhow::anyhow!(e))
                     .context("reveal application in file manager")?;
             }
