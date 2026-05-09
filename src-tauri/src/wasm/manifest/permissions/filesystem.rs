@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::{ParseTimeResolver, PathResolver};
 
-/// `[permissions.fs]` — declares read-only filesystem paths
+/// `[permissions.filesystem]` — declares read-only filesystem paths
 /// the gadget may access via the `fs` host import.
 ///
 /// ```toml
-/// [permissions.fs]
+/// [permissions.filesystem]
 /// read = [
 ///     "${xdg-config}/myapp/config.toml",
 ///     "/var/lib/myapp/data/*.json",
@@ -55,7 +55,7 @@ impl FsPermissionsDef {
     pub(super) fn validate(self) -> anyhow::Result<Self> {
         if self.read.is_empty() {
             anyhow::bail!(
-                "`[permissions.fs]` declared with an empty `read` list — \
+                "`[permissions.filesystem]` declared with an empty `read` list — \
                  either add at least one path pattern or remove the section"
             );
         }
@@ -66,7 +66,7 @@ impl FsPermissionsDef {
     }
 }
 
-/// Parse-time syntactic validation of a `[permissions.fs]
+/// Parse-time syntactic validation of a `[permissions.filesystem]
 /// read = [...]` entry. Covers the checks that depend only on
 /// the literal string the user typed: non-empty, no `..`
 /// traversal segments, well-formed `${...}` substitution
@@ -77,7 +77,7 @@ impl FsPermissionsDef {
 fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
     if pattern.is_empty() {
         anyhow::bail!(
-            "`[permissions.fs]` read[{index}]: empty pattern; \
+            "`[permissions.filesystem]` read[{index}]: empty pattern; \
              remove the entry or supply a real path"
         );
     }
@@ -85,7 +85,7 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
     for segment in pattern.split('/') {
         if segment == ".." {
             anyhow::bail!(
-                "`[permissions.fs]` read[{index}]: pattern `{pattern}` \
+                "`[permissions.filesystem]` read[{index}]: pattern `{pattern}` \
                  contains a `..` traversal segment; declare absolute \
                  paths only"
             );
@@ -94,7 +94,7 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
 
     ParseTimeResolver
         .validate_variable_references(pattern)
-        .map_err(|e| anyhow::anyhow!("permissions.fs.read[{index}]: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("permissions.filesystem.read[{index}]: {e}"))?;
 
     Ok(())
 }
@@ -152,18 +152,18 @@ mod tests {
         // scan. The check should ignore characters inside
         // `${...}` substitutions.
         let m = Manifest::parse(&minimal(
-            r#"[permissions.fs]
+            r#"[permissions.filesystem]
                read = ["${xdg-config}/ZeroTier/One/authtoken.secret"]"#,
         ))
         .expect("should parse");
-        let fs = m.permissions.unwrap().fs.unwrap();
+        let fs = m.permissions.unwrap().filesystem.unwrap();
         assert_eq!(fs.read.len(), 1);
     }
 
     #[test]
     fn fs_pattern_rejects_empty_read_list() {
         let err = Manifest::parse(&minimal(
-            r#"[permissions.fs]
+            r#"[permissions.filesystem]
                read = []"#,
         ))
         .unwrap_err();
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn fs_pattern_rejects_traversal() {
         let err = Manifest::parse(&minimal(
-            r#"[permissions.fs]
+            r#"[permissions.filesystem]
                read = ["/etc/../etc/hosts"]"#,
         ))
         .unwrap_err();
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn fs_pattern_rejects_unknown_substitution_variable() {
         let err = Manifest::parse(&minimal(
-            r#"[permissions.fs]
+            r#"[permissions.filesystem]
                read = ["${nope}/foo"]"#,
         ))
         .unwrap_err();
@@ -193,14 +193,14 @@ mod tests {
     #[test]
     fn fs_pattern_accepts_glob_metachars_star_and_doublestar() {
         let m = Manifest::parse(&minimal(
-            r#"[permissions.fs]
+            r#"[permissions.filesystem]
                read = [
                    "${xdg-config}/myapp/*.toml",
                    "${xdg-data}/myapp/**/*.json",
                ]"#,
         ))
         .expect("should parse");
-        let fs = m.permissions.unwrap().fs.unwrap();
+        let fs = m.permissions.unwrap().filesystem.unwrap();
         assert_eq!(fs.read.len(), 2);
     }
 }

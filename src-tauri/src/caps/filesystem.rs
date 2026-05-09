@@ -6,7 +6,7 @@
 // FilesystemCap
 //
 // Read-only filesystem access capability. The gadget declares
-// an allowlist of path patterns under `[permissions.fs]` in
+// an allowlist of path patterns under `[permissions.filesystem]` in
 // its manifest; the bridge expands `${...}` substitution
 // variables, canonicalizes the static portion of each pattern,
 // compiles them into a `GlobSet`, and passes the raw patterns
@@ -100,7 +100,7 @@ pub struct FilesystemCap {
 }
 
 impl FilesystemCap {
-    /// Compile manifest `[permissions.fs] read = [...]`
+    /// Compile manifest `[permissions.filesystem] read = [...]`
     /// patterns into a capability. Each pattern is substituted
     /// via the resolver, canonicalized, and compiled into a
     /// `GlobSet`.
@@ -191,7 +191,7 @@ fn compile_fs_patterns(
 
     for pattern in patterns {
         let substituted = resolver.substitute_variables(pattern).map_err(|e| {
-            anyhow::anyhow!("`[permissions.fs]` pattern `{pattern}` substitution failed: {e}")
+            anyhow::anyhow!("`[permissions.filesystem]` pattern `{pattern}` substitution failed: {e}")
         })?;
 
         // Reject unsupported glob shapes against the
@@ -203,7 +203,7 @@ fn compile_fs_patterns(
             .find(|c| matches!(c, '?' | '[' | ']' | '{' | '}'))
         {
             anyhow::bail!(
-                "`[permissions.fs]` pattern `{pattern}` uses unsupported glob \
+                "`[permissions.filesystem]` pattern `{pattern}` uses unsupported glob \
                  metacharacter `{ch}`; only `*` (single segment) and `**` \
                  (multi-segment) are accepted"
             );
@@ -215,7 +215,7 @@ fn compile_fs_patterns(
             .build()
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "`[permissions.fs]` pattern `{pattern}` (resolved to `{canonical}`) \
+                    "`[permissions.filesystem]` pattern `{pattern}` (resolved to `{canonical}`) \
                      is not a valid glob: {e}"
                 )
             })?;
@@ -225,7 +225,7 @@ fn compile_fs_patterns(
 
     let globset = builder
         .build()
-        .map_err(|e| anyhow::anyhow!("`[permissions.fs]` glob set assembly failed: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("`[permissions.filesystem]` glob set assembly failed: {e}"))?;
 
     Ok(FsAllowlist {
         globset,

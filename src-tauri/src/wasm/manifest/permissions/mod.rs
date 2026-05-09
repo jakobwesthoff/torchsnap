@@ -35,8 +35,8 @@ pub use opener::OpenerPermissionsDef;
 pub(super) mod http;
 pub use http::HttpPermissionsDef;
 
-pub(super) mod fs;
-pub use fs::FsPermissionsDef;
+pub(super) mod filesystem;
+pub use filesystem::FsPermissionsDef;
 
 pub(super) mod command;
 pub use command::{ArgvConstraint, CommandPermissionDef};
@@ -49,10 +49,10 @@ pub struct PermissionsDef {
     pub opener: Option<OpenerPermissionsDef>,
     /// `[permissions.http]` — HTTP fetch capability.
     pub http: Option<HttpPermissionsDef>,
-    /// `[permissions.fs]` — read-only filesystem access via
-    /// the `fs::read-file` / `file-exists` / `metadata` host
+    /// `[permissions.filesystem]` — read-only filesystem access
+    /// via the `fs::read-file` / `file-exists` / `metadata` host
     /// imports.
-    pub fs: Option<FsPermissionsDef>,
+    pub filesystem: Option<FsPermissionsDef>,
     /// `[[permissions.command]]` rules — process-execution
     /// capability with per-rule argv constraints. Empty
     /// vector when no rules are declared (deny by default).
@@ -90,14 +90,14 @@ pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Resul
 
     let http = permissions.http.map(|h| h.validate()).transpose()?;
 
-    let fs = permissions.fs.map(|f| f.validate()).transpose()?;
+    let filesystem = permissions.filesystem.map(|f| f.validate()).transpose()?;
 
     command::validate_rules(&permissions.command)?;
 
     Ok(PermissionsDef {
         opener,
         http,
-        fs,
+        filesystem,
         command: permissions.command,
         website_metadata: permissions.website_metadata,
     })
