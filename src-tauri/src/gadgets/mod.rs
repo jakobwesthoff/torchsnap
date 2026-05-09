@@ -34,7 +34,6 @@ use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction,
 use crate::frecency::FrecencyStore;
 use crate::icons::IconCache;
 use crate::network::website_metadata::WebsiteMetadataService;
-use crate::paths::PlatformPaths;
 use crate::settings::SettingsInit;
 
 // =========================================================
@@ -65,7 +64,6 @@ pub struct ProvisioningContext {
     pub frecency: Arc<FrecencyStore>,
     pub icon_cache: Arc<IconCache>,
     pub metadata_service: Arc<WebsiteMetadataService>,
-    pub platform_paths: Arc<PlatformPaths>,
 }
 
 impl Clone for ProvisioningContext {
@@ -76,7 +74,6 @@ impl Clone for ProvisioningContext {
             frecency: Arc::clone(&self.frecency),
             icon_cache: Arc::clone(&self.icon_cache),
             metadata_service: Arc::clone(&self.metadata_service),
-            platform_paths: Arc::clone(&self.platform_paths),
         }
     }
 }
