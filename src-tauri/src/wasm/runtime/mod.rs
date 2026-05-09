@@ -175,64 +175,6 @@ mod tests {
         ss.iter().map(|s| s.to_string()).collect()
     }
 
-    // ---- check_opener_scheme --------------------------------
-
-    use super::host::opener::{OpenerSchemeCheckError, check_opener_scheme};
-
-    #[test]
-    fn opener_permitted_scheme_passes() {
-        assert!(check_opener_scheme(&strs(&["https"]), "https://example.com").is_ok());
-    }
-
-    #[test]
-    fn opener_forbidden_scheme_blocked() {
-        let err = check_opener_scheme(&strs(&["https"]), "ftp://example.com").unwrap_err();
-        match err {
-            OpenerSchemeCheckError::SchemeNotPermitted(scheme) => assert_eq!(scheme, "ftp"),
-            other => panic!("expected SchemeNotPermitted, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn opener_empty_allowlist_denies_everything() {
-        assert!(check_opener_scheme(&[], "https://example.com").is_err());
-    }
-
-    #[test]
-    fn opener_unparseable_url_returns_error() {
-        assert!(check_opener_scheme(&strs(&["https"]), "not-a-url").is_err());
-    }
-
-    #[test]
-    fn opener_scheme_check_is_case_insensitive() {
-        // The `url` crate normalizes schemes to lowercase, so an
-        // uppercase scheme in the URL still matches the allowlist.
-        assert!(check_opener_scheme(&strs(&["https"]), "HTTPS://example.com").is_ok());
-    }
-
-    #[test]
-    fn opener_multiple_schemes_second_matches() {
-        assert!(check_opener_scheme(&strs(&["https", "mailto"]), "mailto:user@x.com").is_ok());
-    }
-
-    #[test]
-    fn opener_wildcard_allows_any_scheme() {
-        assert!(check_opener_scheme(&strs(&["*"]), "https://example.com").is_ok());
-        assert!(check_opener_scheme(&strs(&["*"]), "ftp://example.com").is_ok());
-        assert!(check_opener_scheme(&strs(&["*"]), "mailto:user@x.com").is_ok());
-        assert!(check_opener_scheme(&strs(&["*"]), "custom://anything").is_ok());
-    }
-
-    #[test]
-    fn opener_wildcard_short_circuits_before_url_parse() {
-        assert!(check_opener_scheme(&strs(&["*"]), "not-a-url").is_ok());
-    }
-
-    #[test]
-    fn opener_wildcard_among_other_schemes() {
-        assert!(check_opener_scheme(&strs(&["https", "*"]), "ftp://example.com").is_ok());
-    }
-
     // ---- check_http_origin ----------------------------------
 
     use super::host::http::{WasmHttpError, check_http_origin, wit_method_to_reqwest};
@@ -582,18 +524,19 @@ mod tests {
         let called_url_clone = called_url.clone();
 
         instance.set_caps(WasmGadgetCaps {
-            opener: host::opener::OpenerState {
-                schemes: vec!["https".into()],
-                caps: Arc::new(crate::gadgets::OpenerCaps {
-                    open_url: Box::new(move |url: &str| {
-                        *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
-                        Ok(())
-                    }),
-                    open_path: Box::new(|_| Ok(())),
-                    reveal_path: Box::new(|_| Ok(())),
+            opener: Arc::new(crate::caps::OpenerCap::from_closures(
+                crate::caps::OpenerPermissions {
+                    schemes: vec!["https".into()],
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(move |url: &str| {
+                    *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
+                    Ok(())
                 }),
-                ..Default::default()
-            },
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+            )),
             ..WasmGadgetCaps::default_for_test()
         });
 
@@ -616,15 +559,16 @@ mod tests {
         let (_runtime, instance) = compile_opener_http_fixture();
 
         instance.set_caps(WasmGadgetCaps {
-            opener: host::opener::OpenerState {
-                schemes: vec!["https".into()],
-                caps: Arc::new(crate::gadgets::OpenerCaps {
-                    open_url: Box::new(|_: &str| Ok(())),
-                    open_path: Box::new(|_| Ok(())),
-                    reveal_path: Box::new(|_| Ok(())),
-                }),
-                ..Default::default()
-            },
+            opener: Arc::new(crate::caps::OpenerCap::from_closures(
+                crate::caps::OpenerPermissions {
+                    schemes: vec!["https".into()],
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_: &str| Ok(())),
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+            )),
             ..WasmGadgetCaps::default_for_test()
         });
 

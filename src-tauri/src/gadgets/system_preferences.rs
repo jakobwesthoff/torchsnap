@@ -10,7 +10,7 @@
 // via the platform's `SettingsDiscovery` implementation.
 //
 // Icons are rendered via `SettingsDiscovery::icon` and cached
-// on disk as WebP. Opening a pane uses `OpenerCaps::open_url`
+// on disk as WebP. Opening a pane uses `OpenerCap::open_url`
 // with a platform-specific deep-link URL. Discovery behavior
 // is encapsulated in the discovery trait so this gadget stays
 // fully platform-agnostic.
@@ -32,19 +32,19 @@ use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use super::{Gadget, OpenerCaps, ProvisioningContext};
+use crate::caps::{OpenerCap, OpenerPermissions};
+
+use super::{Gadget, ProvisioningContext};
 
 pub struct SystemPreferencesCaps {
     pub icon_cache: Arc<IconCache>,
-    pub opener: Arc<OpenerCaps>,
+    pub opener: Arc<OpenerCap>,
 }
 
 pub struct SystemPreferencesGadget {
     cache: Arc<RwLock<Vec<SettingsPane>>>,
     discovery: Arc<dyn SettingsDiscovery>,
-    // Set once by `enable()`. `execute()` accesses this after
-    // enable() completes, so the OnceLock is always initialized by then.
-    opener: OnceLock<Arc<OpenerCaps>>,
+    opener: OnceLock<Arc<OpenerCap>>,
 }
 
 impl SystemPreferencesGadget {
@@ -94,7 +94,14 @@ impl Gadget for SystemPreferencesGadget {
     fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<SystemPreferencesCaps> {
         Ok(SystemPreferencesCaps {
             icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::new(OpenerCaps::from_app(&ctx.app)),
+            opener: Arc::new(OpenerCap::from_app(
+                &ctx.app,
+                OpenerPermissions {
+                    schemes: vec!["*".into()],
+                    open_path: false,
+                    reveal_path: false,
+                },
+            )),
         })
     }
 
@@ -166,7 +173,8 @@ impl Gadget for SystemPreferencesGadget {
                 #[cfg(target_os = "macos")]
                 {
                     let url = crate::platform::macos::MacosSettingsDiscovery::pane_url(&entry.id);
-                    (opener.open_url)(&url)
+                    opener
+                        .open_url(&url)
                         .map_err(|e| anyhow::anyhow!(e))
                         .context("open settings pane")?;
                 }

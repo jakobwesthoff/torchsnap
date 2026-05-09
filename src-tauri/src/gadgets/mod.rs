@@ -49,49 +49,6 @@ pub struct GadgetShortcut {
 }
 
 // =========================================================
-// OpenerCaps — closure-based opener capabilities
-// =========================================================
-
-/// Closure-based opener capabilities. Each gadget that needs
-/// opener access builds this in its `provision()` from `ctx.app`.
-pub struct OpenerCaps {
-    pub open_url: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-    pub open_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-    pub reveal_path: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-}
-
-impl OpenerCaps {
-    pub fn from_app(app: &tauri::AppHandle) -> Self {
-        use tauri_plugin_opener::OpenerExt;
-
-        let url_app = app.clone();
-        let path_app = app.clone();
-        let reveal_app = app.clone();
-
-        Self {
-            open_url: Box::new(move |url: &str| {
-                url_app
-                    .opener()
-                    .open_url(url, None::<&str>)
-                    .map_err(|e| e.to_string())
-            }),
-            open_path: Box::new(move |path: &str| {
-                path_app
-                    .opener()
-                    .open_path(path, None::<&str>)
-                    .map_err(|e| e.to_string())
-            }),
-            reveal_path: Box::new(move |path: &str| {
-                reveal_app
-                    .opener()
-                    .reveal_item_in_dir(path)
-                    .map_err(|e| e.to_string())
-            }),
-        }
-    }
-}
-
-// =========================================================
 // ProvisioningContext — shared resources for gadget activation
 // =========================================================
 
