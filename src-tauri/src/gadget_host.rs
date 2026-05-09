@@ -156,6 +156,185 @@ impl GadgetHost {
         }
     }
 
+    // =========================================================
+    // Capability provisioning
+    // =========================================================
+
+    /// Build `ProvisionedCaps` from a list of capability requests.
+    ///
+    /// The host is the single authority: it reads the requests,
+    /// constructs each cap from the provisioning context, and
+    /// returns the bundle. Gadgets never build their own caps.
+    ///
+    /// `source_path` is the gadget's archive/source root —
+    /// provided for WASM gadgets, `None` for native gadgets
+    /// (native gadgets that request `PathResolver` get a
+    /// `gadget_archive` pointing to an empty path).
+    pub(crate) fn build_provisioned_caps(
+        gadget_id: &str,
+        requests: &[crate::caps::CapRequest],
+        ctx: &ProvisioningContext,
+        source_path: Option<&std::path::Path>,
+    ) -> anyhow::Result<Arc<crate::caps::ProvisionedCaps>> {
+        use anyhow::Context;
+        use std::path::PathBuf;
+        use tauri::Manager;
+
+        use crate::caps::*;
+        use crate::frecency::GadgetFrecency;
+        use crate::paths::{GadgetPaths, PlatformPaths};
+        use crate::settings::GadgetSettings;
+
+        let mut caps = ProvisionedCaps {
+            opener: None,
+            http: None,
+            filesystem: None,
+            command: None,
+            clipboard: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: None,
+        };
+
+        // Build GadgetPaths if any request needs path resolution
+        // (PathResolver, Filesystem, or Command all require it).
+        let needs_paths = requests.iter().any(|r| {
+            matches!(
+                r,
+                CapRequest::PathResolver | CapRequest::Filesystem { .. } | CapRequest::Command { .. }
+            )
+        });
+
+        let gadget_paths = if needs_paths {
+            let path_resolver = ctx.app.path();
+            let home = path_resolver.home_dir().context("resolve home directory")?;
+            let xdg_config = path_resolver
+                .config_dir()
+                .context("resolve config directory")?;
+            let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
+
+            let app_data_dir = path_resolver
+                .app_data_dir()
+                .context("resolve app data directory")?;
+
+            let gadget_data = app_data_dir.join("gadget-home").join(gadget_id);
+            let gadget_archive = source_path
+                .map(PathBuf::from)
+                .unwrap_or_default();
+
+            Some(GadgetPaths {
+                platform: Arc::new(PlatformPaths {
+                    home,
+                    xdg_config,
+                    xdg_data,
+                }),
+                gadget_data,
+                gadget_archive,
+            })
+        } else {
+            None
+        };
+
+        for request in requests {
+            match request {
+                CapRequest::Opener { permissions } => {
+                    caps.opener = Some(Arc::new(OpenerCap::from_app(
+                        &ctx.app,
+                        OpenerPermissions {
+                            schemes: permissions.schemes.clone(),
+                            open_path: permissions.open_path,
+                            reveal_path: permissions.reveal_path,
+                        },
+                    )));
+                }
+                CapRequest::Http { permissions } => {
+                    caps.http = Some(Arc::new(HttpCap::new(permissions.origins.clone())));
+                }
+                CapRequest::Filesystem { permissions } => {
+                    let paths = gadget_paths
+                        .as_ref()
+                        .expect("GadgetPaths built when Filesystem requested");
+                    let fs_cap =
+                        FilesystemCap::new(&permissions.read_patterns, paths)
+                            .context("compile filesystem patterns")?;
+                    caps.filesystem = Some(Arc::new(fs_cap));
+                }
+                CapRequest::Command { permissions } => {
+                    let paths = gadget_paths
+                        .as_ref()
+                        .expect("GadgetPaths built when Command requested");
+                    let cmd_cap = CommandCap::new(
+                        &permissions.rules,
+                        paths,
+                        paths.gadget_data.clone(),
+                    )
+                    .context("compile command rules")?;
+                    caps.command = Some(Arc::new(cmd_cap));
+                }
+                CapRequest::SqlStorage { config } => {
+                    let app_data_dir = ctx
+                        .app
+                        .path()
+                        .app_data_dir()
+                        .context("resolve app data directory for sql")?;
+                    let db_path = app_data_dir
+                        .join("gadget-home")
+                        .join(gadget_id)
+                        .join("sql")
+                        .join("storage.sqlite3");
+                    let migration_strs: Vec<&str> =
+                        config.migrations.iter().map(String::as_str).collect();
+                    let storage = crate::storage::SqlStorage::open(db_path, &migration_strs)
+                        .context("open SQL storage")?;
+                    caps.sql_storage = Some(Arc::new(SqlStorageCap::new(Arc::new(storage))));
+                }
+                CapRequest::Clipboard => {
+                    let clipboard_handle = ctx.app.clone();
+                    let clipboard_writer = Box::new(move |text: &str| {
+                        use tauri_plugin_clipboard_manager::ClipboardExt;
+                        clipboard_handle
+                            .clipboard()
+                            .write_text(text)
+                            .map_err(|e| format!("write to clipboard: {e}"))
+                    });
+                    caps.clipboard = Some(Arc::new(ClipboardCap::new(clipboard_writer)));
+                }
+                CapRequest::WebsiteMetadata => {
+                    caps.website_metadata = Some(Arc::new(WebsiteMetadataCap::new(
+                        Arc::clone(&ctx.metadata_service),
+                    )));
+                }
+                CapRequest::IconCache => {
+                    caps.icon_cache = Some(Arc::clone(&ctx.icon_cache));
+                }
+                CapRequest::Settings => {
+                    caps.settings = Some(Arc::new(GadgetSettings::new(
+                        Arc::clone(&ctx.store),
+                        gadget_id,
+                    )));
+                }
+                CapRequest::Frecency => {
+                    caps.frecency = Some(Arc::new(GadgetFrecency::new(
+                        Arc::clone(&ctx.frecency),
+                        gadget_id,
+                    )));
+                }
+                CapRequest::PathResolver => {
+                    let paths = gadget_paths
+                        .clone()
+                        .expect("GadgetPaths built when PathResolver requested");
+                    caps.path_resolver =
+                        Some(Arc::new(PathResolverCap::new(Arc::new(paths))));
+                }
+            }
+        }
+
+        Ok(Arc::new(caps))
+    }
+
     /// Register a gadget with the host. `source_kind` records
     /// where the gadget was loaded from (native Rust code,
     /// bundled WASM archive, user install, dev path) and is
