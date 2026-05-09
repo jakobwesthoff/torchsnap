@@ -15,7 +15,6 @@
 // pipeline alongside native gadgets.
 // =========================================================
 
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -185,24 +184,24 @@ impl WasmGadgetBridge {
             .as_ref()
             .map(|p| p.sql_storage)
             .unwrap_or(false);
-        if sql_requested {
-            if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
-                let mut migration_contents = Vec::with_capacity(sql_def.migrations.len());
-                for path in &sql_def.migrations {
-                    let bytes = source
-                        .read_file(path)
-                        .with_context(|| format!("read SQL migration file `{path}`"))?;
-                    let text = String::from_utf8(bytes).with_context(|| {
-                        format!("SQL migration file `{path}` is not valid UTF-8")
-                    })?;
-                    migration_contents.push(text);
-                }
-                requests.push(CapRequest::SqlStorage {
-                    config: crate::caps::SqlStorageConfig {
-                        migrations: migration_contents,
-                    },
-                });
+        if sql_requested
+            && let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref())
+        {
+            let mut migration_contents = Vec::with_capacity(sql_def.migrations.len());
+            for path in &sql_def.migrations {
+                let bytes = source
+                    .read_file(path)
+                    .with_context(|| format!("read SQL migration file `{path}`"))?;
+                let text = String::from_utf8(bytes).with_context(|| {
+                    format!("SQL migration file `{path}` is not valid UTF-8")
+                })?;
+                migration_contents.push(text);
             }
+            requests.push(CapRequest::SqlStorage {
+                config: crate::caps::SqlStorageConfig {
+                    migrations: migration_contents,
+                },
+            });
         }
 
         Ok(requests)
@@ -232,10 +231,7 @@ impl WasmGadgetBridge {
         let log_sender = log_ctx.sender.clone();
         let gadget_id = manifest.gadget.id.as_str().to_string();
 
-        // Pre-resolve gadget paths for the cached component's
-        // disk cache path.
         let gadget_data = app_data_dir.join("gadget-home").join(gadget_id.as_str());
-        let gadget_archive = source.root_path().to_path_buf();
 
         // Pre-parse every `[[tasks]]` schedule.
         let parsed_tasks = manifest
