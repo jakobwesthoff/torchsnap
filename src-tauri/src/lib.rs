@@ -776,12 +776,15 @@ pub fn run() {
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register app-launcher gadget");
-            host.register(
-                gadgets::system_preferences::SystemPreferencesGadget::new(
-                    platform::PlatformSettingsDiscovery,
-                ),
+            host.register_with_caps::<gadgets::system_preferences::SystemPreferencesGadget, _>(
+                "system-preferences",
+                gadgets::system_preferences::SystemPreferencesGadget::cap_requests(),
+                &prov_ctx,
+                None,
+                |caps| gadgets::system_preferences::SystemPreferencesGadget::new(caps, platform::PlatformSettingsDiscovery),
                 wasm::source::GadgetSourceKind::Builtin,
-            );
+            )
+            .expect("register system-preferences gadget");
             host.register(
                 gadgets::clipboard::ClipboardGadget::new(
                     platform::PlatformClipboard,

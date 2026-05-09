@@ -23,36 +23,43 @@
 // =========================================================
 
 use std::collections::HashSet;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
+use crate::caps::{CapRequest, OpenerPermissions, ProvisionedCaps};
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use crate::caps::{OpenerCap, OpenerPermissions};
-
 use super::{Gadget, ProvisioningContext};
 
-pub struct SystemPreferencesCaps {
-    pub icon_cache: Arc<IconCache>,
-    pub opener: Arc<OpenerCap>,
-}
-
 pub struct SystemPreferencesGadget {
+    caps: Arc<ProvisionedCaps>,
     cache: Arc<RwLock<Vec<SettingsPane>>>,
     discovery: Arc<dyn SettingsDiscovery>,
-    opener: OnceLock<Arc<OpenerCap>>,
 }
 
 impl SystemPreferencesGadget {
-    pub fn new(discovery: impl SettingsDiscovery + 'static) -> Self {
+    pub fn cap_requests() -> Vec<CapRequest> {
+        vec![
+            CapRequest::IconCache,
+            CapRequest::Opener {
+                permissions: OpenerPermissions {
+                    schemes: vec!["*".into()],
+                    open_path: false,
+                    reveal_path: false,
+                },
+            },
+        ]
+    }
+
+    pub fn new(caps: Arc<ProvisionedCaps>, discovery: impl SettingsDiscovery + 'static) -> Self {
         Self {
+            caps,
             cache: Arc::new(RwLock::new(Vec::new())),
             discovery: Arc::new(discovery),
-            opener: OnceLock::new(),
         }
     }
 }
@@ -85,30 +92,18 @@ fn cache_pane_icons(
 }
 
 impl Gadget for SystemPreferencesGadget {
-    type Caps = SystemPreferencesCaps;
+    type Caps = ();
 
     fn id(&self) -> &str {
         "system-preferences"
     }
 
-    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<SystemPreferencesCaps> {
-        Ok(SystemPreferencesCaps {
-            icon_cache: Arc::clone(&ctx.icon_cache),
-            opener: Arc::new(OpenerCap::from_app(
-                &ctx.app,
-                OpenerPermissions {
-                    schemes: vec!["*".into()],
-                    open_path: false,
-                    reveal_path: false,
-                },
-            )),
-        })
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
     }
 
-    fn enable(&self, caps: SystemPreferencesCaps) {
-        // Install the opener so execute() can use it.
-        // The OnceLock guarantees this assignment happens exactly once.
-        let _ = self.opener.set(caps.opener);
+    fn enable(&self, _caps: ()) {
+        let icon_cache = self.caps.icon_cache();
 
         match self.discovery.discover() {
             Ok(mut panes) => {
@@ -120,8 +115,8 @@ impl Gadget for SystemPreferencesGadget {
 
                 // Render and cache SF Symbol icons for each pane.
                 let valid_keys =
-                    cache_pane_icons(&caps.icon_cache, &*self.discovery, &mut panes);
-                caps.icon_cache.cleanup("system-preferences", &valid_keys);
+                    cache_pane_icons(icon_cache, &*self.discovery, &mut panes);
+                icon_cache.cleanup("system-preferences", &valid_keys);
 
                 // Swap in icon-enriched entries.
                 let mut guard = self.cache.write().expect("settings cache not poisoned");
@@ -163,10 +158,7 @@ impl Gadget for SystemPreferencesGadget {
         entry: &ScoredEntry,
         action_id: &ActionId,
     ) -> anyhow::Result<PostAction> {
-        let opener = self
-            .opener
-            .get()
-            .expect("opener initialized during enable");
+        let opener = self.caps.opener();
 
         match action_id {
             ActionId::Open => {
