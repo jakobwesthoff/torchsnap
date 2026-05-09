@@ -6,13 +6,12 @@
 // Paths host import
 //
 // Resolves `${...}` substitution variables at runtime
-// against the per-gadget `GadgetPaths` in the caps bundle.
-// The `PathResolver` trait provides the substitution logic,
-// shared with the manifest-time validator so the two cannot
-// drift apart.
+// through `PathResolverCap`, which wraps the shared
+// `PathResolver` trait impl. The same trait is used at
+// manifest-validation time so the two cannot drift apart.
 // =========================================================
 
-use crate::paths::{PathResolver, ResolveError};
+use crate::paths::ResolveError;
 use crate::wasm::bindings;
 
 use super::super::GadgetState;
@@ -31,11 +30,8 @@ impl bindings::torchsnap::gadget::paths::Host for GadgetState {
         &mut self,
         template: String,
     ) -> Result<String, bindings::torchsnap::gadget::paths::ResolveError> {
-        let caps = self
-            .caps()
-            .map_err(bindings::torchsnap::gadget::paths::ResolveError::Unterminated)?;
-
-        caps.gadget_paths
+        self.caps()
+            .path_resolver()
             .substitute_variables(&template)
             .map_err(Into::into)
     }

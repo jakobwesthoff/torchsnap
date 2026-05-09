@@ -17,8 +17,7 @@ use super::super::GadgetState;
 
 impl bindings::torchsnap::gadget::settings::Host for GadgetState {
     fn get(&mut self, key: String) -> Option<String> {
-        let caps = self.caps.as_ref()?;
-        let settings = caps.settings.as_ref()?;
+        let settings = self.caps.settings.as_ref()?;
         settings.get_raw(&key)
     }
 }

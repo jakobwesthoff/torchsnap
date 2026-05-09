@@ -28,9 +28,6 @@ impl bindings::torchsnap::gadget::clipboard::Host for GadgetState {
         &mut self,
         text: String,
     ) -> Result<(), bindings::torchsnap::gadget::clipboard::ClipboardError> {
-        let caps = self
-            .caps()
-            .map_err(|e| bindings::torchsnap::gadget::clipboard::ClipboardError::BackendFailure(e))?;
-        caps.clipboard.write_text(&text).map_err(Into::into)
+        self.caps().clipboard().write_text(&text).map_err(Into::into)
     }
 }

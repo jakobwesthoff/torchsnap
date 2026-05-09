@@ -144,7 +144,10 @@ impl CachedComponent {
     /// Wraps the entire flow in an `init` span with `acquire`
     /// and `instantiate` children, so the devtools log shows
     /// a single timeline entry for "from cold to running."
-    pub fn instantiate(&mut self) -> anyhow::Result<WasmGadgetInstance> {
+    pub fn instantiate(
+        &mut self,
+        caps: std::sync::Arc<crate::caps::ProvisionedCaps>,
+    ) -> anyhow::Result<WasmGadgetInstance> {
         let init = self
             .logger
             .span("init")
@@ -161,7 +164,7 @@ impl CachedComponent {
         });
 
         self.runtime
-            .instantiate(&self.gadget_id, component, &self.log_ctx)
+            .instantiate(&self.gadget_id, component, &self.log_ctx, caps)
     }
 
     // =========================================================
@@ -367,6 +370,32 @@ mod tests {
         let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/minimal-gadget");
         Arc::new(DirectorySource::open(fixture_root).expect("open minimal fixture"))
+    }
+
+    fn test_caps() -> Arc<crate::caps::ProvisionedCaps> {
+        use crate::caps::*;
+        Arc::new(ProvisionedCaps {
+            opener: Some(Arc::new(OpenerCap::from_closures(
+                OpenerPermissions { schemes: vec![], open_path: false, reveal_path: false },
+                Box::new(|_| Ok(())), Box::new(|_| Ok(())), Box::new(|_| Ok(())),
+            ))),
+            http: Some(Arc::new(HttpCap::new(vec![]))),
+            filesystem: None, command: None,
+            clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| Ok(()))))),
+            sql_storage: None, website_metadata: None, icon_cache: None,
+            settings: None, frecency: None,
+            path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(
+                crate::paths::GadgetPaths {
+                    platform: Arc::new(crate::paths::PlatformPaths {
+                        home: std::path::PathBuf::from("/tmp/test"),
+                        xdg_config: std::path::PathBuf::from("/tmp/test/.config"),
+                        xdg_data: std::path::PathBuf::from("/tmp/test/.local/share"),
+                    }),
+                    gadget_data: std::path::PathBuf::from("/tmp/test-data"),
+                    gadget_archive: std::path::PathBuf::from("/tmp/test-archive"),
+                },
+            )))),
+        })
     }
 
     // ---- Construction ----------------------------------------
@@ -651,7 +680,7 @@ mod tests {
             source,
             tmp.path().to_path_buf(),
         );
-        let instance = cached.instantiate().expect("instantiate");
+        let instance = cached.instantiate(test_caps()).expect("instantiate");
         instance.enable().expect("guest enable");
     }
 
@@ -943,7 +972,7 @@ mod tests {
             source,
             tmp.path().to_path_buf(),
         );
-        let _instance = cached.instantiate().expect("instantiate");
+        let _instance = cached.instantiate(test_caps()).expect("instantiate");
 
         let items = drain_items(&system).await;
 
@@ -1063,7 +1092,7 @@ mod tests {
         cached.acquire().expect("acquire");
         cached.release();
 
-        let instance = cached.instantiate().expect("instantiate after release");
+        let instance = cached.instantiate(test_caps()).expect("instantiate after release");
         instance.enable().expect("guest enable");
     }
 }

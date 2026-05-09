@@ -134,6 +134,7 @@ impl WasmRuntime {
         gadget_id: &str,
         component: &Component,
         log_ctx: &LogContext,
+        caps: Arc<crate::caps::ProvisionedCaps>,
     ) -> anyhow::Result<WasmGadgetInstance> {
         let mut linker = Linker::<GadgetState>::new(&self.engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
@@ -157,6 +158,7 @@ impl WasmRuntime {
             wasi,
             log_ctx.sender.clone(),
             Arc::clone(&log_ctx.span_registry),
+            caps,
         );
 
         let mut store = Store::new(&self.engine, state);

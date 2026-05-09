@@ -12,6 +12,7 @@
 // WIT ↔ native type conversion and post-call audit logging.
 // =========================================================
 
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::caps::{CommandCapError, CommandOptions, CommandResult};
@@ -82,23 +83,19 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
     > {
         use bindings::torchsnap::gadget::command::CommandError as WitErr;
 
-        // Access caps and GadgetState fields through disjoint
-        // field borrows — the borrow checker allows this because
-        // `self.caps` and `self.gadget_id`/`self.log_sender` are
-        // separate fields.
-        let caps = self
-            .caps
-            .as_ref()
-            .ok_or_else(|| WitErr::SpawnFailed("capability accessed outside enable lifetime".into()))?;
-
-        let command_cap = caps
-            .command
-            .as_ref()
-            .ok_or_else(|| {
-                WitErr::PermissionDenied(
-                    "no `[[permissions.command]]` rules declared".into(),
-                )
-            })?;
+        // Clone the command cap Arc before accessing other self fields.
+        // `self.caps()` borrows self, so we clone the Arc first to release
+        // the borrow before accessing `self.gadget_id` and `self.log_sender`.
+        let command_cap = Arc::clone(
+            self.caps
+                .command
+                .as_ref()
+                .ok_or_else(|| {
+                    WitErr::PermissionDenied(
+                        "no `[[permissions.command]]` rules declared".into(),
+                    )
+                })?,
+        );
 
         let argv_clone = options.args.clone();
         let native_options: CommandOptions = options.into();

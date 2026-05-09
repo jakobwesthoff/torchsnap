@@ -306,7 +306,7 @@ impl WasmGadgetBridge {
             .cached
             .lock()
             .expect("cached component not poisoned")
-            .instantiate()
+            .instantiate(Arc::clone(&self.caps))
             .with_context(|| format!("instantiate WASM gadget `{}`", self.gadget_id))?;
 
         let arc = Arc::new(instance);
@@ -630,31 +630,7 @@ impl Gadget for WasmGadgetBridge {
             }
         };
 
-        // Transitional adapter: build WasmGadgetCaps from the
-        // host-provisioned ProvisionedCaps. This adapter goes away
-        // when WasmGadgetCaps is merged into ProvisionedCaps
-        // (Phase D of the provisioning restructuring).
-        let gadget_paths = GadgetPaths {
-            platform: Arc::clone(&self.platform_paths),
-            gadget_data: self.gadget_data.clone(),
-            gadget_archive: self.gadget_archive.clone(),
-        };
-
-        let wasm_caps = WasmGadgetCaps {
-            settings: self.caps.settings.clone(),
-            frecency: self.caps.frecency.clone(),
-            gadget_paths,
-            sql_storage: self.caps.sql_storage.clone(),
-            clipboard: self.caps.clipboard().clone(),
-            opener: self.caps.opener().clone(),
-            http: self.caps.http().clone(),
-            filesystem: self.caps.filesystem.clone(),
-            command: self.caps.command.clone(),
-            website_metadata: self.caps.website_metadata.clone(),
-        };
-
         instance.set_gadget_source(Arc::clone(&self.gadget_source));
-        instance.set_caps(wasm_caps);
 
         if let Err(e) = instance.enable() {
             self.log(LogLevel::Error, format!("guest enable() failed: {e:#}"));
@@ -917,15 +893,11 @@ mod tests {
         )
     }
 
-    /// Build a `WasmGadgetCaps` from a bridge for tests that
-    /// verify SQL storage across enable cycles. Reads migration
-    /// SQL from the bridge's caps (populated by
-    /// cap_requests_from_manifest during test_bridge_with_sql).
-    fn build_test_caps(bridge: &WasmGadgetBridge) -> WasmGadgetCaps {
-        WasmGadgetCaps {
-            sql_storage: bridge.caps.sql_storage.clone(),
-            ..WasmGadgetCaps::default_for_test()
-        }
+    /// Build caps for a bridge for tests that verify SQL storage across
+    /// enable cycles. Reads SQL storage from the bridge's provisioned caps
+    /// (populated by `cap_requests_from_manifest` during `test_bridge_with_sql`).
+    fn build_test_caps(bridge: &WasmGadgetBridge) -> Arc<crate::caps::ProvisionedCaps> {
+        test_caps_with_sql(bridge.caps.sql_storage.clone())
     }
 
     /// Build a bridge from a fixture, reading SQL migrations

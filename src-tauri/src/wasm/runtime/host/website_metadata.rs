@@ -30,9 +30,8 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
     > {
         use bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError as WitError;
 
-        let caps = self.caps().map_err(|e| WitError::PermissionDenied(e))?;
-
-        let cap = caps
+        let cap = self
+            .caps
             .website_metadata
             .as_ref()
             .ok_or_else(|| WitError::PermissionDenied(
@@ -99,11 +98,16 @@ mod tests {
     use httpmock::prelude::*;
     use tempfile::TempDir;
 
-    use crate::caps::WebsiteMetadataCap;
+    use crate::caps::{
+        OpenerCap, OpenerPermissions, HttpCap, ClipboardCap, PathResolverCap, ProvisionedCaps,
+        WebsiteMetadataCap,
+    };
     use crate::network::website_metadata::WebsiteMetadataService;
+    use crate::paths::{GadgetPaths, PlatformPaths};
     use crate::settings::notifier::SettingsNotifier;
     use crate::wasm::bindings::torchsnap::gadget::website_metadata as wit;
-    use crate::wasm::runtime::caps::WasmGadgetCaps;
+    use crate::wasm::logging::channel::LogSender;
+    use crate::wasm::logging::spans::SpanRegistry;
 
     struct ShimEnv {
         server: MockServer,
@@ -113,6 +117,8 @@ mod tests {
     }
 
     fn make_env(enabled: bool) -> ShimEnv {
+        use wasmtime_wasi::WasiCtxBuilder;
+
         let server = MockServer::start();
         let tmp = TempDir::new().expect("temp dir");
         let notifier = SettingsNotifier::new();
@@ -124,17 +130,46 @@ mod tests {
             svc.with_url_builder(move |domain, path| format!("{server_base}/{domain}{path}")),
         );
 
-        let mut caps = WasmGadgetCaps::default_for_test();
-        caps.website_metadata = if enabled {
-            Some(Arc::new(WebsiteMetadataCap::new(svc)))
-        } else {
-            None
-        };
+        let caps = Arc::new(ProvisionedCaps {
+            opener: Some(Arc::new(OpenerCap::from_closures(
+                OpenerPermissions { schemes: Vec::new(), open_path: false, reveal_path: false },
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+                Box::new(|_| Err("opener not initialized".into())),
+            ))),
+            http: Some(Arc::new(HttpCap::new(Vec::new()))),
+            filesystem: None,
+            command: None,
+            clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| {
+                Err("clipboard not initialized".into())
+            })))),
+            sql_storage: None,
+            website_metadata: if enabled {
+                Some(Arc::new(WebsiteMetadataCap::new(svc)))
+            } else {
+                None
+            },
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(GadgetPaths {
+                platform: Arc::new(PlatformPaths {
+                    home: std::path::PathBuf::from("/tmp/test-home"),
+                    xdg_config: std::path::PathBuf::from("/tmp/test-xdg-config"),
+                    xdg_data: std::path::PathBuf::from("/tmp/test-xdg-data"),
+                }),
+                gadget_data: std::path::PathBuf::from("/tmp/test-gadget-data"),
+                gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
+            })))),
+        });
 
-        let state = GadgetState {
-            caps: Some(caps),
-            ..GadgetState::default_for_test()
-        };
+        let state = GadgetState::new(
+            "test-gadget".to_string(),
+            WasiCtxBuilder::new().build(),
+            LogSender::test_sender(),
+            Arc::new(SpanRegistry::new()),
+            caps,
+        );
 
         ShimEnv {
             server,

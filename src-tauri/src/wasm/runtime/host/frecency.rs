@@ -20,8 +20,8 @@ use super::super::GadgetState;
 impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
     fn is_enabled(&mut self) -> bool {
         self.caps
+            .frecency
             .as_ref()
-            .and_then(|c| c.frecency.as_ref())
             .is_some_and(|f| f.is_enabled())
     }
 
@@ -29,10 +29,7 @@ impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
         &mut self,
         limit: u32,
     ) -> Vec<bindings::torchsnap::gadget::frecency::FrecencyItem> {
-        let Some(caps) = self.caps.as_ref() else {
-            return Vec::new();
-        };
-        let Some(frecency) = caps.frecency.as_ref() else {
+        let Some(frecency) = self.caps.frecency.as_ref() else {
             return Vec::new();
         };
         frecency
