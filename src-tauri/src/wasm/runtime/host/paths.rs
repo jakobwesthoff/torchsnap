@@ -6,30 +6,37 @@
 // Paths host import
 //
 // Resolves `${...}` substitution variables at runtime
-// against the per-gadget `PathContext` in the caps bundle.
-// The recognized-variable list and the substitution
-// implementation live in `crate::wasm::permission_vars`,
-// shared with the manifest-time validator so the two
-// cannot drift apart.
+// against the per-gadget `GadgetPaths` in the caps bundle.
+// The `PathResolver` trait provides the substitution logic,
+// shared with the manifest-time validator so the two cannot
+// drift apart.
 // =========================================================
 
+use crate::paths::{PathResolver, ResolveError};
 use crate::wasm::bindings;
-use crate::wasm::permission_vars::{ResolveError, substitute_variables};
 
 use super::super::GadgetState;
+
+impl From<ResolveError> for bindings::torchsnap::gadget::paths::ResolveError {
+    fn from(e: ResolveError) -> Self {
+        match e {
+            ResolveError::UnknownVariable(name) => Self::UnknownVariable(name),
+            ResolveError::Unterminated(rest) => Self::Unterminated(rest),
+        }
+    }
+}
 
 impl bindings::torchsnap::gadget::paths::Host for GadgetState {
     fn resolve(
         &mut self,
         template: String,
     ) -> Result<String, bindings::torchsnap::gadget::paths::ResolveError> {
-        use bindings::torchsnap::gadget::paths::ResolveError as WitResolveError;
+        let caps = self
+            .caps()
+            .map_err(bindings::torchsnap::gadget::paths::ResolveError::Unterminated)?;
 
-        let caps = self.caps().map_err(|e| WitResolveError::Unterminated(e))?;
-
-        substitute_variables(&template, &caps.path_context).map_err(|e| match e {
-            ResolveError::UnknownVariable(name) => WitResolveError::UnknownVariable(name),
-            ResolveError::Unterminated(rest) => WitResolveError::Unterminated(rest),
-        })
+        caps.gadget_paths
+            .substitute_variables(&template)
+            .map_err(Into::into)
     }
 }

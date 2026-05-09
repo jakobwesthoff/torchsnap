@@ -33,7 +33,7 @@ use std::time::UNIX_EPOCH;
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
 use crate::wasm::bindings;
-use crate::wasm::permission_vars::{PathContext, substitute_variables};
+use crate::paths::PathResolver;
 
 use super::super::GadgetState;
 
@@ -89,10 +89,11 @@ impl From<WasmFsError> for bindings::torchsnap::gadget::fs::FsError {
 
 /// Compile a manifest's `read = [...]` patterns into a
 /// `FsAllowlist`. Called by the bridge at construction time
-/// once `PathContext` is available for variable substitution.
+/// once a [`PathResolver`] is available for variable
+/// substitution.
 ///
 /// For each pattern:
-/// 1. Substitute `${...}` tokens against `ctx`.
+/// 1. Substitute `${...}` tokens via the resolver.
 /// 2. Canonicalize the static prefix (everything up to the
 ///    first glob metacharacter), walking up through
 ///    non-existent components until an existing ancestor is
@@ -109,13 +110,13 @@ impl From<WasmFsError> for bindings::torchsnap::gadget::fs::FsError {
 /// `validate_fs_pattern` in `manifest.rs`.
 pub(crate) fn compile_fs_patterns(
     patterns: &[String],
-    ctx: &PathContext,
+    resolver: &impl PathResolver,
 ) -> anyhow::Result<FsAllowlist> {
     let mut builder = GlobSetBuilder::new();
     let mut canonical_patterns = Vec::with_capacity(patterns.len());
 
     for pattern in patterns {
-        let substituted = substitute_variables(pattern, ctx).map_err(|e| {
+        let substituted = resolver.substitute_variables(pattern).map_err(|e| {
             anyhow::anyhow!("`[permissions.fs]` pattern `{pattern}` substitution failed: {e}")
         })?;
 
@@ -351,14 +352,18 @@ mod tests {
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
-    fn ctx_for(tmp: &TempDir) -> PathContext {
+    use crate::paths::{GadgetPaths, PlatformPaths};
+
+    fn ctx_for(tmp: &TempDir) -> GadgetPaths {
         let root = tmp.path().to_path_buf();
-        PathContext {
+        GadgetPaths {
+            platform: std::sync::Arc::new(PlatformPaths {
+                home: root.join("home"),
+                xdg_config: root.join("xdg-config"),
+                xdg_data: root.join("xdg-data"),
+            }),
             gadget_data: root.join("gadget-data"),
             gadget_archive: root.join("gadget-archive"),
-            home: root.join("home"),
-            xdg_config: root.join("xdg-config"),
-            xdg_data: root.join("xdg-data"),
         }
     }
 
@@ -471,8 +476,8 @@ mod tests {
     fn compile_fs_patterns_substitutes_variables() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg-config");
-        let target = ctx.xdg_config.join("config.toml");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir xdg-config");
+        let target = ctx.platform.xdg_config.join("config.toml");
         std::fs::write(&target, b"x").expect("write");
 
         let allowlist =
@@ -516,7 +521,7 @@ mod tests {
         // they're gone entirely.
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg-config");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir xdg-config");
         compile_fs_patterns(
             &["${xdg-config}/ZeroTier/One/authtoken.secret".into()],
             &ctx,
@@ -530,8 +535,8 @@ mod tests {
     fn resolve_request_accepts_allowed_existing_path() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir");
-        let path = ctx.xdg_config.join("ok.txt");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir");
+        let path = ctx.platform.xdg_config.join("ok.txt");
         std::fs::write(&path, b"hello").expect("write");
 
         let allowlist =
@@ -545,9 +550,9 @@ mod tests {
     fn resolve_request_denies_path_outside_allowlist() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg");
-        std::fs::create_dir_all(&ctx.home).expect("mkdir home");
-        let outside = ctx.home.join("secret.txt");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir xdg");
+        std::fs::create_dir_all(&ctx.platform.home).expect("mkdir home");
+        let outside = ctx.platform.home.join("secret.txt");
         std::fs::write(&outside, b"nope").expect("write");
 
         let allowlist =
@@ -563,11 +568,11 @@ mod tests {
     fn resolve_request_returns_not_found_for_missing_path() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir");
         let allowlist =
             compile_fs_patterns(&["${xdg-config}/*.txt".into()], &ctx).expect("compile");
 
-        let missing = ctx.xdg_config.join("missing.txt");
+        let missing = ctx.platform.xdg_config.join("missing.txt");
         match resolve_request(Some(&allowlist), missing.to_str().unwrap()) {
             Err(WasmFsError::NotFound) => {}
             other => panic!("expected NotFound, got {other:?}"),
@@ -586,15 +591,15 @@ mod tests {
     fn resolve_request_follows_symlink_target_through_allowlist() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg");
-        std::fs::create_dir_all(&ctx.home).expect("mkdir home");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir xdg");
+        std::fs::create_dir_all(&ctx.platform.home).expect("mkdir home");
 
         // Real file lives inside xdg_config; a symlink in xdg_config
         // points to it. Both source and target are inside the
         // allowlist so the read should succeed.
-        let real = ctx.xdg_config.join("real.txt");
+        let real = ctx.platform.xdg_config.join("real.txt");
         std::fs::write(&real, b"contents").expect("write");
-        let link = ctx.xdg_config.join("link.txt");
+        let link = ctx.platform.xdg_config.join("link.txt");
         symlink(&real, &link).expect("symlink");
 
         let allowlist =
@@ -607,16 +612,16 @@ mod tests {
     fn resolve_request_denies_symlink_pointing_outside_allowlist() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);
-        std::fs::create_dir_all(&ctx.xdg_config).expect("mkdir xdg");
-        std::fs::create_dir_all(&ctx.home).expect("mkdir home");
+        std::fs::create_dir_all(&ctx.platform.xdg_config).expect("mkdir xdg");
+        std::fs::create_dir_all(&ctx.platform.home).expect("mkdir home");
 
         // Real file lives in `home` (not in allowlist); a symlink in
         // xdg_config (which IS in allowlist) points to it. Resolving
         // through the symlink to the real path must fail because
         // the real path is outside the allowlist.
-        let real = ctx.home.join("escape.txt");
+        let real = ctx.platform.home.join("escape.txt");
         std::fs::write(&real, b"escape").expect("write");
-        let link = ctx.xdg_config.join("link.txt");
+        let link = ctx.platform.xdg_config.join("link.txt");
         symlink(&real, &link).expect("symlink");
 
         let allowlist =

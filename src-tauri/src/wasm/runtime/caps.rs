@@ -22,7 +22,7 @@ use wasmtime::component::{Resource, ResourceTable};
 
 use crate::frecency::GadgetFrecency;
 use crate::settings::GadgetSettings;
-use crate::wasm::permission_vars::PathContext;
+use crate::paths::GadgetPaths;
 use crate::wasm::source::GadgetSource;
 
 use super::host::clipboard::ClipboardState;
@@ -40,9 +40,9 @@ pub struct WasmGadgetCaps {
     pub(crate) frecency: Option<GadgetFrecency>,
     pub(crate) gadget_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
 
-    // Mandatory — construction fails if PathContext cannot
+    // Mandatory — construction fails if GadgetPaths cannot
     // be resolved.
-    pub(crate) path_context: PathContext,
+    pub(crate) gadget_paths: GadgetPaths,
 
     // Capability sub-structs.
     pub(crate) sql: SqlState,
@@ -80,12 +80,14 @@ impl WasmGadgetCaps {
             settings: None,
             frecency: None,
             gadget_source: None,
-            path_context: PathContext {
+            gadget_paths: GadgetPaths {
+                platform: std::sync::Arc::new(crate::paths::PlatformPaths {
+                    home: std::path::PathBuf::from("/tmp/test-home"),
+                    xdg_config: std::path::PathBuf::from("/tmp/test-xdg-config"),
+                    xdg_data: std::path::PathBuf::from("/tmp/test-xdg-data"),
+                }),
                 gadget_data: std::path::PathBuf::from("/tmp/test-gadget-data"),
                 gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
-                home: std::path::PathBuf::from("/tmp/test-home"),
-                xdg_config: std::path::PathBuf::from("/tmp/test-xdg-config"),
-                xdg_data: std::path::PathBuf::from("/tmp/test-xdg-data"),
             },
             sql: SqlState::default(),
             clipboard: ClipboardState::default(),

@@ -38,7 +38,7 @@ use thiserror::Error;
 
 use super::manifest::{ArgvConstraint, CommandPermissionDef};
 use super::path_safety::{self, PathError};
-use super::permission_vars::{PathContext, ResolveError, substitute_variables};
+use crate::paths::{PathResolver, ResolveError};
 
 // =========================================================
 // Compiled rule representation
@@ -113,7 +113,7 @@ pub enum MatchError {
 // =========================================================
 
 /// Compile a single raw `[[permissions.command]]` rule
-/// against the resolved [`PathContext`]. Variables in
+/// against the provided [`PathResolver`]. Variables in
 /// `literal`, `enum` value, and `path-under` root are
 /// substituted; regex and glob patterns are compiled. The
 /// resulting [`CompiledCommandRule`] is ready for runtime
@@ -121,13 +121,13 @@ pub enum MatchError {
 pub fn compile_rule(
     raw: &CommandPermissionDef,
     rule_index: usize,
-    ctx: &PathContext,
+    resolver: &impl PathResolver,
 ) -> Result<CompiledCommandRule, CompileError> {
     let argv = raw
         .argv
         .iter()
         .enumerate()
-        .map(|(argv_index, c)| compile_constraint(c, rule_index, argv_index, ctx))
+        .map(|(argv_index, c)| compile_constraint(c, rule_index, argv_index, resolver))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CompiledCommandRule {
@@ -140,11 +140,11 @@ fn compile_constraint(
     constraint: &ArgvConstraint,
     rule_index: usize,
     argv_index: usize,
-    ctx: &PathContext,
+    resolver: &impl PathResolver,
 ) -> Result<CompiledArgvConstraint, CompileError> {
     match constraint {
         ArgvConstraint::Literal { value } => {
-            let resolved = substitute_variables(value, ctx).map_err(|e| CompileError::Resolve {
+            let resolved = resolver.substitute_variables(value).map_err(|e| CompileError::Resolve {
                 rule_index,
                 field: format!("argv[{argv_index}].value"),
                 source: e,
@@ -155,7 +155,7 @@ fn compile_constraint(
             let resolved = values
                 .iter()
                 .map(|v| {
-                    substitute_variables(v, ctx).map_err(|e| CompileError::Resolve {
+                    resolver.substitute_variables(v).map_err(|e| CompileError::Resolve {
                         rule_index,
                         field: format!("argv[{argv_index}].values"),
                         source: e,
@@ -189,7 +189,7 @@ fn compile_constraint(
             Ok(CompiledArgvConstraint::Regex(compiled))
         }
         ArgvConstraint::PathUnder { root } => {
-            let resolved = substitute_variables(root, ctx).map_err(|e| CompileError::Resolve {
+            let resolved = resolver.substitute_variables(root).map_err(|e| CompileError::Resolve {
                 rule_index,
                 field: format!("argv[{argv_index}].root"),
                 source: e,
@@ -202,7 +202,7 @@ fn compile_constraint(
             // so the inner constraint here is never another
             // `Rest`. Compile recursively to keep the type
             // shape consistent.
-            let inner = compile_constraint(constraint, rule_index, argv_index, ctx)?;
+            let inner = compile_constraint(constraint, rule_index, argv_index, resolver)?;
             Ok(CompiledArgvConstraint::Rest(Box::new(inner)))
         }
     }
@@ -307,23 +307,30 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn ctx_with(gadget_archive: PathBuf, gadget_data: PathBuf) -> PathContext {
-        PathContext {
+    use crate::paths::{GadgetPaths, PlatformPaths};
+    use std::sync::Arc;
+
+    fn ctx_with(gadget_archive: PathBuf, gadget_data: PathBuf) -> GadgetPaths {
+        GadgetPaths {
+            platform: Arc::new(PlatformPaths {
+                home: PathBuf::from("/tmp"),
+                xdg_config: PathBuf::from("/tmp"),
+                xdg_data: PathBuf::from("/tmp"),
+            }),
             gadget_data,
             gadget_archive,
-            home: PathBuf::from("/tmp"),
-            xdg_config: PathBuf::from("/tmp"),
-            xdg_data: PathBuf::from("/tmp"),
         }
     }
 
-    fn default_ctx() -> PathContext {
-        PathContext {
+    fn default_ctx() -> GadgetPaths {
+        GadgetPaths {
+            platform: Arc::new(PlatformPaths {
+                home: PathBuf::from("/tmp/home"),
+                xdg_config: PathBuf::from("/tmp/config"),
+                xdg_data: PathBuf::from("/tmp/data"),
+            }),
             gadget_data: PathBuf::from("/tmp/plug-data"),
             gadget_archive: PathBuf::from("/tmp/plug-archive"),
-            home: PathBuf::from("/tmp/home"),
-            xdg_config: PathBuf::from("/tmp/config"),
-            xdg_data: PathBuf::from("/tmp/data"),
         }
     }
 

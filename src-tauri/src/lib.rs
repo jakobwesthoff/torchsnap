@@ -11,6 +11,7 @@ mod gadget_install;
 mod gadgets;
 mod icons;
 mod network;
+mod paths;
 mod platform;
 mod settings;
 mod storage;

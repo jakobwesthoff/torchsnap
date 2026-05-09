@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wasm::permission_vars::validate_variable_references;
+use crate::paths::{ParseTimeResolver, PathResolver};
 
 /// `[permissions.fs]` — declares read-only filesystem paths
 /// the gadget may access via the `fs` host import.
@@ -17,17 +17,17 @@ use crate::wasm::permission_vars::validate_variable_references;
 /// ]
 /// ```
 ///
-/// Patterns accept `${...}` substitution tokens from
-/// [`RECOGNIZED_PERMISSION_VARIABLES`] and the glob
-/// metacharacters `*` (single segment) and `**` (multi-segment).
+/// Patterns accept `${...}` substitution tokens (validated
+/// via `PathResolver`) and the glob metacharacters `*`
+/// (single segment) and `**` (multi-segment).
 ///
 /// An empty `read` list is a manifest authoring error.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FsPermissionsDef {
     /// Patterns the gadget may read from. `${...}` tokens are
     /// preserved verbatim — substitution and glob compilation
-    /// happen at bridge construction, when the per-instance
-    /// `PathContext` is available.
+    /// happen at bridge construction, when a `PathResolver`
+    /// is available.
     pub read: Vec<String>,
 }
 
@@ -74,7 +74,9 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
         }
     }
 
-    validate_variable_references(pattern, &format!("permissions.fs.read[{index}]"), index)?;
+    ParseTimeResolver
+        .validate_variable_references(pattern)
+        .map_err(|e| anyhow::anyhow!("permissions.fs.read[{index}]: {e}"))?;
 
     Ok(())
 }

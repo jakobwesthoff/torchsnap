@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wasm::permission_vars::validate_variable_references;
+use crate::paths::{ParseTimeResolver, PathResolver};
 
 /// `[[permissions.command]]` rule — a single binary +
 /// argv-shape pattern the gadget is permitted to invoke
@@ -96,7 +96,9 @@ impl CommandPermissionDef {
         }
 
         if let Some(cwd) = &self.cwd {
-            validate_variable_references(cwd, "cwd", index)?;
+            ParseTimeResolver
+                .validate_variable_references(cwd)
+                .map_err(|e| anyhow::anyhow!("rule {index} cwd: {e}"))?;
         }
 
         Ok(())
@@ -167,10 +169,9 @@ pub enum ArgvConstraint {
 }
 
 // Substitution variables recognized in `literal`, `enum`,
-// `path-under`, and per-rule `cwd` fields are defined in
-// `crate::wasm::permission_vars` and shared with the runtime
-// `paths::resolve` host import. See that module for the
-// list and the parser/substituter implementations.
+// `path-under`, and per-rule `cwd` fields are validated via
+// `crate::paths::ParseTimeResolver` and resolved at runtime
+// through `crate::paths::PathResolver` implementations.
 
 // =========================================================
 // Internal validators
@@ -344,14 +345,18 @@ fn validate_argv_constraint(
     let where_ = format!("rule {rule_index} argv[{argv_index}]");
     match constraint {
         ArgvConstraint::Literal { value } => {
-            validate_variable_references(value, &format!("{where_}.value"), rule_index)?;
+            ParseTimeResolver
+                .validate_variable_references(value)
+                .map_err(|e| anyhow::anyhow!("{where_}.value: {e}"))?;
         }
         ArgvConstraint::Enum { values } => {
             if values.is_empty() {
                 anyhow::bail!("{where_} `enum` constraint has empty `values` list");
             }
             for v in values {
-                validate_variable_references(v, &format!("{where_}.values"), rule_index)?;
+                ParseTimeResolver
+                    .validate_variable_references(v)
+                    .map_err(|e| anyhow::anyhow!("{where_}.values: {e}"))?;
             }
         }
         ArgvConstraint::Glob { pattern } => {
@@ -372,7 +377,9 @@ fn validate_argv_constraint(
             if root.is_empty() {
                 anyhow::bail!("{where_} `path-under` constraint has empty `root`");
             }
-            validate_variable_references(root, &format!("{where_}.root"), rule_index)?;
+            ParseTimeResolver
+                .validate_variable_references(root)
+                .map_err(|e| anyhow::anyhow!("{where_}.root: {e}"))?;
         }
         ArgvConstraint::AnyString => {}
         ArgvConstraint::Rest { constraint } => {

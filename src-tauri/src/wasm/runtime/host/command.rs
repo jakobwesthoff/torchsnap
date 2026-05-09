@@ -58,7 +58,7 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
         let cwd = match options.cwd.as_deref() {
             Some(explicit) => std::path::PathBuf::from(explicit),
             None => {
-                let scratch = caps.path_context.gadget_data.join("exec-cwd");
+                let scratch = caps.gadget_paths.gadget_data.join("exec-cwd");
                 if let Err(e) = std::fs::create_dir_all(&scratch) {
                     return Err(WitErr::SpawnFailed(format!(
                         "create scratch cwd `{}`: {e}",
