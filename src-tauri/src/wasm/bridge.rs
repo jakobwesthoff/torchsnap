@@ -27,15 +27,12 @@ use cron::Schedule;
 use tauri::async_runtime::JoinHandle;
 
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
-use crate::frecency::GadgetFrecency;
 use crate::gadgets::Gadget;
-use crate::settings::{GadgetSettings, SettingsInit};
+use crate::settings::SettingsInit;
 
 use super::logging::channel::{LogContext, LogSender};
 use super::logging::{LogItem, LogItemKind, LogLevel, LogSource};
 use super::manifest::Manifest;
-use crate::paths::GadgetPaths;
-use crate::network::website_metadata::WebsiteMetadataService;
 
 use super::runtime::{CachedComponent, SqlConfig, WasmGadgetInstance, WasmRuntime};
 use super::source::GadgetSource;
@@ -85,20 +82,6 @@ pub struct WasmGadgetBridge {
     gadget_source: Arc<dyn GadgetSource + Send + Sync>,
     /// Host-built capabilities received at construction.
     caps: Arc<crate::caps::ProvisionedCaps>,
-    /// Platform paths resolved once at construction. Used by
-    /// the `CachedComponent` for the disk cache path.
-    platform_paths: Arc<crate::paths::PlatformPaths>,
-    /// Resolved `${gadget-data}` for this gadget —
-    /// `<app_data_dir>/gadget-home/<gadget-id>/`. Re-stashed
-    /// on every fresh instance so per-call `paths::resolve`
-    /// substitutions go through one source of truth.
-    gadget_data: PathBuf,
-    /// Resolved `${gadget-archive}` for this gadget — the
-    /// directory root for `DirectorySource`, or the
-    /// `.torchsnap` archive file for `ArchiveSource`. See the
-    /// `GadgetSource::root_path` docs for the per-source
-    /// contract.
-    gadget_archive: PathBuf,
     /// Live guest instance, or `None` while disabled.
     ///
     /// **Lock discipline**: never call into the guest while
@@ -243,7 +226,6 @@ impl WasmGadgetBridge {
         source: Arc<dyn GadgetSource + Send + Sync>,
         app_data_dir: &std::path::Path,
         caps: Arc<crate::caps::ProvisionedCaps>,
-        platform_paths: Arc<crate::paths::PlatformPaths>,
     ) -> anyhow::Result<Self> {
         use anyhow::Context;
 
@@ -298,9 +280,6 @@ impl WasmGadgetBridge {
             sql_config,
             gadget_source: source,
             caps,
-            platform_paths,
-            gadget_data,
-            gadget_archive,
             instance: Mutex::new(None),
             log_sender,
             parsed_tasks,
@@ -514,45 +493,6 @@ async fn scheduler_loop(
             }
         }
     }
-}
-
-/// Build a [`GadgetPaths`] resolving the five `${...}`
-/// substitution variables (`gadget-data`, `gadget-archive`,
-/// `home`, `xdg-config`, `xdg-data`) for one gadget
-/// instance. Called from `enable()` once per re-enable
-/// cycle. The gadget-data and gadget-archive paths come
-/// from the bridge (the bridge already has them); the
-/// XDG-style paths come from Tauri's path resolver, which
-/// produces platform-correct values (`Application Support`
-/// on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME`
-/// with fallback on Linux).
-///
-/// TODO: Platform paths should be resolved once at startup
-/// and stored on GadgetHost as `Arc<PlatformPaths>`. This
-/// function would then only assemble the per-gadget portion.
-fn build_gadget_paths(
-    app: &tauri::AppHandle,
-    gadget_data: &PathBuf,
-    gadget_archive: &PathBuf,
-) -> anyhow::Result<GadgetPaths> {
-    use tauri::Manager;
-
-    let path_resolver = app.path();
-    let home = path_resolver.home_dir().context("resolve home directory")?;
-    let xdg_config = path_resolver
-        .config_dir()
-        .context("resolve config directory")?;
-    let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
-
-    Ok(GadgetPaths {
-        platform: std::sync::Arc::new(crate::paths::PlatformPaths {
-            home,
-            xdg_config,
-            xdg_data,
-        }),
-        gadget_data: gadget_data.clone(),
-        gadget_archive: gadget_archive.clone(),
-    })
 }
 
 fn log_task_error(log_sender: &LogSender, gadget_id: &str, task_id: &str, error: &str) {
@@ -871,14 +811,6 @@ mod tests {
         WasmRuntime::new().expect("runtime construction succeeds")
     }
 
-    fn test_platform_paths() -> Arc<crate::paths::PlatformPaths> {
-        Arc::new(crate::paths::PlatformPaths {
-            home: std::path::PathBuf::from("/home/test"),
-            xdg_config: std::path::PathBuf::from("/home/test/.config"),
-            xdg_data: std::path::PathBuf::from("/home/test/.local/share"),
-        })
-    }
-
     fn test_caps() -> Arc<crate::caps::ProvisionedCaps> {
         Arc::new(test_caps_inner())
     }
@@ -903,7 +835,7 @@ mod tests {
             source,
             app_data_dir,
             test_caps(),
-            test_platform_paths(),
+
         )
     }
 
@@ -956,7 +888,7 @@ mod tests {
             source,
             app_data_dir,
             caps,
-            test_platform_paths(),
+
         )
     }
 
@@ -1035,7 +967,7 @@ icon = "heroicons:x-mark"
             source,
             app_data.path(),
             test_caps(),
-            test_platform_paths(),
+
         );
         // Construction is lazy — the error surfaces on first
         // acquire/instantiate, not at bridge construction time.
@@ -1241,7 +1173,7 @@ migrations = ["migrations/001_init.sql"]
             source,
             app_data.path(),
             caps,
-            test_platform_paths(),
+
         )
         .expect("bridge construction");
 
@@ -1334,7 +1266,7 @@ migrations = ["migrations/001_init.sql"]
             source,
             app_data_dir,
             test_caps(),
-            test_platform_paths(),
+
         )
     }
 
@@ -1459,7 +1391,7 @@ schedule = "*/5 * * * *"
             source,
             app_data.path(),
             test_caps(),
-            test_platform_paths(),
+
         )
         .expect("bridge construction");
 

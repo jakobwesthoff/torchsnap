@@ -1190,17 +1190,6 @@ fn load_single_wasm_gadget(
         &*source,
     )?;
 
-    // Resolve platform paths once for the bridge's transitional adapter.
-    let platform_paths = {
-        use tauri::Manager;
-        let pr = prov_ctx.app.path();
-        Arc::new(crate::paths::PlatformPaths {
-            home: pr.home_dir().context("resolve home directory")?,
-            xdg_config: pr.config_dir().context("resolve config directory")?,
-            xdg_data: pr.data_dir().context("resolve data directory")?,
-        })
-    };
-
     host.register_with_caps::<wasm::bridge::WasmGadgetBridge, _>(
         &gadget_id,
         cap_requests,
@@ -1214,7 +1203,6 @@ fn load_single_wasm_gadget(
                 Arc::clone(&source),
                 app_data_dir,
                 caps,
-                platform_paths,
             )
             .expect("bridge construction after cap provisioning")
         },
