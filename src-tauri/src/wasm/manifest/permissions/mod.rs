@@ -65,6 +65,28 @@ pub struct PermissionsDef {
     /// concerns are absorbed by the cache layer itself.
     #[serde(default, rename = "website-metadata")]
     pub website_metadata: bool,
+    /// `permissions.settings` — opt-in for the WIT settings
+    /// interface.
+    #[serde(default)]
+    pub settings: bool,
+    /// `permissions.frecency` — opt-in for the WIT frecency
+    /// interface (reading frecency data at runtime).
+    #[serde(default)]
+    pub frecency: bool,
+    /// `permissions.sql-storage` — opt-in for SQL storage
+    /// capability. Requires `[storage.sql]` to also be present.
+    #[serde(default, rename = "sql-storage")]
+    pub sql_storage: bool,
+    /// `permissions.clipboard` — opt-in for clipboard write.
+    #[serde(default)]
+    pub clipboard: bool,
+    /// `permissions.icon-cache` — opt-in for icon cache access.
+    #[serde(default, rename = "icon-cache")]
+    pub icon_cache: bool,
+    /// `permissions.path-resolver` — opt-in for runtime path
+    /// resolution via the `paths::resolve` WIT import.
+    #[serde(default, rename = "path-resolver")]
+    pub path_resolver: bool,
 }
 
 // =========================================================
@@ -100,6 +122,12 @@ pub(super) fn validate_permissions(permissions: PermissionsDef) -> anyhow::Resul
         filesystem,
         command: permissions.command,
         website_metadata: permissions.website_metadata,
+        settings: permissions.settings,
+        frecency: permissions.frecency,
+        sql_storage: permissions.sql_storage,
+        clipboard: permissions.clipboard,
+        icon_cache: permissions.icon_cache,
+        path_resolver: permissions.path_resolver,
     })
 }
 
