@@ -100,6 +100,18 @@ pub struct CommandResult {
 }
 
 // =========================================================
+// CommandPermissions
+// =========================================================
+
+/// Permission configuration for constructing a `CommandCap`.
+/// Wraps the raw manifest command rules; a domain-specific
+/// type replacing the manifest struct is tracked for a later
+/// todo.
+pub struct CommandPermissions {
+    pub rules: Vec<CommandPermissionDef>,
+}
+
+// =========================================================
 // CommandCap
 // =========================================================
 
@@ -450,6 +462,30 @@ fn signal_name(signal: i32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── CommandPermissions ───────────────────────────────
+
+    #[test]
+    fn command_permissions_stores_rules() {
+        let perms = CommandPermissions {
+            rules: vec![CommandPermissionDef {
+                binary: "/usr/bin/echo".into(),
+                argv: vec![],
+                cwd: None,
+                timeout_ms_max: None,
+                max_output_bytes: None,
+                max_stdin_bytes: None,
+            }],
+        };
+        assert_eq!(perms.rules.len(), 1);
+        assert_eq!(perms.rules[0].binary, "/usr/bin/echo");
+    }
+
+    #[test]
+    fn command_permissions_empty_rules() {
+        let perms = CommandPermissions { rules: vec![] };
+        assert!(perms.rules.is_empty());
+    }
 
     // ─── is_credential_var ────────────────────────────────
 

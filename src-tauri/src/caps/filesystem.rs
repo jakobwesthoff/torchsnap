@@ -66,6 +66,15 @@ pub struct FileMetadata {
 }
 
 // =========================================================
+// FilesystemPermissions
+// =========================================================
+
+/// Permission configuration for constructing a `FilesystemCap`.
+pub struct FilesystemPermissions {
+    pub read_patterns: Vec<String>,
+}
+
+// =========================================================
 // FsAllowlist (internal)
 // =========================================================
 
@@ -362,6 +371,24 @@ mod tests {
             gadget_data: root.join("gadget-data"),
             gadget_archive: root.join("gadget-archive"),
         }
+    }
+
+    // ─── FilesystemPermissions ─────────────────────────────
+
+    #[test]
+    fn filesystem_permissions_stores_patterns() {
+        let perms = FilesystemPermissions {
+            read_patterns: vec!["${xdg-config}/*.txt".into(), "/etc/hosts".into()],
+        };
+        assert_eq!(perms.read_patterns.len(), 2);
+    }
+
+    #[test]
+    fn filesystem_permissions_empty_patterns() {
+        let perms = FilesystemPermissions {
+            read_patterns: vec![],
+        };
+        assert!(perms.read_patterns.is_empty());
     }
 
     // ─── validate_request_path ─────────────────────────────
