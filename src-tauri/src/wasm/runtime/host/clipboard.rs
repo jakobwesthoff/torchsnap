@@ -39,11 +39,16 @@ pub(crate) struct ClipboardState {
 }
 
 impl bindings::torchsnap::gadget::clipboard::Host for GadgetState {
-    fn write_text(&mut self, text: String) -> Result<(), String> {
-        let caps = self.caps()?;
+    fn write_text(
+        &mut self,
+        text: String,
+    ) -> Result<(), bindings::torchsnap::gadget::clipboard::ClipboardError> {
+        use bindings::torchsnap::gadget::clipboard::ClipboardError;
+
+        let caps = self.caps().map_err(ClipboardError::BackendFailure)?;
         let writer = caps.clipboard.writer.as_ref().ok_or_else(|| {
-            "clipboard writer not initialized".to_string()
+            ClipboardError::BackendFailure("clipboard writer not initialized".to_string())
         })?;
-        writer(&text)
+        writer(&text).map_err(ClipboardError::BackendFailure)
     }
 }
