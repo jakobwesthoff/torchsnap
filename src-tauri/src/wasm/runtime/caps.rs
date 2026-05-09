@@ -28,8 +28,7 @@ use crate::wasm::source::GadgetSource;
 use super::host::clipboard::ClipboardState;
 use super::host::command::CommandState;
 use super::host::fs::FsState;
-use super::host::http::HttpState;
-use crate::caps::OpenerCap;
+use crate::caps::{HttpCap, OpenerCap};
 use super::host::sql::{SqlHandleEntry, SqlState};
 use super::host::website_metadata::WebsiteMetadataState;
 
@@ -48,7 +47,7 @@ pub struct WasmGadgetCaps {
     pub(crate) sql: SqlState,
     pub(crate) clipboard: ClipboardState,
     pub(crate) opener: Arc<OpenerCap>,
-    pub(crate) http: HttpState,
+    pub(crate) http: Arc<HttpCap>,
     pub(crate) fs: FsState,
     pub(crate) command: CommandState,
     pub(crate) website_metadata: WebsiteMetadataState,
@@ -101,7 +100,7 @@ impl WasmGadgetCaps {
                 Box::new(|_| Err("opener not initialized".into())),
                 Box::new(|_| Err("opener not initialized".into())),
             )),
-            http: HttpState::default(),
+            http: Arc::new(HttpCap::new(Vec::new())),
             fs: FsState::default(),
             command: CommandState::default(),
             website_metadata: WebsiteMetadataState::default(),

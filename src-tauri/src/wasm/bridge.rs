@@ -40,7 +40,6 @@ use crate::network::website_metadata::WebsiteMetadataService;
 use super::runtime::host::clipboard::ClipboardState;
 use super::runtime::host::command::CommandState;
 use super::runtime::host::fs::FsState;
-use super::runtime::host::http::HttpState;
 use super::runtime::host::sql::SqlState;
 use super::runtime::host::website_metadata::WebsiteMetadataState;
 use super::runtime::{
@@ -749,11 +748,7 @@ impl Gadget for WasmGadgetBridge {
                     reveal_path: self.opener_reveal_path,
                 },
             )),
-            http: HttpState {
-                origins: self.http_origins.clone(),
-                client: Some(Arc::new(crate::network::Http::new())),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            http: Arc::new(crate::caps::HttpCap::new(self.http_origins.clone())),
             fs: FsState {
                 allowlist: fs_allowlist,
             },
