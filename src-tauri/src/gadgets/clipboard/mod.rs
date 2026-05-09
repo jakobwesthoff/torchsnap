@@ -256,8 +256,6 @@ fn retention_cleanup_loop(
 // =========================================================
 
 impl Gadget for ClipboardGadget {
-    type Caps = ();
-
     fn id(&self) -> &str {
         PLUGIN_ID
     }
@@ -288,11 +286,7 @@ impl Gadget for ClipboardGadget {
         })
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn enable(&self, _caps: ()) {
+    fn enable(&self) {
         // Resolve the gadget data directory from the path resolver cap.
         let data_dir = self
             .caps

@@ -86,45 +86,34 @@ impl Clone for ProvisioningContext {
 ///
 /// ## Capability provisioning
 ///
-/// Each gadget declares an associated `type Caps` representing
-/// the resources it needs during its enable lifetime.
-/// `provision()` builds the caps from the shared
-/// `ProvisioningContext`; `enable()` installs them and starts
-/// the gadget. The host calls these through the object-safe
-/// `AnyGadget` wrapper, which combines them into a single
-/// `provision_and_enable()` call.
+/// Gadgets receive `Arc<ProvisionedCaps>` at construction via
+/// the factory-based registration API. Capabilities are plain
+/// fields on the gadget struct — no `OnceLock`, no `Option`.
 ///
 /// ## Lifecycle
 ///
-/// 1. Gadget is constructed and registered via `GadgetHost::register`
-/// 2. `initialize_settings()` is called synchronously at startup
-/// 3. `provision()` + `enable()` are called on a background thread
-///    if `enabled.<id>` is `true` in the settings store
-/// 4. `entries()` / `search()` are called on every search keystroke
-/// 5. `execute()` is called when the user triggers an action
-/// 6. `setting_changed()` is called whenever a key in
+/// 1. Host calls `cap_requests()` (inherent method) and builds caps
+/// 2. Host calls the factory closure with caps to construct the gadget
+/// 3. Host calls `register_with_caps()` to register the gadget
+/// 4. `initialize_settings()` is called synchronously at startup
+/// 5. `enable()` is called on a background thread if `enabled.<id>`
+///    is `true` in the settings store
+/// 6. `entries()` / `search()` are called on every search keystroke
+/// 7. `execute()` is called when the user triggers an action
+/// 8. `setting_changed()` is called whenever a key in
 ///    `gadgets.<id>.*` changes at runtime
-/// 7. `disable()` is called when the user toggles the gadget off
+/// 9. `disable()` is called when the user toggles the gadget off
 ///    or during `RunEvent::Exit`
 pub trait Gadget: Send + Sync {
-    /// Per-gadget capability type, built by `provision()` and
-    /// consumed by `enable()`. Gadgets without capabilities
-    /// use `()`.
-    type Caps: Send + Sync;
-
     fn id(&self) -> &str;
 
     fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
         settings
     }
 
-    /// Build the capability bundle from shared host resources.
-    /// Called before `enable()` on every activation cycle.
-    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<Self::Caps>;
-
-    /// Activate the gadget with provisioned capabilities.
-    /// Runs on a `spawn_blocking` thread.
-    fn enable(&self, _caps: Self::Caps) {}
+    /// Activate the gadget. Runs on a `spawn_blocking` thread.
+    /// Caps are available as plain fields on `self`.
+    fn enable(&self) {}
 
     fn disable(&self) {}
 
@@ -215,9 +204,8 @@ impl<G: Gadget> AnyGadget for G {
         Gadget::initialize_settings(self, settings)
     }
 
-    fn provision_and_enable(&self, ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        let caps = Gadget::provision(self, ctx)?;
-        Gadget::enable(self, caps);
+    fn provision_and_enable(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Gadget::enable(self);
         Ok(())
     }
 

@@ -92,14 +92,8 @@ impl SystemCommandsGadget {
 }
 
 impl Gadget for SystemCommandsGadget {
-    type Caps = ();
-
     fn id(&self) -> &str {
         "system-commands"
-    }
-
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {

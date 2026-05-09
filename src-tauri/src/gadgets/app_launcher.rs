@@ -154,17 +154,11 @@ fn extract_icons(
 }
 
 impl Gadget for AppLauncherGadget {
-    type Caps = ();
-
     fn id(&self) -> &str {
         "app-launcher"
     }
 
-    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn enable(&self, _caps: ()) {
+    fn enable(&self) {
         let icon_cache = self.caps.icon_cache();
 
         // Called on a dedicated background thread by the host.
