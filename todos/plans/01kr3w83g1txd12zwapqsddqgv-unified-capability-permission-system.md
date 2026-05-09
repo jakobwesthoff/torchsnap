@@ -137,6 +137,343 @@ pub struct ProvisionedCaps {
 }
 ```
 
+## Decided: Manifest `[permissions]` structure
+
+### Design principles
+
+- `[permissions]` is the single source of truth for what caps a gadget
+  receives. Configuration sections (`[storage.sql]`, `[settings]`) provide
+  additional data but do not imply cap provisioning.
+- Manifest keys are kebab-case and match `CapRequest` variant names:
+  `filesystem` (not `fs`), `sql-storage`, `website-metadata`,
+  `path-resolver`, etc.
+- Presence of a key or subsection = cap requested. No explicit
+  `requested = true` field needed.
+- Two forms: flat `key = true` for parameterless caps, `[permissions.key]`
+  subsection for parameterized caps.
+
+### Parameterless caps (flat booleans under `[permissions]`)
+
+```toml
+[permissions]
+clipboard = true
+sql-storage = true
+website-metadata = true
+icon-cache = true
+settings = true
+frecency = true
+path-resolver = true
+```
+
+All default to `false` (not requested) when omitted.
+
+**`settings`** controls whether the gadget receives `SettingsCap` (access
+to read/write its own settings via the WIT `settings` interface). The
+`[settings]` manifest section still provides default values — but without
+`settings = true` under `[permissions]`, the cap is not provisioned and WIT
+calls return errors.
+
+**`frecency`** controls whether the gadget can *read* frecency data at
+runtime via the WIT `frecency` interface (`is_enabled()`, `top_items()`).
+Host-side frecency — recording on execute and score boosting on search
+results — is automatic infrastructure and does not require this permission.
+Only gadgets that explicitly query frecency data need it (e.g.,
+emoji-picker for empty-query most-used display).
+
+**`sql-storage`** gates provisioning of `SqlStorageCap`. The
+`CapRequest::SqlStorage` variant carries a `config: SqlStorageConfig` field
+(migration file paths). For WASM gadgets, this config is sourced from the
+`[storage.sql]` manifest section during the manifest-to-CapRequest
+conversion. The cap is only built when `sql-storage = true` is set under
+`[permissions]`. If `[storage.sql]` exists without `sql-storage = true`,
+that is a manifest validation warning.
+
+### Parameterized caps (subsections under `[permissions]`)
+
+#### `[permissions.opener]`
+
+```toml
+[permissions.opener]
+schemes = ["https", "http"]
+open-path = false      # default
+reveal-path = false    # default
+```
+
+Maps to `CapRequest::Opener { permissions: OpenerPermissions { ... } }`.
+
+#### `[permissions.http]`
+
+```toml
+[permissions.http]
+origins = ["https://duckduckgo.com"]
+```
+
+Maps to `CapRequest::Http { permissions: HttpPermissions { ... } }`.
+
+#### `[permissions.filesystem]`
+
+```toml
+[permissions.filesystem]
+read = [
+    "${xdg-config}/ZeroTier/One/authtoken.secret",
+    "${gadget-data}/cache/*.json",
+]
+```
+
+Maps to
+`CapRequest::Filesystem { permissions: FilesystemPermissions { ... } }`.
+`${...}` variable expansion happens at cap construction time (host-side,
+using `GadgetPaths` as `PathResolver`), not at manifest parse time.
+
+Renamed from `fs` to `filesystem` to match `CapRequest::Filesystem` and
+`FilesystemCap`.
+
+#### `[[permissions.command]]`
+
+```toml
+[[permissions.command]]
+binary = "/usr/bin/zerotier-cli"
+argv = [
+    { kind = "enum", values = ["listnetworks", "info", "peers"] },
+]
+cwd = "${gadget-data}/exec-cwd"
+timeout-ms-max = 5000
+max-output-bytes = 65536
+```
+
+Array-of-tables — each entry is one allowed command rule. Maps to
+`CapRequest::Command { permissions: CommandPermissions { ... } }`.
+
+### Changes from current manifest format
+
+| Current | New | Change |
+|---------|-----|--------|
+| `[permissions.fs]` | `[permissions.filesystem]` | Renamed |
+| `website-metadata = true` | `website-metadata = true` | Unchanged |
+| `[permissions.opener]` | `[permissions.opener]` | Unchanged |
+| `[permissions.http]` | `[permissions.http]` | Unchanged |
+| `[[permissions.command]]` | `[[permissions.command]]` | Unchanged |
+| _(implicit from `[storage.sql]`)_ | `sql-storage = true` | New, explicit |
+| _(always provisioned)_ | `settings = true` | New, explicit opt-in |
+| _(always provisioned)_ | `frecency = true` | New, explicit opt-in |
+| _(not available)_ | `clipboard = true` | New |
+| _(not available)_ | `icon-cache = true` | New |
+| _(not available)_ | `path-resolver = true` | New |
+
+### Manifest-to-CapRequest conversion
+
+The `WasmGadgetBridge` implements `requested_caps()` by converting its
+parsed `PermissionsDef` into `Vec<CapRequest>`. The manifest module owns
+all `Into` implementations — one per cap type, converting from manifest
+deserialization structs to domain types. Boolean caps are collected
+directly:
+
+```rust
+// Boolean caps
+if perms.settings { caps.push(CapRequest::Settings); }
+if perms.frecency { caps.push(CapRequest::Frecency); }
+// ...
+
+// Parameterized caps — manifest types convert into domain types
+if let Some(opener) = perms.opener {
+    caps.push(CapRequest::Opener {
+        permissions: opener.into(),
+    });
+}
+if let Some(http) = perms.http {
+    caps.push(CapRequest::Http {
+        permissions: http.into(),
+    });
+}
+// ...
+
+// Caps with config — host reads config from separate manifest sections
+if perms.sql_storage {
+    caps.push(CapRequest::SqlStorage {
+        config: manifest.storage.sql.into(),  // migrations etc.
+    });
+}
+```
+
+### Architectural requirements for the permission layer
+
+The permission parsing, conversion, and provisioning pipeline is
+load-bearing infrastructure. It must be designed for long-term
+maintainability:
+
+- **Clear separation of concerns.** Manifest deserialization
+  (`*PermissionsDef` structs) stays in the `wasm/manifest/permissions/`
+  module. Domain types (`*Permissions`, `*Config`) and `CapRequest` live
+  in `caps/`. `Into` impls bridging the two live in the manifest module
+  — each in its own file or clearly grouped, one conversion per cap type,
+  no monolithic conversion function.
+
+- **Each cap type is independently traceable.** A developer adding a new
+  cap should be able to follow the path from manifest TOML key →
+  deserialized struct → `Into` impl → `CapRequest` variant →
+  domain `*Permissions`/`*Config` struct → host provisioner → `*Cap`
+  construction, touching only files related to that cap type. No shared
+  conversion logic that couples unrelated caps.
+
+- **Exhaustive testing.** Every `Into` impl gets unit tests covering the
+  mapping from manifest struct to domain type. The host provisioner gets
+  integration tests covering the full path from `Vec<CapRequest>` to
+  `ProvisionedCaps` — verifying that each requested cap is built and each
+  unrequested cap is `None`. Edge cases: empty permissions, unknown fields
+  (serde behavior), conflicting declarations.
+
+- **Manifest validation.** Contradictions (e.g., `[storage.sql]` present
+  but `sql-storage` not requested) produce clear warnings or errors at
+  load time, not silent misbehavior at runtime.
+
+- **Extensibility pattern.** Adding a new cap type requires: (1) new
+  domain type (`*Permissions` and/or `*Config`), (2) new `CapRequest`
+  variant (unit or struct), (3) new manifest `*Def` struct with `Into`
+  impl, (4) new field on `ProvisionedCaps`, (5) provisioner case. All
+  mechanical, no existing code modified beyond the match/collection in
+  the provisioner.
+
+### Full example: zerotier manifest permissions
+
+```toml
+[permissions]
+settings = true
+sql-storage = true
+path-resolver = true
+
+[permissions.http]
+origins = ["http://localhost:9993"]
+
+[permissions.filesystem]
+read = [
+    "${xdg-config}/ZeroTier/One/authtoken.secret",
+    "/Library/Application Support/ZeroTier/One/authtoken.secret",
+    "/var/lib/zerotier-one/authtoken.secret",
+    "C:\\ProgramData\\ZeroTier\\One\\authtoken.secret",
+    "${xdg-config}/ZeroTier/saved_networks.json",
+]
+```
+
+### Full example: bangs manifest permissions
+
+```toml
+[permissions]
+settings = true
+sql-storage = true
+website-metadata = true
+
+[permissions.opener]
+schemes = ["https", "http"]
+
+[permissions.http]
+origins = ["https://duckduckgo.com"]
+```
+
+### Full example: emoji-picker manifest permissions
+
+```toml
+[permissions]
+frecency = true
+```
+
+### Full example: calculator manifest permissions
+
+```toml
+[permissions]
+settings = true
+sql-storage = true
+```
+
+### Full example: hello-world / template (no caps)
+
+No `[permissions]` section — gadget receives no capabilities.
+
+## Decided: CapRequest system
+
+### Struct variants with explicit `permissions` / `config` fields
+
+`CapRequest` uses enum struct variants to maintain an explicit structural
+division between security-relevant permission data and non-security
+configuration data. Each parameterized variant uses named fields:
+`permissions` for security boundaries, `config` for construction data.
+Unit variants remain for caps that need neither.
+
+```rust
+enum CapRequest {
+    Opener {
+        permissions: OpenerPermissions,
+    },
+    Http {
+        permissions: HttpPermissions,
+    },
+    Filesystem {
+        permissions: FilesystemPermissions,
+    },
+    Command {
+        permissions: CommandPermissions,
+    },
+    SqlStorage {
+        config: SqlStorageConfig,
+    },
+    Clipboard,
+    WebsiteMetadata,
+    IconCache,
+    Settings,
+    Frecency,
+    PathResolver,
+}
+```
+
+When a future cap needs both permissions and config, its variant simply
+carries both fields — no structural change to the enum:
+
+```rust
+SomeFutureCap {
+    permissions: SomeFuturePermissions,
+    config: SomeFutureConfig,
+},
+```
+
+### Domain types vs. manifest types
+
+`*Permissions` and `*Config` structs are **domain types** that live in
+`caps/`. They are the canonical representation used by the host provisioner
+and `*Cap` constructors. They carry no serde attributes or
+manifest-specific concerns.
+
+Manifest deserialization structs (`*PermissionsDef`, `*ConfigDef`) live in
+`wasm/manifest/permissions/` and are serde-annotated for TOML parsing. The
+manifest module owns the `Into` implementations that convert from manifest
+types to domain types:
+
+```rust
+// In wasm/manifest/permissions/opener.rs
+impl From<OpenerPermissionsDef> for OpenerPermissions { ... }
+```
+
+Dependency direction: `wasm/manifest/` → `caps/`, never the reverse.
+
+Types that both layers need (e.g., `ArgvConstraint` for command rules)
+live in `caps/` as the authoritative domain type. The manifest module has
+its own serde-decorated mirror type with an `Into` implementation in the
+manifest module.
+
+### Cap declaration via trait method
+
+The `Gadget` trait gains a method:
+
+```rust
+fn requested_caps(&self) -> Vec<CapRequest>;
+```
+
+- **Native gadgets** implement the method directly, returning a hardcoded
+  or computed list.
+- **`WasmGadgetBridge`** implements the method by parsing its
+  `manifest.toml` `[permissions]` section into the same `Vec<CapRequest>`.
+
+The host calls `requested_caps()`, builds `ProvisionedCaps` from the
+result, and hands them to the gadget. One path for both gadget types.
+
 ## Decided: Gadget trait shape (future)
 
 The `Gadget` trait drops `type Caps` and `provision()`. With no associated
@@ -147,6 +484,47 @@ Gadgets receive their `Arc<ProvisionedCaps>` at construction time and own
 them as plain fields — no `OnceLock`, no `Mutex<Option<...>>`.
 `enable()`/`disable()` are pure lifecycle signals (start/stop background
 work) with no capability delivery.
+
+## Decided: ProvisioningContext becomes host-internal
+
+`ProvisioningContext` does not disappear — provisioning still happens, but
+moves from `Gadget::provision()` to `GadgetHost`. The host still needs the
+raw materials to build caps (`Store` for `SettingsCap`, `FrecencyStore` for
+`FrecencyCap`, `IconCache`, `WebsiteMetadataService`, etc.).
+
+What changes: `ProvisioningContext` stops being passed to gadgets. It
+becomes host-internal — either fields on `GadgetHost` itself or a
+host-internal struct. The critical property is that `AppHandle` never
+reaches gadget code. Gadgets see only `Arc<ProvisionedCaps>`.
+
+## Decided: PathResolver dual role
+
+`GadgetPaths` / `PathResolver` serves two completely separate roles:
+
+### Role A — Construction-time (host-internal)
+
+`FilesystemCap::new` and `CommandCap::new` take `&impl PathResolver` to
+expand `${gadget-data}`, `${home}`, etc. in manifest patterns at cap
+construction time. This happens in the host before any cap is handed to the
+gadget. The resolver is consumed and not retained on the cap struct.
+
+This is internal host plumbing, not a capability the gadget requests. The
+host always has `GadgetPaths` available when building caps. No manifest
+entry is needed for this role.
+
+### Role B — Runtime (gadget-facing)
+
+The `paths::resolve` WIT import lets the gadget call
+`resolve("${gadget-data}/foo")` at runtime. Currently served by
+`caps.gadget_paths` directly on `WasmGadgetCaps`.
+
+After refactoring, the `paths::resolve` host import reads
+`ProvisionedCaps.path_resolver`. If `PathResolverCap` was not provisioned
+(gadget didn't request it), the call returns an error. The WIT interface
+definition itself stays unchanged — enforcement is host-side.
+
+Gadgets that use `paths::resolve` at runtime (e.g., zerotier) must declare
+`PathResolver` in their `CapRequest` / manifest permissions.
 
 ## Decided: Setup ordering (done)
 
@@ -159,33 +537,28 @@ constructed in a fully initialized environment.
 - `GadgetSource` remains a WASM bridge internal for now. Future
   encapsulation as a cap tracked in
   `todos/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-cap.md`.
-- `PathContext` is implemented: `PathResolverCap` exists in
-  `src-tauri/src/caps/path_resolver.rs` wrapping `GadgetPaths`. Wiring it
-  into `WasmGadgetCaps` and the `paths::resolve` host import is part of the
-  provisioning restructuring
-  (`todos/architecture/01kr6d8ysxjemp6xfqees67qax-provisioning-restructuring.md`).
 
 ## Implementation strategy
 
-### Migration order
+### Phase 1: Cap type migration (done)
 
-One cap at a time. Each migration:
-
-1. Create the cap type in `src-tauri/src/caps/<name>.rs` — extract from
-   corresponding `*State` wrapper, move permission checking inside
-2. Update WASM bridge to use the new cap type (host impl becomes passthrough)
-3. Update native gadgets to use the new cap type
-4. Write tests covering default and edge cases
-5. Delete the `*State` wrapper
-6. Verify everything compiles and passes tests
-7. Commit
-
-All caps in `caps/` are now implemented. The `*State` wrappers have been
+All caps in `caps/` are implemented. The `*State` wrappers have been
 deleted. This migration phase is complete.
 
-### Future phases (after all caps migrated)
+### Phase 2: Provisioning restructuring
 
-- Introduce `CapRequest` enum and system-level provisioning
-- Remove `type Caps`, `AnyGadget`, `provision()`, `ProvisioningContext`
-- Gadgets receive `Arc<ProvisionedCaps>` at construction
+Tracked in detail in
+`todos/architecture/01kr6d8ysxjemp6xfqees67qax-provisioning-restructuring.md`.
+
+Summary:
+- **Phase A:** Move cap construction from bridge to host
+- **Phase B:** Remove `type Caps`, `provision()`, `AnyGadget` from `Gadget`
+  trait — trait becomes object-safe, `GadgetSlot` holds `Arc<dyn Gadget>`
+- **Phase C:** Introduce `CapRequest` enum (struct variants with
+  `permissions`/`config` fields), `requested_caps()` trait method, domain
+  types in `caps/`, manifest `Into` impls in `wasm/manifest/`
+- **Phase D:** Merge `WasmGadgetCaps` into `ProvisionedCaps`
+
+### Phase 3: Future
+
 - Install-time permission UI for plugins
