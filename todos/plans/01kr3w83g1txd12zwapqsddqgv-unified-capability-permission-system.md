@@ -78,7 +78,8 @@ the already-permissioned capabilities.
 
 All capability types use singular `Cap` suffix: `OpenerCap`, `HttpCap`,
 `FilesystemCap`, `CommandCap`, `ClipboardCap`, `SqlStorageCap`,
-`WebsiteMetadataCap`, `IconCacheCap`, `SettingsCap`, `FrecencyCap`.
+`WebsiteMetadataCap`, `IconCacheCap`, `SettingsCap`, `FrecencyCap`,
+`PathResolverCap`.
 
 The `Gadget` prefix is dropped (e.g., `FrecencyCap` not `GadgetFrecencyCap`)
 — being a cap implies the gadget association.
@@ -98,8 +99,9 @@ src-tauri/src/caps/
 ├── sql_storage.rs      // SqlStorageCap
 ├── website_metadata.rs // WebsiteMetadataCap
 ├── icon_cache.rs       // IconCacheCap
-├── settings.rs         // SettingsCap
-└── frecency.rs         // FrecencyCap
+├── settings.rs         // SettingsCap (type alias — see 01kr6dyhj4nr82zaz562aw7qgb)
+├── frecency.rs         // FrecencyCap (type alias — see 01kr6dyhj4nr82zaz562aw7qgb)
+└── path_resolver.rs    // PathResolverCap (wraps GadgetPaths)
 ```
 
 ### Cap type internals
@@ -131,6 +133,7 @@ pub struct ProvisionedCaps {
     pub icon_cache: Option<Arc<IconCacheCap>>,
     pub settings: Option<Arc<SettingsCap>>,
     pub frecency: Option<Arc<FrecencyCap>>,
+    pub path_resolver: Option<Arc<PathResolverCap>>,
 }
 ```
 
@@ -153,9 +156,14 @@ constructed in a fully initialized environment.
 
 ## Decided: Deferred items
 
-- `GadgetSource` and `PathContext` remain WASM bridge internals for now.
-  Future encapsulation as caps tracked in
-  `todos/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-path-context-caps.md`.
+- `GadgetSource` remains a WASM bridge internal for now. Future
+  encapsulation as a cap tracked in
+  `todos/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-cap.md`.
+- `PathContext` is implemented: `PathResolverCap` exists in
+  `src-tauri/src/caps/path_resolver.rs` wrapping `GadgetPaths`. Wiring it
+  into `WasmGadgetCaps` and the `paths::resolve` host import is part of the
+  provisioning restructuring
+  (`todos/architecture/01kr6d8ysxjemp6xfqees67qax-provisioning-restructuring.md`).
 
 ## Implementation strategy
 
@@ -172,8 +180,8 @@ One cap at a time. Each migration:
 6. Verify everything compiles and passes tests
 7. Commit
 
-Start with `OpenerCap` (already partially exists, used by both native
-and WASM gadgets), then proceed through the remaining caps.
+All caps in `caps/` are now implemented. The `*State` wrappers have been
+deleted. This migration phase is complete.
 
 ### Future phases (after all caps migrated)
 
