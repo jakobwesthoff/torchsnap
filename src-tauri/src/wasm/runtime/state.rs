@@ -35,6 +35,10 @@ pub struct GadgetState {
     /// enable lifetime — the `caps()` chokepoint returns a
     /// uniform error in that case.
     pub(crate) caps: Option<WasmGadgetCaps>,
+    /// Gadget source for asset resolution. Set by the bridge in
+    /// enable(), cleared in clear_caps(). Lives here (not on
+    /// caps) because it's a WASM bridge concern, not a capability.
+    pub(crate) gadget_source: Option<Arc<dyn crate::wasm::source::GadgetSource + Send + Sync>>,
     /// WASM resource table handle reps for open SQL connections.
     /// Tracked here (not on caps) because this is wasmtime
     /// resource lifecycle, not a capability concern. Drained
@@ -60,6 +64,7 @@ impl GadgetState {
             log_sender,
             span_registry,
             caps: None,
+            gadget_source: None,
             sql_handle_reps: Vec::new(),
         }
     }

@@ -643,7 +643,6 @@ impl Gadget for WasmGadgetBridge {
         let wasm_caps = WasmGadgetCaps {
             settings: self.caps.settings.clone(),
             frecency: self.caps.frecency.clone(),
-            gadget_source: Some(Arc::clone(&self.gadget_source)),
             gadget_paths,
             sql_storage: self.caps.sql_storage.clone(),
             clipboard: self.caps.clipboard().clone(),
@@ -654,6 +653,7 @@ impl Gadget for WasmGadgetBridge {
             website_metadata: self.caps.website_metadata.clone(),
         };
 
+        instance.set_gadget_source(Arc::clone(&self.gadget_source));
         instance.set_caps(wasm_caps);
 
         if let Err(e) = instance.enable() {
