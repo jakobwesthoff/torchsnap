@@ -64,11 +64,16 @@ pub(crate) enum OpenerSchemeCheckError {
     SchemeNotPermitted(String),
 }
 
-/// Verify that `url`'s scheme is in `allowed`.
+/// Verify that `url`'s scheme is in `allowed`. A wildcard
+/// entry `"*"` permits any scheme and short-circuits before
+/// URL parsing.
 pub(crate) fn check_opener_scheme(
     allowed: &[String],
     url: &str,
 ) -> Result<(), OpenerSchemeCheckError> {
+    if allowed.iter().any(|s| s == "*") {
+        return Ok(());
+    }
     let parsed = url::Url::parse(url).map_err(|_| OpenerSchemeCheckError::InvalidUrl)?;
     let scheme = parsed.scheme();
     if allowed.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
