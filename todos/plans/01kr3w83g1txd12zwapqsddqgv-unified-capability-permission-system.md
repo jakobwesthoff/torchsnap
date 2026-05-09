@@ -1,6 +1,6 @@
 # Unified Capability Permission System
 
-## Status: Implementation in progress
+## Status: Cap migration complete — next phase: provisioning system
 
 ## Problem
 
