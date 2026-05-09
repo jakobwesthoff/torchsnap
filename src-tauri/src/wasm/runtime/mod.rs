@@ -71,7 +71,7 @@ use super::bindings;
 #[cfg(test)]
 use super::logging::channel::LogContext;
 #[cfg(test)]
-use host::http::HttpState;
+use crate::caps::HttpCap;
 #[cfg(test)]
 use wasmtime::component::Component;
 
@@ -164,164 +164,6 @@ mod tests {
     const COMMAND_GADGET_WASM: &[u8] =
         include_bytes!("../../../tests/fixtures/command-gadget/command_gadget.wasm");
 
-    // =========================================================
-    // Unit tests for opener/http pure functions
-    //
-    // These functions have no WASM or tokio dependency so the
-    // tests are fast synchronous assertions.
-    // =========================================================
-
-    fn strs(ss: &[&str]) -> Vec<String> {
-        ss.iter().map(|s| s.to_string()).collect()
-    }
-
-    // ---- check_http_origin ----------------------------------
-
-    use super::host::http::{WasmHttpError, check_http_origin, wit_method_to_reqwest};
-
-    #[test]
-    fn http_exact_origin_match_passes() {
-        assert!(
-            check_http_origin(&strs(&["https://example.com"]), "https://example.com/path").is_ok()
-        );
-    }
-
-    #[test]
-    fn http_non_matching_origin_denied() {
-        let err =
-            check_http_origin(&strs(&["https://example.com"]), "https://other.com/x").unwrap_err();
-        assert!(matches!(err, WasmHttpError::PermissionDenied(_)));
-    }
-
-    #[test]
-    fn http_wildcard_allows_any_origin() {
-        assert!(check_http_origin(&strs(&["*"]), "https://any-host.example/path").is_ok());
-    }
-
-    #[test]
-    fn http_empty_origins_denies_everything() {
-        assert!(check_http_origin(&[], "https://example.com").is_err());
-    }
-
-    #[test]
-    fn http_non_default_port_included_in_origin() {
-        assert!(
-            check_http_origin(
-                &strs(&["https://example.com:8443"]),
-                "https://example.com:8443/resource"
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn http_default_port_stripped_from_origin() {
-        // https:443 normalizes to the same origin as https (no port).
-        assert!(
-            check_http_origin(
-                &strs(&["https://example.com"]),
-                "https://example.com:443/resource"
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn http_wrong_port_is_different_origin() {
-        let err = check_http_origin(
-            &strs(&["https://example.com"]),
-            "https://example.com:8080/x",
-        )
-        .unwrap_err();
-        assert!(matches!(err, WasmHttpError::PermissionDenied(_)));
-    }
-
-    #[test]
-    fn http_unparseable_url_returns_invalid_url_error() {
-        let err = check_http_origin(&strs(&["https://example.com"]), "not-a-url").unwrap_err();
-        assert!(matches!(err, WasmHttpError::InvalidUrl(_)));
-    }
-
-    #[test]
-    fn http_wildcard_short_circuits_before_url_parse() {
-        // The wildcard check happens before `url::Url::parse`, so an
-        // unparseable URL is still allowed when the list contains `"*"`.
-        assert!(check_http_origin(&strs(&["*"]), "not-a-url").is_ok());
-    }
-
-    // ---- wit_method_to_reqwest ------------------------------
-
-    #[test]
-    fn wit_method_named_variants_map_correctly() {
-        use bindings::torchsnap::gadget::http::HttpMethod;
-        let cases = [
-            (HttpMethod::Get, reqwest::Method::GET),
-            (HttpMethod::Post, reqwest::Method::POST),
-            (HttpMethod::Put, reqwest::Method::PUT),
-            (HttpMethod::Patch, reqwest::Method::PATCH),
-            (HttpMethod::Delete, reqwest::Method::DELETE),
-            (HttpMethod::Head, reqwest::Method::HEAD),
-        ];
-        for (wit, expected) in cases {
-            assert_eq!(wit_method_to_reqwest(wit).unwrap(), expected,);
-        }
-    }
-
-    #[test]
-    fn wit_method_other_valid_string() {
-        use bindings::torchsnap::gadget::http::HttpMethod;
-        let method = wit_method_to_reqwest(HttpMethod::Other("PROPFIND".into())).unwrap();
-        assert_eq!(method.as_str(), "PROPFIND");
-    }
-
-    #[test]
-    fn wit_method_other_invalid_string_returns_other_error() {
-        use bindings::torchsnap::gadget::http::HttpMethod;
-        let err = wit_method_to_reqwest(HttpMethod::Other("has space".into())).unwrap_err();
-        assert!(matches!(err, WasmHttpError::Other(_)));
-    }
-
-    // ---- WasmHttpError → HttpError conversion ---------------
-
-    #[test]
-    fn wasm_http_error_conversion_all_variants() {
-        use bindings::torchsnap::gadget::http::HttpError;
-        let cases: Vec<(WasmHttpError, HttpError)> = vec![
-            (
-                WasmHttpError::PermissionDenied("origin".into()),
-                HttpError::PermissionDenied("origin".into()),
-            ),
-            (
-                WasmHttpError::ConnectionRefused("connect".into()),
-                HttpError::ConnectionRefused("connect".into()),
-            ),
-            (WasmHttpError::Timeout, HttpError::Timeout),
-            (
-                WasmHttpError::DnsFailed("dns".into()),
-                HttpError::DnsFailed("dns".into()),
-            ),
-            (
-                WasmHttpError::TlsFailed("tls".into()),
-                HttpError::TlsFailed("tls".into()),
-            ),
-            (
-                WasmHttpError::InvalidUrl("url".into()),
-                HttpError::InvalidUrl("url".into()),
-            ),
-            (
-                WasmHttpError::Other("other".into()),
-                HttpError::Other("other".into()),
-            ),
-        ];
-        for (input, expected) in cases {
-            let converted: HttpError = input.into();
-            assert!(
-                std::mem::discriminant(&converted) == std::mem::discriminant(&expected),
-                "discriminant mismatch"
-            );
-        }
-    }
-
     // ---- httpmock integration tests for http::fetch ---------
     //
     // These tests exercise the full `Http` builder pipeline in
@@ -356,11 +198,10 @@ mod tests {
 
         let mut state = GadgetState {
             caps: Some(WasmGadgetCaps {
-                http: HttpState {
-                    origins: vec!["*".into()],
-                    client: Some(Arc::new(client)),
-                    insecure_client: Arc::new(std::sync::OnceLock::new()),
-                },
+                http: Arc::new(HttpCap::with_client(
+                    vec!["*".into()],
+                    Arc::new(client),
+                )),
                 ..WasmGadgetCaps::default_for_test()
             }),
             ..GadgetState::default_for_test()
@@ -396,11 +237,10 @@ mod tests {
 
         let mut state = GadgetState {
             caps: Some(WasmGadgetCaps {
-                http: HttpState {
-                    origins: vec!["*".into()],
-                    client: Some(Arc::new(client)),
-                    insecure_client: Arc::new(std::sync::OnceLock::new()),
-                },
+                http: Arc::new(HttpCap::with_client(
+                    vec!["*".into()],
+                    Arc::new(client),
+                )),
                 ..WasmGadgetCaps::default_for_test()
             }),
             ..GadgetState::default_for_test()
@@ -436,11 +276,10 @@ mod tests {
 
         let mut state = GadgetState {
             caps: Some(WasmGadgetCaps {
-                http: HttpState {
-                    origins: vec!["*".into()],
-                    client: Some(Arc::new(client)),
-                    insecure_client: Arc::new(std::sync::OnceLock::new()),
-                },
+                http: Arc::new(HttpCap::with_client(
+                    vec!["*".into()],
+                    Arc::new(client),
+                )),
                 ..WasmGadgetCaps::default_for_test()
             }),
             ..GadgetState::default_for_test()
@@ -480,11 +319,10 @@ mod tests {
 
         let mut state = GadgetState {
             caps: Some(WasmGadgetCaps {
-                http: HttpState {
-                    origins: vec!["*".into()],
-                    client: Some(Arc::new(client)),
-                    insecure_client: Arc::new(std::sync::OnceLock::new()),
-                },
+                http: Arc::new(HttpCap::with_client(
+                    vec!["*".into()],
+                    Arc::new(client),
+                )),
                 ..WasmGadgetCaps::default_for_test()
             }),
             ..GadgetState::default_for_test()
@@ -598,11 +436,7 @@ mod tests {
 
         let (_runtime, instance) = compile_opener_http_fixture();
         instance.set_caps(WasmGadgetCaps {
-            http: HttpState {
-                origins: vec!["*".into()],
-                client: Some(Arc::new(crate::network::Http::new())),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            http: Arc::new(HttpCap::new(vec!["*".into()])),
             ..WasmGadgetCaps::default_for_test()
         });
 
@@ -790,12 +624,8 @@ mod tests {
     fn http_blocked_origin_returns_permission_denied() {
         let (_runtime, instance) = compile_opener_http_fixture();
         instance.set_caps(WasmGadgetCaps {
-            http: HttpState {
-                // Empty origins = deny all.
-                origins: vec![],
-                client: Some(Arc::new(crate::network::Http::new())),
-                insecure_client: Arc::new(std::sync::OnceLock::new()),
-            },
+            // Empty origins = deny all.
+            http: Arc::new(HttpCap::new(vec![])),
             ..WasmGadgetCaps::default_for_test()
         });
 
