@@ -164,9 +164,6 @@ pub struct GadgetHost {
     frecency: Arc<FrecencyStore>,
     entry_store: EntryStore,
 
-    /// Retained for runtime re-enable cycles (settings toggle).
-    provisioning_ctx: Option<ProvisioningContext>,
-
     watched_keys: HashSet<String>,
     shortcut_signal_tx: mpsc::Sender<()>,
     shortcut_signal_rx: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
@@ -180,7 +177,6 @@ impl GadgetHost {
             store,
             frecency,
             entry_store: EntryStore::new(),
-            provisioning_ctx: None,
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
@@ -484,7 +480,6 @@ impl GadgetHost {
             });
         }
 
-        self.provisioning_ctx = Some(ctx);
     }
 
     /// Spawn the shortcut reactor task. Called once after the host
@@ -1058,7 +1053,6 @@ impl GadgetHost {
 
             let gadget = Arc::clone(&slot.gadget);
             let enabled_flag = &slot.enabled;
-            let prov = self.provisioning_ctx.clone();
 
             slot.dispatcher.dispatch(|dispatch_key, dispatch_value| {
                 let Some(_id) = dispatch_key.strip_prefix("enabled.") else {
