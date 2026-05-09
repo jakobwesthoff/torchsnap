@@ -825,12 +825,29 @@ pub fn run() {
             }
 
             // Settings init + shortcut registration + parallel setup.
+            let platform_paths = {
+                use tauri::Manager;
+                let path_resolver = app.path();
+                Arc::new(paths::PlatformPaths {
+                    home: path_resolver
+                        .home_dir()
+                        .context("resolve home directory")?,
+                    xdg_config: path_resolver
+                        .config_dir()
+                        .context("resolve config directory")?,
+                    xdg_data: path_resolver
+                        .data_dir()
+                        .context("resolve data directory")?,
+                })
+            };
+
             let prov_ctx = gadgets::ProvisioningContext {
                 app: app.handle().clone(),
                 store: Arc::clone(&store),
                 frecency: Arc::clone(&frecency_store),
                 icon_cache: Arc::clone(&icon_cache),
                 metadata_service: Arc::clone(&metadata_service),
+                platform_paths,
             };
             host.initialize_and_start(prov_ctx);
 

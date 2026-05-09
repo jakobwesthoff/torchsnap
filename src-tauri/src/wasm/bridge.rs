@@ -533,43 +533,18 @@ async fn scheduler_loop(
     }
 }
 
-/// Build a [`GadgetPaths`] resolving the five `${...}`
-/// substitution variables (`gadget-data`, `gadget-archive`,
-/// `home`, `xdg-config`, `xdg-data`) for one gadget
-/// instance. Called from `enable()` once per re-enable
-/// cycle. The gadget-data and gadget-archive paths come
-/// from the bridge (the bridge already has them); the
-/// XDG-style paths come from Tauri's path resolver, which
-/// produces platform-correct values (`Application Support`
-/// on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME`
-/// with fallback on Linux).
-///
-/// TODO: Platform paths should be resolved once at startup
-/// and stored on GadgetHost as `Arc<PlatformPaths>`. This
-/// function would then only assemble the per-gadget portion.
+/// Assemble per-gadget [`GadgetPaths`] from the shared
+/// platform paths and gadget-specific directories.
 fn build_gadget_paths(
-    app: &tauri::AppHandle,
+    platform: &Arc<crate::paths::PlatformPaths>,
     gadget_data: &PathBuf,
     gadget_archive: &PathBuf,
-) -> anyhow::Result<GadgetPaths> {
-    use tauri::Manager;
-
-    let path_resolver = app.path();
-    let home = path_resolver.home_dir().context("resolve home directory")?;
-    let xdg_config = path_resolver
-        .config_dir()
-        .context("resolve config directory")?;
-    let xdg_data = path_resolver.data_dir().context("resolve data directory")?;
-
-    Ok(GadgetPaths {
-        platform: std::sync::Arc::new(crate::paths::PlatformPaths {
-            home,
-            xdg_config,
-            xdg_data,
-        }),
+) -> GadgetPaths {
+    GadgetPaths {
+        platform: Arc::clone(platform),
         gadget_data: gadget_data.clone(),
         gadget_archive: gadget_archive.clone(),
-    })
+    }
 }
 
 fn log_task_error(log_sender: &LogSender, gadget_id: &str, task_id: &str, error: &str) {
@@ -657,8 +632,8 @@ impl Gadget for WasmGadgetBridge {
 
         let app = &ctx.app;
 
-        let gadget_paths = build_gadget_paths(app, &self.gadget_data, &self.gadget_archive)
-            .context("resolve gadget paths")?;
+        let gadget_paths =
+            build_gadget_paths(&ctx.platform_paths, &self.gadget_data, &self.gadget_archive);
 
         // Compile command rules against the resolved GadgetPaths.
         let command = if self.command_rules_raw.is_empty() {
