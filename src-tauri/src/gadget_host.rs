@@ -348,6 +348,36 @@ impl GadgetHost {
         ));
     }
 
+    /// Register a gadget via the factory pattern. The host builds
+    /// `ProvisionedCaps` from the declared `requests`, then calls
+    /// the `factory` closure with the caps to construct the gadget.
+    /// The gadget receives caps as a plain field at construction
+    /// — no `OnceLock`, no `set_caps()`, no `unwrap()`.
+    ///
+    /// `source_path` is the gadget's archive/source root (for WASM
+    /// gadgets); `None` for native gadgets.
+    pub fn register_with_caps<G, F>(
+        &mut self,
+        gadget_id: &str,
+        requests: Vec<crate::caps::CapRequest>,
+        ctx: &ProvisioningContext,
+        source_path: Option<&std::path::Path>,
+        factory: F,
+        source_kind: GadgetSourceKind,
+    ) -> anyhow::Result<()>
+    where
+        G: Gadget + 'static,
+        F: FnOnce(Arc<crate::caps::ProvisionedCaps>) -> G,
+    {
+        let caps = Self::build_provisioned_caps(gadget_id, &requests, ctx, source_path)?;
+        let gadget = factory(caps);
+        self.slots.push(GadgetSlot::new(
+            Arc::new(gadget) as Arc<dyn AnyGadget>,
+            source_kind,
+        ));
+        Ok(())
+    }
+
     /// Snapshot of the gadget-id → source-kind mapping. Exposed
     /// via the `gadget_sources` Tauri command. The host's slot
     /// list is append-only after setup, so this snapshot is
