@@ -171,7 +171,7 @@ impl WasmGadgetBridge {
             if let Some(http) = &perms.http {
                 requests.push(http.clone().into());
             }
-            if let Some(fs) = &perms.fs {
+            if let Some(fs) = &perms.filesystem {
                 requests.push(fs.clone().into());
             }
             if !perms.command.is_empty() {

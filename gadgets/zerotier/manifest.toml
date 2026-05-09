@@ -26,7 +26,7 @@ migrations = [
 # the origin allowlist.
 origins = ["http://localhost:9993"]
 
-[permissions.fs]
+[permissions.filesystem]
 # Auth-token candidate paths per OS, plus the macOS UI's
 # saved-networks store. The runtime only attempts paths that
 # exist on the host OS; redundant entries on other OSes are
