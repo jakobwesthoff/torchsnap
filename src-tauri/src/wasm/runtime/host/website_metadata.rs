@@ -5,30 +5,19 @@
 // =========================================================
 // Website-metadata host import
 //
-// Thin shim over the host's shared `WebsiteMetadataService`.
-// The service handles caching, single-flight coalescing,
-// negative-caching, and favicon storage; the shim's job is
-// permission gating, type translation across the WIT
-// boundary, and wrapping `Http::send`'s `block_on` in
-// `block_in_place` so it can be called from a tokio worker
-// thread.
+// Thin shim over the host's shared `WebsiteMetadataCap`.
+// The cap wraps the shared service that handles caching,
+// single-flight coalescing, negative-caching, and favicon
+// storage. The shim's job is permission gating (via the
+// Option on `WasmGadgetCaps.website_metadata`) and type
+// translation across the WIT boundary.
 // =========================================================
 
-use std::sync::Arc;
-
-use crate::network::website_metadata::{
-    LookupError, LookupMode, LookupResult, WebsiteMetadataService,
-};
+use crate::caps::WebsiteMetadataCapError;
+use crate::network::website_metadata::{LookupMode, LookupResult};
 use crate::wasm::bindings;
 
 use super::super::GadgetState;
-
-/// Per-gadget website-metadata state.
-#[derive(Default)]
-pub(crate) struct WebsiteMetadataState {
-    pub(crate) enabled: bool,
-    pub(crate) service: Option<Arc<WebsiteMetadataService>>,
-}
 
 impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
     fn lookup(
@@ -43,26 +32,16 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
 
         let caps = self.caps().map_err(|e| WitError::PermissionDenied(e))?;
 
-        if !caps.website_metadata.enabled {
-            return Err(WitError::PermissionDenied(
-                "gadget manifest does not declare permissions.website-metadata = true".into(),
-            ));
-        }
-
-        let service = caps
+        let cap = caps
             .website_metadata
-            .service
             .as_ref()
-            .expect("service handle present when enabled");
+            .ok_or_else(|| WitError::PermissionDenied(
+                "gadget manifest does not declare permissions.website-metadata = true".into(),
+            ))?;
 
-        let native_mode = wit_mode_to_native(mode);
-
-        let result = tokio::task::block_in_place(|| service.lookup(&domain, native_mode));
-
-        match result {
-            Ok(r) => Ok(native_to_wit(r)),
-            Err(LookupError::InvalidDomain(d)) => Err(WitError::InvalidDomain(d)),
-        }
+        cap.lookup(&domain, LookupMode::from(mode))
+            .map(|r| bindings::torchsnap::gadget::website_metadata::LookupResult::from(r))
+            .map_err(|e| WitError::from(e))
     }
 }
 
@@ -70,29 +49,39 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
 // Type conversions
 // =========================================================
 
-fn wit_mode_to_native(
-    mode: bindings::torchsnap::gadget::website_metadata::LookupMode,
-) -> LookupMode {
-    use bindings::torchsnap::gadget::website_metadata::LookupMode as WitMode;
-    match mode {
-        WitMode::Cached => LookupMode::Cached,
-        WitMode::Blocking => LookupMode::Blocking,
+impl From<bindings::torchsnap::gadget::website_metadata::LookupMode> for LookupMode {
+    fn from(mode: bindings::torchsnap::gadget::website_metadata::LookupMode) -> Self {
+        use bindings::torchsnap::gadget::website_metadata::LookupMode as WitMode;
+        match mode {
+            WitMode::Cached => LookupMode::Cached,
+            WitMode::Blocking => LookupMode::Blocking,
+        }
     }
 }
 
-fn native_to_wit(
-    result: LookupResult,
-) -> bindings::torchsnap::gadget::website_metadata::LookupResult {
-    use bindings::torchsnap::gadget::website_metadata::{CacheEntry, LookupResult as WitResult};
-    match result {
-        LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
-            title: meta.title,
-            description: meta.description,
-            favicon: meta.favicon.into(),
-        }),
-        LookupResult::ReachableNoData => WitResult::ReachableNoData,
-        LookupResult::Unreachable => WitResult::Unreachable,
-        LookupResult::Pending => WitResult::Pending,
+impl From<LookupResult> for bindings::torchsnap::gadget::website_metadata::LookupResult {
+    fn from(result: LookupResult) -> Self {
+        use bindings::torchsnap::gadget::website_metadata::{CacheEntry, LookupResult as WitResult};
+        match result {
+            LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
+                title: meta.title,
+                description: meta.description,
+                favicon: meta.favicon.into(),
+            }),
+            LookupResult::ReachableNoData => WitResult::ReachableNoData,
+            LookupResult::Unreachable => WitResult::Unreachable,
+            LookupResult::Pending => WitResult::Pending,
+        }
+    }
+}
+
+impl From<WebsiteMetadataCapError>
+    for bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError
+{
+    fn from(err: WebsiteMetadataCapError) -> Self {
+        match err {
+            WebsiteMetadataCapError::InvalidDomain(d) => Self::InvalidDomain(d),
+        }
     }
 }
 
@@ -104,10 +93,14 @@ fn native_to_wit(
 mod tests {
     use super::*;
 
+    use std::sync::Arc;
+
     use httpmock::MockServer;
     use httpmock::prelude::*;
     use tempfile::TempDir;
 
+    use crate::caps::WebsiteMetadataCap;
+    use crate::network::website_metadata::WebsiteMetadataService;
     use crate::settings::notifier::SettingsNotifier;
     use crate::wasm::bindings::torchsnap::gadget::website_metadata as wit;
     use crate::wasm::runtime::caps::WasmGadgetCaps;
@@ -132,9 +125,10 @@ mod tests {
         );
 
         let mut caps = WasmGadgetCaps::default_for_test();
-        caps.website_metadata = WebsiteMetadataState {
-            enabled,
-            service: if enabled { Some(svc) } else { None },
+        caps.website_metadata = if enabled {
+            Some(Arc::new(WebsiteMetadataCap::new(svc)))
+        } else {
+            None
         };
 
         let state = GadgetState {

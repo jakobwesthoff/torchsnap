@@ -534,10 +534,7 @@ mod tests {
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
         instance.set_caps(WasmGadgetCaps {
-            website_metadata: host::website_metadata::WebsiteMetadataState {
-                enabled: true,
-                service: Some(svc),
-            },
+            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..WasmGadgetCaps::default_for_test()
         });
         instance.enable().expect("enable");
@@ -567,10 +564,7 @@ mod tests {
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
         instance.set_caps(WasmGadgetCaps {
-            website_metadata: host::website_metadata::WebsiteMetadataState {
-                enabled: true,
-                service: Some(svc),
-            },
+            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..WasmGadgetCaps::default_for_test()
         });
         instance.enable().expect("enable");
@@ -604,10 +598,7 @@ mod tests {
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
         let (_runtime, instance) = compile_website_metadata_fixture();
         instance.set_caps(WasmGadgetCaps {
-            website_metadata: host::website_metadata::WebsiteMetadataState {
-                enabled: true,
-                service: Some(svc),
-            },
+            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..WasmGadgetCaps::default_for_test()
         });
         instance.enable().expect("enable");
