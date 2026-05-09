@@ -12,6 +12,9 @@
 // platform-specific factory function.
 // =========================================================
 
+use std::sync::Arc;
+
+use crate::caps::{CapRequest, ProvisionedCaps};
 use crate::commands::types::{ActionId, CatalogEntry, PostAction, ScoredEntry};
 use crate::gadgets::{Gadget, ProvisioningContext};
 
@@ -70,12 +73,19 @@ fn system_commands() -> Vec<Box<dyn SystemCommand>> {
 // =========================================================
 
 pub struct SystemCommandsGadget {
+    #[allow(dead_code)]
+    caps: Arc<ProvisionedCaps>,
     commands: Vec<Box<dyn SystemCommand>>,
 }
 
 impl SystemCommandsGadget {
-    pub fn new() -> Self {
+    pub fn cap_requests() -> Vec<CapRequest> {
+        vec![]
+    }
+
+    pub fn new(caps: Arc<ProvisionedCaps>) -> Self {
         Self {
+            caps,
             commands: system_commands(),
         }
     }
