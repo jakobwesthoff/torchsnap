@@ -156,6 +156,6 @@ trait method or at registration time.
 
 ## Dependencies
 
-- `01kr642tq2r66a9899fw4f0p0p` — GadgetSource/PathContext as caps
+- `01kr642tq2r66a9899fw4f0p0p` — GadgetSource as a cap
 - `01kr65dwvn5ybgajdfjs0s616w` — logging/platform as caps
-- `01kr65dwvn5ybgajdfjs0s616x` — assets/paths as caps
+- `01kr65dwvn5ybgajdfjs0s616x` — assets host import as a cap
