@@ -15,9 +15,9 @@
 // - Hybrid gadgets override both — the host calls both paths
 //   unconditionally.
 //
-// The trait uses an associated `type Caps` for per-gadget
-// capability provisioning. `AnyGadget` provides the object-
-// safe wrapper for dynamic dispatch in `GadgetHost`.
+// Gadgets receive `Arc<ProvisionedCaps>` at construction
+// via the factory-based registration API. The trait is
+// object-safe — `GadgetHost` holds `Arc<dyn Gadget>`.
 // =========================================================
 
 pub mod app_launcher;
@@ -158,102 +158,3 @@ pub trait Gadget: Send + Sync {
     }
 }
 
-// =========================================================
-// AnyGadget — object-safe dynamic dispatch wrapper
-// =========================================================
-
-/// Object-safe trait for `GadgetHost` to dispatch through.
-///
-/// The blanket impl on `Gadget` erases the associated `Caps`
-/// type by combining `provision()` + `enable()` into a single
-/// `provision_and_enable()` call. All other methods delegate
-/// directly.
-pub trait AnyGadget: Send + Sync {
-    fn id(&self) -> &str;
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit;
-    fn provision_and_enable(&self, ctx: &ProvisioningContext) -> anyhow::Result<()>;
-    fn disable(&self);
-    fn setting_changed(&self, key: &str, value: serde_json::Value);
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction>;
-    fn shortcuts(&self) -> Vec<GadgetShortcut>;
-    fn handle_shortcut(
-        &self,
-        shortcut_id: &str,
-    ) -> anyhow::Result<PostAction>;
-    fn handle_message(
-        &self,
-        method: &str,
-        payload: serde_json::Value,
-        channel: tauri::ipc::Channel<serde_json::Value>,
-    ) -> anyhow::Result<serde_json::Value>;
-    fn search_prefixes(&self) -> &[String];
-    fn entries(&self) -> Vec<CatalogEntry>;
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse>;
-}
-
-impl<G: Gadget> AnyGadget for G {
-    fn id(&self) -> &str {
-        Gadget::id(self)
-    }
-
-    fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit {
-        Gadget::initialize_settings(self, settings)
-    }
-
-    fn provision_and_enable(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
-        Gadget::enable(self);
-        Ok(())
-    }
-
-    fn disable(&self) {
-        Gadget::disable(self);
-    }
-
-    fn setting_changed(&self, key: &str, value: serde_json::Value) {
-        Gadget::setting_changed(self, key, value);
-    }
-
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
-        Gadget::execute(self, entry, action_id)
-    }
-
-    fn shortcuts(&self) -> Vec<GadgetShortcut> {
-        Gadget::shortcuts(self)
-    }
-
-    fn handle_shortcut(
-        &self,
-        shortcut_id: &str,
-    ) -> anyhow::Result<PostAction> {
-        Gadget::handle_shortcut(self, shortcut_id)
-    }
-
-    fn handle_message(
-        &self,
-        method: &str,
-        payload: serde_json::Value,
-        channel: tauri::ipc::Channel<serde_json::Value>,
-    ) -> anyhow::Result<serde_json::Value> {
-        Gadget::handle_message(self, method, payload, channel)
-    }
-
-    fn search_prefixes(&self) -> &[String] {
-        Gadget::search_prefixes(self)
-    }
-
-    fn entries(&self) -> Vec<CatalogEntry> {
-        Gadget::entries(self)
-    }
-
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {
-        Gadget::search(self, query, matched_prefix)
-    }
-}

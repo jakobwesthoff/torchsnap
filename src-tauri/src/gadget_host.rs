@@ -41,7 +41,7 @@ use crate::commands::types::{
 };
 use crate::entry_store::EntryStore;
 use crate::frecency::FrecencyStore;
-use crate::gadgets::{AnyGadget, Gadget, GadgetShortcut, ProvisioningContext};
+use crate::gadgets::{Gadget, GadgetShortcut, ProvisioningContext};
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::settings::SettingsInit;
 use crate::unicode::Utf16Positions;
@@ -67,7 +67,7 @@ struct RegisteredShortcut {
     shortcut: Shortcut,
     gadget_id: String,
     shortcut_id: String,
-    owner: Arc<dyn AnyGadget>,
+    owner: Arc<dyn Gadget>,
 }
 
 /// Payload emitted with the `activate-gadget-custom-ui` event.
@@ -87,7 +87,7 @@ struct ActivateGadgetPayload {
 /// owns the enabled flag and the settings dispatcher — gadgets
 /// never manage their own enabled state.
 struct GadgetSlot {
-    gadget: Arc<dyn AnyGadget>,
+    gadget: Arc<dyn Gadget>,
 
     /// Where this gadget was loaded from. Surfaced to the
     /// frontend so the Gadgets settings panel can badge each
@@ -107,7 +107,7 @@ struct GadgetSlot {
 }
 
 impl GadgetSlot {
-    fn new(gadget: Arc<dyn AnyGadget>, source_kind: GadgetSourceKind) -> Self {
+    fn new(gadget: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
         Self {
             gadget,
             source_kind,
@@ -335,19 +335,6 @@ impl GadgetHost {
         Ok(Arc::new(caps))
     }
 
-    /// Register a gadget with the host. `source_kind` records
-    /// where the gadget was loaded from (native Rust code,
-    /// bundled WASM archive, user install, dev path) and is
-    /// surfaced through [`Self::gadget_sources`] to the frontend
-    /// so the Gadgets settings panel can badge and gate each
-    /// entry appropriately.
-    pub fn register(&mut self, gadget: impl Gadget + 'static, source_kind: GadgetSourceKind) {
-        self.slots.push(GadgetSlot::new(
-            Arc::new(gadget) as Arc<dyn AnyGadget>,
-            source_kind,
-        ));
-    }
-
     /// Register a gadget via the factory pattern. The host builds
     /// `ProvisionedCaps` from the declared `requests`, then calls
     /// the `factory` closure with the caps to construct the gadget.
@@ -372,7 +359,7 @@ impl GadgetHost {
         let caps = Self::build_provisioned_caps(gadget_id, &requests, ctx, source_path)?;
         let gadget = factory(caps);
         self.slots.push(GadgetSlot::new(
-            Arc::new(gadget) as Arc<dyn AnyGadget>,
+            Arc::new(gadget) as Arc<dyn Gadget>,
             source_kind,
         ));
         Ok(())
@@ -461,11 +448,8 @@ impl GadgetHost {
             }
 
             let gadget = Arc::clone(&slot.gadget);
-            let prov = ctx.clone();
             runtime.spawn_blocking(move || {
-                if let Err(e) = gadget.provision_and_enable(&prov) {
-                    eprintln!("gadget `{}` enable failed: {e:#}", gadget.id());
-                }
+                gadget.enable();
             });
         }
 
@@ -601,7 +585,7 @@ impl GadgetHost {
         &self,
         gadget_id: &str,
         decl: &GadgetShortcut,
-        owner: Arc<dyn AnyGadget>,
+        owner: Arc<dyn Gadget>,
     ) -> Option<RegisteredShortcut> {
         let full_key = format!("gadgets.{gadget_id}.{}", decl.settings_key);
 
@@ -715,7 +699,7 @@ impl GadgetHost {
 
         // Phase 1: catalog search (sync, CPU-bound). Send results
         // to the frontend immediately.
-        let gadgets: Vec<Arc<dyn AnyGadget>> = self
+        let gadgets: Vec<Arc<dyn Gadget>> = self
             .slots
             .iter()
             .filter(|s| s.is_active())
@@ -830,7 +814,7 @@ impl GadgetHost {
     }
 
     /// Delegate to the standalone function for testability.
-    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn AnyGadget>, &'a str)> {
+    fn find_prefix_match<'a>(&'a self, query: &str) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
         find_prefix_match(&self.slots, query)
     }
 
@@ -841,7 +825,7 @@ impl GadgetHost {
     /// return their entry list, query-only gadgets return the
     /// default empty vec (zero cost).
     fn search_catalogs_static(
-        gadgets: &[Arc<dyn AnyGadget>],
+        gadgets: &[Arc<dyn Gadget>],
         frecency: &FrecencyStore,
         query: &str,
     ) -> Vec<SourcedEntry> {
@@ -1054,11 +1038,7 @@ impl GadgetHost {
                 let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
 
                 if new_enabled && !was_enabled {
-                    if let Some(ref ctx) = prov {
-                        if let Err(e) = gadget.provision_and_enable(ctx) {
-                            eprintln!("gadget `{}` re-enable failed: {e:#}", gadget.id());
-                        }
-                    }
+                    gadget.enable();
                 } else if !new_enabled && was_enabled {
                     gadget.disable();
                 }
@@ -1166,8 +1146,8 @@ fn process_gadget_response(
 fn find_prefix_match<'a>(
     slots: &'a [GadgetSlot],
     query: &str,
-) -> Option<(&'a Arc<dyn AnyGadget>, &'a str)> {
-    let mut best: Option<(&Arc<dyn AnyGadget>, &str)> = None;
+) -> Option<(&'a Arc<dyn Gadget>, &'a str)> {
+    let mut best: Option<(&Arc<dyn Gadget>, &str)> = None;
     let mut best_len = 0;
 
     for slot in slots {

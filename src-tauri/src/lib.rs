@@ -754,10 +754,15 @@ pub fn run() {
             // into the binary — tag them `Builtin`. The Gadgets
             // settings panel uses this to suppress the uninstall
             // action for built-ins.
-            host.register(
-                gadgets::commands::BuiltInCommandsGadget,
+            host.register_with_caps::<gadgets::commands::BuiltInCommandsGadget, _>(
+                "builtin-commands",
+                vec![],
+                &prov_ctx,
+                None,
+                |_caps| gadgets::commands::BuiltInCommandsGadget,
                 wasm::source::GadgetSourceKind::Builtin,
-            );
+            )
+            .expect("register builtin-commands gadget");
             host.register_with_caps::<gadgets::system_commands::SystemCommandsGadget, _>(
                 "system-commands",
                 gadgets::system_commands::SystemCommandsGadget::cap_requests(),
