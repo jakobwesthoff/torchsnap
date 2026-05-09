@@ -48,10 +48,14 @@ interface logging {
 /// wait for an explicit, audited extension of this
 /// interface.
 interface clipboard {
-  /// Write `text` to the system clipboard. Returns
-  /// `err(string)` if the host's clipboard backend reports
-  /// a failure.
-  write-text: func(text: string) -> result<_, string>;
+  /// Error type for clipboard operations.
+  variant clipboard-error {
+    /// The host clipboard backend reported a failure.
+    backend-failure(string),
+  }
+
+  /// Write `text` to the system clipboard.
+  write-text: func(text: string) -> result<_, clipboard-error>;
 }
 
 /// Per-gadget SQLite storage.
