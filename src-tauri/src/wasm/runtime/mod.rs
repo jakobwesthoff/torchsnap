@@ -215,6 +215,24 @@ mod tests {
         assert!(check_opener_scheme(&strs(&["https", "mailto"]), "mailto:user@x.com").is_ok());
     }
 
+    #[test]
+    fn opener_wildcard_allows_any_scheme() {
+        assert!(check_opener_scheme(&strs(&["*"]), "https://example.com").is_ok());
+        assert!(check_opener_scheme(&strs(&["*"]), "ftp://example.com").is_ok());
+        assert!(check_opener_scheme(&strs(&["*"]), "mailto:user@x.com").is_ok());
+        assert!(check_opener_scheme(&strs(&["*"]), "custom://anything").is_ok());
+    }
+
+    #[test]
+    fn opener_wildcard_short_circuits_before_url_parse() {
+        assert!(check_opener_scheme(&strs(&["*"]), "not-a-url").is_ok());
+    }
+
+    #[test]
+    fn opener_wildcard_among_other_schemes() {
+        assert!(check_opener_scheme(&strs(&["https", "*"]), "ftp://example.com").is_ok());
+    }
+
     // ---- check_http_origin ----------------------------------
 
     use super::host::http::{WasmHttpError, check_http_origin, wit_method_to_reqwest};
