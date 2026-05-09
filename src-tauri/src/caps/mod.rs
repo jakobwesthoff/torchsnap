@@ -95,3 +95,146 @@ impl ProvisionedCaps {
     cap_accessor!(frecency -> FrecencyCap);
     cap_accessor!(path_resolver -> PathResolverCap);
 }
+
+// =========================================================
+// CapRequest
+// =========================================================
+
+/// Declares a single capability a gadget needs. Provided at
+/// registration time — the host builds `ProvisionedCaps` from
+/// a `Vec<CapRequest>`.
+///
+/// Struct variants use named `permissions` / `config` fields
+/// to maintain an explicit structural division between
+/// security-relevant permission data and non-security
+/// construction data. Unit variants are for caps that need
+/// neither.
+pub enum CapRequest {
+    Opener {
+        permissions: OpenerPermissions,
+    },
+    Http {
+        permissions: HttpPermissions,
+    },
+    Filesystem {
+        permissions: FilesystemPermissions,
+    },
+    Command {
+        permissions: CommandPermissions,
+    },
+    SqlStorage {
+        config: SqlStorageConfig,
+    },
+    Clipboard,
+    WebsiteMetadata,
+    IconCache,
+    Settings,
+    Frecency,
+    PathResolver,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cap_request_opener_variant() {
+        let req = CapRequest::Opener {
+            permissions: OpenerPermissions {
+                schemes: vec!["https".into()],
+                open_path: false,
+                reveal_path: true,
+            },
+        };
+        match req {
+            CapRequest::Opener { permissions } => {
+                assert_eq!(permissions.schemes, vec!["https"]);
+                assert!(!permissions.open_path);
+                assert!(permissions.reveal_path);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn cap_request_http_variant() {
+        let req = CapRequest::Http {
+            permissions: HttpPermissions {
+                origins: vec!["https://example.com".into()],
+            },
+        };
+        match req {
+            CapRequest::Http { permissions } => {
+                assert_eq!(permissions.origins, vec!["https://example.com"]);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn cap_request_filesystem_variant() {
+        let req = CapRequest::Filesystem {
+            permissions: FilesystemPermissions {
+                read_patterns: vec!["${home}/*.txt".into()],
+            },
+        };
+        match req {
+            CapRequest::Filesystem { permissions } => {
+                assert_eq!(permissions.read_patterns.len(), 1);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn cap_request_command_variant() {
+        let req = CapRequest::Command {
+            permissions: CommandPermissions {
+                rules: vec![],
+            },
+        };
+        match req {
+            CapRequest::Command { permissions } => {
+                assert!(permissions.rules.is_empty());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn cap_request_sql_storage_variant() {
+        let req = CapRequest::SqlStorage {
+            config: SqlStorageConfig {
+                db_path: PathBuf::from("/data/test.sqlite3"),
+                migrations: Arc::new(vec!["CREATE TABLE t (id INT);".into()]),
+            },
+        };
+        match req {
+            CapRequest::SqlStorage { config } => {
+                assert_eq!(config.db_path, PathBuf::from("/data/test.sqlite3"));
+                assert_eq!(config.migrations.len(), 1);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn cap_request_unit_variants() {
+        let variants: Vec<CapRequest> = vec![
+            CapRequest::Clipboard,
+            CapRequest::WebsiteMetadata,
+            CapRequest::IconCache,
+            CapRequest::Settings,
+            CapRequest::Frecency,
+            CapRequest::PathResolver,
+        ];
+        assert_eq!(variants.len(), 6);
+    }
+
+    #[test]
+    fn cap_request_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<CapRequest>();
+    }
+}
