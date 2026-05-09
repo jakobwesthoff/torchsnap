@@ -103,7 +103,7 @@ impl WasmGadgetInstance {
     pub fn clear_caps(&self) {
         self.with_state_mut(|state| {
             if let Some(mut caps) = state.caps.take() {
-                caps.teardown(&mut state.wasi_table);
+                caps.teardown(&mut state.sql_handle_reps, &mut state.wasi_table);
             }
         });
     }
