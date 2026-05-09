@@ -33,7 +33,7 @@ use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use super::{Gadget, ProvisioningContext};
+use super::Gadget;
 
 pub struct SystemPreferencesGadget {
     caps: Arc<ProvisionedCaps>,

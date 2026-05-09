@@ -742,7 +742,7 @@ pub fn run() {
             // Provisioning context — constructed once before
             // registration so factory-based registration can
             // build caps immediately.
-            let prov_ctx = gadgets::ProvisioningContext {
+            let prov_ctx = gadget_host::ProvisioningContext {
                 app: app.handle().clone(),
                 store: Arc::clone(&store),
                 frecency: Arc::clone(&frecency_store),
@@ -1034,7 +1034,7 @@ fn load_wasm_gadgets(
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
     resource_dir: Option<&std::path::Path>,
-    prov_ctx: &gadgets::ProvisioningContext,
+    prov_ctx: &gadget_host::ProvisioningContext,
 ) -> anyhow::Result<usize> {
     let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new()?;
     let log_sender = &log_ctx.sender;
@@ -1179,7 +1179,7 @@ fn load_single_wasm_gadget(
     log_ctx: &wasm::logging::channel::LogContext,
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
-    prov_ctx: &gadgets::ProvisioningContext,
+    prov_ctx: &gadget_host::ProvisioningContext,
 ) -> anyhow::Result<String> {
     let gadget_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();

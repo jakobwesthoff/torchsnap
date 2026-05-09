@@ -26,14 +26,7 @@ pub mod commands;
 pub mod system_commands;
 pub mod system_preferences;
 
-use std::sync::Arc;
-
-use tauri_plugin_store::Store;
-
 use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
-use crate::frecency::FrecencyStore;
-use crate::icons::IconCache;
-use crate::network::website_metadata::WebsiteMetadataService;
 use crate::settings::SettingsInit;
 
 // =========================================================
@@ -46,36 +39,6 @@ pub struct GadgetShortcut {
     pub label: &'static str,
     pub default_shortcut: &'static str,
     pub settings_key: &'static str,
-}
-
-// =========================================================
-// ProvisioningContext — shared resources for gadget activation
-// =========================================================
-
-/// Bundled runtime context passed to `Gadget::provision()`.
-///
-/// Carries all host-managed shared resources a gadget might
-/// need to build its capabilities. Constructed once in
-/// `lib.rs::setup` after all shared resources exist, stored
-/// on `GadgetHost` for re-enable cycles.
-pub struct ProvisioningContext {
-    pub app: tauri::AppHandle,
-    pub store: Arc<Store<tauri::Wry>>,
-    pub frecency: Arc<FrecencyStore>,
-    pub icon_cache: Arc<IconCache>,
-    pub metadata_service: Arc<WebsiteMetadataService>,
-}
-
-impl Clone for ProvisioningContext {
-    fn clone(&self) -> Self {
-        Self {
-            app: self.app.clone(),
-            store: Arc::clone(&self.store),
-            frecency: Arc::clone(&self.frecency),
-            icon_cache: Arc::clone(&self.icon_cache),
-            metadata_service: Arc::clone(&self.metadata_service),
-        }
-    }
 }
 
 // =========================================================
