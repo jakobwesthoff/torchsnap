@@ -40,6 +40,7 @@ use clipboard_rs::{
 use tauri::Manager;
 use tauri::ipc::Channel;
 
+use crate::caps::{CapRequest, ProvisionedCaps};
 use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::settings::SettingsInit;
@@ -83,6 +84,7 @@ pub(super) struct WatcherLifecycle {
 // =========================================================
 
 pub struct ClipboardGadget {
+    caps: Arc<ProvisionedCaps>,
     platform: Arc<dyn ClipboardPlatform>,
 
     /// Shared state (DB + file storage). Initialized in `enable()`,
@@ -106,15 +108,16 @@ pub struct ClipboardGadget {
     /// Whether to bump pasted entries to the top of history.
     /// Updated by the host via `setting_changed("bringToFrontOnPaste", ...)`.
     bring_to_front: AtomicBool,
-
-    /// Gadget settings handle for reading settings outside of
-    /// `enable()`. Initialized in `enable()`.
-    settings: Mutex<Option<crate::settings::GadgetSettings>>,
 }
 
 impl ClipboardGadget {
-    pub fn new(platform: impl ClipboardPlatform + 'static) -> Self {
+    pub fn cap_requests() -> Vec<CapRequest> {
+        vec![CapRequest::Settings, CapRequest::PathResolver]
+    }
+
+    pub fn new(caps: Arc<ProvisionedCaps>, platform: impl ClipboardPlatform + 'static) -> Self {
         Self {
+            caps,
             platform: Arc::new(platform),
             state: Mutex::new(None),
             lifecycle: Arc::new(Mutex::new(WatcherLifecycle {
@@ -125,7 +128,6 @@ impl ClipboardGadget {
             retention_condvar: Arc::new(Condvar::new()),
             retention_days: Arc::new(AtomicU32::new(30)),
             bring_to_front: AtomicBool::new(true),
-            settings: Mutex::new(None),
         }
     }
 
@@ -250,23 +252,11 @@ fn retention_cleanup_loop(
 }
 
 // =========================================================
-// ClipboardCaps — provisioned resources for enable()
-// =========================================================
-
-/// Capabilities built during `provision()` and consumed by `enable()`.
-pub struct ClipboardCaps {
-    /// Base directory for host-managed gadget state (`gadget-home/<id>/`).
-    data_dir: std::path::PathBuf,
-    /// Scoped read access to this gadget's settings namespace.
-    settings: crate::settings::GadgetSettings,
-}
-
-// =========================================================
 // Gadget Implementation
 // =========================================================
 
 impl Gadget for ClipboardGadget {
-    type Caps = ClipboardCaps;
+    type Caps = ();
 
     fn id(&self) -> &str {
         PLUGIN_ID
@@ -298,29 +288,20 @@ impl Gadget for ClipboardGadget {
         })
     }
 
-    fn provision(&self, ctx: &ProvisioningContext) -> anyhow::Result<ClipboardCaps> {
-        let data_dir = ctx
-            .app
-            .path()
-            .app_data_dir()
-            .expect("resolve app data dir")
-            .join("gadget-home")
-            .join(PLUGIN_ID);
-
-        let settings =
-            crate::settings::GadgetSettings::new(Arc::clone(&ctx.store), PLUGIN_ID);
-
-        Ok(ClipboardCaps { data_dir, settings })
+    fn provision(&self, _ctx: &ProvisioningContext) -> anyhow::Result<()> {
+        Ok(())
     }
 
-    fn enable(&self, caps: ClipboardCaps) {
-        // ----- Initialize state (DB + file storage) -----
-        //
-        // State lives under `gadget-home/<id>/`: code lives
-        // under `gadgets/` and is owned by the installer, so
-        // host-managed state gets its own root with reserved
-        // sibling slots (`sql/`, `files/`, future additions).
-        let data_dir = caps.data_dir;
+    fn enable(&self, _caps: ()) {
+        // Resolve the gadget data directory from the path resolver cap.
+        let data_dir = self
+            .caps
+            .path_resolver()
+            .resolve("gadget-data")
+            .expect("gadget-data is a recognized path variable")
+            .to_path_buf();
+
+        let settings = self.caps.settings();
 
         let db_path = data_dir.join("sql").join("clipboard.sqlite3");
         let files_dir = data_dir.join("files");
@@ -335,13 +316,12 @@ impl Gadget for ClipboardGadget {
         });
 
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
-        *self.settings.lock().expect("settings not poisoned") = Some(caps.settings.clone());
 
         // Read initial values for settings managed via setting_changed.
-        let retention: u32 = caps.settings.get("retentionDays").unwrap_or(30);
+        let retention: u32 = settings.get("retentionDays").unwrap_or(30);
         self.retention_days.store(retention, Ordering::Relaxed);
 
-        let bring_to_front: bool = caps.settings.get("bringToFrontOnPaste").unwrap_or(true);
+        let bring_to_front: bool = settings.get("bringToFrontOnPaste").unwrap_or(true);
         self.bring_to_front.store(bring_to_front, Ordering::Relaxed);
 
         // Reset the shutdown flag in case this is a re-enable.
