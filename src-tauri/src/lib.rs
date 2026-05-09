@@ -818,7 +818,7 @@ pub fn run() {
                 &source_registry,
                 &app_data_dir,
                 resource_dir.as_deref(),
-                Arc::clone(&metadata_service),
+                &prov_ctx,
             ) {
                 Ok(count) => {
                     if count > 0 {
@@ -1029,7 +1029,7 @@ fn load_wasm_gadgets(
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
     resource_dir: Option<&std::path::Path>,
-    metadata_service: Arc<network::website_metadata::WebsiteMetadataService>,
+    prov_ctx: &gadgets::ProvisioningContext,
 ) -> anyhow::Result<usize> {
     let runtime: Arc<wasm::runtime::WasmRuntime> = wasm::runtime::WasmRuntime::new()?;
     let log_sender = &log_ctx.sender;
@@ -1090,7 +1090,7 @@ fn load_wasm_gadgets(
                 log_ctx,
                 source_registry,
                 app_data_dir,
-                Some(Arc::clone(&metadata_service)),
+                prov_ctx,
             ) {
                 Ok(gadget_id) => {
                     log_sender.send(wasm::logging::LogItem {
@@ -1174,19 +1174,47 @@ fn load_single_wasm_gadget(
     log_ctx: &wasm::logging::channel::LogContext,
     source_registry: &wasm::protocol::GadgetSourceRegistry,
     app_data_dir: &std::path::Path,
-    metadata_service: Option<Arc<network::website_metadata::WebsiteMetadataService>>,
+    prov_ctx: &gadgets::ProvisioningContext,
 ) -> anyhow::Result<String> {
     let gadget_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();
-    let bridge = wasm::bridge::WasmGadgetBridge::new(
-        manifest,
-        runtime,
-        log_ctx.clone(),
-        Arc::clone(&source),
-        app_data_dir,
-        metadata_service,
+    let source_path = source.root_path().to_path_buf();
+
+    let cap_requests = wasm::bridge::WasmGadgetBridge::cap_requests_from_manifest(
+        &manifest,
+        &*source,
     )?;
-    host.register(bridge, source_kind);
+
+    // Resolve platform paths once for the bridge's transitional adapter.
+    let platform_paths = {
+        use tauri::Manager;
+        let pr = prov_ctx.app.path();
+        Arc::new(crate::paths::PlatformPaths {
+            home: pr.home_dir().context("resolve home directory")?,
+            xdg_config: pr.config_dir().context("resolve config directory")?,
+            xdg_data: pr.data_dir().context("resolve data directory")?,
+        })
+    };
+
+    host.register_with_caps::<wasm::bridge::WasmGadgetBridge, _>(
+        &gadget_id,
+        cap_requests,
+        prov_ctx,
+        Some(&source_path),
+        |caps| {
+            wasm::bridge::WasmGadgetBridge::new(
+                manifest,
+                runtime,
+                log_ctx.clone(),
+                Arc::clone(&source),
+                app_data_dir,
+                caps,
+                platform_paths,
+            )
+            .expect("bridge construction after cap provisioning")
+        },
+        source_kind,
+    )?;
 
     // Retain the source in the registry so the protocol
     // handler can serve frontend assets from it.
