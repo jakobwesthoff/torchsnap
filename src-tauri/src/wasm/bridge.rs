@@ -158,13 +158,8 @@ impl WasmGadgetBridge {
 
         let mut requests = Vec::new();
 
-        // Always-on caps for WASM gadgets.
-        requests.push(CapRequest::Settings);
-        requests.push(CapRequest::Frecency);
-        requests.push(CapRequest::Clipboard);
-        requests.push(CapRequest::PathResolver);
-
         if let Some(perms) = &manifest.permissions {
+            // Parameterized caps — subsection presence = requested.
             if let Some(opener) = &perms.opener {
                 requests.push(opener.clone().into());
             }
@@ -177,28 +172,54 @@ impl WasmGadgetBridge {
             if !perms.command.is_empty() {
                 requests.push(perms.command.clone().into());
             }
+
+            // Boolean caps — explicitly opt-in.
             if perms.website_metadata {
                 requests.push(CapRequest::WebsiteMetadata);
+            }
+            if perms.settings {
+                requests.push(CapRequest::Settings);
+            }
+            if perms.frecency {
+                requests.push(CapRequest::Frecency);
+            }
+            if perms.clipboard {
+                requests.push(CapRequest::Clipboard);
+            }
+            if perms.icon_cache {
+                requests.push(CapRequest::IconCache);
+            }
+            if perms.path_resolver {
+                requests.push(CapRequest::PathResolver);
             }
         }
 
         // SqlStorage: read migration file contents from the source.
-        if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
-            let mut migration_contents = Vec::with_capacity(sql_def.migrations.len());
-            for path in &sql_def.migrations {
-                let bytes = source
-                    .read_file(path)
-                    .with_context(|| format!("read SQL migration file `{path}`"))?;
-                let text = String::from_utf8(bytes).with_context(|| {
-                    format!("SQL migration file `{path}` is not valid UTF-8")
-                })?;
-                migration_contents.push(text);
+        // Gated by the `sql-storage` boolean AND presence of
+        // `[storage.sql]`.
+        let sql_requested = manifest
+            .permissions
+            .as_ref()
+            .map(|p| p.sql_storage)
+            .unwrap_or(false);
+        if sql_requested {
+            if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+                let mut migration_contents = Vec::with_capacity(sql_def.migrations.len());
+                for path in &sql_def.migrations {
+                    let bytes = source
+                        .read_file(path)
+                        .with_context(|| format!("read SQL migration file `{path}`"))?;
+                    let text = String::from_utf8(bytes).with_context(|| {
+                        format!("SQL migration file `{path}` is not valid UTF-8")
+                    })?;
+                    migration_contents.push(text);
+                }
+                requests.push(CapRequest::SqlStorage {
+                    config: crate::caps::SqlStorageConfig {
+                        migrations: migration_contents,
+                    },
+                });
             }
-            requests.push(CapRequest::SqlStorage {
-                config: crate::caps::SqlStorageConfig {
-                    migrations: migration_contents,
-                },
-            });
         }
 
         Ok(requests)
@@ -1044,6 +1065,9 @@ description = "missing migration"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
+
+[permissions]
+sql-storage = true
 
 [storage.sql]
 migrations = ["migrations/001_init.sql"]
