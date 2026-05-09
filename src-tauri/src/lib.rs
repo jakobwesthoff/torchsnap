@@ -785,12 +785,15 @@ pub fn run() {
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register system-preferences gadget");
-            host.register(
-                gadgets::clipboard::ClipboardGadget::new(
-                    platform::PlatformClipboard,
-                ),
+            host.register_with_caps::<gadgets::clipboard::ClipboardGadget, _>(
+                "clipboard-manager",
+                gadgets::clipboard::ClipboardGadget::cap_requests(),
+                &prov_ctx,
+                None,
+                |caps| gadgets::clipboard::ClipboardGadget::new(caps, platform::PlatformClipboard),
                 wasm::source::GadgetSourceKind::Builtin,
-            );
+            )
+            .expect("register clipboard-manager gadget");
 
             // =========================================================
             // WASM gadgets
