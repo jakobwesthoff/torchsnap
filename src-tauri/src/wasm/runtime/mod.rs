@@ -1122,6 +1122,7 @@ icon = "heroicons:beaker"
     #[cfg(unix)]
     fn compile_command_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance, tempfile::TempDir) {
         use super::super::argv_matcher::{CompiledArgvConstraint, CompiledCommandRule};
+        use crate::caps::CommandCap;
         use crate::paths::{GadgetPaths, PlatformPaths};
 
         let runtime = test_runtime();
@@ -1153,8 +1154,8 @@ icon = "heroicons:beaker"
                 gadget_data: scratch.path().to_path_buf(),
                 gadget_archive: scratch.path().to_path_buf(),
             },
-            command: super::host::command::CommandState {
-                rules: vec![
+            command: Some(Arc::new(CommandCap::from_compiled_rules(
+                vec![
                     CompiledCommandRule {
                         binary: "/bin/echo".to_string(),
                         argv: vec![CompiledArgvConstraint::AnyString],
@@ -1167,7 +1168,8 @@ icon = "heroicons:beaker"
                         ],
                     },
                 ],
-            },
+                scratch.path().to_path_buf(),
+            ))),
             ..WasmGadgetCaps::default_for_test()
         });
 
