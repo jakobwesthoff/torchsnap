@@ -50,14 +50,12 @@
 // =========================================================
 
 pub mod cached_component;
-pub(crate) mod caps;
 pub mod engine;
 pub mod host;
 pub mod instance;
 pub mod state;
 
 pub use cached_component::CachedComponent;
-pub use caps::WasmGadgetCaps;
 pub use engine::WasmRuntime;
 pub use host::sql::{SqlConfig, SqlHandleEntry};
 pub use instance::WasmGadgetInstance;

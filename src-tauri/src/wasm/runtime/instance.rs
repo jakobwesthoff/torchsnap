@@ -24,7 +24,6 @@ use wasmtime::Store;
 use crate::wasm::bindings;
 use crate::wasm::logging::spans::Logger;
 
-use super::caps::WasmGadgetCaps;
 use super::state::GadgetState;
 
 /// A loaded WASM gadget instance.

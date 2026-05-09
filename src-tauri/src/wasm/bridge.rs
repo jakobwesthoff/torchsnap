@@ -37,9 +37,7 @@ use super::manifest::Manifest;
 use crate::paths::GadgetPaths;
 use crate::network::website_metadata::WebsiteMetadataService;
 
-use super::runtime::{
-    CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
-};
+use super::runtime::{CachedComponent, SqlConfig, WasmGadgetInstance, WasmRuntime};
 use super::source::GadgetSource;
 
 // =========================================================
@@ -87,9 +85,8 @@ pub struct WasmGadgetBridge {
     gadget_source: Arc<dyn GadgetSource + Send + Sync>,
     /// Host-built capabilities received at construction.
     caps: Arc<crate::caps::ProvisionedCaps>,
-    /// Platform paths resolved once at construction, used by the
-    /// transitional WasmGadgetCaps adapter in enable() to build
-    /// GadgetPaths. Goes away when WasmGadgetCaps is deleted.
+    /// Platform paths resolved once at construction. Used by
+    /// the `CachedComponent` for the disk cache path.
     platform_paths: Arc<crate::paths::PlatformPaths>,
     /// Resolved `${gadget-data}` for this gadget —
     /// `<app_data_dir>/gadget-home/<gadget-id>/`. Re-stashed
@@ -232,9 +229,8 @@ impl WasmGadgetBridge {
         let log_sender = log_ctx.sender.clone();
         let gadget_id = manifest.gadget.id.as_str().to_string();
 
-        // Pre-resolve gadget paths for the WasmGadgetCaps adapter
-        // in enable(). These are also stored on the bridge for
-        // the cached component's disk cache path.
+        // Pre-resolve gadget paths for the cached component's
+        // disk cache path.
         let gadget_data = app_data_dir.join("gadget-home").join(gadget_id.as_str());
         let gadget_archive = source.root_path().to_path_buf();
 
@@ -257,10 +253,8 @@ impl WasmGadgetBridge {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        // SqlConfig is still needed by the bridge for the
-        // WasmGadgetCaps adapter in enable() — it's used to
-        // check whether sql_handle_reps teardown is needed.
-        // TODO: Remove once WasmGadgetCaps is deleted.
+        // SqlConfig tracks whether SQL storage was configured,
+        // used by test helpers that verify SQL lifecycle.
         let sql_config = match manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
             None => SqlConfig::None,
             Some(_) => SqlConfig::Configured {
@@ -847,7 +841,6 @@ mod tests {
 
     use super::*;
     use crate::wasm::logging::channel::LogContext;
-    use crate::wasm::runtime::caps::WasmGadgetCaps;
     use crate::wasm::runtime::WasmRuntime;
     use crate::wasm::source::DirectorySource;
 
