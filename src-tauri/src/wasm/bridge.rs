@@ -723,8 +723,8 @@ impl Gadget for WasmGadgetBridge {
             SqlConfig::None => None,
         };
 
-        let settings = GadgetSettings::new(Arc::clone(&ctx.store), self.id());
-        let frecency = GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id());
+        let settings = Arc::new(GadgetSettings::new(Arc::clone(&ctx.store), self.id()));
+        let frecency = Arc::new(GadgetFrecency::new(Arc::clone(&ctx.frecency), self.id()));
 
         let website_metadata = if self.website_metadata_enabled {
             self.metadata_service.as_ref().map(|svc| {

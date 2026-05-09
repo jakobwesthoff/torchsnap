@@ -20,20 +20,18 @@ use std::sync::Arc;
 
 use wasmtime::component::{Resource, ResourceTable};
 
-use crate::frecency::GadgetFrecency;
-use crate::settings::GadgetSettings;
 use crate::paths::GadgetPaths;
 use crate::wasm::source::GadgetSource;
 
 use crate::caps::{
-    ClipboardCap, CommandCap, FilesystemCap, HttpCap, OpenerCap, SqlStorageCap,
-    WebsiteMetadataCap,
+    ClipboardCap, CommandCap, FilesystemCap, FrecencyCap, HttpCap, OpenerCap, SettingsCap,
+    SqlStorageCap, WebsiteMetadataCap,
 };
 use super::host::sql::SqlHandleEntry;
 
 pub struct WasmGadgetCaps {
-    pub(crate) settings: Option<GadgetSettings>,
-    pub(crate) frecency: Option<GadgetFrecency>,
+    pub(crate) settings: Option<Arc<SettingsCap>>,
+    pub(crate) frecency: Option<Arc<FrecencyCap>>,
     pub(crate) gadget_source: Option<Arc<dyn GadgetSource + Send + Sync>>,
 
     pub(crate) gadget_paths: GadgetPaths,
