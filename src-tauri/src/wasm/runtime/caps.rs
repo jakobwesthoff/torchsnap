@@ -25,10 +25,9 @@ use crate::settings::GadgetSettings;
 use crate::paths::GadgetPaths;
 use crate::wasm::source::GadgetSource;
 
-use super::host::clipboard::ClipboardState;
 use super::host::command::CommandState;
 use super::host::fs::FsState;
-use crate::caps::{HttpCap, OpenerCap};
+use crate::caps::{ClipboardCap, HttpCap, OpenerCap};
 use super::host::sql::{SqlHandleEntry, SqlState};
 use super::host::website_metadata::WebsiteMetadataState;
 
@@ -45,7 +44,7 @@ pub struct WasmGadgetCaps {
 
     // Capability sub-structs.
     pub(crate) sql: SqlState,
-    pub(crate) clipboard: ClipboardState,
+    pub(crate) clipboard: Arc<ClipboardCap>,
     pub(crate) opener: Arc<OpenerCap>,
     pub(crate) http: Arc<HttpCap>,
     pub(crate) fs: FsState,
@@ -89,7 +88,9 @@ impl WasmGadgetCaps {
                 gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
             },
             sql: SqlState::default(),
-            clipboard: ClipboardState::default(),
+            clipboard: Arc::new(ClipboardCap::new(Box::new(|_| {
+                Err("clipboard not initialized".into())
+            }))),
             opener: Arc::new(OpenerCap::from_closures(
                 crate::caps::OpenerPermissions {
                     schemes: Vec::new(),

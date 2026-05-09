@@ -37,7 +37,6 @@ use super::manifest::Manifest;
 use crate::paths::GadgetPaths;
 use crate::network::website_metadata::WebsiteMetadataService;
 
-use super::runtime::host::clipboard::ClipboardState;
 use super::runtime::host::command::CommandState;
 use super::runtime::host::fs::FsState;
 use super::runtime::host::sql::SqlState;
@@ -737,9 +736,7 @@ impl Gadget for WasmGadgetBridge {
             gadget_source: Some(Arc::clone(&self.gadget_source)),
             gadget_paths,
             sql,
-            clipboard: ClipboardState {
-                writer: Some(clipboard_writer),
-            },
+            clipboard: Arc::new(crate::caps::ClipboardCap::new(clipboard_writer)),
             opener: Arc::new(crate::caps::OpenerCap::from_app(
                 app,
                 crate::caps::OpenerPermissions {
