@@ -38,7 +38,6 @@ use crate::paths::GadgetPaths;
 use crate::network::website_metadata::WebsiteMetadataService;
 
 use super::runtime::host::command::CommandState;
-use super::runtime::host::fs::FsState;
 use super::runtime::host::sql::SqlState;
 use super::runtime::{
     CachedComponent, SqlConfig, WasmGadgetCaps, WasmGadgetInstance, WasmRuntime,
@@ -681,10 +680,10 @@ impl Gadget for WasmGadgetBridge {
         }
 
         // Compile fs allowlist against the resolved GadgetPaths.
-        let fs_allowlist = match self.fs_patterns_raw.as_ref() {
+        let filesystem = match self.fs_patterns_raw.as_ref() {
             Some(patterns) => {
-                match super::runtime::host::fs::compile_fs_patterns(patterns, &gadget_paths) {
-                    Ok(allow) => Some(Arc::new(allow)),
+                match crate::caps::FilesystemCap::new(patterns, &gadget_paths) {
+                    Ok(cap) => Some(Arc::new(cap)),
                     Err(e) => {
                         self.log(
                             LogLevel::Error,
@@ -750,9 +749,7 @@ impl Gadget for WasmGadgetBridge {
                 },
             )),
             http: Arc::new(crate::caps::HttpCap::new(self.http_origins.clone())),
-            fs: FsState {
-                allowlist: fs_allowlist,
-            },
+            filesystem,
             command: CommandState {
                 rules: compiled_rules,
             },
