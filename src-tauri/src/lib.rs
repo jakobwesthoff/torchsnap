@@ -738,6 +738,18 @@ pub fn run() {
             // =========================================================
             let mut host =
                 gadget_host::GadgetHost::new(Arc::clone(&store), Arc::clone(&frecency_store));
+
+            // Provisioning context — constructed once before
+            // registration so factory-based registration can
+            // build caps immediately.
+            let prov_ctx = gadgets::ProvisioningContext {
+                app: app.handle().clone(),
+                store: Arc::clone(&store),
+                frecency: Arc::clone(&frecency_store),
+                icon_cache: Arc::clone(&icon_cache),
+                metadata_service: Arc::clone(&metadata_service),
+            };
+
             // All built-in gadgets are native Rust code compiled
             // into the binary — tag them `Builtin`. The Gadgets
             // settings panel uses this to suppress the uninstall
@@ -746,10 +758,15 @@ pub fn run() {
                 gadgets::commands::BuiltInCommandsGadget,
                 wasm::source::GadgetSourceKind::Builtin,
             );
-            host.register(
-                gadgets::system_commands::SystemCommandsGadget::new(),
+            host.register_with_caps::<gadgets::system_commands::SystemCommandsGadget, _>(
+                "system-commands",
+                gadgets::system_commands::SystemCommandsGadget::cap_requests(),
+                &prov_ctx,
+                None,
+                gadgets::system_commands::SystemCommandsGadget::new,
                 wasm::source::GadgetSourceKind::Builtin,
-            );
+            )
+            .expect("register system-commands gadget");
             host.register(
                 gadgets::app_launcher::AppLauncherGadget::new(
                     platform::PlatformAppDiscovery,
@@ -825,13 +842,6 @@ pub fn run() {
             }
 
             // Settings init + shortcut registration + parallel setup.
-            let prov_ctx = gadgets::ProvisioningContext {
-                app: app.handle().clone(),
-                store: Arc::clone(&store),
-                frecency: Arc::clone(&frecency_store),
-                icon_cache: Arc::clone(&icon_cache),
-                metadata_service: Arc::clone(&metadata_service),
-            };
             host.initialize_and_start(prov_ctx);
 
             let host = Arc::new(host);
