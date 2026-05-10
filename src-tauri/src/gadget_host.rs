@@ -1070,7 +1070,9 @@ impl GadgetHost {
                 let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
 
                 if new_enabled && !was_enabled {
-                    gadget.enable();
+                    if gadget.enable().is_err() {
+                        enabled_flag.store(false, Ordering::Relaxed);
+                    }
                 } else if !new_enabled && was_enabled {
                     gadget.disable();
                 }
