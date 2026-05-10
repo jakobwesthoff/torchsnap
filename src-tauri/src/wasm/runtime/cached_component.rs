@@ -157,6 +157,19 @@ impl CachedComponent {
         self.acquire_inner(init.as_ref())?;
         let component = self.component.as_ref().expect("acquire just populated");
 
+        let _gate_span = init.as_ref().and_then(|g| {
+            g.child("validate-imports")
+                .meta("gadget_id", self.gadget_id.as_str())
+                .start()
+        });
+        crate::wasm::interface_gate::validate(
+            component,
+            self.runtime.engine(),
+            &caps,
+            &self.gadget_id,
+        )?;
+        drop(_gate_span);
+
         let _inst_span = init.as_ref().and_then(|g| {
             g.child("instantiate")
                 .meta("gadget_id", self.gadget_id.as_str())

@@ -21,6 +21,7 @@ pub mod argv_matcher;
 mod bindings;
 pub mod bridge;
 pub mod discovery;
+pub mod interface_gate;
 pub mod logging;
 pub mod manifest;
 pub mod path_safety;
