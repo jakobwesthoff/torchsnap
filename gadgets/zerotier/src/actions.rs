@@ -22,7 +22,7 @@
 //! next `search()` reflect post-action state without waiting
 //! for TTL.
 
-use torchsnap_gadget_sdk::sql::SqlHandle;
+use torchsnap_gadget_sdk::sql_storage::SqlHandle;
 
 use crate::api::{ApiError, Client, Network, NetworkStatus};
 use crate::history;

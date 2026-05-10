@@ -26,7 +26,7 @@ use serde_json::json;
 
 use torchsnap_gadget_sdk::http::{HttpMethod, HttpRequest};
 use torchsnap_gadget_sdk::prelude::*;
-use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue, query_all, query_one};
+use torchsnap_gadget_sdk::sql_storage::{SqlHandle, SqlValue, query_all, query_one};
 
 /// Score assigned to bang results. High enough to appear
 /// near the top (above mediocre fuzzy matches) but below a
@@ -51,7 +51,7 @@ define_gadget!(BangsPlugin);
 
 impl LifecycleGuest for BangsPlugin {
     fn enable() {
-        let db = sql::connection();
+        let db = sql_storage::connection();
         match check_has_data(&db) {
             Ok(true) => {
                 logging::log(
@@ -110,7 +110,7 @@ impl SearchGuest for BangsPlugin {
             return SearchResponse::Nothing;
         };
 
-        let db = sql::connection();
+        let db = sql_storage::connection();
         let Ok(Some(bang)) = lookup_bang(&db, bang_trigger) else {
             return SearchResponse::Nothing;
         };
@@ -204,7 +204,7 @@ impl MessagingGuest for BangsPlugin {
     fn handle_message(method: String, _payload: String) -> Result<String, String> {
         match method.as_str() {
             "stats" => {
-                let db = sql::connection();
+                let db = sql_storage::connection();
                 let stats = query_stats(&db)?;
                 serde_json::to_string(&stats)
                     .map_err(|e| format!("serialize stats: {e}"))
@@ -214,7 +214,7 @@ impl MessagingGuest for BangsPlugin {
                 // a JSON `{ "error": "..." }` payload so the
                 // settings UI can show the message without
                 // the existing data getting wiped.
-                let db = sql::connection();
+                let db = sql_storage::connection();
                 match try_import_from_network(&db) {
                     Ok(()) => {
                         let stats = query_stats(&db)?;

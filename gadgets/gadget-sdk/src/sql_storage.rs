@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Ergonomic wrappers around the host's `sql` interface.
+//! Ergonomic wrappers around the host's `sql-storage` interface.
 //!
 //! The WIT `sql-handle` resource exposes a raw
 //! `query(sql, params) -> Vec<Vec<SqlValue>>` API; real gadget
@@ -21,7 +21,7 @@
 //! a future iteration once gadget authors actually motivate
 //! them.
 
-pub use crate::torchsnap::gadget::sql::{SqlHandle, SqlValue, connection};
+pub use crate::torchsnap::gadget::sql_storage::{SqlHandle, SqlValue, connection};
 
 // =========================================================
 // Row — typed read-side accessor

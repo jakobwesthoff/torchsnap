@@ -16,12 +16,12 @@
 //! 2. The `manualToken` gadget setting.
 //!
 //! Filesystem reads go through the manifest-allowlisted
-//! `fs::read_file` host import; paths the gadget's manifest
+//! `filesystem::read_file` host import; paths the gadget's manifest
 //! does not declare return `permission-denied` and the
 //! resolver falls through to the next candidate.
 
 use torchsnap_gadget_sdk::platform::{self, Os};
-use torchsnap_gadget_sdk::{fs, settings};
+use torchsnap_gadget_sdk::{filesystem, settings};
 
 /// Source the resolved token came from. Used by the settings
 /// UI to decide whether to disable the manual-paste field
@@ -51,7 +51,7 @@ pub struct ResolvedToken {
 /// `~/Library/Application Support` on macOS, `~/.config` on
 /// Linux, `%APPDATA%` on Windows). Passed in rather than
 /// looked up here so the function stays pure and unit-testable
-/// without invoking the `paths::resolve` host import.
+/// without invoking the `path_resolver::resolve` host import.
 pub fn candidate_paths(os: &Os, user_config_dir: &str) -> Vec<String> {
     match os {
         Os::Macos => vec![
@@ -73,7 +73,7 @@ pub fn candidate_paths(os: &Os, user_config_dir: &str) -> Vec<String> {
 /// file is readable under the gadget's fs allowlist.
 pub fn read_first_readable(paths: &[String]) -> Option<String> {
     for path in paths {
-        if let Ok(bytes) = fs::read_file(path) {
+        if let Ok(bytes) = filesystem::read_file(path) {
             if let Some(token) = bytes_to_token(&bytes) {
                 return Some(token);
             }
@@ -123,14 +123,14 @@ pub fn resolve() -> ResolvedToken {
     }
 }
 
-/// Wrapper around `paths::resolve` with a graceful fallback —
+/// Wrapper around `path_resolver::resolve` with a graceful fallback —
 /// an unrecognized variable returns the input unchanged so the
-/// caller still has a string to feed into `fs::read_file` (the
+/// caller still has a string to feed into `filesystem::read_file` (the
 /// fs layer will reject the unsubstituted path with
 /// `permission-denied` and the resolver tries the next
 /// candidate).
 fn paths_resolve(template: &str) -> String {
-    torchsnap_gadget_sdk::paths::resolve(template).unwrap_or_else(|_| template.to_string())
+    torchsnap_gadget_sdk::path_resolver::resolve(template).unwrap_or_else(|_| template.to_string())
 }
 
 #[cfg(test)]

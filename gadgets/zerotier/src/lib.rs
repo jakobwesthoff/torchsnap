@@ -166,12 +166,12 @@ fn initialize(runtime: &mut Runtime) {
 }
 
 fn merge_saved_networks() -> Result<usize, String> {
-    let path = torchsnap_gadget_sdk::paths::resolve(
+    let path = torchsnap_gadget_sdk::path_resolver::resolve(
         "${xdg-config}/ZeroTier/saved_networks.json",
     )
     .map_err(|e| format!("resolve saved_networks path: {e:?}"))?;
     let bytes =
-        torchsnap_gadget_sdk::fs::read_file(&path).map_err(|e| format!("read: {e:?}"))?;
+        torchsnap_gadget_sdk::filesystem::read_file(&path).map_err(|e| format!("read: {e:?}"))?;
     let json = String::from_utf8(bytes).map_err(|e| format!("utf8: {e}"))?;
     let db = history::connection();
     history::import_saved_networks(&db, &json, now_ms())

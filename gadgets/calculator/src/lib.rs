@@ -40,7 +40,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use torchsnap_gadget_sdk::prelude::*;
-use torchsnap_gadget_sdk::sql::{SqlHandle, SqlValue};
+use torchsnap_gadget_sdk::sql_storage::{SqlHandle, SqlValue};
 
 // =========================================================
 // Constants
@@ -189,7 +189,7 @@ fn prefix_mode_search(query: &str) -> SearchResponse {
     // fall back to an empty list — the inline result still
     // renders.
     let history = if HISTORY_ENABLED.with(Cell::get) {
-        let db = sql::connection();
+        let db = sql_storage::connection();
         query_history(&db, query)
     } else {
         vec![]
@@ -277,7 +277,7 @@ fn save_history_method(payload: &str) -> Result<String, String> {
     }
 
     let req: SaveHistoryPayload = messaging::parse_payload(payload)?;
-    let db = sql::connection();
+    let db = sql_storage::connection();
     save_to_history(
         &db,
         &req.expression,
@@ -298,7 +298,7 @@ fn save_history_method(payload: &str) -> Result<String, String> {
 }
 
 fn stats_method() -> Result<String, String> {
-    let db = sql::connection();
+    let db = sql_storage::connection();
     let rows = db
         .query("SELECT COUNT(*) FROM calc_history", &[])
         .map_err(|e| format!("count: {e}"))?;
@@ -318,7 +318,7 @@ fn stats_method() -> Result<String, String> {
 }
 
 fn clear_history_method() -> Result<String, String> {
-    let db = sql::connection();
+    let db = sql_storage::connection();
     db.execute("DELETE FROM calc_history", &[])
         .map_err(|e| format!("delete: {e}"))?;
     Ok(json!({ "cleared": true }).to_string())
@@ -342,7 +342,7 @@ impl TasksGuest for CalculatorPlugin {
 /// declared in `manifest.toml`'s `[[tasks]]` block.
 fn cleanup_expired_history() -> Result<(), String> {
     let days = RETENTION_DAYS.with(Cell::get).max(1);
-    let db = sql::connection();
+    let db = sql_storage::connection();
     db.execute(
         "DELETE FROM calc_history \
          WHERE computed_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",

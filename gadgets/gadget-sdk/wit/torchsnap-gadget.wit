@@ -79,7 +79,7 @@ interface clipboard {
 /// SQL, filesystem permission) surface as an `enable()`
 /// error on the host side — the guest never sees them.
 /// Per-statement errors surface from `execute` / `query`.
-interface sql {
+interface sql-storage {
   /// A database value matching SQLite's five storage classes.
   /// Gadgets build query parameters and read result rows in
   /// terms of this variant.
@@ -368,7 +368,7 @@ interface http {
 /// Each call blocks the guest until the host returns. WASM guests
 /// have no async runtime, and the host scheduler keeps other
 /// gadgets responsive while one gadget waits on a read.
-interface fs {
+interface filesystem {
   /// Error variants for `read-file` and `file-metadata`. One variant
   /// per semantic category; no catch-all.
   variant fs-error {
@@ -617,7 +617,7 @@ interface platform {
 /// let helper = paths::resolve("${gadget-archive}/bin/helper")?;
 /// command::run(&helper, opts)?;
 /// ```
-interface paths {
+interface path-resolver {
   variant resolve-error {
     /// A `${name}` token's `name` is not in the recognized list.
     /// The string is the offending name.
@@ -903,16 +903,16 @@ interface website-metadata {
 world gadget {
   import logging;
   import clipboard;
-  import sql;
+  import sql-storage;
   import frecency;
   import settings;
   import opener;
   import http;
-  import fs;
+  import filesystem;
   import assets;
   import command;
   import platform;
-  import paths;
+  import path-resolver;
   import types;
   import website-metadata;
 
