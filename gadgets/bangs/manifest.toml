@@ -12,6 +12,8 @@ migrations = [
 ]
 
 [permissions]
+clipboard = true
+sql-storage = true
 website-metadata = true
 
 [permissions.opener]

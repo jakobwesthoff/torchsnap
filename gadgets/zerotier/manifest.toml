@@ -20,6 +20,12 @@ migrations = [
     "migrations/001_init.sql",
 ]
 
+[permissions]
+clipboard = true
+path-resolver = true
+settings = true
+sql-storage = true
+
 [permissions.http]
 # `zerotier-one` listens on this loopback HTTP port. The host's
 # fetch import has no plain-HTTP or loopback restriction beyond
