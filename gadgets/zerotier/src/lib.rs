@@ -23,10 +23,8 @@ use std::cell::RefCell;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use torchsnap_gadget_sdk::http::HttpError;
 use torchsnap_gadget_sdk::platform::Os;
 use torchsnap_gadget_sdk::prelude::*;
-use torchsnap_gadget_sdk::sql::SqlHandle;
 
 mod actions;
 mod api;
@@ -236,7 +234,7 @@ impl SearchGuest for ZeroTierPlugin {
         }
 
         RUNTIME.with(|cell| -> Result<PostAction, String> {
-            let mut runtime = cell.borrow_mut();
+            let runtime = cell.borrow_mut();
             let Some(client) = runtime.client.as_ref() else {
                 return Err("ZeroTier auth not configured".into());
             };
