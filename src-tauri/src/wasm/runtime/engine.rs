@@ -45,6 +45,13 @@ pub struct WasmRuntime {
 }
 
 impl WasmRuntime {
+    /// The underlying wasmtime `Engine`. Needed by callers
+    /// that introspect compiled components (e.g. import
+    /// validation).
+    pub fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     /// Create a new runtime with default configuration.
     ///
     /// Returns `Arc<Self>` so every `CachedComponent` can
