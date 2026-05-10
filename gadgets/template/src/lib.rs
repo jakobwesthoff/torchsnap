@@ -24,7 +24,7 @@
 //   `messaging::handle-message` guest export — your frontend
 //   calls `sendMessage(method, payload)` and this method
 //   dispatches by name
-// - Per-gadget SQLite storage via the `sql::connection` host
+// - Per-gadget SQLite storage via the `sql_storage::connection` host
 //   import and a `[storage.sql]` block in `manifest.toml`
 //   listing migration files. The host creates the database
 //   and applies migrations before the guest's `enable()` runs
@@ -63,9 +63,9 @@ impl LifecycleGuest for TemplatePlugin {
 
         // Append a row recording this enable. The host
         // initializes the database before enable() runs, so
-        // sql::connection() is always ready.
+        // sql_storage::connection() is always ready.
         {
-            let db = sql::connection();
+            let db = sql_storage::connection();
             if let Err(e) = db.execute("INSERT INTO enable_log DEFAULT VALUES", &[]) {
                 logging::log(
                     logging::LogLevel::Warn,
@@ -154,7 +154,7 @@ impl TasksGuest for TemplatePlugin {
             // authors can see the scheduler firing in
             // devtools.
             "heartbeat" => {
-                let db = sql::connection();
+                let db = sql_storage::connection();
                 db.execute("INSERT INTO enable_log DEFAULT VALUES", &[])
                     .map_err(|e| format!("insert: {e}"))?;
                 logging::log(logging::LogLevel::Info, "Heartbeat fired", &[], None);
@@ -193,8 +193,8 @@ impl MessagingGuest for TemplatePlugin {
             // tripping a typed result row across the WIT
             // boundary.
             "enable-count" => {
-                let db = sql::connection();
-                let row = sql::query_one(&db, "SELECT COUNT(*) FROM enable_log", &[])
+                let db = sql_storage::connection();
+                let row = sql_storage::query_one(&db, "SELECT COUNT(*) FROM enable_log", &[])
                     .map_err(|e| format!("query: {e}"))?;
                 let count = row.and_then(|r| r.integer(0)).unwrap_or(0);
                 messaging::to_response(&serde_json::json!({ "enable_count": count }))

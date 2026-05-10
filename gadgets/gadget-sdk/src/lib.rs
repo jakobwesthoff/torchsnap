@@ -52,7 +52,7 @@ pub mod data;
 pub mod logging;
 pub mod messaging;
 pub mod settings;
-pub mod sql;
+pub mod sql_storage;
 pub mod website_metadata;
 
 // =========================================================
@@ -94,7 +94,7 @@ pub use exports::torchsnap::gadget::search::{
 // `logging_host`.
 // =========================================================
 pub use torchsnap::gadget::{
-    assets, clipboard, frecency, fs, http, opener, paths, platform,
+    assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
 };
 pub use torchsnap::gadget::command as command_host;
 pub use torchsnap::gadget::logging as logging_host;
@@ -117,9 +117,10 @@ pub mod prelude {
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{command, data, logging, messaging, settings, sql, website_metadata};
+    pub use super::{command, data, logging, messaging, settings, sql_storage, website_metadata};
     pub use super::{
-        assets, clipboard, frecency, fs, http, opener, paths, platform, website_metadata_host,
+        assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
+        website_metadata_host,
     };
     // Macros re-exported through the prelude so a single
     // `use torchsnap_gadget_sdk::prelude::*;` is enough to

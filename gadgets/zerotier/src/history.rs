@@ -17,7 +17,7 @@
 //! last_snapshot TEXT NULL` (see `migrations/001_init.sql`).
 
 use serde::Deserialize;
-use torchsnap_gadget_sdk::sql::{self, SqlHandle, SqlValue, query_all};
+use torchsnap_gadget_sdk::sql_storage::{self, SqlHandle, SqlValue, query_all};
 
 use crate::api::Network;
 
@@ -165,7 +165,7 @@ fn parse_saved_networks(json: &str) -> Result<Vec<SavedNetworkEntry>, String> {
 }
 
 /// Re-export so the lib crate has a single import surface.
-pub use sql::connection;
+pub use sql_storage::connection;
 
 #[cfg(test)]
 mod tests {

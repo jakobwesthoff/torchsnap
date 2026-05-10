@@ -16,7 +16,7 @@ use crate::wasm::bindings;
 
 use super::super::GadgetState;
 
-impl From<ResolveError> for bindings::torchsnap::gadget::paths::ResolveError {
+impl From<ResolveError> for bindings::torchsnap::gadget::path_resolver::ResolveError {
     fn from(e: ResolveError) -> Self {
         match e {
             ResolveError::UnknownVariable(name) => Self::UnknownVariable(name),
@@ -25,11 +25,11 @@ impl From<ResolveError> for bindings::torchsnap::gadget::paths::ResolveError {
     }
 }
 
-impl bindings::torchsnap::gadget::paths::Host for GadgetState {
+impl bindings::torchsnap::gadget::path_resolver::Host for GadgetState {
     fn resolve(
         &mut self,
         template: String,
-    ) -> Result<String, bindings::torchsnap::gadget::paths::ResolveError> {
+    ) -> Result<String, bindings::torchsnap::gadget::path_resolver::ResolveError> {
         self.caps()
             .path_resolver()
             .substitute_variables(&template)

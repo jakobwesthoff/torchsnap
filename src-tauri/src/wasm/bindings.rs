@@ -24,12 +24,12 @@ wasmtime::component::bindgen!({
     world: "gadget",
     // Tell wit-bindgen to use our concrete `SqlHandleEntry`
     // type as the resource representation for the
-    // `sql.sql-handle` resource. By default, bindgen
+    // `sql-storage.sql-handle` resource. By default, bindgen
     // generates an empty unit struct — `with` lets us
     // swap in a real type carrying the `Arc<SqlStorage>`
     // associated with each outstanding handle.
     with: {
-        "torchsnap:gadget/sql.sql-handle": super::runtime::SqlHandleEntry,
+        "torchsnap:gadget/sql-storage.sql-handle": super::runtime::SqlHandleEntry,
     },
 });
 
