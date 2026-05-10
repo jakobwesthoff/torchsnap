@@ -128,8 +128,9 @@ struct GadgetSlot {
     /// Host-owned enabled flag. Checked before including the
     /// gadget in search results, shortcut registration, etc.
     /// Updated by the host when `enabled.<id>` changes in the
-    /// settings store.
-    enabled: AtomicBool,
+    /// settings store. Shared via Arc so `enable()` tasks can
+    /// self-disable on failure without blocking the host.
+    enabled: Arc<AtomicBool>,
 
     /// Serializes and deduplicates settings change dispatch for
     /// this gadget. Both `enabled.<id>` changes and
@@ -142,7 +143,7 @@ impl GadgetSlot {
         Self {
             gadget,
             source_kind,
-            enabled: AtomicBool::new(true),
+            enabled: Arc::new(AtomicBool::new(true)),
             dispatcher: CoalescingDispatcher::new(),
         }
     }
@@ -467,6 +468,10 @@ impl GadgetHost {
 
         // -------------------------------------------------------
         // Phase 2: Parallel gadget startup (background)
+        //
+        // Each gadget's `enable()` runs on a blocking thread.
+        // On failure the shared `enabled` flag is set to false
+        // so the host stops dispatching to the gadget.
         // -------------------------------------------------------
         let runtime = tauri::async_runtime::handle();
         for slot in &self.slots {
@@ -475,11 +480,13 @@ impl GadgetHost {
             }
 
             let gadget = Arc::clone(&slot.gadget);
+            let enabled = Arc::clone(&slot.enabled);
             runtime.spawn_blocking(move || {
-                gadget.enable();
+                if gadget.enable().is_err() {
+                    enabled.store(false, Ordering::Relaxed);
+                }
             });
         }
-
     }
 
     /// Spawn the shortcut reactor task. Called once after the host

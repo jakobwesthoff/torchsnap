@@ -35,7 +35,7 @@ struct MinimalPlugin;
 export!(MinimalPlugin);
 
 impl LifecycleGuest for MinimalPlugin {
-    fn enable() {}
+    fn enable() -> Result<(), String> { Ok(()) }
 
     fn disable() {}
 

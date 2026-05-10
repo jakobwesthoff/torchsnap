@@ -75,8 +75,9 @@ pub trait Gadget: Send + Sync {
     }
 
     /// Activate the gadget. Runs on a `spawn_blocking` thread.
-    /// Caps are available as plain fields on `self`.
-    fn enable(&self) {}
+    /// Caps are available as plain fields on `self`. Returning
+    /// `Err` disables the gadget — no further calls dispatched.
+    fn enable(&self) -> anyhow::Result<()> { Ok(()) }
 
     fn disable(&self) {}
 

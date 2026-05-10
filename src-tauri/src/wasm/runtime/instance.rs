@@ -142,7 +142,8 @@ impl WasmGadgetInstance {
         self.gadget
             .torchsnap_gadget_lifecycle()
             .call_enable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling gadget enable(): {e}"))
+            .map_err(|e| anyhow::anyhow!("calling gadget enable(): {e}"))?
+            .map_err(|e| anyhow::anyhow!("gadget enable() returned error: {e}"))
     }
 
     /// Call the guest's `disable` export.

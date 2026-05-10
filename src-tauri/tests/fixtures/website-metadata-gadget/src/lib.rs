@@ -34,7 +34,7 @@ struct WebsiteMetadataPlugin;
 export!(WebsiteMetadataPlugin);
 
 impl LifecycleGuest for WebsiteMetadataPlugin {
-    fn enable() {}
+    fn enable() -> Result<(), String> { Ok(()) }
     fn disable() {}
     fn on_setting_changed(_key: String, _value: String) {}
 }

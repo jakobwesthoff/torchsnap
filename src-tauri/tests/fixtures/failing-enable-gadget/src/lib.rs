@@ -36,8 +36,8 @@ struct FailingEnablePlugin;
 export!(FailingEnablePlugin);
 
 impl LifecycleGuest for FailingEnablePlugin {
-    fn enable() {
-        panic!("failing-enable-gadget: enable() intentionally panics");
+    fn enable() -> Result<(), String> {
+        Err("failing-enable-gadget: enable() intentionally fails".into())
     }
 
     fn disable() {}
