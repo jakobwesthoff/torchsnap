@@ -228,7 +228,7 @@ impl WasmGadgetInstance {
 
     /// Call the guest's `entries` export and convert to native types.
     pub fn entries(&self) -> anyhow::Result<Vec<crate::commands::types::CatalogEntry>> {
-        let _span = self.logger.span("entries").start();
+        let span = self.logger.span("entries").start();
         let mut store = self.store.lock().expect("store not poisoned");
         let wit_entries = self
             .gadget
@@ -236,7 +236,13 @@ impl WasmGadgetInstance {
             .call_entries(&mut *store)
             .map_err(|e| anyhow::anyhow!("calling gadget entries(): {e}"))?;
 
-        Ok(wit_entries.into_iter().map(Into::into).collect())
+        let entries: Vec<_> = wit_entries.into_iter().map(Into::into).collect();
+        if let Some(s) = span {
+            s.end_with_meta(vec![
+                ("result_count".to_string(), entries.len().to_string()),
+            ]);
+        }
+        Ok(entries)
     }
 
     /// Call the guest's `search` export and convert to native types.
@@ -257,13 +263,18 @@ impl WasmGadgetInstance {
         query: &str,
         matched_prefix: Option<&str>,
     ) -> anyhow::Result<crate::commands::types::GadgetResponse> {
+        use crate::commands::types::GadgetResponse;
+
         let my_gen = self.search_generation.fetch_add(1, Ordering::AcqRel) + 1;
 
-        let _span = self.logger.span("search").meta("query", query).start();
+        let span = self.logger.span("search").meta("query", query).start();
         let mut store = self.store.lock().expect("store not poisoned");
 
         if self.search_generation.load(Ordering::Acquire) > my_gen {
-            return Ok(crate::commands::types::GadgetResponse::Results(vec![]));
+            if let Some(s) = span {
+                s.end_with_meta(vec![("elided".to_string(), "true".to_string())]);
+            }
+            return Ok(GadgetResponse::Results(vec![]));
         }
 
         let response = self
@@ -272,7 +283,19 @@ impl WasmGadgetInstance {
             .call_search(&mut *store, query, matched_prefix)
             .map_err(|e| anyhow::anyhow!("calling gadget search(): {e}"))?;
 
-        Ok(response.into())
+        let response: GadgetResponse = response.into();
+        if let Some(s) = span {
+            let (variant, count) = match &response {
+                GadgetResponse::Results(r) => ("results", r.len()),
+                GadgetResponse::CustomUI { results, .. } => ("custom_ui", results.len()),
+                GadgetResponse::InlineUI { results, .. } => ("inline_ui", results.len()),
+            };
+            s.end_with_meta(vec![
+                ("response_type".to_string(), variant.to_string()),
+                ("result_count".to_string(), count.to_string()),
+            ]);
+        }
+        Ok(response)
     }
 
     /// Call the guest's `execute` export and convert to native types.
