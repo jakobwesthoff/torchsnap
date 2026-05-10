@@ -7,6 +7,10 @@ wasm = "emoji_picker_gadget.wasm"
 icon = "heroicons:face-smile"
 prefixes = [":"]
 
+[permissions]
+clipboard = true
+frecency = true
+
 # No `[settings]` — the gadget has no user-configurable
 # options. Empty-query browse order is driven by the host's
 # frecency store (read via the `frecency` WIT import), not a

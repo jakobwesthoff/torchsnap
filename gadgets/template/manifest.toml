@@ -7,6 +7,10 @@ wasm = "template_gadget.wasm"
 icon = "heroicons:puzzle-piece"
 prefixes = ["tpl:"]
 
+[permissions]
+settings = true
+sql-storage = true
+
 [settings]
 greeting = "Hello from Template!"
 verbose = false
