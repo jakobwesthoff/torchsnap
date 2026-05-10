@@ -125,8 +125,9 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
 // =========================================================
 
 impl LifecycleGuest for OpenUrlPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         logging::log(logging::LogLevel::Info, "Open URL enabled", &[], None);
+        Ok(())
     }
 
     fn disable() {

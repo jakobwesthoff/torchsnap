@@ -158,7 +158,7 @@ impl Gadget for AppLauncherGadget {
         "app-launcher"
     }
 
-    fn enable(&self) {
+    fn enable(&self) -> anyhow::Result<()> {
         let icon_cache = self.caps.icon_cache();
 
         // Called on a dedicated background thread by the host.
@@ -188,6 +188,7 @@ impl Gadget for AppLauncherGadget {
                 eprintln!("initial app discovery failed: {e:#}");
             }
         }
+        Ok(())
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {

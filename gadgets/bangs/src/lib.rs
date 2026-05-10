@@ -50,7 +50,7 @@ define_gadget!(BangsPlugin);
 // =========================================================
 
 impl LifecycleGuest for BangsPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         let db = sql_storage::connection();
         match check_has_data(&db) {
             Ok(true) => {
@@ -82,6 +82,7 @@ impl LifecycleGuest for BangsPlugin {
                 );
             }
         }
+        Ok(())
     }
 
     fn disable() {

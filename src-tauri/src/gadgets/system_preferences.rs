@@ -96,7 +96,7 @@ impl Gadget for SystemPreferencesGadget {
         "system-preferences"
     }
 
-    fn enable(&self) {
+    fn enable(&self) -> anyhow::Result<()> {
         let icon_cache = self.caps.icon_cache();
 
         match self.discovery.discover() {
@@ -120,6 +120,7 @@ impl Gadget for SystemPreferencesGadget {
                 eprintln!("settings pane discovery failed: {e:#}");
             }
         }
+        Ok(())
     }
 
     fn entries(&self) -> Vec<CatalogEntry> {

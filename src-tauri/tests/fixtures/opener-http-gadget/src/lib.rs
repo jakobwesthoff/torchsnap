@@ -37,7 +37,7 @@ struct OpenerHttpPlugin;
 export!(OpenerHttpPlugin);
 
 impl LifecycleGuest for OpenerHttpPlugin {
-    fn enable() {}
+    fn enable() -> Result<(), String> { Ok(()) }
     fn disable() {}
     fn on_setting_changed(_key: String, _value: String) {}
 }

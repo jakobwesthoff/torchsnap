@@ -286,7 +286,7 @@ impl Gadget for ClipboardGadget {
         })
     }
 
-    fn enable(&self) {
+    fn enable(&self) -> anyhow::Result<()> {
         // Resolve the gadget data directory from the path resolver cap.
         let data_dir = self
             .caps
@@ -334,6 +334,7 @@ impl Gadget for ClipboardGadget {
         ) {
             eprintln!("clipboard: failed to start watcher: {e:#}");
         }
+        Ok(())
     }
 
     fn disable(&self) {

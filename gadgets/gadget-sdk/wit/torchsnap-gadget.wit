@@ -636,7 +636,11 @@ interface path-resolver {
 
 /// ─── Guest exports (implemented by gadgets) ─────────────
 interface lifecycle {
-  enable: func();
+  /// Activate the gadget. Returning `err(string)` signals the
+  /// host that initialization failed — the gadget will be
+  /// disabled and no further calls dispatched to it. The
+  /// error string is logged to the gadget's devtools stream.
+  enable: func() -> result<_, string>;
 
   disable: func();
 

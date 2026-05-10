@@ -49,7 +49,7 @@ struct TemplatePlugin;
 define_gadget!(TemplatePlugin);
 
 impl LifecycleGuest for TemplatePlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         // Read each setting once at startup so internal state
         // matches whatever the user configured (or whatever
         // `manifest.toml`'s `[settings]` defaults set). For
@@ -85,6 +85,7 @@ impl LifecycleGuest for TemplatePlugin {
             ],
             None,
         );
+        Ok(())
     }
 
     fn disable() {

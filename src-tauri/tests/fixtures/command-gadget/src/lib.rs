@@ -33,7 +33,7 @@ struct CommandPlugin;
 export!(CommandPlugin);
 
 impl LifecycleGuest for CommandPlugin {
-    fn enable() {}
+    fn enable() -> Result<(), String> { Ok(()) }
     fn disable() {}
     fn on_setting_changed(_key: String, _value: String) {}
 }

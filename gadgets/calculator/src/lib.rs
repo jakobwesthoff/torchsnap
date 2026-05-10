@@ -85,7 +85,7 @@ struct CalculatorPlugin;
 define_gadget!(CalculatorPlugin);
 
 impl LifecycleGuest for CalculatorPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         // Seed the in-memory cache from the settings store
         // (or from the manifest defaults if the store has no
         // user values yet). On_setting_changed below
@@ -96,6 +96,7 @@ impl LifecycleGuest for CalculatorPlugin {
         RETENTION_DAYS.with(|c| c.set(settings::get_or::<u32>("retentionDays", 30)));
 
         logging::log(logging::LogLevel::Info, "Calculator enabled", &[], None);
+        Ok(())
     }
 
     fn disable() {

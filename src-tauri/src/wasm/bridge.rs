@@ -569,17 +569,14 @@ impl Gadget for WasmGadgetBridge {
         settings
     }
 
-    fn enable(&self) {
-        let instance = match self.ensure_instance() {
-            Ok(instance) => instance,
-            Err(e) => {
-                self.log(
-                    LogLevel::Error,
-                    format!("failed to instantiate gadget: {e:#}"),
-                );
-                return;
-            }
-        };
+    fn enable(&self) -> anyhow::Result<()> {
+        let instance = self.ensure_instance().map_err(|e| {
+            self.log(
+                LogLevel::Error,
+                format!("failed to instantiate gadget: {e:#}"),
+            );
+            e
+        })?;
 
         instance.set_gadget_source(Arc::clone(&self.gadget_source));
 
@@ -588,10 +585,11 @@ impl Gadget for WasmGadgetBridge {
             instance.clear_caps();
             drop(instance);
             let _ = self.take_instance();
-            return;
+            return Err(e);
         }
 
         self.spawn_scheduler(instance);
+        Ok(())
     }
 
     fn disable(&self) {

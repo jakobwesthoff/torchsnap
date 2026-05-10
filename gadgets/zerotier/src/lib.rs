@@ -104,12 +104,13 @@ enum AuthState {
 // =========================================================
 
 impl LifecycleGuest for ZeroTierPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         RUNTIME.with(|cell| {
             let mut runtime = cell.borrow_mut();
             *runtime = Runtime::new();
             initialize(&mut runtime);
         });
+        Ok(())
     }
 
     fn disable() {

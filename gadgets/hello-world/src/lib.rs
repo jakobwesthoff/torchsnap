@@ -34,7 +34,7 @@ thread_local! {
 }
 
 impl LifecycleGuest for HelloWorld {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         let span = logging::span_start("enable", None, &[]);
         let names = petnames::generate_petnames(50_000);
         logging::log(
@@ -48,6 +48,7 @@ impl LifecycleGuest for HelloWorld {
             span,
             &[("petname_count".into(), "50000".into())],
         );
+        Ok(())
     }
 
     fn disable() {

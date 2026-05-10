@@ -485,7 +485,7 @@ fn build_scored_entry(
 // =========================================================
 
 impl LifecycleGuest for EmojiPickerPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         // Parse the emojibase catalogue lazily — the data
         // never changes within a process lifetime, so a
         // re-enable after a disable cycle keeps reusing the
@@ -498,6 +498,7 @@ impl LifecycleGuest for EmojiPickerPlugin {
         });
 
         logging::log(logging::LogLevel::Info, "Emoji picker enabled", &[], None);
+        Ok(())
     }
 
     fn disable() {
