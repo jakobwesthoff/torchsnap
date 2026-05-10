@@ -92,11 +92,6 @@ pub struct Route {
     pub metric: u32,
 }
 
-/// IP address assigned to the local node by the controller.
-/// Stored as the daemon's CIDR-formatted string
-/// (`"10.147.17.42/24"`).
-pub type AssignedAddress = String;
-
 /// DNS configuration pushed by the controller. Empty when the
 /// network has no DNS settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]

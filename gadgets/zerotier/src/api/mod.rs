@@ -16,4 +16,4 @@ mod types;
 
 pub use client::Client;
 pub use error::ApiError;
-pub use types::{AssignedAddress, Dns, Network, NetworkStatus, Route, Status};
+pub use types::{Network, NetworkStatus};

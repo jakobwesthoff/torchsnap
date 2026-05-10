@@ -47,15 +47,6 @@ impl Client {
         serde_json::from_slice(&body).map_err(|e| ApiError::MalformedResponse(e.to_string()))
     }
 
-    /// Refresh a single network's snapshot. Used when the
-    /// caller already has the id and wants the latest
-    /// state without paying for the full list.
-    pub fn get_network(&self, id: &str) -> Result<Network, ApiError> {
-        let path = format!("/network/{id}");
-        let body = self.fetch(HttpMethod::Get, &path, None, SEARCH_TIMEOUT_MS)?;
-        serde_json::from_slice(&body).map_err(|e| ApiError::MalformedResponse(e.to_string()))
-    }
-
     /// Status of the local node. Used at enable-time to
     /// validate that the token the resolver picked is
     /// actually accepted by the daemon (HTTP 200 means
