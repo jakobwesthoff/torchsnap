@@ -295,6 +295,36 @@ export const Variants = {
   ],
 
   // =========================================================
+  // Realm Defenders — tournament fighters, elemental ninjas,
+  // and champions of interdimensional combat.
+  // =========================================================
+
+  RealmDefenders: [
+    "hellfire-specter",
+    "hellfire-specter-2",
+    "hellfire-specter-nsfw",
+    "hellfire-specter-2-nsfw",
+    "hellfire-specter-3-nsfw",
+    "frozen-veil-ninja",
+    "frozen-veil-ninja-nsfw",
+    "venom-scale-lurker",
+    "venom-scale-lurker-nsfw",
+    "wide-hat-monk",
+    "wide-hat-monk-2",
+    "red-eye-enforcer",
+    "red-eye-enforcer-nsfw",
+    "iron-fist-brawler",
+    "spec-ops-commander-nsfw",
+    "soul-stealing-sorcerer",
+    "azure-veil-princess",
+    "azure-veil-princess-nsfw",
+    "thunder-hat-elder",
+    "green-glow-movie-star",
+    "fire-fist-champion",
+    "fire-fist-champion-nsfw",
+  ],
+
+  // =========================================================
   // Pop Culture — everything else that doesn't fit neatly
   // into the genre groups above.
   // =========================================================
@@ -358,6 +388,7 @@ export const SnappyHeroSets: MascotEntry[] = [
       ...Variants.Superheroes,
       ...Variants.Horror,
       ...Variants.Fantasy,
+      ...Variants.RealmDefenders,
       ...Variants.PopCulture,
     ],
     weight: 100,

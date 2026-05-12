@@ -610,5 +610,93 @@
   "time-wanderer-orange-coat": {
     "alt": "Snappy as an ever-changing time traveller -- fifteen minutes of fame, dancing through every launch.",
     "nsfw": false
+  },
+  "hellfire-specter": {
+    "alt": "Snappy from beyond the grave -- get over here, there's an app to launch.",
+    "nsfw": false
+  },
+  "hellfire-specter-2": {
+    "alt": "Snappy sworn to vengeance from beyond -- the command was issued, and it echoes forever.",
+    "nsfw": false
+  },
+  "hellfire-specter-nsfw": {
+    "alt": "Snappy reaching across the void -- GET OVER HERE and face the launcher.",
+    "nsfw": true
+  },
+  "hellfire-specter-2-nsfw": {
+    "alt": "Snappy rising from hellfire, spear in hand -- the launcher was forged in vengeance.",
+    "nsfw": true
+  },
+  "hellfire-specter-3-nsfw": {
+    "alt": "Snappy swinging the chain of vengeance -- every app answers when summoned.",
+    "nsfw": true
+  },
+  "frozen-veil-ninja": {
+    "alt": "Snappy with frost in its feathers -- flawless victory, one frozen launch at a time.",
+    "nsfw": false
+  },
+  "frozen-veil-ninja-nsfw": {
+    "alt": "Snappy with an ice-cold grudge -- the coolest launch is always a cold one.",
+    "nsfw": true
+  },
+  "venom-scale-lurker": {
+    "alt": "Snappy lurking in green scales -- now you see the launcher, now you don't.",
+    "nsfw": false
+  },
+  "venom-scale-lurker-nsfw": {
+    "alt": "Snappy turning corrosive -- every app dissolves before the launch is done.",
+    "nsfw": true
+  },
+  "wide-hat-monk": {
+    "alt": "Snappy tired of being second best -- the hat trick lands before the app does.",
+    "nsfw": false
+  },
+  "wide-hat-monk-2": {
+    "alt": "Snappy with a razor-edged sense of style -- it always comes back, and so does the launcher.",
+    "nsfw": false
+  },
+  "red-eye-enforcer": {
+    "alt": "Snappy playing every side at once -- the launcher always wins, mate.",
+    "nsfw": false
+  },
+  "red-eye-enforcer-nsfw": {
+    "alt": "Snappy the dirtiest fighter in the tournament -- the red eye never blinks, mate.",
+    "nsfw": true
+  },
+  "iron-fist-brawler": {
+    "alt": "Snappy the major with an iron grip -- the ground pound that launches every app.",
+    "nsfw": false
+  },
+  "spec-ops-commander-nsfw": {
+    "alt": "Snappy hunting a one-eyed criminal across realms -- the launcher is locked, loaded, and deployed.",
+    "nsfw": true
+  },
+  "soul-stealing-sorcerer": {
+    "alt": "Snappy surrounded by stolen souls -- your app is mine.",
+    "nsfw": false
+  },
+  "azure-veil-princess": {
+    "alt": "Snappy behind a royal veil -- ten thousand years of patience for the perfect launch.",
+    "nsfw": false
+  },
+  "azure-veil-princess-nsfw": {
+    "alt": "Snappy with fans that do more than cool -- the launch cuts with royal precision.",
+    "nsfw": true
+  },
+  "thunder-hat-elder": {
+    "alt": "Snappy consulting the elder gods -- the launcher has been blessed with thunder.",
+    "nsfw": false
+  },
+  "green-glow-movie-star": {
+    "alt": "Snappy convinced it's the best-looking owl in any realm -- those were five-hundred-dollar launches.",
+    "nsfw": false
+  },
+  "fire-fist-champion-nsfw": {
+    "alt": "Snappy chosen to defend the realm -- TEST YOUR MIGHT against this launch.",
+    "nsfw": true
+  },
+  "fire-fist-champion": {
+    "alt": "Snappy channeling the dragon within -- your app has been chosen.",
+    "nsfw": false
   }
 }
