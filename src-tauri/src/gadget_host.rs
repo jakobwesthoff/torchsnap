@@ -366,8 +366,7 @@ impl GadgetHost {
     /// Register a gadget via the factory pattern. The host builds
     /// `ProvisionedCaps` from the declared `requests`, then calls
     /// the `factory` closure with the caps to construct the gadget.
-    /// The gadget receives caps as a plain field at construction
-    /// — no `OnceLock`, no `set_caps()`, no `unwrap()`.
+    /// The gadget receives caps as a plain field at construction.
     ///
     /// `source_path` is the gadget's archive/source root (for WASM
     /// gadgets); `None` for native gadgets.

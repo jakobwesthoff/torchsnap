@@ -1180,12 +1180,10 @@ migrations = ["migrations/001_init.sql"]
         // exercise that the bridge retains the SQL config
         // and can build working caps for each.
         let first = bridge.ensure_instance().expect("first ensure");
-        let caps = build_test_caps(&bridge);
         assert!(
-            caps.sql_storage.is_some(),
+            build_test_caps(&bridge).sql_storage.is_some(),
             "first caps should have SQL storage"
         );
-        first.set_caps(caps);
         first.clear_caps();
         drop(first);
         let _ = bridge.take_instance();

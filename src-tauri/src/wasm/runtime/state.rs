@@ -31,9 +31,9 @@ pub struct GadgetState {
     pub(crate) wasi_table: ResourceTable,
     pub(crate) log_sender: LogSender,
     pub(crate) span_registry: Arc<SpanRegistry>,
-    /// Host-built capability bundle. Set at instance construction
-    /// (via `set_caps`) and available for the lifetime of the
-    /// instance. All host imports access caps through this field.
+    /// Host-built capability bundle, injected at instance
+    /// construction via `instantiate()`. All host imports
+    /// access caps through this field.
     pub(crate) caps: Arc<ProvisionedCaps>,
     /// Gadget source for asset resolution. Set by the bridge in
     /// enable(), cleared in clear_caps(). Lives here (not on

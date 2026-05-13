@@ -328,26 +328,26 @@ mod tests {
     // opener closure and a `httpmock` HTTP server respectively.
     // =========================================================
 
-    fn compile_opener_http_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
+    fn compile_opener_http_fixture(
+        caps: Arc<crate::caps::ProvisionedCaps>,
+    ) -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         let component = runtime
             .compile(OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-gadget", &component, &LogContext::test_context(), test_caps())
+            .instantiate("opener-http-gadget", &component, &LogContext::test_context(), caps)
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
 
     #[test]
     fn opener_permitted_scheme_calls_writer() {
-        let (_runtime, instance) = compile_opener_http_fixture();
-
         let called_url: std::sync::Arc<Mutex<Option<String>>> =
             std::sync::Arc::new(Mutex::new(None));
         let called_url_clone = called_url.clone();
 
-        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+        let (_runtime, instance) = compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
             opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
                 crate::caps::OpenerPermissions {
                     schemes: vec!["https".into()],
@@ -380,9 +380,7 @@ mod tests {
 
     #[test]
     fn opener_forbidden_scheme_returns_error() {
-        let (_runtime, instance) = compile_opener_http_fixture();
-
-        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+        let (_runtime, instance) = compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
             opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
                 crate::caps::OpenerPermissions {
                     schemes: vec!["https".into()],
@@ -420,8 +418,9 @@ mod tests {
             then.status(200).body("pong");
         });
 
-        let (_runtime, instance) = compile_opener_http_fixture();
-        instance.set_caps(test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec!["*".into()]))));
+        let (_runtime, instance) = compile_opener_http_fixture(
+            test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec!["*".into()]))),
+        );
 
         instance.enable().expect("enable");
 
@@ -439,9 +438,9 @@ mod tests {
     // The committed `website-metadata-gadget` fixture exposes
     // `lookup-blocking` and `lookup-cached` messaging methods.
     // Tests below stand up a real `WebsiteMetadataService`
-    // pointed at an httpmock server, install it on the gadget
-    // instance via `set_website_metadata`, and verify the WIT
-    // boundary round-trip end-to-end.
+    // pointed at an httpmock server, inject it via caps at
+    // construction, and verify the WIT boundary round-trip
+    // end-to-end.
     // =========================================================
 
     fn build_test_metadata_service(
@@ -466,7 +465,9 @@ mod tests {
         (svc, tmp, notifier)
     }
 
-    fn compile_website_metadata_fixture() -> (Arc<WasmRuntime>, WasmGadgetInstance) {
+    fn compile_website_metadata_fixture(
+        caps: Arc<crate::caps::ProvisionedCaps>,
+    ) -> (Arc<WasmRuntime>, WasmGadgetInstance) {
         let runtime = test_runtime();
         let component = runtime
             .compile(WEBSITE_METADATA_GADGET_WASM)
@@ -476,7 +477,7 @@ mod tests {
                 "website-metadata-gadget",
                 &component,
                 &LogContext::test_context(),
-                test_caps(),
+                caps,
             )
             .expect("instantiate website-metadata fixture");
         (runtime, instance)
@@ -516,8 +517,7 @@ mod tests {
         });
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..test_caps_inner()
         }));
@@ -546,8 +546,7 @@ mod tests {
         });
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..test_caps_inner()
         }));
@@ -563,9 +562,7 @@ mod tests {
 
     #[test]
     fn website_metadata_lookup_without_permission_returns_permission_denied() {
-        let (_runtime, instance) = compile_website_metadata_fixture();
-        // Intentionally do NOT call set_website_metadata: state defaults
-        // to disabled with no service installed.
+        let (_runtime, instance) = compile_website_metadata_fixture(test_caps());
         instance.enable().expect("enable");
 
         let result = instance
@@ -580,8 +577,7 @@ mod tests {
     async fn website_metadata_invalid_domain_returns_invalid_domain_error() {
         let server = httpmock::MockServer::start();
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture();
-        instance.set_caps(Arc::new(crate::caps::ProvisionedCaps {
+        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
             website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
             ..test_caps_inner()
         }));
@@ -597,9 +593,9 @@ mod tests {
 
     #[test]
     fn http_blocked_origin_returns_permission_denied() {
-        let (_runtime, instance) = compile_opener_http_fixture();
-        // Empty origins = deny all.
-        instance.set_caps(test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec![]))));
+        let (_runtime, instance) = compile_opener_http_fixture(
+            test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec![]))),
+        );
 
         instance.enable().expect("enable");
 
