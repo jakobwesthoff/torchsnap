@@ -11,9 +11,8 @@
 // handle_message / run_task / on_setting_changed) lives
 // here.
 //
-// Capability state is managed atomically through
-// `set_caps` / `clear_caps` — individual per-capability
-// setters are no longer needed.
+// Caps are injected at construction via `instantiate()`.
+// `clear_caps` handles lifecycle cleanup at disable time.
 // =========================================================
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -83,18 +82,12 @@ impl WasmGadgetInstance {
 }
 
 // =========================================================
-// Capability lifecycle — atomic set/clear
+// Capability lifecycle
 // =========================================================
 
 impl WasmGadgetInstance {
-    /// Install the full capability bundle on the store data.
-    /// Called by the bridge at `enable()`.
-    pub fn set_caps(&self, caps: std::sync::Arc<crate::caps::ProvisionedCaps>) {
-        self.with_state_mut(|state| state.caps = caps);
-    }
-
     /// Install the gadget source for asset resolution. Called
-    /// by the bridge at `enable()` before `set_caps()`.
+    /// by the bridge at `enable()`.
     pub fn set_gadget_source(
         &self,
         source: std::sync::Arc<dyn crate::wasm::source::GadgetSource + Send + Sync>,
