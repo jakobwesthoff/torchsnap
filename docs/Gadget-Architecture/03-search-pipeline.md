@@ -39,12 +39,12 @@ matchedPrefix }` and `Done`. `source` is `ResultSource::Catalog` or
 `ResultSource::Gadget { id }`.
 
 Sibling commands in the same module:
-- `search_execute` — wraps `GadgetHost::execute` in
+- `search_execute`: wraps `GadgetHost::execute` in
   `tokio::task::spawn_blocking`. The blocking pool is mandatory because
   gadget `execute()` may reach `http::fetch`, which calls
   `Handle::current()` inside reqwest. Tauri's sync IPC thread has no
   Tokio context.
-- `gadget_message` — same `spawn_blocking` rationale for
+- `gadget_message`: same `spawn_blocking` rationale for
   `handle-message` RPC.
 
 ## Host dispatch: `GadgetHost::search`
@@ -70,7 +70,7 @@ When a prefix matches:
 3. The returned `GadgetResponse` is fed to `process_gadget_response`
    with `allow_custom_ui = true`.
 4. Frecency bonuses are applied to the entries, then a stable
-   score-DESC sort is used — not the full `cmp_sort_key` — so the
+   score-DESC sort is used (not the full `cmp_sort_key`) so the
    gadget's intended ordering for equal-score items is preserved.
 5. One `SearchResults` message is emitted with `matched_prefix:
    Some(prefix)`, followed by `Done`.
@@ -81,7 +81,7 @@ in ADR 0012's exclusive routing.
 ### Normal path: catalog + concurrent query gadgets (ADR 0023)
 
 When no prefix matches, every active gadget participates regardless of
-whether it also declares prefixes — that is ADR 0023.
+whether it also declares prefixes (ADR 0023).
 
 #### Phase 1: catalog (synchronous, single batch)
 
@@ -123,7 +123,7 @@ arrival is non-deterministic. Per response:
   false)`, frecency bonus, sort by `cmp_sort_key`, emit
   `SearchResults`.
 
-An empty entry list is still emitted — the per-source key on the
+An empty entry list is still emitted so the per-source key on the
 frontend uses the message to evict that source's prior entries.
 
 After the `JoinSet` drains, the host emits `Done`.
@@ -134,7 +134,7 @@ After the `JoinSet` drains, the host emits `Done`.
   starting because the await is sequential.
 - Query phase: N concurrent `spawn_blocking` tasks (one per active
   gadget) on Tokio's blocking pool. The host streams results back as
-  each task completes — no all-or-nothing barrier.
+  each task completes, with no all-or-nothing barrier.
 - The blocking pool is mandatory for the same Tokio-runtime-context
   reason as `search_execute`: WASM gadgets reach host imports like
   `http::fetch` and `command::run` from inside `search()`.
@@ -148,7 +148,7 @@ serializes on the per-instance store mutex. When a guest blocks
 inside a host import (e.g. `website-metadata::lookup` in `Blocking`
 mode), every later keystroke's `search()` call queues behind it.
 Without elision, FIFO would drain the entire backlog after the slow
-call finishes — wasting compute on results the frontend would
+call finishes, wasting compute on results the frontend would
 discard by generation anyway.
 
 `WasmGadgetInstance::search` increments
@@ -216,7 +216,7 @@ Recording happens on the *execute* side: `GadgetHost::execute` calls
 gadget, so user intent is captured even when the action errors.
 
 The WIT `frecency` interface (`gadget-sdk/wit/torchsnap-gadget.wit`)
-is purely read-side — it lets a gadget query its own top items to
+is purely read-side: it lets a gadget query its own top items to
 drive UI like the emoji picker's empty-query browse mode. It is not
 involved in the search-result-bonus path.
 
@@ -225,11 +225,11 @@ involved in the search-result-bonus path.
 Native gadgets implement `crate::gadgets::Gadget`
 (`gadgets/mod.rs`). The search-relevant entry points:
 
-- `id() -> &str` — the `source` field on every emitted entry.
-- `search_prefixes() -> &[String]` — empty by default.
-- `entries() -> Vec<CatalogEntry>` — empty by default (query-only
+- `id() -> &str`: the `source` field on every emitted entry.
+- `search_prefixes() -> &[String]`: empty by default.
+- `entries() -> Vec<CatalogEntry>`: empty by default (query-only
   gadgets).
-- `search(query, matched_prefix) -> Option<GadgetResponse>` — `None`
+- `search(query, matched_prefix) -> Option<GadgetResponse>`: `None`
   by default (catalog-only gadgets). `matched_prefix.is_some()` iff
   this is the prefix-exclusive path.
 - `execute(entry: &ScoredEntry, action_id: &ActionId) ->
@@ -256,15 +256,15 @@ WIT differences worth noting:
 
 ## Sample gadget shapes
 
-- `gadgets/bangs/` — query gadget. Demonstrates prefix-free
+- `gadgets/bangs/`: query gadget. Demonstrates prefix-free
   search with `!`-prefixed bang tokens detected inside the query text.
-- `gadgets/calculator/` — query gadget with a prefix (`=`).
+- `gadgets/calculator/`: query gadget with a prefix (`=`).
   Demonstrates prefix-exclusive routing with custom UI (history view)
   and inline UI (heuristic result above the list).
-- `gadgets/emoji-picker/` — query gadget with a prefix (`:`).
+- `gadgets/emoji-picker/`: query gadget with a prefix (`:`).
   Uses custom UI (`EmojiGrid` view) and `frecency::top-items` for
   an empty-query browse mode. Returns empty `entries()`.
-- `gadgets/hello-world/` — hybrid gadget: one catalog entry (`"greet"`)
+- `gadgets/hello-world/`: hybrid gadget with one catalog entry (`"greet"`)
   plus `search()` for prefix mode (`!` → custom echo view) and
   fuzzy petname matching in the non-prefix path.
 
@@ -288,7 +288,7 @@ between `views[view]` (custom) or `inlineViews[view]` (inline).
 The Tauri command future is awaited on the host side; if the
 frontend tears down (e.g. the launcher closes), the channel sender
 errors are silently dropped (`let _ = on_results.send(...)`). Tasks
-already running on the blocking pool are not cancelled — they run to
+already running on the blocking pool are not cancelled. They run to
 completion and their messages are then discarded by the frontend's
 generation guard. The WASM stale-elision path is the only place that
 actively avoids redundant work; everywhere else, "cancellation" means

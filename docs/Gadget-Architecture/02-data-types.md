@@ -61,8 +61,8 @@ variant action-id {
 
 The well-known variants exist so the host can attach default
 keybindings, icons, and labels. `open-settings` jumps to the
-originating gadget's own settings panel — useful as the primary
-action on synthetic "configuration required" entries. `custom` is
+originating gadget's own settings panel, making it useful as the
+primary action on synthetic "configuration required" entries. `custom` is
 the escape hatch for gadget-specific actions.
 
 ### `action`
@@ -123,8 +123,8 @@ record scored-entry {
 ```
 
 `data` is an opaque gadget-defined payload round-tripped by the host.
-Gadgets attach it in `search()` and read it back in `execute()` — the
-host never inspects the contents. The host `ScoredEntry` mirrors this
+Gadgets attach it in `search()` and read it back in `execute()`.
+The host never inspects the contents. The host `ScoredEntry` mirrors this
 field as `pub data: Option<String>` with `#[serde(skip)]` so it is
 never serialized to the frontend.
 
@@ -144,7 +144,7 @@ variant search-response {
 ```
 
 Gadgets that don't participate in this keystroke should return
-`nothing`. Returning `results([])` is semantically different — it
+`nothing`. Returning `results([])` is semantically different: it
 says the gadget participated and explicitly produced zero results,
 which evicts any stale per-source entries on the frontend. The
 bridge maps `search-response` to `Option<GadgetResponse>`:
@@ -187,7 +187,7 @@ constructing `GadgetViewRef`.
 `search::execute(entry: scored-entry, action-id: action-id) ->
 result<post-action, string>`.
 
-The full `scored-entry` — including the opaque `data` field — is
+The full `scored-entry`, including the opaque `data` field, is
 passed back to the gadget. This lets gadgets store context during
 `search()` and retrieve it in `execute()` without maintaining
 external state. The host's `Gadget` trait mirrors this with
@@ -204,7 +204,7 @@ enum post-action {
 
 `nothing` leaves the launcher state unchanged, `dismiss` hides it,
 `keep-open` is the multi-select escape hatch. WASM gadgets cannot
-trigger custom-UI takeover from `execute` — that path exists only on
+trigger custom-UI takeover from `execute`. That path exists only on
 the host `PostAction` enum (`PostAction::ShowCustomUI { view, data
 }`) and is reachable only from native gadgets. WASM gadgets request
 custom UI through `search-response::custom-ui` instead.
@@ -231,9 +231,9 @@ pub struct SourcedEntry {
 }
 ```
 
-Gadgets never set `source` — `SourcedEntry::new(source, scored)`
-attaches it host-side, preventing one gadget from spoofing another
-gadget's id. Sort order is `score DESC, source ASC, id ASC` via
+Gadgets never set `source`. The host attaches it via
+`SourcedEntry::new(source, scored)`, preventing one gadget from
+spoofing another gadget's id. Sort order is `score DESC, source ASC, id ASC` via
 `cmp_sort_key`; the TS comparator in
 `src/launcher/compareEntries.ts` mirrors this exactly.
 
@@ -247,7 +247,7 @@ enum ResultSource {
 ```
 
 `Catalog` is one aggregated batch mixing rows from every catalog-
-providing gadget, not per-gadget — it replaces the catalog layer
+providing gadget, not per-gadget: it replaces the catalog layer
 wholesale on each query. `Gadget { id }` is one batch from one query
 gadget.
 
@@ -312,7 +312,7 @@ never overwritten).
 
 ### `messaging::handle-message(method, payload) -> result<string, string>`
 
-Both `payload` and the `Ok` arm are JSON-encoded strings — the
+Both `payload` and the `Ok` arm are JSON-encoded strings. The
 gadget parses with `serde_json::from_str` on the way in and
 serializes the response on the way out. Strict request/response;
 WASM gadgets cannot stream. Native gadgets still receive a streaming
@@ -329,7 +329,7 @@ to the frontend's `sendMessage` promise.
 Invoked by the host's per-gadget scheduler at the cron times
 declared in `manifest.toml` `[[tasks]]`. `task-id` matches the
 manifest entry's `id`. `Err(string)` is logged but does not disable
-the gadget — scheduled tasks are best-effort background work, not
+the gadget. Scheduled tasks are best-effort background work, not
 lifecycle-critical. Gadgets without `[[tasks]]` provide a no-op
 implementation via `impl_noop_tasks!`; the host never spawns a
 scheduler loop in that case.
@@ -340,7 +340,7 @@ scheduler loop in that case.
   offsets (`title-highlight-positions`,
   `subtitle-highlight-positions`). The Rust host wraps them in a
   `Utf16Positions` newtype. The TypeScript frontend treats them as
-  JS string indices, which is correct for UTF-16 — but historical
+  JS string indices, which is correct for UTF-16, but historical
   TODOs in the codebase noted nucleo grapheme-index issues; verify
   with the current scoring pipeline if you touch highlighting.
 - Type sync: WIT records, host Rust structs, and frontend TS types
