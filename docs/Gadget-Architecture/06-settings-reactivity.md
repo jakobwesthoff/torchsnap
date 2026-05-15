@@ -87,9 +87,10 @@ The three callees are independent:
 The dispatcher is reused as a serialization point even for the
 enable/disable toggle. The callback flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
-`gadget.enable(app, &GadgetContext { settings, frecency })` or
-`gadget.disable()`. Always signals shortcut re-registration before
-returning.
+`gadget.enable()` or `gadget.disable()`. The `Gadget::enable()`
+method takes no arguments — capabilities are available as fields on
+`self` (set during construction). Always signals shortcut
+re-registration before returning.
 
 **Path 2 — `gadgets.<gadget-id>.<setting-key>`**
 
@@ -129,7 +130,7 @@ mutexes never nest.
 
 ## Native Gadget API
 
-`Plugin` trait (`src-tauri/src/gadgets/mod.rs`):
+`Gadget` trait (`src-tauri/src/gadgets/mod.rs`):
 
 ```rust
 fn initialize_settings(&self, settings: SettingsInit) -> SettingsInit { settings }
@@ -173,13 +174,11 @@ their bucket regardless of the key string they pass.
 
 ```wit
 interface settings {
-  /// Returns JSON-encoded value for `key`, or `none` if unset.
-  /// `key` is relative to the gadget's namespace.
   get: func(key: string) -> option<string>;
 }
 
 interface lifecycle {
-  enable: func();
+  enable: func() -> result<_, string>;
   disable: func();
   on-setting-changed: func(key: string, value: string);
 }
@@ -188,7 +187,8 @@ interface lifecycle {
 Values cross the boundary as JSON-encoded strings (`"true"`, `"42"`,
 `"\"hello\""`, `"{\"a\":1}"`) — WIT has no opaque value type. `none`
 means the key has never been set in the store, neither by manifest
-defaults nor by a runtime write.
+defaults nor by a runtime write. `enable` returns a `result` — an
+`err(string)` disables the gadget and the string is logged.
 
 ### SDK helpers
 
@@ -276,6 +276,6 @@ self-emitted events), so its own `useSetting` cache stays consistent
 with the rest of the app through one code path.
 
 The host also routes the `OpenSettings` action variant: when a search
-result triggers `ActionId::OpenSettings`, `GadgetHost::execute_action`
+result triggers `ActionId::OpenSettings`, `GadgetHost::execute`
 emits `"open-gadget-settings"` with the originating gadget id so the
 settings window can jump straight to that gadget's panel.

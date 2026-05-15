@@ -19,13 +19,13 @@ gadget frontend
 src/lib/gadgetMessage.ts → invoke("gadget_message", { source, method, payload, channel })
     │
     ▼
-src-tauri search::gadget_message  (Tauri command, async, spawn_blocking)
+src-tauri commands::gadget_message  (Tauri command, async, spawn_blocking)
     │
     ▼
 GadgetHost::handle_message(source, method, payload, channel)
     │   match by gadget id (source)
     ▼
-Plugin::handle_message(method, payload, channel)
+Gadget::handle_message(method, payload, channel)
     │
     ├── native impl  → may use channel for streaming
     └── WasmGadgetBridge::handle_message  → discards channel,
@@ -34,7 +34,7 @@ Plugin::handle_message(method, payload, channel)
 
 ## Tauri Command
 
-`src-tauri/src/search/mod.rs::gadget_message`:
+`src-tauri/src/commands/mod.rs::gadget_message`:
 
 ```rust
 #[tauri::command]
@@ -62,9 +62,9 @@ The host does no payload validation. Both `payload` and the return
 value are arbitrary `serde_json::Value`; meaning is opaque to the
 host.
 
-## Plugin Trait
+## Gadget Trait
 
-`Plugin::handle_message` in `src-tauri/src/gadgets/mod.rs`:
+`Gadget::handle_message` in `src-tauri/src/gadgets/mod.rs`:
 
 ```rust
 fn handle_message(
@@ -93,15 +93,11 @@ ignored.
 Errors split into three categories with explicit identities in logs:
 
 - **Gadget-reported** — inner `err(string)` arm of the WIT `result`.
-  Wrapped as `"gadget error: <string>"`.
 - **Bridge-level** — wasmtime trap, payload serialization, malformed
-  response JSON. Wrapped via `anyhow::Context` with strings like
-  `"serialize handle_message payload"`,
-  `"invoke guest handle-message"`,
-  `"parse guest handle-message response"`.
+  response JSON. Wrapped via `anyhow::Context`.
 - **Disabled-gadget guard** — `handle_message()` called while the
   instance slot is empty. Logged via `log_dispatched_while_disabled`,
-  returns `"handle_message() called on disabled gadget"`.
+  returns an error.
 
 ### WIT contract
 
@@ -194,8 +190,8 @@ await sendMessage<RefreshReq, RefreshResp>("refresh", { force: true });
 
 `sendMessage` is bound to the gadget id of the surrounding
 `GadgetContextProvider` — gadgets cannot address each other. The
-provider in `src/launcher/Launcher.tsx` constructs the bound function
-by partial-applying `sendGadgetMessage` with the context's gadget id.
+provider constructs the bound function by partial-applying
+`sendGadgetMessage` with the context's gadget id.
 
 The `onMessage` parameter is part of the type signature for symmetry
 with native gadgets, but the WASM bridge silently drops channel pushes.

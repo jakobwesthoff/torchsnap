@@ -9,7 +9,7 @@ streams their search results into the launcher UI.
 A small number of capabilities (clipboard, app launcher, system
 preferences, system commands) still ship as **Builtin** native Rust
 gadgets compiled into the host binary. Everything new is WASM. Both
-kinds implement the same `Plugin` trait
+kinds implement the same `Gadget` trait
 (`src-tauri/src/gadgets/mod.rs`) — for WASM gadgets that trait is
 implemented by `WasmGadgetBridge` (`src-tauri/src/wasm/bridge.rs`),
 which forwards every call across the WIT boundary.
@@ -24,9 +24,17 @@ which forwards every call across the WIT boundary.
   (`gadgets/gadget-sdk/src/lib.rs`); gadget crates pull the generated
   bindings through `use torchsnap_gadget_sdk::prelude::*;` and register
   their type with `define_gadget!(MyGadget)`.
-- **Engine:** `wasmtime` with the component model. A single
-  `WasmRuntime` (`src-tauri/src/wasm/runtime/engine.rs`) owns the
-  shared `Engine` and a per-gadget `Component` cache.
+- **Engine:** `wasmtime` with the component model, using the
+  **Winch** baseline compiler (ADR 0043) for reduced memory footprint
+  (~110 MB idle RSS vs ~242 MB with Cranelift for 7 gadgets). A
+  single `WasmRuntime` (`src-tauri/src/wasm/runtime/engine.rs`) is a
+  **stateless** compile/instantiate service that owns the shared
+  `Engine`. Per-gadget `CachedComponent`
+  (`src-tauri/src/wasm/runtime/cached_component.rs`) wraps compilation
+  with a **disk-backed cache** (ADR 0044): compiled artifacts are
+  serialized to disk and re-loaded via `deserialize_file`
+  (mmap-backed, OS-pageable), reducing idle RSS further to ~52 MB
+  Winch+cache.
 
 ## The `gadget` world
 
@@ -38,16 +46,16 @@ interfaces the host calls into. The full set, from
 world gadget {
   import logging;
   import clipboard;
-  import sql;
+  import sql-storage;
   import frecency;
   import settings;
   import opener;
   import http;
-  import fs;
+  import filesystem;
   import assets;
   import command;
   import platform;
-  import paths;
+  import path-resolver;
   import types;
   import website-metadata;
 
@@ -82,10 +90,9 @@ roots:
 Within a single root, an archive shadows a sibling directory of the
 same stem. Across roots, the earlier root wins and the collision is
 logged. Source kinds (`Builtin`, `System`, `User`, `Dev`) are tracked
-on `GadgetSourceKind` (`src-tauri/src/wasm/source.rs:52`) and
-serialized to the frontend for badging and uninstall gating. See
-ADR 0035 for the full distribution flow and ADR 0036 for the trust
-model.
+on `GadgetSourceKind` and serialized to the frontend for badging and
+uninstall gating. See ADR 0035 for the full distribution flow and
+ADR 0036 for the trust model.
 
 The `GadgetSource` trait abstracts directory vs. archive reads.
 `DirectorySource` and `ArchiveSource` are the two implementations; the
@@ -119,16 +126,20 @@ The `${gadget-data}` substitution variable resolves to the gadget's
 code root. See ADR 0018 (SQL storage) and ADR 0035 for the layout
 contract.
 
-## Lifecycle (ADR 0033)
+## Lifecycle (ADR 0033, ADR 0044)
 
 The host splits load and run into two phases so disabled gadgets cost
-only a cached `Component`, not a live store.
+only a disk-cached compiled artifact, not a live store.
 
 1. **Compile at load.** `WasmGadgetBridge::new`
    (`src-tauri/src/wasm/bridge.rs`) reads the manifest, reads the
-   gadget's WASM bytes via the `GadgetSource`, and calls
-   `WasmRuntime::compile`. Broken components fail fast at startup
-   rather than on first enable.
+   gadget's WASM bytes via the `GadgetSource`, and creates a
+   `CachedComponent` that compiles the bytes, serializes the compiled
+   artifact to disk at
+   `<app_data_dir>/gadget-home/<gadget-id>/compile-cache/<blake3>.<engine_hash>.cwasm`,
+   then drops the heap allocation and re-loads via `deserialize_file`
+   (mmap-backed). Broken components fail fast at startup rather than
+   on first enable.
 2. **Instantiate on enable.** When the gadget is enabled — at startup
    if its `enabled.<gadget-id>` setting is true, or later when the
    user toggles it on — the bridge calls `WasmRuntime::instantiate`
@@ -139,17 +150,20 @@ only a cached `Component`, not a live store.
    capability state on the instance from manifest permissions, then
    invokes the guest's `lifecycle::enable`.
 3. **Disable** drops the instance, reclaiming the store and all
-   guest linear memory. The cached `Component` stays so a later
-   re-enable doesn't re-compile.
+   guest linear memory. The `CachedComponent`'s disk-backed mmap stays
+   so a later re-enable doesn't re-compile.
 4. **Setting changes** flow through a host-side
    `CoalescingDispatcher` (ADR 0026) that deduplicates rapid writes
    to the same key, then call `lifecycle::on-setting-changed(key,
    json)` on the live instance. `key` is namespace-relative (the
    `gadgets.<id>.` prefix is stripped).
-5. **Execute** is invoked when the user activates a result; it
-   returns a `post-action` (`nothing` / `dismiss` / `keep-open`)
-   plus, on the host trait surface, an optional `ShowCustomUI`
-   variant.
+5. **Execute** is invoked when the user activates a result; the WIT
+   signature is `execute(entry: scored-entry, action-id: action-id) ->
+   result<post-action, string>`. The full `scored-entry` (including
+   `data`) is passed back so the gadget can retrieve the opaque
+   payload it attached during `search()`. The host's `Gadget` trait
+   mirrors this: `execute(&self, entry: &ScoredEntry, action_id:
+   &ActionId) -> anyhow::Result<PostAction>`.
 6. **Scheduled tasks.** If the manifest declares `[[tasks]]`, the
    bridge spawns a tokio scheduler loop that walks every parsed cron
    expression and invokes `tasks::run-task(task-id)` on the live
@@ -184,7 +198,7 @@ Three modes coexist (ADR 0023, ADR 0024):
   trigger character (ADR 0012).
 
 Results stream over a Tauri channel as `SearchMessage`s
-(`src-tauri/src/search/types.rs`). The frontend merges per-source
+(`src-tauri/src/commands/types.rs`). The frontend merges per-source
 batches into a single sorted list using the same `cmp_sort_key`
 ordering as the Rust side. Catalog and query results share the
 `SearchResults` variant; `Done` terminates the stream. The two-tier
@@ -211,16 +225,16 @@ call time.
 | Interface | Manifest gate | Notes |
 |---|---|---|
 | `logging` | always | Structured logs + timing spans, routed to host logger. |
-| `clipboard` | always | Write-only (`write-text`). Read intentionally not exposed. |
+| `clipboard` | `[permissions] clipboard = true` | Write-only (`write-text`). Read intentionally not exposed. |
 | `settings` | always | Scoped to `gadgets.<id>.*`; JSON-encoded values. |
-| `frecency` | always | Read-only top-N by score; tracking happens automatically host-side. |
+| `frecency` | `[permissions] frecency = true` | Read-only top-N by score; tracking happens automatically host-side. |
 | `assets` | always | Spatial guarantee: paths validated to stay inside the gadget root. |
 | `platform` | always | OS / arch detection. |
-| `paths` | always | `${...}` substitution against host-resolved paths. |
-| `sql` | `[storage.sql]` declared | Per-gadget SQLite at `gadget-home/<id>/sql/storage.sqlite3`. |
+| `path-resolver` | always | `${...}` substitution against host-resolved paths. |
+| `sql-storage` | `[storage.sql]` declared | Per-gadget SQLite at `gadget-home/<id>/sql/storage.sqlite3`. |
 | `opener` | `[permissions.opener]` | Per-capability flags: `schemes`, `open-path`, `reveal-path`. |
 | `http` | `[permissions.http] origins` | Origin allowlist or `"*"` for trust-all. |
-| `fs` | `[permissions.fs] read` | Globs canonicalized; symlinks resolved before match. |
+| `filesystem` | `[permissions.fs] read` | Globs canonicalized; symlinks resolved before match. |
 | `command` | `[[permissions.command]]` | Per-binary argv-shape rules; no shell wrapping. |
 | `website-metadata` | `[permissions] website-metadata = true` | Host-shared cache; favicons returned as `entry-icon`. |
 
@@ -242,8 +256,8 @@ WIT interfaces:
   `impl_noop_*!` macros into scope.
 - `settings::get` / `get_or` / `get_or_else` fold the JSON parse
   into the lookup.
-- `sql::Row` plus `query_one` / `query_all` give typed column access
-  over the raw `Vec<Vec<sql-value>>` interface.
+- `sql_storage::Row` plus `query_one` / `query_all` give typed column
+  access over the raw `Vec<Vec<sql-value>>` interface.
 - `command`, `messaging`, `logging`, `website_metadata` modules wrap
   the raw imports with conveniences (typed builders, `tracing`-style
   span helpers, etc.).
