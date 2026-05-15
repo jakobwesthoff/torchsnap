@@ -13,7 +13,7 @@ typed channel API) and invokes the `search` command with it. The
 backend pushes one `searchResults` message per source — the catalog
 layer plus every query gadget — and a final `done` message. The
 channel mirrors the `SearchMessage` union from `src/types.ts`, which
-itself mirrors `src-tauri/src/search/mod.rs`.
+itself mirrors `src-tauri/src/commands/types.rs`.
 
 ### Per-source accumulator
 

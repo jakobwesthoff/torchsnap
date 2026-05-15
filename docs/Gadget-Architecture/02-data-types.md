@@ -3,7 +3,7 @@
 The canonical names live in
 `gadgets/gadget-sdk/wit/torchsnap-gadget.wit`. Where the Rust host
 keeps a parallel definition (richer or differently shaped), it lives
-in `src-tauri/src/search/types.rs`. The frontend has equivalent
+in `src-tauri/src/commands/types.rs`. The frontend has equivalent
 TypeScript copies that are kept in sync by hand.
 
 This document covers the types gadgets exchange with the host:
@@ -34,15 +34,16 @@ both `use` them and resolve to the same generated Rust type.
 variant entry-icon {
   hero-icon(string),   // Heroicons name, e.g. "x-circle"
   data-url(string),    // base64-encoded inline image
-  asset-icon(string),  // absolute filesystem path served via Tauri's asset protocol
+  asset-icon(string),  // path relative to gadget archive root (gadget-produced),
+                       // or absolute path (host-produced, e.g. website-metadata favicons)
   emoji(string),       // single Unicode emoji rendered as text
 }
 ```
 
-The host mirrors this 1:1 in `EntryIcon`. `data-url` is currently
-not constructed by any shipping gadget (`#[allow(dead_code)]`).
-`asset-icon` is what the website-metadata service returns for
-favicons.
+The host mirrors this 1:1 in `EntryIcon`. `asset-icon` is what the
+website-metadata service returns for favicons (as absolute paths) and
+what gadgets use for bundled icon assets (as relative paths within
+their archive).
 
 ### `action-id`
 
@@ -98,7 +99,7 @@ record catalog-entry {
 `keywords` is the catalog-only fallback match target: scored against
 `title + keywords`, but match positions on keyword hits are not
 highlighted. The host `CatalogEntry`
-(`src-tauri/src/search/types.rs:150`) is identical apart from the
+(`src-tauri/src/commands/types.rs`) is identical apart from the
 `keywords` field carrying a comment that the first action is the
 primary one (Enter activation).
 
@@ -117,12 +118,19 @@ record scored-entry {
   title-highlight-positions: list<u32>,    // UTF-16 code unit offsets
   subtitle-highlight-positions: list<u32>, // UTF-16 code unit offsets
   actions: list<action>,
+  data: option<string>,                    // opaque gadget-defined payload
 }
 ```
 
+`data` is an opaque gadget-defined payload round-tripped by the host.
+Gadgets attach it in `search()` and read it back in `execute()` — the
+host never inspects the contents. The host `ScoredEntry` mirrors this
+field as `pub data: Option<String>` with `#[serde(skip)]` so it is
+never serialized to the frontend.
+
 The host `ScoredEntry` uses a `Utf16Positions` newtype around the
-same offsets and implements `FrecencyTarget` so the host can apply
-frecency bonuses after the gadget returns.
+highlight offsets and implements `FrecencyTarget` so the host can
+apply frecency bonuses after the gadget returns.
 
 ### `search-response`
 
@@ -176,7 +184,15 @@ constructing `GadgetViewRef`.
 
 ## Execution
 
-`search::execute(entry-id, action-id) -> result<post-action, string>`.
+`search::execute(entry: scored-entry, action-id: action-id) ->
+result<post-action, string>`.
+
+The full `scored-entry` — including the opaque `data` field — is
+passed back to the gadget. This lets gadgets store context during
+`search()` and retrieve it in `execute()` without maintaining
+external state. The host's `Gadget` trait mirrors this with
+`execute(&self, entry: &ScoredEntry, action_id: &ActionId) ->
+anyhow::Result<PostAction>`.
 
 ```wit
 enum post-action {
@@ -194,16 +210,15 @@ the host `PostAction` enum (`PostAction::ShowCustomUI { view, data
 custom UI through `search-response::custom-ui` instead.
 
 The `Err(string)` arm surfaces a guest-reported failure to the host
-log with a `gadget error:` prefix; bridge-level failures (linker,
-store lock, serialization) surface separately so the two are
-distinguishable in logs.
+log; bridge-level failures (linker, store lock, serialization) surface
+separately so the two are distinguishable in logs.
 
 ## Frontend wire types
 
 The host augments scored entries with their source gadget and
 streams them to the frontend over a Tauri channel. These types are
 serialize-only on the Rust side (defined in
-`src-tauri/src/search/types.rs`); the launcher TypeScript has hand-
+`src-tauri/src/commands/types.rs`); the launcher TypeScript has hand-
 maintained mirrors.
 
 ### `SourcedEntry`
@@ -301,11 +316,11 @@ Both `payload` and the `Ok` arm are JSON-encoded strings — the
 gadget parses with `serde_json::from_str` on the way in and
 serializes the response on the way out. Strict request/response;
 WASM gadgets cannot stream. Native gadgets still receive a streaming
-`Channel<Value>` via `Plugin::handle_message`; only the WIT bridge
+`Channel<Value>` via `Gadget::handle_message`; only the WIT bridge
 is one-shot.
 
 Returning `Err(string)` propagates as a Tauri command error visible
-to the frontend's `sendMessage` promise as `gadget error: <string>`.
+to the frontend's `sendMessage` promise.
 
 ## Scheduled tasks
 
