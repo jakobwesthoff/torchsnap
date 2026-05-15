@@ -10,7 +10,7 @@ A small number of capabilities (clipboard, app launcher, system
 preferences, system commands) still ship as **Builtin** native Rust
 gadgets compiled into the host binary. Everything new is WASM. Both
 kinds implement the same `Gadget` trait
-(`src-tauri/src/gadgets/mod.rs`) — for WASM gadgets that trait is
+(`src-tauri/src/gadgets/mod.rs`). For WASM gadgets, that trait is
 implemented by `WasmGadgetBridge` (`src-tauri/src/wasm/bridge.rs`),
 which forwards every call across the WIT boundary.
 
@@ -68,7 +68,7 @@ world gadget {
 
 Gadgets that don't use messaging or scheduled tasks emit no-op
 implementations via `impl_noop_messaging!` / `impl_noop_tasks!` from
-the SDK — both exports are world-mandated.
+the SDK, since both exports are world-mandated.
 
 ## Distribution
 
@@ -77,14 +77,14 @@ directories during development. Discovery
 (`src-tauri/src/wasm/discovery.rs`) walks three precedence-ordered
 roots:
 
-1. **System** — `<resource_dir>/gadgets/`. Populated from
+1. **System** (`<resource_dir>/gadgets/`). Populated from
    `target/bundled-gadgets/` by the `stage-bundled-gadgets` Just
    recipe at build time. Only gadgets whitelisted in
    `gadgets/bundled.toml` end up here. Not uninstallable at runtime.
-2. **Dev** — `<CARGO_MANIFEST_DIR>/../gadgets/` in debug builds only,
-   stripped from release artifacts via `cfg(debug_assertions)`. Tagged
+2. **Dev** (`<CARGO_MANIFEST_DIR>/../gadgets/`, debug builds only).
+   Stripped from release artifacts via `cfg(debug_assertions)`. Tagged
    `GadgetSourceKind::Dev` for the settings UI badge.
-3. **User** — `<app_data_dir>/gadgets/`. Install target for
+3. **User** (`<app_data_dir>/gadgets/`). Install target for
    user-dropped `.torchsnap` archives. Uninstallable.
 
 Within a single root, an archive shadows a sibling directory of the
@@ -102,7 +102,7 @@ rest of the host treats them interchangeably.
 
 A gadget (whether archived or a directory) contains:
 
-- `manifest.toml` — typed by `wasm::manifest::Manifest`. Declares
+- `manifest.toml`, typed by `wasm::manifest::Manifest`. Declares
   `[gadget]` metadata, `[settings]` defaults, `[shortcuts]`,
   `[frontend]`, `[storage.sql]` migrations, `[[tasks]]`, and the
   per-capability `[permissions.*]` blocks.
@@ -140,9 +140,9 @@ only a disk-cached compiled artifact, not a live store.
    then drops the heap allocation and re-loads via `deserialize_file`
    (mmap-backed). Broken components fail fast at startup rather than
    on first enable.
-2. **Instantiate on enable.** When the gadget is enabled — at startup
+2. **Instantiate on enable.** When the gadget is enabled (at startup
    if its `enabled.<gadget-id>` setting is true, or later when the
-   user toggles it on — the bridge calls `WasmRuntime::instantiate`
+   user toggles it on), the bridge calls `WasmRuntime::instantiate`
    to build a fresh `WasmGadgetInstance`
    (`src-tauri/src/wasm/runtime/instance.rs`) with its own wasmtime
    `Store`, materializes the SQL database (creating files and running
@@ -175,7 +175,7 @@ only a disk-cached compiled artifact, not a live store.
 The host owns the enabled state (ADR 0025). Each gadget is wrapped in
 a `GadgetSlot` that holds an `AtomicBool` for the enabled flag plus
 the `CoalescingDispatcher` for `on-setting-changed`. The enabled key
-lives at `enabled.<gadget-id>` in the top-level settings namespace —
+lives at `enabled.<gadget-id>` in the top-level settings namespace,
 outside the `gadgets.<id>.*` prefix and unreachable from the gadget
 itself. The host intercepts changes to that key and drives
 `enable()` / `disable()` directly.
@@ -212,8 +212,8 @@ the manifest. Custom and inline views are looked up by name from the
 gadget's component registry (ADR 0022 / ADR 0028). The frontend can
 make synchronous RPC calls back into the gadget via Tauri's invoke
 boundary, which routes to the WIT `messaging::handle-message` guest
-export — request/response only, no streaming, JSON-encoded payloads
-on both sides.
+export. These calls are request/response only, with no streaming,
+using JSON-encoded payloads on both sides.
 
 ## Host capabilities
 

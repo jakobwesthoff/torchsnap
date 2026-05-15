@@ -3,9 +3,9 @@
 ## Overview
 
 Gadget messaging is the custom RPC channel between a gadget's frontend
-view and its backend handler. It runs *parallel* to the search pipeline
-— a search query never travels through this path, and a custom
-message never travels through the search path.
+view and its backend handler. It runs *parallel* to the search pipeline:
+a search query never travels through this path, and a custom message
+never travels through the search path.
 
 End-to-end shape:
 
@@ -50,7 +50,7 @@ pub async fn gadget_message(
 Async because gadget handlers run on `tokio::task::spawn_blocking`
 (handlers may issue `reqwest` HTTP calls that need a Tokio runtime
 context). Only the outermost error is formatted into the rejection
-string — the full `anyhow` chain stays in host logs.
+string. The full `anyhow` chain stays in host logs.
 
 ## Host Routing
 
@@ -92,10 +92,10 @@ ignored.
 
 Errors split into three categories with explicit identities in logs:
 
-- **Gadget-reported** — inner `err(string)` arm of the WIT `result`.
-- **Bridge-level** — wasmtime trap, payload serialization, malformed
+- **Gadget-reported**: inner `err(string)` arm of the WIT `result`.
+- **Bridge-level**: wasmtime trap, payload serialization, malformed
   response JSON. Wrapped via `anyhow::Context`.
-- **Disabled-gadget guard** — `handle_message()` called while the
+- **Disabled-gadget guard**: `handle_message()` called while the
   instance slot is empty. Logged via `log_dispatched_while_disabled`,
   returns an error.
 
@@ -108,7 +108,7 @@ interface messaging {
 }
 ```
 
-`payload` and the success arm are JSON-encoded strings — same
+`payload` and the success arm are JSON-encoded strings, the same
 convention as `settings::get`. The guest parses with
 `serde_json::from_str` and serializes the response with
 `serde_json::to_string`.

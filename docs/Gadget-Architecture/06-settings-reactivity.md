@@ -24,7 +24,7 @@ and the WASM `settings` / `lifecycle::on-setting-changed` interfaces
 
 The enabled toggle lives at top level (`enabled.<id>`), *outside*
 the `gadgets.<id>.*` namespace. Gadgets never observe their own
-enabled-state writes — only the host acts on that key.
+enabled-state writes. Only the host acts on that key.
 
 ## Cross-Window Store (ADR 0006)
 
@@ -40,8 +40,8 @@ the wrapper adds:
 2. `initStore()` registers a `listen("settings-changed", …)` that
    refetches the value from the store, updates an in-memory cache,
    and notifies local subscribers.
-3. `getSettingSync<T>(key)` returns the cached value synchronously —
-   the store is loaded fully before React mounts so first-render reads
+3. `getSettingSync<T>(key)` returns the cached value synchronously.
+   The store is loaded fully before React mounts so first-render reads
    never see `undefined`.
 
 `useSetting<T>(key)` (`src/hooks/useSetting.ts`) sits on top:
@@ -71,11 +71,11 @@ app.listen("settings-changed", move |event| {
 
 The three callees are independent:
 
-- `SettingsNotifier::notify` — feeds `tokio::sync::watch` channels
+- `SettingsNotifier::notify`: feeds `tokio::sync::watch` channels
   consumed by non-gadget subsystems via `SettingsWatch<T>`.
-- `GadgetHost::handle_setting_changed` — routes to the affected gadget
+- `GadgetHost::handle_setting_changed`: routes to the affected gadget
   through its `CoalescingDispatcher`.
-- `notify_shortcut_change` — wakes the shortcut reactor so global
+- `notify_shortcut_change`: wakes the shortcut reactor so global
   hotkeys are re-registered.
 
 ## Host Routing — `handle_setting_changed`
@@ -88,7 +88,7 @@ The dispatcher is reused as a serialization point even for the
 enable/disable toggle. The callback flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
 `gadget.enable()` or `gadget.disable()`. The `Gadget::enable()`
-method takes no arguments — capabilities are available as fields on
+method takes no arguments, since capabilities are available as fields on
 `self` (set during construction). Always signals shortcut
 re-registration before returning.
 
@@ -105,11 +105,11 @@ relative keys (`"retentionDays"`), never the full path.
 `src-tauri/src/coalescing_dispatcher.rs`. One per gadget slot. Two
 mutexes:
 
-- `pending: Mutex<Vec<(String, Value)>>` — the queue.
+- `pending: Mutex<Vec<(String, Value)>>`: the queue.
   `enqueue(key, value)` does `retain(|(k,_)| k != &key); push(...)`,
   so same-key updates are deduplicated to the latest value while
   preserving chronological order across distinct keys.
-- `work: Mutex<()>` — held for the duration of dispatch.
+- `work: Mutex<()>`: held for the duration of dispatch.
   `dispatch()` uses `try_lock`; if another dispatch is already
   running, this call returns immediately and the active loop will
   pick up newly enqueued items in its next iteration.
@@ -185,10 +185,11 @@ interface lifecycle {
 ```
 
 Values cross the boundary as JSON-encoded strings (`"true"`, `"42"`,
-`"\"hello\""`, `"{\"a\":1}"`) — WIT has no opaque value type. `none`
-means the key has never been set in the store, neither by manifest
-defaults nor by a runtime write. `enable` returns a `result` — an
-`err(string)` disables the gadget and the string is logged.
+`"\"hello\""`, `"{\"a\":1}"`) because WIT has no opaque value type.
+`none` means the key has never been set in the store, neither by
+manifest defaults nor by a runtime write. `enable` returns a
+`result`: an `err(string)` disables the gadget and the string is
+logged.
 
 ### SDK helpers
 
@@ -226,7 +227,7 @@ impl LifecycleGuest for ZeroTierGadget {
 
 `value` is the new JSON-encoded string. Gadgets typically re-read
 through the typed `settings::get_or` helper rather than parsing
-`value` inline — the WIT argument exists so the guest doesn't have to
+`value` inline. The WIT argument exists so the guest doesn't have to
 cross the boundary again, but type-safe access is more ergonomic.
 
 ## Manifest Defaults
@@ -254,10 +255,10 @@ This is **not** part of the gadget-facing API; gadgets use
 `setting_changed` / `on-setting-changed`. `SettingsWatch` survives
 for non-gadget subsystems that observe global settings:
 
-- `FrecencyStore` — watches its own retention / enable settings.
-- `control` — watches the `controlChannel.*` keys to start/stop
+- `FrecencyStore`: watches its own retention / enable settings.
+- `control`: watches the `controlChannel.*` keys to start/stop
   the Unix socket server.
-- `WebsiteMetadataService` — watches cache / network settings.
+- `WebsiteMetadataService`: watches cache / network settings.
 
 ## Frontend Settings UI
 
