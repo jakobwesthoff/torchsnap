@@ -98,6 +98,33 @@ The `GadgetSource` trait abstracts directory vs. archive reads.
 `DirectorySource` and `ArchiveSource` are the two implementations; the
 rest of the host treats them interchangeably.
 
+### Install and uninstall
+
+`src-tauri/src/gadget_install.rs` exposes two Tauri commands for
+managing user gadgets at runtime.
+
+**Install** (`install_gadget_archive`): opens the `.torchsnap` archive
+via `ArchiveSource::open` (which validates the zip, parses
+`manifest.toml`, and runs a path-traversal guard), then checks for id
+collisions against all loaded gadgets. Each `GadgetSourceKind` gets a
+distinct error message (e.g. "uninstall the existing version, then
+retry" for User, "built-in gadgets cannot be replaced" for Builtin).
+The archive is written atomically: first copied to a dot-prefixed temp
+file (`.<id>.torchsnap.tmp`) in the same directory, then `rename`d
+into place. A crash mid-copy leaves only the temp file, which the
+directory scanner ignores.
+
+**Uninstall** (`uninstall_user_gadget`): only `GadgetSourceKind::User`
+gadgets can be uninstalled. The command removes the archive (or
+unpacked directory), the state tree at
+`<app_data_dir>/gadget-home/<id>/`, and strips all settings keys
+matching `enabled.<id>` or the prefix `gadgets.<id>.` (the trailing
+dot prevents `calc` from matching `calculator.*`).
+
+Both commands return `requires_restart: true` unconditionally because
+the `GadgetHost` slot list is frozen after app setup. Hot
+reload/lifecycle is not yet implemented.
+
 ## Gadget layout
 
 A gadget (whether archived or a directory) contains:
@@ -157,13 +184,11 @@ only a disk-cached compiled artifact, not a live store.
    to the same key, then call `lifecycle::on-setting-changed(key,
    json)` on the live instance. `key` is namespace-relative (the
    `gadgets.<id>.` prefix is stripped).
-5. **Execute** is invoked when the user activates a result; the WIT
-   signature is `execute(entry: scored-entry, action-id: action-id) ->
-   result<post-action, string>`. The full `scored-entry` (including
-   `data`) is passed back so the gadget can retrieve the opaque
-   payload it attached during `search()`. The host's `Gadget` trait
-   mirrors this: `execute(&self, entry: &ScoredEntry, action_id:
-   &ActionId) -> anyhow::Result<PostAction>`.
+5. **Execute** is invoked when the user activates a result. The
+   full `scored-entry` (including the opaque `data` payload from
+   `search()`) is passed back to the gadget. See
+   [02-data-types.md](02-data-types.md#execution) for the complete
+   type contract and post-action semantics.
 6. **Scheduled tasks.** If the manifest declares `[[tasks]]`, the
    bridge spawns a tokio scheduler loop that walks every parsed cron
    expression and invokes `tasks::run-task(task-id)` on the live
@@ -213,7 +238,11 @@ gadget's component registry (ADR 0022 / ADR 0028). The frontend can
 make synchronous RPC calls back into the gadget via Tauri's invoke
 boundary, which routes to the WIT `messaging::handle-message` guest
 export. These calls are request/response only, with no streaming,
-using JSON-encoded payloads on both sides.
+using JSON-encoded payloads on both sides. See
+[04-frontend-reception.md](04-frontend-reception.md) for the full
+rendering pipeline and
+[05-gadget-messaging.md](05-gadget-messaging.md) for the messaging
+contract.
 
 ## Host capabilities
 
