@@ -204,6 +204,28 @@ The key `(score DESC, source ASC, id ASC)` is implemented in:
 The frontend relies on each backend batch arriving pre-sorted. The
 contract is implicit (no type enforces it).
 
+## EntryStore: search-to-execute handoff
+
+`EntryStore` (`src-tauri/src/entry_store.rs`) bridges the gap between
+the search phase and the execute phase. It is a
+`RwLock<HashMap<(String, String), ScoredEntry>>` keyed by
+`(source_gadget_id, entry_id)`.
+
+- **During search**, `entry_store.clear()` runs unconditionally at the
+  top of every `GadgetHost::search` invocation. As each batch of
+  results (catalog or per-query-gadget) is produced, the entries are
+  inserted into the store.
+- **During execute**, `entry_store.get(source, entry_id)` retrieves
+  the full `ScoredEntry` to pass to the gadget's `execute()`. This is
+  how the opaque `data` field round-trips from `search()` back to
+  `execute()` without the frontend ever seeing it (`data` is
+  `#[serde(skip)]` on the host `ScoredEntry`). If the entry is absent
+  (stale UI referencing a previous search generation), the host logs
+  the mismatch and returns `PostAction::Nothing`.
+
+See [02-data-types.md](02-data-types.md#execution) for the full
+execute type contract.
+
 ## Frecency
 
 Frecency is a host service. Each gadget slot has a scoped
@@ -282,6 +304,8 @@ Three response shapes flow through the same `SearchResults` message:
 `view`, and optional JSON `data`. The frontend uses `gadgetId` to
 look up the React component in its gadget registry; `view` selects
 between `views[view]` (custom) or `inlineViews[view]` (inline).
+See [04-frontend-reception.md](04-frontend-reception.md) for how
+these messages are received, accumulated, and rendered.
 
 ## Cancellation semantics
 

@@ -89,8 +89,10 @@ enable/disable toggle. The callback flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
 `gadget.enable()` or `gadget.disable()`. The `Gadget::enable()`
 method takes no arguments, since capabilities are available as fields on
-`self` (set during construction). Always signals shortcut
-re-registration before returning.
+`self` (set during construction). See
+[01-overview.md](01-overview.md#lifecycle-adr-0033-adr-0044) for the
+full lifecycle sequence. Always signals shortcut re-registration
+before returning.
 
 **Path 2 — `gadgets.<gadget-id>.<setting-key>`**
 
@@ -102,7 +104,7 @@ relative keys (`"retentionDays"`), never the full path.
 
 ## CoalescingDispatcher (ADR 0026)
 
-`src-tauri/src/coalescing_dispatcher.rs`. One per gadget slot. Two
+`src-tauri/src/settings/coalescing_dispatcher.rs`. One per gadget slot. Two
 mutexes:
 
 - `pending: Mutex<Vec<(String, Value)>>`: the queue.
@@ -259,6 +261,76 @@ for non-gadget subsystems that observe global settings:
 - `control`: watches the `controlChannel.*` keys to start/stop
   the Unix socket server.
 - `WebsiteMetadataService`: watches cache / network settings.
+
+## Shortcut registration
+
+Global keyboard shortcuts are a settings-driven subsystem: shortcut
+bindings are persisted as settings keys, and the shortcut reactor is
+the third fan-out path from the `settings-changed` event listener.
+
+### Declaration
+
+Native gadgets declare shortcuts by overriding `Gadget::shortcuts()`,
+which returns a `Vec<GadgetShortcut>`:
+
+```rust
+pub struct GadgetShortcut {
+    pub id: &'static str,           // stable shortcut ID, e.g. "open-clipboard"
+    pub label: &'static str,        // human-readable description
+    pub default_shortcut: &'static str,  // initial key combo, e.g. "CmdOrCtrl+Shift+V"
+    pub settings_key: &'static str,      // store key under gadgets.<id>.<settings_key>
+}
+```
+
+WASM gadget manifests can declare `[shortcuts]` as a map of shortcut
+IDs to `ShortcutDef { label, default }`. The manifest parser reads
+this, but the `WasmGadgetBridge` does not yet implement `shortcuts()`
+or `handle_shortcut()`, so WASM gadgets cannot currently register
+global shortcuts.
+
+### Registration
+
+`GadgetHost::register_all_shortcuts` (`src-tauri/src/gadget_host.rs`)
+runs a full unregister/re-register cycle every time it is called:
+
+1. `app.global_shortcut().unregister_all()` clears all existing
+   shortcuts.
+2. For each active (enabled) gadget slot, `gadget.shortcuts()` is
+   called and each declaration is resolved via `resolve_shortcut`,
+   which reads `gadgets.<gadget_id>.<settings_key>` from the store
+   (falling back to `default_shortcut` if absent) and parses the
+   string as a `Shortcut`. Parse failures are logged and skipped.
+3. The launcher's own `globalShortcut` key is read from the store.
+4. All resolved shortcuts (launcher + gadgets) are bulk-registered
+   with `on_shortcuts`. The closure routes activations: the launcher
+   toggle calls `toggle_launcher_window`; gadget shortcuts call
+   `owner.handle_shortcut(&shortcut_id)`.
+
+`handle_shortcut` returns a `PostAction`. If it returns
+`ShowCustomUI { view, data }`, the host positions the launcher on the
+cursor's monitor, shows it, and emits the `activate-gadget-custom-ui`
+Tauri event so the frontend can mount the gadget's view.
+
+### Shortcut reactor
+
+`GadgetHost::start_shortcut_reactor` spawns a Tokio async task that
+loops on an `mpsc::Receiver<()>`. When `notify_shortcut_change()`
+sends a signal (non-blocking `try_send` with capacity 1, so rapid
+changes coalesce), the reactor drains any further pending signals via
+`try_recv`, then calls `register_all_shortcuts`.
+
+The signal is sent from two places:
+
+- The `settings-changed` event listener, when
+  `host.is_key_watched(&key)` returns true.
+- `handle_setting_changed`, unconditionally when an `enabled.<id>`
+  key changes (enabling/disabling a gadget may add or remove its
+  shortcuts).
+
+`watched_keys: HashSet<String>` is populated during
+`initialize_and_start` with `"globalShortcut"`, all
+`"enabled.<id>"` keys, and all
+`"gadgets.<id>.<shortcut.settings_key>"` keys.
 
 ## Frontend Settings UI
 

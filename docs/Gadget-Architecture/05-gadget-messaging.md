@@ -189,9 +189,11 @@ await sendMessage<RefreshReq, RefreshResp>("refresh", { force: true });
 ```
 
 `sendMessage` is bound to the gadget id of the surrounding
-`GadgetContextProvider` — gadgets cannot address each other. The
+`GadgetContextProvider`, so gadgets cannot address each other. The
 provider constructs the bound function by partial-applying
-`sendGadgetMessage` with the context's gadget id.
+`sendGadgetMessage` with the context's gadget id. See
+[04-frontend-reception.md](04-frontend-reception.md#gadget-component-contract-adr-0028)
+for the full provider and hook contract.
 
 The `onMessage` parameter is part of the type signature for symmetry
 with native gadgets, but the WASM bridge silently drops channel pushes.

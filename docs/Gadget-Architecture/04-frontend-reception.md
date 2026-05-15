@@ -275,32 +275,17 @@ the context value on every keystroke.
 ## Live updates from gadgets (ADR 0016)
 
 Gadgets push real-time updates to their mounted component through
-the same `sendMessage` channel that handles request/response
-calls. The frontend signature:
+the `sendMessage` function from `useGadgetRuntime()`. The full
+messaging contract (request/response flow, backend routing, WASM
+limitations, `useGadgetStream` hook) is documented in
+[05-gadget-messaging.md](05-gadget-messaging.md). This section
+covers only the frontend lifecycle aspects.
 
-```ts
-sendMessage<TPayload, TResult, TStream>(
-  method: string,
-  payload: TPayload,
-  onMessage?: (msg: TStream) => void,
-): Promise<TResult>;
-```
-
-`sendGadgetMessage` (`src/lib/gadgetMessage.ts`) wraps the
-`gadget_message` Tauri command, allocating a `Channel<TStream>`
-and wiring `onMessage`. The gadget's backend `handle_message`
-receives that channel, returns an initial payload through the
-promise, and stores the channel handle for its background thread
-to push subsequent items into. When the component unmounts the
-channel reference is dropped. The backend detects the closed
-channel on its next send and discards it; no explicit
-unsubscribe.
-
-**WASM gadgets do not support streaming.** The WASM bridge silently
-drops the streaming channel; `onMessage` is part of the public
-signature only for symmetry with native gadgets. The shim
-documents this and points at ADR 0030's future
-`messaging-stream` sub-interface.
+When a component unmounts, the Tauri channel reference is dropped.
+The backend detects the closed channel on its next send and discards
+it, so there is no explicit unsubscribe call. `useGadgetStream`
+(`src/hooks/useGadgetStream.ts`) wraps this pattern and re-issues
+the command when `method` or `payload` identity changes.
 
 ## TypeScript SDK package — `@torchsnap/gadget-sdk`
 
