@@ -97,8 +97,8 @@ echo '{"jsonrpc":"2.0","id":1,"method":"show"}' | socat - UNIX-CONNECT:"$SOCK"
 
 ### `hide`
 
-Hide the launcher window without resetting its state. The current query
-and selection are preserved for the next time the launcher is shown.
+Hide the launcher window. The search query, selection, and any active
+gadget view are cleared when the window loses focus.
 
 **Parameters:** none
 
@@ -111,8 +111,9 @@ and selection are preserved for the next time the launcher is shown.
 
 ### `toggle`
 
-Toggle the launcher's visibility. If visible, hides it. If hidden, shows
-it (same as `show`).
+Toggle the launcher's visibility. If hidden, shows it. If visible,
+dismisses it — clearing the query and selection, just like pressing
+Escape. This matches the behavior of the global keyboard shortcut.
 
 **Parameters:** none
 
