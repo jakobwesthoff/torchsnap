@@ -1,0 +1,10 @@
+[gadget]
+id = "awake"
+name = "Awake"
+description = "Keep the system awake. Currently macOS only, via Amphetamine."
+version = "0.1.0"
+wasm = "awake_gadget.wasm"
+icon = "heroicons:bolt"
+
+# No `prefixes` — the gadget is keyword-matched ("awake",
+# "amphetamine") rather than routed by an exclusive prefix.
