@@ -109,9 +109,7 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
     // there is at least one label below the suffix, which is
     // the actual signal we want for "this is a real bare
     // domain candidate".
-    if domain_name.root().is_none() {
-        return None;
-    }
+    domain_name.root()?;
 
     Some(DetectedUrl {
         full_url: candidate,

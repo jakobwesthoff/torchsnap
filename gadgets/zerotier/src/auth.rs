@@ -73,10 +73,10 @@ pub fn candidate_paths(os: &Os, user_config_dir: &str) -> Vec<String> {
 /// file is readable under the gadget's fs allowlist.
 pub fn read_first_readable(paths: &[String]) -> Option<String> {
     for path in paths {
-        if let Ok(bytes) = filesystem::read_file(path) {
-            if let Some(token) = bytes_to_token(&bytes) {
-                return Some(token);
-            }
+        if let Ok(bytes) = filesystem::read_file(path)
+            && let Some(token) = bytes_to_token(&bytes)
+        {
+            return Some(token);
         }
     }
     None

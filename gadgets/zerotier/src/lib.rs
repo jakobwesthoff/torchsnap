@@ -525,10 +525,10 @@ fn lookup_name_hint(runtime: &Runtime, id: &str) -> String {
     }
     // Fall back to history.
     let db = history::connection();
-    if let Ok(rows) = history::list_all(&db) {
-        if let Some(r) = rows.iter().find(|r| r.id == id) {
-            return r.name.clone();
-        }
+    if let Ok(rows) = history::list_all(&db)
+        && let Some(r) = rows.iter().find(|r| r.id == id)
+    {
+        return r.name.clone();
     }
     String::new()
 }
