@@ -41,21 +41,31 @@ impl GadgetFrecency {
     /// custom UI interactions that bypass `execute()` — never for
     /// the same selection the host already handles, or the event
     /// will be double-counted.
+    // `record`, `score`, `scores`, and `apply_scores` are the delegate
+    // surface for native gadgets that bypass `execute()`; `top_items`
+    // and `is_enabled` below are the members WASM guests reach through
+    // `wasm::runtime::host::frecency`. No in-repo native gadget calls
+    // these four directly — the host already records and scores
+    // through `FrecencyStore` inside `GadgetHost::execute()`.
+    #[allow(dead_code)]
     pub fn record(&self, item_id: &str) {
         self.store.record(&self.gadget_id, item_id);
     }
 
     /// Compute the frecency score for a single item.
+    #[allow(dead_code)]
     pub fn score(&self, item_id: &str) -> u32 {
         self.store.score(&self.gadget_id, item_id)
     }
 
     /// Batch-compute frecency scores for multiple items.
+    #[allow(dead_code)]
     pub fn scores(&self, item_ids: &[&str]) -> HashMap<String, u32> {
         self.store.scores(&self.gadget_id, item_ids)
     }
 
     /// Apply frecency score bonuses to a mutable slice of results.
+    #[allow(dead_code)]
     pub fn apply_scores(&self, results: &mut [impl FrecencyTarget]) {
         self.store.apply_scores(&self.gadget_id, results);
     }

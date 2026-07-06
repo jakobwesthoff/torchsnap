@@ -42,6 +42,10 @@ impl PageMetadata {
 /// Downloaded favicon image data, ready for storage.
 pub struct FaviconImageData {
     /// The URL the image was fetched from.
+    // Sibling of `image_data` and `content_type` below, which
+    // `fetch_and_store_favicon` reads; no in-repo caller reads `url` back
+    // off this struct.
+    #[allow(dead_code)]
     pub url: String,
     /// Raw image bytes.
     pub image_data: Vec<u8>,

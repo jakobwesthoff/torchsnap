@@ -184,10 +184,10 @@ impl Drop for LeaderGuard<'_> {
         // Leader unwound without publishing. Substitute Unreachable
         // so subscribers get a definitive answer instead of parking
         // indefinitely.
-        if let Ok(mut slot) = self.handle.result.lock() {
-            if slot.is_none() {
-                *slot = Some(MetadataResult::Unreachable);
-            }
+        if let Ok(mut slot) = self.handle.result.lock()
+            && slot.is_none()
+        {
+            *slot = Some(MetadataResult::Unreachable);
         }
         self.handle.done.notify_all();
     }
@@ -196,6 +196,11 @@ impl Drop for LeaderGuard<'_> {
 // =========================================================
 // Service
 // =========================================================
+
+/// Builds an absolute URL from a domain and path, used for both
+/// page-metadata and favicon fetches. Swapped out in tests via
+/// `with_url_builder` to target an httpmock server.
+type UrlBuilder = Box<dyn Fn(&str, &str) -> String + Send + Sync>;
 
 pub struct WebsiteMetadataService {
     db: SqlStorage,
@@ -227,7 +232,7 @@ pub struct WebsiteMetadataService {
     /// Constructs absolute URLs for fetching page metadata and favicons.
     /// Production default builds `https://{domain}{path}`. Tests override
     /// to point at an httpmock server (HTTP-only) via `with_url_builder`.
-    url_for_path: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
+    url_for_path: UrlBuilder,
 
     /// Test-only hooks. Lets tests inject a delayed panic into
     /// `fetch_and_cache_inner` so the leader unwinds while subscribers

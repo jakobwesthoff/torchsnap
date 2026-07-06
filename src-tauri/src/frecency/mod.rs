@@ -208,6 +208,11 @@ impl FrecencyStore {
 
     /// Compute the frecency score for a single item.
     /// Returns 0 when disabled or when no events exist.
+    // Single-item counterpart to `scores` (the batch form used by
+    // `apply_scores` and called from `GadgetHost`); exposed through
+    // `GadgetFrecency::score` for native gadgets scoring one item at
+    // a time, which has no in-repo caller.
+    #[allow(dead_code)]
     pub fn score(&self, gadget_id: &str, item_id: &str) -> u32 {
         if !self.is_enabled() {
             return 0;

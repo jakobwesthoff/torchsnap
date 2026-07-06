@@ -152,13 +152,13 @@ pub(super) fn validate_rules(rules: &[CommandPermissionDef]) -> anyhow::Result<(
 /// - `glob`        — argv element must match `pattern` as a glob.
 /// - `regex`       — argv element must match `pattern` (anchored).
 /// - `path-under`  — argv element parses as an absolute path that
-///                   canonicalizes under `root`. `root` may use the
-///                   substitution variables `${gadget-data}`,
-///                   `${gadget-archive}`, `${home}`, `${xdg-config}`,
-///                   `${xdg-data}`.
+///   canonicalizes under `root`. `root` may use the
+///   substitution variables `${gadget-data}`,
+///   `${gadget-archive}`, `${home}`, `${xdg-config}`,
+///   `${xdg-data}`.
 /// - `any-string`  — argv element accepted unconditionally.
 /// - `rest`        — applies `constraint` to every remaining argv
-///                   element. May only appear at the trailing position.
+///   element. May only appear at the trailing position.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ArgvConstraint {

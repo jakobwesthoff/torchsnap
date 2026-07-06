@@ -142,6 +142,10 @@ impl HttpCap {
     /// Construct with a pre-built client. Used when the default
     /// client configuration is not appropriate (e.g., tests that
     /// need a client pointing at a mock server).
+    // Alternate constructor exercised by this crate's tests (here and in
+    // `wasm::runtime::mod` tests) to point the client at a mock server;
+    // no non-test caller needs a pre-built client.
+    #[allow(dead_code)]
     pub fn with_client(origins: Vec<String>, client: Arc<Http>) -> Self {
         Self {
             origins,

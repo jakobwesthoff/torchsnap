@@ -19,7 +19,6 @@
 // provisioned.
 // =========================================================
 
-use anyhow::Context;
 use wasmtime::Engine;
 use wasmtime::component::Component;
 

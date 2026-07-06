@@ -37,8 +37,8 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
         })?;
 
         cap.lookup(&domain, LookupMode::from(mode))
-            .map(|r| bindings::torchsnap::gadget::website_metadata::LookupResult::from(r))
-            .map_err(|e| WitError::from(e))
+            .map(bindings::torchsnap::gadget::website_metadata::LookupResult::from)
+            .map_err(WitError::from)
     }
 }
 

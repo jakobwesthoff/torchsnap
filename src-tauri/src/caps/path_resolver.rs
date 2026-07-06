@@ -34,6 +34,9 @@ impl PathResolverCap {
         self.resolver.substitute_variables(template)
     }
 
+    // Delegates alongside `substitute_variables` and `resolve`; this one
+    // is exercised only by this module's tests.
+    #[allow(dead_code)]
     pub fn is_recognized(&self, name: &str) -> bool {
         self.resolver.is_recognized(name)
     }

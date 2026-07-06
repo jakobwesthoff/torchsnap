@@ -516,15 +516,13 @@ mod tests {
         let domain = "ws.test";
         let _page = server.mock(|when, then| {
             when.method(GET).path(format!("/{domain}/"));
-            then.status(200)
-                .header("content-type", "text/html")
-                .body(format!(
-                    r#"<!doctype html><html><head>
+            then.status(200).header("content-type", "text/html").body(
+                r#"<!doctype html><html><head>
                         <title>WS Title</title>
                         <meta name="description" content="WS Desc" />
                         <link rel="icon" type="image/png" href="icon.png" />
-                    </head></html>"#
-                ));
+                    </head></html>"#,
+            );
         });
         let _icon = server.mock(|when, then| {
             when.method(GET).path(format!("/{domain}/icon.png"));

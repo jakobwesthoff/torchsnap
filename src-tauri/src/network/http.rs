@@ -87,18 +87,24 @@ impl Http {
         self.request(reqwest::Method::GET, url)
     }
 
+    // Verb-complete surface alongside `get` above; not every verb has an
+    // in-repo caller.
+    #[allow(dead_code)]
     pub fn post(&self, url: &str) -> RequestBuilder {
         self.request(reqwest::Method::POST, url)
     }
 
+    #[allow(dead_code)]
     pub fn put(&self, url: &str) -> RequestBuilder {
         self.request(reqwest::Method::PUT, url)
     }
 
+    #[allow(dead_code)]
     pub fn patch(&self, url: &str) -> RequestBuilder {
         self.request(reqwest::Method::PATCH, url)
     }
 
+    #[allow(dead_code)]
     pub fn delete(&self, url: &str) -> RequestBuilder {
         self.request(reqwest::Method::DELETE, url)
     }
@@ -148,6 +154,10 @@ impl HttpBuilder {
     }
 
     /// Set the User-Agent header for all requests.
+    // Sibling of `default_timeout`, `max_size`, and `accept_invalid_certs`
+    // above and below; exercised only by this module's tests, which build
+    // a client with a custom user agent to assert on outgoing headers.
+    #[allow(dead_code)]
     pub fn user_agent(mut self, ua: &str) -> Self {
         self.user_agent = ua.to_string();
         self
@@ -215,6 +225,10 @@ impl RequestBuilder {
     ///
     /// This is a Rust convenience — on the WIT boundary, callers
     /// serialize to bytes themselves and pass raw body data.
+    // Sibling of `body` below, which in-repo callers use to set raw byte
+    // bodies; this typed convenience is exercised only by this module's
+    // tests.
+    #[allow(dead_code)]
     pub fn json<T: serde::Serialize>(mut self, body: &T) -> Result<Self> {
         let bytes = serde_json::to_vec(body).context("serialize request body to JSON")?;
         self.body = Some(bytes);
@@ -441,6 +455,9 @@ impl HttpResponse {
     }
 
     /// Read all remaining body data and decode as UTF-8 text.
+    // Sibling of `bytes` above, which `website_metadata::fetch` calls for
+    // the raw-bytes case; no in-repo caller needs the text-decoded form.
+    #[allow(dead_code)]
     pub fn text(&mut self) -> Result<String> {
         let bytes = self.bytes()?;
         String::from_utf8(bytes).context("decode response body as UTF-8")
@@ -450,6 +467,9 @@ impl HttpResponse {
     ///
     /// This is a Rust convenience method — on the WIT boundary,
     /// the guest receives raw bytes and deserializes on its side.
+    // Sibling of `bytes` above and `text` above; no in-repo caller needs
+    // the JSON-deserialized form.
+    #[allow(dead_code)]
     pub fn json<T: serde::de::DeserializeOwned>(&mut self) -> Result<T> {
         let bytes = self.bytes()?;
         serde_json::from_slice(&bytes).context("deserialize response body as JSON")

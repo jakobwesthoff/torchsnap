@@ -154,11 +154,6 @@ impl DirectorySource {
         Ok(Self { root, manifest })
     }
 
-    /// The root directory this source reads from.
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     /// Resolve a gadget-relative path against the gadget
     /// root, enforcing both the lexical guard
     /// (`validate_gadget_path`) and the symlink-target
@@ -717,7 +712,7 @@ mod tests {
 
         let source = DirectorySource::open(&root).expect("should open");
         assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
-        assert_eq!(source.root(), root);
+        assert_eq!(source.root_path(), root);
     }
 
     #[test]

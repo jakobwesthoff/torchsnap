@@ -35,6 +35,10 @@ pub trait LogStorage: Send + Sync {
     fn entries_after(&self, after_seq: u64, limit: usize) -> Vec<LogItem>;
 
     /// Return the most recent `count` items.
+    // Sibling of `entries_after` above, which the devtools log query
+    // command (`wasm::logging::commands`) calls; `tail` is exercised only
+    // by this crate's tests.
+    #[allow(dead_code)]
     fn tail(&self, count: usize) -> Vec<LogItem>;
 
     /// Remove all stored items.
@@ -44,6 +48,9 @@ pub trait LogStorage: Send + Sync {
     fn len(&self) -> usize;
 
     /// Whether the storage is empty.
+    // Default impl built on `len` above; exercised only by this crate's
+    // tests.
+    #[allow(dead_code)]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }

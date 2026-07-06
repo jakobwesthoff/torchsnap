@@ -1689,7 +1689,7 @@ mod tests {
 
     #[test]
     fn slot_aggregation_produces_expected_source_map() {
-        let slots = vec![
+        let slots = [
             GadgetSlot::new(
                 Arc::new(MockGadget::new("builtin-a")),
                 GadgetSourceKind::Builtin,

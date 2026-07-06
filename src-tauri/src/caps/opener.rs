@@ -44,13 +44,18 @@ pub struct OpenerPermissions {
     pub reveal_path: bool,
 }
 
+/// Platform opener backend: takes the URL or path to act on,
+/// returns a backend error message on failure. Shared shape for
+/// `open_url_fn`, `open_path_fn`, and `reveal_path_fn`.
+type OpenerBackendFn = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 pub struct OpenerCap {
     schemes: Vec<String>,
     allow_open_path: bool,
     allow_reveal_path: bool,
-    open_url_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-    open_path_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-    reveal_path_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+    open_url_fn: OpenerBackendFn,
+    open_path_fn: OpenerBackendFn,
+    reveal_path_fn: OpenerBackendFn,
 }
 
 impl OpenerCap {
@@ -88,9 +93,9 @@ impl OpenerCap {
     /// Construct from permission config and explicit closures.
     pub fn from_closures(
         permissions: OpenerPermissions,
-        open_url_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-        open_path_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-        reveal_path_fn: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+        open_url_fn: OpenerBackendFn,
+        open_path_fn: OpenerBackendFn,
+        reveal_path_fn: OpenerBackendFn,
     ) -> Self {
         Self {
             schemes: permissions.schemes,
@@ -147,11 +152,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn noop_closures() -> (
-        Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-        Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-        Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
-    ) {
+    fn noop_closures() -> (OpenerBackendFn, OpenerBackendFn, OpenerBackendFn) {
         (
             Box::new(|_| Ok(())),
             Box::new(|_| Ok(())),
