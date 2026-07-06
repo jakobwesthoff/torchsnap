@@ -34,8 +34,8 @@ impl ClipboardCap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn write_text_calls_through_to_writer() {

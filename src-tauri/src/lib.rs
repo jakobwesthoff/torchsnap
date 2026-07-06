@@ -777,7 +777,12 @@ pub fn run() {
                 gadgets::app_launcher::AppLauncherGadget::cap_requests(),
                 &prov_ctx,
                 None,
-                |caps| gadgets::app_launcher::AppLauncherGadget::new(caps, platform::PlatformAppDiscovery),
+                |caps| {
+                    gadgets::app_launcher::AppLauncherGadget::new(
+                        caps,
+                        platform::PlatformAppDiscovery,
+                    )
+                },
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register app-launcher gadget");
@@ -786,7 +791,12 @@ pub fn run() {
                 gadgets::system_preferences::SystemPreferencesGadget::cap_requests(),
                 &prov_ctx,
                 None,
-                |caps| gadgets::system_preferences::SystemPreferencesGadget::new(caps, platform::PlatformSettingsDiscovery),
+                |caps| {
+                    gadgets::system_preferences::SystemPreferencesGadget::new(
+                        caps,
+                        platform::PlatformSettingsDiscovery,
+                    )
+                },
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register system-preferences gadget");
@@ -898,10 +908,7 @@ pub fn run() {
 
                         notifier.notify(&payload.key, value.clone());
 
-                        host_for_listener.handle_setting_changed(
-                            &payload.key,
-                            value,
-                        );
+                        host_for_listener.handle_setting_changed(&payload.key, value);
 
                         // Signal shortcut re-registration if the changed
                         // key affects shortcuts or gadget enabled state.
@@ -1185,10 +1192,8 @@ fn load_single_wasm_gadget(
     let manifest = source.manifest().clone();
     let source_path = source.root_path().to_path_buf();
 
-    let cap_requests = wasm::bridge::WasmGadgetBridge::cap_requests_from_manifest(
-        &manifest,
-        &*source,
-    )?;
+    let cap_requests =
+        wasm::bridge::WasmGadgetBridge::cap_requests_from_manifest(&manifest, &*source)?;
 
     host.register_with_caps::<wasm::bridge::WasmGadgetBridge, _>(
         &gadget_id,

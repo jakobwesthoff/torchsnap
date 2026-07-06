@@ -59,9 +59,7 @@ impl From<SqlStorageDef> for crate::caps::SqlStorageConfig {
 
 impl From<SqlStorageDef> for crate::caps::CapRequest {
     fn from(def: SqlStorageDef) -> Self {
-        Self::SqlStorage {
-            config: def.into(),
-        }
+        Self::SqlStorage { config: def.into() }
     }
 }
 
@@ -81,9 +79,7 @@ mod tests {
 
     #[test]
     fn into_sql_storage_config_empty_migrations() {
-        let def = SqlStorageDef {
-            migrations: vec![],
-        };
+        let def = SqlStorageDef { migrations: vec![] };
         let config: SqlStorageConfig = def.into();
         assert!(config.migrations.is_empty());
     }

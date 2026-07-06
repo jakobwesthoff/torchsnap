@@ -34,9 +34,10 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let gadget_source = self.gadget_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("gadget source not set".into())
-        })?;
+        let gadget_source = self
+            .gadget_source
+            .as_ref()
+            .ok_or_else(|| AssetsError::IoError("gadget source not set".into()))?;
 
         match gadget_source.file_exists(&path) {
             Ok(true) => {}
@@ -57,9 +58,10 @@ impl bindings::torchsnap::gadget::assets::Host for GadgetState {
             return Err(AssetsError::InvalidPath(format!("{e:#}")));
         }
 
-        let gadget_source = self.gadget_source.as_ref().ok_or_else(|| {
-            AssetsError::IoError("gadget source not set".into())
-        })?;
+        let gadget_source = self
+            .gadget_source
+            .as_ref()
+            .ok_or_else(|| AssetsError::IoError("gadget source not set".into()))?;
 
         gadget_source
             .file_exists(&path)

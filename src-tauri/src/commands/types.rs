@@ -351,7 +351,10 @@ mod scored_entry_tests {
         let mut entry = sample_scored_entry();
         entry.data = Some("secret payload".to_string());
         let json = serde_json::to_value(&entry).expect("serialize");
-        assert!(json.get("data").is_none(), "data must not appear in serialized JSON");
+        assert!(
+            json.get("data").is_none(),
+            "data must not appear in serialized JSON"
+        );
     }
 
     #[test]
@@ -360,7 +363,10 @@ mod scored_entry_tests {
         entry.data = Some("secret payload".to_string());
         let sourced = SourcedEntry::new("gadget".to_string(), entry);
         let json = serde_json::to_value(&sourced).expect("serialize");
-        assert!(json.get("data").is_none(), "data must not leak through flatten");
+        assert!(
+            json.get("data").is_none(),
+            "data must not leak through flatten"
+        );
     }
 
     #[test]
@@ -401,8 +407,20 @@ mod scored_entry_tests {
 
     #[test]
     fn cmp_sort_key_score_descending() {
-        let high = SourcedEntry::new("a".into(), ScoredEntry { score: 100, ..sample_scored_entry() });
-        let low = SourcedEntry::new("a".into(), ScoredEntry { score: 50, ..sample_scored_entry() });
+        let high = SourcedEntry::new(
+            "a".into(),
+            ScoredEntry {
+                score: 100,
+                ..sample_scored_entry()
+            },
+        );
+        let low = SourcedEntry::new(
+            "a".into(),
+            ScoredEntry {
+                score: 50,
+                ..sample_scored_entry()
+            },
+        );
         assert!(high.cmp_sort_key(&low).is_lt(), "higher score sorts first");
     }
 
@@ -410,7 +428,10 @@ mod scored_entry_tests {
     fn cmp_sort_key_source_ascending_on_tie() {
         let a = SourcedEntry::new("alpha".into(), sample_scored_entry());
         let b = SourcedEntry::new("beta".into(), sample_scored_entry());
-        assert!(a.cmp_sort_key(&b).is_lt(), "lower source sorts first on score tie");
+        assert!(
+            a.cmp_sort_key(&b).is_lt(),
+            "lower source sorts first on score tie"
+        );
     }
 
     #[test]
@@ -421,7 +442,10 @@ mod scored_entry_tests {
         e2.id = "zzz".to_string();
         let a = SourcedEntry::new("same".into(), e1);
         let b = SourcedEntry::new("same".into(), e2);
-        assert!(a.cmp_sort_key(&b).is_lt(), "lower id sorts first on source+score tie");
+        assert!(
+            a.cmp_sort_key(&b).is_lt(),
+            "lower id sorts first on source+score tie"
+        );
     }
 }
 

@@ -44,8 +44,8 @@ use crate::frecency::FrecencyStore;
 use crate::gadgets::{Gadget, GadgetShortcut};
 use crate::icons::IconCache;
 use crate::network::website_metadata::WebsiteMetadataService;
-use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::settings::SettingsInit;
+use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
 use crate::unicode::Utf16Positions;
 use crate::wasm::source::GadgetSourceKind;
 
@@ -232,7 +232,9 @@ impl GadgetHost {
         let needs_paths = requests.iter().any(|r| {
             matches!(
                 r,
-                CapRequest::PathResolver | CapRequest::Filesystem { .. } | CapRequest::Command { .. }
+                CapRequest::PathResolver
+                    | CapRequest::Filesystem { .. }
+                    | CapRequest::Command { .. }
             )
         });
 
@@ -249,9 +251,7 @@ impl GadgetHost {
                 .context("resolve app data directory")?;
 
             let gadget_data = app_data_dir.join("gadget-home").join(gadget_id);
-            let gadget_archive = source_path
-                .map(PathBuf::from)
-                .unwrap_or_default();
+            let gadget_archive = source_path.map(PathBuf::from).unwrap_or_default();
 
             Some(GadgetPaths {
                 platform: Arc::new(PlatformPaths {
@@ -285,21 +285,17 @@ impl GadgetHost {
                     let paths = gadget_paths
                         .as_ref()
                         .expect("GadgetPaths built when Filesystem requested");
-                    let fs_cap =
-                        FilesystemCap::new(&permissions.read_patterns, paths)
-                            .context("compile filesystem patterns")?;
+                    let fs_cap = FilesystemCap::new(&permissions.read_patterns, paths)
+                        .context("compile filesystem patterns")?;
                     caps.filesystem = Some(Arc::new(fs_cap));
                 }
                 CapRequest::Command { permissions } => {
                     let paths = gadget_paths
                         .as_ref()
                         .expect("GadgetPaths built when Command requested");
-                    let cmd_cap = CommandCap::new(
-                        &permissions.rules,
-                        paths,
-                        paths.gadget_data.clone(),
-                    )
-                    .context("compile command rules")?;
+                    let cmd_cap =
+                        CommandCap::new(&permissions.rules, paths, paths.gadget_data.clone())
+                            .context("compile command rules")?;
                     caps.command = Some(Arc::new(cmd_cap));
                 }
                 CapRequest::SqlStorage { config } => {
@@ -331,9 +327,9 @@ impl GadgetHost {
                     caps.clipboard = Some(Arc::new(ClipboardCap::new(clipboard_writer)));
                 }
                 CapRequest::WebsiteMetadata => {
-                    caps.website_metadata = Some(Arc::new(WebsiteMetadataCap::new(
-                        Arc::clone(&ctx.metadata_service),
-                    )));
+                    caps.website_metadata = Some(Arc::new(WebsiteMetadataCap::new(Arc::clone(
+                        &ctx.metadata_service,
+                    ))));
                 }
                 CapRequest::IconCache => {
                     caps.icon_cache = Some(Arc::clone(&ctx.icon_cache));
@@ -354,8 +350,7 @@ impl GadgetHost {
                     let paths = gadget_paths
                         .clone()
                         .expect("GadgetPaths built when PathResolver requested");
-                    caps.path_resolver =
-                        Some(Arc::new(PathResolverCap::new(Arc::new(paths))));
+                    caps.path_resolver = Some(Arc::new(PathResolverCap::new(Arc::new(paths))));
                 }
             }
         }
@@ -831,7 +826,8 @@ impl GadgetHost {
     /// entry store, grouped by their `source` field.
     fn store_sourced_entries(&self, entries: &[SourcedEntry]) {
         for entry in entries {
-            self.entry_store.insert(&entry.source, std::slice::from_ref(&entry.inner));
+            self.entry_store
+                .insert(&entry.source, std::slice::from_ref(&entry.inner));
         }
     }
 
@@ -1042,11 +1038,7 @@ impl GadgetHost {
     /// Called from the `settings-changed` Tauri event listener.
     /// Both paths go through the gadget's `CoalescingDispatcher`
     /// for serialization and dedup.
-    pub fn handle_setting_changed(
-        &self,
-        key: &str,
-        value: serde_json::Value,
-    ) {
+    pub fn handle_setting_changed(&self, key: &str, value: serde_json::Value) {
         // -------------------------------------------------------
         // Path 1: enabled.<gadget-id>
         // -------------------------------------------------------
@@ -1358,7 +1350,7 @@ mod tests {
     #[test]
     fn default_search_returns_none() {
         let gadget = MockGadget::new("empty");
-        assert!(Gadget::search(&gadget,"anything", None).is_none());
+        assert!(Gadget::search(&gadget, "anything", None).is_none());
     }
 
     #[test]
@@ -1366,7 +1358,7 @@ mod tests {
         let gadget = MockGadget::new("test")
             .with_search_response(GadgetResponse::Results(vec![scored_entry("r1", 100)]));
 
-        let result = Gadget::search(&gadget,"query", None);
+        let result = Gadget::search(&gadget, "query", None);
         assert!(result.is_some());
 
         match result.unwrap() {
@@ -1386,7 +1378,7 @@ mod tests {
             results: vec![scored_entry("h1", 50)],
         });
 
-        let result = Gadget::search(&gadget,"=2+2", Some("="));
+        let result = Gadget::search(&gadget, "=2+2", Some("="));
         match result.unwrap() {
             GadgetResponse::CustomUI {
                 view,
@@ -1409,7 +1401,7 @@ mod tests {
             results: vec![],
         });
 
-        let result = Gadget::search(&gadget,"42", None);
+        let result = Gadget::search(&gadget, "42", None);
         match result.unwrap() {
             GadgetResponse::InlineUI { view, .. } => {
                 assert_eq!(view, "result");

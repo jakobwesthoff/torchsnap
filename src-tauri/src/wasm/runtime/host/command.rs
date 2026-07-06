@@ -86,16 +86,9 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
         // Clone the command cap Arc before accessing other self fields.
         // `self.caps()` borrows self, so we clone the Arc first to release
         // the borrow before accessing `self.gadget_id` and `self.log_sender`.
-        let command_cap = Arc::clone(
-            self.caps
-                .command
-                .as_ref()
-                .ok_or_else(|| {
-                    WitErr::PermissionDenied(
-                        "no `[[permissions.command]]` rules declared".into(),
-                    )
-                })?,
-        );
+        let command_cap = Arc::clone(self.caps.command.as_ref().ok_or_else(|| {
+            WitErr::PermissionDenied("no `[[permissions.command]]` rules declared".into())
+        })?);
 
         let argv_clone = options.args.clone();
         let native_options: CommandOptions = options.into();
@@ -135,9 +128,7 @@ impl bindings::torchsnap::gadget::command::Host for GadgetState {
             started,
         );
 
-        outcome
-            .map(|r| r.into())
-            .map_err(|e| e.into())
+        outcome.map(|r| r.into()).map_err(|e| e.into())
     }
 }
 

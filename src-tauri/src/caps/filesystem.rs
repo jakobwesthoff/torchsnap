@@ -191,7 +191,9 @@ fn compile_fs_patterns(
 
     for pattern in patterns {
         let substituted = resolver.substitute_variables(pattern).map_err(|e| {
-            anyhow::anyhow!("`[permissions.filesystem]` pattern `{pattern}` substitution failed: {e}")
+            anyhow::anyhow!(
+                "`[permissions.filesystem]` pattern `{pattern}` substitution failed: {e}"
+            )
         })?;
 
         // Reject unsupported glob shapes against the
@@ -566,8 +568,7 @@ mod tests {
         let allowlist =
             compile_fs_patterns(&["${xdg-config}/*.txt".into()], &ctx).expect("compile");
 
-        let canonical =
-            resolve_request(&allowlist, path.to_str().unwrap()).expect("allowed");
+        let canonical = resolve_request(&allowlist, path.to_str().unwrap()).expect("allowed");
         assert_eq!(canonical, std::fs::canonicalize(&path).unwrap());
     }
 

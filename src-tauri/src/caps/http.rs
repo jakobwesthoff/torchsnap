@@ -189,9 +189,7 @@ impl HttpCap {
                 let mut response = builder.send().map_err(HttpCapError::from_request_error)?;
                 let status = response.status();
                 let headers = response.headers().to_vec();
-                let body = response
-                    .bytes()
-                    .map_err(HttpCapError::from_request_error)?;
+                let body = response.bytes().map_err(HttpCapError::from_request_error)?;
                 Ok((status, headers, body))
             })?;
 
@@ -242,20 +240,12 @@ mod tests {
 
     #[test]
     fn exact_origin_match_passes() {
-        assert!(check_origin(
-            &["https://example.com".into()],
-            "https://example.com/path"
-        )
-        .is_ok());
+        assert!(check_origin(&["https://example.com".into()], "https://example.com/path").is_ok());
     }
 
     #[test]
     fn non_matching_origin_denied() {
-        let err = check_origin(
-            &["https://example.com".into()],
-            "https://other.com/x",
-        )
-        .unwrap_err();
+        let err = check_origin(&["https://example.com".into()], "https://other.com/x").unwrap_err();
         assert!(matches!(err, HttpCapError::PermissionDenied(_)));
     }
 
@@ -271,20 +261,24 @@ mod tests {
 
     #[test]
     fn non_default_port_included_in_origin() {
-        assert!(check_origin(
-            &["https://example.com:8443".into()],
-            "https://example.com:8443/api"
-        )
-        .is_ok());
+        assert!(
+            check_origin(
+                &["https://example.com:8443".into()],
+                "https://example.com:8443/api"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn default_port_stripped_from_origin() {
-        assert!(check_origin(
-            &["https://example.com".into()],
-            "https://example.com:443/api"
-        )
-        .is_ok());
+        assert!(
+            check_origin(
+                &["https://example.com".into()],
+                "https://example.com:443/api"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -312,12 +306,30 @@ mod tests {
 
     #[test]
     fn named_methods_map_correctly() {
-        assert_eq!(to_reqwest_method(HttpMethod::Get).unwrap(), reqwest::Method::GET);
-        assert_eq!(to_reqwest_method(HttpMethod::Post).unwrap(), reqwest::Method::POST);
-        assert_eq!(to_reqwest_method(HttpMethod::Put).unwrap(), reqwest::Method::PUT);
-        assert_eq!(to_reqwest_method(HttpMethod::Patch).unwrap(), reqwest::Method::PATCH);
-        assert_eq!(to_reqwest_method(HttpMethod::Delete).unwrap(), reqwest::Method::DELETE);
-        assert_eq!(to_reqwest_method(HttpMethod::Head).unwrap(), reqwest::Method::HEAD);
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Get).unwrap(),
+            reqwest::Method::GET
+        );
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Post).unwrap(),
+            reqwest::Method::POST
+        );
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Put).unwrap(),
+            reqwest::Method::PUT
+        );
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Patch).unwrap(),
+            reqwest::Method::PATCH
+        );
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Delete).unwrap(),
+            reqwest::Method::DELETE
+        );
+        assert_eq!(
+            to_reqwest_method(HttpMethod::Head).unwrap(),
+            reqwest::Method::HEAD
+        );
     }
 
     #[test]
@@ -501,6 +513,9 @@ mod tests {
             insecure_tls: false,
         });
 
-        assert!(result.is_err(), "should fail when response exceeds max_body_size");
+        assert!(
+            result.is_err(),
+            "should fail when response exceeds max_body_size"
+        );
     }
 }

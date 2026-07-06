@@ -587,7 +587,9 @@ mod tests {
         assert_eq!(native_entry.id, "e1");
         assert_eq!(native_entry.title, "Title");
         assert_eq!(native_entry.subtitle.as_deref(), Some("Sub"));
-        assert!(matches!(native_entry.icon, Some(native::EntryIcon::HeroIcon(ref s)) if s == "star"));
+        assert!(
+            matches!(native_entry.icon, Some(native::EntryIcon::HeroIcon(ref s)) if s == "star")
+        );
         assert_eq!(native_entry.score, 99);
         assert_eq!(native_entry.title_positions.0, vec![0, 1, 2]);
         assert_eq!(native_entry.subtitle_positions.0, vec![5]);
@@ -641,7 +643,10 @@ mod tests {
         assert!(wit_entry.subtitle_highlight_positions.is_empty());
         assert_eq!(wit_entry.actions.len(), 1);
         assert!(matches!(wit_entry.actions[0].id, wit::ActionId::Copy));
-        assert_eq!(wit_entry.data.as_deref(), Some(r#"{"url":"https://example.com"}"#));
+        assert_eq!(
+            wit_entry.data.as_deref(),
+            Some(r#"{"url":"https://example.com"}"#)
+        );
     }
 
     #[test]
@@ -678,12 +683,30 @@ mod tests {
 
     #[test]
     fn action_id_wit_to_native_all_variants() {
-        assert!(matches!(native::ActionId::from(wit::ActionId::Open), native::ActionId::Open));
-        assert!(matches!(native::ActionId::from(wit::ActionId::Copy), native::ActionId::Copy));
-        assert!(matches!(native::ActionId::from(wit::ActionId::Reveal), native::ActionId::Reveal));
-        assert!(matches!(native::ActionId::from(wit::ActionId::OpenWith), native::ActionId::OpenWith));
-        assert!(matches!(native::ActionId::from(wit::ActionId::Delete), native::ActionId::Delete));
-        assert!(matches!(native::ActionId::from(wit::ActionId::OpenSettings), native::ActionId::OpenSettings));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::Open),
+            native::ActionId::Open
+        ));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::Copy),
+            native::ActionId::Copy
+        ));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::Reveal),
+            native::ActionId::Reveal
+        ));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::OpenWith),
+            native::ActionId::OpenWith
+        ));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::Delete),
+            native::ActionId::Delete
+        ));
+        assert!(matches!(
+            native::ActionId::from(wit::ActionId::OpenSettings),
+            native::ActionId::OpenSettings
+        ));
         match native::ActionId::from(wit::ActionId::Custom("foo".into())) {
             native::ActionId::Custom(s) => assert_eq!(s, "foo"),
             other => panic!("expected Custom, got {other:?}"),
@@ -692,12 +715,30 @@ mod tests {
 
     #[test]
     fn action_id_native_to_wit_all_variants() {
-        assert!(matches!(wit::ActionId::from(native::ActionId::Open), wit::ActionId::Open));
-        assert!(matches!(wit::ActionId::from(native::ActionId::Copy), wit::ActionId::Copy));
-        assert!(matches!(wit::ActionId::from(native::ActionId::Reveal), wit::ActionId::Reveal));
-        assert!(matches!(wit::ActionId::from(native::ActionId::OpenWith), wit::ActionId::OpenWith));
-        assert!(matches!(wit::ActionId::from(native::ActionId::Delete), wit::ActionId::Delete));
-        assert!(matches!(wit::ActionId::from(native::ActionId::OpenSettings), wit::ActionId::OpenSettings));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::Open),
+            wit::ActionId::Open
+        ));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::Copy),
+            wit::ActionId::Copy
+        ));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::Reveal),
+            wit::ActionId::Reveal
+        ));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::OpenWith),
+            wit::ActionId::OpenWith
+        ));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::Delete),
+            wit::ActionId::Delete
+        ));
+        assert!(matches!(
+            wit::ActionId::from(native::ActionId::OpenSettings),
+            wit::ActionId::OpenSettings
+        ));
         match wit::ActionId::from(native::ActionId::Custom("bar".into())) {
             wit::ActionId::Custom(s) => assert_eq!(s, "bar"),
             other => panic!("expected Custom, got {other:?}"),
@@ -736,9 +777,18 @@ mod tests {
 
     #[test]
     fn post_action_all_variants() {
-        assert!(matches!(native::PostAction::from(wit::PostAction::Nothing), native::PostAction::Nothing));
-        assert!(matches!(native::PostAction::from(wit::PostAction::Dismiss), native::PostAction::Dismiss));
-        assert!(matches!(native::PostAction::from(wit::PostAction::KeepOpen), native::PostAction::KeepOpen));
+        assert!(matches!(
+            native::PostAction::from(wit::PostAction::Nothing),
+            native::PostAction::Nothing
+        ));
+        assert!(matches!(
+            native::PostAction::from(wit::PostAction::Dismiss),
+            native::PostAction::Dismiss
+        ));
+        assert!(matches!(
+            native::PostAction::from(wit::PostAction::KeepOpen),
+            native::PostAction::KeepOpen
+        ));
     }
 
     // =====================================================

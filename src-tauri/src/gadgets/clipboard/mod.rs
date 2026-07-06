@@ -276,10 +276,7 @@ impl Gadget for ClipboardGadget {
         }]
     }
 
-    fn handle_shortcut(
-        &self,
-        _shortcut_id: &str,
-    ) -> anyhow::Result<PostAction> {
+    fn handle_shortcut(&self, _shortcut_id: &str) -> anyhow::Result<PostAction> {
         Ok(PostAction::ShowCustomUI {
             view: "history".into(),
             data: None,
@@ -384,11 +381,7 @@ impl Gadget for ClipboardGadget {
         }]
     }
 
-    fn execute(
-        &self,
-        _entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> Result<PostAction> {
+    fn execute(&self, _entry: &ScoredEntry, action_id: &ActionId) -> Result<PostAction> {
         match action_id {
             ActionId::Open => Ok(PostAction::ShowCustomUI {
                 view: "history".into(),

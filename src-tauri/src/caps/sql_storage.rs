@@ -63,9 +63,7 @@ mod tests {
 
     #[test]
     fn sql_storage_config_empty_migrations() {
-        let config = SqlStorageConfig {
-            migrations: vec![],
-        };
+        let config = SqlStorageConfig { migrations: vec![] };
         assert!(config.migrations.is_empty());
     }
 
@@ -92,7 +90,10 @@ mod tests {
         let cap = SqlStorageCap::new(storage);
         let affected = cap
             .storage()
-            .execute("INSERT INTO t (id) VALUES (?1)", &[crate::storage::SqlValue::Integer(42)])
+            .execute(
+                "INSERT INTO t (id) VALUES (?1)",
+                &[crate::storage::SqlValue::Integer(42)],
+            )
             .expect("insert");
         assert_eq!(affected, 1);
     }

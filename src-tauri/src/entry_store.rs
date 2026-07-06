@@ -49,10 +49,7 @@ impl EntryStore {
     pub fn insert(&self, source: &str, entries: &[ScoredEntry]) {
         let mut map = self.inner.write().expect("entry store not poisoned");
         for entry in entries {
-            map.insert(
-                (source.to_string(), entry.id.clone()),
-                entry.clone(),
-            );
+            map.insert((source.to_string(), entry.id.clone()), entry.clone());
         }
     }
 
@@ -61,7 +58,8 @@ impl EntryStore {
     /// store lock is released immediately.
     pub fn get(&self, source: &str, entry_id: &str) -> Option<ScoredEntry> {
         let map = self.inner.read().expect("entry store not poisoned");
-        map.get(&(source.to_string(), entry_id.to_string())).cloned()
+        map.get(&(source.to_string(), entry_id.to_string()))
+            .cloned()
     }
 }
 

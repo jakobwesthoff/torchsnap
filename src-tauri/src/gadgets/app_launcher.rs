@@ -228,11 +228,7 @@ impl Gadget for AppLauncherGadget {
             .collect()
     }
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
+    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
         let opener = self.caps.opener();
 
         match action_id {
@@ -249,7 +245,10 @@ impl Gadget for AppLauncherGadget {
                     .context("reveal application in file manager")?;
             }
             other => {
-                anyhow::bail!("unsupported action {other:?} for app-launcher entry {}", entry.id);
+                anyhow::bail!(
+                    "unsupported action {other:?} for app-launcher entry {}",
+                    entry.id
+                );
             }
         }
 

@@ -110,21 +110,11 @@ impl ProvisionedCaps {
 /// construction data. Unit variants are for caps that need
 /// neither.
 pub enum CapRequest {
-    Opener {
-        permissions: OpenerPermissions,
-    },
-    Http {
-        permissions: HttpPermissions,
-    },
-    Filesystem {
-        permissions: FilesystemPermissions,
-    },
-    Command {
-        permissions: CommandPermissions,
-    },
-    SqlStorage {
-        config: SqlStorageConfig,
-    },
+    Opener { permissions: OpenerPermissions },
+    Http { permissions: HttpPermissions },
+    Filesystem { permissions: FilesystemPermissions },
+    Command { permissions: CommandPermissions },
+    SqlStorage { config: SqlStorageConfig },
     Clipboard,
     WebsiteMetadata,
     IconCache,
@@ -189,9 +179,7 @@ mod tests {
     #[test]
     fn cap_request_command_variant() {
         let req = CapRequest::Command {
-            permissions: CommandPermissions {
-                rules: vec![],
-            },
+            permissions: CommandPermissions { rules: vec![] },
         };
         match req {
             CapRequest::Command { permissions } => {

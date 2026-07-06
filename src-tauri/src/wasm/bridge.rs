@@ -135,8 +135,8 @@ impl WasmGadgetBridge {
         manifest: &Manifest,
         source: &dyn GadgetSource,
     ) -> anyhow::Result<Vec<crate::caps::CapRequest>> {
-        use anyhow::Context;
         use crate::caps::CapRequest;
+        use anyhow::Context;
 
         let mut requests = Vec::new();
 
@@ -192,9 +192,8 @@ impl WasmGadgetBridge {
                 let bytes = source
                     .read_file(path)
                     .with_context(|| format!("read SQL migration file `{path}`"))?;
-                let text = String::from_utf8(bytes).with_context(|| {
-                    format!("SQL migration file `{path}` is not valid UTF-8")
-                })?;
+                let text = String::from_utf8(bytes)
+                    .with_context(|| format!("SQL migration file `{path}` is not valid UTF-8"))?;
                 migration_contents.push(text);
             }
             requests.push(CapRequest::SqlStorage {
@@ -262,12 +261,8 @@ impl WasmGadgetBridge {
             },
         };
 
-        let cached = CachedComponent::new(
-            runtime,
-            log_ctx,
-            Arc::clone(&source),
-            gadget_data.clone(),
-        );
+        let cached =
+            CachedComponent::new(runtime, log_ctx, Arc::clone(&source), gadget_data.clone());
 
         Ok(Self {
             manifest,
@@ -662,11 +657,7 @@ impl Gadget for WasmGadgetBridge {
         }
     }
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
+    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
         let Some(instance) = self.current_instance() else {
             self.log_dispatched_while_disabled("execute()");
             anyhow::bail!("execute() called on disabled gadget");
@@ -829,7 +820,6 @@ mod tests {
             source,
             app_data_dir,
             test_caps(),
-
         )
     }
 
@@ -855,7 +845,9 @@ mod tests {
         let gadget_id = manifest.gadget.id.as_str();
 
         // Read migration SQL from the source.
-        let sql_storage = if let Some(sql_def) = manifest.storage.as_ref().and_then(|s| s.sql.as_ref()) {
+        let sql_storage = if let Some(sql_def) =
+            manifest.storage.as_ref().and_then(|s| s.sql.as_ref())
+        {
             let mut migration_contents = Vec::new();
             for path in &sql_def.migrations {
                 let bytes = source.read_file(path)?;
@@ -882,7 +874,6 @@ mod tests {
             source,
             app_data_dir,
             caps,
-
         )
     }
 
@@ -910,7 +901,9 @@ mod tests {
             http: Some(Arc::new(crate::caps::HttpCap::new(vec![]))),
             filesystem: None,
             command: None,
-            clipboard: Some(Arc::new(crate::caps::ClipboardCap::new(Box::new(|_| Ok(()))))),
+            clipboard: Some(Arc::new(crate::caps::ClipboardCap::new(Box::new(|_| {
+                Ok(())
+            })))),
             sql_storage: None,
             website_metadata: None,
             icon_cache: None,
@@ -961,7 +954,6 @@ icon = "heroicons:x-mark"
             source,
             app_data.path(),
             test_caps(),
-
         );
         // Construction is lazy — the error surfaces on first
         // acquire/instantiate, not at bridge construction time.
@@ -1158,7 +1150,9 @@ migrations = ["migrations/001_init.sql"]
             .join("storage.sqlite3");
         let migration_strs: Vec<&str> = migration_contents.iter().map(String::as_str).collect();
         let storage = crate::storage::SqlStorage::open(db_path, &migration_strs).expect("open db");
-        let caps = test_caps_with_sql(Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage)))));
+        let caps = test_caps_with_sql(Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(
+            storage,
+        )))));
 
         let bridge = WasmGadgetBridge::new(
             manifest,
@@ -1167,7 +1161,6 @@ migrations = ["migrations/001_init.sql"]
             source,
             app_data.path(),
             caps,
-
         )
         .expect("bridge construction");
 
@@ -1258,7 +1251,6 @@ migrations = ["migrations/001_init.sql"]
             source,
             app_data_dir,
             test_caps(),
-
         )
     }
 
@@ -1383,7 +1375,6 @@ schedule = "*/5 * * * *"
             source,
             app_data.path(),
             test_caps(),
-
         )
         .expect("bridge construction");
 

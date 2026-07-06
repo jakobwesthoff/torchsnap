@@ -108,8 +108,7 @@ impl Gadget for SystemPreferencesGadget {
                 }
 
                 // Render and cache SF Symbol icons for each pane.
-                let valid_keys =
-                    cache_pane_icons(icon_cache, &*self.discovery, &mut panes);
+                let valid_keys = cache_pane_icons(icon_cache, &*self.discovery, &mut panes);
                 icon_cache.cleanup("system-preferences", &valid_keys);
 
                 // Swap in icon-enriched entries.
@@ -148,11 +147,7 @@ impl Gadget for SystemPreferencesGadget {
             .collect()
     }
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
+    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
         let opener = self.caps.opener();
 
         match action_id {
