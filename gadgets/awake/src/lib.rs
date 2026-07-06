@@ -19,6 +19,8 @@
 
 use torchsnap_gadget_sdk::prelude::*;
 
+mod query;
+
 struct AwakeGadget;
 define_gadget!(AwakeGadget);
 
