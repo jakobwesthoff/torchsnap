@@ -21,9 +21,10 @@
 
 use std::time::Duration;
 
+use torchsnap_gadget_sdk::EntryIcon;
 use torchsnap_gadget_sdk::command::{self, CommandError, CommandResult};
 
-use super::{KeepAwakeBackend, SessionKind, SessionRequest, SessionStatus};
+use super::{AMPHETAMINE_BUNDLE_ID, KeepAwakeBackend, SessionKind, SessionRequest, SessionStatus};
 
 // =========================================================
 // Timeouts
@@ -184,6 +185,10 @@ impl KeepAwakeBackend for AmphetamineBackend {
 
     fn stop(&self) -> Result<(), String> {
         run_osascript(STOP_SCRIPT, ACTION_TIMEOUT).map(|_| ())
+    }
+
+    fn entry_icon(&self) -> Option<EntryIcon> {
+        Some(EntryIcon::AppIcon(AMPHETAMINE_BUNDLE_ID.to_string()))
     }
 }
 
@@ -436,6 +441,19 @@ mod tests {
         assert!(parse_status_output("yes|0|false").is_err());
         assert!(parse_status_output("true|0|maybe").is_err());
         assert!(parse_status_output("1|0|0").is_err());
+    }
+
+    // ----- entry_icon ------------------------------------------
+
+    #[test]
+    fn entry_icon_is_amphetamine_app_icon() {
+        assert!(
+            matches!(
+                AmphetamineBackend.entry_icon(),
+                Some(EntryIcon::AppIcon(ref id)) if id == "com.if.Amphetamine"
+            ),
+            "expected the Amphetamine bundle id app icon"
+        );
     }
 
     // ----- timeouts ------------------------------------------

@@ -338,8 +338,33 @@ fn build_spec(status: &Result<SessionStatus, String>, parsed: &Query) -> EntrySp
 // Host-type mapping
 // =========================================================
 
-/// Map the pure [`EntrySpec`] onto the host's [`ScoredEntry`].
-fn spec_to_entry(spec: EntrySpec) -> ScoredEntry {
+/// The fallback icon for entries with no real application to
+/// point at: the error entry, and any entry the backend does not
+/// supply its own icon for.
+fn default_icon() -> EntryIcon {
+    EntryIcon::HeroIcon("bolt".to_string())
+}
+
+/// Choose the icon for the entry `search()` is about to build.
+/// A backend error overrides `backend_icon` with the default:
+/// the error entry does not represent the backend's application,
+/// so it never shows that application's icon. Otherwise the
+/// backend's icon wins, falling back to the default when the
+/// backend does not supply one.
+fn resolve_icon(
+    status: &Result<SessionStatus, String>,
+    backend_icon: Option<EntryIcon>,
+) -> EntryIcon {
+    match status {
+        Err(_) => default_icon(),
+        Ok(_) => backend_icon.unwrap_or_else(default_icon),
+    }
+}
+
+/// Map the pure [`EntrySpec`] onto the host's [`ScoredEntry`],
+/// carrying the caller-chosen `icon`. Kept a pure mapper: the
+/// backend-dependent icon choice lives in `search()`.
+fn spec_to_entry(spec: EntrySpec, icon: EntryIcon) -> ScoredEntry {
     let (actions, data) = match spec.action {
         Some((label, op)) => (
             vec![Action {
@@ -357,7 +382,7 @@ fn spec_to_entry(spec: EntrySpec) -> ScoredEntry {
         id: spec.id.to_string(),
         title: spec.title,
         subtitle: Some(spec.subtitle),
-        icon: Some(EntryIcon::HeroIcon("bolt".to_string())),
+        icon: Some(icon),
         score: BASE_SCORE,
         title_highlight_positions: Vec::new(),
         subtitle_highlight_positions: Vec::new(),
@@ -393,7 +418,8 @@ impl SearchGuest for AwakeGadget {
             };
 
             let status = runtime.status_cache.get_or_fetch(|| backend.status());
-            let entry = spec_to_entry(build_spec(&status, &parsed));
+            let icon = resolve_icon(&status, backend.entry_icon());
+            let entry = spec_to_entry(build_spec(&status, &parsed), icon);
             SearchResponse::Results(vec![entry])
         })
     }
@@ -721,8 +747,23 @@ mod tests {
 
     // ----- host-type mapping ---------------------------------
 
+    /// A distinctive non-default icon, standing in for whatever a
+    /// backend's `entry_icon()` returns, so tests can tell "the
+    /// icon `spec_to_entry` was given" apart from "the default
+    /// bolt icon" by construction rather than by value overlap.
+    fn app_icon() -> EntryIcon {
+        EntryIcon::AppIcon("com.if.Amphetamine".to_string())
+    }
+
+    fn assert_is_app_icon(icon: &Option<EntryIcon>) {
+        assert!(
+            matches!(icon, Some(EntryIcon::AppIcon(id)) if id == "com.if.Amphetamine"),
+            "expected the icon passed to spec_to_entry, got {icon:?}"
+        );
+    }
+
     #[test]
-    fn every_entry_shape_carries_base_score_and_bolt_icon() {
+    fn every_entry_shape_carries_base_score_and_the_icon_passed_in() {
         let specs = [
             build_spec(&inactive(), &Query::Status),
             build_spec(&infinite(false), &Query::Status),
@@ -732,13 +773,9 @@ mod tests {
             build_spec(&Err("boom".to_string()), &Query::Status),
         ];
         for spec in specs {
-            let entry = spec_to_entry(spec);
+            let entry = spec_to_entry(spec, app_icon());
             assert_eq!(entry.score, BASE_SCORE);
-            assert!(
-                matches!(entry.icon, Some(EntryIcon::HeroIcon(ref name)) if name == "bolt"),
-                "expected bolt hero icon, got {:?}",
-                entry.icon
-            );
+            assert_is_app_icon(&entry.icon);
         }
     }
 
@@ -750,7 +787,7 @@ mod tests {
             build_spec(&timed(5281, false), &start_query(None, false)),
             build_spec(&inactive(), &Query::Hint),
         ] {
-            let entry = spec_to_entry(spec);
+            let entry = spec_to_entry(spec, default_icon());
             assert_eq!(entry.id, ID_START);
             assert!(entry.data.is_some());
             assert_eq!(entry.actions.len(), 1);
@@ -763,7 +800,7 @@ mod tests {
             build_spec(&infinite(false), &Query::Status),
             build_spec(&timed(5281, false), &Query::Hint),
         ] {
-            let entry = spec_to_entry(spec);
+            let entry = spec_to_entry(spec, default_icon());
             assert_eq!(entry.id, ID_STOP);
             assert!(entry.data.is_some());
         }
@@ -771,9 +808,42 @@ mod tests {
 
     #[test]
     fn error_entry_carries_no_action_or_payload() {
-        let entry = spec_to_entry(build_spec(&Err("boom".to_string()), &Query::Status));
+        let entry = spec_to_entry(
+            build_spec(&Err("boom".to_string()), &Query::Status),
+            default_icon(),
+        );
         assert_eq!(entry.id, ID_ERROR);
         assert!(entry.data.is_none());
         assert!(entry.actions.is_empty());
+    }
+
+    // ----- resolve_icon ---------------------------------------
+
+    #[test]
+    fn resolve_icon_error_status_is_default_even_with_a_backend_icon() {
+        let status: Result<SessionStatus, String> = Err("boom".to_string());
+        assert!(
+            matches!(resolve_icon(&status, None), EntryIcon::HeroIcon(ref name) if name == "bolt")
+        );
+        assert!(matches!(
+            resolve_icon(&status, Some(app_icon())),
+            EntryIcon::HeroIcon(ref name) if name == "bolt"
+        ));
+    }
+
+    #[test]
+    fn resolve_icon_ok_status_falls_back_to_default_without_a_backend_icon() {
+        assert!(matches!(
+            resolve_icon(&inactive(), None),
+            EntryIcon::HeroIcon(ref name) if name == "bolt"
+        ));
+    }
+
+    #[test]
+    fn resolve_icon_ok_status_uses_the_backend_icon_when_present() {
+        assert!(matches!(
+            resolve_icon(&inactive(), Some(app_icon())),
+            EntryIcon::AppIcon(ref id) if id == "com.if.Amphetamine"
+        ));
     }
 }
