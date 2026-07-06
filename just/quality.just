@@ -39,12 +39,23 @@ check-crates:
 check-types:
     bun run tsc --noEmit
 
-# Lint everything (Rust + frontend)
-lint: lint-crates lint-frontend
+# Lint everything (Rust + WASM gadgets + frontend)
+lint: lint-crates lint-gadgets lint-frontend
 
 # Lint Rust (clippy)
 lint-crates:
     cargo clippy --manifest-path src-tauri/Cargo.toml
+
+# The gadgets/ workspace defaults to wasm32-wasip2 via
+# `.cargo/config.toml`. Clippy runs on the host triple instead — the
+# same compilation mode `test-gadgets` uses — so `--all-targets` also
+# lints the `#[cfg(test)]` code, which only ever builds host-native.
+# Detecting the host triple from `rustc -vV` keeps this portable
+# across macOS/Linux/arm64/x64 without hardcoding.
+
+# Lint gadget crates (forces host target over the wasm32-wasip2 default)
+lint-gadgets:
+    cd gadgets && cargo clippy --workspace --all-targets --target "$(rustc -vV | sed -n 's|host: ||p')"
 
 # Lint frontend (eslint)
 lint-frontend:
