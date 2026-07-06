@@ -16,4 +16,5 @@ gadgets = [
     "bangs",
     "open-url",
     "zerotier",
+    "awake",
 ]
