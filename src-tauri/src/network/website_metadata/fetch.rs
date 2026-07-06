@@ -121,7 +121,7 @@ pub fn fetch_page_metadata(http: &Http, base_url: &Url) -> Result<PageMetadata, 
 
                 if reached_limit || found_marker {
                     let html = String::from_utf8_lossy(accumulated);
-                    let early_metadata = metadata::extract_metadata(&html, &base_url);
+                    let early_metadata = metadata::extract_metadata(&html, base_url);
 
                     if early_metadata.is_complete() {
                         response.abort();
@@ -134,7 +134,7 @@ pub fn fetch_page_metadata(http: &Http, base_url: &Url) -> Result<PageMetadata, 
                 // Stream exhausted before reaching the early check size.
                 // Extract from whatever we have.
                 let html = String::from_utf8_lossy(response.accumulated());
-                return Ok(metadata::extract_metadata(&html, &base_url));
+                return Ok(metadata::extract_metadata(&html, base_url));
             }
             Err(e) => return Err(FetchError::Http(e)),
         }
@@ -150,7 +150,7 @@ pub fn fetch_page_metadata(http: &Http, base_url: &Url) -> Result<PageMetadata, 
 
     let full_body = response.bytes().map_err(FetchError::Http)?;
     let html = String::from_utf8_lossy(&full_body);
-    Ok(metadata::extract_metadata(&html, &base_url))
+    Ok(metadata::extract_metadata(&html, base_url))
 }
 
 // =========================================================

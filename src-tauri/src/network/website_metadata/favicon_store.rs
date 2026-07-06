@@ -48,6 +48,10 @@ pub struct StoredFavicon {
     /// File extension used for this favicon (e.g. "webp", "svg").
     pub ext: String,
     /// Absolute filesystem path to the stored file.
+    // Sibling of `key` and `ext` above, which `WebsiteMetadataService`
+    // persists to the metadata DB; this module's own tests read `path`
+    // directly to assert the file was written.
+    #[allow(dead_code)]
     pub path: String,
 }
 
@@ -319,7 +323,7 @@ mod tests {
             .store("https://example.test/drop.svg", SVG_BYTES, "image/svg+xml")
             .expect("drop stored");
 
-        s.cleanup(&[keep.key.clone()]);
+        s.cleanup(std::slice::from_ref(&keep.key));
 
         assert!(s.resolve(&keep.key, &keep.ext).is_some());
         assert!(s.resolve(&drop.key, &drop.ext).is_none());

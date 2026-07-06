@@ -34,6 +34,23 @@ const MAX_COMMAND_TIMEOUT_MS: u64 = 60_000;
 const DEFAULT_COMMAND_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Resolve the effective command timeout from the gadget-requested
+/// value: default when unset, clamped to the host maximum.
+fn resolve_timeout_ms(requested: Option<u32>) -> u64 {
+    requested
+        .map(|v| v as u64)
+        .unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS)
+        .min(MAX_COMMAND_TIMEOUT_MS)
+}
+
+/// Resolve the effective output-size cap from the gadget-requested
+/// value: default when unset, clamped to the host maximum.
+fn resolve_max_output_bytes(requested: Option<u64>) -> u64 {
+    requested
+        .unwrap_or(DEFAULT_COMMAND_OUTPUT_BYTES)
+        .min(MAX_COMMAND_OUTPUT_BYTES)
+}
+
 const ENV_HARD_DENYLIST: &[&str] = &[
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
@@ -190,15 +207,8 @@ impl CommandCap {
 
         let env = build_command_env(&options.env);
 
-        let timeout_ms = options
-            .timeout_ms
-            .map(|v| v as u64)
-            .unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS)
-            .min(MAX_COMMAND_TIMEOUT_MS);
-        let max_output_bytes = options
-            .max_output_bytes
-            .unwrap_or(DEFAULT_COMMAND_OUTPUT_BYTES)
-            .min(MAX_COMMAND_OUTPUT_BYTES);
+        let timeout_ms = resolve_timeout_ms(options.timeout_ms);
+        let max_output_bytes = resolve_max_output_bytes(options.max_output_bytes);
 
         tokio::task::block_in_place(|| {
             let runtime_handle = tokio::runtime::Handle::current();
@@ -303,13 +313,12 @@ async fn run_child_with_caps(
         .spawn()
         .map_err(|e| CommandCapError::SpawnFailed(format!("spawn `{binary}`: {e}")))?;
 
-    if let Some(bytes) = stdin_bytes {
-        if let Some(mut child_stdin) = child.stdin.take() {
-            if let Err(e) = child_stdin.write_all(&bytes).await {
-                let _ = kill_child_with_grace(&mut child).await;
-                return Err(CommandCapError::SpawnFailed(format!("writing stdin: {e}")));
-            }
-        }
+    if let Some(bytes) = stdin_bytes
+        && let Some(mut child_stdin) = child.stdin.take()
+        && let Err(e) = child_stdin.write_all(&bytes).await
+    {
+        let _ = kill_child_with_grace(&mut child).await;
+        return Err(CommandCapError::SpawnFailed(format!("writing stdin: {e}")));
     }
 
     let stdout = child
@@ -420,7 +429,7 @@ async fn kill_child_with_grace(child: &mut tokio::process::Child) -> std::io::Re
     }
 
     let grace = tokio::time::Duration::from_millis(250);
-    if let Ok(_) = tokio::time::timeout(grace, child.wait()).await {
+    if tokio::time::timeout(grace, child.wait()).await.is_ok() {
         return Ok(());
     }
 
@@ -567,35 +576,38 @@ mod tests {
 
     #[test]
     fn timeout_clamps_to_max() {
-        let raw: u64 = 999_999;
-        let clamped = raw.min(MAX_COMMAND_TIMEOUT_MS);
-        assert_eq!(clamped, MAX_COMMAND_TIMEOUT_MS);
+        assert_eq!(
+            resolve_timeout_ms(Some(999_999_999)),
+            MAX_COMMAND_TIMEOUT_MS
+        );
     }
 
     #[test]
     fn timeout_default_when_none() {
-        let val: Option<u32> = None;
-        let resolved = val
-            .map(|v| v as u64)
-            .unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS)
-            .min(MAX_COMMAND_TIMEOUT_MS);
-        assert_eq!(resolved, DEFAULT_COMMAND_TIMEOUT_MS);
+        assert_eq!(resolve_timeout_ms(None), DEFAULT_COMMAND_TIMEOUT_MS);
+    }
+
+    #[test]
+    fn timeout_passes_through_in_range_value() {
+        assert_eq!(resolve_timeout_ms(Some(5_000)), 5_000);
     }
 
     #[test]
     fn output_bytes_clamps_to_max() {
-        let raw: u64 = u64::MAX;
-        let clamped = raw.min(MAX_COMMAND_OUTPUT_BYTES);
-        assert_eq!(clamped, MAX_COMMAND_OUTPUT_BYTES);
+        assert_eq!(
+            resolve_max_output_bytes(Some(u64::MAX)),
+            MAX_COMMAND_OUTPUT_BYTES
+        );
     }
 
     #[test]
     fn output_bytes_default_when_none() {
-        let val: Option<u64> = None;
-        let resolved = val
-            .unwrap_or(DEFAULT_COMMAND_OUTPUT_BYTES)
-            .min(MAX_COMMAND_OUTPUT_BYTES);
-        assert_eq!(resolved, DEFAULT_COMMAND_OUTPUT_BYTES);
+        assert_eq!(resolve_max_output_bytes(None), DEFAULT_COMMAND_OUTPUT_BYTES);
+    }
+
+    #[test]
+    fn output_bytes_passes_through_in_range_value() {
+        assert_eq!(resolve_max_output_bytes(Some(1024)), 1024);
     }
 
     // ─── permission denied ────────────────────────────────

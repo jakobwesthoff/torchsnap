@@ -17,12 +17,16 @@ pub enum ClipboardError {
     BackendFailure(String),
 }
 
+/// Platform clipboard write function: takes the text to write,
+/// returns a backend error message on failure.
+type ClipboardWriter = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 pub struct ClipboardCap {
-    writer: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+    writer: ClipboardWriter,
 }
 
 impl ClipboardCap {
-    pub fn new(writer: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>) -> Self {
+    pub fn new(writer: ClipboardWriter) -> Self {
         Self { writer }
     }
 

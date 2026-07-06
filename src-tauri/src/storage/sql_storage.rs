@@ -266,6 +266,9 @@ pub struct SqlStorage {
     /// names. Each `transaction()` call gets `sp_{n}` where `n` is the
     /// value before incrementing. Wraps on overflow (safe — a prior
     /// `sp_0` from 2^64 calls ago is long gone).
+    // Feeds `transaction()`, which this module's tests exercise directly;
+    // no in-repo gadget or host caller needs the savepoint API.
+    #[allow(dead_code)]
     savepoint_counter: AtomicU64,
 }
 
@@ -374,6 +377,10 @@ impl SqlStorage {
     ///     Ok(())
     /// })?;
     /// ```
+    // Savepoint-based transaction API for atomic multi-statement
+    // operations; exercised by this module's tests, no in-repo gadget or
+    // host caller needs it directly.
+    #[allow(dead_code)]
     pub fn transaction<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
         let id = self.savepoint_counter.fetch_add(1, Ordering::Relaxed);
         let name = format!("sp_{id}");
@@ -402,6 +409,9 @@ impl SqlStorage {
     /// Execute a raw SQL statement with no parameters. Used
     /// internally for savepoint control statements that cannot
     /// go through the parameterized path.
+    // Only caller is `transaction()` above, which is itself unused
+    // outside this module's tests.
+    #[allow(dead_code)]
     fn execute_raw(&self, sql: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sql connection not poisoned");
         conn.execute_batch(sql).context("execute raw SQL")?;

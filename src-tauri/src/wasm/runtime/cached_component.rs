@@ -124,6 +124,11 @@ impl CachedComponent {
     ///
     /// Emits a root `acquire` span. Use through `instantiate`
     /// for the parented variant nested under `init`.
+    // Root-span entry point to `acquire_inner`, exercised extensively by
+    // this module's tests to check the compile/cache flow in isolation;
+    // production code goes through `instantiate`, which calls
+    // `acquire_inner` with a parent span directly.
+    #[allow(dead_code)]
     pub fn acquire(&mut self) -> anyhow::Result<&Component> {
         self.acquire_inner(None)
     }
@@ -189,43 +194,41 @@ impl CachedComponent {
     /// nests under the caller's umbrella; when `None`, it
     /// becomes a root span.
     fn acquire_inner(&mut self, parent: Option<&SpanGuard>) -> anyhow::Result<&Component> {
-        if self.component.is_some() {
-            return Ok(self.component.as_ref().expect("just checked"));
-        }
-
-        let span = match parent {
-            Some(p) => p.child("acquire"),
-            None => self.logger.span("acquire"),
-        }
-        .meta("gadget_id", self.gadget_id.as_str())
-        .start();
-
-        let (component, outcome) = match &self.resolved {
-            Some(resolved) => {
-                // Re-acquire after release: cache file is
-                // guaranteed to exist from the first acquire.
-                let c = self
-                    .runtime
-                    .deserialize_component(&resolved.cache_path)
-                    .context("re-acquire component from cache")?;
-                (c, "re-acquire")
+        if self.component.is_none() {
+            let span = match parent {
+                Some(p) => p.child("acquire"),
+                None => self.logger.span("acquire"),
             }
-            None => {
-                // First acquire: resolve hash, check disk,
-                // compile on miss.
-                let (c, cache_path, outcome) = self.first_acquire(span.as_ref())?;
-                self.resolved = Some(ResolvedCache { cache_path });
-                (c, outcome)
+            .meta("gadget_id", self.gadget_id.as_str())
+            .start();
+
+            let (component, outcome) = match &self.resolved {
+                Some(resolved) => {
+                    // Re-acquire after release: cache file is
+                    // guaranteed to exist from the first acquire.
+                    let c = self
+                        .runtime
+                        .deserialize_component(&resolved.cache_path)
+                        .context("re-acquire component from cache")?;
+                    (c, "re-acquire")
+                }
+                None => {
+                    // First acquire: resolve hash, check disk,
+                    // compile on miss.
+                    let (c, cache_path, outcome) = self.first_acquire(span.as_ref())?;
+                    self.resolved = Some(ResolvedCache { cache_path });
+                    (c, outcome)
+                }
+            };
+
+            self.component = Some(component);
+
+            if let Some(s) = span {
+                s.end_with_meta(vec![("outcome".to_string(), outcome.to_string())]);
             }
-        };
-
-        self.component = Some(component);
-
-        if let Some(s) = span {
-            s.end_with_meta(vec![("outcome".to_string(), outcome.to_string())]);
         }
 
-        Ok(self.component.as_ref().expect("just stored"))
+        Ok(self.component.as_ref().expect("populated above"))
     }
 
     /// Resolve the cache path from WASM content + engine
@@ -355,14 +358,14 @@ fn prune_stale_entries(cache_dir: &Path, keep_filename: &str, logger: &Logger) {
         if name_str == keep_filename {
             continue;
         }
-        if name_str.ends_with(".cwasm") {
-            if let Err(e) = std::fs::remove_file(entry.path()) {
-                logger.log_with_meta(
-                    LogLevel::Warn,
-                    format!("failed to prune stale cache entry `{name_str}`: {e}"),
-                    vec![("entry".to_string(), name_str.to_string())],
-                );
-            }
+        if name_str.ends_with(".cwasm")
+            && let Err(e) = std::fs::remove_file(entry.path())
+        {
+            logger.log_with_meta(
+                LogLevel::Warn,
+                format!("failed to prune stale cache entry `{name_str}`: {e}"),
+                vec![("entry".to_string(), name_str.to_string())],
+            );
         }
     }
 }

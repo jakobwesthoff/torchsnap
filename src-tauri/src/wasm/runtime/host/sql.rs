@@ -29,7 +29,12 @@ use super::super::GadgetState;
 pub enum SqlConfig {
     None,
     Configured {
+        // Read back only by `WasmGadgetBridge` tests via
+        // `sql_config_for_tests()`; the live `SqlStorage` handle lives on
+        // `SqlStorageCap` instead.
+        #[allow(dead_code)]
         db_path: PathBuf,
+        #[allow(dead_code)]
         migrations: Arc<Vec<String>>,
     },
 }

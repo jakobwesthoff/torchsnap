@@ -50,11 +50,13 @@ pub struct WasmGadgetBridge {
     /// Disk-cached compiled component with lazy acquire/release.
     /// Owns the `Arc<WasmRuntime>` reference internally.
     cached: Mutex<CachedComponent>,
-    /// Re-applied to every fresh `WasmGadgetInstance` on
-    /// enable — each new `GadgetState` starts with
-    /// `SqlConfig::None`, so the bridge holds the
-    /// materialized config here to survive disable/re-enable
-    /// cycles without re-reading the gadget source.
+    /// Materialized from the manifest's `[storage.sql]` section at
+    /// construction, mirroring the `SqlStorageConfig` cap request built
+    /// in `cap_requests_from_manifest`. The running gadget's SQL storage
+    /// flows through `caps.sql_storage` (`SqlStorageCap`); this field is
+    /// exposed via `sql_config_for_tests()` so tests can assert on it
+    /// without reaching into `caps`.
+    #[allow(dead_code)]
     sql_config: SqlConfig,
     /// Retained so `enable()` can stash it on `GadgetState`
     /// for the `assets::read` / `assets::exists` host
@@ -824,57 +826,9 @@ mod tests {
     }
 
     /// Build caps for a bridge for tests that verify SQL storage across
-    /// enable cycles. Reads SQL storage from the bridge's provisioned caps
-    /// (populated by `cap_requests_from_manifest` during `test_bridge_with_sql`).
+    /// enable cycles. Reads SQL storage from the bridge's provisioned caps.
     fn build_test_caps(bridge: &WasmGadgetBridge) -> Arc<crate::caps::ProvisionedCaps> {
         test_caps_with_sql(bridge.caps.sql_storage.clone())
-    }
-
-    /// Build a bridge from a fixture, reading SQL migrations
-    /// and building proper ProvisionedCaps with SqlStorageCap.
-    fn test_bridge_with_sql(
-        fixture: &str,
-        app_data_dir: &std::path::Path,
-    ) -> anyhow::Result<WasmGadgetBridge> {
-        let fixture_path = std::path::Path::new(FIXTURE_ROOT).join(fixture);
-        let source: Arc<dyn GadgetSource + Send + Sync> = Arc::new(
-            DirectorySource::open(&fixture_path)
-                .with_context(|| format!("open fixture `{fixture}`"))?,
-        );
-        let manifest = source.manifest().clone();
-        let gadget_id = manifest.gadget.id.as_str();
-
-        // Read migration SQL from the source.
-        let sql_storage = if let Some(sql_def) =
-            manifest.storage.as_ref().and_then(|s| s.sql.as_ref())
-        {
-            let mut migration_contents = Vec::new();
-            for path in &sql_def.migrations {
-                let bytes = source.read_file(path)?;
-                migration_contents.push(String::from_utf8(bytes)?);
-            }
-            let db_path = app_data_dir
-                .join("gadget-home")
-                .join(gadget_id)
-                .join("sql")
-                .join("storage.sqlite3");
-            let migration_strs: Vec<&str> = migration_contents.iter().map(String::as_str).collect();
-            let storage = crate::storage::SqlStorage::open(db_path, &migration_strs)?;
-            Some(Arc::new(crate::caps::SqlStorageCap::new(Arc::new(storage))))
-        } else {
-            None
-        };
-
-        let caps = test_caps_with_sql(sql_storage);
-
-        WasmGadgetBridge::new(
-            manifest,
-            test_runtime(),
-            LogContext::test_context(),
-            source,
-            app_data_dir,
-            caps,
-        )
     }
 
     fn test_caps_with_sql(

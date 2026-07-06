@@ -164,7 +164,7 @@ mod tests {
     /// to register as a `.torchsnap` for scanning — these
     /// tests don't open the archive, only list it.
     fn touch(path: &Path) {
-        std::fs::write(path, &[]).expect("write stub file");
+        std::fs::write(path, []).expect("write stub file");
     }
 
     /// Create a directory-form gadget with a minimal

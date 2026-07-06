@@ -24,7 +24,7 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
 use tauri::{
-    Emitter, Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
+    Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
     webview::WebviewWindowBuilder,
 };
 
@@ -1051,6 +1051,15 @@ fn load_wasm_gadgets(
     let mut loaded_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut count: usize = 0;
 
+    let mut ctx = GadgetLoadContext {
+        runtime,
+        host,
+        log_ctx,
+        source_registry,
+        app_data_dir,
+        prov_ctx,
+    };
+
     for (source_kind, root) in roots {
         for path in wasm::discovery::scan_gadget_entries(&root) {
             // Open the source once. On any error — corrupt
@@ -1094,16 +1103,7 @@ fn load_wasm_gadgets(
                 continue;
             }
 
-            match load_single_wasm_gadget(
-                Arc::clone(&runtime),
-                source,
-                source_kind,
-                host,
-                log_ctx,
-                source_registry,
-                app_data_dir,
-                prov_ctx,
-            ) {
+            match load_single_wasm_gadget(&mut ctx, source, source_kind) {
                 Ok(gadget_id) => {
                     log_sender.send(wasm::logging::LogItem {
                         seq: 0,
@@ -1178,15 +1178,23 @@ fn log_loader_error(
     });
 }
 
-fn load_single_wasm_gadget(
+/// Host state shared across every gadget discovered during a
+/// `load_wasm_gadgets` scan, as opposed to the per-gadget
+/// `source`/`source_kind` pair passed alongside it to
+/// `load_single_wasm_gadget`.
+struct GadgetLoadContext<'a> {
     runtime: Arc<wasm::runtime::WasmRuntime>,
+    host: &'a mut gadget_host::GadgetHost,
+    log_ctx: &'a wasm::logging::channel::LogContext,
+    source_registry: &'a wasm::protocol::GadgetSourceRegistry,
+    app_data_dir: &'a std::path::Path,
+    prov_ctx: &'a gadget_host::ProvisioningContext,
+}
+
+fn load_single_wasm_gadget(
+    ctx: &mut GadgetLoadContext,
     source: Arc<dyn wasm::source::GadgetSource + Send + Sync>,
     source_kind: wasm::source::GadgetSourceKind,
-    host: &mut gadget_host::GadgetHost,
-    log_ctx: &wasm::logging::channel::LogContext,
-    source_registry: &wasm::protocol::GadgetSourceRegistry,
-    app_data_dir: &std::path::Path,
-    prov_ctx: &gadget_host::ProvisioningContext,
 ) -> anyhow::Result<String> {
     let gadget_id = source.manifest().gadget.id.as_str().to_string();
     let manifest = source.manifest().clone();
@@ -1195,28 +1203,33 @@ fn load_single_wasm_gadget(
     let cap_requests =
         wasm::bridge::WasmGadgetBridge::cap_requests_from_manifest(&manifest, &*source)?;
 
-    host.register_with_caps::<wasm::bridge::WasmGadgetBridge, _>(
-        &gadget_id,
-        cap_requests,
-        prov_ctx,
-        Some(&source_path),
-        |caps| {
-            wasm::bridge::WasmGadgetBridge::new(
-                manifest,
-                runtime,
-                log_ctx.clone(),
-                Arc::clone(&source),
-                app_data_dir,
-                caps,
-            )
-            .expect("bridge construction after cap provisioning")
-        },
-        source_kind,
-    )?;
+    let runtime = Arc::clone(&ctx.runtime);
+    let log_ctx = ctx.log_ctx.clone();
+    let app_data_dir = ctx.app_data_dir;
+
+    ctx.host
+        .register_with_caps::<wasm::bridge::WasmGadgetBridge, _>(
+            &gadget_id,
+            cap_requests,
+            ctx.prov_ctx,
+            Some(&source_path),
+            |caps| {
+                wasm::bridge::WasmGadgetBridge::new(
+                    manifest,
+                    runtime,
+                    log_ctx,
+                    Arc::clone(&source),
+                    app_data_dir,
+                    caps,
+                )
+                .expect("bridge construction after cap provisioning")
+            },
+            source_kind,
+        )?;
 
     // Retain the source in the registry so the protocol
     // handler can serve frontend assets from it.
-    source_registry
+    ctx.source_registry
         .write()
         .expect("source registry not poisoned")
         .insert(gadget_id.clone(), source);

@@ -37,7 +37,6 @@ use anyhow::{Context, Result};
 use clipboard_rs::{
     Clipboard, ClipboardContext, ClipboardWatcher, ClipboardWatcherContext, WatcherShutdown,
 };
-use tauri::Manager;
 use tauri::ipc::Channel;
 
 use crate::caps::{CapRequest, ProvisionedCaps};

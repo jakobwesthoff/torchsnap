@@ -36,6 +36,10 @@ use crate::settings::SettingsInit;
 /// A global keyboard shortcut that a gadget wants to register.
 pub struct GadgetShortcut {
     pub id: &'static str,
+    // Human-readable shortcut name, alongside `id` / `default_shortcut` /
+    // `settings_key` which shortcut registration in `gadget_host` reads;
+    // not read directly by any in-repo caller.
+    #[allow(dead_code)]
     pub label: &'static str,
     pub default_shortcut: &'static str,
     pub settings_key: &'static str,

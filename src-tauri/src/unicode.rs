@@ -96,6 +96,11 @@ impl Utf16Positions {
     ///
     /// Returns an empty `Utf16Positions` if the substring is not
     /// found.
+    // Sibling constructor to `empty` and `from_graphemes` above, both of
+    // which gadget_host and entry_store use for grapheme-index-based
+    // highlighting; this substring-based form is exercised only by this
+    // module's tests.
+    #[allow(dead_code)]
     pub fn from_substring(text: &str, substring: &str, all: bool) -> Self {
         if substring.is_empty() {
             return Self::empty();

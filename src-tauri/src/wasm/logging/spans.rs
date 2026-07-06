@@ -244,6 +244,10 @@ impl Logger {
     }
 
     /// Emit a log message.
+    // Sibling of `log_with_meta` below, which `cached_component` uses
+    // for the metadata-carrying case; this plain form is exercised only
+    // by this crate's tests.
+    #[allow(dead_code)]
     pub fn log(&self, level: LogLevel, message: impl Into<String>) {
         self.sender.send(LogItem {
             seq: 0,
@@ -279,6 +283,10 @@ impl Logger {
     }
 
     /// Emit a log message associated with a span.
+    // Sibling of `log` and `log_with_meta` above; lets a caller attach a
+    // message to a span it only has the numeric id for, without holding
+    // the `SpanGuard`. No in-repo caller needs that combination.
+    #[allow(dead_code)]
     pub fn log_in_span(&self, level: LogLevel, message: impl Into<String>, span_id: u64) {
         self.sender.send(LogItem {
             seq: 0,
@@ -319,6 +327,11 @@ pub struct SpanBuilder {
 
 impl SpanBuilder {
     /// Set the parent span for nesting.
+    // Sibling of `meta` below, which every span builder call in this
+    // crate uses; explicit parenting by numeric id has no in-repo caller
+    // because `SpanGuard::child` covers the common case of nesting under
+    // a guard already in hand.
+    #[allow(dead_code)]
     pub fn parent(mut self, parent_id: u64) -> Self {
         self.parent_id = Some(parent_id);
         self
@@ -392,11 +405,18 @@ pub struct SpanGuard {
 impl SpanGuard {
     /// The span ID for this guard. Useful for creating child
     /// spans or associating log messages.
+    // Sibling of `child` and `end_with_meta` below, both of which are
+    // used by `cached_component`; no in-repo caller needs the raw id
+    // directly.
+    #[allow(dead_code)]
     pub fn id(&self) -> u64 {
         self.span_id
     }
 
     /// Emit a log message associated with this span.
+    // Sibling of `child` and `end_with_meta` below; no in-repo caller
+    // logs through a `SpanGuard` directly rather than through `Logger`.
+    #[allow(dead_code)]
     pub fn log(&self, level: LogLevel, message: impl Into<String>) {
         self.logger.sender.send(LogItem {
             seq: 0,
