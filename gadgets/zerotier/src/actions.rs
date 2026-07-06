@@ -18,7 +18,7 @@
 //!
 //! All three return the cache-invalidation signal to the
 //! caller; the lib-level orchestration calls
-//! [`crate::cache::RateLimitCache::invalidate`] to make the
+//! [`torchsnap_gadget_sdk::cache::RateLimitCache::invalidate`] to make the
 //! next `search()` reflect post-action state without waiting
 //! for TTL.
 

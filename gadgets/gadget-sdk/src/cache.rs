@@ -2,16 +2,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Rate-limited cache for the daemon's `GET /network`
-//! response.
+//! Rate-limit cache for expensive fetches on the synchronous
+//! per-keystroke `search()` path.
 //!
-//! The launcher invokes `search()` synchronously on every
-//! keystroke. Hitting the daemon on each call is wasteful and
-//! exposes the user to the request-timeout latency on a hung
-//! daemon. The cache holds the last fetched value for up to
-//! `ttl` since the last successful fetch — *not* since the
-//! last access — so this is rate-limiting, not debounce. A
-//! mutating action (Connect / Disconnect / Forget) calls
+//! The launcher invokes a gadget's `search()` synchronously on
+//! every keystroke. Repeating an expensive fetch on each call
+//! is wasteful and exposes the user to the fetch's latency on a
+//! slow or hung source. The cache holds the last fetched value
+//! for up to `ttl` since the last successful fetch — *not*
+//! since the last access — so this is rate-limiting, not
+//! debounce. A mutating action calls
 //! [`RateLimitCache::invalidate`] to force the next read to
 //! refetch.
 
@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 /// Default cache TTL. 1 second balances launcher
-/// responsiveness against daemon load: rapid keystrokes
+/// responsiveness against source load: rapid keystrokes
 /// share a single fetch result, and a paused user sees
 /// fresh state within one second of resuming.
 pub const DEFAULT_TTL: Duration = Duration::from_secs(1);
