@@ -17,6 +17,7 @@
 [workspace]
 members = [
     "gadget-sdk",
+    "awake",
     "hello-world",
     "calculator",
     "bangs",
