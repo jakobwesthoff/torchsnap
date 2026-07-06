@@ -415,8 +415,7 @@ fn evaluate(expr: &str) -> Result<EvalResult, String> {
 fn preprocess_math_functions(expr: &str) -> String {
     static MATH_FN_RE: LazyLock<Regex> = LazyLock::new(|| {
         let pattern = MATH_PREFIX_FUNCTIONS.join("|");
-        Regex::new(&format!(r"(?i)\b({pattern})\s*\("))
-            .expect("math function preprocess regex")
+        Regex::new(&format!(r"(?i)\b({pattern})\s*\(")).expect("math function preprocess regex")
     });
 
     MATH_FN_RE

@@ -94,13 +94,13 @@ pub use exports::torchsnap::gadget::search::{
 // higher-level `settings` helper module. The same applies to
 // `logging_host`.
 // =========================================================
-pub use torchsnap::gadget::{
-    assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
-};
 pub use torchsnap::gadget::command as command_host;
 pub use torchsnap::gadget::logging as logging_host;
 pub use torchsnap::gadget::settings as settings_host;
 pub use torchsnap::gadget::website_metadata as website_metadata_host;
+pub use torchsnap::gadget::{
+    assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
+};
 
 pub mod prelude {
     //! Common glob import for gadget authors.
@@ -113,17 +113,17 @@ pub mod prelude {
     //! import modules (`assets`, `clipboard`, `frecency`,
     //! `http`, `opener`) are also surfaced so gadget code
     //! can call them without an extra `use`.
-    pub use super::{LifecycleGuest, MessagingGuest, SearchGuest, TasksGuest};
     pub use super::{
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{
-        cache, command, data, logging, messaging, settings, sql_storage, website_metadata,
-    };
+    pub use super::{LifecycleGuest, MessagingGuest, SearchGuest, TasksGuest};
     pub use super::{
         assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
         website_metadata_host,
+    };
+    pub use super::{
+        cache, command, data, logging, messaging, settings, sql_storage, website_metadata,
     };
     // Macros re-exported through the prelude so a single
     // `use torchsnap_gadget_sdk::prelude::*;` is enough to

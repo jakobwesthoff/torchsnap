@@ -139,10 +139,7 @@ mod tests {
 
     #[test]
     fn macos_candidates_include_system_and_user_paths() {
-        let paths = candidate_paths(
-            &Os::Macos,
-            "/Users/test/Library/Application Support",
-        );
+        let paths = candidate_paths(&Os::Macos, "/Users/test/Library/Application Support");
         assert_eq!(paths.len(), 2);
         assert_eq!(
             paths[0],
@@ -165,10 +162,7 @@ mod tests {
 
     #[test]
     fn windows_candidate_is_programdata_path() {
-        let paths = candidate_paths(
-            &Os::Windows,
-            "C:\\Users\\test\\AppData\\Roaming",
-        );
+        let paths = candidate_paths(&Os::Windows, "C:\\Users\\test\\AppData\\Roaming");
         assert_eq!(paths.len(), 1);
         assert!(paths[0].contains("ProgramData"));
     }

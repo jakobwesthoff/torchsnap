@@ -26,9 +26,7 @@ use torchsnap_gadget_sdk::prelude::*;
 mod backend;
 mod query;
 
-use backend::{
-    KeepAwakeBackend, SessionKind, SessionRequest, SessionStatus, select_backend,
-};
+use backend::{KeepAwakeBackend, SessionKind, SessionRequest, SessionStatus, select_backend};
 use query::{Query, StartRequest};
 
 struct AwakeGadget;
@@ -529,7 +527,10 @@ mod tests {
         let spec = build_spec(&inactive(), &Query::Status);
         assert_eq!(spec.id, ID_START);
         assert_eq!(spec.title, "Keep Mac awake");
-        assert_eq!(spec.subtitle, "No active session · starts an infinite session");
+        assert_eq!(
+            spec.subtitle,
+            "No active session · starts an infinite session"
+        );
         assert_eq!(spec.action, start_action(None, false));
     }
 
@@ -538,7 +539,10 @@ mod tests {
         let spec = build_spec(&app_not_running(), &Query::Status);
         assert_eq!(spec.id, ID_START);
         assert_eq!(spec.title, "Keep Mac awake");
-        assert_eq!(spec.subtitle, "No active session · starts an infinite session");
+        assert_eq!(
+            spec.subtitle,
+            "No active session · starts an infinite session"
+        );
         assert_eq!(spec.action, start_action(None, false));
     }
 
@@ -575,7 +579,10 @@ mod tests {
     #[test]
     fn status_active_timed_display_allowed_appends_display_note() {
         let spec = build_spec(&timed(5281, true), &Query::Status);
-        assert_eq!(spec.subtitle, "Active · 1h 28m remaining · display may sleep");
+        assert_eq!(
+            spec.subtitle,
+            "Active · 1h 28m remaining · display may sleep"
+        );
     }
 
     // ----- Start × Inactive ----------------------------------
@@ -610,7 +617,10 @@ mod tests {
     fn start_infinite_display_inactive() {
         let spec = build_spec(&inactive(), &start_query(None, true));
         assert_eq!(spec.title, "Keep Mac awake");
-        assert_eq!(spec.subtitle, "Starts an infinite session · display may sleep");
+        assert_eq!(
+            spec.subtitle,
+            "Starts an infinite session · display may sleep"
+        );
         assert_eq!(spec.action, start_action(None, true));
     }
 
@@ -649,7 +659,10 @@ mod tests {
         // Request has display=false, but the running session has
         // display=true: the note comes from the session replaced.
         let spec = build_spec(&timed(5281, true), &start_query(Some(30), false));
-        assert_eq!(spec.subtitle, "Replaces: 1h 28m remaining · display may sleep");
+        assert_eq!(
+            spec.subtitle,
+            "Replaces: 1h 28m remaining · display may sleep"
+        );
         assert_eq!(spec.action, start_action(Some(30), false));
     }
 

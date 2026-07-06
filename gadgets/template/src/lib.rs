@@ -182,8 +182,7 @@ impl MessagingGuest for TemplatePlugin {
             // setting itself. Demonstrates composing the
             // settings API with the messaging API.
             "current-greeting" => {
-                let greeting: String =
-                    settings::get_or_else("greeting", || "(unset)".into());
+                let greeting: String = settings::get_or_else("greeting", || "(unset)".into());
                 messaging::to_response(&serde_json::json!({ "greeting": greeting }))
             }
 

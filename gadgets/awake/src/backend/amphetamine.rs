@@ -120,9 +120,12 @@ pub(crate) fn parse_status_output(stdout: &str) -> Result<SessionStatus, String>
 
     let active = parse_bool(fields[0])
         .ok_or_else(|| format!("unexpected active flag in status output: {:?}", fields[0]))?;
-    let remaining: i64 = fields[1]
-        .parse()
-        .map_err(|_| format!("unexpected remaining value in status output: {:?}", fields[1]))?;
+    let remaining: i64 = fields[1].parse().map_err(|_| {
+        format!(
+            "unexpected remaining value in status output: {:?}",
+            fields[1]
+        )
+    })?;
     let display_sleep_allowed = parse_bool(fields[2])
         .ok_or_else(|| format!("unexpected display flag in status output: {:?}", fields[2]))?;
 
@@ -350,7 +353,9 @@ mod tests {
         assert_eq!(
             parse_status_output("true|119|false"),
             Ok(SessionStatus::Active {
-                kind: SessionKind::Timed { remaining_secs: 119 },
+                kind: SessionKind::Timed {
+                    remaining_secs: 119
+                },
                 display_sleep_allowed: false,
             })
         );
@@ -361,7 +366,9 @@ mod tests {
         assert_eq!(
             parse_status_output("true|3847|false\n"),
             Ok(SessionStatus::Active {
-                kind: SessionKind::Timed { remaining_secs: 3847 },
+                kind: SessionKind::Timed {
+                    remaining_secs: 3847
+                },
                 display_sleep_allowed: false,
             })
         );
@@ -567,9 +574,7 @@ mod tests {
 
             rules
                 .into_iter()
-                .filter(|rule| {
-                    rule.get("binary").and_then(|b| b.as_str()) == Some("osascript")
-                })
+                .filter(|rule| rule.get("binary").and_then(|b| b.as_str()) == Some("osascript"))
                 .map(|rule| {
                     let argv = rule
                         .get("argv")

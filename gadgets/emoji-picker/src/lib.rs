@@ -421,8 +421,7 @@ fn search_entries(query: &str, entries: &[EmojiData]) -> Vec<ScoredEntry> {
             // for the leading ":" we prepend to the displayed
             // shortcode. Pass-2 matches don't produce title
             // positions, so this is a no-op for them.
-            let adjusted_title: Vec<u32> =
-                m.title_positions.iter().map(|p| p + 1).collect();
+            let adjusted_title: Vec<u32> = m.title_positions.iter().map(|p| p + 1).collect();
 
             Some(build_scored_entry(
                 entry,
@@ -561,8 +560,7 @@ impl SearchGuest for EmojiPickerPlugin {
         // `ScoredEntry.id = entry.emoji` when building the
         // response. The host has already recorded the
         // frecency selection by the time this runs.
-        clipboard::write_text(&entry.id)
-            .map_err(|e| format!("write emoji to clipboard: {e}"))?;
+        clipboard::write_text(&entry.id).map_err(|e| format!("write emoji to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }
 }

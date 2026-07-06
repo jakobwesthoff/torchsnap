@@ -31,9 +31,7 @@
 
 use std::time::Duration;
 
-use crate::command_host::{
-    self, CommandOptions as RawOptions,
-};
+use crate::command_host::{self, CommandOptions as RawOptions};
 
 pub use crate::command_host::{CommandError, CommandResult};
 

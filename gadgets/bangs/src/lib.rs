@@ -178,9 +178,7 @@ impl SearchGuest for BangsPlugin {
     }
 
     fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        let url: String = data::decode(
-            entry.data.as_deref().ok_or("no data attached to entry")?,
-        )?;
+        let url: String = data::decode(entry.data.as_deref().ok_or("no data attached to entry")?)?;
 
         match action_id {
             ActionId::Open => {
@@ -188,8 +186,7 @@ impl SearchGuest for BangsPlugin {
                 Ok(PostAction::Dismiss)
             }
             ActionId::Copy => {
-                clipboard::write_text(&url)
-                    .map_err(|e| format!("copy URL to clipboard: {e}"))?;
+                clipboard::write_text(&url).map_err(|e| format!("copy URL to clipboard: {e}"))?;
                 Ok(PostAction::Dismiss)
             }
             other => Err(format!("unsupported action: {other:?}")),
@@ -207,8 +204,7 @@ impl MessagingGuest for BangsPlugin {
             "stats" => {
                 let db = sql_storage::connection();
                 let stats = query_stats(&db)?;
-                serde_json::to_string(&stats)
-                    .map_err(|e| format!("serialize stats: {e}"))
+                serde_json::to_string(&stats).map_err(|e| format!("serialize stats: {e}"))
             }
             "refresh" => {
                 // Network-only refresh. On failure, return
@@ -219,8 +215,7 @@ impl MessagingGuest for BangsPlugin {
                 match try_import_from_network(&db) {
                     Ok(()) => {
                         let stats = query_stats(&db)?;
-                        serde_json::to_string(&stats)
-                            .map_err(|e| format!("serialize stats: {e}"))
+                        serde_json::to_string(&stats).map_err(|e| format!("serialize stats: {e}"))
                     }
                     Err(e) => {
                         let payload = json!({ "error": e });
@@ -518,10 +513,7 @@ fn try_import_from_network(db: &SqlHandle) -> Result<(), String> {
 
     let response = http::fetch(&request).map_err(|e| format!("fetch bang.js: {e:?}"))?;
     if response.status < 200 || response.status >= 300 {
-        return Err(format!(
-            "DuckDuckGo returned HTTP {}",
-            response.status
-        ));
+        return Err(format!("DuckDuckGo returned HTTP {}", response.status));
     }
     let body = String::from_utf8(response.body)
         .map_err(|e| format!("bang.js response is not UTF-8: {e}"))?;
@@ -532,8 +524,8 @@ fn try_import_from_network(db: &SqlHandle) -> Result<(), String> {
 fn import_from_builtin(db: &SqlHandle) -> Result<(), String> {
     let bytes = assets::read(BUNDLED_BANG_PATH)
         .map_err(|e| format!("read bundled `{BUNDLED_BANG_PATH}`: {e:?}"))?;
-    let body = String::from_utf8(bytes)
-        .map_err(|e| format!("bundled bang.json is not UTF-8: {e}"))?;
+    let body =
+        String::from_utf8(bytes).map_err(|e| format!("bundled bang.json is not UTF-8: {e}"))?;
     let entries = parse_bang_json(&body)?;
     import_bangs(db, &entries, "builtin")
 }
@@ -544,9 +536,7 @@ fn import_from_best_source(db: &SqlHandle) {
         Err(e) => {
             logging::log(
                 logging::LogLevel::Warn,
-                &format!(
-                    "Bangs: network import failed ({e}); falling back to bundled data"
-                ),
+                &format!("Bangs: network import failed ({e}); falling back to bundled data"),
                 &[],
                 None,
             );

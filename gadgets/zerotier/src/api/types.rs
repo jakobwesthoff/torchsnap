@@ -166,10 +166,16 @@ mod tests {
     fn parses_every_documented_status_variant() {
         for (raw, expected) in [
             ("OK", NetworkStatus::Ok),
-            ("REQUESTING_CONFIGURATION", NetworkStatus::RequestingConfiguration),
+            (
+                "REQUESTING_CONFIGURATION",
+                NetworkStatus::RequestingConfiguration,
+            ),
             ("ACCESS_DENIED", NetworkStatus::AccessDenied),
             ("NOT_FOUND", NetworkStatus::NotFound),
-            ("AUTHENTICATION_REQUIRED", NetworkStatus::AuthenticationRequired),
+            (
+                "AUTHENTICATION_REQUIRED",
+                NetworkStatus::AuthenticationRequired,
+            ),
             ("PORT_ERROR", NetworkStatus::PortError),
         ] {
             let json = format!(r#"{{"id":"x","name":"","status":"{raw}"}}"#);
