@@ -67,11 +67,7 @@ impl Gadget for BuiltInCommandsGadget {
         ]
     }
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        _action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
+    fn execute(&self, entry: &ScoredEntry, _action_id: &ActionId) -> anyhow::Result<PostAction> {
         match entry.id.as_str() {
             "quit" => Ok(PostAction::Quit),
             "settings" => Ok(PostAction::ShowSettings),

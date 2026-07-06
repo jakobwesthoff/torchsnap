@@ -19,10 +19,7 @@ use super::super::GadgetState;
 
 impl bindings::torchsnap::gadget::frecency::Host for GadgetState {
     fn is_enabled(&mut self) -> bool {
-        self.caps
-            .frecency
-            .as_ref()
-            .is_some_and(|f| f.is_enabled())
+        self.caps.frecency.as_ref().is_some_and(|f| f.is_enabled())
     }
 
     fn top_items(

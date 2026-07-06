@@ -130,8 +130,7 @@ fn check_scheme(allowed: &[String], url: &str) -> Result<(), OpenerError> {
     if allowed.iter().any(|s| s == "*") {
         return Ok(());
     }
-    let parsed =
-        url::Url::parse(url).map_err(|_| OpenerError::InvalidUrl(url.to_string()))?;
+    let parsed = url::Url::parse(url).map_err(|_| OpenerError::InvalidUrl(url.to_string()))?;
     let scheme = parsed.scheme();
     if allowed.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
         Ok(())
@@ -145,8 +144,8 @@ fn check_scheme(allowed: &[String], url: &str) -> Result<(), OpenerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn noop_closures() -> (
         Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
@@ -192,7 +191,11 @@ mod tests {
 
     #[test]
     fn open_url_permitted_scheme_passes() {
-        assert!(cap_with_schemes(&["https"]).open_url("https://example.com").is_ok());
+        assert!(
+            cap_with_schemes(&["https"])
+                .open_url("https://example.com")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -205,25 +208,37 @@ mod tests {
 
     #[test]
     fn open_url_empty_allowlist_denies_everything() {
-        assert!(cap_with_schemes(&[]).open_url("https://example.com").is_err());
+        assert!(
+            cap_with_schemes(&[])
+                .open_url("https://example.com")
+                .is_err()
+        );
     }
 
     #[test]
     fn open_url_unparseable_url_returns_error() {
-        let err = cap_with_schemes(&["https"]).open_url("not-a-url").unwrap_err();
+        let err = cap_with_schemes(&["https"])
+            .open_url("not-a-url")
+            .unwrap_err();
         assert!(matches!(err, OpenerError::InvalidUrl(_)));
     }
 
     #[test]
     fn open_url_scheme_check_is_case_insensitive() {
-        assert!(cap_with_schemes(&["https"]).open_url("HTTPS://example.com").is_ok());
+        assert!(
+            cap_with_schemes(&["https"])
+                .open_url("HTTPS://example.com")
+                .is_ok()
+        );
     }
 
     #[test]
     fn open_url_multiple_schemes_second_matches() {
-        assert!(cap_with_schemes(&["https", "mailto"])
-            .open_url("mailto:user@x.com")
-            .is_ok());
+        assert!(
+            cap_with_schemes(&["https", "mailto"])
+                .open_url("mailto:user@x.com")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -242,9 +257,11 @@ mod tests {
 
     #[test]
     fn open_url_wildcard_among_other_schemes() {
-        assert!(cap_with_schemes(&["https", "*"])
-            .open_url("ftp://example.com")
-            .is_ok());
+        assert!(
+            cap_with_schemes(&["https", "*"])
+                .open_url("ftp://example.com")
+                .is_ok()
+        );
     }
 
     // ─── open_path permission ────────────────────────────────
@@ -259,9 +276,11 @@ mod tests {
 
     #[test]
     fn open_path_succeeds_when_granted() {
-        assert!(cap_with_path_permissions(true, true)
-            .open_path("/some/path")
-            .is_ok());
+        assert!(
+            cap_with_path_permissions(true, true)
+                .open_path("/some/path")
+                .is_ok()
+        );
     }
 
     // ─── reveal_path permission ──────────────────────────────
@@ -276,9 +295,11 @@ mod tests {
 
     #[test]
     fn reveal_path_succeeds_when_granted() {
-        assert!(cap_with_path_permissions(true, true)
-            .reveal_path("/some/path")
-            .is_ok());
+        assert!(
+            cap_with_path_permissions(true, true)
+                .reveal_path("/some/path")
+                .is_ok()
+        );
     }
 
     // ─── Closure delegation ──────────────────────────────────

@@ -113,11 +113,7 @@ impl LogContext {
     /// Convenience over calling `Logger::new` with the three
     /// parts inline at every call site.
     pub fn logger(&self, source: super::LogSource) -> super::spans::Logger {
-        super::spans::Logger::new(
-            self.sender.clone(),
-            Arc::clone(&self.span_registry),
-            source,
-        )
+        super::spans::Logger::new(self.sender.clone(), Arc::clone(&self.span_registry), source)
     }
 
     /// Build a `LogContext` with a discarding sender and a
@@ -344,7 +340,10 @@ mod tests {
         let storage = system.storage().lock().expect("lock");
         let items = storage.tail(10);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source, LogSource::Gadget("test-gadget".to_string()));
+        assert_eq!(
+            items[0].source,
+            LogSource::Gadget("test-gadget".to_string())
+        );
         match &items[0].kind {
             LogItemKind::Message { message, level, .. } => {
                 assert_eq!(message, "hello");

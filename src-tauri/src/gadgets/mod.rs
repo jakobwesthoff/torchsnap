@@ -77,26 +77,21 @@ pub trait Gadget: Send + Sync {
     /// Activate the gadget. Runs on a `spawn_blocking` thread.
     /// Caps are available as plain fields on `self`. Returning
     /// `Err` disables the gadget — no further calls dispatched.
-    fn enable(&self) -> anyhow::Result<()> { Ok(()) }
+    fn enable(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     fn disable(&self) {}
 
     fn setting_changed(&self, _key: &str, _value: serde_json::Value) {}
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        action_id: &ActionId,
-    ) -> anyhow::Result<PostAction>;
+    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction>;
 
     fn shortcuts(&self) -> Vec<GadgetShortcut> {
         vec![]
     }
 
-    fn handle_shortcut(
-        &self,
-        _shortcut_id: &str,
-    ) -> anyhow::Result<PostAction> {
+    fn handle_shortcut(&self, _shortcut_id: &str) -> anyhow::Result<PostAction> {
         Ok(PostAction::Nothing)
     }
 
@@ -121,4 +116,3 @@ pub trait Gadget: Send + Sync {
         None
     }
 }
-

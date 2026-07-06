@@ -120,8 +120,8 @@ impl GadgetState {
             icon_cache: None,
             settings: None,
             frecency: None,
-            path_resolver: Some(Arc::new(crate::caps::PathResolverCap::new(
-                Arc::new(crate::paths::GadgetPaths {
+            path_resolver: Some(Arc::new(crate::caps::PathResolverCap::new(Arc::new(
+                crate::paths::GadgetPaths {
                     platform: Arc::new(crate::paths::PlatformPaths {
                         home: std::path::PathBuf::from("/tmp/test-home"),
                         xdg_config: std::path::PathBuf::from("/tmp/test-xdg-config"),
@@ -129,8 +129,8 @@ impl GadgetState {
                     }),
                     gadget_data: std::path::PathBuf::from("/tmp/test-gadget-data"),
                     gadget_archive: std::path::PathBuf::from("/tmp/test-gadget-archive"),
-                }),
-            ))),
+                },
+            )))),
         });
         GadgetState::new(
             "test-gadget".to_string(),

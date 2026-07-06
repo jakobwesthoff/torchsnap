@@ -297,14 +297,12 @@ impl CachedComponent {
         // before deserializing the file-backed version.
         drop(heap_component);
 
-        std::fs::create_dir_all(&self.cache_dir)
-            .context("create compile-cache directory")?;
+        std::fs::create_dir_all(&self.cache_dir).context("create compile-cache directory")?;
 
         let tmp_path = cache_path.with_extension("cwasm.tmp");
         std::fs::write(&tmp_path, &serialized)
             .context("write serialized component to temp file")?;
-        std::fs::rename(&tmp_path, &cache_path)
-            .context("rename temp file to cache entry")?;
+        std::fs::rename(&tmp_path, &cache_path).context("rename temp file to cache entry")?;
 
         if let Some(s) = write_span {
             s.end_with_meta(vec![(
@@ -380,8 +378,8 @@ mod tests {
 
     fn minimal_source() -> Arc<dyn GadgetSource + Send + Sync> {
         use crate::wasm::source::DirectorySource;
-        let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/minimal-gadget");
+        let fixture_root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/minimal-gadget");
         Arc::new(DirectorySource::open(fixture_root).expect("open minimal fixture"))
     }
 
@@ -389,14 +387,24 @@ mod tests {
         use crate::caps::*;
         Arc::new(ProvisionedCaps {
             opener: Some(Arc::new(OpenerCap::from_closures(
-                OpenerPermissions { schemes: vec![], open_path: false, reveal_path: false },
-                Box::new(|_| Ok(())), Box::new(|_| Ok(())), Box::new(|_| Ok(())),
+                OpenerPermissions {
+                    schemes: vec![],
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
             ))),
             http: Some(Arc::new(HttpCap::new(vec![]))),
-            filesystem: None, command: None,
+            filesystem: None,
+            command: None,
             clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| Ok(()))))),
-            sql_storage: None, website_metadata: None, icon_cache: None,
-            settings: None, frecency: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
             path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(
                 crate::paths::GadgetPaths {
                     platform: Arc::new(crate::paths::PlatformPaths {
@@ -420,8 +428,12 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let gadget_data = tmp.path().join("gadget-home/test");
 
-        let cached =
-            CachedComponent::new(runtime, LogContext::test_context(), source, gadget_data.clone());
+        let cached = CachedComponent::new(
+            runtime,
+            LogContext::test_context(),
+            source,
+            gadget_data.clone(),
+        );
 
         assert!(cached.component.is_none());
         assert!(cached.resolved.is_none());
@@ -437,8 +449,12 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let gadget_data = tmp.path().join("gadget-home/test");
 
-        let mut cached =
-            CachedComponent::new(runtime, LogContext::test_context(), source, gadget_data.clone());
+        let mut cached = CachedComponent::new(
+            runtime,
+            LogContext::test_context(),
+            source,
+            gadget_data.clone(),
+        );
         cached.acquire().expect("first acquire");
 
         let cache_dir = gadget_data.join("compile-cache");
@@ -449,11 +465,13 @@ mod tests {
             .filter_map(|e| e.ok())
             .collect();
         assert_eq!(entries.len(), 1);
-        assert!(entries[0]
-            .file_name()
-            .to_str()
-            .expect("utf8")
-            .ends_with(".cwasm"));
+        assert!(
+            entries[0]
+                .file_name()
+                .to_str()
+                .expect("utf8")
+                .ends_with(".cwasm")
+        );
     }
 
     #[test]
@@ -463,8 +481,12 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let gadget_data = tmp.path().join("deep/nested/gadget-home/test");
 
-        let mut cached =
-            CachedComponent::new(runtime, LogContext::test_context(), source, gadget_data.clone());
+        let mut cached = CachedComponent::new(
+            runtime,
+            LogContext::test_context(),
+            source,
+            gadget_data.clone(),
+        );
         cached.acquire().expect("acquire");
 
         assert!(gadget_data.join("compile-cache").exists());
@@ -518,7 +540,10 @@ mod tests {
             .expect("metadata")
             .modified()
             .expect("mtime");
-        assert_eq!(mtime_before, mtime_after, "file should not have been rewritten");
+        assert_eq!(
+            mtime_before, mtime_after,
+            "file should not have been rewritten"
+        );
     }
 
     #[test]
@@ -536,7 +561,12 @@ mod tests {
             gadget_data.clone(),
         );
         cached.acquire().expect("first acquire");
-        let cache_path = cached.resolved.as_ref().expect("resolved").cache_path.clone();
+        let cache_path = cached
+            .resolved
+            .as_ref()
+            .expect("resolved")
+            .cache_path
+            .clone();
 
         // Corrupt the cache file.
         std::fs::write(&cache_path, b"garbage").expect("corrupt file");
@@ -669,7 +699,12 @@ mod tests {
             CachedComponent::new(runtime, LogContext::test_context(), source, gadget_data);
         cached.acquire().expect("first acquire");
 
-        let cache_path = cached.resolved.as_ref().expect("resolved").cache_path.clone();
+        let cache_path = cached
+            .resolved
+            .as_ref()
+            .expect("resolved")
+            .cache_path
+            .clone();
         cached.release();
         std::fs::remove_file(&cache_path).expect("delete cache file");
 
@@ -726,18 +761,16 @@ mod tests {
     /// Find the `SpanEnd` item for a given span name. Returns
     /// `None` if no span with that name has been ended yet.
     fn find_span_end<'a>(items: &'a [LogItem], name: &str) -> Option<&'a LogItem> {
-        items.iter().find(|i| {
-            matches!(&i.kind, LogItemKind::SpanEnd { name: n, .. } if n == name)
-        })
+        items
+            .iter()
+            .find(|i| matches!(&i.kind, LogItemKind::SpanEnd { name: n, .. } if n == name))
     }
 
     /// Find every `SpanStart` item for a given span name.
     fn find_span_starts<'a>(items: &'a [LogItem], name: &str) -> Vec<&'a LogItem> {
         items
             .iter()
-            .filter(|i| {
-                matches!(&i.kind, LogItemKind::SpanStart { name: n, .. } if n == name)
-            })
+            .filter(|i| matches!(&i.kind, LogItemKind::SpanStart { name: n, .. } if n == name))
             .collect()
     }
 
@@ -777,12 +810,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         cached.acquire().expect("first acquire (miss)");
 
         let items = drain_items(&system).await;
@@ -821,8 +850,7 @@ mod tests {
         }
 
         let system = LoggingSystem::start();
-        let mut cached =
-            CachedComponent::new(runtime, system.context(), source, gadget_data);
+        let mut cached = CachedComponent::new(runtime, system.context(), source, gadget_data);
         cached.acquire().expect("acquire after warmup");
 
         let items = drain_items(&system).await;
@@ -837,12 +865,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         cached.acquire().expect("first acquire");
         cached.release();
         cached.acquire().expect("re-acquire after release");
@@ -852,9 +876,7 @@ mod tests {
         // second is re-acquire. Pull both ends in order.
         let ends: Vec<&LogItem> = items
             .iter()
-            .filter(|i| {
-                matches!(&i.kind, LogItemKind::SpanEnd { name, .. } if name == "acquire")
-            })
+            .filter(|i| matches!(&i.kind, LogItemKind::SpanEnd { name, .. } if name == "acquire"))
             .collect();
         assert_eq!(ends.len(), 2, "expected two acquire span ends");
         assert_eq!(span_end_meta(ends[0], "outcome"), Some("cache-miss"));
@@ -870,12 +892,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         cached.acquire().expect("first acquire");
 
         let items = drain_items(&system).await;
@@ -916,8 +934,7 @@ mod tests {
         }
 
         let system = LoggingSystem::start();
-        let mut cached =
-            CachedComponent::new(runtime, system.context(), source, gadget_data);
+        let mut cached = CachedComponent::new(runtime, system.context(), source, gadget_data);
         cached.acquire().expect("hit acquire");
 
         let items = drain_items(&system).await;
@@ -943,12 +960,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         cached.acquire().expect("first");
         cached.release();
         // Drain the items from the first acquire so the
@@ -979,12 +992,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         let _instance = cached.instantiate(test_caps()).expect("instantiate");
 
         let items = drain_items(&system).await;
@@ -1017,12 +1026,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let system = LoggingSystem::start();
 
-        let mut cached = CachedComponent::new(
-            runtime,
-            system.context(),
-            source,
-            tmp.path().to_path_buf(),
-        );
+        let mut cached =
+            CachedComponent::new(runtime, system.context(), source, tmp.path().to_path_buf());
         cached.acquire().expect("acquire");
 
         let items = drain_items(&system).await;
@@ -1066,8 +1071,7 @@ mod tests {
         std::fs::write(&cache_path, b"garbage").expect("corrupt file");
 
         let system = LoggingSystem::start();
-        let mut cached =
-            CachedComponent::new(runtime, system.context(), source, gadget_data);
+        let mut cached = CachedComponent::new(runtime, system.context(), source, gadget_data);
         cached.acquire().expect("acquire after corruption");
 
         let items = drain_items(&system).await;
@@ -1105,7 +1109,9 @@ mod tests {
         cached.acquire().expect("acquire");
         cached.release();
 
-        let instance = cached.instantiate(test_caps()).expect("instantiate after release");
+        let instance = cached
+            .instantiate(test_caps())
+            .expect("instantiate after release");
         instance.enable().expect("guest enable");
     }
 }

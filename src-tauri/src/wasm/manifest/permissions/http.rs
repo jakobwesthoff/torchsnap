@@ -96,7 +96,10 @@ mod tests {
             origins: vec!["https://example.com".into(), "https://other.com".into()],
         };
         let perms: HttpPermissions = def.into();
-        assert_eq!(perms.origins, vec!["https://example.com", "https://other.com"]);
+        assert_eq!(
+            perms.origins,
+            vec!["https://example.com", "https://other.com"]
+        );
     }
 
     #[test]

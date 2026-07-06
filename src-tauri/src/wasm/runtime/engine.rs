@@ -65,8 +65,8 @@ impl WasmRuntime {
         // to ~110 MB with 7 gadgets loaded. See ADR 0043.
         config.strategy(Strategy::Winch);
 
-        let engine = Engine::new(&config)
-            .map_err(|e| anyhow::anyhow!("create wasmtime engine: {e}"))?;
+        let engine =
+            Engine::new(&config).map_err(|e| anyhow::anyhow!("create wasmtime engine: {e}"))?;
         Ok(Arc::new(Self { engine }))
     }
 
@@ -94,7 +94,8 @@ impl WasmRuntime {
     /// `deserialize_file`. Wraps the wasmtime API to keep
     /// all wasmtime interactions behind `WasmRuntime`.
     pub fn serialize_component(component: &Component) -> anyhow::Result<Vec<u8>> {
-        component.serialize()
+        component
+            .serialize()
             .map_err(|e| anyhow::anyhow!("serialize compiled component: {e}"))
     }
 
@@ -106,7 +107,9 @@ impl WasmRuntime {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
-        self.engine.precompile_compatibility_hash().hash(&mut hasher);
+        self.engine
+            .precompile_compatibility_hash()
+            .hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }
 

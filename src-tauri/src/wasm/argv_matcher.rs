@@ -144,22 +144,27 @@ fn compile_constraint(
 ) -> Result<CompiledArgvConstraint, CompileError> {
     match constraint {
         ArgvConstraint::Literal { value } => {
-            let resolved = resolver.substitute_variables(value).map_err(|e| CompileError::Resolve {
-                rule_index,
-                field: format!("argv[{argv_index}].value"),
-                source: e,
-            })?;
+            let resolved =
+                resolver
+                    .substitute_variables(value)
+                    .map_err(|e| CompileError::Resolve {
+                        rule_index,
+                        field: format!("argv[{argv_index}].value"),
+                        source: e,
+                    })?;
             Ok(CompiledArgvConstraint::Literal(resolved))
         }
         ArgvConstraint::Enum { values } => {
             let resolved = values
                 .iter()
                 .map(|v| {
-                    resolver.substitute_variables(v).map_err(|e| CompileError::Resolve {
-                        rule_index,
-                        field: format!("argv[{argv_index}].values"),
-                        source: e,
-                    })
+                    resolver
+                        .substitute_variables(v)
+                        .map_err(|e| CompileError::Resolve {
+                            rule_index,
+                            field: format!("argv[{argv_index}].values"),
+                            source: e,
+                        })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(CompiledArgvConstraint::Enum(resolved))
@@ -189,11 +194,14 @@ fn compile_constraint(
             Ok(CompiledArgvConstraint::Regex(compiled))
         }
         ArgvConstraint::PathUnder { root } => {
-            let resolved = resolver.substitute_variables(root).map_err(|e| CompileError::Resolve {
-                rule_index,
-                field: format!("argv[{argv_index}].root"),
-                source: e,
-            })?;
+            let resolved =
+                resolver
+                    .substitute_variables(root)
+                    .map_err(|e| CompileError::Resolve {
+                        rule_index,
+                        field: format!("argv[{argv_index}].root"),
+                        source: e,
+                    })?;
             Ok(CompiledArgvConstraint::PathUnder(PathBuf::from(resolved)))
         }
         ArgvConstraint::AnyString => Ok(CompiledArgvConstraint::AnyString),

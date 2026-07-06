@@ -30,13 +30,11 @@ impl bindings::torchsnap::gadget::website_metadata::Host for GadgetState {
     > {
         use bindings::torchsnap::gadget::website_metadata::WebsiteMetadataError as WitError;
 
-        let cap = self
-            .caps
-            .website_metadata
-            .as_ref()
-            .ok_or_else(|| WitError::PermissionDenied(
+        let cap = self.caps.website_metadata.as_ref().ok_or_else(|| {
+            WitError::PermissionDenied(
                 "gadget manifest does not declare permissions.website-metadata = true".into(),
-            ))?;
+            )
+        })?;
 
         cap.lookup(&domain, LookupMode::from(mode))
             .map(|r| bindings::torchsnap::gadget::website_metadata::LookupResult::from(r))
@@ -60,7 +58,9 @@ impl From<bindings::torchsnap::gadget::website_metadata::LookupMode> for LookupM
 
 impl From<LookupResult> for bindings::torchsnap::gadget::website_metadata::LookupResult {
     fn from(result: LookupResult) -> Self {
-        use bindings::torchsnap::gadget::website_metadata::{CacheEntry, LookupResult as WitResult};
+        use bindings::torchsnap::gadget::website_metadata::{
+            CacheEntry, LookupResult as WitResult,
+        };
         match result {
             LookupResult::Hit(meta) => WitResult::Hit(CacheEntry {
                 title: meta.title,
@@ -99,7 +99,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::caps::{
-        OpenerCap, OpenerPermissions, HttpCap, ClipboardCap, PathResolverCap, ProvisionedCaps,
+        ClipboardCap, HttpCap, OpenerCap, OpenerPermissions, PathResolverCap, ProvisionedCaps,
         WebsiteMetadataCap,
     };
     use crate::network::website_metadata::WebsiteMetadataService;
@@ -132,7 +132,11 @@ mod tests {
 
         let caps = Arc::new(ProvisionedCaps {
             opener: Some(Arc::new(OpenerCap::from_closures(
-                OpenerPermissions { schemes: Vec::new(), open_path: false, reveal_path: false },
+                OpenerPermissions {
+                    schemes: Vec::new(),
+                    open_path: false,
+                    reveal_path: false,
+                },
                 Box::new(|_| Err("opener not initialized".into())),
                 Box::new(|_| Err("opener not initialized".into())),
                 Box::new(|_| Err("opener not initialized".into())),

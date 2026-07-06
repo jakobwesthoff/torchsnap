@@ -94,7 +94,9 @@ mod tests {
 
     /// Compile and return the minimal-gadget fixture component.
     fn compile_minimal(runtime: &WasmRuntime) -> Component {
-        runtime.compile(MINIMAL_GADGET_WASM).expect("compile minimal fixture")
+        runtime
+            .compile(MINIMAL_GADGET_WASM)
+            .expect("compile minimal fixture")
     }
 
     #[test]
@@ -108,7 +110,12 @@ mod tests {
         let runtime = test_runtime();
         let component = compile_minimal(&runtime);
         let instance = runtime
-            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
+            .instantiate(
+                "minimal",
+                &component,
+                &LogContext::test_context(),
+                test_caps(),
+            )
             .expect("instantiate");
         instance.enable().expect("guest enable no-op");
     }
@@ -125,10 +132,20 @@ mod tests {
         let component = compile_minimal(&runtime);
 
         let first = runtime
-            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
+            .instantiate(
+                "minimal",
+                &component,
+                &LogContext::test_context(),
+                test_caps(),
+            )
             .expect("first");
         let second = runtime
-            .instantiate("minimal", &component, &LogContext::test_context(), test_caps())
+            .instantiate(
+                "minimal",
+                &component,
+                &LogContext::test_context(),
+                test_caps(),
+            )
             .expect("second");
 
         first.clear_caps();
@@ -336,7 +353,12 @@ mod tests {
             .compile(OPENER_HTTP_GADGET_WASM)
             .expect("compile opener-http fixture");
         let instance = runtime
-            .instantiate("opener-http-gadget", &component, &LogContext::test_context(), caps)
+            .instantiate(
+                "opener-http-gadget",
+                &component,
+                &LogContext::test_context(),
+                caps,
+            )
             .expect("instantiate opener-http fixture");
         (runtime, instance)
     }
@@ -347,22 +369,23 @@ mod tests {
             std::sync::Arc::new(Mutex::new(None));
         let called_url_clone = called_url.clone();
 
-        let (_runtime, instance) = compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
-            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
-                crate::caps::OpenerPermissions {
-                    schemes: vec!["https".into()],
-                    open_path: false,
-                    reveal_path: false,
-                },
-                Box::new(move |url: &str| {
-                    *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
-                    Ok(())
-                }),
-                Box::new(|_| Ok(())),
-                Box::new(|_| Ok(())),
-            ))),
-            ..test_caps_inner()
-        }));
+        let (_runtime, instance) =
+            compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
+                opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
+                    crate::caps::OpenerPermissions {
+                        schemes: vec!["https".into()],
+                        open_path: false,
+                        reveal_path: false,
+                    },
+                    Box::new(move |url: &str| {
+                        *called_url_clone.lock().expect("not poisoned") = Some(url.to_string());
+                        Ok(())
+                    }),
+                    Box::new(|_| Ok(())),
+                    Box::new(|_| Ok(())),
+                ))),
+                ..test_caps_inner()
+            }));
 
         instance.enable().expect("enable");
 
@@ -380,19 +403,20 @@ mod tests {
 
     #[test]
     fn opener_forbidden_scheme_returns_error() {
-        let (_runtime, instance) = compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
-            opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
-                crate::caps::OpenerPermissions {
-                    schemes: vec!["https".into()],
-                    open_path: false,
-                    reveal_path: false,
-                },
-                Box::new(|_: &str| Ok(())),
-                Box::new(|_| Ok(())),
-                Box::new(|_| Ok(())),
-            ))),
-            ..test_caps_inner()
-        }));
+        let (_runtime, instance) =
+            compile_opener_http_fixture(Arc::new(crate::caps::ProvisionedCaps {
+                opener: Some(Arc::new(crate::caps::OpenerCap::from_closures(
+                    crate::caps::OpenerPermissions {
+                        schemes: vec!["https".into()],
+                        open_path: false,
+                        reveal_path: false,
+                    },
+                    Box::new(|_: &str| Ok(())),
+                    Box::new(|_| Ok(())),
+                    Box::new(|_| Ok(())),
+                ))),
+                ..test_caps_inner()
+            }));
 
         instance.enable().expect("enable");
 
@@ -418,9 +442,9 @@ mod tests {
             then.status(200).body("pong");
         });
 
-        let (_runtime, instance) = compile_opener_http_fixture(
-            test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec!["*".into()]))),
-        );
+        let (_runtime, instance) = compile_opener_http_fixture(test_caps_with_http(Arc::new(
+            crate::caps::HttpCap::new(vec!["*".into()]),
+        )));
 
         instance.enable().expect("enable");
 
@@ -517,10 +541,11 @@ mod tests {
         });
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
-            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..test_caps_inner()
-        }));
+        let (_runtime, instance) =
+            compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
+                website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
+                ..test_caps_inner()
+            }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -546,10 +571,11 @@ mod tests {
         });
 
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
-            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..test_caps_inner()
-        }));
+        let (_runtime, instance) =
+            compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
+                website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
+                ..test_caps_inner()
+            }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -577,10 +603,11 @@ mod tests {
     async fn website_metadata_invalid_domain_returns_invalid_domain_error() {
         let server = httpmock::MockServer::start();
         let (svc, _tmp, _notifier) = build_test_metadata_service(&server);
-        let (_runtime, instance) = compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
-            website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
-            ..test_caps_inner()
-        }));
+        let (_runtime, instance) =
+            compile_website_metadata_fixture(Arc::new(crate::caps::ProvisionedCaps {
+                website_metadata: Some(Arc::new(crate::caps::WebsiteMetadataCap::new(svc))),
+                ..test_caps_inner()
+            }));
         instance.enable().expect("enable");
 
         let result = instance
@@ -593,9 +620,9 @@ mod tests {
 
     #[test]
     fn http_blocked_origin_returns_permission_denied() {
-        let (_runtime, instance) = compile_opener_http_fixture(
-            test_caps_with_http(Arc::new(crate::caps::HttpCap::new(vec![]))),
-        );
+        let (_runtime, instance) = compile_opener_http_fixture(test_caps_with_http(Arc::new(
+            crate::caps::HttpCap::new(vec![]),
+        )));
 
         instance.enable().expect("enable");
 
@@ -626,14 +653,24 @@ mod tests {
         use crate::caps::*;
         ProvisionedCaps {
             opener: Some(Arc::new(OpenerCap::from_closures(
-                OpenerPermissions { schemes: vec![], open_path: false, reveal_path: false },
-                Box::new(|_| Ok(())), Box::new(|_| Ok(())), Box::new(|_| Ok(())),
+                OpenerPermissions {
+                    schemes: vec![],
+                    open_path: false,
+                    reveal_path: false,
+                },
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
+                Box::new(|_| Ok(())),
             ))),
             http: Some(Arc::new(HttpCap::new(vec![]))),
-            filesystem: None, command: None,
+            filesystem: None,
+            command: None,
             clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| Ok(()))))),
-            sql_storage: None, website_metadata: None, icon_cache: None,
-            settings: None, frecency: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
             path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(
                 crate::paths::GadgetPaths {
                     platform: Arc::new(crate::paths::PlatformPaths {
@@ -919,7 +956,12 @@ icon = "heroicons:beaker"
             .compile(ASSETS_GADGET_WASM)
             .expect("compile assets fixture");
         let instance = runtime
-            .instantiate("assets-gadget", &component, &LogContext::test_context(), test_caps())
+            .instantiate(
+                "assets-gadget",
+                &component,
+                &LogContext::test_context(),
+                test_caps(),
+            )
             .expect("instantiate assets fixture");
         (runtime, instance)
     }

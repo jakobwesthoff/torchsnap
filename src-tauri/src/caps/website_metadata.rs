@@ -41,9 +41,7 @@ impl WebsiteMetadataCap {
         let result = tokio::task::block_in_place(|| self.service.lookup(domain, mode));
         match result {
             Ok(r) => Ok(r),
-            Err(LookupError::InvalidDomain(d)) => {
-                Err(WebsiteMetadataCapError::InvalidDomain(d))
-            }
+            Err(LookupError::InvalidDomain(d)) => Err(WebsiteMetadataCapError::InvalidDomain(d)),
         }
     }
 }

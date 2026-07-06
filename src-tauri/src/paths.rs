@@ -280,7 +280,10 @@ mod tests {
     fn platform_resolves_known_variables() {
         let p = platform();
         assert_eq!(p.resolve("home"), Some(Path::new("/home/jake")));
-        assert_eq!(p.resolve("xdg-config"), Some(Path::new("/home/jake/.config")));
+        assert_eq!(
+            p.resolve("xdg-config"),
+            Some(Path::new("/home/jake/.config"))
+        );
         assert_eq!(
             p.resolve("xdg-data"),
             Some(Path::new("/home/jake/.local/share"))
@@ -323,7 +326,10 @@ mod tests {
     fn gadget_delegates_platform_resolution() {
         let g = gadget_paths();
         assert_eq!(g.resolve("home"), Some(Path::new("/home/jake")));
-        assert_eq!(g.resolve("xdg-config"), Some(Path::new("/home/jake/.config")));
+        assert_eq!(
+            g.resolve("xdg-config"),
+            Some(Path::new("/home/jake/.config"))
+        );
     }
 
     // ----- validate_variable_references (via trait) -----
@@ -331,7 +337,13 @@ mod tests {
     #[test]
     fn validate_accepts_recognized_names() {
         let g = gadget_paths();
-        for name in ["gadget-data", "gadget-archive", "home", "xdg-config", "xdg-data"] {
+        for name in [
+            "gadget-data",
+            "gadget-archive",
+            "home",
+            "xdg-config",
+            "xdg-data",
+        ] {
             let s = format!("prefix-${{{name}}}-suffix");
             g.validate_variable_references(&s)
                 .unwrap_or_else(|e| panic!("`{name}` should be accepted: {e}"));
@@ -348,8 +360,10 @@ mod tests {
     #[test]
     fn validate_accepts_dollar_without_brace() {
         let g = gadget_paths();
-        g.validate_variable_references("price $5 USD").expect("plain text");
-        g.validate_variable_references("ENV=$NAME").expect("plain text");
+        g.validate_variable_references("price $5 USD")
+            .expect("plain text");
+        g.validate_variable_references("ENV=$NAME")
+            .expect("plain text");
     }
 
     #[test]
@@ -449,7 +463,13 @@ mod tests {
     #[test]
     fn substitute_resolves_all_gadget_variables() {
         let g = gadget_paths();
-        for name in ["gadget-data", "gadget-archive", "home", "xdg-config", "xdg-data"] {
+        for name in [
+            "gadget-data",
+            "gadget-archive",
+            "home",
+            "xdg-config",
+            "xdg-data",
+        ] {
             let template = format!("${{{name}}}");
             let resolved = g
                 .substitute_variables(&template)

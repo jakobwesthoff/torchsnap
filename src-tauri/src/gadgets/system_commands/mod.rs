@@ -104,11 +104,7 @@ impl Gadget for SystemCommandsGadget {
             .collect()
     }
 
-    fn execute(
-        &self,
-        entry: &ScoredEntry,
-        _action_id: &ActionId,
-    ) -> anyhow::Result<PostAction> {
+    fn execute(&self, entry: &ScoredEntry, _action_id: &ActionId) -> anyhow::Result<PostAction> {
         let cmd = self
             .commands
             .iter()

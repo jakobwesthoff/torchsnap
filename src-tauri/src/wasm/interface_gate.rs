@@ -237,10 +237,7 @@ mod tests {
 
     #[test]
     fn extract_wasi_import_returns_none() {
-        assert_eq!(
-            extract_interface_name("wasi:cli/stdout@0.2.0"),
-            None,
-        );
+        assert_eq!(extract_interface_name("wasi:cli/stdout@0.2.0"), None,);
     }
 
     #[test]
@@ -406,7 +403,10 @@ mod tests {
             .expect_err("should fail for missing opener");
         let msg = format!("{err}");
         assert!(msg.contains("opener"), "should list opener: {msg}");
-        assert!(!msg.contains("http"), "should NOT list provisioned http: {msg}");
+        assert!(
+            !msg.contains("http"),
+            "should NOT list provisioned http: {msg}"
+        );
     }
 
     /// The error message lists missing interfaces in sorted order.
@@ -414,8 +414,8 @@ mod tests {
     fn validate_error_is_sorted() {
         let runtime = test_runtime();
         let component = runtime.compile(OPENER_HTTP_GADGET_WASM).expect("compile");
-        let err = validate(&component, runtime.engine(), &empty_caps(), "test")
-            .expect_err("should fail");
+        let err =
+            validate(&component, runtime.engine(), &empty_caps(), "test").expect_err("should fail");
         let msg = format!("{err}");
         let start = msg.find('[').expect("has [") + 1;
         let end = msg.find(']').expect("has ]");

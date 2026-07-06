@@ -15,8 +15,8 @@
 // `clear_caps` handles lifecycle cleanup at disable time.
 // =========================================================
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use wasmtime::Store;
 
@@ -103,9 +103,8 @@ impl WasmGadgetInstance {
             state.gadget_source = None;
             let reps = std::mem::take(&mut state.sql_handle_reps);
             for rep in reps {
-                let resource: wasmtime::component::Resource<
-                    super::host::sql::SqlHandleEntry,
-                > = wasmtime::component::Resource::new_own(rep);
+                let resource: wasmtime::component::Resource<super::host::sql::SqlHandleEntry> =
+                    wasmtime::component::Resource::new_own(rep);
                 let _ = state.wasi_table.delete(resource);
             }
         });
@@ -232,9 +231,10 @@ impl WasmGadgetInstance {
 
         let entries: Vec<_> = wit_entries.into_iter().map(Into::into).collect();
         if let Some(s) = span {
-            s.end_with_meta(vec![
-                ("result_count".to_string(), entries.len().to_string()),
-            ]);
+            s.end_with_meta(vec![(
+                "result_count".to_string(),
+                entries.len().to_string(),
+            )]);
         }
         Ok(entries)
     }
