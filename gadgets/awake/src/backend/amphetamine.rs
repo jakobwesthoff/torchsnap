@@ -19,13 +19,6 @@
 //! the invocation surface as defense-in-depth (ADR 0040); they
 //! are not a soundness boundary.
 
-// The backend is consumed by `search()` / `execute()` in the
-// next change on this branch (Phase 5). Until then the trait
-// impl and its helpers are reachable only from the equally
-// unused `select_backend`, so the module reads as dead code.
-// The allow is removed once the search wiring lands.
-#![allow(dead_code)]
-
 use std::time::Duration;
 
 use torchsnap_gadget_sdk::command::{self, CommandError, CommandResult};
