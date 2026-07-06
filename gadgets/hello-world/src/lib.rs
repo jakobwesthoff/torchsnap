@@ -44,16 +44,18 @@ impl LifecycleGuest for HelloWorld {
             Some(span),
         );
         PETNAMES.with(|cell| *cell.borrow_mut() = names);
-        logging::span_end(
-            span,
-            &[("petname_count".into(), "50000".into())],
-        );
+        logging::span_end(span, &[("petname_count".into(), "50000".into())]);
         Ok(())
     }
 
     fn disable() {
         PETNAMES.with(|cell| cell.borrow_mut().clear());
-        logging::log(logging::LogLevel::Info, "Hello World gadget disabled", &[], None);
+        logging::log(
+            logging::LogLevel::Info,
+            "Hello World gadget disabled",
+            &[],
+            None,
+        );
     }
 
     /// Hello-world has no settings, so the host never invokes
@@ -95,11 +97,7 @@ impl SearchGuest for HelloWorld {
         }
 
         // Without a prefix, fuzzy-search the petname corpus.
-        let span = logging::span_start(
-            "fuzzy-search",
-            None,
-            &[("query".into(), query.clone())],
-        );
+        let span = logging::span_start("fuzzy-search", None, &[("query".into(), query.clone())]);
 
         let results = PETNAMES.with(|cell| {
             let names = cell.borrow();
@@ -107,10 +105,7 @@ impl SearchGuest for HelloWorld {
         });
 
         let result_count = results.len();
-        logging::span_end(
-            span,
-            &[("result_count".into(), result_count.to_string())],
-        );
+        logging::span_end(span, &[("result_count".into(), result_count.to_string())]);
 
         if results.is_empty() {
             SearchResponse::Nothing

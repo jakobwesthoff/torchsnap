@@ -115,11 +115,7 @@ pub fn clear_all(db: &SqlHandle) -> Result<(), String> {
 /// gadget already knows about are not overwritten so daemon
 /// observations remain authoritative once we have them.
 /// Returns the number of newly-inserted rows.
-pub fn import_saved_networks(
-    db: &SqlHandle,
-    json: &str,
-    now_ms: i64,
-) -> Result<usize, String> {
+pub fn import_saved_networks(db: &SqlHandle, json: &str, now_ms: i64) -> Result<usize, String> {
     let entries = parse_saved_networks(json)?;
     let mut inserted = 0;
     for entry in entries {

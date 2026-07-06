@@ -40,10 +40,8 @@
 //! );
 //! ```
 
-use crate::website_metadata_host::{
-    self, LookupMode, LookupResult, WebsiteMetadataError,
-};
 use crate::EntryIcon;
+use crate::website_metadata_host::{self, LookupMode, LookupResult, WebsiteMetadataError};
 
 pub use crate::website_metadata_host::CacheEntry;
 

@@ -159,8 +159,7 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
         indices_buf.clear();
 
         let name_haystack = Utf32Str::new(&row.name, &mut name_buf);
-        let Some(nucleo_score) =
-            pattern.indices(name_haystack, &mut matcher, &mut indices_buf)
+        let Some(nucleo_score) = pattern.indices(name_haystack, &mut matcher, &mut indices_buf)
         else {
             continue;
         };
@@ -268,7 +267,11 @@ mod tests {
 
     #[test]
     fn match_returns_empty_when_no_rows_match() {
-        let rows = vec![live_row("1111111111111111", "homenet", NetworkState::Connected)];
+        let rows = vec![live_row(
+            "1111111111111111",
+            "homenet",
+            NetworkState::Connected,
+        )];
         let matches = match_networks("zzz-no-overlap-zzz", &rows);
         assert!(matches.is_empty());
     }

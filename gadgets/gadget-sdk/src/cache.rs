@@ -177,8 +177,7 @@ mod tests {
     fn cached_value_clones_per_read() {
         // Confirm the cache returns owned `T` values so
         // multiple readers can consume independently.
-        let cache: RateLimitCache<String> =
-            RateLimitCache::new(Duration::from_secs(60));
+        let cache: RateLimitCache<String> = RateLimitCache::new(Duration::from_secs(60));
         let a = cache.get_or_fetch(|| "hello".to_string());
         let b = cache.get_or_fetch(|| "world".to_string());
         // Both reads see the first fetch (cache hit).

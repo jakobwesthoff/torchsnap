@@ -512,7 +512,10 @@ mod tests {
     #[test]
     fn extra_whitespace_between_tokens_is_ignored() {
         assert_eq!(parse("awake   30m"), start(Some(30), false));
-        assert_eq!(parse("  awake   45   min   display  "), start(Some(45), true));
+        assert_eq!(
+            parse("  awake   45   min   display  "),
+            start(Some(45), true)
+        );
         assert_eq!(parse("awake\t2\thours"), start(Some(120), false));
     }
 

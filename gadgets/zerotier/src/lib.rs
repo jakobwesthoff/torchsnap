@@ -167,10 +167,9 @@ fn initialize(runtime: &mut Runtime) {
 }
 
 fn merge_saved_networks() -> Result<usize, String> {
-    let path = torchsnap_gadget_sdk::path_resolver::resolve(
-        "${xdg-config}/ZeroTier/saved_networks.json",
-    )
-    .map_err(|e| format!("resolve saved_networks path: {e:?}"))?;
+    let path =
+        torchsnap_gadget_sdk::path_resolver::resolve("${xdg-config}/ZeroTier/saved_networks.json")
+            .map_err(|e| format!("resolve saved_networks path: {e:?}"))?;
     let bytes =
         torchsnap_gadget_sdk::filesystem::read_file(&path).map_err(|e| format!("read: {e:?}"))?;
     let json = String::from_utf8(bytes).map_err(|e| format!("utf8: {e}"))?;
@@ -243,9 +242,7 @@ impl SearchGuest for ZeroTierPlugin {
             let db = history::connection();
             let now = now_ms();
             let live = current_live_state(&runtime);
-            let currently_joined = live
-                .iter()
-                .any(|n| n.id.eq_ignore_ascii_case(&network_id));
+            let currently_joined = live.iter().any(|n| n.id.eq_ignore_ascii_case(&network_id));
             let result = match action_id {
                 ActionId::Open => {
                     if currently_joined {
@@ -255,9 +252,7 @@ impl SearchGuest for ZeroTierPlugin {
                         actions::connect(&client, &db, &network_id, &name_hint, now)
                     }
                 }
-                ActionId::Delete => {
-                    actions::forget(&client, &db, &network_id, currently_joined)
-                }
+                ActionId::Delete => actions::forget(&client, &db, &network_id, currently_joined),
                 _ => return Err(format!("unsupported action: {action_id:?}")),
             };
             runtime.network_cache.invalidate();
@@ -286,12 +281,10 @@ fn build_search_entries(runtime: &Runtime, intent: &Intent) -> Vec<ScoredEntry> 
 
     match intent {
         Intent::None => Vec::new(),
-        Intent::Match(q) => {
-            query::match_networks(q, &rows)
-                .into_iter()
-                .map(|m| scored_match_to_entry(&m))
-                .collect()
-        }
+        Intent::Match(q) => query::match_networks(q, &rows)
+            .into_iter()
+            .map(|m| scored_match_to_entry(&m))
+            .collect(),
         Intent::JoinById(id) => {
             // If the id maps to an existing row, surface that
             // row (Connected / JoinedOffline / KnownOnly) —
@@ -326,11 +319,7 @@ fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
             "Open settings",
             ActionId::OpenSettings,
         ),
-        AuthState::DaemonUnreachable => (
-            "ZeroTier daemon not running",
-            "Dismiss",
-            ActionId::Open,
-        ),
+        AuthState::DaemonUnreachable => ("ZeroTier daemon not running", "Dismiss", ActionId::Open),
     };
     Some(ScoredEntry {
         id: format!("failure:{title}"),
@@ -492,13 +481,9 @@ fn load_known_rows() -> Vec<history::HistoryRow> {
     history::list_all(&db).unwrap_or_default()
 }
 
-fn merge_live_and_known(
-    live: &[Network],
-    known: &[history::HistoryRow],
-) -> Vec<NetworkRow> {
+fn merge_live_and_known(live: &[Network], known: &[history::HistoryRow]) -> Vec<NetworkRow> {
     // Live state wins; known-only entries fill in.
-    let mut by_id: std::collections::HashMap<String, NetworkRow> =
-        std::collections::HashMap::new();
+    let mut by_id: std::collections::HashMap<String, NetworkRow> = std::collections::HashMap::new();
     for net in live {
         by_id.insert(net.id.clone(), NetworkRow::from_live(net));
     }
@@ -584,8 +569,8 @@ impl MessagingGuest for ZeroTierPlugin {
                 struct Req {
                     id: String,
                 }
-                let req: Req = serde_json::from_str(&payload)
-                    .map_err(|e| format!("parse payload: {e}"))?;
+                let req: Req =
+                    serde_json::from_str(&payload).map_err(|e| format!("parse payload: {e}"))?;
                 RUNTIME.with(|cell| -> Result<String, String> {
                     let runtime = cell.borrow();
                     let Some(client) = runtime.client.as_ref() else {
@@ -627,10 +612,7 @@ impl MessagingGuest for ZeroTierPlugin {
                     Some(TokenSource::ManualPaste) => "manual",
                     _ => "none",
                 };
-                let is_macos = matches!(
-                    torchsnap_gadget_sdk::platform::current_os(),
-                    Os::Macos
-                );
+                let is_macos = matches!(torchsnap_gadget_sdk::platform::current_os(), Os::Macos);
                 serde_json::to_string(&AuthStateResponse {
                     state,
                     source,

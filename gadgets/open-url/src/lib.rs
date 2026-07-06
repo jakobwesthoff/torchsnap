@@ -211,9 +211,7 @@ impl SearchGuest for OpenUrlPlugin {
     }
 
     fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        let url: String = data::decode(
-            entry.data.as_deref().ok_or("no data attached to entry")?,
-        )?;
+        let url: String = data::decode(entry.data.as_deref().ok_or("no data attached to entry")?)?;
 
         match action_id {
             ActionId::Open => {
@@ -221,8 +219,7 @@ impl SearchGuest for OpenUrlPlugin {
                 Ok(PostAction::Dismiss)
             }
             ActionId::Copy => {
-                clipboard::write_text(&url)
-                    .map_err(|e| format!("copy URL to clipboard: {e}"))?;
+                clipboard::write_text(&url).map_err(|e| format!("copy URL to clipboard: {e}"))?;
                 Ok(PostAction::Dismiss)
             }
             other => Err(format!("unsupported action: {other:?}")),
