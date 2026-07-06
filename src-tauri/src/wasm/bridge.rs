@@ -83,6 +83,12 @@ pub struct WasmGadgetBridge {
     gadget_source: Arc<dyn GadgetSource + Send + Sync>,
     /// Host-built capabilities received at construction.
     caps: Arc<crate::caps::ProvisionedCaps>,
+    /// Resolves WIT `app-icon` entry icons to cached icon paths.
+    /// Present iff the gadget holds the `icon-cache` capability;
+    /// `None` otherwise, in which case `AppIcon` entries are
+    /// dropped with a warning at the `entries()`/`search()` call
+    /// sites in `super::bindings`.
+    app_icon_resolver: Option<crate::icons::AppIconResolver>,
     /// Live guest instance, or `None` while disabled.
     ///
     /// **Lock discipline**: never call into the guest while
@@ -266,6 +272,11 @@ impl WasmGadgetBridge {
         let cached =
             CachedComponent::new(runtime, log_ctx, Arc::clone(&source), gadget_data.clone());
 
+        let app_icon_resolver = caps
+            .icon_cache
+            .as_ref()
+            .map(|cache| crate::icons::AppIconResolver::new(Arc::clone(cache)));
+
         Ok(Self {
             manifest,
             gadget_id,
@@ -273,6 +284,7 @@ impl WasmGadgetBridge {
             sql_config,
             gadget_source: source,
             caps,
+            app_icon_resolver,
             instance: Mutex::new(None),
             log_sender,
             parsed_tasks,
@@ -646,7 +658,9 @@ impl Gadget for WasmGadgetBridge {
                 let warnings = super::bindings::resolve_catalog_entries_asset_icons(
                     &mut entries,
                     &self.gadget_id,
-                    None,
+                    self.app_icon_resolver
+                        .as_ref()
+                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);
@@ -682,7 +696,9 @@ impl Gadget for WasmGadgetBridge {
                 let warnings = super::bindings::resolve_search_response_asset_icons(
                     &mut response,
                     &self.gadget_id,
-                    None,
+                    self.app_icon_resolver
+                        .as_ref()
+                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);
@@ -776,6 +792,12 @@ impl WasmGadgetBridge {
     pub(crate) fn sql_config_for_tests(&self) -> &SqlConfig {
         &self.sql_config
     }
+
+    /// Whether the constructor built an `AppIconResolver` — present
+    /// iff the `icon_cache` capability was provisioned.
+    pub(crate) fn has_app_icon_resolver(&self) -> bool {
+        self.app_icon_resolver.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -827,6 +849,31 @@ mod tests {
         )
     }
 
+    /// Build a bridge from a committed fixture directory with
+    /// explicit caps, for tests that vary provisioned
+    /// capabilities (e.g. icon-cache gating) rather than using
+    /// the default `test_caps()`.
+    fn test_bridge_with_caps(
+        fixture: &str,
+        app_data_dir: &std::path::Path,
+        caps: Arc<crate::caps::ProvisionedCaps>,
+    ) -> anyhow::Result<WasmGadgetBridge> {
+        let fixture_path = std::path::Path::new(FIXTURE_ROOT).join(fixture);
+        let source: Arc<dyn GadgetSource + Send + Sync> = Arc::new(
+            DirectorySource::open(&fixture_path)
+                .with_context(|| format!("open fixture `{fixture}`"))?,
+        );
+        let manifest = source.manifest().clone();
+        WasmGadgetBridge::new(
+            manifest,
+            test_runtime(),
+            LogContext::test_context(),
+            source,
+            app_data_dir,
+            caps,
+        )
+    }
+
     /// Build caps for a bridge for tests that verify SQL storage across
     /// enable cycles. Reads SQL storage from the bridge's provisioned caps.
     fn build_test_caps(bridge: &WasmGadgetBridge) -> Arc<crate::caps::ProvisionedCaps> {
@@ -875,6 +922,24 @@ mod tests {
         let bridge = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
         assert!(!bridge.instance_is_some());
         assert!(matches!(bridge.sql_config_for_tests(), SqlConfig::None));
+    }
+
+    #[test]
+    fn new_builds_app_icon_resolver_iff_icon_cache_provisioned() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let without_cache = test_bridge("minimal-gadget", tmp.path()).expect("bridge construction");
+        assert!(!without_cache.has_app_icon_resolver());
+
+        let caps_with_cache = Arc::new(crate::caps::ProvisionedCaps {
+            icon_cache: Some(Arc::new(crate::caps::IconCacheCap::new(
+                tmp.path().join("icon-cache"),
+            ))),
+            ..test_caps_inner()
+        });
+        let with_cache = test_bridge_with_caps("minimal-gadget", tmp.path(), caps_with_cache)
+            .expect("bridge construction");
+        assert!(with_cache.has_app_icon_resolver());
     }
 
     #[test]
