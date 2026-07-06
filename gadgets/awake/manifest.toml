@@ -8,3 +8,36 @@ icon = "heroicons:bolt"
 
 # No `prefixes` — the gadget is keyword-matched ("awake",
 # "amphetamine") rather than routed by an exclusive prefix.
+
+# Availability probe: the presence of Amphetamine's bundle
+# metadata is how `select_backend` decides the backend is
+# usable. Read-only access to just this one file is enough.
+[permissions.filesystem]
+read = ["/Applications/Amphetamine.app/Contents/Info.plist"]
+
+# The gadget drives Amphetamine entirely through `osascript -e
+# <script>`. A single rule covers all three scripts because the
+# host's overlap detector treats any pair of same-length rules
+# for one binary as conflicting once a `regex` constraint is
+# involved (a `regex` is assumed to overlap an `enum` or
+# `literal` at the same position), so an `enum` rule for the
+# fixed status/stop scripts plus a `regex` rule for the
+# parameterized start script cannot coexist. Everything is
+# folded into one anchored alternation instead.
+#
+# The three branches are, in order: the status probe, the stop
+# command, and the start command. Newlines in the multi-line
+# status script are written as `\n`; the two `|` field
+# separators are escaped as `\|`. The start branch pins the
+# option record's shape (`{duration:N, interval:minutes|0,
+# displaySleepAllowed:true|false}`) with `{`/`}` escaped. The
+# constraints shape the invocation surface as defense-in-depth
+# (ADR 0040); they are not a soundness boundary. The
+# `manifest` tests in `backend/amphetamine.rs` assert this
+# pattern accepts exactly the scripts that module emits.
+[[permissions.command]]
+binary = "osascript"
+argv = [
+    { kind = "literal", value = "-e" },
+    { kind = "regex", pattern = '(?:if application "Amphetamine" is running then\ntell application "Amphetamine"\nset isActive to session is active\nset remaining to session time remaining\nset displayAllowed to display sleep allowed\nend tell\nreturn isActive as text & "\|" & remaining as text & "\|" & displayAllowed as text\nelse\nreturn "not-running"\nend if)|(?:tell application "Amphetamine" to end session)|(?:tell application "Amphetamine" to start new session with options \{duration:[0-9]+, interval:(minutes|0), displaySleepAllowed:(true|false)\})' },
+]
