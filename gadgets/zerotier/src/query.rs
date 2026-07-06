@@ -177,7 +177,7 @@ pub fn match_networks(query: &str, rows: &[NetworkRow]) -> Vec<ScoredMatch> {
     // Sort descending by total score so the launcher can
     // stable-sort across gadgets later without re-ordering
     // the within-gadget order.
-    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out.sort_by_key(|r| std::cmp::Reverse(r.score));
     out
 }
 

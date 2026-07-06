@@ -221,7 +221,7 @@ pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
     }
 
     // Sort by score descending, take top 20.
-    results.sort_by(|a, b| b.score.cmp(&a.score));
+    results.sort_by_key(|r| std::cmp::Reverse(r.score));
     results.truncate(20);
     results
 }
