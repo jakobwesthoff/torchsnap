@@ -16,13 +16,6 @@
 //! The only backend today drives Amphetamine.app on macOS
 //! through AppleScript; see [`amphetamine`].
 
-// The backend is wired into `search()` / `execute()` in the
-// next change on this branch (Phase 5). Until then nothing in
-// the crate constructs a backend or reads its data types, so
-// the whole module reads as dead code. The allow is removed
-// once the search wiring consumes these items.
-#![allow(dead_code)]
-
 use torchsnap_gadget_sdk::filesystem;
 use torchsnap_gadget_sdk::platform::{self, Os};
 

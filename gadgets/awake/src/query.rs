@@ -52,13 +52,6 @@
 //! back to "no match": malformed arguments always land on the
 //! hint outcome.
 
-// The parser is the query surface for `search()`, which is wired
-// in the next change on this branch. Until then nothing in the
-// crate calls it, so the whole module would read as dead code.
-// The allow is removed once the search wiring consumes these
-// items.
-#![allow(dead_code)]
-
 /// Outcome of classifying a launcher query against the awake
 /// grammar.
 #[derive(Debug, Clone, PartialEq, Eq)]
