@@ -42,9 +42,9 @@ check-types:
 # Lint everything (Rust + WASM gadgets + frontend)
 lint: lint-crates lint-gadgets lint-frontend
 
-# Lint Rust (clippy)
+# Lint Rust (clippy, including test and bench targets)
 lint-crates:
-    cargo clippy --manifest-path src-tauri/Cargo.toml
+    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 
 # The gadgets/ workspace defaults to wasm32-wasip2 via
 # `.cargo/config.toml`. Clippy runs on the host triple instead — the
