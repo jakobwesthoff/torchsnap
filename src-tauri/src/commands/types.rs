@@ -120,6 +120,10 @@ pub enum EntryIcon {
     AssetIcon(String),
     /// A Unicode emoji character rendered as text in the icon slot.
     Emoji(String),
+    /// Platform-native application identifier (on macOS a bundle
+    /// identifier). Rewritten to `AssetIcon` — or dropped — by the
+    /// WASM response pass before entries reach the frontend.
+    AppIcon(String),
 }
 
 /// A pre-scored result returned by a `Gadget`'s `search()` method.

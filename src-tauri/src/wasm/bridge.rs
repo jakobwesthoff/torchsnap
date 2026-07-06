@@ -646,6 +646,7 @@ impl Gadget for WasmGadgetBridge {
                 let warnings = super::bindings::resolve_catalog_entries_asset_icons(
                     &mut entries,
                     &self.gadget_id,
+                    None,
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);
@@ -681,6 +682,7 @@ impl Gadget for WasmGadgetBridge {
                 let warnings = super::bindings::resolve_search_response_asset_icons(
                     &mut response,
                     &self.gadget_id,
+                    None,
                 );
                 for w in warnings {
                     self.log(LogLevel::Warn, w);

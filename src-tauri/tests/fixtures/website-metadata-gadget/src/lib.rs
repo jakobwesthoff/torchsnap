@@ -101,6 +101,7 @@ fn format_result(r: LookupResult) -> String {
                 EntryIcon::DataUrl(_) => "data-url",
                 EntryIcon::AssetIcon(_) => "asset-icon",
                 EntryIcon::Emoji(_) => "emoji",
+                EntryIcon::AppIcon(_) => "app-icon",
             };
             format!("hit:{title}:{desc}:{icon}")
         }
