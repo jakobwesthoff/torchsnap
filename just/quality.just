@@ -61,23 +61,31 @@ lint-gadgets:
 lint-frontend:
     bun run lint
 
-# Format everything (Rust + WIT + frontend)
-fmt: fmt-crates fmt-wit fmt-frontend
+# Format everything (Rust + WASM gadgets + WIT + frontend)
+fmt: fmt-crates fmt-gadgets fmt-wit fmt-frontend
 
 # Format Rust (cargo fmt)
 fmt-crates:
     cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
+# Format gadget crates (cargo fmt)
+fmt-gadgets:
+    cargo fmt --manifest-path gadgets/Cargo.toml --all
+
 # Format frontend (prettier)
 fmt-frontend:
     bun run fmt
 
-# Check formatting without writing (Rust + WIT + frontend)
-fmt-check: fmt-check-crates fmt-check-wit fmt-check-frontend
+# Check formatting without writing (Rust + WASM gadgets + WIT + frontend)
+fmt-check: fmt-check-crates fmt-check-gadgets fmt-check-wit fmt-check-frontend
 
 # Check Rust formatting
 fmt-check-crates:
     cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
+
+# Check gadget crate formatting
+fmt-check-gadgets:
+    cargo fmt --manifest-path gadgets/Cargo.toml --all --check
 
 # Check frontend formatting
 fmt-check-frontend:
