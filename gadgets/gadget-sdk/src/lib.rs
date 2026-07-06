@@ -47,6 +47,7 @@ wit_bindgen::generate!({
     default_bindings_module: "::torchsnap_gadget_sdk",
 });
 
+pub mod cache;
 pub mod command;
 pub mod data;
 pub mod logging;
@@ -117,7 +118,9 @@ pub mod prelude {
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
     };
-    pub use super::{command, data, logging, messaging, settings, sql_storage, website_metadata};
+    pub use super::{
+        cache, command, data, logging, messaging, settings, sql_storage, website_metadata,
+    };
     pub use super::{
         assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
         website_metadata_host,

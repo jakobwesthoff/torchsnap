@@ -29,13 +29,13 @@ use torchsnap_gadget_sdk::prelude::*;
 mod actions;
 mod api;
 mod auth;
-mod cache;
 mod history;
 mod query;
 
+use torchsnap_gadget_sdk::cache::{DEFAULT_TTL, RateLimitCache};
+
 use api::{ApiError, Client, Network, NetworkStatus};
 use auth::{ResolvedToken, TokenSource};
-use cache::{DEFAULT_TTL, RateLimitCache};
 use query::{Intent, NetworkRow, NetworkState, ScoredMatch};
 
 struct ZeroTierPlugin;
@@ -68,7 +68,7 @@ struct Runtime {
     /// `search()`.
     auth_state: AuthState,
     /// Cached `list_networks` result for up to
-    /// `cache::DEFAULT_TTL`. The slot stores the full
+    /// `DEFAULT_TTL`. The slot stores the full
     /// `Result` so cache hits don't lose error context.
     network_cache: RateLimitCache<Result<Vec<Network>, String>>,
 }
