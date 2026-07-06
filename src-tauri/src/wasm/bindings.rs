@@ -87,6 +87,7 @@ impl From<wit::EntryIcon> for native::EntryIcon {
             wit::EntryIcon::DataUrl(data) => native::EntryIcon::DataUrl(data),
             wit::EntryIcon::AssetIcon(path) => native::EntryIcon::AssetIcon(path),
             wit::EntryIcon::Emoji(emoji) => native::EntryIcon::Emoji(emoji),
+            wit::EntryIcon::AppIcon(identifier) => native::EntryIcon::AppIcon(identifier),
         }
     }
 }
@@ -98,6 +99,7 @@ impl From<native::EntryIcon> for wit::EntryIcon {
             native::EntryIcon::DataUrl(data) => wit::EntryIcon::DataUrl(data),
             native::EntryIcon::AssetIcon(path) => wit::EntryIcon::AssetIcon(path),
             native::EntryIcon::Emoji(emoji) => wit::EntryIcon::Emoji(emoji),
+            native::EntryIcon::AppIcon(identifier) => wit::EntryIcon::AppIcon(identifier),
         }
     }
 }
@@ -263,7 +265,7 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 }
 
 // =========================================================
-// AssetIcon resolution on the response path
+// Icon resolution on the response path
 //
 // `AssetIcon` carries one of three things:
 //
@@ -289,18 +291,36 @@ fn parse_optional_json(json: Option<String>) -> Option<serde_json::Value> {
 //    `AssetIcon` at arbitrary host filesystem locations or
 //    cross-gadget protocol URLs; the host-favicon scheme is
 //    the one whitelisted exception.
+//
+// `AppIcon` carries a platform-native application identifier
+// rather than a path. An injected [`ResolveAppIcon`] turns it
+// into an absolute cached icon path, which is then assigned
+// directly into the `AssetIcon` slot — that path is
+// host-resolved, not gadget-authored, so it skips the
+// `classify_gadget_asset_path` validation above. Without a
+// resolver, or when the resolver can't find the application,
+// the icon is dropped and a warning is recorded.
 // =========================================================
 
 use crate::network::website_metadata::protocol::HOST_FAVICON_SCHEME;
 
-/// Rewrite gadget-relative `AssetIcon` paths in a search result
-/// payload. Returns warning messages for any rejected icons —
-/// the caller (bridge) is responsible for routing them to the
-/// gadget's log.
+/// Resolves a platform-native application identifier (on macOS a
+/// bundle identifier) to the absolute path of a cached icon file
+/// for that application. Returns `None` when the identifier can't
+/// be resolved to an installed application.
+pub trait ResolveAppIcon {
+    fn resolve(&self, gadget_id: &str, identifier: &str) -> Option<String>;
+}
+
+/// Rewrite gadget-relative `AssetIcon` paths and resolve `AppIcon`
+/// entries in a search result payload. Returns warning messages for
+/// any rejected icons — the caller (bridge) is responsible for
+/// routing them to the gadget's log.
 #[must_use = "warnings should be surfaced to the gadget's log"]
 pub fn resolve_search_response_asset_icons(
     response: &mut native::GadgetResponse,
     gadget_id: &str,
+    app_icons: Option<&dyn ResolveAppIcon>,
 ) -> Vec<String> {
     let entries = match response {
         native::GadgetResponse::Results(r) => r.as_mut_slice(),
@@ -309,21 +329,23 @@ pub fn resolve_search_response_asset_icons(
     };
     let mut warnings = Vec::new();
     for entry in entries {
-        resolve_entry_icon(&mut entry.icon, gadget_id, &mut warnings);
+        resolve_entry_icon(&mut entry.icon, gadget_id, app_icons, &mut warnings);
     }
     warnings
 }
 
-/// Rewrite gadget-relative `AssetIcon` paths in catalog entries.
-/// Returns warning messages — see [`resolve_search_response_asset_icons`].
+/// Rewrite gadget-relative `AssetIcon` paths and resolve `AppIcon`
+/// entries in catalog entries. Returns warning messages — see
+/// [`resolve_search_response_asset_icons`].
 #[must_use = "warnings should be surfaced to the gadget's log"]
 pub fn resolve_catalog_entries_asset_icons(
     entries: &mut [native::CatalogEntry],
     gadget_id: &str,
+    app_icons: Option<&dyn ResolveAppIcon>,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     for entry in entries {
-        resolve_entry_icon(&mut entry.icon, gadget_id, &mut warnings);
+        resolve_entry_icon(&mut entry.icon, gadget_id, app_icons, &mut warnings);
     }
     warnings
 }
@@ -331,10 +353,35 @@ pub fn resolve_catalog_entries_asset_icons(
 fn resolve_entry_icon(
     slot: &mut Option<native::EntryIcon>,
     gadget_id: &str,
+    app_icons: Option<&dyn ResolveAppIcon>,
     warnings: &mut Vec<String>,
 ) {
-    let Some(native::EntryIcon::AssetIcon(path)) = slot.as_mut() else {
+    if let Some(native::EntryIcon::AppIcon(identifier)) = slot.as_ref() {
+        // Cloned so the identifier is still available for the warning
+        // message after `slot` is reassigned below.
+        let identifier = identifier.clone();
+        match app_icons.and_then(|r| r.resolve(gadget_id, &identifier)) {
+            Some(cached_path) => *slot = Some(native::EntryIcon::AssetIcon(cached_path)),
+            None if app_icons.is_none() => {
+                warnings.push(format!(
+                    "AppIcon `{identifier}` requires the `icon-cache` permission; \
+                     dropping icon."
+                ));
+                *slot = None;
+            }
+            None => {
+                warnings.push(format!(
+                    "app icon for `{identifier}` could not be resolved; dropping icon."
+                ));
+                *slot = None;
+            }
+        }
         return;
+    }
+
+    let path = match slot.as_mut() {
+        Some(native::EntryIcon::AssetIcon(path)) => path,
+        _ => return,
     };
     match classify_gadget_asset_path(path) {
         AssetPathClass::Relative => {
@@ -799,7 +846,7 @@ mod tests {
     fn relative_asset_path_is_rewritten_to_protocol_url() {
         let mut slot = Some(native::EntryIcon::AssetIcon("assets/icon.svg".into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        resolve_entry_icon(&mut slot, "zerotier", None, &mut warnings);
         match slot {
             Some(native::EntryIcon::AssetIcon(p)) => {
                 assert_eq!(p, "torchsnap-gadget://localhost/zerotier/assets/icon.svg");
@@ -818,7 +865,7 @@ mod tests {
             "/var/cache/favicon.png".into(),
         ));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", None, &mut warnings);
         assert!(slot.is_none(), "absolute path must drop the icon");
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("/var/cache/favicon.png"));
@@ -829,7 +876,7 @@ mod tests {
     fn absolute_windows_path_drops_icon_and_warns() {
         let mut slot = Some(native::EntryIcon::AssetIcon("C:\\cache\\fav.png".into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", None, &mut warnings);
         assert!(slot.is_none(), "absolute path must drop the icon");
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("C:\\cache\\fav.png"));
@@ -843,7 +890,7 @@ mod tests {
             "torchsnap-gadget://localhost/other/secret.svg".into(),
         ));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        resolve_entry_icon(&mut slot, "zerotier", None, &mut warnings);
         assert!(slot.is_none());
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("torchsnap-gadget://"));
@@ -854,7 +901,7 @@ mod tests {
     fn non_asset_icon_variants_are_untouched() {
         let mut slot = Some(native::EntryIcon::HeroIcon("globe-alt".into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "zerotier", &mut warnings);
+        resolve_entry_icon(&mut slot, "zerotier", None, &mut warnings);
         assert!(matches!(&slot, Some(native::EntryIcon::HeroIcon(s)) if s == "globe-alt"));
         assert!(warnings.is_empty());
     }
@@ -874,7 +921,7 @@ mod tests {
         let original = "torchsnap-favicon://localhost/abc123.webp";
         let mut slot = Some(native::EntryIcon::AssetIcon(original.into()));
         let mut warnings = Vec::new();
-        resolve_entry_icon(&mut slot, "any-gadget", &mut warnings);
+        resolve_entry_icon(&mut slot, "any-gadget", None, &mut warnings);
 
         match &slot {
             Some(native::EntryIcon::AssetIcon(p)) => assert_eq!(p, original),
@@ -884,5 +931,221 @@ mod tests {
             warnings.is_empty(),
             "host-favicon URL must not produce warnings, got: {warnings:?}",
         );
+    }
+
+    // =====================================================
+    // resolve_entry_icon — AppIcon
+    // =====================================================
+
+    /// Stub [`ResolveAppIcon`] for tests. Returns a fixed value
+    /// (or `None`) and records the arguments of its last call.
+    struct StubAppIconResolver {
+        result: Option<String>,
+        last_call: std::cell::RefCell<Option<(String, String)>>,
+    }
+
+    impl StubAppIconResolver {
+        fn returning(result: Option<&str>) -> Self {
+            Self {
+                result: result.map(str::to_string),
+                last_call: std::cell::RefCell::new(None),
+            }
+        }
+    }
+
+    impl ResolveAppIcon for StubAppIconResolver {
+        fn resolve(&self, gadget_id: &str, identifier: &str) -> Option<String> {
+            *self.last_call.borrow_mut() = Some((gadget_id.to_string(), identifier.to_string()));
+            self.result.clone()
+        }
+    }
+
+    #[test]
+    fn app_icon_with_resolver_rewrites_to_cached_asset_path() {
+        let resolver = StubAppIconResolver::returning(Some("/cache/gadget/abc.webp"));
+        let mut slot = Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "awake", Some(&resolver), &mut warnings);
+        match slot {
+            Some(native::EntryIcon::AssetIcon(p)) => assert_eq!(p, "/cache/gadget/abc.webp"),
+            other => panic!("expected AssetIcon, got {other:?}"),
+        }
+        assert!(
+            warnings.is_empty(),
+            "no warnings expected, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn app_icon_resolver_receives_gadget_id_and_identifier() {
+        let resolver = StubAppIconResolver::returning(Some("/cache/gadget/abc.webp"));
+        let mut slot = Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "awake", Some(&resolver), &mut warnings);
+        assert_eq!(
+            resolver.last_call.borrow().as_ref(),
+            Some(&("awake".to_string(), "com.if.Amphetamine".to_string()))
+        );
+    }
+
+    #[test]
+    fn app_icon_unresolvable_drops_icon_and_warns() {
+        let resolver = StubAppIconResolver::returning(None);
+        let mut slot = Some(native::EntryIcon::AppIcon("com.example.Missing".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "awake", Some(&resolver), &mut warnings);
+        assert!(slot.is_none(), "unresolvable app icon must drop the icon");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("com.example.Missing"));
+    }
+
+    #[test]
+    fn app_icon_without_resolver_drops_icon_and_warns_about_permission() {
+        let mut slot = Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut slot, "awake", None, &mut warnings);
+        assert!(slot.is_none(), "missing resolver must drop the icon");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("icon-cache"));
+    }
+
+    #[test]
+    fn non_app_icon_variants_untouched_with_resolver_present() {
+        let resolver = StubAppIconResolver::returning(Some("/should/not/be/used.webp"));
+
+        let mut hero_slot = Some(native::EntryIcon::HeroIcon("globe-alt".into()));
+        let mut warnings = Vec::new();
+        resolve_entry_icon(&mut hero_slot, "zerotier", Some(&resolver), &mut warnings);
+        assert!(matches!(&hero_slot, Some(native::EntryIcon::HeroIcon(s)) if s == "globe-alt"));
+
+        let mut emoji_slot = Some(native::EntryIcon::Emoji("🔥".into()));
+        resolve_entry_icon(&mut emoji_slot, "zerotier", Some(&resolver), &mut warnings);
+        assert!(matches!(&emoji_slot, Some(native::EntryIcon::Emoji(s)) if s == "🔥"));
+
+        let mut data_url_slot = Some(native::EntryIcon::DataUrl(
+            "data:image/png;base64,AA".into(),
+        ));
+        resolve_entry_icon(
+            &mut data_url_slot,
+            "zerotier",
+            Some(&resolver),
+            &mut warnings,
+        );
+        assert!(matches!(
+            &data_url_slot,
+            Some(native::EntryIcon::DataUrl(_))
+        ));
+
+        assert!(warnings.is_empty());
+    }
+
+    /// Drive an `AppIcon` entry through every public resolve entry
+    /// point — catalog entries and all three `GadgetResponse`
+    /// shapes — with and without a resolver, and confirm no
+    /// `EntryIcon::AppIcon` survives the pass in any of them.
+    #[test]
+    fn app_icon_never_survives_resolve_pass() {
+        fn assert_no_app_icon_remains(icon: &Option<native::EntryIcon>, label: &str) {
+            assert!(
+                !matches!(icon, Some(native::EntryIcon::AppIcon(_))),
+                "{label} still carries an AppIcon after resolution"
+            );
+        }
+
+        fn scored_entry_with_app_icon(id: &str) -> native::ScoredEntry {
+            native::ScoredEntry {
+                id: id.to_string(),
+                title: id.to_string(),
+                subtitle: None,
+                icon: Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into())),
+                score: 1,
+                title_positions: crate::unicode::Utf16Positions::empty(),
+                subtitle_positions: crate::unicode::Utf16Positions::empty(),
+                actions: vec![],
+                data: None,
+            }
+        }
+
+        for resolver in [
+            None,
+            Some(StubAppIconResolver::returning(Some("/cache/icon.webp"))),
+        ] {
+            let resolver_ref = resolver.as_ref().map(|r| r as &dyn ResolveAppIcon);
+
+            let mut catalog_entries = vec![native::CatalogEntry {
+                id: "cat".to_string(),
+                title: "Catalog Entry".to_string(),
+                subtitle: None,
+                icon: Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into())),
+                keywords: vec![],
+                actions: vec![],
+            }];
+            let _ =
+                resolve_catalog_entries_asset_icons(&mut catalog_entries, "awake", resolver_ref);
+            assert_no_app_icon_remains(&catalog_entries[0].icon, "catalog entry");
+
+            let mut results_response =
+                native::GadgetResponse::Results(vec![scored_entry_with_app_icon("r1")]);
+            let _ =
+                resolve_search_response_asset_icons(&mut results_response, "awake", resolver_ref);
+            match &results_response {
+                native::GadgetResponse::Results(entries) => {
+                    assert_no_app_icon_remains(&entries[0].icon, "Results entry")
+                }
+                other => panic!("expected Results, got {other:?}"),
+            }
+
+            let mut custom_ui_response = native::GadgetResponse::CustomUI {
+                view: "picker".to_string(),
+                data: None,
+                results: vec![scored_entry_with_app_icon("c1")],
+            };
+            let _ =
+                resolve_search_response_asset_icons(&mut custom_ui_response, "awake", resolver_ref);
+            match &custom_ui_response {
+                native::GadgetResponse::CustomUI { results, .. } => {
+                    assert_no_app_icon_remains(&results[0].icon, "CustomUI entry")
+                }
+                other => panic!("expected CustomUI, got {other:?}"),
+            }
+
+            let mut inline_ui_response = native::GadgetResponse::InlineUI {
+                view: "result".to_string(),
+                data: None,
+                results: vec![scored_entry_with_app_icon("i1")],
+            };
+            let _ =
+                resolve_search_response_asset_icons(&mut inline_ui_response, "awake", resolver_ref);
+            match &inline_ui_response {
+                native::GadgetResponse::InlineUI { results, .. } => {
+                    assert_no_app_icon_remains(&results[0].icon, "InlineUI entry")
+                }
+                other => panic!("expected InlineUI, got {other:?}"),
+            }
+        }
+    }
+
+    // =====================================================
+    // EntryIcon::AppIcon conversions
+    // =====================================================
+
+    #[test]
+    fn app_icon_wit_to_native_round_trip() {
+        let native_icon: native::EntryIcon =
+            wit::EntryIcon::AppIcon("com.if.Amphetamine".to_string()).into();
+        match native_icon {
+            native::EntryIcon::AppIcon(id) => assert_eq!(id, "com.if.Amphetamine"),
+            other => panic!("expected AppIcon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn app_icon_native_to_wit_round_trip() {
+        let wit_icon: wit::EntryIcon =
+            native::EntryIcon::AppIcon("com.if.Amphetamine".to_string()).into();
+        match wit_icon {
+            wit::EntryIcon::AppIcon(id) => assert_eq!(id, "com.if.Amphetamine"),
+            other => panic!("expected AppIcon, got {other:?}"),
+        }
     }
 }

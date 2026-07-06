@@ -680,6 +680,13 @@ interface types {
     /// should always pass a relative path.
     asset-icon(string),
     emoji(string),
+    /// Real icon of an installed application. Pass a platform-native
+    /// application identifier — on macOS a bundle identifier, e.g.
+    /// `com.if.Amphetamine` — and the launcher shows that
+    /// application's actual icon. Requires the `icon-cache`
+    /// permission in the manifest. If the application cannot be
+    /// found, the entry is shown without an icon.
+    app-icon(string),
   }
 
   /// Well-known action identifiers. Gadgets use these for
