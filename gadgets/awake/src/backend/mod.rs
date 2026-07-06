@@ -16,6 +16,7 @@
 //! The only backend today drives Amphetamine.app on macOS
 //! through AppleScript; see [`amphetamine`].
 
+use torchsnap_gadget_sdk::EntryIcon;
 use torchsnap_gadget_sdk::filesystem;
 use torchsnap_gadget_sdk::platform::{self, Os};
 
@@ -90,6 +91,10 @@ pub(crate) trait KeepAwakeBackend {
     /// error at this layer; backends surface only genuine
     /// failures.
     fn stop(&self) -> Result<(), String>;
+
+    /// Icon shown on the gadget's entries while this backend is
+    /// selected. `None` means the gadget's default icon is used.
+    fn entry_icon(&self) -> Option<EntryIcon>;
 }
 
 // =========================================================
@@ -100,6 +105,10 @@ pub(crate) trait KeepAwakeBackend {
 /// to the standard applications folder. Its presence is the
 /// availability probe for the Amphetamine backend.
 const AMPHETAMINE_INFO_PLIST: &str = "/Applications/Amphetamine.app/Contents/Info.plist";
+
+/// Amphetamine's macOS bundle identifier, used to look up its
+/// real application icon for the `app-icon` entry icon.
+const AMPHETAMINE_BUNDLE_ID: &str = "com.if.Amphetamine";
 
 /// Pick the keep-awake backend for this host, or `None` when
 /// no supported mechanism is available. Probed once at gadget

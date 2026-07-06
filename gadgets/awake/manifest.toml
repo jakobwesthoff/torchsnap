@@ -9,6 +9,12 @@ icon = "heroicons:bolt"
 # No `prefixes` — the gadget is keyword-matched ("awake",
 # "amphetamine") rather than routed by an exclusive prefix.
 
+# Every entry shows Amphetamine's real application icon via the
+# `app-icon` entry icon (its bundle id, `com.if.Amphetamine`);
+# resolving that variant requires this permission.
+[permissions]
+icon-cache = true
+
 # Availability probe: the presence of Amphetamine's bundle
 # metadata is how `select_backend` decides the backend is
 # usable. Read-only access to just this one file is enough.
