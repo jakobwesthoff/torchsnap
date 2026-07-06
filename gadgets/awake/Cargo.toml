@@ -13,3 +13,7 @@ serde_json = "1.0.149"
 
 [lib]
 crate-type = ["cdylib"]
+
+[dev-dependencies]
+regex = "1.12"
+toml = "1.1"
