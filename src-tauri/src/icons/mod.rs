@@ -5,14 +5,17 @@
 // =========================================================
 // Icon Infrastructure
 //
-// Platform-independent icon caching and processing. The
-// platform-specific extraction trait lives in `platform::
-// icon_extraction`; everything here works with the decoded
-// images that extractors produce.
+// Platform-independent icon caching, processing, and
+// identifier-based resolution. Icon extraction itself is
+// platform-specific and lives in the `platform` module;
+// everything here works with the decoded images those
+// extractors produce.
 // =========================================================
 
+mod app_icon;
 mod icon_cache;
 mod icon_processing;
 
+pub use app_icon::AppIconResolver;
 pub use icon_cache::IconCache;
 pub use icon_processing::process_icon;

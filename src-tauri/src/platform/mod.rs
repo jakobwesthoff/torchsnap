@@ -39,6 +39,10 @@ pub use macos::MacosTray as PlatformTray;
 pub use macos::MacosWindowChrome as PlatformWindowChrome;
 #[cfg(target_os = "macos")]
 pub use macos::MdfindDiscovery as PlatformAppDiscovery;
+#[cfg(target_os = "macos")]
+pub use macos::app_path_for_identifier;
+#[cfg(target_os = "macos")]
+pub use macos::icon_image_for_path;
 
 #[cfg(not(target_os = "macos"))]
 mod fallback;
@@ -54,6 +58,10 @@ pub use fallback::FallbackSettingsDiscovery as PlatformSettingsDiscovery;
 pub use fallback::FallbackTray as PlatformTray;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackWindowChrome as PlatformWindowChrome;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::app_path_for_identifier;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::icon_image_for_path;
 
 /// Abstraction over platform-specific launcher window behavior.
 ///

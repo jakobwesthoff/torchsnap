@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod app_discovery;
+mod app_resolver;
 pub(crate) mod cgimage_conversion;
 mod clipboard;
 mod launcher_panel;
@@ -12,6 +13,7 @@ mod tray;
 mod window_chrome;
 
 pub use app_discovery::MdfindDiscovery;
+pub use app_resolver::{app_path_for_identifier, icon_image_for_path};
 pub use clipboard::MacosClipboard;
 pub use launcher_panel::MacosLauncherPanel;
 pub use settings_discovery::MacosSettingsDiscovery;

@@ -18,7 +18,7 @@
 // =========================================================
 
 pub mod argv_matcher;
-mod bindings;
+pub(crate) mod bindings;
 pub mod bridge;
 pub mod discovery;
 pub mod interface_gate;
