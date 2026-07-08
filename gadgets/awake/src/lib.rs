@@ -18,9 +18,10 @@
 //! probed once when the gadget is enabled.
 
 use std::cell::RefCell;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use torchsnap_gadget_sdk::cache::{DEFAULT_TTL, RateLimitCache};
+use torchsnap_gadget_sdk::cache::RateLimitCache;
 use torchsnap_gadget_sdk::prelude::*;
 
 mod backend;
@@ -28,6 +29,9 @@ mod query;
 
 use backend::{KeepAwakeBackend, SessionKind, SessionRequest, SessionStatus, select_backend};
 use query::{Query, StartRequest};
+
+/// Cache awake infomration abouts for 15s before requiring them.
+const AWAKE_CACHE_TTL: Duration = Duration::from_secs(15);
 
 struct AwakeGadget;
 define_gadget!(AwakeGadget);
@@ -62,7 +66,7 @@ impl Runtime {
     fn new() -> Self {
         Self {
             backend: None,
-            status_cache: RateLimitCache::new(DEFAULT_TTL),
+            status_cache: RateLimitCache::new(AWAKE_CACHE_TTL),
         }
     }
 }
