@@ -39,3 +39,22 @@ Deferred. Using `mdfind` behind an `AppDiscovery` trait abstraction
 so the backend can be swapped later without touching gadget logic.
 The trait also serves as the platform abstraction point (Linux:
 `.desktop` files, Windows: Start Menu).
+
+## Update (2026-07-15)
+
+A broken Data-volume Spotlight store caused `mdfind` to return only
+Safari.app from `/Applications` (61 apps installed) while exiting 0,
+so discovery succeeded with silently incomplete data. Details in
+`01kxk8kxsaed0ah2q0z6eamhg2-app-discovery-fallback-directory-scan.md`.
+This adds a correctness argument for option 4 (directory scanning)
+beyond the original performance motivation.
+
+During the same incident, option 1 (`_LSCopyAllApplicationURLs`) was
+verified working on macOS 26.5.1 via a Swift probe: it returned 365
+registered apps (177 under Applications directories, including the
+Ghostty.app that `mdfind` missed) while the Spotlight store was
+corrupt. The LaunchServices registry is maintained independently of
+the volume metadata store, so this backend is immune to the failure
+mode above. The API remains private/undocumented; calling it from
+Rust requires an `unsafe extern "C"` declaration against
+CoreServices returning a `CFArrayRef` of `CFURLRef`s.
