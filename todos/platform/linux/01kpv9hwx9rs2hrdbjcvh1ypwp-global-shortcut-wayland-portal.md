@@ -10,7 +10,7 @@ Mutter does not forward key events to XWayland grabbers when a
 Wayland-native window holds focus, so the grab is effectively
 unreachable for most users.
 
-Verified upstream: `~/.cargo/registry/src/index.crates.io-*/global-hotkey-0.7.0/src/platform_impl/`
+Verified upstream: `~/.cargo/registry/src/index.crates.io-*/global-hotkey-0.8.0/src/platform_impl/`
 routes Linux to `x11/mod.rs` (x11rb `grab_key`). No Wayland or portal
 backend exists.
 
