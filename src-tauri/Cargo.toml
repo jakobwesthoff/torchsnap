@@ -73,11 +73,11 @@ percent-encoding = "2"
 url = "2"
 addr = "0.15"
 toml = "1.1.2"
-wasmtime = { version = "43.0.0", features = [
+wasmtime = { version = "47.0", features = [
     "component-model",
     "winch",
 ], default-features = false }
-wasmtime-wasi = { version = "43.0.0", default-features = false, features = ["p2"] }
+wasmtime-wasi = { version = "47.0", default-features = false, features = ["p2"] }
 zip = { version = "8.5.0", default-features = false, features = ["deflate"] }
 cron = "0.17"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
