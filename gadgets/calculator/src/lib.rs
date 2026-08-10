@@ -555,7 +555,7 @@ fn save_to_history(db: &SqlHandle, expression: &str, result: &EvalResult) -> Res
         .map_err(|e| format!("dedup query: {e}"))?;
 
     if existing.is_empty() {
-        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let id = ulid::Ulid::generate().to_string().to_lowercase();
         db.execute(
             "INSERT INTO calc_history (id, expression, result, result_type, content_hash) \
              VALUES (?, ?, ?, ?, ?)",
