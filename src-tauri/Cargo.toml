@@ -73,6 +73,13 @@ percent-encoding = "2"
 url = "2"
 addr = "0.15"
 toml = "1.1.2"
+# `default-features = false` drops wasmtime's `gc`, `gc-copying`,
+# `gc-drc` and `gc-null` features along with the rest. Gadgets are
+# Rust compiled to `wasm32-wasip2` and hold their state in linear
+# memory, so no collector is needed; component-model `resource`
+# handles live in the host's ResourceTable, not in a GC heap. With
+# `gc` off, wasmtime disables the GC wasm features outright and
+# rejects any component that uses them.
 wasmtime = { version = "47.0", features = [
     "component-model",
     "winch",
