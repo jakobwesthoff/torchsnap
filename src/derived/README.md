@@ -1,23 +1,30 @@
 # Derived Data
 
-This directory contains **generated files that are checked into version
-control**. They are produced by `just` recipes from source data and should
-not be edited by hand — your changes will be overwritten on the next
-regeneration.
+This directory contains generated files produced by `just` recipes from
+source data. They should not be edited by hand — changes are overwritten on
+the next regeneration.
 
 ## Files
 
-| File | Source | Recipe |
-|---|---|---|
-| `mascots.json` | `assets/mascot/mascots.json` + `assets/mascot/*-1024.png` | `just asset-mascot-data` |
-| `timezone-coordinates.json` | System `/usr/share/zoneinfo/zone.tab` | `just asset-timezone-data` |
+| File | Source | Recipe | Tracked |
+|---|---|---|---|
+| `mascots.json` | `assets/mascot/mascots.json` + `assets/mascot/*-1024.png` | `just asset-mascot-data` | no |
+| `timezone-coordinates.json` | System `/usr/share/zoneinfo/zone.tab` | `just asset-timezone-data` | yes |
 
-## Why check them in?
+## `mascots.json` is generated, not tracked
 
-These files are needed at build time by Vite's JSON import. Checking them
-in means `bun install && bun run build` works without requiring ImageMagick
-or other asset tooling to be installed — only contributors who change the
-source data need to regenerate.
+Its trim values are derived from the alpha channel of the source PNGs, so
+adding a mascot changes the file without anyone editing it. It is gitignored
+and every recipe that compiles or type-checks the frontend (`just build`,
+`just build-frontend`, `just start`, `just check-types`) depends on
+`asset-mascot-data`, which regenerates it whenever a source PNG or the
+hand-authored `assets/mascot/mascots.json` is newer than the output.
+
+This makes ImageMagick a build requirement. `bun run build` on its own will
+fail to resolve the import on a fresh checkout — go through `just` instead.
+
+`timezone-coordinates.json` is tracked because its source is a system file
+that is not part of the repository.
 
 ## Regeneration
 

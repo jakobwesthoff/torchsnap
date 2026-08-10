@@ -23,3 +23,21 @@ bundled with release builds is whitelisted in `gadgets/bundled.toml`.
 - Quality gates cover the gadgets workspace: new `lint-gadgets`,
   `fmt-gadgets`, and `fmt-check-gadgets` recipes wired into `just lint` /
   `just fmt` / `just fmt-check`; `lint-crates` lints all cargo targets.
+
+### Changed
+
+- `just build`, `just build-frontend`, `just start`, and `just check-types`
+  depend on `asset-mascot-data`, so the generated `src/derived/mascots.json`
+  is rebuilt from the mascot source PNGs before the frontend compiles.
+  ImageMagick is required for these recipes; `bun run build` on its own no
+  longer resolves the import on a fresh checkout.
+
+### Fixed
+
+- Mascot placement for the 22 variants added in the tournament batch
+  (hellfire specter, wide hat monk, iron fist brawler, spec ops commander and
+  their siblings). They carried no trim data, so the launcher positioned them
+  as if their artwork filled the image canvas edge to edge and they floated
+  up to 29px above the search bar instead of resting on it.
+- Dev builds warn on the console when a mascot variant has no trim data
+  rather than silently misplacing it.

@@ -72,13 +72,37 @@ export function isNsfwVariant(variant: string): boolean {
 
 const DEFAULT_TRIM: MascotTrim = { top: 0, right: 0, bottom: 0, left: 0 };
 
+/** Variants already reported as missing trim, so the dev-mode warning
+ *  fires once per variant instead of on every render. */
+const warnedMissingTrim = new Set<string>();
+
 /**
  * Returns the trim data for a given variant — the percentage of
  * transparent space on each edge of the source image. Falls back to
  * zero trim when no data is available.
+ *
+ * Zero trim tells the placement math that the artwork fills its canvas
+ * edge to edge, which floats the mascot above its intended resting
+ * position by however much transparent padding the image really has.
+ * The failure is subtle enough to survive review, so dev builds warn
+ * about it — a variant reaching this fallback either has no source PNG
+ * under `assets/mascot/` or predates the last `just asset-mascot-data`
+ * run.
  */
 export function getMascotTrim(variant: string): MascotTrim {
-  return mascots[variant]?.trim ?? DEFAULT_TRIM;
+  const trim = mascots[variant]?.trim;
+  if (trim) return trim;
+
+  if (import.meta.env.DEV && !warnedMissingTrim.has(variant)) {
+    warnedMissingTrim.add(variant);
+    console.warn(
+      `Mascot "${variant}" has no trim data — falling back to zero trim, ` +
+        `which misplaces it vertically. Run \`just asset-mascot-data\` and ` +
+        `confirm \`assets/mascot/snappy-${variant}-1024.png\` exists.`,
+    );
+  }
+
+  return DEFAULT_TRIM;
 }
 
 // =========================================================
