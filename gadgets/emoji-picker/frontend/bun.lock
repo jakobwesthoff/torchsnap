@@ -4,14 +4,14 @@
   "workspaces": {
     "": {
       "devDependencies": {
-        "@tailwindcss/vite": "^4",
+        "@tailwindcss/vite": "^4.3.3",
         "@torchsnap/gadget-sdk": "file:../../../packages/gadget-sdk",
-        "@types/react": "^19",
-        "@vitejs/plugin-react": "^6",
+        "@types/react": "^19.2.18",
+        "@vitejs/plugin-react": "^6.0.5",
         "emojibase-data": "^17.0.0",
-        "tailwindcss": "^4",
-        "typescript": "^6",
-        "vite": "^8",
+        "tailwindcss": "^4.3.3",
+        "typescript": "^6.0.3",
+        "vite": "^8.2.1",
       },
     },
   },
