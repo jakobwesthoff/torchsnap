@@ -70,7 +70,7 @@ impl WatcherHandler {
             return Ok(());
         }
 
-        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let id = ulid::Ulid::generate().to_string().to_lowercase();
         self.state
             .store_entry(&id, &result.display_text, &result.formats)?;
         self.state.refresh_active_query();
