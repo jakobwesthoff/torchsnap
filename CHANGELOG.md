@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next dismissed.
 - Switching directly from one gadget view to another no longer shows the
   previous view's footer hints until the new view publishes its own.
+- `just lint-crates` and `just lint-gadgets` now fail on any clippy
+  warning.
 
 ## [0.9.0] - 2026-08-10
 
