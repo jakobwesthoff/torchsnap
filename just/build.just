@@ -11,15 +11,21 @@
 # under `gadgets/` — bundled or not — has an up-to-date committed
 # `.torchsnap` for the dev-directory loader.
 
+# `asset-mascot-data` produces `src/derived/mascots.json`, which the
+# frontend imports directly. It is generated rather than tracked, so
+# every recipe that compiles the frontend depends on it — that also
+# keeps the mascot trim values in step with the source PNGs whenever a
+# new mascot is added.
+
 # Build the Tauri app (gadgets + frontend + Rust)
 [arg('profile', long='release', value='release')]
-build profile="debug":
+build profile="debug": asset-mascot-data
     just stage-bundled-gadgets
     just build-gadgets
     bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
 
 # Build only the frontend (Vite + TypeScript)
-build-frontend:
+build-frontend: asset-mascot-data
     bun run build
 
 # Check the Rust crate compiles

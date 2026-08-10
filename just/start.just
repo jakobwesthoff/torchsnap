@@ -7,5 +7,5 @@
 # Vite HMR frontend with the native Rust backend.
 
 # Start Torchsnap in Tauri dev mode (Vite HMR + native window)
-start:
+start: asset-mascot-data
     bun run tauri dev

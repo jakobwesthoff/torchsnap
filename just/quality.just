@@ -35,8 +35,9 @@ check: check-crates check-wit check-gadgets check-types
 check-crates:
     cargo check --manifest-path src-tauri/Cargo.toml
 
-# Type-check the frontend
-check-types:
+# Type-check the frontend. `src/derived/mascots.json` is a generated
+# import, so `asset-mascot-data` has to run before tsc can resolve it.
+check-types: asset-mascot-data
     bun run tsc --noEmit
 
 # Lint everything (Rust + WASM gadgets + frontend)
