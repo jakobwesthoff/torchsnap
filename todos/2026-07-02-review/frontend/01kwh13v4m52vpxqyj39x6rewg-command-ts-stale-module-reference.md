@@ -16,9 +16,9 @@ that no longer exists:
   > `src-tauri/src/lib.rs` and `src-tauri/src/search/mod.rs`.
 
 - `src/types.ts` — five section headers cite the dead path:
-  lines 18, 60, 98 ("Mirrors `src-tauri/src/search/types.rs`"),
+  lines 18, 57, 95 ("Mirrors `src-tauri/src/search/types.rs`"),
   line 45 ("Mirrors `PostAction` in
-  `src-tauri/src/search/types.rs`"), and line 111 ("Mirrors
+  `src-tauri/src/search/types.rs`"), and line 108 ("Mirrors
   `SearchMessage` in `src-tauri/src/search/mod.rs`").
 
 - `src/launcher/compareEntries.ts:11-12`: "The Rust backend has

@@ -85,8 +85,7 @@ export function isSpan(item: LogItem): boolean {
 // =========================================================
 
 export type DevToolsMessage =
-  | { type: "entries"; entries: LogItem[] }
-  | { type: "dropped"; count: number };
+  { type: "entries"; entries: LogItem[] } | { type: "dropped"; count: number };
 
 export interface LogStats {
   count: number;

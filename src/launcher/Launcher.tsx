@@ -52,6 +52,22 @@ function actionsToFooterState(actions: Action[]): FooterState {
   };
 }
 
+/** A footer published by a gadget view, tagged with the view it came
+ *  from. `viewKey` is `null` only for the initial empty entry. */
+interface FooterEntry {
+  viewKey: string | null;
+  footer: FooterState | null;
+}
+
+const NO_FOOTER: FooterEntry = { viewKey: null, footer: null };
+
+/** Identity of a gadget view for footer ownership. Two different views
+ *  of the same gadget publish independent footers, so both parts of the
+ *  reference take part. */
+function viewKey(ref: GadgetViewRef | null): string | null {
+  return ref ? `${ref.gadgetId} ${ref.view}` : null;
+}
+
 /** Dummy footer state used during measurement to ensure the footer
  *  renders at its real height. */
 const MEASURE_FOOTER: FooterState = {
@@ -325,25 +341,49 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const hasGadgetView = customGadgetView != null;
 
-  // Footer state set by the active gadget or inline view via
-  // their onFooterChange callback. `null` means no gadget/inline
-  // footer — fall back to deriving from the selected entry's actions.
-  const [gadgetFooter, setGadgetFooter] = useState<FooterState | null>(null);
-  const [inlineFooter, setInlineFooter] = useState<FooterState | null>(null);
+  // Footer state set by the active gadget or inline view via their
+  // onFooterChange callback. Each footer is stored together with the
+  // view that published it, so a footer belonging to a view that is no
+  // longer on screen is ignored rather than lingering until the next
+  // view publishes its own. `null` means no gadget/inline footer — fall
+  // back to deriving from the selected entry's actions.
+  const gadgetViewKey = viewKey(customGadgetView);
+  const inlineViewKey = viewKey(activeInlineView);
 
-  // Reset gadget footer when leaving gadget mode.
-  useEffect(() => {
-    if (!customGadgetView) {
-      setGadgetFooter(null);
-    }
-  }, [customGadgetView]);
+  const [gadgetFooterEntry, setGadgetFooterEntry] = useState<FooterEntry>(NO_FOOTER);
+  const [inlineFooterEntry, setInlineFooterEntry] = useState<FooterEntry>(NO_FOOTER);
 
-  // Reset inline footer when the inline view disappears.
-  useEffect(() => {
-    if (!activeInlineView) {
-      setInlineFooter(null);
-    }
-  }, [activeInlineView]);
+  // Drop a footer as soon as its view leaves, rather than only masking
+  // it: a view can be opened, closed and opened again under the same
+  // key, and a view that publishes its footer conditionally would
+  // otherwise show the departed instance's footer on the way back in.
+  // Adjusting state during render is React's prescribed answer for
+  // resetting state in response to a change; React re-runs this
+  // component immediately and discards the render below.
+  if (gadgetFooterEntry.viewKey !== null && gadgetFooterEntry.viewKey !== gadgetViewKey) {
+    setGadgetFooterEntry(NO_FOOTER);
+  }
+  if (inlineFooterEntry.viewKey !== null && inlineFooterEntry.viewKey !== inlineViewKey) {
+    setInlineFooterEntry(NO_FOOTER);
+  }
+
+  const handleGadgetFooterChange = useCallback(
+    (footer: FooterState | null) => setGadgetFooterEntry({ viewKey: gadgetViewKey, footer }),
+    [gadgetViewKey],
+  );
+  const handleInlineFooterChange = useCallback(
+    (footer: FooterState | null) => setInlineFooterEntry({ viewKey: inlineViewKey, footer }),
+    [inlineViewKey],
+  );
+
+  const gadgetFooter =
+    gadgetViewKey !== null && gadgetFooterEntry.viewKey === gadgetViewKey
+      ? gadgetFooterEntry.footer
+      : null;
+  const inlineFooter =
+    inlineViewKey !== null && inlineFooterEntry.viewKey === inlineViewKey
+      ? inlineFooterEntry.footer
+      : null;
 
   const inlineSelected = activeInlineView != null && selectedIndex === 0;
   const listSelectedIndex = activeInlineView != null ? selectedIndex - 1 : selectedIndex;
@@ -497,11 +537,11 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       goBack: handleGoBack,
       dismiss,
       onExecute: handleGadgetExecute,
-      onFooterChange: setGadgetFooter,
+      onFooterChange: handleGadgetFooterChange,
       setDisplayQuery,
       mouseActiveRef,
     }),
-    [handleGoBack, dismiss, handleGadgetExecute, setDisplayQuery],
+    [handleGoBack, dismiss, handleGadgetExecute, handleGadgetFooterChange, setDisplayQuery],
   );
 
   const inlineInfo = useMemo<GadgetInfo>(
@@ -527,7 +567,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       },
       dismiss,
       onExecute: handleInlineExecute,
-      onFooterChange: setInlineFooter,
+      onFooterChange: handleInlineFooterChange,
       setDisplayQuery: () => {
         if (import.meta.env.DEV) {
           console.warn(
@@ -537,7 +577,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       },
       mouseActiveRef,
     }),
-    [dismiss, handleInlineExecute],
+    [dismiss, handleInlineExecute, handleInlineFooterChange],
   );
 
   // =========================================================

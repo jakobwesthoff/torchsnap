@@ -35,16 +35,21 @@ check: check-crates check-wit check-gadgets check-types
 check-crates:
     cargo check --manifest-path src-tauri/Cargo.toml
 
-# Type-check the frontend
-check-types:
+# Type-check the frontend. `src/derived/mascots.json` is a generated
+# import, so `asset-mascot-data` has to run before tsc can resolve it.
+check-types: asset-mascot-data
     bun run tsc --noEmit
 
 # Lint everything (Rust + WASM gadgets + frontend)
 lint: lint-crates lint-gadgets lint-frontend
 
+# Both clippy recipes deny warnings. Every crate in the repo lints
+# clean, so anything new is a regression rather than noise added to a
+# backlog; deliberately kept items carry a targeted `#[allow(...)]`.
+
 # Lint Rust (clippy, including test and bench targets)
 lint-crates:
-    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 # The gadgets/ workspace defaults to wasm32-wasip2 via
 # `.cargo/config.toml`. Clippy runs on the host triple instead — the
@@ -55,7 +60,7 @@ lint-crates:
 
 # Lint gadget crates (forces host target over the wasm32-wasip2 default)
 lint-gadgets:
-    cd gadgets && cargo clippy --workspace --all-targets --target "$(rustc -vV | sed -n 's|host: ||p')"
+    cd gadgets && cargo clippy --workspace --all-targets --target "$(rustc -vV | sed -n 's|host: ||p')" -- -D warnings
 
 # Lint frontend (eslint)
 lint-frontend:

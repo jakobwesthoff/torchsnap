@@ -1,6 +1,6 @@
 [package]
 name = "torchsnap"
-version = "0.1.0"
+version = "0.9.0"
 description = "torchsnap"
 authors = ["Jakob Westhoff <jakob@westhoffswelt.de> (https://westhoffswelt.de)"]
 edition = "2024"
@@ -39,10 +39,10 @@ image = { version = "0.25.10", features = [
     "png",
 ], default-features = false }
 tauri-plugin-os = "2"
-rusqlite = { version = "0.39.0", features = ["bundled"] }
-rusqlite_migration = "2.5.0"
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6"
 clipboard-rs = "0.3.3"
-ulid = "1.2.1"
+ulid = "3.0"
 tokio = { version = "1.50.0", default-features = false, features = [
     "sync",
     "time",
@@ -65,21 +65,28 @@ reqwest = { version = "0.13.2", default-features = false, features = [
     "zstd",
 ] }
 urlencoding = "2.1.3"
-scraper = "0.22"
-infer = "0.16"
+scraper = "0.27"
+infer = "0.22"
 thiserror = "2"
-base64 = "0.22"
+base64 = "0.23"
 percent-encoding = "2"
 url = "2"
 addr = "0.15"
 toml = "1.1.2"
-wasmtime = { version = "43.0.0", features = [
+# `default-features = false` drops wasmtime's `gc`, `gc-copying`,
+# `gc-drc` and `gc-null` features along with the rest. Gadgets are
+# Rust compiled to `wasm32-wasip2` and hold their state in linear
+# memory, so no collector is needed; component-model `resource`
+# handles live in the host's ResourceTable, not in a GC heap. With
+# `gc` off, wasmtime disables the GC wasm features outright and
+# rejects any component that uses them.
+wasmtime = { version = "47.0", features = [
     "component-model",
     "winch",
 ], default-features = false }
-wasmtime-wasi = { version = "43.0.0", default-features = false, features = ["p2"] }
+wasmtime-wasi = { version = "47.0", default-features = false, features = ["p2"] }
 zip = { version = "8.5.0", default-features = false, features = ["deflate"] }
-cron = "0.16.0"
+cron = "0.17"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
 tauri-plugin-dialog = "2.7.0"
 globset = "0.4.18"
