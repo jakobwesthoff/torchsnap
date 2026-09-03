@@ -1,0 +1,326 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow", "numpy", "scipy"]
+# ///
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Detect mascot PNGs whose alpha matte carries residue the mascot itself does
+# not account for — cast shadows, cutout scraps, halo fragments left behind
+# when the original background was removed.
+#
+# `tools/detect-mascot-borders` inspects a thin strip along the canvas border.
+# This tool cares instead about residue anywhere inside the canvas, and
+# reports two classes that have different consequences. `tools/refine-mascot-alpha`
+# is the fix for what `detect-mascot-borders` finds — it re-cuts the alpha
+# matte via Pixian.AI — but it does not touch interior residue, which is why
+# this tool exists as a separate detector rather than folding into either.
+#
+# HARD residue sits above the 75% alpha mark and is detached from the body.
+# It matters because `just asset-mascot-data` thresholds alpha at exactly 75%
+# and takes the bounding box of everything that survives, so hard residue
+# below the feet inflates the mascot's apparent height and the launcher then
+# floats it off the input edge. Measured as the shift in trim percentages
+# once every component but the largest is discarded.
+#
+# HALO residue is faint enough to fall under that 75% mark and sits away from
+# the opaque silhouette. The trim computation ignores it, so placement is
+# unaffected, but the renderer still draws it: a grey smudge beside or below
+# a mascot that is supposed to stand cleanly on the edge of the input area.
+# Measured by dilating the opaque silhouette to absorb ordinary edge
+# antialiasing and counting whatever faint pixels remain outside.
+#
+# Caveat for the reader acting on this report: residue is not automatically
+# wrong. Flame glow, energy auras, magical trails and deliberate ground
+# shadows are legitimate art and all register here. The shape of the finding
+# is what separates them. A halo cluster spread across the mascot's whole
+# height is usually an aura; a dense band confined to the lowest fifth of the
+# figure and wider than the feet is usually a cast shadow. The numbers rank
+# and locate candidates; confirming each one is a visual step.
+#
+# Output (TSV on stdout, worst first by the active sort key):
+#
+#   <key>\t<filename>\thard=<Δpp> halo=<area>px² a<max> span=y<lo>-<hi> ...
+#
+# `hard` is the bottom-trim shift in percentage points of the canvas,
+# directly comparable to the `trim` values in `src/derived/mascots.json`.
+# `halo` counts the faint residue, gives its strongest alpha, and locates its
+# vertical span. `low` is the share of that residue falling in the bottom
+# third of the mascot's own extent, which is where a cast shadow lands.
+#
+# Usage:
+#   tools/detect-mascot-strays [mascot dir] [--sort halo|low|hard] [--detail]
+#
+
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+from scipy import ndimage
+
+# The trim pipeline in `just/assets.just` runs `magick -channel A -threshold
+# 75%`, which keeps alpha strictly above 75% of full scale. Mirroring that
+# exactly is what makes the hard deltas below predictive of the shipped
+# values rather than merely suggestive.
+ALPHA_THRESHOLD = 0.75 * 255
+
+# Anything at or below this alpha is treated as transparent. PNG encoders and
+# matting models routinely leave a wash of single-digit alpha across cut-out
+# regions; counting those would drown the genuine residue in noise.
+HALO_FLOOR = 12
+
+# How far the opaque silhouette is grown before faint pixels outside it count
+# as residue. Ordinary antialiasing along a rendered edge fades out within a
+# couple of pixels at this resolution, so five absorbs it with margin while
+# still leaving a detached smudge fully exposed.
+HALO_DILATION = 5
+
+EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
+
+
+def bbox_of(mask: np.ndarray) -> tuple[int, int, int, int]:
+    """Return (top, bottom, left, right) rows/cols of the mask's extent.
+
+    `bottom` and `right` are exclusive, matching ImageMagick's geometry
+    convention of width/height added to an origin.
+    """
+    rows = np.flatnonzero(mask.any(axis=1))
+    cols = np.flatnonzero(mask.any(axis=0))
+    return int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+
+
+def trim_percentages(
+    bbox: tuple[int, int, int, int], height: int, width: int
+) -> dict[str, float]:
+    """Convert a bounding box into the four trim percentages the UI consumes."""
+    top, bottom, left, right = bbox
+    return {
+        "top": top / height * 100,
+        "bottom": (height - bottom) / height * 100,
+        "left": left / width * 100,
+        "right": (width - right) / width * 100,
+    }
+
+
+class Finding:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.hard_deltas: dict[str, float] = {
+            "top": 0.0,
+            "right": 0.0,
+            "bottom": 0.0,
+            "left": 0.0,
+        }
+        self.strays: list[dict[str, int]] = []
+        self.halo_area = 0
+        self.halo_low = 0
+        self.halo_max_alpha = 0
+        self.halo_span: tuple[int, int] = (0, 0)
+        self.halo_clusters: list[dict[str, int]] = []
+        self.body_box: tuple[int, int, int, int] = (0, 0, 0, 0)
+
+    @property
+    def hard(self) -> float:
+        return self.hard_deltas["bottom"]
+
+    @property
+    def low_share(self) -> float:
+        """Fraction of halo residue sitting in the mascot's lowest third."""
+        if self.halo_area == 0:
+            return 0.0
+        return self.halo_low / self.halo_area
+
+
+def analyze(path: Path) -> Finding:
+    """Measure both residue classes for one mascot.
+
+    The body is the largest connected region of the 75%-thresholded alpha,
+    which is what the trim pipeline effectively treats as the mascot. Both
+    metrics are expressed relative to that body.
+    """
+    with Image.open(path) as im:
+        if im.mode != "RGBA":
+            im = im.convert("RGBA")
+        alpha = np.asarray(im.split()[-1])
+
+    height, width = alpha.shape
+    finding = Finding(path.name)
+
+    opaque = alpha > ALPHA_THRESHOLD
+    if not opaque.any():
+        return finding
+
+    labels, count = ndimage.label(opaque, structure=EIGHT_CONNECTED)
+    # Component 0 is background; areas are indexed from label 1 upward.
+    areas = np.bincount(labels.ravel())[1:]
+    body_label = int(np.argmax(areas)) + 1
+    body = labels == body_label
+    finding.body_box = bbox_of(body)
+
+    # ---------------------------------------------------------
+    # Hard residue — detached components that move the trim
+    # ---------------------------------------------------------
+
+    if count > 1:
+        full_trim = trim_percentages(bbox_of(opaque), height, width)
+        body_trim = trim_percentages(finding.body_box, height, width)
+        # A positive delta means the body-only trim is larger, i.e. the stray
+        # was pushing the mascot's apparent extent outward on that edge.
+        finding.hard_deltas = {
+            edge: body_trim[edge] - full_trim[edge] for edge in full_trim
+        }
+
+        body_bottom = finding.body_box[1]
+        for label_id, area in enumerate(areas, start=1):
+            if label_id == body_label:
+                continue
+            top, bottom, left, right = bbox_of(labels == label_id)
+            finding.strays.append(
+                {
+                    "area": int(area),
+                    "top": top,
+                    "bottom": bottom,
+                    "left": left,
+                    "right": right,
+                    "below": int(top - body_bottom),
+                }
+            )
+        finding.strays.sort(key=lambda s: s["area"], reverse=True)
+
+    # ---------------------------------------------------------
+    # Halo residue — faint pixels off the silhouette
+    # ---------------------------------------------------------
+
+    # Dilate every opaque component, not just the body: a legitimately
+    # detached prop carries its own antialiased edge which is no more
+    # suspicious than the body's.
+    silhouette = ndimage.binary_dilation(opaque, iterations=HALO_DILATION)
+    residue = (alpha > HALO_FLOOR) & ~silhouette
+    if not residue.any():
+        return finding
+
+    finding.halo_area = int(residue.sum())
+    finding.halo_max_alpha = int(alpha[residue].max())
+    rows = np.flatnonzero(residue.any(axis=1))
+    finding.halo_span = (int(rows[0]), int(rows[-1]))
+
+    # A cast shadow lands under the figure, so measure how much of the
+    # residue falls in the mascot's own lowest third. An aura wrapped around
+    # the whole body scores low here even when its raw area is large.
+    body_top, body_bottom = finding.body_box[0], finding.body_box[1]
+    low_start = body_top + (body_bottom - body_top) * 2 // 3
+    finding.halo_low = int(residue[low_start:].sum())
+
+    # Cluster the residue so the reader can tell one dense slab from a
+    # scattering of speckles without opening the file.
+    res_labels, res_count = ndimage.label(residue, structure=EIGHT_CONNECTED)
+    if res_count:
+        res_areas = np.bincount(res_labels.ravel())[1:]
+        for label_id in np.argsort(res_areas)[::-1][:3] + 1:
+            cluster = res_labels == label_id
+            top, bottom, left, right = bbox_of(cluster)
+            finding.halo_clusters.append(
+                {
+                    "area": int(res_areas[label_id - 1]),
+                    "top": top,
+                    "bottom": bottom,
+                    "left": left,
+                    "right": right,
+                    "peak": int(alpha[cluster].max()),
+                }
+            )
+
+    return finding
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("directory", nargs="?", default="assets/mascot")
+    parser.add_argument(
+        "--sort",
+        choices=("halo", "low", "hard"),
+        default="low",
+        help="rank by total halo area, by halo area in the mascot's lowest "
+        "third, or by hard trim impact (default low)",
+    )
+    parser.add_argument(
+        "--min-halo",
+        type=int,
+        default=200,
+        help="minimum halo area in pixels to report (default 200)",
+    )
+    parser.add_argument(
+        "--min-hard",
+        type=float,
+        default=0.2,
+        help="minimum bottom-trim shift in percentage points (default 0.2)",
+    )
+    parser.add_argument(
+        "--detail",
+        action="store_true",
+        help="include per-cluster and per-stray breakdown lines",
+    )
+    args = parser.parse_args()
+
+    root = Path(args.directory)
+    if not root.is_dir():
+        print(f"Error: {root} is not a directory", file=sys.stderr)
+        return 1
+
+    pngs = sorted(root.glob("*.png"))
+    findings = [
+        f
+        for f in (analyze(png) for png in pngs)
+        if f.halo_area >= args.min_halo or f.hard >= args.min_hard
+    ]
+
+    keys = {
+        "halo": lambda f: (f.halo_area, f.halo_low),
+        "low": lambda f: (f.halo_low, f.halo_area),
+        "hard": lambda f: (f.hard, f.halo_low),
+    }
+    findings.sort(key=keys[args.sort], reverse=True)
+
+    for f in findings:
+        key = {"halo": f.halo_area, "low": f.halo_low, "hard": f.hard}[args.sort]
+        key_text = f"{key:+.1f}" if args.sort == "hard" else f"{key}"
+        print(
+            f"{key_text}\t{f.name}\thard={f.hard:+.1f} "
+            f"halo={f.halo_area}px² a{f.halo_max_alpha} "
+            f"y{f.halo_span[0]}-{f.halo_span[1]} "
+            f"low={f.low_share * 100:.0f}% strays={len(f.strays)}"
+        )
+        if not args.detail:
+            continue
+        top, bottom, left, right = f.body_box
+        print(f"\t\tbody y{top}..{bottom} x{left}..{right}")
+        for c in f.halo_clusters:
+            print(
+                f"\t\thalo a={c['area']} "
+                f"box=({c['left']},{c['top']})-({c['right']},{c['bottom']}) "
+                f"peak=a{c['peak']}"
+            )
+        for s in f.strays[:3]:
+            print(
+                f"\t\thard a={s['area']} "
+                f"box=({s['left']},{s['top']})-({s['right']},{s['bottom']}) "
+                f"below={s['below']:+d}"
+            )
+
+    print(
+        f"\n{len(findings)} of {len(pngs)} files reported "
+        f"(hard alpha>{ALPHA_THRESHOLD:.0f}, halo alpha>{HALO_FLOOR} "
+        f"outside a {HALO_DILATION}px dilation, "
+        f"min-halo={args.min_halo}px², min-hard={args.min_hard}pp)",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
