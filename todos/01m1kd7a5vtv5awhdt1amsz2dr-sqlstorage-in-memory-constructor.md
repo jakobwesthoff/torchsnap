@@ -39,8 +39,8 @@ For a test that only needs a schema and a few rows, SQLite's
 `:memory:` database is the natural fit: no filesystem, no cleanup, no
 possibility of two tests colliding on a path, and faster.
 
-Verified against the SQLite this project actually ships (rusqlite 0.39
-with `bundled`, `src-tauri/Cargo.toml:42`, SQLite 3.51.3), by probing
+Verified against the SQLite this project actually ships (rusqlite 0.40
+with `bundled`, `src-tauri/Cargo.toml:42`, SQLite 3.53.2), by probing
 through the real code rather than the system `sqlite3` CLI, which is a
 different build:
 

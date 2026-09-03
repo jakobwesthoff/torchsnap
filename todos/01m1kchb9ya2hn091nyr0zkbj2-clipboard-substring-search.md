@@ -36,8 +36,8 @@ rather than being a strict improvement.
 ## Option: trigram tokenizer
 
 FTS5's `trigram` tokenizer supports substring matching. Confirmed
-available in the SQLite this project actually ships — rusqlite 0.39
-with the `bundled` feature (`src-tauri/Cargo.toml:42`), SQLite 3.51.3 —
+available in the SQLite this project actually ships — rusqlite 0.40
+with the `bundled` feature (`src-tauri/Cargo.toml:42`), SQLite 3.53.2 —
 by probing through `SqlStorage` rather than the system `sqlite3` CLI,
 which is a different build. `MATCH 'board'` against `ClipboardManager`
 returned a hit.
@@ -50,10 +50,10 @@ Measured trade-offs (all verified, not assumed):
 | queries under 3 characters | match as prefix | **no results at all** |
 | case-insensitive | yes | yes |
 | diacritic folding (`munchen` → `München`) | yes | only with `remove_diacritics 1` |
-| index size on live corpus | 307 KB | 700 KB (~2.3x) |
+| index size on live corpus | 296 KB | 632 KB (~2.1x) |
 
 Size was measured by building both indexes over the real 400-entry
-corpus (162,514 characters of display text). At this scale ~400 KB of
+corpus (162,514 characters of display text). At this scale ~340 KB of
 growth is irrelevant; it is recorded so the ratio is known if history
 sizes grow or retention is extended well beyond the 30-day default.
 
