@@ -59,8 +59,9 @@ pub struct SharedState {
 
 impl SharedState {
     /// Query clipboard history as lightweight list entries, optionally
-    /// filtering with FTS5. Returns all matching entries — the frontend
-    /// handles windowed rendering.
+    /// filtering with FTS5. Results are ordered most recently captured
+    /// first, with or without a search term. Returns all matching
+    /// entries — the frontend handles windowed rendering.
     ///
     /// A search term that contains no alphanumeric characters filters
     /// nothing and yields the full history; see [`build_fts_query`].
@@ -76,6 +77,13 @@ impl SharedState {
         // Performance note: if this join becomes a bottleneck with very
         // large histories, we could denormalize primary_format into a
         // column on clipboard_entries and set it at capture time.
+        //
+        // A search term only narrows the result set; it never reorders
+        // it. Both branches sort by captured_at so the entry the user
+        // wants — almost always the one copied most recently — stays at
+        // the top whether or not they have typed anything. Ordering the
+        // filtered branch by FTS5 relevance instead would scatter recent
+        // entries among older ones that happen to score higher.
         let entries: Vec<(String, String, String, Option<String>)> =
             match search.and_then(build_fts_query) {
                 Some(fts_query) => self.sql.query_map(
@@ -88,7 +96,7 @@ impl SharedState {
                  LEFT JOIN clipboard_content c ON c.entry_id = e.id
                  WHERE clipboard_fts MATCH ?1
                  GROUP BY e.id
-                 ORDER BY rank",
+                 ORDER BY e.captured_at DESC",
                     &[SqlValue::from(fts_query)],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )?,
@@ -789,6 +797,67 @@ mod tests {
             .search_history(Some("AND"))
             .expect("keyword must not be an FTS5 syntax error");
         assert_eq!(ids(&results), vec!["k1"]);
+    }
+
+    // -----------------------------------------------------
+    // Result ordering: most recent first, never relevance
+    // -----------------------------------------------------
+
+    #[test]
+    fn search_results_are_ordered_most_recent_first() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        let results = state.search_history(Some("resume")).expect("search");
+        assert_eq!(ids(&results), vec!["e6", "e5", "e4", "e3", "e2", "e1"]);
+    }
+
+    #[test]
+    fn unfiltered_results_are_ordered_most_recent_first() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        let results = state.search_history(None).expect("search");
+        assert_eq!(ids(&results), vec!["e6", "e5", "e4", "e3", "e2", "e1"]);
+    }
+
+    #[test]
+    fn recency_beats_relevance() {
+        let (state, _dir) = test_state();
+        // The short entry is the stronger bm25 match (higher term
+        // density, shorter document) but the older one, so ordering
+        // by relevance would put it first.
+        store_text(&state, "short", "resume", "2026-08-01T10:00:00.000Z");
+        store_text(
+            &state,
+            "long",
+            "a much longer entry that also mentions resume somewhere inside it",
+            "2026-09-01T10:00:00.000Z",
+        );
+
+        let results = state.search_history(Some("resume")).expect("search");
+        assert_eq!(ids(&results), vec!["long", "short"]);
+    }
+
+    #[test]
+    fn bumping_a_duplicate_moves_it_to_the_top_of_search_results() {
+        let (state, _dir) = test_state();
+        store_text(&state, "old", "resume one", "2026-08-01T10:00:00.000Z");
+        store_text(&state, "new", "resume two", "2026-09-01T10:00:00.000Z");
+
+        // Re-copying "resume one" bumps the existing entry rather than
+        // inserting a new one, which must reorder search results too.
+        let formats = vec![CapturedFormat {
+            format: "text".to_owned(),
+            data: b"resume one".to_vec(),
+        }];
+        let created = state
+            .store_entry("ignored", "resume one", &formats)
+            .expect("bump existing entry");
+        assert!(!created, "identical content must bump, not insert");
+
+        let results = state.search_history(Some("resume")).expect("search");
+        assert_eq!(ids(&results), vec!["old", "new"]);
     }
 
     // -----------------------------------------------------
