@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previous view's footer hints until the new view publishes its own.
 - `just lint-crates` and `just lint-gadgets` now fail on any clippy
   warning.
+- Clipboard history search results are now ordered most recently copied
+  first. Typing a search term narrows the list without reordering it;
+  previously a filtered list was ordered by relevance and an unfiltered
+  one by capture time, so typing reshuffled the results.
+
+### Fixed
+
+- Clipboard history search no longer comes up empty for terms
+  containing punctuation. Searching `claude --resume`, `example.com`, a
+  path, or a UUID fragment reported no matches, because the search text
+  was passed to the full-text index as query syntax rather than as
+  words. Since the search runs as you type, a single `-` was enough to
+  blank the results.
+- A clipboard history search that fails now says so, instead of
+  rendering an empty list that is indistinguishable from having no
+  matches.
 
 ## [0.9.0] - 2026-08-10
 
