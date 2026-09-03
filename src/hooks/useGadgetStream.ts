@@ -14,9 +14,16 @@
  * - `result` — the command's return value, available once established.
  * - `snapshot` — the latest value pushed through the channel, or
  *   `undefined` if no channel message has arrived yet.
+ * - `error` — the rejection message if the command failed, otherwise
+ *   `undefined`.
  *
  * These two data paths (return value vs. channel) are kept strictly
  * separate — neither overwrites the other.
+ *
+ * A failed command leaves `snapshot` undefined, which is
+ * indistinguishable from an empty result set. Callers that render a
+ * "nothing here" state must check `error` first, or a backend failure
+ * shows up as a plausible-looking empty list.
  *
  * Re-issues the command when `method` or `payload` identity changes
  * (use a stable reference or `useMemo` for objects). Cleanup on
@@ -36,6 +43,14 @@ export interface GadgetStreamState<TResult, TSnapshot> {
   result: TResult | undefined;
   /** The latest value pushed through the channel. */
   snapshot: TSnapshot | undefined;
+  /** The rejection message if the command failed. */
+  error: string | undefined;
+}
+
+/** Reduce an unknown rejection value to a displayable message. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return typeof err === "string" ? err : JSON.stringify(err);
 }
 
 export function useGadgetStream<TPayload, TResult, TSnapshot>(
@@ -49,6 +64,7 @@ export function useGadgetStream<TPayload, TResult, TSnapshot>(
     established: false,
     result: undefined,
     snapshot: undefined,
+    error: undefined,
   });
   const listenersRef = useRef(new Set<() => void>());
 
@@ -68,6 +84,7 @@ export function useGadgetStream<TPayload, TResult, TSnapshot>(
       established: false,
       result: undefined,
       snapshot: undefined,
+      error: undefined,
     };
 
     const notify = () => {
@@ -87,9 +104,14 @@ export function useGadgetStream<TPayload, TResult, TSnapshot>(
         notify();
       },
       (err) => {
-        if (!cancelled) {
-          console.error(`useGadgetStream(${method}) error:`, err);
-        }
+        if (cancelled) return;
+        console.error(`useGadgetStream(${method}) error:`, err);
+        stateRef.current = {
+          ...stateRef.current,
+          established: true,
+          error: errorMessage(err),
+        };
+        notify();
       },
     );
 

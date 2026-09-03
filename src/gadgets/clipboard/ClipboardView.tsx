@@ -88,6 +88,22 @@ function EmptyState({ query }: { query: string }) {
   );
 }
 
+/**
+ * Shown when the search command itself failed. Distinct from
+ * `EmptyState` on purpose: a failed search also produces zero entries,
+ * and reporting that as "No matches found" hides the failure behind a
+ * plausible answer.
+ */
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full text-text-muted text-sm gap-2 px-6">
+      <Icon icon="heroicons:exclamation-triangle" className="h-8 w-8 text-accent" />
+      <span className="text-text-secondary">Search failed</span>
+      <span className="text-xs text-center break-words">{message}</span>
+    </div>
+  );
+}
+
 function EntryRow({
   entry,
   selected,
@@ -206,7 +222,7 @@ export default function ClipboardView({ query }: GadgetViewProps) {
 
   // Search clipboard history. Results are pushed through the channel
   // both initially and on data changes (new entry, delete, clear).
-  const { snapshot: history } = useGadgetStream<
+  const { snapshot: history, error: searchError } = useGadgetStream<
     { query: string | null },
     null,
     ClipboardListEntry[]
@@ -452,7 +468,9 @@ export default function ClipboardView({ query }: GadgetViewProps) {
 
   return (
     <div className="flex h-[360px]">
-      {entries.length === 0 ? (
+      {searchError !== undefined ? (
+        <ErrorState message={searchError} />
+      ) : entries.length === 0 ? (
         <EmptyState query={query} />
       ) : (
         <>
