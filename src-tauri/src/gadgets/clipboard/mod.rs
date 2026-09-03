@@ -25,6 +25,7 @@
 
 mod formats;
 mod schema;
+mod search;
 mod storage;
 mod watcher;
 
