@@ -49,10 +49,7 @@ export interface Action {
 // =========================================================
 
 export type PostAction =
-  | "Nothing"
-  | "Dismiss"
-  | "KeepOpen"
-  | { ShowCustomUI: { view: string; data?: unknown } };
+  "Nothing" | "Dismiss" | "KeepOpen" | { ShowCustomUI: { view: string; data?: unknown } };
 
 // =========================================================
 // Entry Types

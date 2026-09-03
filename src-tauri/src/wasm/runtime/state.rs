@@ -77,9 +77,8 @@ impl GadgetState {
 }
 
 // `WasiView` lets `wasmtime-wasi` locate the WasiCtx and
-// ResourceTable inside our custom store data. In wasmtime
-// 43, `ctx()` returns a `WasiCtxView` that bundles both
-// references together.
+// ResourceTable inside our custom store data; `ctx()` hands
+// back a `WasiCtxView` bundling both references together.
 impl WasiView for GadgetState {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
