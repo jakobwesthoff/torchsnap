@@ -162,9 +162,15 @@ mod tests {
     /// Caps with every capability provisioned. Uses minimal
     /// stub implementations — the validation only checks
     /// `is_some()`, never invokes the caps.
-    fn full_caps() -> ProvisionedCaps {
+    ///
+    /// The returned `TempDir` owns the SQL storage directory and must
+    /// stay alive for as long as the caps are used. Each call gets its
+    /// own directory: tests run as parallel threads in one process, and
+    /// a shared database path would race on creating the file.
+    fn full_caps() -> (ProvisionedCaps, tempfile::TempDir) {
         let paths = test_paths();
-        ProvisionedCaps {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let caps = ProvisionedCaps {
             opener: Some(Arc::new(OpenerCap::from_closures(
                 OpenerPermissions {
                     schemes: vec![],
@@ -186,8 +192,8 @@ mod tests {
             clipboard: Some(Arc::new(ClipboardCap::new(Box::new(|_| Ok(()))))),
             sql_storage: Some(Arc::new(SqlStorageCap::new(Arc::new(
                 crate::storage::SqlStorage::open(
-                    std::env::temp_dir().join("torchsnap-test-gate.sqlite3"),
-                    &["CREATE TABLE IF NOT EXISTS _gate_probe (id INTEGER PRIMARY KEY);"],
+                    dir.path().join("gate.sqlite3"),
+                    &["CREATE TABLE _gate_probe (id INTEGER PRIMARY KEY);"],
                 )
                 .expect("test db"),
             )))),
@@ -196,7 +202,8 @@ mod tests {
             settings: None,
             frecency: None,
             path_resolver: Some(Arc::new(PathResolverCap::new(paths))),
-        }
+        };
+        (caps, dir)
     }
 
     /// Caps with nothing provisioned.
@@ -281,7 +288,7 @@ mod tests {
 
     #[test]
     fn provisioned_caps_pass_check() {
-        let caps = full_caps();
+        let (caps, _dir) = full_caps();
         // full_caps() provisions these — verify they pass.
         for name in [
             "clipboard",
@@ -301,7 +308,7 @@ mod tests {
 
     #[test]
     fn unprovisioned_caps_fail_check() {
-        let caps = full_caps();
+        let (caps, _dir) = full_caps();
         // full_caps() does NOT provision these (they need
         // Tauri Store / FrecencyStore / MetadataService).
         for name in ["settings", "frecency", "website-metadata"] {
@@ -336,7 +343,8 @@ mod tests {
 
     #[test]
     fn unknown_interface_is_not_provisioned() {
-        assert!(!is_provisioned("invented-interface", &full_caps()));
+        let (caps, _dir) = full_caps();
+        assert!(!is_provisioned("invented-interface", &caps));
     }
 
     #[test]
@@ -366,7 +374,8 @@ mod tests {
     fn validate_passes_when_gated_imports_are_provisioned() {
         let runtime = test_runtime();
         let component = runtime.compile(OPENER_HTTP_GADGET_WASM).expect("compile");
-        validate(&component, runtime.engine(), &full_caps(), "opener-http")
+        let (caps, _dir) = full_caps();
+        validate(&component, runtime.engine(), &caps, "opener-http")
             .expect("should pass when opener+http are provisioned");
     }
 
@@ -396,7 +405,7 @@ mod tests {
     fn validate_lists_only_missing_interfaces() {
         let runtime = test_runtime();
         let component = runtime.compile(OPENER_HTTP_GADGET_WASM).expect("compile");
-        let mut caps = full_caps();
+        let (mut caps, _dir) = full_caps();
         caps.opener = None;
         let err = validate(&component, runtime.engine(), &caps, "test")
             .expect_err("should fail for missing opener");
