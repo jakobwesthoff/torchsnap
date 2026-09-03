@@ -29,6 +29,7 @@ use super::schema::{
     ClipboardHistoryEntry, ClipboardListEntry, ClipboardStats, FormatData,
     INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS,
 };
+use super::search::build_fts_query;
 
 // =========================================================
 // ActiveQuery
@@ -60,6 +61,9 @@ impl SharedState {
     /// Query clipboard history as lightweight list entries, optionally
     /// filtering with FTS5. Returns all matching entries — the frontend
     /// handles windowed rendering.
+    ///
+    /// A search term that contains no alphanumeric characters filters
+    /// nothing and yields the full history; see [`build_fts_query`].
     pub fn search_history(&self, search: Option<&str>) -> Result<Vec<ClipboardListEntry>> {
         // Each entry needs its primary_format derived from clipboard_content.
         // We use GROUP_CONCAT in SQL to collect format names per entry, then
@@ -72,26 +76,24 @@ impl SharedState {
         // Performance note: if this join becomes a bottleneck with very
         // large histories, we could denormalize primary_format into a
         // column on clipboard_entries and set it at capture time.
-        let entries: Vec<(String, String, String, Option<String>)> = match search {
-            Some(term) if !term.is_empty() => {
-                let fts_query = format!("{term}*");
-                self.sql.query_map(
+        let entries: Vec<(String, String, String, Option<String>)> =
+            match search.and_then(build_fts_query) {
+                Some(fts_query) => self.sql.query_map(
                     "SELECT e.id, e.captured_at,
-                            COALESCE(d.display_text, ''),
-                            GROUP_CONCAT(c.format)
-                     FROM clipboard_entries e
-                     JOIN clipboard_display d ON d.entry_id = e.id
-                     JOIN clipboard_fts f ON f.rowid = d.rowid
-                     LEFT JOIN clipboard_content c ON c.entry_id = e.id
-                     WHERE clipboard_fts MATCH ?1
-                     GROUP BY e.id
-                     ORDER BY rank",
+                        COALESCE(d.display_text, ''),
+                        GROUP_CONCAT(c.format)
+                 FROM clipboard_entries e
+                 JOIN clipboard_display d ON d.entry_id = e.id
+                 JOIN clipboard_fts f ON f.rowid = d.rowid
+                 LEFT JOIN clipboard_content c ON c.entry_id = e.id
+                 WHERE clipboard_fts MATCH ?1
+                 GROUP BY e.id
+                 ORDER BY rank",
                     &[SqlValue::from(fts_query)],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-                )?
-            }
-            _ => self.sql.query_map(
-                "SELECT e.id, e.captured_at,
+                )?,
+                None => self.sql.query_map(
+                    "SELECT e.id, e.captured_at,
                         COALESCE(d.display_text, ''),
                         GROUP_CONCAT(c.format)
                  FROM clipboard_entries e
@@ -99,10 +101,10 @@ impl SharedState {
                  LEFT JOIN clipboard_content c ON c.entry_id = e.id
                  GROUP BY e.id
                  ORDER BY e.captured_at DESC",
-                &[],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )?,
-        };
+                    &[],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )?,
+            };
 
         let result = entries
             .into_iter()
@@ -590,5 +592,312 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
         format!("{truncated}…")
     } else {
         truncated
+    }
+}
+
+// =========================================================
+// Tests
+// =========================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gadgets::clipboard::schema::MIGRATION_001;
+
+    /// Build a `SharedState` backed by a temp directory. The
+    /// TempDir is returned so the caller keeps it alive for the
+    /// duration of the test.
+    fn test_state() -> (SharedState, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let sql = SqlStorage::open(dir.path().join("clipboard.sqlite3"), &[MIGRATION_001])
+            .expect("open test db");
+        let files = FileStorage::new(dir.path().join("files"));
+        let state = SharedState {
+            sql,
+            files,
+            active_query: Mutex::new(None),
+        };
+        (state, dir)
+    }
+
+    /// Store a text entry and pin its `captured_at` so ordering
+    /// assertions do not depend on insertion timing, which has only
+    /// millisecond resolution and would otherwise tie.
+    fn store_text(state: &SharedState, id: &str, text: &str, captured_at: &str) {
+        let formats = vec![CapturedFormat {
+            format: "text".to_owned(),
+            data: text.as_bytes().to_vec(),
+        }];
+        state
+            .store_entry(id, text, &formats)
+            .expect("store test entry");
+        state
+            .sql
+            .execute(
+                "UPDATE clipboard_entries SET captured_at = ?2 WHERE id = ?1",
+                &[SqlValue::from(id), SqlValue::from(captured_at)],
+            )
+            .expect("pin captured_at");
+    }
+
+    /// Store the six `claude --resume` entries from a real history,
+    /// oldest first, so both ordering and matching can be asserted.
+    fn store_resume_history(state: &SharedState) {
+        let entries = [
+            (
+                "e1",
+                "claude --resume c764a17e-1fc7-4737-b98a-c9a4aa3eddd0",
+                "2026-08-17T16:10:07.754Z",
+            ),
+            (
+                "e2",
+                "claude --resume 0ba724c1-569c-453b-8a23-83309bfdcb4f",
+                "2026-08-19T11:58:52.990Z",
+            ),
+            (
+                "e3",
+                "claude --resume ba3edf90-f34c-4097-be05-45a96255bd36",
+                "2026-09-01T11:21:37.250Z",
+            ),
+            (
+                "e4",
+                "claude --resume 979713a6-1365-4f40-92fd-ba04599f175f",
+                "2026-09-03T09:39:32.556Z",
+            ),
+            (
+                "e5",
+                "claude --resume 84f2311c-502b-4957-ab88-cee40d5be444",
+                "2026-09-03T09:40:35.523Z",
+            ),
+            (
+                "e6",
+                "claude --resume 90c805ea-38cb-4a1b-893a-5fc7880de861",
+                "2026-09-03T09:41:27.710Z",
+            ),
+        ];
+        for (id, text, captured_at) in entries {
+            store_text(state, id, text, captured_at);
+        }
+    }
+
+    fn ids(entries: &[ClipboardListEntry]) -> Vec<&str> {
+        entries.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    // -----------------------------------------------------
+    // Queries that previously failed with an FTS5 syntax error
+    // -----------------------------------------------------
+
+    #[test]
+    fn search_with_hyphenated_flag_matches() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        let results = state
+            .search_history(Some("claude --resume"))
+            .expect("hyphenated query must not be an FTS5 syntax error");
+        assert_eq!(results.len(), 6);
+    }
+
+    #[test]
+    fn search_while_typing_a_flag_keeps_matching() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        // Each of these is a keystroke on the way to "claude --resume".
+        // None of them may error or drop to zero results.
+        for prefix in [
+            "c",
+            "claude",
+            "claude ",
+            "claude -",
+            "claude --",
+            "claude --res",
+        ] {
+            let results = state
+                .search_history(Some(prefix))
+                .unwrap_or_else(|e| panic!("query {prefix:?} failed: {e}"));
+            assert_eq!(results.len(), 6, "query {prefix:?} lost results");
+        }
+    }
+
+    #[test]
+    fn search_by_uuid_fragment_matches() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        let results = state
+            .search_history(Some("979713a6-1365"))
+            .expect("uuid fragment must not be an FTS5 syntax error");
+        assert_eq!(ids(&results), vec!["e4"]);
+    }
+
+    #[test]
+    fn search_with_url_punctuation_matches() {
+        let (state, _dir) = test_state();
+        store_text(
+            &state,
+            "u1",
+            "https://example.com/foo/bar",
+            "2026-09-01T10:00:00.000Z",
+        );
+
+        for query in ["https://example.com", "example.com", "example.com/foo"] {
+            let results = state
+                .search_history(Some(query))
+                .unwrap_or_else(|e| panic!("query {query:?} failed: {e}"));
+            assert_eq!(ids(&results), vec!["u1"], "query {query:?}");
+        }
+    }
+
+    #[test]
+    fn search_with_code_punctuation_matches() {
+        let (state, _dir) = test_state();
+        store_text(
+            &state,
+            "c1",
+            "fn main() { let x = 1; }",
+            "2026-09-01T10:00:00.000Z",
+        );
+
+        for query in ["fn main()", "main() {", "x = 1"] {
+            let results = state
+                .search_history(Some(query))
+                .unwrap_or_else(|e| panic!("query {query:?} failed: {e}"));
+            assert_eq!(ids(&results), vec!["c1"], "query {query:?}");
+        }
+    }
+
+    #[test]
+    fn search_with_unbalanced_quote_matches() {
+        let (state, _dir) = test_state();
+        store_text(&state, "q1", "quoted text", "2026-09-01T10:00:00.000Z");
+
+        let results = state
+            .search_history(Some("\"quoted"))
+            .expect("unbalanced quote must not be an FTS5 syntax error");
+        assert_eq!(ids(&results), vec!["q1"]);
+    }
+
+    #[test]
+    fn search_for_an_fts_keyword_matches_the_literal_word() {
+        let (state, _dir) = test_state();
+        store_text(&state, "k1", "this AND that", "2026-09-01T10:00:00.000Z");
+        store_text(&state, "k2", "unrelated entry", "2026-09-01T11:00:00.000Z");
+
+        let results = state
+            .search_history(Some("AND"))
+            .expect("keyword must not be an FTS5 syntax error");
+        assert_eq!(ids(&results), vec!["k1"]);
+    }
+
+    // -----------------------------------------------------
+    // Empty and separator-only queries
+    // -----------------------------------------------------
+
+    #[test]
+    fn empty_query_returns_the_full_history() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        assert_eq!(state.search_history(Some("")).expect("search").len(), 6);
+    }
+
+    #[test]
+    fn separator_only_query_returns_the_full_history() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        for query in ["-", "---", "://", "   "] {
+            let results = state
+                .search_history(Some(query))
+                .unwrap_or_else(|e| panic!("query {query:?} failed: {e}"));
+            assert_eq!(results.len(), 6, "query {query:?}");
+        }
+    }
+
+    // -----------------------------------------------------
+    // Matching semantics
+    // -----------------------------------------------------
+
+    #[test]
+    fn search_is_case_insensitive() {
+        let (state, _dir) = test_state();
+        store_text(&state, "m1", "ClipboardManager", "2026-09-01T10:00:00.000Z");
+
+        for query in ["clipboardmanager", "CLIPBOARDMANAGER", "ClipboardManager"] {
+            let results = state
+                .search_history(Some(query))
+                .unwrap_or_else(|e| panic!("query {query:?} failed: {e}"));
+            assert_eq!(ids(&results), vec!["m1"], "query {query:?}");
+        }
+    }
+
+    #[test]
+    fn search_matches_token_prefixes_but_not_infixes() {
+        let (state, _dir) = test_state();
+        store_text(&state, "m1", "ClipboardManager", "2026-09-01T10:00:00.000Z");
+
+        assert_eq!(
+            ids(&state.search_history(Some("clip")).expect("search")),
+            vec!["m1"]
+        );
+        // Documents the standing limitation: FTS5 indexes whole tokens,
+        // so a fragment from the middle of a word does not match.
+        assert!(
+            state
+                .search_history(Some("board"))
+                .expect("search")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn multiple_terms_are_anded() {
+        let (state, _dir) = test_state();
+        store_text(&state, "a1", "alpha beta", "2026-09-01T10:00:00.000Z");
+        store_text(&state, "a2", "alpha gamma", "2026-09-01T11:00:00.000Z");
+
+        assert_eq!(
+            ids(&state.search_history(Some("alpha beta")).expect("search")),
+            vec!["a1"]
+        );
+        assert!(
+            state
+                .search_history(Some("alpha delta"))
+                .expect("search")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn search_matches_diacritics_case_and_accent_insensitively() {
+        let (state, _dir) = test_state();
+        store_text(
+            &state,
+            "d1",
+            "Grüße aus München",
+            "2026-09-01T10:00:00.000Z",
+        );
+
+        for query in ["München", "munchen", "MÜNCHEN"] {
+            let results = state
+                .search_history(Some(query))
+                .unwrap_or_else(|e| panic!("query {query:?} failed: {e}"));
+            assert_eq!(ids(&results), vec!["d1"], "query {query:?}");
+        }
+    }
+
+    #[test]
+    fn search_with_no_match_returns_empty() {
+        let (state, _dir) = test_state();
+        store_resume_history(&state);
+
+        assert!(
+            state
+                .search_history(Some("nonexistentterm"))
+                .expect("search")
+                .is_empty()
+        );
     }
 }
