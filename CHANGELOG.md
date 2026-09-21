@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the repository.
 - `just stage-bundled-gadgets` empties `target/bundled-gadgets/` before
   staging, and the app bundle includes every file in that directory.
+- `just install` also runs `bun install` in every gadget frontend, which
+  `just check-gadgets`, `lint-gadgets` and `test-gadgets` need on a fresh
+  checkout.
 
 ### Fixed
 
