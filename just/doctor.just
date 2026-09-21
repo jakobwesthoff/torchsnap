@@ -74,6 +74,7 @@ doctor:
     echo "Optional:"
     check shellcheck  "shell script linting"        "brew install shellcheck"
     check uv          "run the tools/detect-mascot-* scripts" "brew install uv"
+    check cargo-audit "check Cargo lockfiles in \`just audit\`" "cargo install cargo-audit --locked"
 
     echo ""
     bg_green=$'\033[42;30m' bg_red=$'\033[41;37m'
