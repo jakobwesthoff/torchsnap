@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `tauri-nspanel` comes from its crates.io release 2.1.0 instead of the
   `v2.1` git branch.
+- React and React DOM are updated to 19.3. Gadget frontends render with
+  the host's React, so installed gadgets run on 19.3 as well.
 - Gadgets run on wasmtime 49, which accepts the wide-arithmetic
   proposal's 128-bit integer instructions in gadget code.
 - The gadget SDK and the test fixtures generate their bindings with
