@@ -32,7 +32,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../target/bundled-gadgets/*.torchsnap": "gadgets/"
+      "../target/bundled-gadgets/": "gadgets/"
     }
   }
 }
