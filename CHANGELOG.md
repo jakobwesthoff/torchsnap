@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `just install` failed on a fresh checkout: it generated the app icons
+  before installing the JS packages, so the icon step fetched Tauri's legacy
+  pre-1.0 `tauri` package from npm instead of using the project's Tauri CLI.
+
 ## [0.9.2] - 2026-09-21
 
 ### Added
