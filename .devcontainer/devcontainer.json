@@ -17,9 +17,9 @@
     "args": {
       "TZ": "${localEnv:TZ:Europe/Berlin}",
       "CLAUDE_CODE_VERSION": "latest",
-      "GIT_DELTA_VERSION": "0.18.2",
-      "ZSH_IN_DOCKER_VERSION": "1.2.0",
-      "RUST_VERSION": "1"
+      "GIT_DELTA_VERSION": "0.19.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.1",
+      "RUST_VERSION": "1.98.1"
     }
   },
 

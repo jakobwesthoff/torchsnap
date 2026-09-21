@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detection.
 - Frontend dependencies are updated within their ranges, among them
   Vite 8.3, ESLint 10.11, typescript-eslint 8.70 and tailwind-merge 3.7.
+- The devcontainer uses the Rust 1.98.1 image to match the toolchain pin,
+  git-delta 0.19.2 and zsh-in-docker 1.2.1.
 - Development uses Bun 1.4; `@types/bun` is updated to 1.4.2 to match,
   and `just doctor` fails on an older Bun.
 - `rust-toolchain.toml` pins Rust 1.98.1 with the `wasm32-wasip2` target,
