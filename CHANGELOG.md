@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rust-toolchain.toml` pins Rust 1.98.1 with the `wasm32-wasip2` target,
   `clippy` and `rustfmt`. rustup installs it on the first `cargo` run in
   the repository.
+- `just stage-bundled-gadgets` empties `target/bundled-gadgets/` before
+  staging, and the app bundle includes every file in that directory.
+
+### Fixed
+
+- `cargo check`, clippy and the host tests no longer fail when no gadget
+  has been staged into `target/bundled-gadgets/`. A release build with
+  nothing staged prints a warning instead.
 
 ## [0.9.1] - 2026-09-21
 
