@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cargo check`, clippy and the host tests no longer fail when no gadget
   has been staged into `target/bundled-gadgets/`. A release build with
   nothing staged prints a warning instead.
+- The README documented `just build` as a release build. It builds debug;
+  `just build --release` builds release.
 
 ## [0.9.1] - 2026-09-21
 

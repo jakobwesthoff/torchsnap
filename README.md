@@ -57,10 +57,11 @@ inspection and formatting use `wasm-tools`.
 
 Common recipes (run `just --list` for the full set):
 
-- `just build` — full release build. Stages whitelisted gadgets
-  from `gadgets/bundled.toml` into `target/bundled-gadgets/`,
+- `just build --release` — release build. Stages whitelisted
+  gadgets from `gadgets/bundled.toml` into `target/bundled-gadgets/`,
   builds every in-tree gadget, then runs `tauri build`.
-- `just build profile=debug` — same flow with `tauri build --debug`.
+- `just build` — the same flow as a debug build
+  (`tauri build --debug`). Debug is the default.
 - `just build-gadget <name>` — rebuild a single gadget under
   `gadgets/<name>/` and repackage it as `<name>.torchsnap`.
 - `just check-gadgets` / `just check-wit` — fast workspace and WIT
