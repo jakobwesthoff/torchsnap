@@ -1,0 +1,14 @@
+# One Rust release for the host, the gadget workspace, the test
+# fixtures and the devcontainer. Cargo's resolver picks dependency
+# versions compatible with the running rustc, and clippy denies
+# warnings, so an unpinned toolchain gives different lockfiles and
+# different lint results per machine. Bump `channel` deliberately and
+# run `just fullcycle` with it.
+#
+# The host target is always installed; `targets` lists only the extra
+# ones. Add `x86_64-apple-darwin` once x86_64 releases are built.
+[toolchain]
+channel = "1.98.1"
+targets = ["wasm32-wasip2"]
+components = ["clippy", "rustfmt"]
+profile = "minimal"
