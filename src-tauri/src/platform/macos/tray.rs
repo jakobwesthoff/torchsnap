@@ -26,6 +26,13 @@ impl Tray for MacosTray {
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()> {
+        // Opening this menu blurs the launcher, which dismisses it, so
+        // by the time the item is clicked the toggle always shows it.
+        let launcher_item =
+            MenuItem::with_id(app, "launcher", "Open Launcher", true, None::<&str>)
+                .context("create Open Launcher menu item")?;
+        let launcher_separator =
+            PredefinedMenuItem::separator(app).context("create menu separator")?;
         let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)
             .context("create Settings menu item")?;
         let devtools_item =
@@ -36,7 +43,14 @@ impl Tray for MacosTray {
             .context("create Quit menu item")?;
         let menu = Menu::with_items(
             app,
-            &[&settings_item, &devtools_item, &separator, &quit_item],
+            &[
+                &launcher_item,
+                &launcher_separator,
+                &settings_item,
+                &devtools_item,
+                &separator,
+                &quit_item,
+            ],
         )
         .context("build tray menu")?;
 
@@ -52,6 +66,7 @@ impl Tray for MacosTray {
             .menu(&menu)
             .show_menu_on_left_click(false)
             .on_menu_event(move |app, event| match event.id.as_ref() {
+                "launcher" => on_toggle(app),
                 "settings" => on_settings(app),
                 "devtools" => on_devtools(app),
                 "quit" => app.exit(0),
