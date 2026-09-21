@@ -3,7 +3,9 @@
 # versions compatible with the running rustc, and clippy denies
 # warnings, so an unpinned toolchain gives different lockfiles and
 # different lint results per machine. Bump `channel` deliberately and
-# run `just fullcycle` with it.
+# run `just fullcycle` with it. Set `RUST_VERSION` in
+# `.devcontainer/Dockerfile` and `.devcontainer/devcontainer.json` to the
+# same release.
 #
 # The host target is always installed; `targets` lists only the extra
 # ones. Add `x86_64-apple-darwin` once x86_64 releases are built.
