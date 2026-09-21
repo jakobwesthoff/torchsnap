@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The README describes how to set up a fresh checkout.
+- `just audit` checks the host and gadget Cargo lockfiles with
+  `cargo audit` and every bun project with `bun audit`. `just doctor`
+  checks for `cargo-audit`.
 
 ### Changed
 
