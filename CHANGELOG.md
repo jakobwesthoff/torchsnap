@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `tauri-nspanel` comes from its crates.io release 2.1.0 instead of the
   `v2.1` git branch.
+- The gadget crates' dependencies are updated within their ranges,
+  including a newer public suffix list for the Open URL gadget's domain
+  detection.
 - Frontend dependencies are updated within their ranges, among them
   Vite 8.3, ESLint 10.11, typescript-eslint 8.70 and tailwind-merge 3.7.
 - Development uses Bun 1.4; `@types/bun` is updated to 1.4.2 to match,
