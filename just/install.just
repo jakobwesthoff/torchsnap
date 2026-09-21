@@ -7,8 +7,11 @@
 # host and of every gadget frontend, and the Rust crates in src-tauri/
 # and gadgets/.
 
+# `assets` runs after `install-packages` because the app icon step uses
+# the Tauri CLI from `node_modules`.
+
 # Install all project dependencies
-install: assets install-packages install-crates
+install: install-packages assets install-crates
 
 # Each gadget frontend is its own bun project with its own lockfile.
 # The gadget crates' Cargo builds read from these trees as well

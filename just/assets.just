@@ -169,8 +169,12 @@ asset-app-icons:
     if [ "$needs_regen" = true ]; then
         echo "Generating app icons..."
         # Let Tauri's icon generator handle all platform-specific
-        # formats (icns, correct sizes, squircle treatment, etc.)
-        bunx tauri icon "$source_icon"
+        # formats (icns, correct sizes, squircle treatment, etc.).
+        # `bun run` uses the project's `@tauri-apps/cli` through the
+        # `tauri` script in package.json. `bunx tauri` would fetch Tauri's
+        # legacy pre-1.0 `tauri` package from npm when node_modules
+        # is missing.
+        bun run tauri icon "$source_icon"
     else
         echo "App icons: up to date."
     fi
