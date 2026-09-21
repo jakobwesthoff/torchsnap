@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `tauri-nspanel` comes from its crates.io release 2.1.0 instead of the
   `v2.1` git branch.
+- The gadget SDK and the test fixtures generate their bindings with
+  wit-bindgen 0.62. The rebuilt fixtures, compiled with Rust 1.98, import
+  WASI 0.2.9.
 - The gadget crates' dependencies are updated within their ranges,
   including a newer public suffix list for the Open URL gadget's domain
   detection.
