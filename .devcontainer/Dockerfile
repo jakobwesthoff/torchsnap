@@ -23,16 +23,23 @@
 # in /usr/local/{cargo,rustup}. Starting from it saves a large chunk of
 # build time compared to installing the toolchain from scratch on top of
 # a minimal Debian base.
+#
+# RUST_VERSION matches the `channel` in the repository's
+# `rust-toolchain.toml`. With any other version, rustup downloads the
+# pinned release again on the first `cargo` run in every fresh container.
+# Bump both together.
 
-ARG RUST_VERSION=1
+ARG RUST_VERSION=1.98.1
 FROM rust:${RUST_VERSION}-bookworm
 
 ARG TZ
 ENV TZ="$TZ"
 
 ARG CLAUDE_CODE_VERSION=latest
-ARG GIT_DELTA_VERSION=0.18.2
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
+# git-delta 0.19.0 and 0.19.1 ship `.deb` packages that need glibc 2.39
+# (Debian 13); 0.19.2 is the first 0.19 release that installs on bookworm.
+ARG GIT_DELTA_VERSION=0.19.2
+ARG ZSH_IN_DOCKER_VERSION=1.2.1
 
 # =========================================================
 # System packages

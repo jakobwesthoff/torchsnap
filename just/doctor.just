@@ -38,9 +38,25 @@ doctor:
         fi
     }
 
+    # `rust-toolchain.toml` pins the Rust release, and only rustup
+    # reads it. A cargo installed any other way ignores the pin.
     echo "Required:"
+    check rustup      "installs the Rust release pinned in rust-toolchain.toml" "https://rustup.rs"
     check cargo       "Rust toolchain"              "https://rustup.rs"
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
+
+    # The lockfiles are maintained with Bun 1.4, whose `bun update`
+    # also refreshes transitive packages. Bun has no per-project
+    # version switch, so the minimum is checked here.
+    min_bun="1.4.0"
+    if command -v bun &>/dev/null; then
+        bun_version=$(bun --version)
+        if [ "$(printf '%s\n' "$min_bun" "$bun_version" | sort -V | head -1)" != "$min_bun" ]; then
+            printf "  ${red}✗${reset}  %-14s %s is older than %s\n" "bun" "$bun_version" "$min_bun"
+            printf "     %-14s upgrade: %s\n" "" "bun upgrade"
+            missing=$((missing + 1))
+        fi
+    fi
 
     echo ""
     echo "WASM gadget toolchain:"
@@ -58,14 +74,20 @@ doctor:
     fi
 
     echo ""
+    # `just install` runs the whole asset pipeline, and
+    # `asset-mascot-data` (jq) also runs before `build`, `start` and
+    # `check-types`.
     echo "Asset pipeline:"
     check magick      "image resizing (ImageMagick 7)" "brew install imagemagick"
-    check oxipng      "PNG optimisation"               "cargo install oxipng"
     check cwebp       "WebP conversion"                "brew install webp"
+    check jq          "merge mascot trim data into mascots.json" "brew install jq"
+    check curl        "download the DuckDuckGo bang database"    "brew install curl"
 
     echo ""
     echo "Optional:"
     check shellcheck  "shell script linting"        "brew install shellcheck"
+    check uv          "run the tools/detect-mascot-* scripts" "brew install uv"
+    check cargo-audit "check Cargo lockfiles in \`just audit\`" "cargo install cargo-audit --locked"
 
     echo ""
     bg_green=$'\033[42;30m' bg_red=$'\033[41;37m'

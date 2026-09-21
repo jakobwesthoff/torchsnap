@@ -10,7 +10,7 @@ publish = false
 # artifact alongside this Cargo.toml is the canonical test input.
 
 [dependencies]
-wit-bindgen = "0.60"
+wit-bindgen = "0.62"
 
 [lib]
 crate-type = ["cdylib"]

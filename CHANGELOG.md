@@ -5,6 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The README describes how to set up a fresh checkout.
+- `just audit` checks the host and gadget Cargo lockfiles with
+  `cargo audit` and every bun project with `bun audit`. `just doctor`
+  checks for `cargo-audit`.
+
+### Changed
+
+- `tauri-nspanel` comes from its crates.io release 2.1.0 instead of the
+  `v2.1` git branch.
+- React and React DOM are updated to 19.3. Gadget frontends render with
+  the host's React, so installed gadgets run on 19.3 as well.
+- Gadgets run on wasmtime 49, which accepts the wide-arithmetic
+  proposal's 128-bit integer instructions in gadget code.
+- The gadget SDK and the test fixtures generate their bindings with
+  wit-bindgen 0.62. The rebuilt fixtures, compiled with Rust 1.98, import
+  WASI 0.2.9.
+- The gadget crates' dependencies are updated within their ranges,
+  including a newer public suffix list for the Open URL gadget's domain
+  detection.
+- Frontend dependencies are updated within their ranges, among them
+  Vite 8.3, ESLint 10.11, typescript-eslint 8.70 and tailwind-merge 3.7.
+- The devcontainer uses the Rust 1.98.1 image to match the toolchain pin,
+  git-delta 0.19.2 and zsh-in-docker 1.2.1.
+- Development uses Bun 1.4; `@types/bun` is updated to 1.4.2 to match,
+  and `just doctor` fails on an older Bun.
+- `rust-toolchain.toml` pins Rust 1.98.1 with the `wasm32-wasip2` target,
+  `clippy` and `rustfmt`. rustup installs it on the first `cargo` run in
+  the repository.
+- `just stage-bundled-gadgets` empties `target/bundled-gadgets/` before
+  staging, and the app bundle includes every file in that directory.
+- `just install` also runs `bun install` in every gadget frontend, which
+  `just check-gadgets`, `lint-gadgets` and `test-gadgets` need on a fresh
+  checkout.
+- `just doctor` checks for `rustup`, `jq` and `curl`, which the toolchain
+  pin and the asset pipeline need, and for `uv` (optional). It no longer
+  checks for `oxipng`, which nothing uses.
+
+### Security
+
+- Tauri 2.11.6 scopes IPC channel data to the webview that created it
+  (GHSA-w28w-mhc8-qvjv). The Tauri plugins move to their matching patch
+  releases on both the Rust and the JavaScript side.
+- wasmtime 47.0.4 fixes RUSTSEC-2026-0268 and RUSTSEC-2026-0269, rustls
+  0.23.45 fixes RUSTSEC-2026-0285, and h2 0.4.19 fixes RUSTSEC-2026-0258.
+- The development tooling no longer pulls vulnerable `@babel/core`,
+  `@humanfs/node`, `baseline-browser-mapping` and `browserslist`
+  releases.
+
+### Fixed
+
+- `cargo check`, clippy and the host tests no longer fail when no gadget
+  has been staged into `target/bundled-gadgets/`. A release build with
+  nothing staged prints a warning instead.
+- The README documented `just build` as a release build. It builds debug;
+  `just build --release` builds release.
+
 ## [0.9.1] - 2026-09-21
 
 ### Added

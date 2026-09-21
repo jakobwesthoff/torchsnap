@@ -7,12 +7,12 @@
   },
   "devDependencies": {
     "@torchsnap/gadget-sdk": "file:../../../packages/gadget-sdk",
-    "@vitejs/plugin-react": "^6.0.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "@tailwindcss/vite": "^4.3.3",
     "emojibase-data": "^17.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "vite": "^8.2.1",
-    "@types/react": "^19.2.18"
+    "vite": "^8.3.0",
+    "@types/react": "^19.3.0"
   }
 }
