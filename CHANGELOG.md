@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Development uses Bun 1.4; `@types/bun` is updated to 1.4.2 to match,
+  and `just doctor` fails on an older Bun.
 - `rust-toolchain.toml` pins Rust 1.98.1 with the `wasm32-wasip2` target,
   `clippy` and `rustfmt`. rustup installs it on the first `cargo` run in
   the repository.
