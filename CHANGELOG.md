@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `tauri-nspanel` comes from its crates.io release 2.1.0 instead of the
   `v2.1` git branch.
-- Gadgets run on wasmtime 48.
+- Gadgets run on wasmtime 49, which accepts the wide-arithmetic
+  proposal's 128-bit integer instructions in gadget code.
 - The gadget SDK and the test fixtures generate their bindings with
   wit-bindgen 0.62. The rebuilt fixtures, compiled with Rust 1.98, import
   WASI 0.2.9.
