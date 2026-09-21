@@ -94,9 +94,7 @@ pub fn cgimage_to_dynamic_image(cg_image: &CGImage) -> anyhow::Result<Option<ima
     // premultiplied RGBA, but the `image` crate and WebP
     // encoder expect straight (non-premultiplied) alpha.
     let mut rgba = Vec::with_capacity(total_bytes);
-    for chunk in premultiplied.chunks_exact(4) {
-        let (r, g, b, a) = (chunk[0], chunk[1], chunk[2], chunk[3]);
-
+    for &[r, g, b, a] in premultiplied.as_chunks::<4>().0 {
         let (r, g, b) = if a > 0 && a < 255 {
             let af = a as f32 / 255.0;
             (
