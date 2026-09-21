@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.2] - 2026-09-21
 
 ### Added
 
@@ -51,8 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tauri 2.11.6 scopes IPC channel data to the webview that created it
   (GHSA-w28w-mhc8-qvjv). The Tauri plugins move to their matching patch
   releases on both the Rust and the JavaScript side.
-- wasmtime 47.0.4 fixes RUSTSEC-2026-0268 and RUSTSEC-2026-0269, rustls
-  0.23.45 fixes RUSTSEC-2026-0285, and h2 0.4.19 fixes RUSTSEC-2026-0258.
+- The gadget runtime and the network stack no longer carry known
+  vulnerabilities: wasmtime (RUSTSEC-2026-0268, RUSTSEC-2026-0269, fixed
+  from 47.0.4, shipped as 49), rustls 0.23.45 (RUSTSEC-2026-0285) and h2
+  0.4.19 (RUSTSEC-2026-0258).
 - The development tooling no longer pulls vulnerable `@babel/core`,
   `@humanfs/node`, `baseline-browser-mapping` and `browserslist`
   releases.
@@ -308,5 +310,6 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.9.2]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.2
 [0.9.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.1
 [0.9.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.0
