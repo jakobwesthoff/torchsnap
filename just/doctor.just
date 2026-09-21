@@ -45,6 +45,19 @@ doctor:
     check cargo       "Rust toolchain"              "https://rustup.rs"
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
 
+    # The lockfiles are maintained with Bun 1.4, whose `bun update`
+    # also refreshes transitive packages. Bun has no per-project
+    # version switch, so the minimum is checked here.
+    min_bun="1.4.0"
+    if command -v bun &>/dev/null; then
+        bun_version=$(bun --version)
+        if [ "$(printf '%s\n' "$min_bun" "$bun_version" | sort -V | head -1)" != "$min_bun" ]; then
+            printf "  ${red}✗${reset}  %-14s %s is older than %s\n" "bun" "$bun_version" "$min_bun"
+            printf "     %-14s upgrade: %s\n" "" "bun upgrade"
+            missing=$((missing + 1))
+        fi
+    fi
+
     echo ""
     echo "WASM gadget toolchain:"
     check zip             "create .torchsnap gadget archives" "brew install zip"
