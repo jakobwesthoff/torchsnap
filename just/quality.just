@@ -96,6 +96,46 @@ fmt-check-gadgets:
 fmt-check-frontend:
     bun run fmt:check
 
+# The audit recipes query the advisory databases over the network,
+# so they stay out of `fullcycle`. Both check every lockfile before
+# failing, so one advisory does not hide the others.
+
+# Check Rust and JS dependencies against published security advisories
+audit:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    status=0
+    just audit-crates || status=1
+    just audit-packages || status=1
+    exit "$status"
+
+# The host lockfile and the gadget workspace lockfile cover the code
+# that ships. The fixture crates under `src-tauri/tests/fixtures/`
+# only produce test inputs and are not audited.
+
+# Check the host and gadget Cargo lockfiles against the RustSec database
+audit-crates:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    status=0
+    for lockfile in src-tauri/Cargo.lock gadgets/Cargo.lock; do
+        echo "== $lockfile"
+        cargo audit --file "$lockfile" || status=1
+    done
+    exit "$status"
+
+# Check the host and every gadget frontend against the npm advisory database
+audit-packages:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    status=0
+    for project in . gadgets/*/frontend; do
+        [ -f "$project/package.json" ] || continue
+        echo "== $project"
+        bun audit --cwd "$project" || status=1
+    done
+    exit "$status"
+
 # Run the full quality cycle: format check, lint, type check, test, then build
 fullcycle:
     just fmt-check

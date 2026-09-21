@@ -170,10 +170,11 @@ stage-bundled-gadgets:
     set -euo pipefail
 
     stage="{{ BUNDLED_DIR }}"
+    # `tauri.conf.json` bundles every file in this directory, so
+    # it starts empty on each run: a gadget removed from
+    # `bundled.toml`, or any stray file, never reaches the app.
+    rm -rf "$stage"
     mkdir -p "$stage"
-    # Wipe stale archives from previous runs so a gadget
-    # removed from `bundled.toml` is not silently bundled.
-    rm -f "$stage"/*.torchsnap
 
     # list-bundled-gadgets handles the missing-file and empty-list
     # cases gracefully (warnings to stderr, empty stdout, exit 0).

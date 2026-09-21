@@ -28,9 +28,8 @@ impl Tray for MacosTray {
     ) -> anyhow::Result<()> {
         // Opening this menu blurs the launcher, which dismisses it, so
         // by the time the item is clicked the toggle always shows it.
-        let launcher_item =
-            MenuItem::with_id(app, "launcher", "Open Launcher", true, None::<&str>)
-                .context("create Open Launcher menu item")?;
+        let launcher_item = MenuItem::with_id(app, "launcher", "Open Launcher", true, None::<&str>)
+            .context("create Open Launcher menu item")?;
         let launcher_separator =
             PredefinedMenuItem::separator(app).context("create menu separator")?;
         let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)

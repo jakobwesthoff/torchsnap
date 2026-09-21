@@ -47,6 +47,29 @@ dispatch, host capabilities, frontend integration), start with
 Design rationale for individual subsystems lives in
 [`docs/adr/`](docs/adr/).
 
+## Setting up a fresh checkout
+
+1. Install [`just`](https://github.com/casey/just), then run
+   `just doctor`. It lists every external tool the recipes need
+   (rustup, bun, zip, wasm-tools, ImageMagick, cwebp, jq, curl) and
+   how to install the missing ones.
+2. Run `just install`. It generates the gitignored assets the build
+   reads (app and tray icons, mascot data, timezone data, and the
+   DuckDuckGo bang database, which it downloads), runs `bun install`
+   for the host and every gadget frontend, and fetches the crates of
+   `src-tauri/` and `gadgets/`.
+3. Run `just fullcycle` to confirm the checkout passes every quality
+   gate.
+4. Run `just start` to launch the app in development mode.
+
+`rust-toolchain.toml` pins the Rust release together with the
+`wasm32-wasip2` target, clippy and rustfmt. rustup installs them the
+first time `cargo` runs in the repository.
+
+No gadget has to be staged before the host compiles. `src-tauri/build.rs`
+creates an empty `target/bundled-gadgets/` if needed, and
+`just build` stages the bundled gadgets itself.
+
 ## Building from source
 
 Torchsnap uses [`just`](https://github.com/casey/just) as its task
@@ -57,10 +80,11 @@ inspection and formatting use `wasm-tools`.
 
 Common recipes (run `just --list` for the full set):
 
-- `just build` — full release build. Stages whitelisted gadgets
-  from `gadgets/bundled.toml` into `target/bundled-gadgets/`,
+- `just build --release` — release build. Stages whitelisted
+  gadgets from `gadgets/bundled.toml` into `target/bundled-gadgets/`,
   builds every in-tree gadget, then runs `tauri build`.
-- `just build profile=debug` — same flow with `tauri build --debug`.
+- `just build` — the same flow as a debug build
+  (`tauri build --debug`). Debug is the default.
 - `just build-gadget <name>` — rebuild a single gadget under
   `gadgets/<name>/` and repackage it as `<name>.torchsnap`.
 - `just check-gadgets` / `just check-wit` — fast workspace and WIT
