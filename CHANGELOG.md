@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The menu bar menu has an **Open Launcher** entry at the top.
+
 ### Changed
 
 - Toggling **Random mascots** or **Show NSFW mascots** now takes effect
