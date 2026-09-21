@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The README describes how to set up a fresh checkout.
+
 ### Changed
 
 - `rust-toolchain.toml` pins Rust 1.98.1 with the `wasm32-wasip2` target,
@@ -17,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `just install` also runs `bun install` in every gadget frontend, which
   `just check-gadgets`, `lint-gadgets` and `test-gadgets` need on a fresh
   checkout.
+- `just doctor` checks for `rustup`, `jq` and `curl`, which the toolchain
+  pin and the asset pipeline need, and for `uv` (optional). It no longer
+  checks for `oxipng`, which nothing uses.
 
 ### Fixed
 
