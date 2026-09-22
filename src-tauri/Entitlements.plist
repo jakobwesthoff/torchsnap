@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime exceptions for the host, referenced from
+  `tauri.conf.json` (`bundle.macOS.entitlements`). They take effect
+  whenever the bundle is code signed, which enables the hardened runtime.
+
+  Gadget code is mapped executable straight from the compile-cache files
+  (ADR 0044). Those files are unsigned, so the hardened runtime refuses the
+  mapping without `disable-library-validation` and kills the process on
+  the first executed instruction without `allow-unsigned-executable-memory`.
+  Both are needed together. See ADR 0046.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>
