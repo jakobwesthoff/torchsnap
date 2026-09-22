@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `just build --sign` code-signs the macOS bundle with the hardened
+  runtime and the entitlements gadget code needs to run under it: ad-hoc
+  by default, or with the identity in `APPLE_SIGNING_IDENTITY`. The README
+  describes ad-hoc signing and the variables for Developer ID signing and
+  notarization.
+
 ## [0.9.3] - 2026-09-21
 
 ### Fixed

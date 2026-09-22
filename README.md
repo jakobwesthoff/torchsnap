@@ -85,6 +85,8 @@ Common recipes (run `just --list` for the full set):
   builds every in-tree gadget, then runs `tauri build`.
 - `just build` — the same flow as a debug build
   (`tauri build --debug`). Debug is the default.
+- `just build --release --sign` — release build with a code-signed
+  macOS bundle; see [Signing macOS builds](#signing-macos-builds).
 - `just build-gadget <name>` — rebuild a single gadget under
   `gadgets/<name>/` and repackage it as `<name>.torchsnap`.
 - `just check-gadgets` / `just check-wit` — fast workspace and WIT
@@ -94,6 +96,76 @@ The repo-root `target/` directory is owned by the bundled-gadget
 staging flow and is gitignored. Cargo's own build outputs go to
 `src-tauri/target/` (host) and `gadgets/target/` (gadget
 workspace).
+
+## Signing macOS builds
+
+`just build` leaves the macOS bundle unsigned unless the environment
+sets `APPLE_SIGNING_IDENTITY`. `--sign` sets that variable to `-` (ad-hoc)
+when it is not already set, and keeps any identity it finds there. Tauri
+then signs the bundle with the hardened runtime and the entitlements in
+`src-tauri/Entitlements.plist`, which gadget code needs to run under the
+hardened runtime (ADR 0046).
+
+Build anything meant for other people with `--sign`. An unsigned bundle
+fails `syspolicy_check distribution` with the fatal error "Code has no
+resources but signature indicates they must be present", and macOS
+reports a downloaded copy as damaged. Keep local builds unsigned when you
+want to attach lldb to the bundled app: lldb cannot attach to a signed
+bundle (ADR 0047).
+
+The build writes `src-tauri/target/release/bundle/macos/torchsnap.app` and
+`src-tauri/target/release/bundle/dmg/torchsnap_<version>_<arch>.dmg`.
+
+### Ad-hoc signing
+
+```sh
+just build --release --sign
+```
+
+No Apple account is involved. Users who download the DMG in a browser
+still see a Gatekeeper warning on first launch and approve the app once
+under System Settings → Privacy & Security → "Open Anyway", which asks
+for an administrator password.
+
+### Developer ID signing and notarization
+
+Notarization needs a paid Apple Developer account and a
+"Developer ID Application" certificate. It has not been run for
+Torchsnap yet. The variables below are the ones the Tauri documentation
+lists; with them set, `just build --release --sign` signs with the
+Developer ID instead of ad-hoc.
+
+Signing:
+
+| Variable | Value |
+| --- | --- |
+| `APPLE_SIGNING_IDENTITY` | The certificate's keychain identity, e.g. `Developer ID Application: <Name> (<Team ID>)` |
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` export of the certificate. Only needed where the certificate is not in the keychain, such as CI. |
+| `APPLE_CERTIFICATE_PASSWORD` | Password of that `.p12` export |
+
+Notarization, with an App Store Connect API key:
+
+| Variable | Value |
+| --- | --- |
+| `APPLE_API_ISSUER` | Issuer ID of the key |
+| `APPLE_API_KEY` | Key ID |
+| `APPLE_API_KEY_PATH` | Path to the downloaded `.p8` key file |
+
+Or with an Apple ID: `APPLE_ID`, `APPLE_PASSWORD` (an app-specific
+password) and `APPLE_TEAM_ID`.
+
+### Checking a build
+
+```sh
+codesign -dv --entitlements - src-tauri/target/release/bundle/macos/torchsnap.app
+syspolicy_check distribution src-tauri/target/release/bundle/macos/torchsnap.app
+```
+
+A signed build shows `flags=0x10002(adhoc,runtime)` for ad-hoc or
+`flags=0x10000(runtime)` for Developer ID, plus the two entitlements.
+`syspolicy_check` reports only a warning for an ad-hoc build. For a
+notarized build, `spctl -a -vv -t exec <app>` reports
+`source=Notarized Developer ID`.
 
 ## License
 
