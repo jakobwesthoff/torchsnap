@@ -17,12 +17,21 @@
 # keeps the mascot trim values in step with the source PNGs whenever a
 # new mascot is added.
 
+# Tauri code signs the macOS bundle whenever `APPLE_SIGNING_IDENTITY`
+# is set, and then enables the hardened runtime with the entitlements
+# from `src-tauri/Entitlements.plist` (ADR 0046). `--sign` defaults the
+# identity to `-` (ad-hoc) and keeps any identity already set in the
+# environment, such as a Developer ID. Without `--sign` the bundle stays
+# unsigned unless the environment sets an identity, so lldb can still
+# attach to local builds (ADR 0047).
+
 # Build the Tauri app (gadgets + frontend + Rust)
 [arg('profile', long='release', value='release')]
-build profile="debug": asset-mascot-data
+[arg('sign', long='sign', value='sign')]
+build profile="debug" sign="": asset-mascot-data
     just stage-bundled-gadgets
     just build-gadgets
-    bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
+    {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
 
 # Build only the frontend (Vite + TypeScript)
 build-frontend: asset-mascot-data
