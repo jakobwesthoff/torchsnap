@@ -33,6 +33,9 @@
     ],
     "resources": {
       "../target/bundled-gadgets/": "gadgets/"
+    },
+    "macOS": {
+      "entitlements": "Entitlements.plist"
     }
   }
 }
