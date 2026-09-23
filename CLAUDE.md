@@ -88,3 +88,6 @@ Record decisions in `docs/adr/`:
   macOS builds".
 - Each release ships one arm64 DMG uploaded as `Torchsnap.dmg`; the
   bundle is `Torchsnap.app`, identifier `app.torchsnap` (ADR 0048).
+- Releases are made locally with `just release-build <version>` and
+  `just release-publish <version>`, never from CI; no signing secrets in
+  GitHub (ADR 0050, README "Releasing").
