@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundle identifier `app.torchsnap` stays, so settings and installed
   gadgets carry over.
 
+### Removed
+
+- The ZeroTier gadget is no longer bundled with the app. Its source stays
+  under `gadgets/zerotier/`, and `just build-gadgets` still builds it.
+
 ## [0.9.3] - 2026-09-21
 
 ### Fixed

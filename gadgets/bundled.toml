@@ -15,6 +15,5 @@ gadgets = [
     "emoji-picker",
     "bangs",
     "open-url",
-    "zerotier",
     "awake",
 ]
