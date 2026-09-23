@@ -6,6 +6,6 @@ Create a reusable, standalone gadget template repository that gadget authors can
 
 **Status:** not started
 
-**Depends on:** `01knacefg5fcd6p7zrhgm2ca07` (calculator-conversion — template should reflect patterns proven in a real migration)
+**Depends on:** the calculator gadget's WASM conversion, already done (see `gadgets/calculator/`); template should reflect patterns proven in a real migration
 
 **Notes:** The official template targets Rust as the primary language (§7.1). Should include: `cargo-component` project structure referencing WIT by path, `just` recipes for build/package/dev, a Vite config for frontend bundles with SDK externalization (once §7.2 is decided), and a packaging script that produces the final `.torchsnap` zip. The hello-world gadget in `gadgets/` is the prototype; formalize it into a template suitable for external gadget authors once the architecture is stable.

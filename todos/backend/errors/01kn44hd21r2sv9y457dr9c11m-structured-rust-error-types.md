@@ -12,9 +12,8 @@ whether to retry, or show context-appropriate messages.
 - Define a structured error enum (or per-domain enums) for Tauri
   command errors on the Rust side, serializable via Serde.
 - Return typed error variants instead of `Result<T, String>`.
-- Mirror the error types on the TypeScript side so the typed invoke
-  wrapper (see `01kn30th27x0arv9a5cekkwgpv-typesafe-invoke-wrapper.md`)
-  can expose them to callers.
+- Mirror the error types on the TypeScript side so a typed invoke
+  wrapper can expose them to callers.
 
 ## Affected commands
 

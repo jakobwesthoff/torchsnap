@@ -137,7 +137,8 @@ methods.)
 - **Streaming via `Channel` exposed to WIT** — out of scope.
   WASM plugins can't trivially hold a Tauri `Channel` (no
   Tauri runtime in the wasmtime sandbox), and the existing
-  channel-lifecycle todo (see `todos/01kn30th27x0arv9a5cekkwgpw…`)
+  channel-lifecycle todo (see
+  `todos/gadget-host/api/01kn30th27x0arv9a5cekkwgpw-gadget-channel-lifecycle.md`)
   needs to land first to define the lifecycle semantics. Adding
   a `messaging-stream` sub-interface later is purely additive.
 - **A proc macro for dispatching by method name on the plugin

@@ -57,4 +57,4 @@ hardcoded `source == User` branch, so signing can plug in cleanly later.
 - Depends on: `[[permissions.process]]` manifest + WIT landing first so
   there is a real surface to consent to.
 - Pairs with the settings-panel display todo (sibling file in
-  `todos/wasm/`) — same data, different surface.
+  `todos/gadget-host/wasm/`) — same data, different surface.

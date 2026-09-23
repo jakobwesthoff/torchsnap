@@ -43,7 +43,7 @@ dismiss is the only effect.
 
 ## Related
 
-`todos/01krp5a92mezsrq8jg14mm3nqx-opensettings-passthrough.md` proposes
+`todos/gadget-host/api/01krp5a92mezsrq8jg14mm3nqx-opensettings-passthrough.md` proposes
 moving `OpenSettings` from a host intercept to a `PostAction` the gadget
 returns. Whichever lands first should use the same "open settings at
 section X" mechanism.

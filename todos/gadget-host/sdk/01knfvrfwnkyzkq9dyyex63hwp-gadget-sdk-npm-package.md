@@ -109,4 +109,5 @@ the npm package is for third-party consumption.
 - Current shim approach: `gadget-sdk/shims/` (to be created)
 - Host SDK global: `src/lib/sdk.ts`
 - Type sources: `src/types.ts`, `src/gadgets/types.ts`
-- Related: `01knftk3xkj0hgdnj87gk9qzyg-gadget-sdk-crate.md` (Rust side)
+- Related: the Rust-side gadget SDK crate, already shipped at
+  `gadgets/gadget-sdk/`

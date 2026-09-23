@@ -39,9 +39,9 @@ poor:
   cell (see the bangs gadget's safety comment).
 
 Note: the `PENDING_URL` handoff specifically is better solved
-by the `data` field on `scored-entry` (see todo
-`01kn7v6ynyf580ax9jyyt25jgc`). This todo addresses the
-broader instance-state problem that remains after that fix.
+by the `data` field on `scored-entry`, already landed as
+`ScoredEntry::data`. This todo addresses the broader
+instance-state problem that remains after that fix.
 
 ## Idea: export a WIT resource instead of free functions
 
@@ -219,9 +219,9 @@ inspects it.
 
 ## Related
 
-- `01kn7v6ynyf580ax9jyyt25jgc-gadget-execute-data-param.md`
-  — the narrower search→execute data handoff fix (should
-  land first, independently).
+- `ScoredEntry::data` in `src-tauri/src/commands/types.rs`: the
+  narrower search to execute data handoff fix, already landed
+  independently.
 - `gadgets/gadget-sdk/wit/torchsnap-gadget.wit` — current
   WIT world definition.
 - `gadgets/gadget-sdk/src/lib.rs` — `define_gadget!` macro.

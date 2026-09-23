@@ -448,14 +448,14 @@ documented in the SDK docs.
 
 * **Bundled plugin executables** (`binary =
   "${plugin-archive}/helper"`). Tracked in
-  `todos/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`.
+  `todos/gadget-host/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`.
   Requires archive-format mode preservation and (on macOS)
   quarantine-attribute handling and code-signing strategy.
 * **Settings UI display of plugin permissions**. Tracked in
-  `todos/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-plugin-permissions-in-settings.md`.
+  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`.
 * **Install-time consent prompt for User-source plugins
   declaring `[[permissions.command]]`**. Tracked in
-  `todos/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`.
+  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`.
   Composes with future signing (ADR 0036).
 * **Per-binary env quirks tables** (`GIT_CONFIG_NOSYSTEM`,
   equivalents). Mechanism deferred; limitation accepted.

@@ -82,6 +82,6 @@ fall back to the hero-icon path (mirrors bangs).
   reference (deleted during WASM port)
 - `gadgets/gadget-sdk/src/website_metadata.rs` — wrapper exposing
   both `lookup_cached` and `lookup_blocking`
-- `todos/01kn82bmj3y706tme2prsa7d2b-bangs-prefix-mode.md` — bangs
+- `todos/gadgets/bangs/01kn82bmj3y706tme2prsa7d2b-bangs-prefix-mode.md` — bangs
   uses `lookup_cached` because metadata is purely decoration there
   (the bang result exists unconditionally); useful contrast

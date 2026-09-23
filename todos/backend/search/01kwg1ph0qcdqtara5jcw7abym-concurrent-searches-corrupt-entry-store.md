@@ -41,7 +41,7 @@ UI looks right — only the host-side store diverges, which is
 what makes the resulting execute misbehavior hard to reproduce.
 
 Related but distinct existing todos:
-`todos/01krxs5qbzpr4vfq2dfywqc56r-concurrent-entries-calls.md`
+`todos/gadget-host/api/01krxs5qbzpr4vfq2dfywqc56r-concurrent-entries-calls.md`
 (sequential catalog scan) and
 `todos/gadget-host/api/01kr24azjr6t090j1qy82f2w8m-clear-entry-store-on-dismiss.md`
 (clearing on dismiss).

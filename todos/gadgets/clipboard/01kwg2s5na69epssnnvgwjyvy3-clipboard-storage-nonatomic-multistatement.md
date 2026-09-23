@@ -48,7 +48,7 @@ Concrete interleavings:
    delete).
 
 The existing todo
-`todos/01krxrg2xe9jqhb0hgctvbsskd-evaluate-sql-transaction-wrapper.md`
+`todos/gadget-host/wasm/01krxrg2xe9jqhb0hgctvbsskd-evaluate-sql-transaction-wrapper.md`
 is about the *WIT/gadget-facing* SQL interface; this todo is about
 the host-side clipboard gadget using `SqlStorage` directly.
 

@@ -9,7 +9,8 @@ the next failed `send()`. This works for lazy cleanup but provides no
 explicit signal, leading to channel accumulation on the backend.
 
 This was originally identified via the clipboard gadget's channel
-accumulation problem (see `01kmtn6msqqjpnc9aeb3rh8gnw`).
+accumulation problem, since fixed with the single-channel
+`ActiveQuery` architecture in `src-tauri/src/gadgets/clipboard/storage.rs`.
 
 ## Proposal
 

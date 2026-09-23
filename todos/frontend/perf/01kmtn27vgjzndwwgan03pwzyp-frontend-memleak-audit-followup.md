@@ -1,9 +1,9 @@
 # Frontend Memory Leak Audit Follow-up (2026-03-28)
 
 Findings from a second audit of all frontend source files. The four issues
-from `01kmtfq0erkn5vxqnzka4jz2ce-frontend-memory-leak-cleanup.md` are
-excluded — three of those have been fixed, and the fourth
-(`useGadgetStream`) is revisited here with additional context.
+from the original memory leak cleanup pass are excluded: three of those
+have been fixed, and the fourth (`useGadgetStream`) is revisited here
+with additional context.
 
 ## MEDIUM — `useGadgetStream` channel cannot be silenced (design gap)
 

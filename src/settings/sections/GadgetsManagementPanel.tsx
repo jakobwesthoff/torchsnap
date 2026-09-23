@@ -15,8 +15,9 @@
 // effect because `GadgetHost::register` freezes the gadget
 // set after setup. The banner at the top of the panel
 // surfaces that requirement with a single-click restart
-// button; `todos/wasm/…-gadget-hot-lifecycle.md` tracks the
-// follow-up work that will remove the restart.
+// button;
+// `todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`
+// tracks the follow-up work that will remove the restart.
 // =========================================================
 
 import { useCallback, useEffect, useMemo, useState } from "react";

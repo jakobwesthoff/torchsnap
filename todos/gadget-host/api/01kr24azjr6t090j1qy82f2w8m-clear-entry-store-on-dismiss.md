@@ -3,7 +3,7 @@
 ## Context
 
 The search entry store (introduced with the execute data
-parameter feature, todo `01kn7v6ynyf580ax9jyyt25jgc`) holds
+parameter feature, `ScoredEntry::data`) holds
 the most recent search session's `ScoredEntry` values in a
 host-side map so `execute()` can pass the full entry back to
 the gadget.
@@ -30,5 +30,5 @@ large `data` payloads to entries.
 
 ## Related
 
-- `01kn7v6ynyf580ax9jyyt25jgc-gadget-execute-data-param.md`
-  — the feature that introduces the entry store.
+- `ScoredEntry::data` in `src-tauri/src/commands/types.rs`: the
+  feature that introduces the entry store.

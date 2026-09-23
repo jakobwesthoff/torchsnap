@@ -110,7 +110,7 @@ Both commands return `requiresRestart: true` because
 `PluginHost::register` takes `&mut self` and the host is moved
 into Tauri state after setup. A hot lifecycle story — install,
 uninstall, and dev-reload without restart — is tracked in
-`todos/wasm/…-plugin-hot-lifecycle.md`.
+`todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`.
 
 ### ID-collision policy: reject, don't override
 
@@ -118,7 +118,7 @@ User installs that collide with any existing plugin id (Builtin,
 System, Dev, or already-installed User) are rejected with a
 kind-specific error. An explicit "override a system plugin" path
 is out of scope for v1; it is designed in
-`todos/wasm/…-system-plugin-override.md`.
+`todos/gadget-host/wasm/01kpdqsg7zmsrh2xssktpb5trb-system-gadget-override.md`.
 
 ## Consequences
 
