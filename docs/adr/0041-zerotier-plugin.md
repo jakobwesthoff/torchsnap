@@ -242,5 +242,3 @@ existing plugin recompiles cleanly against the SDK bump).
 - `01kqf1at1he1em7kfw6xa2rwfd-migrate-calculator-history-to-list-component.md`
   — exploratory follow-up on whether the calculator plugin's
   history view should migrate to the shared `<List>` component.
-- `01kqf1xsn6rb650f5a793wa5s4-refactor-manifest-rs.md` —
-  unrelated cleanup surfaced during this work.
