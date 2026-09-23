@@ -1,0 +1,54 @@
+name: CI
+
+# Runs the full quality cycle (`just fullcycle`) on every push to `main`
+# and on pull requests. Releases are built, signed and published from a
+# developer machine, so this workflow needs no secrets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request supersedes a running
+# check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fullcycle:
+    # macOS runners count against the paid minutes of a private
+    # repository, so the check only runs once the repository is public.
+    if: ${{ !github.event.repository.private }}
+    # The host code is mostly macOS-only, and releases are built on
+    # Apple silicon.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,wasm-tools
+
+      # `just install` generates the icon, mascot and tray assets with
+      # ImageMagick and cwebp, and merges mascot data with jq.
+      - run: brew install imagemagick webp jq
+
+      # rustup reads `rust-toolchain.toml` and installs the pinned
+      # release, the wasm32-wasip2 target, clippy and rustfmt on first
+      # use.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            gadgets
+
+      - run: just install
+
+      - run: just fullcycle
