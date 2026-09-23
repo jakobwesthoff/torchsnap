@@ -170,6 +170,54 @@ notarized build, `spctl -a -vv -t exec <app>` reports
 `spctl -a -vv -t open --context context:primary-signature <dmg>` for its
 DMG. `xcrun stapler validate <app or dmg>` confirms the stapled ticket.
 
+## Releasing
+
+Releases are built, notarized and published from a Mac, not from CI, so
+no signing credentials are stored in GitHub (ADR 0050). Each release
+carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
+
+### One-time setup
+
+- The "Developer ID Application" certificate with its private key in the
+  login keychain.
+- An App Store Connect API key (`.p8` file, Key ID, Issuer ID).
+- `~/.config/torchsnap/release.env`, or another file named by
+  `TORCHSNAP_RELEASE_ENV`:
+
+  ```sh
+  APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<Team ID>)"
+  APPLE_API_ISSUER="<Issuer ID>"
+  APPLE_API_KEY="<Key ID>"
+  APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_<Key ID>.p8"
+  ```
+
+- The GitHub CLI `gh`, logged in with push access to this repository.
+
+### Making a release
+
+1. Set the new version in `package.json`, `src-tauri/Cargo.toml` and
+   `src-tauri/tauri.conf.json`.
+2. In `CHANGELOG.md`, turn `[Unreleased]` into `## [<version>] - <today>`,
+   start a new empty `[Unreleased]` section, and add the link definition
+   `[<version>]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v<version>`
+   at the end of the file.
+3. Commit and push to `main`.
+4. `just release-build <version>` checks all of the above, runs
+   `just install` and `just fullcycle`, builds, signs and notarizes the
+   app and the DMG, verifies them, and stages
+   `src-tauri/target/release/dist/Torchsnap.dmg`. Try that DMG.
+5. `just release-publish <version>` tags `v<version>`, pushes the tag and
+   creates the GitHub release "Torchsnap <version>" with `Torchsnap.dmg`.
+   The notes are the CHANGELOG section plus the installation link and the
+   DMG's SHA-256.
+
+A version with a pre-release part, such as `0.10.0-beta.1`, becomes a
+GitHub prerelease and is not marked latest, so the download link on
+torchsnap.app keeps serving the last stable release.
+
+If the build must change, fix it on `main` and run `release-build` again:
+`release-publish` only publishes the DMG staged for the current commit.
+
 ## License
 
 Mozilla Public License Version 2.0 (MPL-2.0). Every source file

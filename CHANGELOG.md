@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With Developer ID signing and notarization credentials set,
   `just build --sign` also notarizes the DMG and staples its ticket, so
   Gatekeeper accepts the DMG as well as the app inside it.
+- `just release-build <version>` and `just release-publish <version>`
+  build, notarize and publish a release from a Mac; the README section
+  "Releasing" describes the setup and the steps.
+- A CI workflow runs `just fullcycle` on pushes to `main` and on pull
+  requests.
 
 ### Changed
 
