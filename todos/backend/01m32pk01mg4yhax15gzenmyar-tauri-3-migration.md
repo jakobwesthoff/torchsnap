@@ -91,7 +91,7 @@ there is a beta or RC and a Tauri 3 compatible tauri-nspanel. The trial:
      symlink to `<scratch>` (the control socket path must stay under
      macOS's 104-byte Unix socket limit).
    - Quit the installed Torchsnap (it owns the global hotkey), launch
-     `HOME=<symlink> .../torchsnap.app/Contents/MacOS/torchsnap`.
+     `HOME=<symlink> .../Torchsnap.app/Contents/MacOS/torchsnap`.
    - Drive the launcher over the JSON-RPC Control API at
      `<app_data_dir>/control.sock` (`show`, `query {"text": ...}`,
      `status`, `hide`), send real keys with

@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `just build --sign` also notarizes the DMG and staples its ticket, so
   Gatekeeper accepts the DMG as well as the app inside it.
 
+### Changed
+
+- The app bundle is named `Torchsnap.app` and the DMG
+  `Torchsnap_<version>_<arch>.dmg`, following the product name. The
+  bundle identifier `app.torchsnap` stays, so settings and installed
+  gadgets carry over.
+
 ## [0.9.3] - 2026-09-21
 
 ### Fixed

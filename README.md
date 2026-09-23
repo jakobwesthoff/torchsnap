@@ -113,8 +113,8 @@ reports a downloaded copy as damaged. Keep local builds unsigned when you
 want to attach lldb to the bundled app: lldb cannot attach to a signed
 bundle (ADR 0047).
 
-The build writes `src-tauri/target/release/bundle/macos/torchsnap.app` and
-`src-tauri/target/release/bundle/dmg/torchsnap_<version>_<arch>.dmg`.
+The build writes `src-tauri/target/release/bundle/macos/Torchsnap.app` and
+`src-tauri/target/release/bundle/dmg/Torchsnap_<version>_<arch>.dmg`.
 
 ### Ad-hoc signing
 
@@ -158,8 +158,8 @@ password) and `APPLE_TEAM_ID`.
 ### Checking a build
 
 ```sh
-codesign -dv --entitlements - src-tauri/target/release/bundle/macos/torchsnap.app
-syspolicy_check distribution src-tauri/target/release/bundle/macos/torchsnap.app
+codesign -dv --entitlements - src-tauri/target/release/bundle/macos/Torchsnap.app
+syspolicy_check distribution src-tauri/target/release/bundle/macos/Torchsnap.app
 ```
 
 A signed build shows `flags=0x10002(adhoc,runtime)` for ad-hoc or
