@@ -18,12 +18,18 @@ directory tree.
 
 Top-level groups:
 
-- `gadgets/` — work scoped to a single gadget.
-- `gadget-host/` — cross-cutting gadget-runtime work (host APIs,
-  the WASM runtime, the SDKs, audits).
+- `gadgets/` — work scoped to a single gadget, WASM or built-in
+  (`gadgets/clipboard/`, `gadgets/zerotier/`, ...).
+- `gadget-host/` — cross-cutting gadget-runtime work: host APIs
+  (`api/`), the WASM runtime (`wasm/`), gadget capability
+  implementations (`caps/`), install/uninstall lifecycle
+  (`install/`), the SDKs (`sdk/`), memory/footprint tuning
+  (`memory/`), architectural decisions about the gadget-host
+  design (`architecture/`), and audits.
 - `frontend/` — UI / React-side work.
 - `backend/` — Rust / Tauri host-side work that isn't
-  gadget-runtime.
+  gadget-runtime (settings, storage, search/app-discovery,
+  control socket, metadata/favicon caching, ...).
 - `platform/` — OS-specific bugs and integrations.
 - `product/` — user-facing features and visual identity that
   cross frontend and backend.
@@ -36,6 +42,28 @@ Subdirectories under each group narrow scope further (e.g.
 `gadgets/clipboard/`, `backend/search/`). Add a new subdirectory
 when three or more related todos accumulate; before that, keep
 them at the parent level.
+
+`memory/` and `architecture/` used to be their own top-level
+groups; both were folded into `gadget-host/` (as `gadget-host/memory/`
+and `gadget-host/architecture/`) since almost everything in them is
+gadget-host-scoped.
+
+## Where the 2026-07-02 review findings live
+
+A full-codebase review on 2026-07-02 filed its findings under a
+separate `todos/2026-07-02-review/` batch, grouped by review
+operation rather than by scope. That batch has been dissolved: every
+finding is now an ordinary todo in its scope folder above, alongside
+non-review todos on the same topic. There is no separate "review"
+category to browse.
+
+A review-derived todo still carries its original **Kind** /
+**Severity** / **Area** header (e.g. `**Severity:** high`); grep for
+`Severity:.*high` (or `medium` / `low`) under `todos/` to find
+findings by severity. Findings that were resolved or judged obsolete
+during a 2026-09-23 triage pass were deleted outright rather than
+moved; a handful of remaining todos note this next to the dangling
+reference they used to point at (e.g. "done, removed 2026-09-23").
 
 ## Adding a todo
 
