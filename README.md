@@ -2,8 +2,8 @@
 
 **Light. Find. Launch.**
 
-Strike a key, light the way. A cross-platform launcher to find, launch,
-and automate anything across every system.
+Strike a key, light the way. A cross-platform, keyboard-driven launcher
+with sandboxed WebAssembly Gadgets.
 
 Torchsnap is a Tauri 2 desktop application (Rust host, React + Vite
 frontend) with a sandboxed WebAssembly gadget system. Gadgets are
