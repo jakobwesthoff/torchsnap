@@ -35,10 +35,12 @@ destructive). The validator that exists for query input —
 `is_zt_network_id`, 16 hex chars (`query.rs:31-33`) — is not
 applied on the execute path.
 
-Whether a hostile webview can actually reach `execute()` with a
-forged entry id was a host-side question tracked against the
-app-launcher (done, removed 2026-09-23). Independent of that
-answer, the gadget-side fix is cheap defense-in-depth.
+A hostile webview reaching `execute()` with a forged entry id is a
+host-side question tracked against app-launcher; see
+`todos/backend/search/01kwh4j9bptrayf451yzd2145r-app-launcher-forged-entry-id.md`,
+which found forgery blocked by an incidental entry-store gate
+(severity low, contingent on that gate). Independent of that
+answer, the gadget-side fix here is cheap defense-in-depth.
 
 ## Suggested fix
 

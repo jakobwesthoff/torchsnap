@@ -39,8 +39,8 @@ folder names, and users do put app data in odd paths).
   for users whose paths contain `?[]{}`.
 - Allowlist widening (more paths readable than the manifest
   declared) for paths containing `*`. This is a
-  permission-boundary concern; it was tracked in the security-pass
-  queue (done, removed 2026-09-23).
+  permission-boundary concern; see the exploitability assessment
+  below, which found it not gadget-exploitable.
 
 ## Suggested fix
 Escape glob metacharacters in everything that is *data* rather

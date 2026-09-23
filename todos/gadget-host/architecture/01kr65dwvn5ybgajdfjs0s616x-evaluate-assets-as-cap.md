@@ -6,10 +6,9 @@ The WASM bridge exposes `assets` and `paths` host imports
 (`wasm/runtime/host/assets.rs`, `wasm/runtime/host/paths.rs`).
 
 The `paths` side is resolved: `PathResolverCap` exists in
-`src-tauri/src/caps/path_resolver.rs`. The `paths::resolve` host import
-still accesses `caps.gadget_paths` directly rather than going through the
-cap — that wiring is part of the provisioning restructuring work tracked in
-`01kr6d8ysxjemp6xfqees67qax`, not a question of whether a cap should exist.
+`src-tauri/src/caps/path_resolver.rs` and is wired into
+`ProvisionedCaps`; `paths::resolve` now goes through it rather than
+accessing `AppHandle`-derived paths directly.
 
 This todo covers the `assets` side only:
 

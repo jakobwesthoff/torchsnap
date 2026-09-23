@@ -23,10 +23,9 @@ This works well enough most of the time but is lossy at the edges:
 - **Wayland-only sessions** (no XWayland) would see zero clipboard
   activity. GNOME on ARM servers and some minimal Fedora spins are
   the nearest current examples.
-- **Setup failures bubble up as startup panics** when Xauth is
-  broken, XWayland is absent, or the user is running headless. The
-  graceful-degradation side of this was tracked separately (done,
-  removed 2026-09-23).
+- **Setup failures** (Xauth broken, XWayland absent, headless
+  session) return an error and disable the gadget for the session
+  rather than crashing the app.
 
 ## What the proper fix looks like
 
