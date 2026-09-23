@@ -57,9 +57,9 @@ in CI uses it.
 
 ## Related
 
-`todos/2026-07-02-review/build/01kwfz4kkaq7spwnm2ncket1fq-missing-mpl-header-init-firewall.md`
-proposes adding the MPL-2.0 header to `.devcontainer/init-firewall.sh`.
-That conflicts with `.devcontainer/NOTICE.md`, which states these files
-are not MPL-licensed. Resolve it as part of this decision: removing the
-devcontainer makes it moot; keeping it probably means closing that todo
-with a note instead of adding the header.
+A todo proposing to add the MPL-2.0 header to
+`.devcontainer/init-firewall.sh` was closed (done, removed
+2026-09-23) since it conflicted with `.devcontainer/NOTICE.md`,
+which states these files are not MPL-licensed. That conflict is
+still relevant to this decision: removing the devcontainer makes it
+moot, keeping it means the header stays unadded.

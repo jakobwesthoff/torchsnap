@@ -45,8 +45,8 @@ future permission-consent UI, see
 read constraints that have no runtime effect. Gadgets relying on
 a rule-declared default cwd run in the wrong directory.
 Separately, the guest-supplied `options.cwd` is used verbatim
-with no validation at all — that aspect is parked in
-`security-pass-queue.md` for the deferred security pass.
+with no validation at all. That aspect was tracked in the
+security-pass queue (done, removed 2026-09-23).
 
 ## Suggested fix
 Make `matches` return the matching rule (first match or

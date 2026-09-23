@@ -22,7 +22,7 @@ states:
 - gadget **disabled** with entries present — clearing "works" only
   because `ClipboardGadget::disable()` currently fails to release
   its state (see
-  `todos/2026-07-02-review/platform/01kwg2s5na69epssnnvgwjyvy0-clipboard-enable-panics-state-never-cleared.md`);
+  `todos/gadgets/clipboard/01kwg2s5na69epssnnvgwjyvy0-clipboard-enable-panics-state-never-cleared.md`);
   once that lifecycle bug is fixed, this click will produce an
   error (or a panic, pre-fix) instead of being unreachable.
 - gadget **enabled** with zero entries — harmless no-op, but a

@@ -67,5 +67,5 @@ should not be the gradient-on-app-icon.
   of `icons/32x32.png`
 - `just/assets.just` — `asset-app-icons` builds 32×32 et al.;
   `asset-tray-icon` builds the macOS template
-- `todos/01kmgymgjvkr1e6egscdwctf2m-create-dedicated-tray-icon.md`
-  — macOS-focused version of the same concern
+- macOS-focused version of the same concern (done, removed
+  2026-09-23)

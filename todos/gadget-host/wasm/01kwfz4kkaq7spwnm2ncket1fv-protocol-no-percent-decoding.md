@@ -42,7 +42,7 @@ happen before that validation, not after. Add tests with `%20`
 and a UTF-8 encoded name.
 
 ## Security-pass assessment (2026-07-02)
-The traversal interaction parked in `security-pass-queue.md` was
+The traversal interaction tracked in the security-pass queue was
 analysed during the security pass. There is **no live traversal
 bug today**: because nothing decodes, an encoded traversal like
 `%2e%2e/%2e%2e/etc/passwd` reaches `validate_gadget_path`

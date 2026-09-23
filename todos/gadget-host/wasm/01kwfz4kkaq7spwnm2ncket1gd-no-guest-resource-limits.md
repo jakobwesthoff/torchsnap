@@ -20,7 +20,7 @@ creates the `Store` with no limiter (`:171`). Consequently:
   thread) and are not covered there.
 - **Memory:** no `Store::limiter` / `StoreLimits`, so a guest
   can grow linear memory without bound. The
-  `todos/memory/01kqzjdcak7wz8cpzsdszn6c68-wasmtime-memory-config-tuning.md`
+  `todos/gadget-host/memory/01kqzjdcak7wz8cpzsdszn6c68-wasmtime-memory-config-tuning.md`
   todo targets idle RSS, not a hard cap against runaway
   allocation.
 

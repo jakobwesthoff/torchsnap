@@ -24,7 +24,7 @@ function itself treats as non-executions:
    (`gadget_host.rs:979-985`) — but the frecency hit for the
    phantom `(source, entry_id)` pair has already been stored.
    Given the overlapping-search race in
-   `host-core/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md`,
+   `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md`,
    this branch is reachable in practice, so garbage ids
    accumulate in the frecency database.
 

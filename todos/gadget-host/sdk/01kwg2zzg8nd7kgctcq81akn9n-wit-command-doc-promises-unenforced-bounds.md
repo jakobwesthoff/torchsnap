@@ -18,7 +18,7 @@ promises per-rule enforcement
   `max-output-bytes`."
 
 None of this is true today. The confirmed host-side finding
-`todos/2026-07-02-review/host-core/01kwg1ajrvfsmxyjmm7bvcs04b-command-per-rule-limits-unenforced.md`
+`todos/gadget-host/caps/01kwg1ajrvfsmxyjmm7bvcs04b-command-per-rule-limits-unenforced.md`
 establishes that per-rule `cwd` / `timeout-ms-max` /
 `max-output-bytes` / `max-stdin-bytes` are parsed but dropped at
 rule compilation, that only global ceilings apply, and that stdin

@@ -20,7 +20,7 @@ unwraps the `JoinHandle` result with a panic-on-panic `expect`:
 A panic inside any single gadget's `search()` / `entries()` /
 `execute()` — native gadget bug, or a WASM-bridge panic such as
 the poisoned-mutex cascade already recorded in
-`host-wasm/01kwfz4kkaq7spwnm2ncket1ge-mutex-poisoning-cascade.md`
+`todos/gadget-host/wasm/01kwfz4kkaq7spwnm2ncket1ge-mutex-poisoning-cascade.md`
 — therefore re-panics the *host* task handling the whole
 request:
 

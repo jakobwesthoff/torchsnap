@@ -41,7 +41,7 @@ Compounding this, registration errors never surface here:
 `ShortcutSection`'s `catch` only sees settings-store write failures;
 the actual registration happens asynchronously in the backend
 reactor, whose failure modes are logged with `eprintln` at best (see
-`host-core/01kwg1ph0qcdqtara5jcw7abyj-shortcut-reregistration-failure-modes.md`).
+`todos/backend/01kwg1ph0qcdqtara5jcw7abyj-shortcut-reregistration-failure-modes.md`).
 So a bad combo is accepted with no feedback path at all.
 
 ## Impact
