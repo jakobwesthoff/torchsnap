@@ -6,6 +6,8 @@ Date: 2026-09-22
 
 Accepted
 
+Amended by [49. Notarize release builds with an App Store Connect API key](0049-notarize-release-builds-with-an-app-store-connect-api-key.md)
+
 ## Context
 
 The 0.9.3 release bundle was not code signed by Tauri; it only carried
