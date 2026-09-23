@@ -1,6 +1,6 @@
 [package]
 name = "torchsnap"
-version = "0.9.3"
+version = "0.10.0"
 description = "torchsnap"
 authors = ["Jakob Westhoff <jakob@westhoffswelt.de> (https://westhoffswelt.de)"]
 edition = "2024"
