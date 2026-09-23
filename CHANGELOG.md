@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-23
+
 ### Added
 
 - `just build --sign` code-signs the macOS bundle with the hardened
@@ -25,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The app and the DMG are signed with a Developer ID and notarized by
+  Apple. After a download, macOS asks once whether to open the app;
+  removing the quarantine flag by hand is no longer needed.
 - The app bundle is named `Torchsnap.app` and the DMG
   `Torchsnap_<version>_<arch>.dmg`, following the product name. The
   bundle identifier `app.torchsnap` stays, so settings and installed
@@ -348,6 +353,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.10.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.10.0
 [0.9.3]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.3
 [0.9.2]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.2
 [0.9.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.1
