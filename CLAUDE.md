@@ -1,93 +1,114 @@
-# Torchsnap Development Guidelines
+# Torchsnap: project rules
 
-## License
+## Layout
 
-This project is licensed under the Mozilla Public License Version 2.0 (MPL-2.0).
+- `src-tauri/`: Rust host (Tauri 2). Cargo target dir `src-tauri/target/`.
+- `src/`: host frontend (React, Vite, TypeScript).
+- `gadgets/`: WASM gadgets, one crate per `gadgets/<id>/`, plus
+  `gadgets/gadget-sdk/` (Rust SDK, WIT in `gadgets/gadget-sdk/wit/`).
+  Cargo virtual workspace, target dir `gadgets/target/`.
+- `packages/gadget-sdk/`: TypeScript SDK for gadget frontends.
+- `just/`: recipe files imported by `Justfile`. `just --list` shows all.
+- `docs/adr/`: architecture decision records.
+- `target/` (repo root): gitignored, owned by `stage-bundled-gadgets`.
 
-### MPL-2.0 Source File Headers
+## Commands
 
-**Every source file** in this project MUST include the MPL-2.0 header comment
-at the top. This is a strict requirement — not optional.
+- `just install`: fetch dependencies, generate gitignored assets.
+- `just start`: dev mode (`tauri dev`).
+- `just fullcycle`: fmt-check, lint, check, test, build. Run before
+  committing code changes.
+- `just build [--release] [--sign]`: bundle the app. Details under
+  Releases.
 
-When creating a new source file, add the appropriate header as the first line
-(after shebang lines in scripts). When encountering an existing source file
-that is missing the header, add it immediately regardless of the current task.
+## License headers
 
-#### Header formats by file type
+Every source file starts with the MPL-2.0 header, after a shebang line if
+there is one. Add it to any source file that lacks it.
 
-**Rust (.rs), TypeScript (.ts, .tsx), JavaScript (.js):**
+Rust, TypeScript, JavaScript:
 ```
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ```
 
-**CSS (.css):**
+CSS:
 ```
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 ```
 
-**HTML (.html):**
+HTML:
 ```
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 ```
 
-**Shell scripts (.sh), Justfiles (.just), Makefiles:**
+Shell scripts, `Justfile`, `.just`:
 ```
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ```
 
-Files that do NOT need headers: `.json`, `.toml`, `.lock`, `.md`, images,
-and other non-source configuration files.
+SQL:
+```
+-- This Source Code Form is subject to the terms of the Mozilla Public
+-- License, v. 2.0. If a copy of the MPL was not distributed with this
+-- file, You can obtain one at https://mozilla.org/MPL/2.0/.
+```
 
-## Tooling notes
+WIT: same text with `///` prefix.
 
-### `cargo-component` is NOT used
+No header: `.json`, `.toml`, `.lock`, `.md`, images, other non-source
+config. Exception: `.devcontainer/` is not MPL-licensed (adapted
+third-party files, see `.devcontainer/NOTICE.md`); never add MPL headers
+there.
 
-This project does **not** use `cargo-component`. WASM gadgets are built
-with plain `cargo build --release` from the `gadgets/` virtual
-workspace (the `wasm32-wasip2` target is set as the workspace default
-via `gadgets/.cargo/config.toml`). The WIT `wit_bindgen::generate!`
-invocation lives in the `torchsnap-gadget-sdk` crate
-(`gadgets/gadget-sdk/`); gadget crates consume the generated bindings
-through `use torchsnap_gadget_sdk::prelude::*;` and register themselves
-via `define_gadget!(MyGadget)`. Do not install `cargo-component` and do
-not add recipes that depend on it.
+## Gadgets
 
-WIT inspection / formatting uses `wasm-tools` (`just check-wit`,
-`just fmt-wit`), which is a separate tool.
+- Build: plain `cargo build --release` in `gadgets/`; the default target
+  `wasm32-wasip2` is set in `gadgets/.cargo/config.toml`. `cargo-component`
+  is not used; do not add it or recipes that need it.
+- Bindings: `wit_bindgen::generate!` lives in `gadgets/gadget-sdk/`.
+  Gadgets use `use torchsnap_gadget_sdk::prelude::*;` and
+  `define_gadget!(MyGadget)`.
+- WIT tooling: `wasm-tools` via `just check-wit`, `just fmt-wit`.
+- Bundling: only ids listed in `gadgets/bundled.toml` ship in the app.
+  `just stage-bundled-gadgets` (run by `just build`) empties
+  `target/bundled-gadgets/`, rebuilds the listed gadgets and stages their
+  `.torchsnap` archives; Tauri bundles that directory. Unlisted gadgets
+  under `gadgets/<id>/` still load in debug builds (ADR 0035).
+- Storage: gadget code under `<app_data_dir>/gadgets/`, per-gadget state
+  under `<app_data_dir>/gadget-home/<gadget-id>/`. SQLite files use
+  `.sqlite3` (ADR 0018, ADR 0035).
 
-## Gadget build pipeline
+## Decisions
 
-Release bundles ship only the gadgets whitelisted in
-`gadgets/bundled.toml`. The `stage-bundled-gadgets` Just recipe
-reads the whitelist, rebuilds each listed gadget, and copies the
-resulting `.torchsnap` archives into `target/bundled-gadgets/`,
-which Tauri picks up via the `resources` entry in
-`tauri.conf.json`. `just build` runs this staging step before
-`tauri build` automatically; no manual orchestration needed.
+Record decisions as ADRs in `docs/adr/`:
 
-The repo-root `target/` directory is gitignored — it is owned
-entirely by this staging flow. Cargo itself uses
-`src-tauri/target/` for the host and `gadgets/target/` for the
-gadget virtual workspace.
+- Create: `EDITOR=true adrs new "<title>"`, then fill Context, Decision,
+  Consequences and set Status to `Accepted`.
+- Link changed ADRs both ways: `Amends [N. Title](file)` in the new one,
+  `Amended by [N. Title](file)` in the old one, below the status.
+- Record only what was decided; no invented rationale.
 
-To add a gadget to release bundles, edit `gadgets/bundled.toml`
-and rebuild. To develop a gadget without adding it to release
-bundles, just keep its source under `gadgets/<id>/` — the debug
-loader scans that directory automatically (ADR 0035).
+## Changelog
 
-## Gadget storage layout
+`CHANGELOG.md` follows Keep a Changelog. Every user-visible change gets
+an entry under `[Unreleased]` (`Added`, `Changed`, `Removed`, `Fixed`).
 
-Host-managed per-gadget state (SQLite databases, future blob /
-cache sibling directories) lives under
-`<app_data_dir>/gadget-home/<gadget-id>/`, separate from gadget
-code which lives under `<app_data_dir>/gadgets/`. SQLite files
-use the `.sqlite3` extension project-wide (not `.db`). See
-ADR 0035 (distribution) and ADR 0018 (SQL storage) for details.
+## Releases and signing
+
+- `just build --release --sign`: signs with `APPLE_SIGNING_IDENTITY`
+  (default `-`, ad-hoc) and the hardened runtime plus the entitlements in
+  `src-tauri/Entitlements.plist` (ADR 0046, 0047). Unsigned local builds
+  keep lldb working.
+- With a Developer ID and notarization credentials in the environment,
+  Tauri notarizes the app and `just notarize-dmg` notarizes the DMG
+  (ADR 0049). Variables and checks: README, "Signing macOS builds".
+- Releases ship one arm64 DMG uploaded as `Torchsnap.dmg`; the bundle is
+  `Torchsnap.app`, identifier `app.torchsnap` (ADR 0048).
