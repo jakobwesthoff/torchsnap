@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by default, or with the identity in `APPLE_SIGNING_IDENTITY`. The README
   describes ad-hoc signing and the variables for Developer ID signing and
   notarization.
+- With Developer ID signing and notarization credentials set,
+  `just build --sign` also notarizes the DMG and staples its ticket, so
+  Gatekeeper accepts the DMG as well as the app inside it.
 
 ## [0.9.3] - 2026-09-21
 

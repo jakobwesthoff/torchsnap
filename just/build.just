@@ -32,6 +32,60 @@ build profile="debug" sign="": asset-mascot-data
     just stage-bundled-gadgets
     just build-gadgets
     {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
+    {{ if sign == "sign" { "just notarize-dmg " + profile } else { "" } }}
+
+# With notarization credentials in the environment, Tauri notarizes the
+# app and staples the ticket to it, but only signs the DMG around it.
+# Gatekeeper rejects that DMG as "Unnotarized Developer ID", so this
+# recipe submits the DMG as well and staples its ticket. It accepts the
+# same variables as Tauri: an App Store Connect API key
+# (`APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_PATH`) or an Apple
+# ID (`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`). Ad-hoc signed
+# builds cannot be notarized, so it skips them, and it skips builds
+# without credentials.
+
+# Notarize and staple the DMG of a signed build
+notarize-dmg profile="release":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ "${APPLE_SIGNING_IDENTITY:--}" = "-" ]; then
+        echo "Ad-hoc signed build, skipping DMG notarization."
+        exit 0
+    fi
+    if [ -n "${APPLE_API_KEY:-}" ]; then
+        credentials=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+    elif [ -n "${APPLE_ID:-}" ]; then
+        credentials=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+    else
+        echo "No notarization credentials set, skipping DMG notarization."
+        exit 0
+    fi
+
+    # Tauri names the DMG `<productName>_<version>_<arch>.dmg` and leaves
+    # the DMGs of earlier builds in the same directory, so only those of
+    # the configured name and version are submitted.
+    name=$(jq -r .productName src-tauri/tauri.conf.json)
+    version=$(jq -r .version src-tauri/tauri.conf.json)
+    shopt -s nullglob
+    dmgs=(src-tauri/target/{{ profile }}/bundle/dmg/"${name}_${version}"_*.dmg)
+    if [ ${#dmgs[@]} -eq 0 ]; then
+        echo "No ${name}_${version}_*.dmg found in src-tauri/target/{{ profile }}/bundle/dmg/." >&2
+        exit 1
+    fi
+
+    for dmg in "${dmgs[@]}"; do
+        echo "Notarizing $dmg"
+        # Only an "Accepted" submission has a ticket that stapler can
+        # attach, so that status decides, whatever the exit code says.
+        result=$(xcrun notarytool submit "$dmg" "${credentials[@]}" --wait --output-format json)
+        echo "$result"
+        if ! grep -q '"status":"Accepted"' <<<"$result"; then
+            echo "Notarization of $dmg was not accepted." >&2
+            exit 1
+        fi
+        xcrun stapler staple "$dmg"
+    done
 
 # Build only the frontend (Vite + TypeScript)
 build-frontend: asset-mascot-data

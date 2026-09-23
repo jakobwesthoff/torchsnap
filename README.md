@@ -130,10 +130,11 @@ for an administrator password.
 ### Developer ID signing and notarization
 
 Notarization needs a paid Apple Developer account and a
-"Developer ID Application" certificate. It has not been run for
-Torchsnap yet. The variables below are the ones the Tauri documentation
-lists; with them set, `just build --release --sign` signs with the
-Developer ID instead of ad-hoc.
+"Developer ID Application" certificate. With the variables below set,
+`just build --release --sign` signs with the Developer ID instead of
+ad-hoc, and Tauri notarizes the app and staples the ticket to it. Tauri
+only signs the DMG, so the build then runs `just notarize-dmg`, which
+notarizes the DMG and staples its ticket as well.
 
 Signing:
 
@@ -165,7 +166,9 @@ A signed build shows `flags=0x10002(adhoc,runtime)` for ad-hoc or
 `flags=0x10000(runtime)` for Developer ID, plus the two entitlements.
 `syspolicy_check` reports only a warning for an ad-hoc build. For a
 notarized build, `spctl -a -vv -t exec <app>` reports
-`source=Notarized Developer ID`.
+`source=Notarized Developer ID`, and so does
+`spctl -a -vv -t open --context context:primary-signature <dmg>` for its
+DMG. `xcrun stapler validate <app or dmg>` confirms the stapled ticket.
 
 ## License
 
