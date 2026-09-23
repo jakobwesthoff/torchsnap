@@ -13,10 +13,11 @@
 // `frontend/node_modules/*` (see `just/gadgets.just` —
 // `package-gadget` exclusion list), which means the guest
 // cannot read these files at runtime. Embedding at compile
-// time is the simplest workaround for the v1 gadget ABI. A
-// future `gadget-assets` WIT interface
-// (`todos/wasm/…gadget-assets-wit-interface.md`) would let
-// the guest load them from the archive and shrink the binary.
+// time is the simplest workaround for the v1 gadget ABI.
+// Switching to the `assets::read` WIT interface (see
+// `gadgets/bangs/src/lib.rs` for an existing consumer) would
+// let the guest load them from the archive and shrink the
+// binary.
 //
 // `just build-gadget emoji-picker` runs `bun install` in
 // `frontend/` before invoking Cargo, so `node_modules/` is

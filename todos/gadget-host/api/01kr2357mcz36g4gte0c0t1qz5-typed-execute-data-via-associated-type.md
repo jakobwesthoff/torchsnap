@@ -1,7 +1,7 @@
 # Type-safe execute data via SDK associated type
 
 **Status: needs discussion** — depends on the opaque `data`
-field landing first (todo `01kn7v6ynyf580ax9jyyt25jgc`).
+field, already landed as `ScoredEntry::data`.
 
 ## Problem
 
@@ -142,8 +142,8 @@ Changing `BangData`'s fields forces both `search()` and
 
 ## Related
 
-- `01kn7v6ynyf580ax9jyyt25jgc-gadget-execute-data-param.md`
-  — prerequisite: the opaque `data` field this builds on.
+- `ScoredEntry::data` in `src-tauri/src/commands/types.rs`: the
+  opaque `data` field this builds on.
 - `gadgets/gadget-sdk/src/lib.rs` — `define_gadget!` macro
   and SDK trait re-exports.
 - `gadgets/gadget-sdk/wit/torchsnap-gadget.wit` — WIT types.

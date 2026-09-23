@@ -56,11 +56,12 @@ from a single high-level command.
 ## Dependencies / related todos
 
 - The hot-lifecycle work
-  (`todos/wasm/…-gadget-hot-lifecycle.md`) unlocks much of the
-  value here: without hot reload, a smoother build-and-launch
-  still requires manual app restarts for gadget changes.
-- The Justfile-extraction todo
-  (`todos/…-extract-complex-justfile-logic.md`) argues that
+  (`todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`)
+  unlocks much of the value here: without hot reload, a smoother
+  build-and-launch still requires manual app restarts for gadget
+  changes.
+- The Justfile-extraction work (already done: TOML parsing moved to
+  `tools/list-bundled-gadgets` and `tools/toml-get`) argues that
   any non-trivial build logic should move out of the Justfile
   anyway; any implementation of this todo should respect that
   direction.

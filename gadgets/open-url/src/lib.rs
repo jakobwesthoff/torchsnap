@@ -20,7 +20,7 @@
 // suppressed entirely, while explicit-scheme URLs always
 // produce a result.
 //
-// See `todos/01kqf2tcbz6n2m4kn8299ddfnw-open-url-asymmetric-metadata-mode.md`
+// See `todos/gadgets/open-url/01kqf2tcbz6n2m4kn8299ddfnw-open-url-asymmetric-metadata-mode.md`
 // for the deferred follow-up that splits the lookup mode by
 // URL kind once we have UX data to motivate it.
 // =========================================================

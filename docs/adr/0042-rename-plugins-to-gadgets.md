@@ -86,8 +86,7 @@ deprecation period required — a straight rename is viable.
 
 Prior in-repo terminology used "plugin" across ~33 ADRs, 6 files under
 `docs/Plugin-Architecture/`, ~2178 lines of `.rs` source, and dozens of
-`.ts`/`.tsx` files. The full scope is captured in
-`todos/plans/01kqwvtgqpvxb64eysw7pt4gdr-rename-plugins-to-gadgets/inventory.md`.
+`.ts`/`.tsx` files.
 
 ## Decision
 
@@ -112,8 +111,7 @@ repository.
 
 Every `Plugin*` Rust type, every `plugin*` TS identifier, every WIT
 package/world/file, every Tauri command name, every settings-key prefix, and
-every workspace directory now uses "gadget". The full naming map is in
-`todos/plans/01kqwvtgqpvxb64eysw7pt4gdr-rename-plugins-to-gadgets/inventory.md`.
+every workspace directory now uses "gadget".
 
 The `manifest.toml` filename is retained; its inner `[plugin]` table is renamed
 to `[gadget]`.
@@ -125,8 +123,3 @@ Vendored Tauri-ecosystem identifiers and Vite's `Plugin` type are unchanged.
 This ADR amends every prior ADR using plugin terminology — see the bidirectional
 links inserted by `adrs link` below. The architectural decisions in those ADRs
 are unchanged; only the terminology label is.
-
-## References
-
-- `todos/01kqw4kqe3g50xn77efwv71jy2-rename-plugins-to-gadgets-everywhere.md` — original trigger
-- `todos/plans/01kqwvtgqpvxb64eysw7pt4gdr-rename-plugins-to-gadgets/inventory.md` — shared naming inventory

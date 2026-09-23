@@ -81,4 +81,5 @@ passes `disabled` to `<Switch>` when true.
   A `disabled` or `muted` prop will need to be added that renders the item
   with `text-text-tertiary` and disables click.
 - Hot-lifecycle removal (no restart needed at all) is tracked separately in
-  `todos/wasm/…-gadget-hot-lifecycle.md` — do not conflate the two.
+  `todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`.
+  Do not conflate the two.

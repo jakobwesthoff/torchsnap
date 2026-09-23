@@ -72,7 +72,7 @@ In the `OpenSettings` intercept:
    that selects `gadgetId`'s panel.
 
 Related (does not cover this): the pre-existing todo
-`todos/01krp5a92mezsrq8jg14mm3nqx-opensettings-passthrough.md`
+`todos/gadget-host/api/01krp5a92mezsrq8jg14mm3nqx-opensettings-passthrough.md`
 proposes rearchitecting the interception into a gadget-side
 `PostAction`; whichever design wins, the
 window-open + navigation gap fixed here must be part of it.

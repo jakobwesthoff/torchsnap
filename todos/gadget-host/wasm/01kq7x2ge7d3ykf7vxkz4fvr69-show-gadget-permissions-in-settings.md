@@ -9,8 +9,7 @@ the capabilities each gadget has been granted via its manifest
 `[[permissions.process]]`).
 
 For URL/HTTP this gap was acceptable while the surface was small. With
-process execution about to land (see
-`todos/wasm/*-wasm-process-exec-interface.md`) the gap becomes more
+process execution about to land the gap becomes more
 significant: a gadget that can spawn `mdfind` or `git` is a categorically
 larger trust ask than one that can only open `https` URLs, and users
 deserve to see what they have running.
@@ -46,4 +45,4 @@ shape of the block should reflect the gadget's actual surface.
 - Depends on: `[[permissions.process]]` manifest + WIT landing first so
   there is a real surface to render.
 - Pairs with the install-time consent prompt todo (sibling file in
-  `todos/wasm/`).
+  `todos/gadget-host/wasm/`).
