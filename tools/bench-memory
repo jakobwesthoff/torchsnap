@@ -30,7 +30,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_BUNDLE="$PROJECT_DIR/src-tauri/target/release/bundle/macos/torchsnap.app"
+APP_BUNDLE="$PROJECT_DIR/src-tauri/target/release/bundle/macos/Torchsnap.app"
 SETTINGS_DIR="$HOME/Library/Application Support/app.torchsnap"
 SETTINGS_FILE="$SETTINGS_DIR/settings.json"
 SOCK="$SETTINGS_DIR/control.sock"
