@@ -31,11 +31,11 @@ working directory:
   `path_safety::canonical_under_root` helper is wired only for the
   `path-under` *argv* constraint (`argv_matcher.rs:288`), never for
   cwd. `path_safety.rs` was excluded from this review, but its
-  module comment (per the security-pass queue) claims "per-rule cwd
-  validation in the manifest parser uses canonical-under-root"; the
-  parser code above contradicts that — it does variable-reference
-  validation only. Treat the comment as stale. The fix below is
-  what would make it true.
+  module comment claims "per-rule cwd validation in the manifest
+  parser uses canonical-under-root"; the parser code above
+  contradicts that, since it does variable-reference validation
+  only. Treat the comment as stale. The fix below is what would
+  make it true.
 
 When the guest omits `cwd`, the host falls back to the per-gadget
 scratch directory `${gadget-data}/exec-cwd/` (`command.rs:180-187`).

@@ -62,8 +62,7 @@ A review-derived todo still carries its original **Kind** /
 `Severity:.*high` (or `medium` / `low`) under `todos/` to find
 findings by severity. Findings that were resolved or judged obsolete
 during a 2026-09-23 triage pass were deleted outright rather than
-moved; a handful of remaining todos note this next to the dangling
-reference they used to point at (e.g. "done, removed 2026-09-23").
+moved.
 
 ## Adding a todo
 
