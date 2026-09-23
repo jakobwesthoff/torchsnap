@@ -24,9 +24,9 @@ This works well enough most of the time but is lossy at the edges:
   activity. GNOME on ARM servers and some minimal Fedora spins are
   the nearest current examples.
 - **Setup failures bubble up as startup panics** when Xauth is
-  broken, XWayland is absent, or the user is running headless. See
-  `todos/fedora/01kpv8y2ma927eh47xf09mgqp5-clipboard-init-should-not-panic.md`
-  for the graceful-degradation side of this.
+  broken, XWayland is absent, or the user is running headless. The
+  graceful-degradation side of this was tracked separately (done,
+  removed 2026-09-23).
 
 ## What the proper fix looks like
 

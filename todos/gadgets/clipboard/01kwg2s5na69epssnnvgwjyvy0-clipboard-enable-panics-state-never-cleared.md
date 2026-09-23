@@ -61,7 +61,7 @@ Three related lifecycle defects around `ClipboardGadget::state`:
 
 - `enable()`: propagate the error (`.context("open clipboard
   database")?`) so the host's enable-failure path handles it.
-  (Related: `todos/architecture/01kr9j552samx34befphthjp5p-enable-failure-not-reflected-in-store.md`.)
+  (Related: `todos/gadget-host/architecture/01kr9j552samx34befphthjp5p-enable-failure-not-reflected-in-store.md`.)
 - `disable()`: take the `Arc` out of `self.state` (drop it) so
   the DB closes once in-flight operations finish, matching the
   field documentation.

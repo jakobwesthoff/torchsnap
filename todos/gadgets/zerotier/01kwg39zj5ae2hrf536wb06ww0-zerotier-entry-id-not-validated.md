@@ -36,10 +36,9 @@ destructive). The validator that exists for query input —
 applied on the execute path.
 
 Whether a hostile webview can actually reach `execute()` with a
-forged entry id is a host-side question tracked in
-`todos/2026-07-02-review/security-pass-queue.md` (app-launcher
-entry). Independent of that answer, the gadget-side fix is
-cheap defense-in-depth.
+forged entry id was a host-side question tracked against the
+app-launcher (done, removed 2026-09-23). Independent of that
+answer, the gadget-side fix is cheap defense-in-depth.
 
 ## Suggested fix
 

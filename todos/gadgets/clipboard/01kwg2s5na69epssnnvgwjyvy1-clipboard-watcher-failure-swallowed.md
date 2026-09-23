@@ -41,7 +41,7 @@ A user whose clipboard context cannot be acquired silently gets a
 frozen clipboard history (old entries only, never cleaned up) with
 no indication anything is wrong — the error goes to stderr, which
 is invisible in a packaged app (see
-`todos/2026-07-02-review/host-core/01kwg2ftae87zzd75qgcpa6ttz-host-errors-eprintln-invisible-in-bundle.md`).
+`todos/backend/01kwg2ftae87zzd75qgcpa6ttz-host-errors-eprintln-invisible-in-bundle.md`).
 
 ## Suggested fix
 

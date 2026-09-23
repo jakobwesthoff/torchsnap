@@ -28,7 +28,7 @@ Note the philosophical split with the other settings read path:
 `SettingsWatch::get` (`settings/notifier.rs:49-52`) *panics* on
 exactly this condition. One path hides the corruption, the other
 crashes on it; see
-`host-core/01kwg107dyjs3y4d92nt1yqkqv-settings-watch-panics-on-bad-value.md`.
+`todos/backend/settings/01kwg107dyjs3y4d92nt1yqkqv-settings-watch-panics-on-bad-value.md`.
 
 ## Impact
 Gadgets silently run with default settings after a bad write,

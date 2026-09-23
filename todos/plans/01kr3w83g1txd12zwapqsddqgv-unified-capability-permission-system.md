@@ -562,7 +562,7 @@ constructed in a fully initialized environment.
 
 - `GadgetSource` remains a WASM bridge internal for now. Future
   encapsulation as a cap tracked in
-  `todos/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-cap.md`.
+  `todos/gadget-host/architecture/01kr642tq2r66a9899fw4f0p0p-gadget-source-cap.md`.
 
 ## Implementation strategy
 
@@ -573,8 +573,8 @@ deleted. This migration phase is complete.
 
 ### Phase 2: Provisioning restructuring
 
-Tracked in detail in
-`todos/architecture/01kr6d8ysxjemp6xfqees67qax-provisioning-restructuring.md`.
+Tracked in detail in a todo that has since closed (done, removed
+2026-09-23).
 
 Summary:
 - **Phase A:** Move cap construction from bridge to host

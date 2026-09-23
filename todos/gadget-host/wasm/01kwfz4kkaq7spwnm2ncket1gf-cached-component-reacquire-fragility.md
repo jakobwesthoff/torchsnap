@@ -32,7 +32,7 @@ Two problems with the "guaranteed to exist" assumption:
    blake3 hash of the WASM bytes read at first acquire. For a
    `DirectorySource` dev gadget, rebuilding the `.wasm` and then
    triggering a release/re-acquire cycle (e.g. idle eviction,
-   which `todos/memory/01kqz0frsmrsvmmnj6qcm9cbjq-idle-instance-eviction.md`
+   which `todos/gadget-host/memory/01kqz0frsmrsvmmnj6qcm9cbjq-idle-instance-eviction.md`
    plans) silently reloads the OLD compiled component; the
    developer's new build is ignored until the
    `CachedComponent` itself is reconstructed.

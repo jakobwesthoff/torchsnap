@@ -46,7 +46,8 @@ Have the `None` branch construct the NotFound error directly
 read is kept. Cache the canonical root in the struct at
 `open()` time. The time-of-check gap between canonicalize
 failure and the fallback read also has a security angle; that
-part is parked in `../security-pass-queue.md`.
+part was tracked in the security-pass queue (done, removed
+2026-09-23).
 
 ## Security-pass assessment (2026-07-02)
 Confirmed real; severity **low** under the actual threat model.

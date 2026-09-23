@@ -26,7 +26,7 @@ never finished or removed without deleting the branch.
 None at runtime today. The open question is behavioral: should the
 top of the retention slider mean "keep forever"? The backend
 retention sweep interprets `cacheTtlDays` literally (see
-`host-core/01kwg1z574brza6n2ffjnhvg9f-retention-can-wipe-live-favicons.md`
+`todos/backend/metadata/01kwg1z574brza6n2ffjnhvg9f-retention-can-wipe-live-favicons.md`
 for the related retention behavior), so if "unlimited" was the
 intent, both the label and the backend semantics are missing.
 

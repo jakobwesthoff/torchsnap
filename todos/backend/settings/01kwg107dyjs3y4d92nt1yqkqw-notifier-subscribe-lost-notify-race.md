@@ -39,7 +39,7 @@ indefinitely. Low probability, but the failure is permanent until
 the next change and leaves no trace.
 
 Related in spirit to the CoalescingDispatcher lost-wakeup finding
-(`host-core/01kwg0b6tyfptjcafw5tmag25w-coalescing-dispatcher-lost-wakeup.md`):
+(`todos/backend/settings/01kwg0b6tyfptjcafw5tmag25w-coalescing-dispatcher-lost-wakeup.md`):
 both settings pathways have subscribe/dispatch races at the edges.
 
 ## Suggested fix

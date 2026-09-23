@@ -35,7 +35,7 @@ rejected or (worse) silently ignored, leaving the gadget with no
 fs grants and every `read-file` failing with
 `permission-denied`. The host-wasm review previously found that
 manifest parsing is lenient about unknown keys
-(`todos/2026-07-02-review/host-wasm/01kwfz4kkaq7spwnm2ncket1g3-manifest-leniency-hides-typos.md`),
+(`todos/gadget-host/wasm/01kwfz4kkaq7spwnm2ncket1g3-manifest-leniency-hides-typos.md`),
 which makes the silent-ignore outcome the likely one.
 
 ## Suggested fix
