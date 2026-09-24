@@ -1,85 +1,68 @@
 ---
 kind: feature
-status: blocked
+status: open
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
 ---
 
 # Install review dialog: show what a gadget asks for before installing it
 
-Waits for the intake. Required before the URL scheme ships.
+Part of the first delivery (decided 2026-09-24). Implementation steps
+7, 8, 12 and 13 of the plan.
 
 ## Why
 
-The intake todo
-(`todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md`)
-gives every external install a minimal confirm step: name, version,
-id and source. That stops silent installs. It does not tell the user
-what they are agreeing to.
+Gadgets can spawn processes (`command` rules), make HTTP requests,
+read files and open URLs and paths. A file opened by double-click from
+Downloads is exactly where the user needs to see that before saying
+yes. The dialog replaces a plain confirm step entirely.
 
-Gadgets can now spawn processes (`[[permissions.process]]`), make
-HTTP requests, read files and open URLs. A file opened by
-double-click from Downloads, or later fetched through a `torchsnap://`
-link, is exactly where the user needs to see that before saying yes.
+## Decisions
 
-## Existing todos this replaces
+- **Always shown**, for every install request and every origin.
+- **Content:** name, version, id, description; the source path;
+  download provenance on macOS when available ("Downloaded from
+  github.com"); a replace notice with installed and incoming version;
+  every declared permission, grouped, in plain language, with broad
+  grants highlighted; Install / Cancel. A rejected request (builtin,
+  system or dev id) shows the reason and only a dismiss action.
+- **Severity rules** (Rust, `review.rs`): any `command` rule, HTTP
+  origin `"*"` and `opener.open_path` are warnings; other HTTP
+  origins, opener schemes, `reveal_path`, filesystem read patterns,
+  clipboard and website metadata are notices; settings, frecency, SQL
+  storage, icon cache and path resolver are info. The table in the
+  plan is authoritative.
+- **Command rules show binary and argv only.** Per-rule limits are not
+  enforced yet
+  (`todos/gadget-host/caps/01kwg1ajrvfsmxyjmm7bvcs04b-command-per-rule-limits-unenforced.md`),
+  so the review does not show them.
+- **Split of work:** Rust returns structured `PermissionItem`s with a
+  severity. The frontend turns them into sentences, so wording can
+  change (or be translated later) without touching the contract.
+- **One shared component** (`PermissionSummary`) renders permissions
+  in the dialog and on installed gadget cards in Settings → Gadgets.
+- **Provenance** comes from the `com.apple.metadata:kMDItemWhereFroms`
+  xattr (binary plist array of strings) and `com.apple.quarantine`
+  (`flags;timestamp;agent;uuid`), read with `libc::getxattr`. Missing
+  attributes are skipped silently. Other platforms show no provenance.
+- **Signing** stays deferred (ADR 0036). The earlier consent todo
+  asked for a `requires_consent(manifest, source, signature_status)`
+  shape so trusted signers could skip the prompt later. With the
+  review always shown, signing would instead add a line to the review
+  ("Signed by …"); the review model gets that field when signing
+  exists.
 
-Two todos describe the same dialog from different angles. Fold them
-into this one when work starts and delete or trim the originals:
+## Folded-in todos
 
 - `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`
-  wants a consent prompt for User gadgets with process permissions,
-  broad HTTP origins and opener path roots. It asks for a
-  `requires_consent(manifest, source, signature_status)` shape so
-  signing can plug in later (ADR 0036 defers signing).
-- `todos/product/features/01krp751n5tddffjtb8fr7nnpr-permission-ui-transparency.md`,
-  section 2, wants a permission review in plain language ("Can read
-  files matching ~/.config/myapp/*" rather than the glob).
+  (deleted, content above).
+- Section 2 of
+  `todos/product/features/01krp751n5tddffjtb8fr7nnpr-permission-ui-transparency.md`;
+  its section 1 and
+  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`
+  are covered by the shared component (plan step 12).
 
-Section 1 of the transparency todo and
-`todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`
-cover showing permissions of already-installed gadgets. That is the
-same rendering, so build one permission-summary component and use it
-in both places.
+## Out of scope
 
-## What the dialog shows
-
-- Identity: name, version, id, author if the manifest carries one,
-  description.
-- Source: the local path, or for URL-scheme installs the full URL
-  with the host shown prominently.
-- Permissions, grouped and in plain language. Broad grants get a
-  warning: HTTP origin `*`, process rules with free-form argv, opener
-  path roots `*`.
-- A collision notice if the id is already installed, before Install
-  is clicked.
-- Install / Cancel. Cancel discards the staged file.
-
-## Open discussion points
-
-- **Always show it, or only when something is risky?** The consent
-  todo proposed prompting only for process permissions. Once every
-  install passes a confirm step anyway, showing the full review every
-  time costs nothing extra and is easier to explain.
-- **Should the review vary by origin?** A URL-scheme install arrives
-  with less user intent than a drop, so its dialog may need a
-  stronger warning or an extra "I trust this source" step.
-- **Download provenance on macOS.** Files downloaded by a browser
-  carry `com.apple.quarantine` and usually `kMDItemWhereFroms` (the
-  download URL). Showing "downloaded from github.com" for a local file
-  would help the user. Unverified whether this can be read cheaply
-  from Rust; `xattr` / `mdls` show it on the command line.
-- **Where the permission-to-text mapping lives.** In Rust, next to the
-  manifest types (one source of truth, testable), or in the frontend.
-  Rust returning structured data plus severity, with the frontend
-  wording it, is one option.
-- **Remembering decisions.** Out of scope for now. Every install asks.
-
-## Done when
-
-- Every request in the install queue shows this dialog before
-  installing.
-- The same permission component is used on installed gadget cards in
-  Settings → Gadgets.
-- The two folded-in todos are removed or reduced to what is not
-  covered here.
+- Remembering decisions per gadget or publisher.
+- Revoking permissions of installed gadgets.

@@ -3,6 +3,7 @@ kind: bug
 severity: medium
 status: open
 area: [src/settings/sections/GadgetsManagementPanel.tsx]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Gadget install drag-drop listener leaks on fast unmount and double-installs in dev

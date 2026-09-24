@@ -4,6 +4,7 @@ severity: low
 status: open
 area: [src-tauri/src/gadget_install.rs, src-tauri/src/lib.rs, src-tauri/src/gadget_host.rs]
 tags: [security, unconfirmed]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Install/uninstall trust chain holds (load re-validates; `remove_dir_all` symlink-safe), but the loader has no duplicate-id gate → builtin-id shadowing

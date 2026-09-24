@@ -39,12 +39,10 @@ environment variable holds the image path):
   for URL schemes: the registration points at the old path. Compare
   the stored `Exec` path with `$APPIMAGE` on every start and rewrite
   if it changed.
-- **Leftovers.** Deleting the AppImage leaves these files behind.
-  Offer "Remove desktop integration" in settings, or accept it and
-  document it.
-- **Asking first.** Writing into the user's desktop config unasked is
-  rude. A first-run prompt or a settings toggle, default to be
-  decided.
+- **Consent and leftovers (decided 2026-09-24).** Registration is on
+  by default. A settings toggle turns it off, and a "Remove desktop
+  integration" action deletes the written files, since deleting the
+  AppImage leaves them behind.
 - **Helpers.** appimaged and AppImageLauncher write their own desktop
   files. Two entries for the same app show up twice in "Open With".
   Detect them, or at least document it.
@@ -55,6 +53,6 @@ environment variable holds the image path):
 
 ## Done when
 
-- A fresh AppImage, after first start (and consent), opens
+- A fresh AppImage, after its first start, opens
   `.torchsnap` files on double-click.
 - Moving the AppImage and starting it again fixes the registration.

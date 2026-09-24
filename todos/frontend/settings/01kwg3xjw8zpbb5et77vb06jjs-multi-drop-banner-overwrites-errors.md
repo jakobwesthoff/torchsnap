@@ -4,6 +4,7 @@ severity: low
 status: open
 area: [src/settings/sections/GadgetsManagementPanel.tsx]
 tags: [unconfirmed]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Multi-archive drop: later install banners silently overwrite earlier errors

@@ -1,6 +1,7 @@
 ---
 kind: feature
 status: open
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Surface gadget permissions in the settings UI

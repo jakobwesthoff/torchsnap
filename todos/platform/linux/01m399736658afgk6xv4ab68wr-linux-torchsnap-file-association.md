@@ -39,15 +39,18 @@ Checked against the bundler source
 
   ```xml
   <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-    <mime-type type="application/x-torchsnap-gadget">
+    <mime-type type="application/vnd.torchsnap.gadget+zip">
       <comment>Torchsnap gadget</comment>
       <glob pattern="*.torchsnap"/>
     </mime-type>
   </mime-info>
   ```
 
-  Whether to add `<sub-class-of type="application/zip"/>` is the same
-  zip-conformance question as on macOS (see the plan).
+  Decided 2026-09-24: no `<sub-class-of type="application/zip"/>`,
+  matching `public.data` on macOS, while the name keeps `+zip`.
+  shared-mime-info may still treat a `+zip` type as a zip. Check
+  whether archive managers then offer to open `.torchsnap` files, and
+  accept it if they do.
 - **Ship it** via `bundle.linux.deb.files` (a
   `HashMap<PathBuf, PathBuf>`, `tauri-utils-2.9.3/src/config.rs:349-351`).
   Check whether the rpm config has an equivalent.
@@ -81,7 +84,7 @@ which this depends on.
 ## Testing
 
 - `xdg-mime query filetype some.torchsnap` returns our MIME type.
-- `xdg-mime query default application/x-torchsnap-gadget` returns
+- `xdg-mime query default application/vnd.torchsnap.gadget+zip` returns
   Torchsnap's desktop file.
 - `gio open some.torchsnap` with the app stopped and with it running.
 - Double-click in at least GNOME Files and KDE Dolphin.
