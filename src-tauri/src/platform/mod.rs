@@ -135,13 +135,15 @@ pub trait Tray {
     /// Build and attach the system tray icon during `setup()`.
     ///
     /// The callbacks let the caller wire up app-level actions
-    /// (toggle launcher, show settings, show devtools, quit)
-    /// without the platform module knowing about those concepts.
+    /// (toggle launcher, check for updates, show settings, show
+    /// devtools, quit) without the platform module knowing about those
+    /// concepts.
     fn build(
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
+        on_check_updates: fn(&tauri::AppHandle),
     ) -> anyhow::Result<()>;
 }
 
