@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-24
+
 ### Fixed
 
 - One non-family-friendly Snappy costume was shown stretched wide and
@@ -421,6 +423,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.11.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.11.1
 [0.11.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.11.0
 [0.10.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.10.0
 [0.9.3]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.3
