@@ -50,9 +50,8 @@ exist once.
 - **Several files** are reviewed one after another in arrival order.
   Results collect into one summary with a single restart prompt.
 - **Already installed ids are replaced** on confirmation, keeping the
-  gadget's data. This needs the pending-change tracking from
-  `todos/gadget-host/install/01kwh2e8mne5bd05tpb4paacwd-install-uninstall-blocked-until-restart.md`,
-  which the plan implements first.
+  gadget's data. It builds on the pending-change tracking from plan
+  step 4 (`gadget_install/pending.rs`).
 - **Undo until restart.** Every install and replace in the result
   banner can be undone; replace keeps the previous archive as
   `.<id>.torchsnap.prev` for that.
