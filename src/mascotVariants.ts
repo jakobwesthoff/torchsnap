@@ -152,6 +152,7 @@ export const Variants = {
     "astronaut",
     "temporal-bureau",
     "pirate-nsfw",
+    "magic-compass-captain",
   ],
 
   // =========================================================
@@ -176,7 +177,7 @@ export const Variants = {
   // Detectives
   // =========================================================
 
-  Detectives: ["clues-were-elementary", "clues-were-elementary-2"],
+  Detectives: ["clues-were-elementary", "clues-were-elementary-2", "damn-fine-coffee"],
 
   // =========================================================
   // Time Wanderers — inspired by a certain long-running
@@ -262,6 +263,8 @@ export const Variants = {
     "dreadlock-hunter-2-nsfw",
     "triangle-ops-nsfw",
     "triangle-ops-2-nsfw",
+    "towel-and-dressing-gown",
+    "wormhole-gun-spring-boots",
   ],
 
   // =========================================================
@@ -316,6 +319,7 @@ export const Variants = {
     "forest-tunic-hero-nsfw",
     "hooded-blade-bearer-nsfw",
     "fur-barbarian-blade-nsfw",
+    "owl-post-letter",
   ],
 
   // =========================================================
@@ -365,6 +369,10 @@ export const Variants = {
     "oversized-dark-helmet",
     "ninja-nsfw",
     "dino-kigurumi",
+    "pork-pie-chemist",
+    "umbrella-nanny",
+    "aviator-flight-jacket",
+    "cardboard-box-infiltrator",
   ],
 
   // =========================================================
@@ -377,7 +385,16 @@ export const Variants = {
     "ghost-witch-hat-candy",
     "ghost-candy-corn-horn",
   ],
-  Christmas: ["santa"],
+  // The Christmas-movie cosplays live here instead of in PopCulture so
+  // they only surface during the Christmas window.
+  Christmas: [
+    "santa",
+    "christmas-thief-green-fur",
+    "christmas-thief-santa-sack",
+    "nakatomi-ho-ho-ho",
+    "nakatomi-ho-ho-ho-2",
+    "nakatomi-ho-ho-ho-3",
+  ],
   Easter: ["easter-bunny-flowers", "easter-bunny-nest", "easter-bunny-wreath"],
   NewYear: ["party"],
   FullMoon: ["werewolf", "werewolf-moon"],

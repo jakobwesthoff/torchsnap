@@ -698,5 +698,61 @@
   "fire-fist-champion": {
     "alt": "Snappy channeling the dragon within -- your app has been chosen.",
     "nsfw": false
+  },
+  "owl-post-letter": {
+    "alt": "Snappy finally doing what owls were made for -- yer a launcher, and the letters won't stop until you open one.",
+    "nsfw": false
+  },
+  "damn-fine-coffee": {
+    "alt": "Snappy with a damn fine cup of coffee -- the owls are not what they seem. The launcher is.",
+    "nsfw": false
+  },
+  "towel-and-dressing-gown": {
+    "alt": "Snappy, who always knows where its towel is -- don't panic, the launcher is mostly harmless.",
+    "nsfw": false
+  },
+  "pork-pie-chemist": {
+    "alt": "Snappy cooking something blue in the lab -- say my name. I am the one who launches.",
+    "nsfw": false
+  },
+  "wormhole-gun-spring-boots": {
+    "alt": "Snappy fresh out of the test chamber -- the cake is a lie, but the launch is real.",
+    "nsfw": false
+  },
+  "christmas-thief-green-fur": {
+    "alt": "Snappy with a heart two sizes too small -- maybe a launch doesn't come from a store.",
+    "nsfw": false
+  },
+  "christmas-thief-santa-sack": {
+    "alt": "Snappy hauling off the whole sack -- the launches came without ribbons, they came without tags.",
+    "nsfw": false
+  },
+  "nakatomi-ho-ho-ho": {
+    "alt": "Snappy with a Santa hat and a fresh marker -- now I have a launcher. Ho-ho-ho.",
+    "nsfw": false
+  },
+  "nakatomi-ho-ho-ho-2": {
+    "alt": "Snappy crashing the office Christmas party -- welcome to the launch party, pal!",
+    "nsfw": false
+  },
+  "nakatomi-ho-ho-ho-3": {
+    "alt": "Snappy spoiling a very expensive heist -- yippee-ki-yay, launcher.",
+    "nsfw": false
+  },
+  "magic-compass-captain": {
+    "alt": "Snappy with a compass that doesn't point north -- it points to the app you want most. Savvy?",
+    "nsfw": false
+  },
+  "umbrella-nanny": {
+    "alt": "Snappy drifting in on the east wind -- a spoonful of sugar helps the app launch.",
+    "nsfw": false
+  },
+  "aviator-flight-jacket": {
+    "alt": "Snappy buzzing the tower -- it feels the need. The need for launch speed.",
+    "nsfw": false
+  },
+  "cardboard-box-infiltrator": {
+    "alt": "Snappy hiding under a cardboard box -- kept you waiting, huh? The launcher was here all along.",
+    "nsfw": false
   }
 }
