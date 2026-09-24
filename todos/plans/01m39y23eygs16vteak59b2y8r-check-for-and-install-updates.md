@@ -13,7 +13,10 @@ decisions and the steps.
 **Progress (2026-09-24):** decisions made; step 1 (spike) done, its
 results are under "Spike results". The wiring from the spike is
 committed (`just build --config`, plugin registration, feed override,
-tray item with native dialogs). Work
+tray item with native dialogs). Step 2 done: the real key pair exists
+(`~/.config/torchsnap/updater.key`, named in `release.env`), its public
+key is in `tauri.conf.json`, ADR 0053 records the feed and key
+handling, and README "Releasing" lists the key. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -74,7 +77,7 @@ Decided with the maintainer on 2026-09-24.
 | Feed file in the release | `release.json`. It merges with the staging receipt `release-build` writes today (`src-tauri/target/release/dist/release.json`: version, commit, DMG SHA-256): `release-build` writes the full file with the feed content plus commit and DMG checksum, `release-publish` checks against it as today and uploads it as a release asset. |
 | Pre-releases | Never offered by the updater. They stay manual downloads. Their CHANGELOG sections are left out of `releases`, so someone updating from `0.12.0-beta.2` to `0.12.0` sees only the `0.12.0` section. |
 | Onboarding todo | `todos/product/features/01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md` is deleted when this plan is cleaned up. |
-| Updater signing key | Key file under `~/.config/torchsnap/`, its path and password in `release.env` next to the Apple credentials. Key and password are also kept in the maintainer's password manager. Like the Apple credentials, `release-build` exports them to every process of the build (`bun`, cargo build scripts); scoping them to `tauri build` would not help, because that call starts those processes itself. The ADR states this. |
+| Updater signing key | Key file `~/.config/torchsnap/updater.key`, named in `release.env` as `TORCHSNAP_UPDATER_KEY_PATH`, its password there as `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, next to the Apple credentials. Key and password are also kept in the maintainer's password manager. Like the Apple credentials, `release-build` exports them to every process of the build (`bun`, cargo build scripts); scoping them to `tauri build` would not help, because that call starts those processes itself. The ADR states this. |
 | Signed version | `plugins.updater.requireSignedVersion: true`, so the app rejects signatures without a version. `release-build` checks that the trusted comment of the `.sig` contains `version:<version>`. |
 | Untrusted feed content | The feed is not signed, only the archive is. Notes are rendered with raw HTML disabled and sanitized; links open in the browser through `opener`. Both new windows get an `on_navigation` guard that allows only the app's own origin, and a CSP. The backend treats `raw_json` as untrusted (size cap, bad entries skipped). |
 | Capabilities of the new windows | One minimal capability per window. The update window gets `core:default` and `opener` only; Later, Skip and the automatic-check answer go through backend commands. The welcome window gets what `ShortcutRecorder`, the settings store and the autostart switch need. |
@@ -240,7 +243,7 @@ Each step ends in commits on the `auto-updater` branches and a note in
    `dangerousInsecureTransportProtocol` through `--config` so a plain
    http feed on localhost works; that never reaches step 2. Settles the
    unverified assumptions. What survives becomes the start of step 4.
-2. **Key and ADR (torchsnap).** Generate the real key pair, store it as
+2. **Key and ADR (torchsnap), done.** Generate the real key pair, store it as
    decided, put the public key into `tauri.conf.json`. ADR for the
    update feed (plugin, torchsnap.app URL, `release.json`, key
    handling), amending ADR 0050 for the release flow.
