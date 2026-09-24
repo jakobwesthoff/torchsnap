@@ -122,7 +122,8 @@ pub struct UninstallResult {
 
 /// Result of undoing an install. `restored_version` is the version
 /// back on disk after undoing a replace; `None` means the undone
-/// install left no archive for the gadget.
+/// install left no archive for the gadget. `requires_restart` is false
+/// when the gadget is back to what loaded at startup.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UndoResult {
@@ -281,9 +282,12 @@ fn undo(
         }
     };
 
+    // Anything still recorded for the gadget (an earlier install, or
+    // an uninstall that a reinstall had covered) only takes effect on
+    // restart; without a record the startup state is back.
     Ok(UndoResult {
         restored_version,
-        requires_restart: true,
+        requires_restart: pending.get(gadget_id).is_some(),
     })
 }
 
@@ -597,6 +601,8 @@ mod tests {
             "1.0.0"
         );
         assert!(pending.get("weather").is_none());
+        // The version that loaded at startup is back on disk.
+        assert!(!undone.requires_restart);
     }
 
     #[test]
@@ -612,6 +618,7 @@ mod tests {
         assert_eq!(undone.restored_version, None);
         assert!(!paths.archive("weather").exists());
         assert!(pending.get("weather").is_none());
+        assert!(!undone.requires_restart);
     }
 
     #[test]
@@ -627,6 +634,8 @@ mod tests {
         let undone = undo(&paths, &registry, &mut pending, "weather").expect("undo should succeed");
 
         assert_eq!(undone.restored_version.as_deref(), Some("1.0.0"));
+        // The first install is still new since startup.
+        assert!(undone.requires_restart);
         assert!(matches!(
             pending.get("weather").and_then(pending::PendingChange::manifest),
             Some(m) if m.gadget.version == "1.0.0"
@@ -642,8 +651,10 @@ mod tests {
         let (_src, v2) = archive_with_manifest("weather", "2.0.0", "");
         install(&paths, &registry, &mut pending, &v2).expect("reinstall");
 
-        undo(&paths, &registry, &mut pending, "weather").expect("undo should succeed");
+        let undone = undo(&paths, &registry, &mut pending, "weather").expect("undo should succeed");
 
+        // The uninstall from before the reinstall still waits for a restart.
+        assert!(undone.requires_restart);
         assert!(!paths.archive("weather").exists());
         assert!(paths.uninstall_marker("weather").exists());
         assert!(matches!(

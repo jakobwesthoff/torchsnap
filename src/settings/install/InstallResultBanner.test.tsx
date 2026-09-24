@@ -11,10 +11,15 @@ import type { InstallResult } from "./useInstallQueue";
 
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
 
-function result(info: Partial<InstalledGadgetInfo>, undone = false): InstallResult {
+function result(
+  info: Partial<InstalledGadgetInfo>,
+  undone = false,
+  requiresRestart = !undone,
+): InstallResult {
   return {
     kind: "installed",
     undone,
+    requiresRestart,
     info: {
       id: "weather",
       name: "Weather",
@@ -84,5 +89,26 @@ describe("InstallResultBanner", () => {
     expect(dismiss).toHaveAttribute("title", expect.stringContaining("can no longer be undone"));
     await userEvent.click(dismiss);
     expect(onDismiss).toHaveBeenCalled();
+  });
+
+  it("drops the restart prompt once every change is undone", () => {
+    render(
+      <InstallResultBanner results={[result({}, true)]} onUndo={() => {}} onDismiss={() => {}} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Restart now" })).not.toBeInTheDocument();
+    expect(screen.getByText("No restart needed.")).toBeInTheDocument();
+  });
+
+  it("keeps the restart prompt while an undone change still needs one", () => {
+    render(
+      <InstallResultBanner
+        results={[result({}, true, true)]}
+        onUndo={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
   });
 });
