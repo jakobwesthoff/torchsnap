@@ -1,9 +1,14 @@
+---
+kind: feature
+status: blocked
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+depends-on: [todos/platform/linux/01m399736658afgk6xv4ab68wr-linux-torchsnap-file-association.md]
+---
+
 # Linux: register the file type at runtime for AppImage builds
 
-**Kind:** feature
-**Status:** only relevant if AppImage ships. Add-on to
-`todos/platform/linux/01m399736658afgk6xv4ab68wr-linux-torchsnap-file-association.md`.
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+Only relevant if AppImage ships. Add-on to the deb and rpm file
+association.
 
 ## Why
 

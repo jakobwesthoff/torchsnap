@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Integrate `wasm-opt` into the gadget build pipeline
 
 ## Context

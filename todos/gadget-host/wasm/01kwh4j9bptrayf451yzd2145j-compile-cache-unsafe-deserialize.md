@@ -1,8 +1,12 @@
-# Compiled-component cache is deserialized with `unsafe deserialize_file` from an unauthenticated `.cwasm` (command-grant → host RCE)
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/wasm/runtime/engine.rs, src-tauri/src/wasm/runtime/cached_component.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** high
-**Area:** src-tauri/src/wasm/runtime/engine.rs, src-tauri/src/wasm/runtime/cached_component.rs
+# Compiled-component cache is deserialized with `unsafe deserialize_file` from an unauthenticated `.cwasm` (command-grant → host RCE)
 
 ## Problem
 `WasmRuntime::deserialize_component` loads a compiled component from a

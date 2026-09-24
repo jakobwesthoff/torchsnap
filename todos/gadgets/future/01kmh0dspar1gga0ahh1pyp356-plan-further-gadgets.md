@@ -1,3 +1,8 @@
+---
+kind: chore
+status: open
+---
+
 # Think about and plan further gadgets
 
 Brainstorm and evaluate additional gadget ideas beyond the initial

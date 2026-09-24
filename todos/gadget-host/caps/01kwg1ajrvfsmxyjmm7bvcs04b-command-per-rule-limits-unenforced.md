@@ -1,8 +1,11 @@
-# Per-rule command limits (cwd, timeout, output, stdin) are parsed but never enforced
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs
+# Per-rule command limits (cwd, timeout, output, stdin) are parsed but never enforced
 
 ## Problem
 `[[permissions.command]]` rules carry four per-rule constraint

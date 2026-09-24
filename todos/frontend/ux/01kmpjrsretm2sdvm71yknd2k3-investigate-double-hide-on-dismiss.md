@@ -1,3 +1,8 @@
+---
+kind: investigation
+status: open
+---
+
 # Investigate double hide command on launcher dismiss
 
 The launcher hide command appears to fire twice when dismissing via

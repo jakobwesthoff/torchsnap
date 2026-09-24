@@ -1,8 +1,12 @@
-# gadget-development.md: stale line/file references and minor type inaccuracies
+---
+kind: improvement
+severity: low
+status: open
+area: [docs/api/gadget-development.md]
+tags: [docs]
+---
 
-**Kind:** improvement (documentation)
-**Severity:** low
-**Area:** docs/api/gadget-development.md
+# gadget-development.md: stale line/file references and minor type inaccuracies
 
 ## Problem
 

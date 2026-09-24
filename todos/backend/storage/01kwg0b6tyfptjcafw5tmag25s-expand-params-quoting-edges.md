@@ -1,8 +1,12 @@
-# expand_params misparses `?` in comments/quoted identifiers and panics on mismatch
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/storage/sql_storage.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/storage/sql_storage.rs
+# expand_params misparses `?` in comments/quoted identifiers and panics on mismatch
 
 ## Problem
 `expand_params` walks the SQL string to substitute

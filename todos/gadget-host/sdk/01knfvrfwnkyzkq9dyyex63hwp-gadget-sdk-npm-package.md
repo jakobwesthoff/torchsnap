@@ -1,6 +1,11 @@
+---
+kind: feature
+status: in-progress
+---
+
 # Gadget SDK npm Package (`@torchsnap/gadget-sdk`)
 
-**Status:** partially complete. The SDK now lives as a proper
+Partially complete. The SDK now lives as a proper
 workspace package at `packages/gadget-sdk/` with a real
 `package.json` (exports map, Vite gadget, hooks/components/testing
 subpaths). In-repo consumers — gadgets and the host — depend on it

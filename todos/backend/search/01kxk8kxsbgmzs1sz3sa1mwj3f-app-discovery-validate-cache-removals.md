@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # App discovery: validate removals before replacing the cache
 
 A background refresh (`src-tauri/src/gadgets/app_launcher.rs:82-123`)

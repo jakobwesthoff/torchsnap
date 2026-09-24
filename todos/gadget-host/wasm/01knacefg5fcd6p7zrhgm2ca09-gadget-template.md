@@ -1,10 +1,13 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget Template Project
 
 Create a reusable, standalone gadget template repository that gadget authors can use as a starting point. Covers the full authoring pipeline: cargo-component Rust backend, WIT bindings, frontend Vite config, and `.torchsnap` archive packaging.
 
 **Strategy doc:** §8.5 milestone 7, §7.1 (gadget author build pipeline), §7.2 (SDK externalization — deferred), §8.4 (no cargo workspace; gadgets are standalone projects)
-
-**Status:** not started
 
 **Depends on:** the calculator gadget's WASM conversion, already done (see `gadgets/calculator/`); template should reflect patterns proven in a real migration
 

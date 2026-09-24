@@ -1,9 +1,13 @@
+---
+kind: feature
+status: deferred
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md, todos/gadget-host/install/01m399736658afgk6xv4ab68wn-install-review-dialog.md, todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
+---
+
 # Install gadgets from a `torchsnap://` link
 
-**Kind:** feature
-**Status:** deferred. Needs an ADR before implementation. Depends on
-the intake and the review dialog.
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+Needs an ADR before implementation.
 
 ## Goal
 

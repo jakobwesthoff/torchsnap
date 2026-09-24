@@ -1,8 +1,11 @@
-# Scheduled tasks missed during sleep are silently skipped
+---
+kind: question
+severity: low
+status: open
+area: [src-tauri/src/wasm/bridge.rs]
+---
 
-**Kind:** question
-**Severity:** low
-**Area:** src-tauri/src/wasm/bridge.rs
+# Scheduled tasks missed during sleep are silently skipped
 
 ## Problem
 The scheduler loop snapshots future fire times and sleeps until

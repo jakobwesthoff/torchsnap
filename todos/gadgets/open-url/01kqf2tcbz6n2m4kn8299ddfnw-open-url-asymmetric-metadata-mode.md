@@ -1,3 +1,8 @@
+---
+kind: investigation
+status: open
+---
+
 # Open-URL: asymmetric metadata lookup mode (`Blocking` for bare, `Cached` for explicit-scheme)
 
 ## Context

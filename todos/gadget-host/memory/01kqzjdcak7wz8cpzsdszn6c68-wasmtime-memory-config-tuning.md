@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Tune wasmtime `Config` for lower per-instance memory
 
 ## Problem

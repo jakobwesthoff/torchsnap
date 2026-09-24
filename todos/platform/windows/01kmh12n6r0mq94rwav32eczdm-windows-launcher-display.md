@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Windows launcher display support
 
 The current launcher display works on macOS via NSPanel. The

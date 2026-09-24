@@ -1,8 +1,11 @@
-# `OpenSettings` action emits `open-gadget-settings` into the void — no listener exists
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/gadget_host.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/gadget_host.rs, src/settings/
+# `OpenSettings` action emits `open-gadget-settings` into the void — no listener exists
 
 ## Problem
 

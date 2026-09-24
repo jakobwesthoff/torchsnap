@@ -1,10 +1,15 @@
+---
+kind: feature
+status: blocked
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
+---
+
 # Linux: register `.torchsnap` for deb and rpm packages
 
-**Kind:** feature
-**Status:** blocked on Linux packaging. There is no deb, rpm or
-AppImage config yet; `torchsnap-docs/src/content/docs/start/installation.mdx`
-lists them as planned.
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+Blocked on Linux packaging. There is no deb, rpm or AppImage config
+yet; `torchsnap-docs/src/content/docs/start/installation.mdx` lists
+them as planned.
 
 ## Goal
 

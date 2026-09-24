@@ -1,8 +1,12 @@
-# System commands ignore child exit status — failures dismiss the launcher silently
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadgets/system_commands/macos_commands/power.rs, src-tauri/src/gadgets/system_commands/macos_commands/utilities.rs]
+tags: [unconfirmed, error-handling]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/gadgets/system_commands/macos_commands/{power,utilities}.rs
+# System commands ignore child exit status — failures dismiss the launcher silently
 
 ## Problem
 

@@ -1,6 +1,11 @@
+---
+kind: refactor
+status: deferred
+---
+
 # Migrate Calculator History to Shared `<List>` SDK Component
 
-**Status: DEFERRED — exploratory follow-up, not blocking.**
+Exploratory follow-up, not blocking.
 
 ## Context
 

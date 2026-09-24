@@ -1,9 +1,14 @@
+---
+kind: feature
+status: open
+tags: [macos]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
+---
+
 # macOS: register `.torchsnap` with Torchsnap and receive opened files
 
-**Kind:** feature
-**Status:** first implementation target. Needs the intake design
-settled first.
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+First implementation target. Needs the intake design settled first.
 
 ## Goal
 

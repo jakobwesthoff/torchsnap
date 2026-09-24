@@ -1,6 +1,11 @@
+---
+kind: feature
+status: deferred
+---
+
 # Gadget Fetch — Unix Domain Socket Transport
 
-**Status: DEFERRED — needs heavy discussion before implementation.**
+Needs heavy discussion before implementation.
 
 Spun off from the ZeroTier integration discussion
 (`01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md`). Not blocking

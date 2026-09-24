@@ -1,8 +1,12 @@
-# Control connection reads request lines into an unbounded buffer
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/control/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/control/mod.rs
+# Control connection reads request lines into an unbounded buffer
 
 ## Problem
 

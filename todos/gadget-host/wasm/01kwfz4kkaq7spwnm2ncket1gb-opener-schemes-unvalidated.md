@@ -1,8 +1,12 @@
-# Opener schemes are not validated or normalized
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/permissions/opener.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/permissions/opener.rs
+# Opener schemes are not validated or normalized
 
 ## Problem
 `OpenerPermissionsDef::validate`

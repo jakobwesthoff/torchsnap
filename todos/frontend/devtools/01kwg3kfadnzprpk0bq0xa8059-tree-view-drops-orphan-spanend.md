@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/devtools/console/useTreeView.ts]
+tags: [unconfirmed]
+---
+
 # Tree view silently drops spanEnd items whose spanStart is missing
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/devtools/console/useTreeView.ts
 
 ## Problem
 `buildTree` only records a `spanEnd` onto an existing node and

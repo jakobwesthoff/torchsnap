@@ -1,6 +1,11 @@
+---
+kind: improvement
+status: needs-discussion
+---
+
 # Stopgap: adaptive mdfind refresh until the result set stabilizes
 
-Status: open — implementation plan proposed below, not yet decided.
+Implementation plan proposed below, not yet decided.
 
 Scope: a small, contained change to the existing mdfind polling in the
 app-launcher gadget. It is a stopgap: the

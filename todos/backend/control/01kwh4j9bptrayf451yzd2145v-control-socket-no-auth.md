@@ -1,8 +1,12 @@
-# Control Unix socket: no peer authentication, umask-dependent permissions, and unconditional unlink (socket steal; no single-instance guard)
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/control/mod.rs]
+tags: [unconfirmed, security]
+---
 
-**Kind:** possible-bug (security hardening / robustness)
-**Severity:** low
-**Area:** src-tauri/src/control/mod.rs
+# Control Unix socket: no peer authentication, umask-dependent permissions, and unconditional unlink (socket steal; no single-instance guard)
 
 ## Problem
 The control server binds a Unix socket at

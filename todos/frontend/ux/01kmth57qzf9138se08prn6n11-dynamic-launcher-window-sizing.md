@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: deferred
+---
+
 # Dynamic launcher window sizing
 
 ## Idea

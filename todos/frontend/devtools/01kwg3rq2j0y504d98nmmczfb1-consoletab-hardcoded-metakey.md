@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/devtools/console/ConsoleTab.tsx]
+tags: [unconfirmed]
+---
+
 # ConsoleTab shortcuts hardcode metaKey — dead on non-macOS
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/devtools/console/ConsoleTab.tsx
 
 ## Problem
 The devtools console registers its own raw keydown listener instead

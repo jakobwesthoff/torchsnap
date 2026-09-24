@@ -1,8 +1,12 @@
-# FileStorage::store writes non-atomically
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/storage/file_storage.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/storage/file_storage.rs
+# FileStorage::store writes non-atomically
 
 ## Problem
 `FileStorage::store` writes blobs with a direct `fs::write`

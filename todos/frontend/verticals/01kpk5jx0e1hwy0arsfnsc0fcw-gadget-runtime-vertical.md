@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Gadget runtime vertical (`src/gadget-runtime/`)
 
 Consolidate all host-side gadget runtime infrastructure into

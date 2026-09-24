@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: medium
+status: open
+area: [src/settings/sections/GadgetsManagementPanel.tsx]
+---
+
 # Gadget install drag-drop listener leaks on fast unmount and double-installs in dev
-
-**Kind:** bug
-**Severity:** medium
-
-**Area:** src/settings/sections/GadgetsManagementPanel.tsx
 
 ## Problem
 The drag-drop effect registers a Tauri webview listener via a promise

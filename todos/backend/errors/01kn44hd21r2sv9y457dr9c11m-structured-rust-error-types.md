@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Structured error types for Tauri commands
 
 ## Problem

@@ -1,8 +1,12 @@
-# Panic in gadget asset handler leaves the request hanging
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/protocol.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/protocol.rs
+# Panic in gadget asset handler leaves the request hanging
 
 ## Problem
 The protocol handler runs `handle_request` on a detached thread

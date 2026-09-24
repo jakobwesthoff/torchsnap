@@ -1,8 +1,12 @@
-# Gadget CSS is injected into host `<head>` under `@scope`, which is not a containment boundary (a `}` escapes to global rules), but the risk is subsumed by trusted gadget JS
+---
+kind: bug
+severity: low
+status: open
+area: [src/lib/gadgetCss.ts]
+tags: [unconfirmed, security]
+---
 
-**Kind:** possible-bug (security / misleading framing)
-**Severity:** low
-**Area:** src/lib/gadgetCss.ts
+# Gadget CSS is injected into host `<head>` under `@scope`, which is not a containment boundary (a `}` escapes to global rules), but the risk is subsumed by trusted gadget JS
 
 ## Problem
 `injectGadgetCss` (`gadgetCss.ts:24-42`) fetches a gadget's CSS via

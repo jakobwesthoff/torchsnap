@@ -1,8 +1,12 @@
-# Metadata lookup: blocking mode can stall ~8s; Cached mode parks a thread per call
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/network/website_metadata/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/network/website_metadata/mod.rs
+# Metadata lookup: blocking mode can stall ~8s; Cached mode parks a thread per call
 
 ## Problem
 Two latency/resource behaviors of `lookup` diverge from what

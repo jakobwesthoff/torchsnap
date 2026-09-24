@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [ux]
+---
+
 # Onboarding / first-run experience
 
 After installation, the app lives invisibly in the tray with no

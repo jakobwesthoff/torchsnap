@@ -1,9 +1,13 @@
+---
+kind: feature
+status: blocked
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
+---
+
 # Install review dialog: show what a gadget asks for before installing it
 
-**Kind:** feature
-**Status:** deferred until the intake exists. Required before the URL
-scheme ships.
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+Waits for the intake. Required before the URL scheme ships.
 
 ## Why
 

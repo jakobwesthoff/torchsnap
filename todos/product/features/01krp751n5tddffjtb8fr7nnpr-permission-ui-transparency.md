@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [security, ux]
+---
+
 # Show gadget permissions in UI
 
 Two features needed:

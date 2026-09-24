@@ -1,8 +1,12 @@
-# Fallback discovery impls implement trait methods that no longer exist — non-macOS build is broken
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/platform/fallback/app_discovery.rs, src-tauri/src/platform/fallback/settings_discovery.rs]
+tags: [ci]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/platform/fallback/app_discovery.rs, src-tauri/src/platform/fallback/settings_discovery.rs
+# Fallback discovery impls implement trait methods that no longer exist — non-macOS build is broken
 
 ## Problem
 

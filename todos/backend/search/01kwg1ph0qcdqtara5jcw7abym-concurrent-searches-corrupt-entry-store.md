@@ -1,8 +1,12 @@
-# Overlapping search() calls interleave entry_store clear/insert without a generation guard
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadget_host.rs, src-tauri/src/commands/mod.rs]
+tags: [unconfirmed, concurrency]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadget_host.rs, src-tauri/src/commands/mod.rs
+# Overlapping search() calls interleave entry_store clear/insert without a generation guard
 
 ## Problem
 The `search` Tauri command (`src-tauri/src/commands/mod.rs:27-32`)

@@ -1,8 +1,14 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadgets/app_launcher.rs, src-tauri/src/gadgets/system_preferences.rs, src-tauri/src/gadget_host.rs]
+tags: [security, unconfirmed]
+---
+
 # app-launcher `execute` opens a webview-supplied `entry.id`; forgery is blocked by an incidental entry-store gate, leaving a low-severity cross-gadget app-launch proxy
 
-**Kind:** possible-bug (security)
-**Severity:** low (contingent on an incidental control — see below)
-**Area:** src-tauri/src/gadgets/app_launcher.rs, src-tauri/src/gadgets/system_preferences.rs, src-tauri/src/gadget_host.rs
+The entry-store lookup acts as an incidental control; see below for nuance.
 
 ## Problem
 `AppLauncherGadget::execute` (`app_launcher.rs:231-257`) passes the

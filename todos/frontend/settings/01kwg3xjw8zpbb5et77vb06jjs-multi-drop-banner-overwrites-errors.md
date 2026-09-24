@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/settings/sections/GadgetsManagementPanel.tsx]
+tags: [unconfirmed]
+---
+
 # Multi-archive drop: later install banners silently overwrite earlier errors
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/settings/sections/GadgetsManagementPanel.tsx
 
 ## Problem
 Dropping several `.torchsnap` files installs them sequentially, each

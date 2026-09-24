@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget: Task switcher
 
 List running applications/windows and switch to them from the

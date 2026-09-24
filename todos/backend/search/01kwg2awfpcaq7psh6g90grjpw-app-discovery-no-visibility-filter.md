@@ -1,8 +1,12 @@
-# App discovery claims background-app filtering but performs none; nested helper bundles pass the directory check
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/platform/macos/app_discovery.rs]
+tags: [unconfirmed, macos]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/platform/macos/app_discovery.rs
+# App discovery claims background-app filtering but performs none; nested helper bundles pass the directory check
 
 ## Problem
 

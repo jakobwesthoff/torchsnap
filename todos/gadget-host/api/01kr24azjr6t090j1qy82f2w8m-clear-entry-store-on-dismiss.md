@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Clear entry store on panel dismiss
 
 ## Context

@@ -1,6 +1,11 @@
+---
+kind: feature
+status: in-progress
+---
+
 # ZeroTier One Integration
 
-**Status: DESIGN IN PROGRESS** — shipped as a dedicated WASM gadget
+Design in progress. Shipped as a dedicated WASM gadget
 behind one prerequisite (file-access WIT layer). Fetch WIT is already
 sufficient.
 
@@ -361,7 +366,6 @@ Confirmed sufficient for ZeroTier:
 
 **Action required for ZeroTier specifically:** the gadget's
 `manifest.toml` must declare:
-
 ```toml
 [permissions.http]
 origins = ["http://localhost:9993"]
@@ -376,7 +380,6 @@ prerequisite that can ship before the ZeroTier gadget without
 blocking it.
 
 **1. Per-request timeout.** Add to `http-request`:
-
 ```wit
 record http-request {
     // ... existing fields ...
@@ -496,7 +499,6 @@ configurable so `*` does not cross `/`. Build with
 combine into a `GlobSet`.
 
 **Manifest load time:**
-
 1. Expand placeholders to absolute paths.
 2. Reject patterns containing `..` segments outright. No legitimate
    use case; allowing creates ambiguous semantics.
@@ -504,7 +506,6 @@ combine into a `GlobSet`.
    into a `GlobSet`.
 
 **Per fs request:**
-
 1. Reject the requested path string if it contains `..`, `.`, or
    double-slash segments (i.e. require already-canonical input).
 2. `std::fs::canonicalize` the path — this resolves symlinks.
@@ -577,7 +578,6 @@ gadget-owned history table:
   via the official UI mid-session.
 
 **Not** in settings:
-
 - "Add by ID without joining" — too niche, creates rows with no
   observed status / snapshot, and duplicates the main panel's
   "Join network" entry point. Joining is the canonical way to enter

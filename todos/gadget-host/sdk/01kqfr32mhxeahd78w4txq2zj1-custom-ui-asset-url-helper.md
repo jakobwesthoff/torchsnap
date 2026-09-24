@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget frontend: ergonomic asset URL helper
 
 ## Context

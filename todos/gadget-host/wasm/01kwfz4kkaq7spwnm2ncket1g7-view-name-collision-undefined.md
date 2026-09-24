@@ -1,8 +1,11 @@
-# View/inline-view name collisions are not validated
+---
+kind: question
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/frontend.rs]
+---
 
-**Kind:** question
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/frontend.rs
+# View/inline-view name collisions are not validated
 
 ## Problem
 `FrontendDef` carries two independent name→export maps, `views`

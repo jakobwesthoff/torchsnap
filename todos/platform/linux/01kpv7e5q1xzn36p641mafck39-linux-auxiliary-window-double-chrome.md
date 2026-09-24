@@ -1,3 +1,8 @@
+---
+kind: bug
+status: open
+---
+
 # Linux: auxiliary windows render with native chrome + custom TitleBar
 
 On Fedora 43 / GNOME, the **settings** and **devtools** windows ship

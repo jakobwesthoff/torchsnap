@@ -1,8 +1,11 @@
-# Control API deviates from JSON-RPC 2.0 in three documented-adjacent ways
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/control/mod.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/control/mod.rs
+# Control API deviates from JSON-RPC 2.0 in three documented-adjacent ways
 
 ## Problem
 

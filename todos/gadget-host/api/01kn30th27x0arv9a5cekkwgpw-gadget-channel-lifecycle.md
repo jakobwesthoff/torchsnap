@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Explicit gadget channel lifecycle management
 
 ## Problem

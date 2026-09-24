@@ -1,8 +1,11 @@
-# One invalid WASM gadget panics the whole app at startup
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/lib.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/lib.rs
+# One invalid WASM gadget panics the whole app at startup
 
 ## Problem
 The gadget loader promises isolation: "On any error — corrupt

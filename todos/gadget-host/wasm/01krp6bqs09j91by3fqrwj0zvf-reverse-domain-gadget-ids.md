@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # Migrate gadget IDs to reverse-domain format
 
 All bundled gadgets currently use short IDs (`calculator`, `bangs`,

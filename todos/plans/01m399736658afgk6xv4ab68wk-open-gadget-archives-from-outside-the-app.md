@@ -1,7 +1,11 @@
+---
+kind: plan
+status: needs-discussion
+---
+
 # Open `.torchsnap` archives from outside the app
 
-**Status:** planning. The intake abstraction is to be discussed in
-detail before any implementation starts.
+The intake abstraction is to be discussed in detail before any implementation starts.
 
 ## Goal
 

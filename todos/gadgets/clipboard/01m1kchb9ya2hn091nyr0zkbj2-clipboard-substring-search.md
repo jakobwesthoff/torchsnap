@@ -1,6 +1,11 @@
+---
+kind: improvement
+status: needs-discussion
+---
+
 # Clipboard search cannot match inside a word
 
-Status: open — analysed, options measured below, not yet decided.
+Analysed, options measured below, not yet decided.
 
 Scope: `src-tauri/src/gadgets/clipboard/`. Requires a schema migration
 and a full reindex of `clipboard_fts`. Land together with

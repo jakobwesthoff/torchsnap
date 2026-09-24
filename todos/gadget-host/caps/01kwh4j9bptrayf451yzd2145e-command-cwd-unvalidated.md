@@ -1,8 +1,12 @@
-# Guest-supplied command `cwd` is unvalidated and per-rule `cwd` is never enforced (working-directory → native code exec)
+---
+kind: bug
+severity: critical
+status: open
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs, src-tauri/src/wasm/manifest/permissions/command.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** critical
-**Area:** src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs, src-tauri/src/wasm/manifest/permissions/command.rs
+# Guest-supplied command `cwd` is unvalidated and per-rule `cwd` is never enforced (working-directory → native code exec)
 
 This todo covers two queue items that share one fix: the
 guest-supplied working directory used verbatim (B4) and the

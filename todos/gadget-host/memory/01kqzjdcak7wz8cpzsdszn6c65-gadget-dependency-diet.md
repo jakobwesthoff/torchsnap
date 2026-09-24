@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Audit and slim heavy gadget dependencies
 
 ## Problem

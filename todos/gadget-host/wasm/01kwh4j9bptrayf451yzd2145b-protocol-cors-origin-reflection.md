@@ -1,8 +1,12 @@
-# Gadget asset protocol reflects any request Origin into `Access-Control-Allow-Origin`
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/protocol.rs]
+tags: [security]
+---
 
-**Kind:** improvement (security hardening)
-**Severity:** low
-**Area:** src-tauri/src/wasm/protocol.rs
+# Gadget asset protocol reflects any request Origin into `Access-Control-Allow-Origin`
 
 ## Problem
 `handle_request` reads the request's `Origin` header and echoes it

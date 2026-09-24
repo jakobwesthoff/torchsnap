@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Logger feature vertical (`src/logger/`)
 
 Consolidate logging infrastructure into a single `src/logger/` vertical.

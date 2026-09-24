@@ -1,8 +1,12 @@
-# CoalescingDispatcher can strand the last enqueued change
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/settings/coalescing_dispatcher.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/settings/coalescing_dispatcher.rs
+# CoalescingDispatcher can strand the last enqueued change
 
 ## Problem
 `dispatch()` uses `try_lock` on the `work` mutex and returns
