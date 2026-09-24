@@ -579,7 +579,12 @@ impl GadgetHost {
 
                     // Launcher toggle.
                     if *shortcut == launcher_shortcut {
-                        crate::toggle_launcher_window(&handle);
+                        // On the welcome's last step the shortcut
+                        // finishes the welcome, which opens the
+                        // launcher already.
+                        if !crate::welcome::launcher_shortcut_pressed(&handle) {
+                            crate::toggle_launcher_window(&handle);
+                        }
                         return;
                     }
 

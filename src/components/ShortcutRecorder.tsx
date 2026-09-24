@@ -18,8 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
-import { formatModifier, formatKey, type ModifierKey } from "../keybindings";
-import { KeyCap } from "./KeyCap";
+import { ShortcutKeys } from "./ShortcutKeys";
 
 // =========================================================
 // Key Helpers
@@ -65,41 +64,6 @@ function buildAccelerator(e: KeyboardEvent): string {
 
 function isComplete(e: KeyboardEvent): boolean {
   return !MODIFIER_CODES.has(e.code);
-}
-
-/**
- * Parse a Tauri accelerator string into display-formatted parts
- * using the app's platform-aware key formatters.
- */
-function accelToDisplayParts(shortcut: string): string[] {
-  const tokens = shortcut.split("+");
-  const parts: string[] = [];
-
-  for (const token of tokens) {
-    if (token === "CommandOrControl" || token === "CmdOrCtrl") {
-      parts.push(formatModifier("Meta" as ModifierKey));
-    } else if (token === "Shift") {
-      parts.push(formatModifier("Shift" as ModifierKey));
-    } else if (token === "Alt") {
-      parts.push(formatModifier("Alt" as ModifierKey));
-    } else {
-      parts.push(formatKey(token));
-    }
-  }
-
-  return parts;
-}
-
-function ShortcutKeys({ shortcut }: { shortcut: string }) {
-  const parts = accelToDisplayParts(shortcut);
-
-  return (
-    <span className="inline-flex items-center gap-0.5">
-      {parts.map((part, i) => (
-        <KeyCap key={i}>{part}</KeyCap>
-      ))}
-    </span>
-  );
 }
 
 // =========================================================

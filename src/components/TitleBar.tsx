@@ -60,6 +60,12 @@ interface TitleBarProps {
   variant?: "embedded" | "titlebar";
   /** Title text, shown centered in `"titlebar"` mode only. */
   title?: string;
+  /**
+   * False for a window that must stay open until the user finishes it
+   * (the welcome window). The close light is then shown greyed out
+   * and does nothing; the backend refuses the close as well.
+   */
+  closable?: boolean;
 }
 
 export function TitleBar(props: TitleBarProps = {}) {
@@ -78,7 +84,7 @@ export function TitleBar(props: TitleBarProps = {}) {
 // buttons does not reliably work.
 // =========================================================
 
-function MacTitleBar({ variant = "embedded", title }: TitleBarProps) {
+function MacTitleBar({ variant = "embedded", title, closable = true }: TitleBarProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
 
@@ -134,11 +140,14 @@ function MacTitleBar({ variant = "embedded", title }: TitleBarProps) {
         onMouseLeave={() => setIsHovering(false)}
       >
         <TrafficLight
-          colorClass="bg-[#ff544d] active:bg-[#bf403a]"
+          colorClass={
+            closable ? "bg-[#ff544d] active:bg-[#bf403a]" : "bg-black/[.12] dark:bg-white/[.16]"
+          }
           label="Close"
           onClick={handleClose}
+          disabled={!closable}
         >
-          {isHovering && <CloseGlyph />}
+          {isHovering && closable && <CloseGlyph />}
         </TrafficLight>
         <TrafficLight
           colorClass="bg-[#ffbd2e] active:bg-[#bf9122]"
@@ -176,15 +185,23 @@ interface TrafficLightProps {
   colorClass: string;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: ReactNode;
 }
 
-function TrafficLight({ colorClass, label, onClick, children }: TrafficLightProps) {
+function TrafficLight({
+  colorClass,
+  label,
+  onClick,
+  disabled = false,
+  children,
+}: TrafficLightProps) {
   return (
     <button
       type="button"
       aria-label={label}
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full",
         "border border-black/[.12] dark:border-none",

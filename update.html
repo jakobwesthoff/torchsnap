@@ -1,0 +1,37 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Torchsnap Update</title>
+    <script>
+      // Resolve the theme before the first paint so the correct
+      // background is shown immediately — no React needed.
+      (function () {
+        var pref = localStorage.getItem("torchsnap_theme") || "system";
+        var dark =
+          pref === "dark" ||
+          (pref === "system" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.dataset.theme = "dark";
+      })();
+    </script>
+    <style>
+      /* Prevent white flash during load — matches surface token */
+      html { background: #fff; }
+      html[data-theme="dark"] { background: #1c1c1e; }
+      /* Disable rubber-band overscroll */
+      html, body { overflow: hidden; }
+      /* Native feel — disable text selection except on inputs */
+      body { -webkit-user-select: none; user-select: none; }
+      input, textarea { -webkit-user-select: text; user-select: text; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/update/main.tsx"></script>
+  </body>
+</html>

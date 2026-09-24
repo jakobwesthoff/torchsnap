@@ -18,10 +18,13 @@
 # before `release-build`; both recipes only check them.
 
 RELEASE_DIST := "src-tauri/target/release/dist"
+RELEASE_REPO := "jakobwesthoff/torchsnap"
+WEBSITE_REPO := "jakobwesthoff/torchsnap-web"
 
-# Signing identity and notarization key live outside the repository.
-# The file sets APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER, APPLE_API_KEY
-# and APPLE_API_KEY_PATH.
+# Signing identity, notarization key and updater key live outside the
+# repository. The file sets APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER,
+# APPLE_API_KEY, APPLE_API_KEY_PATH, TORCHSNAP_UPDATER_KEY_PATH and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 RELEASE_ENV := env('TORCHSNAP_RELEASE_ENV', env('HOME', '') / ".config/torchsnap/release.env")
 
 # Build, notarize and stage a release DMG (checks git, versions, CHANGELOG)
@@ -76,10 +79,20 @@ release-build version:
     security find-identity -v -p codesigning | grep -qF "\"$APPLE_SIGNING_IDENTITY\"" \
         || fail "signing identity '$APPLE_SIGNING_IDENTITY' is not in the keychain"
     [ -f "$APPLE_API_KEY_PATH" ] || fail "API key file $APPLE_API_KEY_PATH not found"
+    for var in TORCHSNAP_UPDATER_KEY_PATH TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+        [ -n "${!var:-}" ] || fail "$var is not set in $env_file"
+    done
+    [ -f "$TORCHSNAP_UPDATER_KEY_PATH" ] || fail "updater key $TORCHSNAP_UPDATER_KEY_PATH not found"
+    # The Tauri CLI takes the key content from this variable and ignores
+    # TAURI_SIGNING_PRIVATE_KEY_PATH (ADR 0053).
+    TAURI_SIGNING_PRIVATE_KEY=$(cat "$TORCHSNAP_UPDATER_KEY_PATH")
+    export TAURI_SIGNING_PRIVATE_KEY
 
     just install
     just fullcycle
-    just build --release --sign
+    # The update archive and its signature are only made for releases,
+    # so everyday builds need no updater key (ADR 0053).
+    just build --release --sign --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
     # `bun install` or a generator could have rewritten a tracked file;
     # the shipped build would then not match the tagged commit.
@@ -105,15 +118,44 @@ release-build version:
     [ "$bundle_version" = "$version" ] || fail "$app reports version $bundle_version"
     tools/verify-bundle-plist "$app" >/dev/null || fail "$app does not register .torchsnap files as decided"
 
-    rm -rf "{{ RELEASE_DIST }}"
-    mkdir -p "{{ RELEASE_DIST }}"
-    cp "$dmg" "{{ RELEASE_DIST }}/Torchsnap.dmg"
-    sha256=$(shasum -a 256 "{{ RELEASE_DIST }}/Torchsnap.dmg" | cut -d' ' -f1)
-    jq -n --arg version "$version" --arg commit "$(git rev-parse HEAD)" --arg sha256 "$sha256" \
-        '{version: $version, commit: $commit, sha256: $sha256}' > "{{ RELEASE_DIST }}/release.json"
+    # Installed apps replace themselves with the app inside the update
+    # archive, so that copy has to pass the same Gatekeeper checks.
+    archive="src-tauri/target/release/bundle/macos/$name.app.tar.gz"
+    [ -f "$archive" ] || fail "$archive not found"
+    [ -f "$archive.sig" ] || fail "$archive.sig not found"
+    unpacked=$(mktemp -d)
+    trap 'rm -rf "$unpacked"' EXIT
+    tar -xzf "$archive" -C "$unpacked"
+    [ -d "$unpacked/$name.app" ] || fail "$archive does not contain $name.app"
+    spctl -a -vv -t exec "$unpacked/$name.app" 2>&1 | grep -q 'source=Notarized Developer ID' \
+        || fail "Gatekeeper does not accept the app in $archive as notarized"
+    xcrun stapler validate -q "$unpacked/$name.app" || fail "the app in $archive has no stapled ticket"
+    archived_version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$unpacked/$name.app/Contents/Info.plist")
+    [ "$archived_version" = "$version" ] || fail "the app in $archive reports version $archived_version"
+
+    dist="{{ RELEASE_DIST }}"
+    rm -rf "$dist"
+    mkdir -p "$dist"
+    cp "$dmg" "$dist/Torchsnap.dmg"
+    cp "$archive" "$dist/Torchsnap.app.tar.gz"
+    cp "$archive.sig" "$dist/Torchsnap.app.tar.gz.sig"
+    sha256=$(shasum -a 256 "$dist/Torchsnap.dmg" | cut -d' ' -f1)
+    # `release-feed` also checks that the signature names this version
+    # and comes from the key in `plugins.updater.pubkey`.
+    tools/release-feed \
+        --changelog CHANGELOG.md \
+        --version "$version" \
+        --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --commit "$(git rev-parse HEAD)" \
+        --dmg-sha256 "$sha256" \
+        --signature "$dist/Torchsnap.app.tar.gz.sig" \
+        --pubkey "$(jq -r .plugins.updater.pubkey src-tauri/tauri.conf.json)" \
+        --repo "{{ RELEASE_REPO }}" \
+        > "$dist/release.json" \
+        || fail "could not write $dist/release.json"
 
     echo
-    echo "Staged {{ RELEASE_DIST }}/Torchsnap.dmg for v$version (sha256 $sha256)."
+    echo "Staged Torchsnap.dmg, the update archive and release.json for v$version in $dist (DMG sha256 $sha256)."
     echo "Try it, then run: just release-publish $version"
 
 # Tag, push and publish the release staged by release-build
@@ -130,7 +172,12 @@ release-publish version:
     [ "$(jq -r .commit "$dist/release.json")" = "$(git rev-parse HEAD)" ] \
         || fail "HEAD moved since release-build; build again"
     sha256=$(shasum -a 256 "$dist/Torchsnap.dmg" | cut -d' ' -f1)
-    [ "$sha256" = "$(jq -r .sha256 "$dist/release.json")" ] || fail "$dist/Torchsnap.dmg changed since release-build"
+    [ "$sha256" = "$(jq -r .dmg_sha256 "$dist/release.json")" ] || fail "$dist/Torchsnap.dmg changed since release-build"
+    for asset in Torchsnap.app.tar.gz Torchsnap.app.tar.gz.sig; do
+        [ -f "$dist/$asset" ] || fail "$dist/$asset is missing; build again"
+    done
+    [ "$(tr -d '[:space:]' < "$dist/Torchsnap.app.tar.gz.sig")" = "$(jq -r '.platforms["darwin-aarch64"].signature' "$dist/release.json")" ] \
+        || fail "$dist/Torchsnap.app.tar.gz.sig does not match release.json; build again"
 
     [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "not on main"
     [ -z "$(git status --porcelain)" ] || fail "working tree has uncommitted or untracked changes"
@@ -141,16 +188,12 @@ release-publish version:
         fail "tag v$version already exists"
     fi
 
-    # Release notes: the CHANGELOG section of this version, up to the next
-    # section or the link definitions at the end of the file, followed by
-    # the checksum and a pointer to the installation guide.
+    # Release notes: the CHANGELOG section `release-build` put into
+    # release.json, followed by a pointer to the installation guide and
+    # the checksum.
     notes="$dist/notes.md"
-    awk -v head="## [$version] - " '
-        index($0, head) == 1 { found = 1; next }
-        found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
-        found { print }
-    ' CHANGELOG.md | sed -e '/./,$!d' | awk 'NF { while (blank > 0) { print ""; blank-- } print; next } { blank++ }' > "$notes"
-    [ -s "$notes" ] || fail "CHANGELOG section for $version is empty"
+    jq -r .notes "$dist/release.json" > "$notes"
+    [ -s "$notes" ] || fail "release.json has no notes for $version"
     {
         echo
         echo "Installation: https://docs.torchsnap.app/start/installation/"
@@ -168,22 +211,32 @@ release-publish version:
 
     git tag -a "v$version" -m "Torchsnap $version"
     git push origin "v$version"
-    gh release create "v$version" "$dist/Torchsnap.dmg" --verify-tag \
-        --title "Torchsnap $version" --notes-file "$notes" "${release_kind[@]}"
+    gh release create "v$version" \
+        "$dist/Torchsnap.dmg" "$dist/Torchsnap.app.tar.gz" "$dist/Torchsnap.app.tar.gz.sig" "$dist/release.json" \
+        --verify-tag --title "Torchsnap $version" --notes-file "$notes" "${release_kind[@]}"
 
-    assets=$(gh release view "v$version" --json assets -q '[.assets[].name] | join(",")')
-    [ "$assets" = "Torchsnap.dmg" ] || fail "release v$version has assets '$assets', expected Torchsnap.dmg"
+    expected_assets="Torchsnap.app.tar.gz,Torchsnap.app.tar.gz.sig,Torchsnap.dmg,release.json"
+    assets=$(gh release view "v$version" --json assets -q '[.assets[].name] | sort | join(",")')
+    [ "$assets" = "$expected_assets" ] || fail "release v$version has assets '$assets', expected $expected_assets"
     repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
     if [[ "$version" != *-* ]]; then
         latest=$(gh api "repos/$repo/releases/latest" -q .tag_name)
         [ "$latest" = "v$version" ] || fail "latest release is $latest, not v$version"
-        # The public download URL only answers for a public repository.
+        # The public download URLs only answer for a public repository.
         if [ "$(gh repo view --json visibility -q .visibility)" = PUBLIC ]; then
-            status=$(curl -sIL -o /dev/null -w '%{http_code}' "https://github.com/$repo/releases/latest/download/Torchsnap.dmg")
-            [ "$status" = 200 ] || fail "releases/latest/download/Torchsnap.dmg answers $status"
+            for asset in Torchsnap.dmg release.json; do
+                status=$(curl -sIL -o /dev/null -w '%{http_code}' "https://github.com/$repo/releases/latest/download/$asset")
+                [ "$status" = 200 ] || fail "releases/latest/download/$asset answers $status"
+            done
         else
-            echo "Repository is private; skipped the public download URL check."
+            echo "Repository is private; skipped the public download URL checks."
         fi
+
+        # torchsnap.app serves the latest release.json as the update feed
+        # and only picks up a new one when it is rebuilt (ADR 0053).
+        gh workflow run deploy.yml -R "{{ WEBSITE_REPO }}" \
+            || fail "published, but could not start the {{ WEBSITE_REPO }} deploy; start it by hand"
+        echo "Started the {{ WEBSITE_REPO }} deploy; installed apps see v$version once it finished."
     fi
 
     echo

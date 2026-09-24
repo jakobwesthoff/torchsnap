@@ -12,7 +12,7 @@ export default defineConfig(async (env) =>
   mergeConfig(await viteConfig(env), {
     test: {
       environment: "jsdom",
-      include: ["src/**/*.test.{ts,tsx}"],
+      include: ["src/**/*.test.{ts,tsx}", "vite/**/*.test.ts"],
       setupFiles: ["src/test/setup.ts"],
     },
   }),
