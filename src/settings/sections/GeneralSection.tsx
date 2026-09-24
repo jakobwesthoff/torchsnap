@@ -11,6 +11,7 @@ import { Section } from "../Section";
 import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
+import { UpdatesSection } from "../UpdatesSection";
 
 export function GeneralSection() {
   const [globalShortcut, setGlobalShortcut] = useSetting<string>("globalShortcut");
@@ -66,6 +67,8 @@ export function GeneralSection() {
           <Switch checked={controlApiEnabled} onChange={setControlApiEnabled} />
         </Entry>
       </Section>
+
+      <UpdatesSection />
 
       {buildInfo && (
         <p className="mt-auto pt-4 text-right text-[11px] text-text-muted/90">
