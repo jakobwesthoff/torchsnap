@@ -49,18 +49,23 @@
 // =========================================================
 
 mod archive_ops;
+pub mod commands;
 mod decision;
+mod intake;
 mod paths;
 mod pending;
 mod provenance;
+mod queue;
 mod registered;
 mod review;
 mod staging;
 mod store;
 
 pub use archive_ops::{process_uninstall_markers, remove_stale_backups};
+pub use commands::{QUEUE_CHANGED_EVENT, process_in_background};
 pub use paths::InstallPaths;
 pub use pending::PendingChanges;
+pub use queue::{InstallQueue, QueueContext};
 pub use registered::RegisteredGadgets;
 pub use staging::StagingArea;
 pub use store::SettingsKeys;
