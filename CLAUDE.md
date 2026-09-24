@@ -66,6 +66,17 @@ config.
   gadgets under `gadgets/<id>/` still load in debug builds (ADR 0035).
 - SQLite files use the `.sqlite3` extension (ADR 0018).
 
+## Mascots
+
+- New or changed Snappy images follow
+  `assets/mascot/docs/Adding-a-Mascot.md`: 1024×1024 source, body size
+  proposed with `tools/normalize-mascot-size --output-dir` (never
+  enlarged), `oxipng -o max --strip safe`, and only images whose pixels
+  changed committed.
+- Before any mascot source is resized, show the maintainer a sheet from
+  `tools/mascot-size-sheet` with references, the current and the
+  proposed version, and apply only what they approve.
+
 ## ADRs
 
 Record decisions in `docs/adr/`:

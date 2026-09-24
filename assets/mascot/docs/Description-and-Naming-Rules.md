@@ -1,5 +1,8 @@
 ## How Mascot Descriptions Work
 
+Preparing the image and wiring a new variant into the app is described
+in [Adding-a-Mascot.md](Adding-a-Mascot.md).
+
 ### The Description Philosophy
 
 Snappy mascot descriptions follow a strict "wink wink, do you get it?" style.

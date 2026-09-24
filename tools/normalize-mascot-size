@@ -30,11 +30,17 @@
 # by hand with --eyes. A second run over a normalized source reports it
 # as within tolerance and changes nothing.
 #
-# Usage:
-#   tools/normalize-mascot-size [--dry-run] [--eyes X1,Y1,X2,Y2] <png>...
+# With --output-dir, scaled images are written there under their own
+# file name and the sources stay untouched. That is the first step of
+# the process in `assets/mascot/docs/Adding-a-Mascot.md`: the proposals
+# are reviewed with `tools/mascot-size-sheet` before any source changes.
 #
-# Run `just asset-mascots asset-mascot-data` afterwards to regenerate the
-# WebPs and trim data.
+# Usage:
+#   tools/normalize-mascot-size [--dry-run] [--output-dir DIR]
+#                               [--eyes X1,Y1,X2,Y2] <png>...
+#
+# Run `just asset-mascots asset-mascot-data` after changing sources to
+# regenerate the WebPs and trim data.
 #
 
 import argparse
@@ -143,6 +149,11 @@ def main() -> int:
     parser.add_argument("sources", nargs="+", type=Path)
     parser.add_argument("--dry-run", action="store_true", help="measure only")
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="write scaled images here instead of overwriting the sources",
+    )
+    parser.add_argument(
         "--eyes",
         help="pupil centres X1,Y1,X2,Y2 for a single source whose pupils cannot be detected",
     )
@@ -178,7 +189,11 @@ def main() -> int:
 
         print(f"{path}: pupil distance {distance:.1f}, scaling by {factor:.3f}")
         if not args.dry_run:
-            scale_around_feet(image, factor).save(path, optimize=True)
+            target = path
+            if args.output_dir:
+                args.output_dir.mkdir(parents=True, exist_ok=True)
+                target = args.output_dir / path.name
+            scale_around_feet(image, factor).save(target, optimize=True)
 
     return 1 if failed else 0
 

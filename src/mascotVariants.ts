@@ -9,6 +9,8 @@
  * in the random selection system. It is the single place to add new Snappy
  * mascots — add the variant name to the appropriate group below, then wire
  * it into `SnappyHeroSets` with the desired weight and conditions.
+ * Preparing the image itself (canvas, body size, optimization) is
+ * described in `assets/mascot/docs/Adding-a-Mascot.md`.
  *
  * NSFW variants (those with visible weapons) are included in their
  * thematic groups alongside the SFW versions. The NSFW filter predicate
