@@ -689,6 +689,16 @@ pub fn start_scheduler(app: tauri::AppHandle) {
     });
 }
 
+/// Run one automatic check after `delay` if it is due then, for the
+/// first check after the welcome window was finished.
+pub fn check_automatically_after(app: &tauri::AppHandle, delay: Duration) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        check_if_due(&app, schedule::CHECK_INTERVAL).await;
+    });
+}
+
 async fn check_if_due(app: &tauri::AppHandle, interval: Duration) {
     if !automatic_checks_enabled(read_value(app, AUTOMATIC_CHECKS_KEY).as_ref()) {
         return;

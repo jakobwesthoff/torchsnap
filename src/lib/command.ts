@@ -135,6 +135,10 @@ export interface CommandMap {
   update_check: { params: void; result: void };
   update_install: { params: void; result: void };
   update_skip: { params: void; result: void };
+  welcome_ready_to_finish: { params: { automaticChecks: boolean }; result: void };
+  welcome_not_ready: { params: void; result: void };
+  welcome_finish: { params: void; result: void };
+  welcome_show: { params: void; result: void };
 }
 
 // =========================================================

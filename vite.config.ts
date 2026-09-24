@@ -12,7 +12,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss(), guardedPagesCsp(["update.html"])],
+  plugins: [react(), tailwindcss(), guardedPagesCsp(["update.html", "welcome.html"])],
 
   // Stable import paths for gadget SDK surface. Must be kept in
   // sync with tsconfig.json paths.
@@ -31,6 +31,7 @@ export default defineConfig(async () => ({
         settings: resolve(__dirname, "settings.html"),
         devtools: resolve(__dirname, "devtools.html"),
         update: resolve(__dirname, "update.html"),
+        welcome: resolve(__dirname, "welcome.html"),
       },
       output: {
         manualChunks(id: string) {
@@ -48,6 +49,7 @@ export default defineConfig(async () => ({
             !id.endsWith("/src/settings/main.tsx") &&
             !id.endsWith("/src/devtools/main.tsx") &&
             !id.endsWith("/src/update/main.tsx") &&
+            !id.endsWith("/src/welcome/main.tsx") &&
             !id.includes("/src/gadgets/")
           ) {
             return "shared";

@@ -61,6 +61,14 @@ describe("UpdatesSection", () => {
     expect(check).toHaveBeenCalledOnce();
   });
 
+  it("opens the welcome window again", async () => {
+    const show = vi.fn();
+    mockCommands({ welcome_show: show });
+    render(<UpdatesSection />);
+    await userEvent.click(screen.getByRole("button", { name: "Show Welcome" }));
+    expect(show).toHaveBeenCalledOnce();
+  });
+
   it("stays usable when the check cannot start", async () => {
     mockCommands({
       update_check: () => {
