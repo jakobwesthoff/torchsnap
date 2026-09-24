@@ -5,8 +5,12 @@
 // =========================================================
 // Gadget Install / Uninstall
 //
-// Backend for the Gadgets settings panel's install and
-// uninstall flows. Both return `requires_restart: true`
+// Backend for installing, replacing, undoing and uninstalling
+// user gadgets. Every install arrives through the install queue
+// (`queue.rs`), which stages the archive, shows a review and
+// installs on confirmation, whatever the entry point (settings
+// picker or drop zone, Finder, command line). All operations
+// return `requires_restart: true`
 // because the `GadgetHost` slot list is frozen after setup;
 // a hot lifecycle path is tracked in
 // `todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`.
@@ -18,7 +22,7 @@
 // commands only unpack that state and move the work onto a
 // blocking thread.
 //
-// Install steps:
+// Install steps (queue request → `install_staged`):
 //
 // 1. Copy the source into the staging area and open the copy
 //    with `ArchiveSource::open`, which validates the zip and
@@ -70,7 +74,6 @@ pub use registered::RegisteredGadgets;
 pub use staging::StagingArea;
 pub use store::SettingsKeys;
 
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -128,33 +131,6 @@ pub struct UndoResult {
 // =========================================================
 // Tauri commands
 // =========================================================
-
-/// Install a user-supplied `.torchsnap` archive into the
-/// app data gadgets directory. Returns an error string that
-/// the frontend can surface directly in a toast or banner.
-#[tauri::command]
-pub async fn install_gadget_archive(
-    paths: tauri::State<'_, InstallPaths>,
-    registered: tauri::State<'_, RegisteredGadgets>,
-    pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
-    staging: tauri::State<'_, StagingArea>,
-    archive_path: String,
-) -> Result<InstalledGadgetInfo, String> {
-    let paths = paths.inner().clone();
-    let registered = registered.inner().clone();
-    let pending = Arc::clone(pending.inner());
-    let staging = staging.inner().clone();
-    let archive_path = PathBuf::from(archive_path);
-    tokio::task::spawn_blocking(move || {
-        let mut pending = pending
-            .lock()
-            .expect("pending changes lock is never poisoned");
-        install(&paths, &registered, &mut pending, &staging, &archive_path)
-    })
-    .await
-    .map_err(|e| format!("install task panicked: {e}"))?
-    .map_err(|e| format!("{e:#}"))
-}
 
 /// Uninstall a user-installed gadget. Rejects built-in,
 /// system, and dev gadgets.
@@ -217,21 +193,6 @@ pub fn gadget_permissions(
 // =========================================================
 // Install
 // =========================================================
-
-fn install(
-    paths: &InstallPaths,
-    registered: &RegisteredGadgets,
-    pending: &mut PendingChanges,
-    staging: &StagingArea,
-    archive_path: &Path,
-) -> anyhow::Result<InstalledGadgetInfo> {
-    let staged = staging
-        .stage(archive_path)
-        .context("open gadget archive for installation")?;
-    let result = install_staged(paths, registered, pending, &staged);
-    staged.discard();
-    result
-}
 
 fn install_staged(
     paths: &InstallPaths,
@@ -377,6 +338,8 @@ fn uninstall(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
     use crate::gadget_install::registered::Registration;
     use crate::wasm::manifest::Manifest;
@@ -390,7 +353,8 @@ mod tests {
         (root, paths)
     }
 
-    /// Install through a staging area next to the test's gadgets dir.
+    /// Stage `archive_path` next to the test's gadgets dir and install
+    /// the staged copy, the way a confirmed queue request does.
     fn install(
         paths: &InstallPaths,
         registered: &RegisteredGadgets,
@@ -398,7 +362,20 @@ mod tests {
         archive_path: &Path,
     ) -> anyhow::Result<InstalledGadgetInfo> {
         let staging = StagingArea::new(paths.gadgets_dir.with_file_name("install-staging"));
-        super::install(paths, registered, pending, &staging, archive_path)
+        install_via(paths, registered, pending, &staging, archive_path)
+    }
+
+    fn install_via(
+        paths: &InstallPaths,
+        registered: &RegisteredGadgets,
+        pending: &mut PendingChanges,
+        staging: &StagingArea,
+        archive_path: &Path,
+    ) -> anyhow::Result<InstalledGadgetInfo> {
+        let staged = staging.stage(archive_path)?;
+        let result = install_staged(paths, registered, pending, &staged);
+        staged.discard();
+        result
     }
 
     fn manifest_of(archive: &Path) -> Manifest {
@@ -786,7 +763,7 @@ mod tests {
         let staging = StagingArea::new(root.path().join("install-staging"));
         let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
 
-        super::install(
+        install_via(
             &paths,
             &RegisteredGadgets::default(),
             &mut PendingChanges::default(),
@@ -808,7 +785,7 @@ mod tests {
             Registration::Builtin,
         )]);
 
-        super::install(
+        install_via(
             &paths,
             &registry,
             &mut PendingChanges::default(),

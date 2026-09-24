@@ -102,10 +102,6 @@ export interface CommandMap {
   };
   wasm_gadgets: { params: void; result: WasmGadgetManifest[] };
   gadget_sources: { params: void; result: Record<string, GadgetSourceKind> };
-  install_gadget_archive: {
-    params: { archivePath: string };
-    result: InstalledGadgetInfo;
-  };
   uninstall_user_gadget: {
     params: { gadgetId: string };
     result: UninstallResult;

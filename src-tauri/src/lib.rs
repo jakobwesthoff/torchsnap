@@ -615,7 +615,6 @@ pub fn run() {
             wasm::logging::commands::logger_span_end,
             wasm_gadgets,
             gadget_sources,
-            gadget_install::install_gadget_archive,
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,
