@@ -35,7 +35,8 @@ in the macOS pill; `TORCHSNAP_RELEASE_FEED` points it at another feed.
 It merges after 0.12.0 is published. Step 10 text done on torchsnap-docs'
 `auto-updater` branch (`18e52fc`): installation page (welcome window,
 "Updating", the one manual update from 0.11.x) and the Settings rows.
-Screenshots still open: `settings-general` lacks the Updates section. Work
+Screenshots follow later: torchsnap-docs
+`todos/01m3a79by72pdrsqtk5hbd4k77-updater-and-welcome-screenshots.md`. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
