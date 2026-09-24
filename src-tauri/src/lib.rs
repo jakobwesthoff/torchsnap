@@ -726,9 +726,7 @@ pub fn run() {
             updates::update_phase,
             updates::update_check,
             updates::update_install,
-            updates::update_later,
             updates::update_skip,
-            updates::update_dismiss,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1227,6 +1225,13 @@ pub fn run() {
                 let _ = win.hide();
             }
         }
+        // However the update window closes (its close control, Later,
+        // Close), the update state learns about it here.
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } if label == UPDATE_WINDOW.label => updates::update_window_closed(app),
         // macOS hands files opened from Finder ("Open With",
         // double-click) to the running app as URLs. Before `setup`
         // has started the install queue they are only buffered, and
