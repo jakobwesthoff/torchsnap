@@ -211,34 +211,52 @@ carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
 
 ### Making a release
 
+The steps run in this order; each one checks what the earlier ones left.
+
 1. Set the new version in `package.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/tauri.conf.json`.
+   `src-tauri/tauri.conf.json`, and update `src-tauri/Cargo.lock` (for
+   example with `cargo check`).
 2. In `CHANGELOG.md`, turn `[Unreleased]` into `## [<version>] - <today>`,
    start a new empty `[Unreleased]` section, and add the link definition
    `[<version>]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v<version>`
-   at the end of the file.
-3. Commit and push to `main`.
+   at the end of the file. The section becomes the release notes on
+   GitHub and in the app's update window.
+3. Commit and push to `main`. Push the torchsnap-docs changes for the
+   release at the same time, so the documentation describes what ships.
 4. `just release-build <version>` checks all of the above, runs
    `just install` and `just fullcycle`, builds, signs and notarizes the
    app and the DMG, verifies them and the app inside the update archive,
    and stages in `src-tauri/target/release/dist/`: `Torchsnap.dmg`, the
    update archive `Torchsnap.app.tar.gz` with its `.sig`, and
    `release.json`, the update feed written by `tools/release-feed`
-   (ADR 0053). Try that DMG.
-5. `just release-publish <version>` tags `v<version>`, pushes the tag and
+   (ADR 0053). It needs network access to Apple's timestamp and
+   notarization services. Leave the working tree alone while it runs:
+   it refuses to stage a build that changed tracked files.
+5. Try the staged DMG. Do not commit to `main` between this step and
+   the next: `release-publish` only publishes what was staged for the
+   current commit.
+6. `just release-publish <version>` tags `v<version>`, pushes the tag and
    creates the GitHub release "Torchsnap <version>" with those four
    files. The notes are the CHANGELOG section plus the installation link
    and the DMG's SHA-256. For a stable version it then starts the
-   torchsnap-web deploy, which publishes the new `release.json` as
-   `https://torchsnap.app/updates/latest.json`; installed apps see the
-   release once that deploy has finished.
+   torchsnap-web deploy (`gh workflow run deploy.yml -R
+   jakobwesthoff/torchsnap-web`). If starting it fails, the release is
+   published anyway; run that command by hand.
+7. Once the deploy has finished, check that
+   `https://torchsnap.app/updates/latest.json` names the new version.
+   GitHub Pages sends it with `cache-control: max-age=600`, so installed
+   apps and the check may see the previous file for up to ten minutes.
+   Installed apps offer the update from then on.
 
 A version with a pre-release part, such as `0.10.0-beta.1`, becomes a
 GitHub prerelease and is not marked latest, so the download link on
-torchsnap.app keeps serving the last stable release.
+torchsnap.app keeps serving the last stable release. `release-publish`
+starts no website deploy for it, so the update feed keeps naming the
+last stable release and installed apps are never offered a prerelease.
+Its CHANGELOG section is left out of the `releases` notes of later
+feeds.
 
-If the build must change, fix it on `main` and run `release-build` again:
-`release-publish` only publishes what was staged for the current commit.
+If the build must change, fix it on `main` and run `release-build` again.
 
 ## License
 
