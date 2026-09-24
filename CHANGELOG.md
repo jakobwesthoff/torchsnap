@@ -42,8 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installing a gadget from Settings → Gadgets shows a review first: the
   gadget, where the file came from, and every permission it asks for,
   with new permissions marked when it replaces an installed version.
-  Several dropped files are reviewed one after another and end in one
-  summary with a single restart prompt.
+  Several dropped files are reviewed one after another.
 
 ### Fixed
 

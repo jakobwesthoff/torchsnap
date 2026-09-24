@@ -43,8 +43,10 @@
 // 1. Decide the same way (`decision::decide_uninstall`):
 //    user gadgets and installs made since startup can be
 //    removed, built-in, system and dev gadgets cannot.
-// 2. Remove the archive and the directory form if any, and
-//    leave an uninstall marker (`archive_ops::remove_user_gadget`).
+// 2. Keep the archive that loaded at startup as the backup for
+//    undo, remove any archive installed since and the directory
+//    form, and leave an uninstall marker
+//    (`archive_ops::remove_user_gadget`).
 //    The gadget keeps running until restart, so its state tree
 //    and settings are deleted by the next startup
 //    (`archive_ops::process_uninstall_markers`), before any
@@ -348,8 +350,8 @@ fn install_staged(
 // Undo
 // =========================================================
 
-/// Reverse the install or replace of `gadget_id` made in this
-/// session. The backup written by the first replace decides what
+/// Reverse the install, replace or uninstall of `gadget_id` made in
+/// this session. The backup written by the first replace decides what
 /// comes back; without one, the install was fresh and its archive
 /// is removed.
 fn undo(
