@@ -93,25 +93,18 @@ impl LauncherPanel for MacosLauncherPanel {
     }
 
     fn warm_up(app: &tauri::AppHandle) -> anyhow::Result<()> {
-        use anyhow::Context;
+        let panel = app
+            .get_webview_panel("main")
+            .map_err(|e| anyhow::anyhow!("retrieve launcher panel: {e:?}"))?;
 
-        let handle = app.clone();
-        app.run_on_main_thread(move || {
-            let Ok(panel) = handle.get_webview_panel("main") else {
-                eprintln!("warm_up: failed to retrieve launcher panel");
-                return;
-            };
+        let ns_panel = panel.as_panel();
 
-            let ns_panel = panel.as_panel();
-
-            // Make the panel invisible to the user but "visible" to
-            // WebKit's compositor so it renders the first frame.
-            ns_panel.setAlphaValue(0.0);
-            panel.show_and_make_key();
-            panel.hide();
-            ns_panel.setAlphaValue(1.0);
-        })
-        .context("dispatch warm_up to main thread")?;
+        // Make the panel invisible to the user but "visible" to
+        // WebKit's compositor so it renders the first frame.
+        ns_panel.setAlphaValue(0.0);
+        panel.show_and_make_key();
+        panel.hide();
+        ns_panel.setAlphaValue(1.0);
 
         Ok(())
     }

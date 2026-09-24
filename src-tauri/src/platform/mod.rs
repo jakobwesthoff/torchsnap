@@ -95,6 +95,8 @@ pub trait LauncherPanel {
     ///
     /// Should be called once after the layout dimensions are known
     /// and the frame has been set, but before the first real show.
+    /// Runs on the caller's thread, which has to be the main thread;
+    /// a show queued before it would be hidden again by it.
     /// The default implementation is a no-op.
     fn warm_up(_app: &tauri::AppHandle) -> anyhow::Result<()> {
         Ok(())
