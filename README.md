@@ -195,7 +195,16 @@ carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
   APPLE_API_ISSUER="<Issuer ID>"
   APPLE_API_KEY="<Key ID>"
   APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_<Key ID>.p8"
+  TORCHSNAP_UPDATER_KEY_PATH="$HOME/.config/torchsnap/updater.key"
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD="<updater key password>"
   ```
+
+- The updater signing key at `TORCHSNAP_UPDATER_KEY_PATH` (ADR 0053).
+  Its public key is `plugins.updater.pubkey` in
+  `src-tauri/tauri.conf.json`, so installed apps only accept updates
+  signed with this key. Restore key and password from the password
+  manager; a new key pair (`bun run tauri signer generate`) cuts off
+  every installed app from updates.
 
 - The GitHub CLI `gh`, logged in with push access to this repository.
 
