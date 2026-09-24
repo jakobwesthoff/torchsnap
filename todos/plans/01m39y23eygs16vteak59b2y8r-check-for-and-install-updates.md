@@ -25,8 +25,10 @@ Steps 4 to 7 done: `src-tauri/src/updates/` (state machine, schedule,
 location check, release notes), the update window (`update.html`,
 `src/update/`), the Updates section in Settings → General, and the
 welcome window (`welcome.html`, `src/welcome/`, `src-tauri/src/welcome.rs`),
-all with tests. Step 2 of the welcome shows a short list until step 8
-decides the visual. Not yet tried in a running app. Work
+all with tests. The maintainer tested them in unsigned builds
+(0.11.95 to 0.11.96) on 2026-09-24: everything worked except the
+launcher after the update restart, now fixed (`73ca3d3`); the welcome
+was reworked after that test (step 8). Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -57,11 +59,11 @@ Decided with the maintainer on 2026-09-24.
 | Skip This Version | Hides that version for good; a newer one is offered again. |
 | Release notes | Rendered as Markdown, for every version between the installed and the new one. |
 | First-launch question | Lives in a separate welcome window, not in the update window. |
-| Welcome window flow | 1. Welcome: mascot and one sentence. 2. How it works: a visual. 3. Shortcut: the Settings shortcut recorder with the current shortcut filled in. 4. Launch at login and automatic update checks: two switches, with a short text on what the update check sends where. 5. Done: "Press <shortcut> now" (see "Finishing the welcome"). Every step comes prefilled, so continuing through all steps is valid. Appearance, Control API and gadgets stay in Settings only. |
+| Welcome window flow | Revised after the first test (2026-09-24): four pages. 1. Welcome: a still picture of the launcher (the static preview from the torchsnap.app hero) and a short text. 2. Shortcut: the Settings shortcut recorder with the current shortcut filled in. 3. Launch at login and automatic update checks: two switches, with a short text on what the update check sends where. 4. "Press <shortcut> now" (see "Finishing the welcome"). No separate "How it works" page. Every page comes prefilled, so going forward through all pages is valid. Appearance, Control API and gadgets stay in Settings only. |
+| Welcome window navigation | The forward button sits centered below each page's content and names where it leads: "Choose your shortcut", "Next: Startup and updates", "Next: Try it". A back arrow sits top left from page 2 on. Page dots are centered at the bottom. Every page fades in when it appears. |
 | Who sees the welcome window | Everyone running a version that has it and has not completed it yet, new users and users upgrading from 0.11.x alike. |
 | Showing it again | A button in Settings opens the welcome window again at any time. |
 | Welcome window state | Stored persistently, so a later version does not show it again to someone who has seen it. |
-| "How it works" visual, timing | Built within this plan, before the first release that has the updater. |
 | Manual check and Show Welcome | Settings → General gets an area next to the build line with Check for Updates, the automatic-check switch and Show Welcome. The tray menu gets "Check for Updates...". |
 | Website copy | torchsnap-web stays unchanged. |
 | Endpoint | The update feed is served from torchsnap.app. |
@@ -69,11 +71,11 @@ Decided with the maintainer on 2026-09-24.
 | Feed download fails during the site build | The build fails, and the previous deployment stays live. |
 | Version near the download button | Part of this plan, from the same build-time download. It replaces option A/B of torchsnap-web `todos/01m39tc7baqfjta27mqhh4796q-show-latest-version-near-download.md`. |
 | Closing the welcome window | Not possible before the last step; the window has no close control and Escape does not close it. Quitting Torchsnap stays possible (tray, Cmd+Q). |
-| Update switch in welcome step 4 | Prefilled with on. |
+| Update switch in the welcome | Prefilled with on. |
 | Reopened welcome window | Same rules as the first run, not closable before Done (one code path; the maintainer left the choice to the easier implementation). |
 | Skip and manual checks | A manual check ignores the skipped version; automatic checks honor it. |
 | Welcome window at startup | Opens right after startup whenever it is due, in front of everything, also on a launch-at-login start. |
-| Finishing the welcome | Step 5 has no Done button: pressing the global shortcut finishes the welcome, closes it and shows the launcher. A secondary "Open the launcher" button below the keycaps does the same, for when the shortcut does not fire. |
+| Finishing the welcome | The last page has no forward button: pressing the global shortcut finishes the welcome, closes it and shows the launcher. A quiet "Open the launcher" link below the keycaps does the same, for when the shortcut does not fire. |
 | First automatic check after the welcome | One minute after the welcome is finished, if automatic checks were left on; then the normal 24-hour rhythm. |
 | Other windows while the welcome is open | Everything works as usual (install requests from Finder, tray items, the shortcut on earlier steps); other windows open above the welcome, which stays open and not closable until finished. |
 | After an update restart | The launcher is shown once. |
@@ -85,7 +87,7 @@ Decided with the maintainer on 2026-09-24.
 | "Later" across a restart | The postponed update is kept in memory only. After a restart the tray item returns with the next check that finds the update. |
 | Pending gadget changes | The update window says in one line that the restart also applies the pending gadget changes, with their count. |
 | Test feed | An environment variable (for example `TORCHSNAP_UPDATE_FEED`) overrides the feed URL in every build, including signed release builds. Its use is logged with the URL. Release builds accept only https there (the plugin rejects other schemes unless `dangerousInsecureTransportProtocol` is set); debug builds only warn. `TORCHSNAP_UPDATE_INTERVAL` overrides the 24 hours the same way for testing. |
-| "How it works" visual | A storyboard comes first; the medium is picked after it. Candidate to look at then: the scripted React demo torchsnap-web removed from its hero in `1e02fd0` as too distracting there (`web/src/launcher/DemoLauncher.tsx`, `useScriptedDemo.ts`, `scenarios.ts`, `candidates.ts`, `match.ts`), reduced to a minimal example. |
+| Launcher animation | Not in 0.12.0. The welcome page shows the still preview; animating it is `todos/product/features/01m3a6b1d9w8a0tec6y4qd9s1a-welcome-launcher-animation.md`. |
 | Notes of versions in between | `release-publish` writes the notes of every version from `CHANGELOG.md` into an extra field of the feed. The update window shows all versions newer than the installed one. The plugin exposes the whole feed as `Update::raw_json`. |
 | Feed content | `version`, `pub_date` (RFC 3339), `notes` (newest CHANGELOG section), `platforms.darwin-aarch64` with `url` pinned to the version (`releases/download/v<version>/…`, not `latest/download`) and `signature` (contents of the `.sig`), and a custom `releases` array with version, date and Markdown notes of every CHANGELOG section, without a cutoff. No forced-update flag, no rollout, no minimum macOS version until a release raises it. |
 | Feed URL on torchsnap.app | `https://torchsnap.app/updates/latest.json`. |
@@ -96,7 +98,7 @@ Decided with the maintainer on 2026-09-24.
 | Signed version | `plugins.updater.requireSignedVersion: true`, so the app rejects signatures without a version. `release-build` checks that the trusted comment of the `.sig` contains `version:<version>`. |
 | Untrusted feed content | The feed is not signed, only the archive is. Notes are rendered with raw HTML disabled and sanitized; links open in the browser through `opener`. Both new windows get an `on_navigation` guard that allows only the app's own origin, and a CSP. The backend treats `raw_json` as untrusted (size cap, bad entries skipped). |
 | Capabilities of the new windows | One minimal capability per window. The update window gets `core:default` and `opener` only; Later, Skip and the automatic-check answer go through backend commands. The welcome window gets what `ShortcutRecorder`, the settings store and the autostart switch need. |
-| Automatic checks before the answer | No stored answer means no automatic checks. The first automatic check waits until the welcome window is completed. Every completed welcome has passed step 4, so the answer is always stored when the welcome counts as seen. |
+| Automatic checks before the answer | No stored answer means no automatic checks. The first automatic check waits until the welcome window is completed. Every completed welcome has passed the startup and updates page, so the answer is always stored when the welcome counts as seen. |
 | Scheduling | A tick every 15 minutes calls a pure `check_is_due(now, last_check, last_attempt)`: due when 24 hours passed since the last successful check, or when the stored last check lies in the future. A failed check does not advance the last check; the next attempt comes at least one hour after the failed one (`last_attempt` kept in memory). |
 | Location check | Derived from `std::env::current_exe()`, the same path the plugin replaces. |
 | Download | The plugin buffers the whole archive in memory and has no cancel; the first version offers no cancel button. |
@@ -287,9 +289,10 @@ Each step ends in commits on the `auto-updater` branches and a note in
 7. **Welcome window (torchsnap), done.** New auxiliary window with the five
    steps, step 2 still a placeholder; revision check at startup and
    the Settings button.
-8. **"How it works" (torchsnap).** Storyboard, then the medium with the
-   maintainer (the removed web demo is a candidate), then build it into
-   step 2 of the welcome window.
+8. **Welcome rework (torchsnap), done.** After the first hands-on test:
+   four pages, the still launcher preview on page 1, forward buttons
+   named after the next page, fade-in per page. The animation moved to
+   its own todo.
 9. **Website (torchsnap-web).** The build downloads
    `releases/latest/download/release.json` from GitHub and serves it as
    `/updates/latest.json`, failing when the download fails. The version
