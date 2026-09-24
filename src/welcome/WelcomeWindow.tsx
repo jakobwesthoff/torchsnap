@@ -5,28 +5,32 @@
 // =========================================================
 // Welcome window
 //
-// Five steps, each prefilled, so continuing through all of them is a
-// valid way through:
+// Four pages, each prefilled, so going forward through all of them is
+// a valid way through:
 //
-// 1. Welcome
-// 2. How it works
-// 3. The launcher shortcut (the recorder from Settings)
-// 4. Launch at login and automatic update checks
-// 5. "Press <shortcut> now", which finishes the welcome
+// 1. Welcome, with a still picture of the launcher
+// 2. The launcher shortcut (the recorder from Settings)
+// 3. Launch at login and automatic update checks
+// 4. "Press <shortcut> now", which finishes the welcome
 //
-// The window cannot be closed before step 5 is finished. Reaching
-// step 5 hands the update answer to the backend, which stores it only
-// when the welcome is finished, by the shortcut or the "Open the
-// launcher" button.
+// Each page's forward button sits centered below its content and names
+// the page it leads to; a back arrow sits top left from page 2 on. Every
+// page fades in when it appears.
+//
+// The window cannot be closed before page 4 is finished. Reaching page 4
+// hands the update answer to the backend, which stores it only when the
+// welcome is finished, by the shortcut or the "Open the launcher" link.
 // =========================================================
 
 import { useEffect, useState, type ReactNode } from "react";
+import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
 import { ShortcutKeys } from "../components/ShortcutKeys";
 import { Switch } from "../components/Switch";
 import { TitleBar } from "../components/TitleBar";
 import { cn } from "../lib/cn";
 import { ShortcutSection } from "../settings/ShortcutSection";
+import { LauncherPreview } from "./LauncherPreview";
 
 export interface WelcomeProps {
   globalShortcut: string;
@@ -41,13 +45,20 @@ export interface WelcomeProps {
   finish: () => void;
 }
 
-const STEP_COUNT = 5;
+const PAGE_COUNT = 4;
+
+/** Forward button label per page; the last page has none. */
+const FORWARD_LABELS: Record<number, string> = {
+  1: "Choose your shortcut",
+  2: "Next: Startup and updates",
+  3: "Next: Try it",
+};
 
 export function WelcomeWindow(props: WelcomeProps) {
-  const [step, setStep] = useState(1);
+  const [page, setPage] = useState(1);
   // Prefilled with on for someone who was never asked.
   const [automaticChecks, setAutomaticChecks] = useState(props.storedAutomaticChecks ?? true);
-  const last = step === STEP_COUNT;
+  const last = page === PAGE_COUNT;
 
   const { readyToFinish, notReady } = props;
   useEffect(() => {
@@ -60,21 +71,37 @@ export function WelcomeWindow(props: WelcomeProps) {
     if (last) {
       notReady();
     }
-    setStep((s) => Math.max(1, s - 1));
+    setPage((p) => Math.max(1, p - 1));
   };
-  const next = () => setStep((s) => Math.min(STEP_COUNT, s + 1));
+  const forward = () => setPage((p) => Math.min(PAGE_COUNT, p + 1));
+  const forwardLabel = FORWARD_LABELS[page];
 
   return (
     <div className="relative flex h-screen flex-col bg-surface font-sans text-text-primary antialiased">
       <TitleBar variant="titlebar" title="Welcome to Torchsnap" closable={false} />
-      <main className="flex min-h-0 flex-1 flex-col px-10 pt-14 pb-6">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {step === 1 && <WelcomeStep />}
-          {step === 2 && <HowItWorksStep shortcut={props.globalShortcut} />}
-          {step === 3 && (
+      <main className="relative flex min-h-0 flex-1 flex-col px-10 pt-12 pb-5">
+        {page > 1 && (
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={back}
+            className="absolute top-11 left-4 rounded-md p-1.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <Icon icon="heroicons:chevron-left" className="h-5 w-5" />
+          </button>
+        )}
+
+        {/* Keyed by page, so every page mounts fresh and fades in. */}
+        <div
+          key={page}
+          data-testid="welcome-page"
+          className="welcome-fade-in flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto text-center"
+        >
+          {page === 1 && <WelcomePage />}
+          {page === 2 && (
             <ShortcutStep shortcut={props.globalShortcut} setShortcut={props.setGlobalShortcut} />
           )}
-          {step === 4 && (
+          {page === 3 && (
             <ChoicesStep
               launchAtLogin={props.launchAtLogin}
               setLaunchAtLogin={props.setLaunchAtLogin}
@@ -82,71 +109,40 @@ export function WelcomeWindow(props: WelcomeProps) {
               setAutomaticChecks={setAutomaticChecks}
             />
           )}
-          {step === 5 && <DoneStep shortcut={props.globalShortcut} finish={props.finish} />}
-        </div>
+          {page === 4 && <DoneStep shortcut={props.globalShortcut} finish={props.finish} />}
 
-        <div className="mt-6 flex items-center gap-2">
-          <StepDots step={step} />
-          <div className="flex-1" />
-          {step > 1 && <Button onClick={back}>Back</Button>}
-          {!last && (
-            <Button primary onClick={next}>
-              Continue
-            </Button>
+          {forwardLabel && (
+            <button
+              type="button"
+              onClick={forward}
+              className="mt-6 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              {forwardLabel}
+            </button>
           )}
         </div>
+
+        <PageDots page={page} />
       </main>
     </div>
   );
 }
 
 // =========================================================
-// Steps
+// Pages
 // =========================================================
 
-function WelcomeStep() {
+function WelcomePage() {
   return (
-    <div className="flex flex-col items-center text-center">
-      <Mascot size={192} />
-      <h1 className="mt-4 text-xl font-semibold">Welcome to Torchsnap</h1>
+    <>
+      <LauncherPreview />
+      <h1 className="mt-8 text-xl font-semibold">Welcome to Torchsnap</h1>
       <p className="mt-2 max-w-md text-sm text-text-secondary">
         Torchsnap is a launcher that lives in your menu bar. It opens on a keyboard shortcut, you
-        type what you are looking for, and it gets out of the way again. Four short steps set it up.
+        type what you are looking for, and it gets out of the way again. Three short steps set it
+        up.
       </p>
-    </div>
-  );
-}
-
-// TODO: Replace the list with the "how it works" visual once its
-// storyboard and medium are decided (updater plan, step 8).
-function HowItWorksStep({ shortcut }: { shortcut: string }) {
-  return (
-    <div>
-      <StepTitle>How it works</StepTitle>
-      <ol className="mt-4 space-y-3 text-sm text-text-secondary">
-        <HowItWorksItem n={1}>
-          Press <ShortcutKeys shortcut={shortcut} /> in any app to open the launcher.
-        </HowItWorksItem>
-        <HowItWorksItem n={2}>Type a few letters of what you are looking for.</HowItWorksItem>
-        <HowItWorksItem n={3}>
-          Press Return to open the highlighted result, or Escape to close the launcher.
-        </HowItWorksItem>
-      </ol>
-      <p className="mt-4 text-sm text-text-secondary">
-        Torchsnap stays in the menu bar. Its menu there has Settings and Quit.
-      </p>
-    </div>
-  );
-}
-
-function HowItWorksItem({ n, children }: { n: number; children: ReactNode }) {
-  return (
-    <li className="flex items-center gap-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-inset text-xs font-semibold text-text-primary">
-        {n}
-      </span>
-      <span>{children}</span>
-    </li>
+    </>
   );
 }
 
@@ -158,13 +154,15 @@ function ShortcutStep({
   setShortcut: (shortcut: string) => Promise<void>;
 }) {
   return (
-    <div>
+    <div className="w-full max-w-lg">
       <StepTitle>Your shortcut</StepTitle>
       <p className="mt-2 mb-4 text-sm text-text-secondary">
         Torchsnap opens with this shortcut. Click it to record a different one, for example when
         another app already uses it.
       </p>
-      <ShortcutSection globalShortcut={shortcut} setGlobalShortcut={setShortcut} />
+      <div className="text-left">
+        <ShortcutSection globalShortcut={shortcut} setGlobalShortcut={setShortcut} />
+      </div>
     </div>
   );
 }
@@ -182,8 +180,8 @@ function ChoicesStep({
 }) {
   return (
     <div>
-      <StepTitle>Two choices</StepTitle>
-      <div className="mt-4 flex flex-col gap-4 rounded-xl bg-surface-group p-4">
+      <StepTitle>Startup and updates</StepTitle>
+      <div className="mt-4 flex flex-col gap-4 rounded-xl bg-surface-group p-4 text-left">
         <Choice
           label="Launch at login"
           description="Start Torchsnap when you log in, so the shortcut always works."
@@ -260,43 +258,22 @@ function StepTitle({ children }: { children: ReactNode }) {
   return <h2 className="mt-2 text-lg font-semibold">{children}</h2>;
 }
 
-function StepDots({ step }: { step: number }) {
+function PageDots({ page }: { page: number }) {
   return (
-    <div role="group" aria-label={`Step ${step} of ${STEP_COUNT}`} className="flex gap-1.5">
-      {Array.from({ length: STEP_COUNT }, (_, i) => (
+    <div
+      role="group"
+      aria-label={`Page ${page} of ${PAGE_COUNT}`}
+      className="mt-4 flex justify-center gap-1.5"
+    >
+      {Array.from({ length: PAGE_COUNT }, (_, i) => (
         <span
           key={i}
           className={cn(
             "h-1.5 w-1.5 rounded-full",
-            i + 1 === step ? "bg-accent" : "bg-text-muted/30",
+            i + 1 === page ? "bg-accent" : "bg-text-muted/30",
           )}
         />
       ))}
     </div>
-  );
-}
-
-function Button({
-  primary = false,
-  onClick,
-  children,
-}: {
-  primary?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        primary
-          ? "bg-accent text-white hover:bg-accent/90"
-          : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
-      )}
-    >
-      {children}
-    </button>
   );
 }
