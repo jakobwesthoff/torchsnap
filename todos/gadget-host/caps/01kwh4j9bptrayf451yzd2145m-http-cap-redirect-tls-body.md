@@ -1,8 +1,12 @@
-# HTTP capability: redirect + DNS-rebind SSRF bypass the origin allowlist, guest-toggled TLS bypass, unbounded default body, fragile error classification
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/http.rs, src-tauri/src/network/http.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** high (SSRF: redirects + DNS rebind); medium (TLS bypass); medium (unbounded body); low/cosmetic (error classification)
-**Area:** src-tauri/src/caps/http.rs, src-tauri/src/network/http.rs
+# HTTP capability: redirect + DNS-rebind SSRF bypass the origin allowlist, guest-toggled TLS bypass, unbounded default body, fragile error classification
 
 ## Threat model
 `HttpCap` is per-gadget. The gadget author fully controls every

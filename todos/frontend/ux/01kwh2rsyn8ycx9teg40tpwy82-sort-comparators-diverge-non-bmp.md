@@ -1,8 +1,12 @@
-# Rust and TS sort comparators disagree on non-BMP strings despite MUST-stay-in-sync contract
+---
+kind: bug
+severity: low
+status: open
+area: [src/launcher/compareEntries.ts, src-tauri/src/commands/types.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src/launcher/compareEntries.ts, src-tauri/src/commands/types.rs
+# Rust and TS sort comparators disagree on non-BMP strings despite MUST-stay-in-sync contract
 
 ## Problem
 

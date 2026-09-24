@@ -57,17 +57,70 @@ finding is now an ordinary todo in its scope folder above, alongside
 non-review todos on the same topic. There is no separate "review"
 category to browse.
 
-A review-derived todo still carries its original **Kind** /
-**Severity** / **Area** header (e.g. `**Severity:** high`); grep for
-`Severity:.*high` (or `medium` / `low`) under `todos/` to find
-findings by severity. Findings that were resolved or judged obsolete
-during a 2026-09-23 triage pass were deleted outright rather than
-moved.
+A review-derived todo keeps its original kind, severity and area in
+its frontmatter (see below). `rg '^severity: high' todos/` (or
+`critical` / `medium` / `low`) finds findings by severity. Findings
+that were resolved or judged obsolete during a 2026-09-23 triage pass
+were deleted outright rather than moved.
+
+## Frontmatter
+
+Every todo starts with YAML frontmatter, then a blank line, then the
+H1 title. Fields appear in this order, lists are always flow style
+(`[a, b]`) so each field stays on one grep-able line, and a field that
+does not apply is left out rather than written empty.
+
+```yaml
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs]
+tags: [security, unconfirmed]
+plan: todos/plans/<ulid>-<name>.md
+depends-on: [todos/<scope>/<ulid>-<name>.md]
+---
+```
+
+- `kind` (required): `bug`, `feature` (new capability), `improvement`
+  (makes existing behavior better), `refactor`, `chore`,
+  `investigation`, `question`, `decision`, `docs`, or `plan` (only for
+  files in `plans/`).
+- `severity` (optional): `critical`, `high`, `medium`, `low`. Only for
+  findings that state one.
+- `status` (required): `open`, `needs-discussion`, `blocked` (waiting
+  on a named todo or external event), `deferred` (parked on purpose,
+  no named trigger), `in-progress`. Any nuance goes into the body as
+  the first paragraph after the title.
+- `area` (optional): repo-relative paths the todo is about.
+- `tags` (optional): from the list below only. Do not tag what the
+  directory already says (no `macos` under `platform/macos/`, no
+  `memory` under `gadget-host/memory/`).
+- `plan` (optional): the coordinating file in `plans/`.
+- `depends-on` (optional): todos that must land first. Relations that
+  are not hard dependencies stay as prose in the body.
+
+Tags:
+
+- Platform: `macos`, `linux`, `windows`.
+- Security and trust: `security` (vulnerability, hardening, trust
+  boundary), `privacy` (data exposure or disclosure), `unconfirmed`
+  (a suspected bug not yet reproduced).
+- Correctness and quality: `concurrency`, `error-handling`,
+  `performance`, `memory`, `testing`.
+- Product: `ux`, `accessibility`, `docs`.
+- Infrastructure: `dependencies`, `ci`, `tooling`, `migration` (large
+  structural moves such as a framework major version), `api-design`,
+  `logging`, `config`.
+- Subsystems, when the directory does not already say it: `wasm`,
+  `sdk`.
+
+Add a tag to this list before using it anywhere.
 
 ## Adding a todo
 
 `<ulid>-<short-description>.md` in the most-specific matching
-directory. Use `mkulid -l` to generate the ULID. Concise content
-that captures the topic, any prior discussion, and decisions
-made — the file is what carries forward when the conversation
-that produced it is gone.
+directory. Use `mkulid -l` to generate the ULID. Start with the
+frontmatter above, then the title, then concise content that captures
+the topic, any prior discussion, and decisions made. The file is what
+carries forward when the conversation that produced it is gone.

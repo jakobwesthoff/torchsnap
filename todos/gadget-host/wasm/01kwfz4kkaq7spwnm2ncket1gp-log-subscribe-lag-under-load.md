@@ -1,8 +1,12 @@
-# Devtools log subscription can churn on Lagged under gadget log floods
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/logging/commands.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/logging/commands.rs
+# Devtools log subscription can churn on Lagged under gadget log floods
 
 ## Problem
 `devtools_log_subscribe` reads one broadcast item, then sleeps a

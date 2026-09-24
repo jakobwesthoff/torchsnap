@@ -1,3 +1,9 @@
+---
+kind: investigation
+status: open
+tags: [memory]
+---
+
 # Frontend Memory Leak Audit Follow-up (2026-03-28)
 
 Findings from a second audit of all frontend source files. The four issues

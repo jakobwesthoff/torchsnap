@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+area: [src/settings/sections/GadgetsManagementPanel.tsx, src/settings/SettingsSidebar.tsx]
+---
+
 # Gadgets UI — UX Polish
 
 Three related issues in `src/settings/sections/GadgetsManagementPanel.tsx`

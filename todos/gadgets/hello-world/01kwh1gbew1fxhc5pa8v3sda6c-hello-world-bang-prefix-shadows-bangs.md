@@ -1,8 +1,12 @@
-# hello-world's exclusive `!` prefix makes leading-bang queries unreachable for the bangs gadget
+---
+kind: bug
+severity: low
+status: open
+area: [gadgets/hello-world/manifest.toml, gadgets/bangs/src/lib.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** gadgets/hello-world/manifest.toml, gadgets/bangs/src/lib.rs
+# hello-world's exclusive `!` prefix makes leading-bang queries unreachable for the bangs gadget
 
 ## Problem
 

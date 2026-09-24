@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Clipboard: Syntax highlighting for text preview
 
 **Priority: polish / nice-to-have**

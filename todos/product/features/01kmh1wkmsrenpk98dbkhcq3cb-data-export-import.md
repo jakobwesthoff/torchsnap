@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Data export and import
 
 Users switching machines, reinstalling, or backing up should be

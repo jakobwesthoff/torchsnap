@@ -1,8 +1,12 @@
-# Control `show` errors before layout is reported; hotkey path queues instead
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/control/handlers/launcher.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/control/handlers/launcher.rs
+# Control `show` errors before layout is reported; hotkey path queues instead
 
 ## Problem
 

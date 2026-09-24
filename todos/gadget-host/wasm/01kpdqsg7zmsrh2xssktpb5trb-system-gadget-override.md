@@ -1,11 +1,14 @@
+---
+kind: feature
+status: deferred
+---
+
 # System Gadget Override
 
 Allow a user-installed gadget to deliberately shadow a bundled system
 gadget with the same ID. Shipped state rejects this collision outright
 with an error during install; this todo tracks the follow-up work to
 turn the hard rejection into an explicit, opt-in override flow.
-
-**Status:** deferred (rejection-only in v1)
 
 **Motivation:**
 - Forking a bundled gadget while preserving its existing storage and

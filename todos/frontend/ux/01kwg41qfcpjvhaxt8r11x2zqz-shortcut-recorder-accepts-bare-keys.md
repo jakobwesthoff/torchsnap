@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: high
+status: open
+area: [src/components/ShortcutRecorder.tsx]
+---
+
 # ShortcutRecorder commits modifier-less combos — a bare keypress becomes the global hotkey
-
-**Kind:** bug
-**Severity:** high
-
-**Area:** src/components/ShortcutRecorder.tsx
 
 ## Problem
 The component's header comment promises that recording "commits on

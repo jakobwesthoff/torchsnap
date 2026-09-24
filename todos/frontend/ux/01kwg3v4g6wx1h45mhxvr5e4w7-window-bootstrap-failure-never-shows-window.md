@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: medium
+status: open
+area: [src/settings/main.tsx]
+---
+
 # Settings/devtools bootstrap failure leaves the window invisible with no error
-
-**Kind:** bug
-**Severity:** medium
-
-**Area:** src/settings/main.tsx
 
 ## Problem
 Auxiliary windows are created hidden and only presented when the

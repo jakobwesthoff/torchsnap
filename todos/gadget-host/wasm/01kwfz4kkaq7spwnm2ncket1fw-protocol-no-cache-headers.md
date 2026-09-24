@@ -1,8 +1,11 @@
-# Gadget asset responses carry no caching headers
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/protocol.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/wasm/protocol.rs
+# Gadget asset responses carry no caching headers
 
 ## Problem
 Successful asset responses set only `Content-Type` and

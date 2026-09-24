@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget: File search
 
 Search files by name from the launcher — the table-stakes feature

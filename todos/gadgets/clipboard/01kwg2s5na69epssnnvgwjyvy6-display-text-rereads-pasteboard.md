@@ -1,8 +1,12 @@
-# Display-text derivation re-reads the pasteboard — mismatch race and double image decode
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadgets/clipboard/formats.rs]
+tags: [unconfirmed, concurrency]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/gadgets/clipboard/formats.rs
+# Display-text derivation re-reads the pasteboard — mismatch race and double image decode
 
 ## Problem
 

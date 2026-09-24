@@ -1,7 +1,12 @@
+---
+kind: chore
+status: needs-discussion
+tags: [testing]
+---
+
 # Add an in-memory constructor to SqlStorage for tests
 
-Status: open — investigated during the interface-gate flake fix
-(commit `db910a8`), design sketched below, not yet decided.
+Investigated during the interface-gate flake fix (commit `db910a8`), design sketched below, not yet decided.
 
 Scope: `src-tauri/src/storage/sql_storage.rs`, plus optional migration
 of test helpers across the crate. This is a test-ergonomics and

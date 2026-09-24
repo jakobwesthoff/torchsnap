@@ -1,8 +1,11 @@
-# SettingsInit::apply rewrites every key while its comment claims it filters
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/settings/mod.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/settings/mod.rs
+# SettingsInit::apply rewrites every key while its comment claims it filters
 
 ## Problem
 `SettingsInit::apply` writes back *every* entry it holds — all

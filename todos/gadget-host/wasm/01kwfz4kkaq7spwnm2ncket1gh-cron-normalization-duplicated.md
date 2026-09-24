@@ -1,8 +1,11 @@
-# Cron normalization duplicated between bridge and manifest validator
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/wasm/bridge.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/wasm/bridge.rs
+# Cron normalization duplicated between bridge and manifest validator
 
 ## Problem
 `WasmGadgetBridge::new` re-parses each task schedule with its own

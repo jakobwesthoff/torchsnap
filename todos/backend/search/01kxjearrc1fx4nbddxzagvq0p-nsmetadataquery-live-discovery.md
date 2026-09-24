@@ -1,7 +1,11 @@
+---
+kind: feature
+status: needs-discussion
+---
+
 # Replace mdfind polling with a live NSMetadataQuery app discovery (macOS)
 
-Status: open — implementation plan proposed below, not yet discussed
-or decided.
+Implementation plan proposed below, not yet discussed or decided.
 
 Related: [persistent app-list cache evaluation](01kxjdz6qycn1wdpawm0rd0w75-persistent-app-list-cache.md)
 — a persisted last-known-good list and this live query compose: the

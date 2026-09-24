@@ -1,8 +1,11 @@
-# `package-gadget` exclusion list misses `build.rs` (ships in .torchsnap archives)
+---
+kind: improvement
+severity: low
+status: open
+area: [just/gadgets.just]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** just/gadgets.just
+# `package-gadget` exclusion list misses `build.rs` (ships in .torchsnap archives)
 
 ## Problem
 

@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Gadget::enable should return Result so the host can react to failure
 
 ## Context

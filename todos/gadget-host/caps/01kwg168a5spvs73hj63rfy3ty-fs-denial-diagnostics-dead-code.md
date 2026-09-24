@@ -1,8 +1,11 @@
-# FsAllowlist retains canonical_patterns for diagnostics that don't exist
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/caps/filesystem.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/caps/filesystem.rs
+# FsAllowlist retains canonical_patterns for diagnostics that don't exist
 
 ## Problem
 `FsAllowlist` carries a `canonical_patterns: Vec<String>` field

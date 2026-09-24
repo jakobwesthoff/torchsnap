@@ -1,8 +1,14 @@
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/instance.rs]
+tags: [concurrency]
+---
+
 # Mutex-poisoning `expect`s turn one panic into a permanent cascade
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** src-tauri/src/wasm/runtime/instance.rs (pattern is codebase-wide)
+The pattern is codebase-wide.
 
 ## Problem
 Every guest-call entry point locks the store with

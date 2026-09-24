@@ -1,8 +1,11 @@
-# Emoji picker: hexcode lookup is not zero-padded — 14 emoji are unreachable
+---
+kind: bug
+severity: medium
+status: open
+area: [gadgets/emoji-picker/src/lib.rs]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** gadgets/emoji-picker/src/lib.rs
+# Emoji picker: hexcode lookup is not zero-padded — 14 emoji are unreachable
 
 ## Problem
 

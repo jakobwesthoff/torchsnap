@@ -1,8 +1,12 @@
-# Documented sql-storage/storage.sql coupling is not enforced
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/permissions/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/permissions/mod.rs
+# Documented sql-storage/storage.sql coupling is not enforced
 
 ## Problem
 The `permissions.sql-storage` field documents a cross-field

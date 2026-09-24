@@ -1,8 +1,11 @@
-# [settings] defaults accept TOML types with no JSON equivalent
+---
+kind: question
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/mod.rs]
+---
 
-**Kind:** question
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/mod.rs
+# [settings] defaults accept TOML types with no JSON equivalent
 
 ## Problem
 Manifest `[settings]` defaults are stored as raw

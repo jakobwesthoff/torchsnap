@@ -1,8 +1,12 @@
-# FilesystemCap::metadata does I/O before path validation and swallows symlink-check errors
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/caps/filesystem.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/caps/filesystem.rs
+# FilesystemCap::metadata does I/O before path validation and swallows symlink-check errors
 
 ## Problem
 `FilesystemCap::metadata` starts with a `symlink_metadata` call

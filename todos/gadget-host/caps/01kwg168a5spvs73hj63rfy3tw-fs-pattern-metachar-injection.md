@@ -1,8 +1,12 @@
-# Filesystem allowlist: glob metacharacters in substituted variable values are not escaped
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/caps/filesystem.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/caps/filesystem.rs
+# Filesystem allowlist: glob metacharacters in substituted variable values are not escaped
 
 ## Problem
 `compile_fs_patterns` substitutes `${...}` variables into the
@@ -54,7 +58,6 @@ names.
 ## Security-pass exploitability assessment (2026-07-02)
 **Not gadget-exploitable. Security severity: nil / informational.**
 The correctness severity stays low as originally filed.
-
 The allowlist-widening via `*` triggers only when a *substituted
 variable value* contains `*`, and every substitution value is
 host/user/OS-derived — a malicious gadget chooses only *which*

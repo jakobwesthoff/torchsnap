@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nine new Snappy costumes in the regular rotation, and five
   Christmas-movie costumes that join Santa during the Christmas window.
+- Installing another version of an installed gadget replaces it and
+  keeps its data and settings. A version that could not open the
+  installed version's stored data (fewer storage migrations) is
+  refused with instructions.
+- Each gadget in Settings → Gadgets has a permission line naming what
+  it touches (programs, network, files, links, clipboard, its own data)
+  that expands into the details. Groups that reach beyond the gadget's
+  own data are labelled "Broad access", and paths that only apply to
+  another operating system are set aside. The install review shows the
+  same groups, and for a replace marks what is new or removed.
+- Settings → Gadgets lists installs, updates and uninstalls that wait
+  for a restart, with the version change and an Undo for each, and a
+  bar with the number of pending changes and "Restart now". The list
+  keeps showing them after Settings is closed and reopened. Uninstalls
+  can be undone as well until Torchsnap restarts. After "Restart now",
+  Torchsnap opens Settings → Gadgets again.
+- Gadgets in Settings → Gadgets show their version.
+- `.torchsnap` paths passed on the command line open the install
+  review, also when Torchsnap is already running. Starting Torchsnap a
+  second time without a file shows the launcher instead of a second
+  instance.
+- `.torchsnap` files open in Torchsnap from Finder (double-click or
+  "Open With") and show the install review. Finder shows them with
+  their own document icon.
+
+### Changed
+
+- Gadget archives larger than 16 MiB are rejected at install.
+- Installing a gadget from Settings → Gadgets shows a review first: the
+  gadget, where the file came from, and every permission it asks for,
+  with new permissions marked when it replaces an installed version.
+  Several dropped files are reviewed one after another.
 
 ### Fixed
 
@@ -23,6 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the next ZeroTier search, at most every 5 seconds.
 - Pressing Enter on the ZeroTier "daemon not running" result showed an
   error. The result is now informational and has no action.
+- A gadget can be uninstalled and installed again, or installed and
+  removed again, without restarting Torchsnap in between.
+- Uninstalling a gadget reports an error when the settings cannot be
+  saved, instead of claiming success while the gadget's settings
+  reappear on the next start.
+- Uninstalling a running gadget no longer leaves its data behind or
+  lets the still-running gadget recreate it. Its data and settings are
+  removed on the next start, before any gadget loads.
+- Dropping gadget files after switching settings sections no longer
+  installs them twice, and a failed install among several dropped
+  files is no longer hidden by the next one's success message.
 
 ## [0.10.0] - 2026-09-23
 

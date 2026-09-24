@@ -1,3 +1,8 @@
+---
+kind: question
+status: open
+---
+
 # Add `data` field to `catalog-entry`?
 
 `scored-entry` has an opaque `data: option<string>` field that round-trips

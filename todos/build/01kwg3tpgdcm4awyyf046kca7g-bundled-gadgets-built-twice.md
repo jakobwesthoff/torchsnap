@@ -1,8 +1,11 @@
-# `just build` builds every bundled gadget twice
+---
+kind: improvement
+severity: low
+status: open
+area: [just/build.just, just/gadgets.just]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** just/build.just, just/gadgets.just
+# `just build` builds every bundled gadget twice
 
 ## Problem
 

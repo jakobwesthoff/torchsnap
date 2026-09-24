@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # Switch catalog matching from Matcher to Nucleo<T> async worker
 
 The initial search implementation uses nucleo's synchronous `Matcher`

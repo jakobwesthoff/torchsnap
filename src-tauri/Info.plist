@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keys merged into the bundle's Info.plist by the Tauri bundler.
+
+  Registers `.torchsnap` gadget archives as an exported type owned by
+  Torchsnap, so Finder opens them with the app (ADR 52). The bundler
+  generates both keys from `bundle.fileAssociations` in
+  `tauri.conf.json` as well, but that configuration has no field for a
+  document icon, and keys in this file replace the generated ones as a
+  whole. Both definitions must carry the same values; the
+  `fileAssociations` entry is what the Linux `.desktop` file is built
+  from. `just verify-bundle` checks the result in a built bundle.
+-->
+<plist version="1.0">
+<dict>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>app.torchsnap.gadget</string>
+            <key>UTTypeDescription</key>
+            <string>Torchsnap Gadget</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeIconFile</key>
+            <string>gadget-document.icns</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>torchsnap</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/vnd.torchsnap.gadget+zip</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Torchsnap Gadget</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>app.torchsnap.gadget</string>
+            </array>
+            <key>CFBundleTypeIconFile</key>
+            <string>gadget-document.icns</string>
+        </dict>
+    </array>
+</dict>
+</plist>

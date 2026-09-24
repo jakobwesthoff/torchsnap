@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Frecency stats: top-N most used items with display text
 
 Show the top 5 most frequently used items per gadget in the frecency

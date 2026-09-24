@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Calculator: percentage syntax support
 
 ## Problem

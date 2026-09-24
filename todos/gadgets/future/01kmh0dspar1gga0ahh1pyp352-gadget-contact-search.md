@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget: Contact search and display
 
 Search system contacts and display contact details in the launcher.

@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Final cleanup: shared `ui/` primitives after vertical extraction
 
 After completing the mascot, logger, and gadget-runtime verticals, the

@@ -1,3 +1,9 @@
+---
+kind: investigation
+status: open
+tags: [security]
+---
+
 # Unsafe and fragile patterns audit
 
 Codebase audit for remaining unsafe blocks, fragile pointer patterns,

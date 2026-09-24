@@ -1,8 +1,13 @@
+---
+kind: bug
+severity: high
+status: open
+area: [src/launcher/Launcher.tsx]
+---
+
 # No React error boundary anywhere — a throwing gadget view blanks the entire launcher
 
-**Kind:** bug
-**Severity:** high
-**Area:** src/launcher/Launcher.tsx (also settings/devtools windows)
+The launcher, settings, and devtools windows are all affected.
 
 ## Problem
 

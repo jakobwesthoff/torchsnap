@@ -1,8 +1,12 @@
-# Retention cleanup can delete favicons that are still referenced
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/network/website_metadata/cache.rs, favicon_store.rs, mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/network/website_metadata/cache.rs, favicon_store.rs, mod.rs
+# Retention cleanup can delete favicons that are still referenced
 
 ## Problem
 The retention thread periodically runs

@@ -1,7 +1,9 @@
-# "Open settings" on a gadget entry opens nothing
+---
+kind: bug
+status: open
+---
 
-**Kind:** bug
-**Status:** found 2026-09-21, not fixed
+# "Open settings" on a gadget entry opens nothing
 
 ## Symptom
 

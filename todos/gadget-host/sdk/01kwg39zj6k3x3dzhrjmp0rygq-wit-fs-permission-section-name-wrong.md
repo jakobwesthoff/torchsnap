@@ -1,8 +1,12 @@
-# WIT filesystem docs name the manifest section `[permissions.fs]` — the parser only accepts `[permissions.filesystem]`
+---
+kind: bug
+severity: medium
+status: open
+area: [gadgets/gadget-sdk/wit/torchsnap-gadget.wit]
+tags: [docs]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** gadgets/gadget-sdk/wit/torchsnap-gadget.wit
+# WIT filesystem docs name the manifest section `[permissions.fs]` — the parser only accepts `[permissions.filesystem]`
 
 ## Problem
 

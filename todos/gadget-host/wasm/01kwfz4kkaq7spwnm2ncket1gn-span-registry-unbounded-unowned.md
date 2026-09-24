@@ -1,8 +1,12 @@
-# Span registry: unbounded open spans, no ownership on parent/end
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/logging/spans.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/logging/spans.rs
+# Span registry: unbounded open spans, no ownership on parent/end
 
 ## Problem
 `SpanRegistry` keeps open spans in a process-wide

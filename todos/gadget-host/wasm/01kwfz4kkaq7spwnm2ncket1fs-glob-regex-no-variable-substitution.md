@@ -1,8 +1,12 @@
-# Variable substitution skipped for glob/regex argv constraints
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/argv_matcher.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/argv_matcher.rs
+# Variable substitution skipped for glob/regex argv constraints
 
 ## Problem
 `compile_constraint` substitutes `${...}` path variables for

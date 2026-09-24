@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Handle backend errors in the frontend
 
 Currently all `invoke` and `sendMessage` calls in the frontend either

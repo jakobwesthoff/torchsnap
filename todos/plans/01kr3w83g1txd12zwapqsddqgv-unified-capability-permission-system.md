@@ -1,6 +1,11 @@
+---
+kind: plan
+status: in-progress
+---
+
 # Unified Capability Permission System
 
-## Status: Cap migration complete — next phase: provisioning system
+Cap migration is complete; next phase is provisioning system.
 
 ## Problem
 

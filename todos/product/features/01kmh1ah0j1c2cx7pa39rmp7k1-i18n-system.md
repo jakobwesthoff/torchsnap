@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Internationalization (i18n) system
 
 Evaluate and integrate an i18n framework early, even though the

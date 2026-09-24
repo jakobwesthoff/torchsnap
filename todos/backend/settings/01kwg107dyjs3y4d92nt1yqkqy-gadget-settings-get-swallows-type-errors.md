@@ -1,8 +1,12 @@
-# GadgetSettings::get conflates missing key and corrupt value
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/settings/mod.rs]
+tags: [error-handling]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/settings/mod.rs
+# GadgetSettings::get conflates missing key and corrupt value
 
 ## Problem
 `GadgetSettings::get` maps a deserialization failure to `None`

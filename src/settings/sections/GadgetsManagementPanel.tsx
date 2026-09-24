@@ -9,7 +9,9 @@
 // gadget, shows its source badge, lets users enable/disable
 // it, and — for user-installed gadgets only — uninstall it.
 // Also hosts the Install flow: a file-picker button plus a
-// drop zone accepting `.torchsnap` archives.
+// drop zone accepting `.torchsnap` archives. Both hand the files
+// to the backend install queue, and every queued request is
+// reviewed in `InstallReviewModal` before anything is installed.
 //
 // Both install and uninstall require an app restart to take
 // effect because `GadgetHost::register` freezes the gadget
@@ -22,7 +24,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { command, type GadgetSourceKind } from "../../lib/command";
 import { getGadgetsWithSettings } from "../../gadgets/registry";
@@ -32,6 +33,13 @@ import { Switch } from "../../components/Switch";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
+import { InstallReviewModal } from "../install/InstallReviewModal";
+import { BroadAccessTag, PermissionGroups } from "../install/PermissionGroups";
+import { groupPermissions } from "../install/permissionModel";
+import { currentPlatform } from "../install/platform";
+import { useInstallQueue } from "../install/useInstallQueue";
+import { usePendingChanges } from "../install/usePendingChanges";
+import type { PendingGadget, PermissionItem } from "../install/types";
 
 // =========================================================
 // Types
@@ -43,6 +51,13 @@ interface PluginRow {
   description?: string;
   icon?: string;
   sourceKind: GadgetSourceKind;
+  permissions: PermissionItem[];
+  /** Manifest version of a loaded WASM gadget; built-ins have none. */
+  version?: string;
+  /** False for a gadget that exists only as a pending install. */
+  loaded: boolean;
+  /** A change to this gadget that waits for a restart. */
+  pending?: PendingGadget;
 }
 
 // =========================================================
@@ -53,8 +68,14 @@ export function GadgetsManagementPanel() {
   const gadgetMetadata = useMemo(() => getGadgetsWithSettings(), []);
   const [sourceKinds, setSourceKinds] = useState<Record<string, GadgetSourceKind>>({});
   const [loadingSourceKinds, setLoadingSourceKinds] = useState(true);
+  const [permissions, setPermissions] = useState<Record<string, PermissionItem[]>>({});
+  const [versions, setVersions] = useState<Record<string, string>>({});
+  const pending = usePendingChanges();
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const installQueue = useInstallQueue();
+  // Requests are reviewed one at a time, in the order they arrived.
+  const nextRequest = installQueue.requests[0];
 
   // Fetch the authoritative id→kind map from the backend.
   // Gadgets registered in the frontend registry but absent
@@ -80,8 +101,40 @@ export function GadgetsManagementPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    command("wasm_gadgets")
+      .then((manifests) => {
+        if (!cancelled) {
+          setVersions(Object.fromEntries(manifests.map((m) => [m.gadget.id, m.gadget.version])));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Permissions only exist for WASM gadgets; native ones are compiled
+  // into the app and have no manifest, so their cards show none.
+  useEffect(() => {
+    let cancelled = false;
+    command("gadget_permissions")
+      .then((byGadget) => {
+        if (!cancelled) {
+          setPermissions(byGadget);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Loaded gadgets first, then installs of this session that only
+  // load after the restart.
   const rows: PluginRow[] = useMemo(() => {
-    return gadgetMetadata
+    const loadedRows: PluginRow[] = gadgetMetadata
       .filter((gadget) => sourceKinds[gadget.id] != null)
       .map((gadget) => ({
         id: gadget.id,
@@ -89,12 +142,38 @@ export function GadgetsManagementPanel() {
         description: gadget.description,
         icon: gadget.icon,
         sourceKind: sourceKinds[gadget.id],
+        permissions: permissions[gadget.id] ?? [],
+        version: versions[gadget.id],
+        loaded: true,
+        pending: pending.changes[gadget.id],
       }));
-  }, [gadgetMetadata, sourceKinds]);
+    const loadedIds = new Set(loadedRows.map((row) => row.id));
+    const pendingRows: PluginRow[] = Object.entries(pending.changes)
+      .filter(([id]) => !loadedIds.has(id))
+      .map(([id, change]) => ({
+        id,
+        label: change.name,
+        description: change.description,
+        icon: "heroicons:puzzle-piece",
+        sourceKind: "user",
+        permissions: [],
+        loaded: false,
+        pending: change,
+      }));
+    return [...loadedRows, ...pendingRows];
+  }, [gadgetMetadata, sourceKinds, permissions, versions, pending.changes]);
+  const pendingCount = Object.keys(pending.changes).length;
 
-  // =========================================================
-  // Install: file picker path
-  // =========================================================
+  const submitToQueue = useCallback(
+    async (paths: string[], origin: "settingsPicker" | "settingsDrop") => {
+      try {
+        await command("install_queue_submit", { paths, origin });
+      } catch (e) {
+        setBanner({ kind: "error", message: formatError(e, "Failed to open the gadget file") });
+      }
+    },
+    [],
+  );
 
   const handleInstallClick = useCallback(async () => {
     const selected = await openFileDialog({
@@ -104,22 +183,23 @@ export function GadgetsManagementPanel() {
     if (typeof selected !== "string") {
       return;
     }
-    await runInstall(selected, setBanner);
-  }, []);
+    await submitToQueue([selected], "settingsPicker");
+  }, [submitToQueue]);
 
   // =========================================================
   // Install: drag-and-drop path
   //
-  // Tauri exposes drag events through `getCurrentWebview`. The
-  // listener is registered for the lifetime of the mounted
-  // component; the returned unlistener cleans up on unmount.
-  // Dropped files arrive as absolute paths — exactly what
-  // `install_gadget_archive` expects.
+  // Tauri exposes drag events through `getCurrentWebview`.
+  // Dropped files arrive as absolute paths. Registration
+  // resolves asynchronously; if the panel unmounts first, the
+  // late unlistener is called on arrival instead of leaking a
+  // listener that would submit every later drop twice.
   // =========================================================
 
   useEffect(() => {
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
-    getCurrentWebview()
+    void getCurrentWebview()
       .onDragDropEvent((event) => {
         if (event.payload.type === "enter" || event.payload.type === "over") {
           setDragActive(true);
@@ -138,48 +218,60 @@ export function GadgetsManagementPanel() {
             });
             return;
           }
-          // Sequentially install each dropped archive so
-          // collision errors for one do not block the others.
-          (async () => {
-            for (const path of paths) {
-              await runInstall(path, setBanner);
-            }
-          })();
+          void submitToQueue(paths, "settingsDrop");
         }
       })
       .then((u) => {
-        unlisten = u;
+        if (cancelled) {
+          u();
+        } else {
+          unlisten = u;
+        }
       });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [submitToQueue]);
 
-  const handleUninstall = useCallback(async (gadgetId: string) => {
-    try {
-      const result = await command("uninstall_user_gadget", { gadgetId });
-      setBanner({
-        kind: "success",
-        message: `Uninstalled gadget "${gadgetId}".`,
-        requiresRestart: result.requiresRestart,
-      });
-    } catch (e) {
-      setBanner({
-        kind: "error",
-        message: formatError(e, "Failed to uninstall gadget"),
-      });
-    }
-  }, []);
+  const handleUninstall = useCallback(
+    async (gadgetId: string) => {
+      try {
+        await command("uninstall_user_gadget", { gadgetId });
+      } catch (e) {
+        setBanner({
+          kind: "error",
+          message: formatError(e, "Failed to uninstall gadget"),
+        });
+      }
+      await pending.refresh();
+    },
+    [pending],
+  );
 
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
         icon="heroicons:puzzle-piece"
         title="Gadgets"
-        description="Enable, disable, install, and uninstall gadgets. Built-in and system gadgets ship with the app and cannot be removed."
+        description="Enable, disable, install, and uninstall gadgets. Built-in and bundled gadgets ship with the app and cannot be removed."
       />
 
+      {pendingCount > 0 && <RestartBar count={pendingCount} />}
+
       {banner && <BannerView banner={banner} onDismiss={() => setBanner(null)} />}
+      {pending.error && (
+        <BannerView
+          banner={{ kind: "error", message: pending.error }}
+          onDismiss={pending.dismissError}
+        />
+      )}
+      {installQueue.error && (
+        <BannerView
+          banner={{ kind: "error", message: installQueue.error }}
+          onDismiss={installQueue.dismissError}
+        />
+      )}
 
       <Section title="Install">
         <InstallArea onInstallClick={handleInstallClick} dragActive={dragActive} />
@@ -193,11 +285,24 @@ export function GadgetsManagementPanel() {
         ) : (
           <div className="flex flex-col divide-y divide-border-divider">
             {rows.map((row) => (
-              <PluginRowView key={row.id} row={row} onUninstall={handleUninstall} />
+              <PluginRowView
+                key={row.id}
+                row={row}
+                onUninstall={handleUninstall}
+                onUndo={(gadgetId) => void pending.undo(gadgetId)}
+              />
             ))}
           </div>
         )}
       </Section>
+
+      {nextRequest && (
+        <InstallReviewModal
+          request={nextRequest}
+          onInstall={(requestId) => void installQueue.confirm(requestId).then(pending.refresh)}
+          onCancel={(requestId) => void installQueue.dismiss(requestId)}
+        />
+      )}
     </div>
   );
 }
@@ -209,44 +314,183 @@ export function GadgetsManagementPanel() {
 function PluginRowView({
   row,
   onUninstall,
+  onUndo,
 }: {
   row: PluginRow;
   onUninstall: (gadgetId: string) => void;
+  onUndo: (gadgetId: string) => void;
 }) {
   const [enabled, setEnabled] = useSetting<boolean>(`enabled.${row.id}`);
 
   const canUninstall = row.sourceKind === "user";
+  const change = row.pending;
+  // A gadget that is not running yet, or will not run after the
+  // restart, is dimmed; a replaced one keeps running until then.
+  const dimmed = change !== undefined && change.kind !== "replaced";
 
   return (
-    <div className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-      {row.icon && (
-        <Icon
-          icon={row.icon}
-          className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
-        />
-      )}
-      <div className="flex min-w-0 flex-col flex-1">
-        <span className="text-sm font-medium text-text-primary truncate">{row.label}</span>
-        {row.description && (
-          <span className="text-xs text-text-tertiary truncate">{row.description}</span>
+    <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+      <div className={cn("flex min-w-0 flex-1 items-start gap-3", dimmed && "opacity-60")}>
+        {row.icon && (
+          <Icon
+            icon={row.icon}
+            className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
+          />
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium text-text-primary">
+            {row.label}
+            {versionText(row) && (
+              <span className="ml-1.5 text-xs font-normal text-text-tertiary">
+                {versionText(row)}
+              </span>
+            )}
+          </span>
+          {row.description && (
+            <span className="truncate text-xs text-text-tertiary">{row.description}</span>
+          )}
+          {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
+          {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
+        </div>
+      </div>
+      <Switch
+        checked={enabled ?? true}
+        onChange={setEnabled}
+        disabled={!row.loaded || change?.kind === "uninstalled"}
+      />
+      {/* Trailing slot: Undo for a pending change, Uninstall for user
+          gadgets, the source badge for every other kind. Its fixed
+          width keeps every switch in the same column. */}
+      <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
+        {change ? (
+          <button
+            type="button"
+            onClick={() => onUndo(row.id)}
+            title="Undo this change before it takes effect"
+            className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
+          >
+            Undo
+          </button>
+        ) : canUninstall ? (
+          <button
+            type="button"
+            onClick={() => onUninstall(row.id)}
+            title="Uninstall this user gadget"
+            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            Uninstall
+          </button>
+        ) : (
+          <SourceBadge kind={row.sourceKind} />
         )}
       </div>
-      <Switch checked={enabled ?? true} onChange={setEnabled} />
-      {/* Trailing slot: Uninstall for user gadgets, source badge
-          for every other kind. Mutually exclusive by design. */}
-      {canUninstall ? (
-        <button
-          type="button"
-          onClick={() => onUninstall(row.id)}
-          title="Uninstall this user gadget"
-          className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-        >
-          Uninstall
-        </button>
-      ) : (
-        <SourceBadge kind={row.sourceKind} />
-      )}
     </div>
+  );
+}
+
+/** The version shown after the name, or the change of version. */
+function versionText(row: PluginRow): string | undefined {
+  const change = row.pending;
+  if (!change) {
+    return row.version;
+  }
+  if (change.kind === "uninstalled") {
+    return change.previousVersion ?? undefined;
+  }
+  if (change.previousVersion && change.version) {
+    return `${change.previousVersion} → ${change.version}`;
+  }
+  return change.version ?? undefined;
+}
+
+function pendingText(change: PendingGadget): string {
+  switch (change.kind) {
+    case "installed":
+      return "Installs on restart";
+    case "replaced":
+      return `Updates to ${change.version} on restart`;
+    case "reinstalled":
+      return `Reinstalls ${change.version} on restart`;
+    case "uninstalled":
+      return "Removed on restart";
+  }
+}
+
+// =========================================================
+// Restart bar — present while any change waits for a restart.
+// It is derived from the backend's record, so it is back after
+// Settings is closed and reopened. The backend restarts the app
+// and opens Settings on this section again afterwards.
+// =========================================================
+
+function RestartBar({ count }: { count: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm text-accent">
+      <span>{count === 1 ? "1 change applies" : `${count} changes apply`} after a restart</span>
+      <button
+        type="button"
+        onClick={() => void command("restart_to_apply_gadget_changes")}
+        className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
+      >
+        Restart now
+      </button>
+    </div>
+  );
+}
+
+// =========================================================
+// Permission line — one quiet line per card that expands into
+// the full list. Built-in gadgets are native code without a
+// manifest, so there is nothing to list for them.
+// =========================================================
+
+function PermissionLine({
+  sourceKind,
+  items,
+}: {
+  sourceKind: GadgetSourceKind;
+  items: PermissionItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const quiet = "mt-1 self-start text-left text-xs text-text-tertiary";
+
+  if (sourceKind === "builtin") {
+    return (
+      <button type="button" disabled className={quiet}>
+        Permissions aren't listed for built-in gadgets
+      </button>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <button type="button" disabled className={quiet}>
+        No permissions
+      </button>
+    );
+  }
+
+  const platform = currentPlatform();
+  const groups = groupPermissions(items, [], platform);
+  const titles = groups.map((group) => group.title);
+  const broad = groups.some((group) => group.broad);
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`Permissions: ${titles.join(", ")}${broad ? ", with broad access" : ""}`}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(quiet, "flex items-center gap-1 hover:text-text-secondary")}
+      >
+        <Icon
+          icon="heroicons:chevron-right"
+          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+        />
+        <span>{titles.join(" · ")}</span>
+        {broad && <BroadAccessTag />}
+      </button>
+      {open && <PermissionGroups items={items} platform={platform} className="mt-1.5 pl-4" />}
+    </>
   );
 }
 
@@ -284,9 +528,8 @@ function badgeMetadata(kind: GadgetSourceKind): {
       };
     case "system":
       return {
-        label: "System",
-        tooltip:
-          "WASM gadget bundled with the app. Upgraded when the app is updated; not uninstallable.",
+        label: "Bundled",
+        tooltip: "Bundled with the app. Updated with Torchsnap; cannot be uninstalled.",
         className: "bg-surface-hover text-text-secondary",
       };
     case "user":
@@ -341,34 +584,16 @@ function InstallArea({
 }
 
 // =========================================================
-// Banner — success / error / restart-prompt.
+// Banner — errors from picking, dropping or uninstalling.
+// Successful changes show up in the list instead.
 // =========================================================
 
-type Banner =
-  | { kind: "success"; message: string; requiresRestart?: boolean }
-  | { kind: "error"; message: string };
+type Banner = { kind: "error"; message: string };
 
 function BannerView({ banner, onDismiss }: { banner: Banner; onDismiss: () => void }) {
-  const isError = banner.kind === "error";
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm",
-        isError
-          ? "border-red-500/50 bg-red-500/10 text-red-500"
-          : "border-accent/50 bg-accent/10 text-accent",
-      )}
-    >
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-500">
       <span className="flex-1">{banner.message}</span>
-      {banner.kind === "success" && banner.requiresRestart && (
-        <button
-          type="button"
-          onClick={() => void relaunch()}
-          className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          Restart now
-        </button>
-      )}
       <button
         type="button"
         onClick={onDismiss}
@@ -378,27 +603,6 @@ function BannerView({ banner, onDismiss }: { banner: Banner; onDismiss: () => vo
       </button>
     </div>
   );
-}
-
-// =========================================================
-// Install shared handler — extracted so both the file-picker
-// and drag-drop paths report results identically.
-// =========================================================
-
-async function runInstall(archivePath: string, setBanner: (banner: Banner) => void): Promise<void> {
-  try {
-    const info = await command("install_gadget_archive", { archivePath });
-    setBanner({
-      kind: "success",
-      message: `Installed ${info.name} ${info.version}.`,
-      requiresRestart: info.requiresRestart,
-    });
-  } catch (e) {
-    setBanner({
-      kind: "error",
-      message: formatError(e, "Failed to install gadget"),
-    });
-  }
 }
 
 function formatError(error: unknown, fallback: string): string {

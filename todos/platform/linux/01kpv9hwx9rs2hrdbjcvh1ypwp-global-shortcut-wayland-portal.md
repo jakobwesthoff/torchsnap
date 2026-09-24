@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Wayland-native global shortcut via XDG `GlobalShortcuts` portal
 
 ## Problem

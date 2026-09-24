@@ -1,8 +1,12 @@
-# gadget-development.md code samples no longer match the WIT (execute, enable, ScoredEntry)
+---
+kind: bug
+severity: medium
+status: open
+area: [docs/api/gadget-development.md]
+tags: [docs]
+---
 
-**Kind:** bug (documentation)
-**Severity:** medium
-**Area:** docs/api/gadget-development.md
+# gadget-development.md code samples no longer match the WIT (execute, enable, ScoredEntry)
 
 ## Problem
 

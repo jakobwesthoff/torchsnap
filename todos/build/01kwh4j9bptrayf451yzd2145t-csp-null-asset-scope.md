@@ -1,8 +1,12 @@
-# `csp: null` and over-broad `assetProtocol.scope` — untrusted gadget JS can load remote code and read every gadget's SQLite/settings
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/tauri.conf.json]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** high (both sub-issues)
-**Area:** src-tauri/tauri.conf.json
+# `csp: null` and over-broad `assetProtocol.scope` — untrusted gadget JS can load remote code and read every gadget's SQLite/settings
 
 ```json
 "security": {

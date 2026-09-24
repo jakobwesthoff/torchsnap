@@ -1,8 +1,12 @@
-# Filesystem capability: existence/enumeration oracle (three-way, leaks canonical paths + errno) and a symlink-escape existence leak, because the allowlist check runs after canonicalize
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/caps/filesystem.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** low (top of range)
-**Area:** src-tauri/src/caps/filesystem.rs
+# Filesystem capability: existence/enumeration oracle (three-way, leaks canonical paths + errno) and a symlink-escape existence leak, because the allowlist check runs after canonicalize
 
 ## Problem
 `resolve_request` (`filesystem.rs:331-349`) does the

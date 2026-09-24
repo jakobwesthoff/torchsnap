@@ -1,3 +1,8 @@
+---
+kind: feature
+status: in-progress
+---
+
 # Keybind system
 
 Transfer nutty's keybinding infrastructure and extend it into a

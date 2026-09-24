@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Awake: location-independent Amphetamine availability probe
 
 The awake gadget's Amphetamine availability probe checks the fixed

@@ -1,8 +1,12 @@
-# SettingsWatch::get panics on type-mismatched or deleted setting values
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/settings/notifier.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/settings/notifier.rs
+# SettingsWatch::get panics on type-mismatched or deleted setting values
 
 ## Problem
 `SettingsWatch<T>::get` unconditionally expects the stored JSON

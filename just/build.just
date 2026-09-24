@@ -34,6 +34,15 @@ build profile="debug" sign="": asset-mascot-data
     {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
     {{ if sign == "sign" { "just notarize-dmg " + profile } else { "" } }}
 
+# `fullcycle` never builds a bundle, so the `.torchsnap` registration
+# in `src-tauri/Info.plist` and `bundle.fileAssociations` (ADR 52) is
+# checked against a built one here. `release-build` runs the same check.
+
+# Check that a built bundle registers `.torchsnap` files (macOS)
+[macos]
+verify-bundle profile="debug":
+    tools/verify-bundle-plist "src-tauri/target/{{ profile }}/bundle/macos/$(jq -r .productName src-tauri/tauri.conf.json).app"
+
 # With notarization credentials in the environment, Tauri notarizes the
 # app and staples the ticket to it, but only signs the DMG around it.
 # Gatekeeper rejects that DMG as "Unnotarized Developer ID", so this

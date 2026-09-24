@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Smoother Dev UX / DX — `just start` and friends
 
 The day-to-day developer loop still carries too much manual
@@ -8,8 +13,6 @@ something that works end-to-end. The gadget-related additions from
 ADR 0035 make this worse: bundled gadgets, dev gadgets, and user
 gadgets all have different build triggers that should "just work"
 from a single high-level command.
-
-**Status:** needs discussion
 
 ## Pain points (from the current workflow)
 

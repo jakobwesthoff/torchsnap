@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # WASM migration review — nice-to-have follow-ups
 
 Polish items surfaced by the post-migration validation review

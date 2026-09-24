@@ -1,8 +1,12 @@
-# Response conversion gaps: silent JSON drop, Nothing conflation, raw icon URLs
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/bindings.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/bindings.rs
+# Response conversion gaps: silent JSON drop, Nothing conflation, raw icon URLs
 
 ## Problem
 Three small semantics gaps in the WIT→native response

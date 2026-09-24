@@ -1,3 +1,9 @@
+---
+kind: investigation
+status: open
+tags: [performance, testing]
+---
+
 # React performance audit: stable references and memoization
 
 Audit the frontend for missing or incorrect memoization, unstable

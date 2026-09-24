@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # GadgetHost is a god object spanning five responsibilities
 
 ## Problem

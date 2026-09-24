@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Auto-updater
 
 Users need a way to receive updates without manually downloading

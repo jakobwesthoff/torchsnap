@@ -1,9 +1,10 @@
+---
+kind: question
+status: open
+area: [src/settings/sections/WebsiteMetadataSection.tsx]
+---
+
 # formatRetentionDays has a dead branch — was 90 days meant to display as unlimited?
-
-**Kind:** question
-**Severity:** low
-
-**Area:** src/settings/sections/WebsiteMetadataSection.tsx
 
 ## Problem
 `src/settings/sections/WebsiteMetadataSection.tsx:17-20`:

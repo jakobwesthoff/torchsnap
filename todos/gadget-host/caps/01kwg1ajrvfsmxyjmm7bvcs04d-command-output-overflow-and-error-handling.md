@@ -1,8 +1,12 @@
-# CommandCap output handling: overflow doesn't stop the child, read errors report success
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/caps/command.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/caps/command.rs
+# CommandCap output handling: overflow doesn't stop the child, read errors report success
 
 ## Problem
 Three related defects in the output path of

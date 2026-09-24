@@ -1,8 +1,12 @@
-# execute() and handle_message() dispatch to disabled gadgets
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadget_host.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/gadget_host.rs
+# execute() and handle_message() dispatch to disabled gadgets
 
 ## Problem
 The search paths consistently gate on the host-owned enabled

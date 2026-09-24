@@ -1,3 +1,9 @@
+---
+kind: decision
+status: open
+tags: [config]
+---
+
 # Evaluate per-gadget config files
 
 Currently all gadget settings live in the main config engine under

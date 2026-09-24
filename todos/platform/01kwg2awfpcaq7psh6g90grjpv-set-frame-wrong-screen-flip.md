@@ -1,8 +1,12 @@
-# `set_frame` flips y using `NSScreen::mainScreen` — wrong screen on multi-monitor setups
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/platform/macos/launcher_panel.rs]
+tags: [macos]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src-tauri/src/platform/macos/launcher_panel.rs
+# `set_frame` flips y using `NSScreen::mainScreen` — wrong screen on multi-monitor setups
 
 ## Problem
 

@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # App launcher: settings panel with index stats and repair tools
 
 Requested 2026-07-15 after the missing-apps incident
