@@ -24,6 +24,8 @@ export interface InstallResult {
   kind: "installed";
   info: InstalledGadgetInfo;
   undone: boolean;
+  /** Whether this entry still needs a restart to take effect. */
+  requiresRestart: boolean;
 }
 
 export interface InstallQueueState {
@@ -95,7 +97,10 @@ export function useInstallQueue(): InstallQueueState {
       setError(null);
       try {
         const info = await command("install_queue_confirm", { requestId });
-        setResults((previous) => [...previous, { kind: "installed", info, undone: false }]);
+        setResults((previous) => [
+          ...previous,
+          { kind: "installed", info, undone: false, requiresRestart: info.requiresRestart },
+        ]);
       } catch (e) {
         setError(formatError(e));
       }
@@ -120,10 +125,12 @@ export function useInstallQueue(): InstallQueueState {
   const undo = useCallback(async (gadgetId: string) => {
     setError(null);
     try {
-      await command("install_undo", { gadgetId });
+      const undone = await command("install_undo", { gadgetId });
       setResults((previous) =>
         previous.map((result) =>
-          result.info.id === gadgetId ? { ...result, undone: true } : result,
+          result.info.id === gadgetId
+            ? { ...result, undone: true, requiresRestart: undone.requiresRestart }
+            : result,
         ),
       );
     } catch (e) {

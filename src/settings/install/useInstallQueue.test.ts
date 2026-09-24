@@ -76,7 +76,7 @@ describe("useInstallQueue", () => {
 
     expect(confirmed).toEqual(["r1"]);
     expect(result.current.results).toEqual([
-      { kind: "installed", info: installed(), undone: false },
+      { kind: "installed", info: installed(), undone: false, requiresRestart: true },
     ]);
   });
 
@@ -117,7 +117,7 @@ describe("useInstallQueue", () => {
       install_queue_confirm: () => installed(),
       install_undo: ({ gadgetId }) => {
         undone.push(gadgetId);
-        return { restoredVersion: null, requiresRestart: true };
+        return { restoredVersion: null, requiresRestart: false };
       },
     });
     const { result } = renderHook(() => useInstallQueue());
@@ -127,6 +127,8 @@ describe("useInstallQueue", () => {
 
     expect(undone).toEqual(["weather"]);
     expect(result.current.results[0].undone).toBe(true);
+    // The backend says whether anything is still waiting for a restart.
+    expect(result.current.results[0].requiresRestart).toBe(false);
   });
 
   it("keeps results across several confirms until acknowledged", async () => {
