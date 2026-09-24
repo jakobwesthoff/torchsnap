@@ -24,7 +24,7 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
 use tauri::{
-    Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
+    Emitter, Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
     webview::WebviewWindowBuilder,
 };
 
@@ -583,7 +583,14 @@ fn control_subscribe(channel: Channel<control::ControlCommand>, app: tauri::AppH
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The install queue exists before the app does: on macOS a
+    // double-clicked archive can arrive before `setup` has run, and the
+    // queue buffers it until `setup` starts it (see
+    // `gadget_install::queue`).
+    let install_queue = Arc::new(gadget_install::InstallQueue::new());
+
     let builder = tauri::Builder::default()
+        .manage(Arc::clone(&install_queue))
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
         // adding, removing, or changing a command signature here,
@@ -612,6 +619,10 @@ pub fn run() {
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,
+            gadget_install::commands::install_queue_snapshot,
+            gadget_install::commands::install_queue_submit,
+            gadget_install::commands::install_queue_confirm,
+            gadget_install::commands::install_queue_dismiss,
             build_info,
         ])
         .plugin(tauri_plugin_opener::init())
@@ -912,18 +923,38 @@ pub fn run() {
             // the host, so they stay testable without a Tauri runtime.
             // The registry snapshot is final here: slots never change
             // after setup.
-            app.manage(install_paths);
-            app.manage(install_staging);
-            app.manage(gadget_install::RegisteredGadgets::from_host(
+            let registered_gadgets = gadget_install::RegisteredGadgets::from_host(
                 host.gadget_sources(),
                 &source_registry
                     .read()
                     .expect("source registry lock is never poisoned"),
-            ));
-            app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
-            app.manage(Arc::new(std::sync::Mutex::new(
+            );
+            let pending_changes = Arc::new(std::sync::Mutex::new(
                 gadget_install::PendingChanges::default(),
-            )));
+            ));
+
+            // Install requests that arrived before this point (an archive
+            // double-clicked to launch the app) were buffered by the
+            // queue; starting it queues them for staging.
+            let install_queue =
+                Arc::clone(app.state::<Arc<gadget_install::InstallQueue>>().inner());
+            let queue_changed = app.handle().clone();
+            let buffered_requests = install_queue.start(gadget_install::QueueContext {
+                paths: install_paths.clone(),
+                registered: registered_gadgets.clone(),
+                pending: Arc::clone(&pending_changes),
+                staging: install_staging.clone(),
+                on_change: Arc::new(move || {
+                    let _ = queue_changed.emit(gadget_install::QUEUE_CHANGED_EVENT, ());
+                }),
+            });
+            gadget_install::process_in_background(&install_queue, buffered_requests);
+
+            app.manage(install_paths);
+            app.manage(install_staging);
+            app.manage(registered_gadgets);
+            app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
+            app.manage(pending_changes);
 
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));

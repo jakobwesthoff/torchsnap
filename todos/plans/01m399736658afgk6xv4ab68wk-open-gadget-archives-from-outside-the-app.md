@@ -528,7 +528,9 @@ change), and never again while it stays non-empty.
   "changed since review" when another request for the same id
   installed first and when the gadget was uninstalled in between.
 
-**Step 11: queue commands and event.**
+**Step 11: queue commands and event.** Landed in the same commit as
+step 10: the queue has no caller without its commands, and dead code
+fails the clippy gate.
 - `commands.rs` with `install_queue_snapshot`, `install_queue_submit`,
   `install_queue_confirm`, `install_queue_dismiss`, `install_undo` and
   the event. `install_gadget_archive` stays registered until step 15.

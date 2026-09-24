@@ -114,7 +114,7 @@ pub enum Change {
     Removed,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionItem {
     pub permission: Permission,
@@ -264,7 +264,7 @@ pub fn installed_gadget_permissions(
 // The review
 // =========================================================
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GadgetSummary {
     pub id: String,
@@ -287,7 +287,7 @@ pub enum ReviewAction {
     },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallReview {
     pub gadget: GadgetSummary,
@@ -298,9 +298,6 @@ pub struct InstallReview {
     pub removed_permissions: Vec<PermissionItem>,
 }
 
-// TODO(install-queue): the queue builds a review for every staged
-// request (plan step 10); until then only the tests call this.
-#[cfg_attr(not(test), expect(dead_code, reason = "consumed by the install queue"))]
 pub fn build_review(
     incoming: &Manifest,
     source_path: &Path,

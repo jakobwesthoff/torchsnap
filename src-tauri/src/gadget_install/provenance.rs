@@ -48,9 +48,6 @@ pub fn parse_quarantine(bytes: &[u8]) -> Option<String> {
 }
 
 /// Read both attributes of `path`. `None` when neither says anything.
-// TODO(install-queue): staging reads provenance for every request
-// (plan step 10); until then only the tests call this.
-#[cfg_attr(not(test), expect(dead_code, reason = "consumed by the install queue"))]
 pub fn read_provenance(path: &std::path::Path) -> Option<Provenance> {
     let mut urls = read_attribute(path, WHERE_FROMS_ATTRIBUTE)
         .map(|bytes| parse_where_froms(&bytes))
