@@ -12,11 +12,10 @@ them as planned.
 
 ## Goal
 
-Same as the macOS todo
-(`todos/platform/01m399736658afgk6xv4ab68wq-macos-torchsnap-file-association.md`):
-opening a `.torchsnap` file in the file manager hands it to Torchsnap.
-The `fileAssociations` entry added for macOS gets reused. The Linux
-side needs more on top.
+Opening a `.torchsnap` file in the file manager hands it to Torchsnap,
+as it already does on macOS (ADR 52). The `bundle.fileAssociations`
+entry in `src-tauri/tauri.conf.json` already carries the MIME type and
+feeds the `.desktop` file. The Linux side needs more on top.
 
 ## What Tauri does and does not generate
 

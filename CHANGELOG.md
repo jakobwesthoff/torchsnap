@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   review, also when Torchsnap is already running. Starting Torchsnap a
   second time without a file shows the launcher instead of a second
   instance.
+- `.torchsnap` files open in Torchsnap from Finder (double-click or
+  "Open With") and show the install review. Finder shows them with
+  their own document icon.
 
 ### Changed
 

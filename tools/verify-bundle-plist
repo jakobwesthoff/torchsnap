@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Check that a built Torchsnap.app registers `.torchsnap` files the way
+# ADR 52 decides: the exported type, its conformance and tags, the
+# document type with role and rank, and the document icon.
+#
+# The registration lives in `src-tauri/Info.plist`, which the bundler
+# merges into the generated plist, and `bundle.fileAssociations` in
+# `tauri.conf.json`. Neither is exercised by `just fullcycle`, which
+# never builds a bundle, so this check runs against a real one.
+#
+# Usage:
+#   tools/verify-bundle-plist <path/to/Torchsnap.app>
+
+set -euo pipefail
+
+app="${1:?usage: verify-bundle-plist <path/to/App.app>}"
+plist="$app/Contents/Info.plist"
+[ -f "$plist" ] || { echo "no Info.plist at $plist" >&2; exit 1; }
+
+failures=0
+
+# Compare one PlistBuddy key path against the expected value.
+expect() {
+    local key="$1" expected="$2" actual
+    if ! actual=$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist" 2>/dev/null); then
+        echo "missing   $key (expected '$expected')"
+        failures=$((failures + 1))
+    elif [ "$actual" != "$expected" ]; then
+        echo "wrong     $key: '$actual' (expected '$expected')"
+        failures=$((failures + 1))
+    else
+        echo "ok        $key = $expected"
+    fi
+}
+
+# The key must not exist, e.g. a second conformance entry.
+expect_absent() {
+    local key="$1"
+    if /usr/libexec/PlistBuddy -c "Print :$key" "$plist" >/dev/null 2>&1; then
+        echo "unexpected $key"
+        failures=$((failures + 1))
+    else
+        echo "ok        $key absent"
+    fi
+}
+
+exported="UTExportedTypeDeclarations:0"
+expect "$exported:UTTypeIdentifier" "app.torchsnap.gadget"
+expect "$exported:UTTypeConformsTo:0" "public.data"
+expect_absent "$exported:UTTypeConformsTo:1"
+expect "$exported:UTTypeTagSpecification:public.filename-extension:0" "torchsnap"
+expect "$exported:UTTypeTagSpecification:public.mime-type:0" "application/vnd.torchsnap.gadget+zip"
+expect "$exported:UTTypeIconFile" "gadget-document.icns"
+
+document="CFBundleDocumentTypes:0"
+expect "$document:CFBundleTypeName" "Torchsnap Gadget"
+expect "$document:CFBundleTypeRole" "Viewer"
+expect "$document:LSHandlerRank" "Owner"
+expect "$document:LSItemContentTypes:0" "app.torchsnap.gadget"
+expect "$document:CFBundleTypeIconFile" "gadget-document.icns"
+
+icon="$app/Contents/Resources/gadget-document.icns"
+if [ -f "$icon" ]; then
+    echo "ok        $icon exists"
+else
+    echo "missing   $icon"
+    failures=$((failures + 1))
+fi
+
+if [ "$failures" -gt 0 ]; then
+    echo "$failures check(s) failed for $app" >&2
+    exit 1
+fi
+echo "$app registers .torchsnap files as decided"
