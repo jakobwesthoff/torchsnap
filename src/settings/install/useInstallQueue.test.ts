@@ -61,7 +61,7 @@ describe("useInstallQueue", () => {
     await waitFor(() => expect(result.current.requests).toHaveLength(1));
   });
 
-  it("confirms a request and records the outcome", async () => {
+  it("confirms a request", async () => {
     const confirmed: string[] = [];
     mockCommands({
       install_queue_snapshot: () => [],
@@ -75,9 +75,7 @@ describe("useInstallQueue", () => {
     await act(() => result.current.confirm("r1"));
 
     expect(confirmed).toEqual(["r1"]);
-    expect(result.current.results).toEqual([
-      { kind: "installed", info: installed(), undone: false, requiresRestart: true },
-    ]);
+    expect(result.current.error).toBeNull();
   });
 
   it("records a failed confirm without throwing", async () => {
@@ -91,7 +89,6 @@ describe("useInstallQueue", () => {
 
     await act(() => result.current.confirm("r1"));
 
-    expect(result.current.results).toEqual([]);
     expect(result.current.error).toContain("changed since this review");
   });
 
@@ -108,43 +105,5 @@ describe("useInstallQueue", () => {
     await act(() => result.current.dismiss("r1"));
 
     expect(dismissed).toEqual(["r1"]);
-  });
-
-  it("undoes an install and marks its result", async () => {
-    const undone: string[] = [];
-    mockCommands({
-      install_queue_snapshot: () => [],
-      install_queue_confirm: () => installed(),
-      install_undo: ({ gadgetId }) => {
-        undone.push(gadgetId);
-        return { restoredVersion: null, requiresRestart: false };
-      },
-    });
-    const { result } = renderHook(() => useInstallQueue());
-    await act(() => result.current.confirm("r1"));
-
-    await act(() => result.current.undo("weather"));
-
-    expect(undone).toEqual(["weather"]);
-    expect(result.current.results[0].undone).toBe(true);
-    // The backend says whether anything is still waiting for a restart.
-    expect(result.current.results[0].requiresRestart).toBe(false);
-  });
-
-  it("keeps results across several confirms until acknowledged", async () => {
-    let next = 0;
-    const ids = ["weather", "calendar"];
-    mockCommands({
-      install_queue_snapshot: () => [],
-      install_queue_confirm: () => installed(ids[next++]),
-    });
-    const { result } = renderHook(() => useInstallQueue());
-
-    await act(() => result.current.confirm("r1"));
-    await act(() => result.current.confirm("r2"));
-    expect(result.current.results.map((r) => r.info.id)).toEqual(["weather", "calendar"]);
-
-    act(() => result.current.acknowledge());
-    expect(result.current.results).toEqual([]);
   });
 });

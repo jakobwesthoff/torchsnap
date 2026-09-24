@@ -34,11 +34,11 @@ import { Switch } from "../../components/Switch";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
-import { InstallResultBanner } from "../install/InstallResultBanner";
 import { InstallReviewModal } from "../install/InstallReviewModal";
 import { PermissionSummary } from "../install/PermissionSummary";
 import { useInstallQueue } from "../install/useInstallQueue";
-import type { PermissionItem } from "../install/types";
+import { usePendingChanges } from "../install/usePendingChanges";
+import type { PendingGadget, PermissionItem } from "../install/types";
 
 // =========================================================
 // Types
@@ -51,8 +51,12 @@ interface PluginRow {
   icon?: string;
   sourceKind: GadgetSourceKind;
   permissions: PermissionItem[];
-  /** Set once the gadget was uninstalled in this session. */
-  uninstallPending: boolean;
+  /** Manifest version of a loaded WASM gadget; built-ins have none. */
+  version?: string;
+  /** False for a gadget that exists only as a pending install. */
+  loaded: boolean;
+  /** A change to this gadget that waits for a restart. */
+  pending?: PendingGadget;
 }
 
 // =========================================================
@@ -64,22 +68,8 @@ export function GadgetsManagementPanel() {
   const [sourceKinds, setSourceKinds] = useState<Record<string, GadgetSourceKind>>({});
   const [loadingSourceKinds, setLoadingSourceKinds] = useState(true);
   const [permissions, setPermissions] = useState<Record<string, PermissionItem[]>>({});
-  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
-
-  // Uninstalls only finish on restart, so the panel asks the backend
-  // which gadgets are already uninstalled rather than offering the
-  // action twice.
-  const loadPendingChanges = useCallback(
-    () =>
-      command("pending_gadget_changes").then(
-        (changes) => setPendingChanges(changes),
-        () => {},
-      ),
-    [],
-  );
-  useEffect(() => {
-    void loadPendingChanges();
-  }, [loadPendingChanges]);
+  const [versions, setVersions] = useState<Record<string, string>>({});
+  const pending = usePendingChanges();
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const installQueue = useInstallQueue();
@@ -110,6 +100,20 @@ export function GadgetsManagementPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    command("wasm_gadgets")
+      .then((manifests) => {
+        if (!cancelled) {
+          setVersions(Object.fromEntries(manifests.map((m) => [m.gadget.id, m.gadget.version])));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Permissions only exist for WASM gadgets; native ones are compiled
   // into the app and have no manifest, so their cards show none.
   useEffect(() => {
@@ -126,8 +130,10 @@ export function GadgetsManagementPanel() {
     };
   }, []);
 
+  // Loaded gadgets first, then installs of this session that only
+  // load after the restart.
   const rows: PluginRow[] = useMemo(() => {
-    return gadgetMetadata
+    const loadedRows: PluginRow[] = gadgetMetadata
       .filter((gadget) => sourceKinds[gadget.id] != null)
       .map((gadget) => ({
         id: gadget.id,
@@ -136,9 +142,26 @@ export function GadgetsManagementPanel() {
         icon: gadget.icon,
         sourceKind: sourceKinds[gadget.id],
         permissions: permissions[gadget.id] ?? [],
-        uninstallPending: pendingChanges[gadget.id] === "uninstalled",
+        version: versions[gadget.id],
+        loaded: true,
+        pending: pending.changes[gadget.id],
       }));
-  }, [gadgetMetadata, sourceKinds, permissions, pendingChanges]);
+    const loadedIds = new Set(loadedRows.map((row) => row.id));
+    const pendingRows: PluginRow[] = Object.entries(pending.changes)
+      .filter(([id]) => !loadedIds.has(id))
+      .map(([id, change]) => ({
+        id,
+        label: change.name,
+        description: change.description,
+        icon: "heroicons:puzzle-piece",
+        sourceKind: "user",
+        permissions: [],
+        loaded: false,
+        pending: change,
+      }));
+    return [...loadedRows, ...pendingRows];
+  }, [gadgetMetadata, sourceKinds, permissions, versions, pending.changes]);
+  const pendingCount = Object.keys(pending.changes).length;
 
   const submitToQueue = useCallback(
     async (paths: string[], origin: "settingsPicker" | "settingsDrop") => {
@@ -213,21 +236,16 @@ export function GadgetsManagementPanel() {
   const handleUninstall = useCallback(
     async (gadgetId: string) => {
       try {
-        const result = await command("uninstall_user_gadget", { gadgetId });
-        setBanner({
-          kind: "success",
-          message: `Uninstalled gadget "${gadgetId}".`,
-          requiresRestart: result.requiresRestart,
-        });
+        await command("uninstall_user_gadget", { gadgetId });
       } catch (e) {
         setBanner({
           kind: "error",
           message: formatError(e, "Failed to uninstall gadget"),
         });
       }
-      await loadPendingChanges();
+      await pending.refresh();
     },
-    [loadPendingChanges],
+    [pending],
   );
 
   return (
@@ -235,16 +253,16 @@ export function GadgetsManagementPanel() {
       <SectionHeader
         icon="heroicons:puzzle-piece"
         title="Gadgets"
-        description="Enable, disable, install, and uninstall gadgets. Built-in and system gadgets ship with the app and cannot be removed."
+        description="Enable, disable, install, and uninstall gadgets. Built-in and bundled gadgets ship with the app and cannot be removed."
       />
 
-      {banner && <BannerView banner={banner} onDismiss={() => setBanner(null)} />}
+      {pendingCount > 0 && <RestartBar count={pendingCount} />}
 
-      {installQueue.results.length > 0 && (
-        <InstallResultBanner
-          results={installQueue.results}
-          onUndo={(gadgetId) => void installQueue.undo(gadgetId)}
-          onDismiss={installQueue.acknowledge}
+      {banner && <BannerView banner={banner} onDismiss={() => setBanner(null)} />}
+      {pending.error && (
+        <BannerView
+          banner={{ kind: "error", message: pending.error }}
+          onDismiss={pending.dismissError}
         />
       )}
       {installQueue.error && (
@@ -266,7 +284,12 @@ export function GadgetsManagementPanel() {
         ) : (
           <div className="flex flex-col divide-y divide-border-divider">
             {rows.map((row) => (
-              <PluginRowView key={row.id} row={row} onUninstall={handleUninstall} />
+              <PluginRowView
+                key={row.id}
+                row={row}
+                onUninstall={handleUninstall}
+                onUndo={(gadgetId) => void pending.undo(gadgetId)}
+              />
             ))}
           </div>
         )}
@@ -275,7 +298,7 @@ export function GadgetsManagementPanel() {
       {nextRequest && (
         <InstallReviewModal
           request={nextRequest}
-          onInstall={(requestId) => void installQueue.confirm(requestId)}
+          onInstall={(requestId) => void installQueue.confirm(requestId).then(pending.refresh)}
           onCancel={(requestId) => void installQueue.dismiss(requestId)}
         />
       )}
@@ -290,42 +313,62 @@ export function GadgetsManagementPanel() {
 function PluginRowView({
   row,
   onUninstall,
+  onUndo,
 }: {
   row: PluginRow;
   onUninstall: (gadgetId: string) => void;
+  onUndo: (gadgetId: string) => void;
 }) {
   const [enabled, setEnabled] = useSetting<boolean>(`enabled.${row.id}`);
 
   const canUninstall = row.sourceKind === "user";
+  const change = row.pending;
+  // A gadget that is not running yet, or will not run after the
+  // restart, is dimmed; a replaced one keeps running until then.
+  const dimmed = change !== undefined && change.kind !== "replaced";
 
   return (
     <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
-      {row.icon && (
-        <Icon
-          icon={row.icon}
-          className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
-        />
-      )}
-      <div className="flex min-w-0 flex-col flex-1">
-        <span className="text-sm font-medium text-text-primary truncate">{row.label}</span>
-        {row.description && (
-          <span className="text-xs text-text-tertiary truncate">{row.description}</span>
+      <div className={cn("flex min-w-0 flex-1 items-start gap-3", dimmed && "opacity-60")}>
+        {row.icon && (
+          <Icon
+            icon={row.icon}
+            className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
+          />
         )}
-        <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium text-text-primary">
+            {row.label}
+            {versionText(row) && (
+              <span className="ml-1.5 text-xs font-normal text-text-tertiary">
+                {versionText(row)}
+              </span>
+            )}
+          </span>
+          {row.description && (
+            <span className="truncate text-xs text-text-tertiary">{row.description}</span>
+          )}
+          {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
+          {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
+        </div>
       </div>
-      <Switch checked={enabled ?? true} onChange={setEnabled} />
-      {/* Trailing slot: Uninstall for user gadgets, source badge
-          for every other kind. Its fixed width keeps every switch
-          in the same column whichever of the two it holds. */}
+      <Switch
+        checked={enabled ?? true}
+        onChange={setEnabled}
+        disabled={!row.loaded || change?.kind === "uninstalled"}
+      />
+      {/* Trailing slot: Undo for a pending change, Uninstall for user
+          gadgets, the source badge for every other kind. Its fixed
+          width keeps every switch in the same column. */}
       <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
-        {row.uninstallPending ? (
+        {change ? (
           <button
             type="button"
-            disabled
-            title="The gadget keeps running until Torchsnap restarts."
-            className="px-2 py-1 text-xs text-text-tertiary"
+            onClick={() => onUndo(row.id)}
+            title="Undo this change before it takes effect"
+            className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
           >
-            Removed on restart
+            Undo
           </button>
         ) : canUninstall ? (
           <button
@@ -340,6 +383,55 @@ function PluginRowView({
           <SourceBadge kind={row.sourceKind} />
         )}
       </div>
+    </div>
+  );
+}
+
+/** The version shown after the name, or the change of version. */
+function versionText(row: PluginRow): string | undefined {
+  const change = row.pending;
+  if (!change) {
+    return row.version;
+  }
+  if (change.kind === "uninstalled") {
+    return change.previousVersion ?? undefined;
+  }
+  if (change.previousVersion && change.version) {
+    return `${change.previousVersion} → ${change.version}`;
+  }
+  return change.version ?? undefined;
+}
+
+function pendingText(change: PendingGadget): string {
+  switch (change.kind) {
+    case "installed":
+      return "Installs on restart";
+    case "replaced":
+      return `Updates to ${change.version} on restart`;
+    case "reinstalled":
+      return `Reinstalls ${change.version} on restart`;
+    case "uninstalled":
+      return "Removed on restart";
+  }
+}
+
+// =========================================================
+// Restart bar — present while any change waits for a restart.
+// It is derived from the backend's record, so it is back after
+// Settings is closed and reopened.
+// =========================================================
+
+function RestartBar({ count }: { count: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm text-accent">
+      <span>{count === 1 ? "1 change applies" : `${count} changes apply`} after a restart</span>
+      <button
+        type="button"
+        onClick={() => void relaunch()}
+        className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
+      >
+        Restart now
+      </button>
     </div>
   );
 }

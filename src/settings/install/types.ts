@@ -81,5 +81,18 @@ export interface InstallRequestView {
   state: RequestState;
 }
 
+export type PendingKind = "installed" | "replaced" | "uninstalled" | "reinstalled";
+
+/** A gadget whose change waits for a restart (Rust `PendingGadget`). */
+export interface PendingGadget {
+  kind: PendingKind;
+  name: string;
+  description: string;
+  /** Version on disk, which loads after the restart; null once uninstalled. */
+  version: string | null;
+  /** Version that runs until the restart, if one runs. */
+  previousVersion: string | null;
+}
+
 /** Event the backend emits after every change to the install queue. */
 export const INSTALL_QUEUE_CHANGED = "install-queue-changed";

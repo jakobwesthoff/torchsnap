@@ -180,17 +180,67 @@ pub async fn install_undo(
     .map_err(|e| format!("{e:#}"))
 }
 
+/// A gadget with a change that waits for a restart, as the settings
+/// panel lists it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingGadget {
+    pub kind: pending::PendingKind,
+    pub name: String,
+    pub description: String,
+    /// The version on disk, which loads after the restart. `None` once
+    /// the gadget is uninstalled.
+    pub version: Option<String>,
+    /// The version that runs until the restart, if one runs.
+    pub previous_version: Option<String>,
+}
+
+/// Every pending change with what the settings list shows for it.
+/// Names and versions of installed archives come from their manifests;
+/// an uninstalled gadget is described by its startup registration.
+fn pending_overview(
+    pending: &PendingChanges,
+    registered: &RegisteredGadgets,
+) -> std::collections::HashMap<String, PendingGadget> {
+    pending
+        .overview()
+        .into_iter()
+        .filter_map(|(id, kind)| {
+            let running = match registered.get(&id) {
+                Some(registered::Registration::User { manifest, .. }) => Some(manifest.as_ref()),
+                _ => None,
+            };
+            let on_disk = pending.get(&id).and_then(PendingChange::manifest);
+            let described = on_disk.or(running)?;
+            let previous_version = match kind {
+                pending::PendingKind::Installed => None,
+                _ => running.map(|manifest| manifest.gadget.version.clone()),
+            };
+            Some((
+                id,
+                PendingGadget {
+                    kind,
+                    name: described.gadget.name.clone(),
+                    description: described.gadget.description.clone(),
+                    version: on_disk.map(|manifest| manifest.gadget.version.clone()),
+                    previous_version,
+                },
+            ))
+        })
+        .collect()
+}
+
 /// Changes made since startup that wait for a restart, keyed by
-/// gadget id. The settings panel uses it to show gadgets that are
-/// already uninstalled as such.
+/// gadget id, for the settings list.
 #[tauri::command]
 pub fn pending_gadget_changes(
     pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
-) -> std::collections::HashMap<String, pending::PendingKind> {
-    pending
+    registered: tauri::State<'_, RegisteredGadgets>,
+) -> std::collections::HashMap<String, PendingGadget> {
+    let pending = pending
         .lock()
-        .expect("pending changes lock is never poisoned")
-        .overview()
+        .expect("pending changes lock is never poisoned");
+    pending_overview(&pending, &registered)
 }
 
 /// Permissions of every loaded WASM gadget, keyed by gadget id,
@@ -872,5 +922,63 @@ mod tests {
         .expect_err("builtin id must be rejected");
 
         assert!(dir_entries(&root.path().join("install-staging")).is_empty());
+    }
+
+    // =========================================================
+    // Pending overview
+    // =========================================================
+
+    #[test]
+    fn the_pending_overview_names_each_gadget_and_its_versions() {
+        let (_root, paths) = temp_paths();
+        let mut registry = registered_user_gadget(&paths, "weather", "1.0.0");
+        registry = RegisteredGadgets::from_entries([
+            (
+                "weather".to_string(),
+                registry.get("weather").cloned().expect("registered"),
+            ),
+            (
+                "zerotier".to_string(),
+                registered_user_gadget(&paths, "zerotier", "0.1.0")
+                    .get("zerotier")
+                    .cloned()
+                    .expect("registered"),
+            ),
+        ]);
+        let mut pending = PendingChanges::default();
+        let (_a, weather_v2) = archive_with_manifest("weather", "2.0.0", "");
+        let (_b, calendar) = archive_with_manifest("calendar", "1.0.0", "");
+        install(&paths, &registry, &mut pending, &weather_v2).expect("replace");
+        install(&paths, &registry, &mut pending, &calendar).expect("fresh install");
+        uninstall(&paths, &registry, &mut pending, "zerotier").expect("uninstall");
+
+        let overview = pending_overview(&pending, &registry);
+
+        let weather = &overview["weather"];
+        assert_eq!(weather.kind, pending::PendingKind::Replaced);
+        assert_eq!(weather.version.as_deref(), Some("2.0.0"));
+        assert_eq!(weather.previous_version.as_deref(), Some("1.0.0"));
+
+        let calendar = &overview["calendar"];
+        assert_eq!(calendar.kind, pending::PendingKind::Installed);
+        assert_eq!(calendar.name, "Gadget calendar");
+        assert_eq!(calendar.version.as_deref(), Some("1.0.0"));
+        assert_eq!(calendar.previous_version, None);
+
+        let zerotier = &overview["zerotier"];
+        assert_eq!(zerotier.kind, pending::PendingKind::Uninstalled);
+        assert_eq!(zerotier.version, None);
+        assert_eq!(zerotier.previous_version.as_deref(), Some("0.1.0"));
+
+        assert_eq!(
+            serde_json::to_value(zerotier).expect("serializes"),
+            serde_json::json!({
+                "kind": "uninstalled",
+                "name": "Gadget zerotier",
+                "description": "Test gadget zerotier",
+                "version": null,
+                "previousVersion": "0.1.0"
+            })
+        );
     }
 }

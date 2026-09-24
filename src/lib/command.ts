@@ -23,7 +23,12 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
 import type { DevToolsMessage, LogItem, LogLevel, LogStats } from "../devtools/types";
-import type { InstallOrigin, InstallRequestView, PermissionItem } from "../settings/install/types";
+import type {
+  InstallOrigin,
+  InstallRequestView,
+  PendingGadget,
+  PermissionItem,
+} from "../settings/install/types";
 
 // =========================================================
 // Command Registry
@@ -121,10 +126,7 @@ export interface CommandMap {
   };
   install_queue_dismiss: { params: { requestId: string }; result: void };
   gadget_permissions: { params: void; result: Record<string, PermissionItem[]> };
-  pending_gadget_changes: {
-    params: void;
-    result: Record<string, "installed" | "replaced" | "uninstalled">;
-  };
+  pending_gadget_changes: { params: void; result: Record<string, PendingGadget> };
   build_info: { params: void; result: { version: string; gitHash: string } };
 }
 
