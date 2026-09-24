@@ -25,13 +25,19 @@
 # unsigned unless the environment sets an identity, so lldb can still
 # attach to local builds (ADR 0047).
 
+# `--config` is handed to `tauri build --config`: a JSON string or a
+# file merged over `tauri.conf.json`. A release uses it to produce the
+# updater archive and its signature, which need the updater signing
+# key and so stay off in everyday builds.
+
 # Build the Tauri app (gadgets + frontend + Rust)
 [arg('profile', long='release', value='release')]
 [arg('sign', long='sign', value='sign')]
-build profile="debug" sign="": asset-mascot-data
+[arg('config', long='config')]
+build profile="debug" sign="" config="": asset-mascot-data
     just stage-bundled-gadgets
     just build-gadgets
-    {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }}
+    {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }} {{ if config != "" { "--config " + quote(config) } else { "" } }}
     {{ if sign == "sign" { "just notarize-dmg " + profile } else { "" } }}
 
 # `fullcycle` never builds a bundle, so the `.torchsnap` registration
