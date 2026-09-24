@@ -52,6 +52,7 @@ mod archive_ops;
 mod decision;
 mod paths;
 mod pending;
+mod provenance;
 mod registered;
 mod review;
 mod staging;
