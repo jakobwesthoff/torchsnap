@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a restart, with the version change and an Undo for each, and a
   bar with the number of pending changes and "Restart now". The list
   keeps showing them after Settings is closed and reopened. Uninstalls
-  can be undone as well until Torchsnap restarts.
+  can be undone as well until Torchsnap restarts. After "Restart now",
+  Torchsnap opens Settings → Gadgets again.
 - Gadgets in Settings → Gadgets show their version.
 - `.torchsnap` paths passed on the command line open the install
   review, also when Torchsnap is already running. Starting Torchsnap a

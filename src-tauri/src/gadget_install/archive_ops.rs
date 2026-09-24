@@ -141,6 +141,24 @@ pub fn remove_user_gadget(
     })
 }
 
+/// Remember that the next start should open Settings on the Gadgets
+/// section, so a user who restarted to apply gadget changes sees them.
+pub fn write_reopen_marker(paths: &InstallPaths) -> anyhow::Result<()> {
+    if let Some(parent) = paths.reopen_settings_marker.parent() {
+        std::fs::create_dir_all(parent).context("create the app data directory")?;
+    }
+    std::fs::write(&paths.reopen_settings_marker, b"").context("write the reopen marker")
+}
+
+/// Consume the reopen marker. True when it was there.
+pub fn take_reopen_marker(paths: &InstallPaths) -> anyhow::Result<bool> {
+    match std::fs::remove_file(&paths.reopen_settings_marker) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e).context("remove the reopen marker"),
+    }
+}
+
 /// Delete the replace backups of the previous session. Undo only
 /// works until restart, and after a restart the archive on disk is
 /// the one that runs.
@@ -566,5 +584,21 @@ mod tests {
         let (_root, paths) = temp_paths();
 
         remove_stale_backups(&paths).expect("sweep should succeed");
+    }
+
+    // =========================================================
+    // Reopening Settings after a restart
+    // =========================================================
+
+    #[test]
+    fn the_reopen_marker_is_taken_once() {
+        let (_root, paths) = temp_paths();
+
+        assert!(!take_reopen_marker(&paths).expect("take without marker"));
+
+        write_reopen_marker(&paths).expect("write marker");
+
+        assert!(take_reopen_marker(&paths).expect("take the marker"));
+        assert!(!take_reopen_marker(&paths).expect("take again"));
     }
 }

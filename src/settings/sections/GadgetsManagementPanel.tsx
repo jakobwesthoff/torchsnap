@@ -24,7 +24,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { command, type GadgetSourceKind } from "../../lib/command";
 import { getGadgetsWithSettings } from "../../gadgets/registry";
@@ -420,7 +419,8 @@ function pendingText(change: PendingGadget): string {
 // =========================================================
 // Restart bar — present while any change waits for a restart.
 // It is derived from the backend's record, so it is back after
-// Settings is closed and reopened.
+// Settings is closed and reopened. The backend restarts the app
+// and opens Settings on this section again afterwards.
 // =========================================================
 
 function RestartBar({ count }: { count: number }) {
@@ -429,7 +429,7 @@ function RestartBar({ count }: { count: number }) {
       <span>{count === 1 ? "1 change applies" : `${count} changes apply`} after a restart</span>
       <button
         type="button"
-        onClick={() => void relaunch()}
+        onClick={() => void command("restart_to_apply_gadget_changes")}
         className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
       >
         Restart now
@@ -584,34 +584,16 @@ function InstallArea({
 }
 
 // =========================================================
-// Banner — success / error / restart-prompt.
+// Banner — errors from picking, dropping or uninstalling.
+// Successful changes show up in the list instead.
 // =========================================================
 
-type Banner =
-  | { kind: "success"; message: string; requiresRestart?: boolean }
-  | { kind: "error"; message: string };
+type Banner = { kind: "error"; message: string };
 
 function BannerView({ banner, onDismiss }: { banner: Banner; onDismiss: () => void }) {
-  const isError = banner.kind === "error";
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm",
-        isError
-          ? "border-red-500/50 bg-red-500/10 text-red-500"
-          : "border-accent/50 bg-accent/10 text-accent",
-      )}
-    >
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-500">
       <span className="flex-1">{banner.message}</span>
-      {banner.kind === "success" && banner.requiresRestart && (
-        <button
-          type="button"
-          onClick={() => void relaunch()}
-          className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          Restart now
-        </button>
-      )}
       <button
         type="button"
         onClick={onDismiss}

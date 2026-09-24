@@ -65,7 +65,7 @@ mod review;
 mod staging;
 mod store;
 
-pub use archive_ops::{process_uninstall_markers, remove_stale_backups};
+pub use archive_ops::{process_uninstall_markers, remove_stale_backups, take_reopen_marker};
 pub use commands::{
     QUEUE_CHANGED_EVENT, process_in_background, submit_command_line, submit_opened_urls,
 };
@@ -253,6 +253,52 @@ pub fn gadget_permissions(
         .read()
         .expect("source registry lock is never poisoned");
     review::installed_gadget_permissions(&sources)
+}
+
+// =========================================================
+// Restart
+//
+// "Restart now" in the settings leaves a marker before restarting.
+// The next setup consumes it and opens Settings on the Gadgets
+// section, where the list shows the applied changes.
+// =========================================================
+
+/// The section the settings window starts on, handed out once to the
+/// first settings frontend that asks.
+pub struct SettingsStartSection(Mutex<Option<String>>);
+
+impl SettingsStartSection {
+    pub fn new(section: Option<&str>) -> Self {
+        Self(Mutex::new(section.map(str::to_string)))
+    }
+
+    pub fn take(&self) -> Option<String> {
+        self.0
+            .lock()
+            .expect("start section lock is never poisoned")
+            .take()
+    }
+}
+
+#[tauri::command]
+pub fn take_settings_start_section(
+    start: tauri::State<'_, SettingsStartSection>,
+) -> Option<String> {
+    start.take()
+}
+
+/// Restart the app to load pending gadget changes. A marker that
+/// cannot be written only costs the reopened Settings window, so the
+/// restart goes ahead.
+#[tauri::command]
+pub fn restart_to_apply_gadget_changes(
+    app: tauri::AppHandle,
+    paths: tauri::State<'_, InstallPaths>,
+) {
+    if let Err(e) = archive_ops::write_reopen_marker(&paths) {
+        eprintln!("failed to leave the reopen marker for Settings: {e:#}");
+    }
+    app.restart()
 }
 
 // =========================================================
@@ -980,5 +1026,14 @@ mod tests {
                 "previousVersion": "0.1.0"
             })
         );
+    }
+
+    #[test]
+    fn the_settings_start_section_is_handed_out_once() {
+        let start = SettingsStartSection::new(Some("gadgets"));
+
+        assert_eq!(start.take().as_deref(), Some("gadgets"));
+        assert_eq!(start.take(), None);
+        assert_eq!(SettingsStartSection::new(None).take(), None);
     }
 }

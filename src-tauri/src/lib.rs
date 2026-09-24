@@ -660,6 +660,8 @@ pub fn run() {
             gadget_install::install_undo,
             gadget_install::gadget_permissions,
             gadget_install::pending_gadget_changes,
+            gadget_install::take_settings_start_section,
+            gadget_install::restart_to_apply_gadget_changes,
             gadget_install::commands::install_queue_snapshot,
             gadget_install::commands::install_queue_submit,
             gadget_install::commands::install_queue_confirm,
@@ -726,6 +728,11 @@ pub fn run() {
                 Ok(_) => {}
                 Err(e) => eprintln!("failed to finish pending gadget uninstalls: {e:#}"),
             }
+            let reopen_gadget_settings = gadget_install::take_reopen_marker(&install_paths)
+                .unwrap_or_else(|e| {
+                    eprintln!("failed to read the reopen marker for Settings: {e:#}");
+                    false
+                });
             if let Err(e) = gadget_install::remove_stale_backups(&install_paths) {
                 eprintln!("failed to remove gadget replace backups: {e:#}");
             }
@@ -999,10 +1006,11 @@ pub fn run() {
             // Files opened before startup finished (double-clicking an
             // archive while Torchsnap was not running) and command-line
             // archives end up here, so the review window has to be
-            // opened from setup.
+            // opened from setup. A restart from "Restart now" opens it
+            // too, to show the applied changes.
             let mut to_process = buffered_requests;
             to_process.extend(from_command_line.queued);
-            if !to_process.is_empty() {
+            if !to_process.is_empty() || reopen_gadget_settings {
                 show_settings_window(app.handle());
             }
             gadget_install::process_in_background(&install_queue, to_process);
@@ -1012,6 +1020,9 @@ pub fn run() {
             app.manage(registered_gadgets);
             app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
             app.manage(pending_changes);
+            app.manage(gadget_install::SettingsStartSection::new(
+                reopen_gadget_settings.then_some("gadgets"),
+            ));
 
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
