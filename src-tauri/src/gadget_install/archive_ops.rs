@@ -53,28 +53,34 @@ pub fn publish_replace(paths: &InstallPaths, source: &Path, gadget_id: &str) -> 
     publish_fresh(paths, source, gadget_id)
 }
 
-/// What `undo_publish` did.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Undone {
-    /// The backup of a replaced archive is back in place.
-    Restored,
-    /// There was no backup, so the fresh install was removed.
-    Removed,
+/// Put `.<id>.torchsnap.prev` back as `<id>.torchsnap`. Returns
+/// false when there is no backup to restore.
+pub fn restore_backup(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<bool> {
+    let backup = paths.backup(gadget_id);
+    if !backup.exists() {
+        return Ok(false);
+    }
+    std::fs::rename(&backup, paths.archive(gadget_id)).context("restore the backed-up archive")?;
+    Ok(true)
 }
 
-/// Reverse the last publish for `gadget_id` in this session.
-pub fn undo_publish(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<Undone> {
+/// Delete `<id>.torchsnap` if it exists.
+pub fn remove_archive(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<()> {
     let archive = paths.archive(gadget_id);
-    let backup = paths.backup(gadget_id);
-    if backup.exists() {
-        std::fs::rename(&backup, &archive).context("restore the replaced archive")?;
-        Ok(Undone::Restored)
-    } else {
-        if archive.exists() {
-            std::fs::remove_file(&archive).context("remove the installed archive")?;
-        }
-        Ok(Undone::Removed)
+    if archive.exists() {
+        std::fs::remove_file(&archive).context("remove the installed archive")?;
     }
+    Ok(())
+}
+
+/// Delete the uninstall marker if it exists, cancelling the cleanup
+/// the next startup would do.
+pub fn remove_marker(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<()> {
+    let marker = paths.uninstall_marker(gadget_id);
+    if marker.exists() {
+        std::fs::remove_file(&marker).context("remove the uninstall marker")?;
+    }
+    Ok(())
 }
 
 /// What `remove_user_gadget` found on disk.
@@ -84,19 +90,37 @@ pub struct Removal {
     pub directory_removed: bool,
 }
 
-/// Delete a user gadget's archive and its hand-placed directory form
-/// if any, and leave an uninstall marker for the next startup.
+/// Take a user gadget off disk.
 ///
-/// The gadget keeps running until restart, with its SQLite connection
-/// open and its settings watched. Deleting `gadget-home/<id>/` or its
-/// settings now would pull data out from under a live instance, which
-/// can write it back. The marker defers that cleanup to
-/// `process_uninstall_markers`, which runs before any gadget loads.
-pub fn remove_user_gadget(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<Removal> {
+/// For a gadget that loaded at startup (`registered`), the archive that
+/// loaded is kept as `.<id>.torchsnap.prev` so the uninstall can be
+/// undone until restart: if a replace already put it there, the newer
+/// archive is simply deleted. An uninstall marker then tells the next
+/// startup to delete the gadget's data and settings; the gadget keeps
+/// running until restart, and deleting them now would pull data out
+/// from under the live instance, which can write it back. A gadget that
+/// only existed as an install of this session has no data yet, so its
+/// archive and any backup are deleted outright and no marker is needed.
+///
+/// A hand-placed directory form is deleted in either case and cannot
+/// be restored by undo.
+pub fn remove_user_gadget(
+    paths: &InstallPaths,
+    gadget_id: &str,
+    registered: bool,
+) -> anyhow::Result<Removal> {
     let archive = paths.archive(gadget_id);
+    let backup = paths.backup(gadget_id);
     let archive_removed = archive.exists();
     if archive_removed {
-        std::fs::remove_file(&archive).context("remove the gadget archive")?;
+        if registered && !backup.exists() {
+            std::fs::rename(&archive, &backup).context("keep the gadget archive for undo")?;
+        } else {
+            std::fs::remove_file(&archive).context("remove the gadget archive")?;
+        }
+    }
+    if !registered && backup.exists() {
+        std::fs::remove_file(&backup).context("remove the replaced archive's backup")?;
     }
 
     let directory = paths.directory(gadget_id);
@@ -105,15 +129,11 @@ pub fn remove_user_gadget(paths: &InstallPaths, gadget_id: &str) -> anyhow::Resu
         std::fs::remove_dir_all(&directory).context("remove the gadget directory")?;
     }
 
-    // Without this, undoing a later fresh install of the same id would
-    // bring back an archive from before the uninstall.
-    let backup = paths.backup(gadget_id);
-    if backup.exists() {
-        std::fs::remove_file(&backup).context("remove the replaced archive's backup")?;
+    if registered {
+        std::fs::create_dir_all(&paths.gadgets_dir).context("create the user gadgets directory")?;
+        std::fs::write(paths.uninstall_marker(gadget_id), b"")
+            .context("write the uninstall marker")?;
     }
-
-    std::fs::create_dir_all(&paths.gadgets_dir).context("create the user gadgets directory")?;
-    std::fs::write(paths.uninstall_marker(gadget_id), b"").context("write the uninstall marker")?;
 
     Ok(Removal {
         archive_removed,
@@ -225,7 +245,7 @@ mod tests {
     fn remove_reports_an_absent_archive() {
         let (_root, paths) = temp_paths();
 
-        let removal = remove_user_gadget(&paths, "weather").expect("removal should succeed");
+        let removal = remove_user_gadget(&paths, "weather", false).expect("removal should succeed");
 
         assert_eq!(
             removal,
@@ -242,7 +262,7 @@ mod tests {
         std::fs::create_dir_all(paths.directory("weather")).expect("create directory form");
         std::fs::write(paths.archive("weather"), b"archive").expect("write archive");
 
-        let removal = remove_user_gadget(&paths, "weather").expect("removal should succeed");
+        let removal = remove_user_gadget(&paths, "weather", false).expect("removal should succeed");
 
         assert_eq!(
             removal,
@@ -265,17 +285,47 @@ mod tests {
     }
 
     #[test]
-    fn remove_keeps_the_state_and_leaves_a_marker() {
+    fn uninstalling_a_registered_gadget_keeps_its_archive_for_undo() {
         let (_root, paths) = temp_paths();
         std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
         std::fs::write(paths.archive("weather"), b"archive").expect("write archive");
         with_gadget_state(&paths, "weather");
 
-        remove_user_gadget(&paths, "weather").expect("removal should succeed");
+        remove_user_gadget(&paths, "weather", true).expect("removal should succeed");
 
         assert!(!paths.archive("weather").exists());
+        assert_eq!(read(&paths.backup("weather")), b"archive");
         assert!(paths.home("weather").join("storage.sqlite3").exists());
         assert!(paths.uninstall_marker("weather").exists());
+    }
+
+    /// After a replace the backup already holds the archive that loaded
+    /// at startup; uninstalling keeps that one and drops the newer copy.
+    #[test]
+    fn uninstalling_after_a_replace_keeps_the_startup_backup() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write archive");
+        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
+
+        remove_user_gadget(&paths, "weather", true).expect("removal should succeed");
+
+        assert!(!paths.archive("weather").exists());
+        assert_eq!(read(&paths.backup("weather")), b"v1");
+    }
+
+    #[test]
+    fn uninstalling_a_gadget_that_never_loaded_leaves_nothing_behind() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v2").expect("write archive");
+        std::fs::write(paths.backup("weather"), b"v1").expect("write backup");
+
+        remove_user_gadget(&paths, "weather", false).expect("removal should succeed");
+
+        assert!(!paths.archive("weather").exists());
+        assert!(!paths.backup("weather").exists());
+        assert!(!paths.uninstall_marker("weather").exists());
     }
 
     #[test]
@@ -460,41 +510,40 @@ mod tests {
     }
 
     #[test]
-    fn undo_restores_the_backup() {
+    fn restoring_the_backup_puts_it_back_in_place() {
         let (_root, paths) = temp_paths();
         std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
         std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
         publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
 
-        let undone = undo_publish(&paths, "weather").expect("undo should succeed");
+        let restored = restore_backup(&paths, "weather").expect("restore should succeed");
 
-        assert_eq!(undone, Undone::Restored);
+        assert!(restored);
         assert_eq!(read(&paths.archive("weather")), b"v1");
         assert!(!paths.backup("weather").exists());
     }
 
     #[test]
-    fn undo_without_a_backup_removes_the_fresh_install() {
+    fn restoring_without_a_backup_reports_it() {
         let (_root, paths) = temp_paths();
-        publish_fresh(&paths, source_file(b"v1").path(), "weather").expect("fresh install");
 
-        let undone = undo_publish(&paths, "weather").expect("undo should succeed");
-
-        assert_eq!(undone, Undone::Removed);
-        assert!(!paths.archive("weather").exists());
+        assert!(!restore_backup(&paths, "weather").expect("restore should succeed"));
     }
 
     #[test]
-    fn uninstall_removes_the_backup() {
+    fn removing_the_archive_and_the_marker() {
         let (_root, paths) = temp_paths();
-        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
-        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
-        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
+        publish_fresh(&paths, source_file(b"v1").path(), "weather").expect("fresh install");
+        std::fs::write(paths.uninstall_marker("weather"), b"").expect("write marker");
 
-        remove_user_gadget(&paths, "weather").expect("removal should succeed");
+        remove_archive(&paths, "weather").expect("remove archive");
+        remove_marker(&paths, "weather").expect("remove marker");
 
-        assert!(!paths.backup("weather").exists());
         assert!(!paths.archive("weather").exists());
+        assert!(!paths.uninstall_marker("weather").exists());
+        // Both are fine to call when there is nothing to remove.
+        remove_archive(&paths, "weather").expect("remove absent archive");
+        remove_marker(&paths, "weather").expect("remove absent marker");
     }
 
     #[test]
