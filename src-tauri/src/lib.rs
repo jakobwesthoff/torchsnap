@@ -11,6 +11,7 @@ mod gadget_host;
 mod gadget_install;
 mod gadgets;
 mod icons;
+mod navigation_guard;
 mod network;
 mod paths;
 mod platform;
@@ -171,6 +172,10 @@ struct AuxiliaryWindowConfig {
     /// own title bar. See ADR 0034 for the rationale behind this
     /// approach over `decorations(false)`.
     hide_native_chrome: bool,
+    /// When true, the webview may only show the app's own pages
+    /// (`navigation_guard`). For windows that display text from
+    /// outside the app bundle.
+    restrict_navigation: bool,
 }
 
 /// Build an on-demand auxiliary window that stays hidden until the
@@ -219,6 +224,25 @@ fn show_auxiliary_window_main_thread(
         .visible(false)
         .focused(false)
         .center();
+
+    let builder = if config.restrict_navigation {
+        // The dev server only serves the frontend in debug builds; a
+        // release build allows its bundled pages alone.
+        let dev_url = if cfg!(debug_assertions) {
+            app.config().build.dev_url.clone()
+        } else {
+            None
+        };
+        builder.on_navigation(move |target| {
+            let allowed = navigation_guard::navigation_allowed(target, dev_url.as_ref());
+            if !allowed {
+                eprintln!("refused navigation of a guarded window to {target}");
+            }
+            allowed
+        })
+    } else {
+        builder
+    };
 
     // Shadowed on macOS to extend the builder without requiring `mut`
     // on platforms where the extension does not apply.
@@ -275,6 +299,7 @@ const SETTINGS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     min_width: 600.0,
     min_height: 400.0,
     hide_native_chrome: true,
+    restrict_navigation: false,
 };
 
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
@@ -294,6 +319,7 @@ const DEVTOOLS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     min_width: 700.0,
     min_height: 400.0,
     hide_native_chrome: true,
+    restrict_navigation: false,
 };
 
 pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
@@ -313,6 +339,7 @@ const UPDATE_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     min_width: 460.0,
     min_height: 360.0,
     hide_native_chrome: true,
+    restrict_navigation: true,
 };
 
 pub(crate) fn show_update_window(app: &tauri::AppHandle) {
