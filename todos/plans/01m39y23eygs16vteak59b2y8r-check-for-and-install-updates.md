@@ -28,7 +28,9 @@ welcome window (`welcome.html`, `src/welcome/`, `src-tauri/src/welcome.rs`),
 all with tests. The maintainer tested them in unsigned builds
 (0.11.95 to 0.11.96) on 2026-09-24: everything worked except the
 launcher after the update restart, now fixed (`73ca3d3`); the welcome
-was reworked after that test (step 8). Step 9 done on torchsnap-web's
+was reworked after that test (step 8). In a second test the maintainer approved the
+reworked welcome; the launcher after an update restart was not tried
+again, so `73ca3d3` is confirmed by its test only, until step 11. Step 9 done on torchsnap-web's
 `auto-updater` branch (`48676de`, its ADR 0009): the build serves the
 latest `release.json` as `/updates/latest.json` and shows the version
 in the macOS pill; `TORCHSNAP_RELEASE_FEED` points it at another feed.
