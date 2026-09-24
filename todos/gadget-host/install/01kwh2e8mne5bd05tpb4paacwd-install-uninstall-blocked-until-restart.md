@@ -3,6 +3,7 @@ kind: bug
 severity: low
 status: open
 area: [src-tauri/src/gadget_install.rs]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Install→uninstall and uninstall→reinstall are blocked until restart, with misleading errors

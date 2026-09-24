@@ -1,79 +1,50 @@
 ---
 kind: feature
-status: blocked
+status: open
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
 ---
 
 # Accept gadget archives from the command line and from a second launch
 
-Ready once the intake exists. Can ship with the macOS file
-association.
+Ships together with the macOS file association (decided 2026-09-24).
+Plan step 16.
 
 ## Why
 
-On Linux and Windows, a file association launches the app with the
-file path in argv. If Torchsnap is already running, the OS starts a
-second process, and that process has to hand its argv to the first
-instance and exit. macOS does neither of these for bundle launches:
+On Linux and Windows a file association starts the app with the path
+in argv. If Torchsnap already runs, a second process starts and has to
+hand its argv over and exit. macOS does neither for bundle launches:
 LaunchServices keeps one instance and sends an Apple Event
 (`RunEvent::Opened`). argv only reaches Torchsnap on macOS when
-someone runs `Torchsnap.app/Contents/MacOS/<binary>` directly.
+someone starts `Torchsnap.app/Contents/MacOS/<binary>` directly.
 
-This code is platform-independent, the Linux association cannot work
-without it, and it is small once the intake
-(`todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md`)
-exists. Building it together with the macOS work tests the intake
-with two different origins from the start.
+## Decisions
 
-## What to build
+- **First instance:** at the end of `setup`, pass
+  `std::env::args()` through `intake::paths_from_args` (skip the
+  program name and anything starting with `-`, accept paths and
+  `file://` URLs) and submit with origin `CommandLine`.
+- **Later launches:** `tauri-plugin-single-instance` (2.4.3),
+  registered first in `run()` as its docs require. The callback gets
+  `(app, args, cwd)`; relative paths resolve against `cwd`.
+- **Second launch without files shows the launcher.** A new
+  show-only `show_launcher_window`, extracted from the show branch of
+  `toggle_launcher_window`, so a visible launcher is not hidden.
+- **Plain paths only**, no `torchsnap install <file>` subcommand.
+  File managers pass plain paths.
 
-- **First instance.** In `setup` (`src-tauri/src/lib.rs:648`), read
-  `std::env::args().skip(1)`, skip anything starting with `-`, accept
-  plain paths and `file://` URLs, and push `InstallRequest`s with
-  origin `CommandLine`. Tauri's `examples/file-associations` does the
-  same in its `setup`.
-- **Second instance.** Add `tauri-plugin-single-instance`. Its
-  callback receives `(app, args, cwd)`. Resolve relative paths
-  against `cwd`, then push requests like above. With no file
-  arguments, bring up the launcher or settings (decide which) so a
-  second launch is not a silent no-op.
-- **Plugin order.** The plugin docs say single-instance must be
-  registered first, before the other plugins in `run()`
-  (`lib.rs:586-625`).
+## Findings
 
-## Things found during research
-
-- **Linux uses DBus** for single-instance detection. Per the plugin
-  docs it does not work in snap or flatpak without declaring the DBus
-  name in the package manifest.
-- **The plugin runs on macOS too.** Today nothing stops a second
-  process when the binary is started directly. That second process
-  would load all gadgets again and fight over the control socket at
-  `<app_data_dir>/control.sock` (cleanup at `lib.rs:1011-1013`).
-  Single-instance fixes that as a side effect.
-- **Deep links.** The URL scheme todo will route `torchsnap://` URLs
-  through the same argv path on Linux. The deep-link plugin docs say
-  it works together with single-instance. I remember a `deep-link`
-  feature flag on the single-instance crate that forwards URLs, but
-  have not verified it.
-- **Autostart.** `tauri_plugin_autostart` is initialized with `None`
-  as its extra args (`lib.rs:622-625`), so autostart launches carry no
-  arguments the parser needs to ignore. Recheck this if autostart
-  args are ever added.
-
-## Open points
-
-- Accept only `*.torchsnap`, or pass everything to the intake and let
-  it reject with a log line? The intake normalization step already
-  filters, so the adapter can stay dumb.
-- Is a `torchsnap install <file>` style subcommand wanted, or are
-  plain paths enough? Plain paths match what file managers send.
-
-## Done when
-
-- `Torchsnap <path>.torchsnap` on a cold start and on a running
-  instance both end in the confirm step.
-- Relative paths from a second instance resolve against its cwd.
-- Launching the app a second time does not start a second full
-  instance.
+- On macOS the plugin hands args over through a Unix socket
+  (`/tmp/<identifier>_si.sock`). It detects and exits the second
+  process; it does not stop it from starting. As a side effect it
+  stops a directly started second binary from running a full second
+  instance that would load all gadgets again and fight over
+  `<app_data_dir>/control.sock`.
+- On Linux it uses DBus, which snap and flatpak block unless the
+  package manifest declares the name.
+- The crate has a `deep-link` feature for forwarding URLs on
+  Windows/Linux. Relevant only when the parked URL scheme comes back.
+- `tauri_plugin_autostart` is initialized with no extra args, so
+  autostart launches carry nothing the parser must skip.

@@ -455,7 +455,7 @@ documented in the SDK docs.
   `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`.
 * **Install-time consent prompt for User-source plugins
   declaring `[[permissions.command]]`**. Tracked in
-  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`.
+  `todos/gadget-host/install/01m399736658afgk6xv4ab68wn-install-review-dialog.md`.
   Composes with future signing (ADR 0036).
 * **Per-binary env quirks tables** (`GIT_CONFIG_NOSYSTEM`,
   equivalents). Mechanism deferred; limitation accepted.

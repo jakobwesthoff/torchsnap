@@ -43,8 +43,8 @@ So a manifest saying `timeout-ms-max = 1000` still gets the
 
 ## Impact
 The manifest's permission surface lies: reviewers (and the
-future permission-consent UI, see
-`todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`)
+install review dialog, see
+`todos/gadget-host/install/01m399736658afgk6xv4ab68wn-install-review-dialog.md`)
 read constraints that have no runtime effect. Gadgets relying on
 a rule-declared default cwd run in the wrong directory.
 Separately, the guest-supplied `options.cwd` is used verbatim

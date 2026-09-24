@@ -2,6 +2,7 @@
 kind: feature
 status: open
 tags: [security, ux]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Show gadget permissions in UI
