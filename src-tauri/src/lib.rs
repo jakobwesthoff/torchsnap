@@ -301,6 +301,33 @@ pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
 }
 
 // =========================================================
+// Update Window
+// =========================================================
+
+const UPDATE_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "update",
+    url: "update.html",
+    title: "Torchsnap Update",
+    width: 560.0,
+    height: 480.0,
+    min_width: 460.0,
+    min_height: 360.0,
+    hide_native_chrome: true,
+};
+
+pub(crate) fn show_update_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(app, &UPDATE_WINDOW);
+}
+
+pub(crate) fn close_update_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(UPDATE_WINDOW.label)
+        && let Err(e) = window.close()
+    {
+        eprintln!("failed to close the update window: {e:#}");
+    }
+}
+
+// =========================================================
 // Launcher Window
 // =========================================================
 
@@ -633,6 +660,7 @@ pub fn run() {
             }
         }))
         .manage(Arc::clone(&install_queue))
+        .manage(updates::UpdateState::new())
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
         // adding, removing, or changing a command signature here,
@@ -668,6 +696,12 @@ pub fn run() {
             gadget_install::commands::install_queue_confirm,
             gadget_install::commands::install_queue_dismiss,
             build_info,
+            updates::update_phase,
+            updates::update_check,
+            updates::update_install,
+            updates::update_later,
+            updates::update_skip,
+            updates::update_dismiss,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1089,14 +1123,16 @@ pub fn run() {
             // =========================================================
             // Tray icon with context menu
             // =========================================================
-            PlatformTray::build(
+            let updates_item = PlatformTray::build(
                 app,
                 toggle_launcher_window,
                 show_settings_window,
                 show_devtools_window,
-                updates::check_and_install_now,
+                updates::tray_clicked,
             )
             .context("build platform tray")?;
+            app.state::<updates::UpdateState>()
+                .set_tray_item(updates_item);
 
             // =========================================================
             // Preload windows
@@ -1129,6 +1165,19 @@ pub fn run() {
 
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;
+
+            // =========================================================
+            // Updates
+            //
+            // After installing an update the app restarts into the new
+            // version and shows the launcher once, as a sign it is back.
+            // =========================================================
+            match updates::take_show_launcher_marker(&app_data_dir) {
+                Ok(true) => show_launcher_window(app.handle()),
+                Ok(false) => {}
+                Err(e) => eprintln!("failed to read the show-launcher marker: {e:#}"),
+            }
+            updates::start_scheduler(app.handle().clone());
 
             Ok(())
         })
