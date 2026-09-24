@@ -17,6 +17,7 @@ mod platform;
 mod settings;
 mod storage;
 mod unicode;
+mod updates;
 mod wasm;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -673,6 +674,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_autostart::init(
@@ -1092,6 +1094,7 @@ pub fn run() {
                 toggle_launcher_window,
                 show_settings_window,
                 show_devtools_window,
+                updates::check_and_install_now,
             )
             .context("build platform tray")?;
 

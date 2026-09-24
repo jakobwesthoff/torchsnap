@@ -52,5 +52,12 @@
     "macOS": {
       "entitlements": "Entitlements.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://torchsnap.app/updates/latest.json"],
+      "pubkey": "",
+      "requireSignedVersion": true
+    }
   }
 }
