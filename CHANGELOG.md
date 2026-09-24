@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the next ZeroTier search, at most every 5 seconds.
 - Pressing Enter on the ZeroTier "daemon not running" result showed an
   error. The result is now informational and has no action.
+- A gadget can be uninstalled and installed again, or installed and
+  removed again, without restarting Torchsnap in between.
+- Uninstalling a gadget reports an error when the settings cannot be
+  saved, instead of claiming success while the gadget's settings
+  reappear on the next start.
 
 ## [0.10.0] - 2026-09-23
 

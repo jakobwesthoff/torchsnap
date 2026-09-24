@@ -24,39 +24,45 @@
 //    which validates the zip and parses the manifest. The
 //    path guard that runs during `Manifest::parse` catches
 //    traversal here.
-// 2. Reject if a gadget with the manifest's id is already
-//    registered with any `GadgetSourceKind`, with a message
-//    specific to the colliding kind.
+// 2. Decide from the frozen registry and the changes made
+//    since startup (`decision::decide_install`).
 // 3. Publish the archive as `gadgets/<id>.torchsnap`
-//    (`archive_ops::publish_fresh`).
+//    (`archive_ops::publish_fresh`) and record it in
+//    `PendingChanges`.
 //
 // Uninstall steps:
 //
-// 1. Reject unless the id is registered as
-//    `GadgetSourceKind::User`; built-in, system, and dev
-//    gadgets are not uninstallable through this flow.
+// 1. Decide the same way (`decision::decide_uninstall`):
+//    user gadgets and installs made since startup can be
+//    removed, built-in, system and dev gadgets cannot.
 // 2. Remove the archive, the directory form if any, and the
 //    state tree (`archive_ops::remove_user_gadget`).
 // 3. Strip the gadget's settings keys and persist the store
-//    (`store::strip_gadget_settings`).
+//    (`store::strip_gadget_settings`), then record the
+//    uninstall in `PendingChanges`.
 // =========================================================
 
 mod archive_ops;
+mod decision;
 mod paths;
+mod pending;
 mod registered;
 mod store;
 
 pub use paths::InstallPaths;
+pub use pending::PendingChanges;
 pub use registered::RegisteredGadgets;
 pub use store::SettingsKeys;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use decision::{InstallDecision, UninstallDecision, decide_install, decide_uninstall};
 
 use anyhow::Context;
 use serde::Serialize;
 
-use crate::wasm::source::{ArchiveSource, GadgetSource, GadgetSourceKind};
+use crate::wasm::source::{ArchiveSource, GadgetSource};
 
 // =========================================================
 // Response types
@@ -96,15 +102,22 @@ pub struct UninstallResult {
 pub async fn install_gadget_archive(
     paths: tauri::State<'_, InstallPaths>,
     registered: tauri::State<'_, RegisteredGadgets>,
+    pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
     archive_path: String,
 ) -> Result<InstalledGadgetInfo, String> {
     let paths = paths.inner().clone();
     let registered = registered.inner().clone();
+    let pending = Arc::clone(pending.inner());
     let archive_path = PathBuf::from(archive_path);
-    tokio::task::spawn_blocking(move || install(&paths, &registered, &archive_path))
-        .await
-        .map_err(|e| format!("install task panicked: {e}"))?
-        .map_err(|e| format!("{e:#}"))
+    tokio::task::spawn_blocking(move || {
+        let mut pending = pending
+            .lock()
+            .expect("pending changes lock is never poisoned");
+        install(&paths, &registered, &mut pending, &archive_path)
+    })
+    .await
+    .map_err(|e| format!("install task panicked: {e}"))?
+    .map_err(|e| format!("{e:#}"))
 }
 
 /// Uninstall a user-installed gadget. Rejects built-in,
@@ -113,14 +126,25 @@ pub async fn install_gadget_archive(
 pub async fn uninstall_user_gadget(
     paths: tauri::State<'_, InstallPaths>,
     registered: tauri::State<'_, RegisteredGadgets>,
+    pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
     settings: tauri::State<'_, Arc<dyn SettingsKeys>>,
     gadget_id: String,
 ) -> Result<UninstallResult, String> {
     let paths = paths.inner().clone();
     let registered = registered.inner().clone();
+    let pending = Arc::clone(pending.inner());
     let settings = Arc::clone(settings.inner());
     tokio::task::spawn_blocking(move || {
-        uninstall(&paths, &registered, settings.as_ref(), &gadget_id)
+        let mut pending = pending
+            .lock()
+            .expect("pending changes lock is never poisoned");
+        uninstall(
+            &paths,
+            &registered,
+            &mut pending,
+            settings.as_ref(),
+            &gadget_id,
+        )
     })
     .await
     .map_err(|e| format!("uninstall task panicked: {e}"))?
@@ -134,6 +158,7 @@ pub async fn uninstall_user_gadget(
 fn install(
     paths: &InstallPaths,
     registered: &RegisteredGadgets,
+    pending: &mut PendingChanges,
     archive_path: &Path,
 ) -> anyhow::Result<InstalledGadgetInfo> {
     let source =
@@ -141,29 +166,20 @@ fn install(
     let manifest = source.manifest().clone();
     let gadget_id = manifest.gadget.id.as_str().to_string();
 
-    // Each kind gets its own message so the user can tell which
-    // rejection applies and what remediation, if any, fits.
-    if let Some(kind) = registered.kind(&gadget_id) {
-        match kind {
-            GadgetSourceKind::Builtin => anyhow::bail!(
-                "A built-in gadget with id `{gadget_id}` already exists. Built-in gadgets cannot be replaced."
-            ),
-            GadgetSourceKind::System => anyhow::bail!(
-                "A system gadget with id `{gadget_id}` is bundled with the app. Overriding system gadgets is not supported."
-            ),
-            GadgetSourceKind::Dev => anyhow::bail!(
-                "A development gadget with id `{gadget_id}` is loaded from the repository. Edit the dev gadget directly or change its id before installing."
-            ),
-            GadgetSourceKind::User => anyhow::bail!(
-                "A user gadget with id `{gadget_id}` is already installed. Uninstall the existing version, then retry."
-            ),
-        }
+    match decide_install(
+        registered.kind(&gadget_id),
+        pending.get(&gadget_id),
+        &gadget_id,
+    ) {
+        InstallDecision::Fresh => {}
+        InstallDecision::Reject(message) => anyhow::bail!(message),
     }
 
     // The archive handle has to be closed before the copy: on
     // Windows an open file blocks the later rename.
     drop(source);
     archive_ops::publish_fresh(paths, archive_path, &gadget_id)?;
+    pending.record_install(&gadget_id);
 
     Ok(InstalledGadgetInfo {
         id: gadget_id,
@@ -180,16 +196,14 @@ fn install(
 fn uninstall(
     paths: &InstallPaths,
     registered: &RegisteredGadgets,
+    pending: &mut PendingChanges,
     settings: &dyn SettingsKeys,
     gadget_id: &str,
 ) -> anyhow::Result<UninstallResult> {
-    let kind = registered
-        .kind(gadget_id)
-        .ok_or_else(|| anyhow::anyhow!("unknown gadget id `{gadget_id}`"))?;
-    if kind != GadgetSourceKind::User {
-        anyhow::bail!(
-            "gadget `{gadget_id}` is a {kind:?} gadget; only user-installed gadgets can be uninstalled"
-        );
+    let registered_kind = registered.kind(gadget_id);
+    match decide_uninstall(registered_kind, pending.get(gadget_id), gadget_id) {
+        UninstallDecision::Allowed => {}
+        UninstallDecision::Reject(message) => anyhow::bail!(message),
     }
 
     let removal = archive_ops::remove_user_gadget(paths, gadget_id)?;
@@ -207,6 +221,7 @@ fn uninstall(
     }
 
     store::strip_gadget_settings(settings, gadget_id)?;
+    pending.record_uninstall(gadget_id, registered_kind.is_some());
 
     Ok(UninstallResult {
         requires_restart: true,
@@ -226,6 +241,7 @@ mod tests {
     use crate::wasm::manifest::test_helpers::{
         archive_with_manifest, write_archive_without_manifest,
     };
+    use crate::wasm::source::GadgetSourceKind;
 
     fn temp_paths() -> (tempfile::TempDir, InstallPaths) {
         let root = tempfile::tempdir().expect("create temp app data dir");
@@ -269,7 +285,13 @@ mod tests {
         let (_root, paths) = temp_paths();
         let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
 
-        let info = install(&paths, &registered(&[]), &archive).expect("install should succeed");
+        let info = install(
+            &paths,
+            &registered(&[]),
+            &mut PendingChanges::default(),
+            &archive,
+        )
+        .expect("install should succeed");
 
         assert_eq!(info.id, "weather");
         assert_eq!(info.version, "1.4.0");
@@ -305,8 +327,13 @@ mod tests {
             let (_root, paths) = temp_paths();
             let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
 
-            let error = install(&paths, &registered(&[("weather", kind)]), &archive)
-                .expect_err("install over an existing id should fail");
+            let error = install(
+                &paths,
+                &registered(&[("weather", kind)]),
+                &mut PendingChanges::default(),
+                &archive,
+            )
+            .expect_err("install over an existing id should fail");
 
             assert!(
                 format!("{error:#}").contains(expected),
@@ -323,7 +350,15 @@ mod tests {
         let not_a_zip = source.path().join("weather.torchsnap");
         std::fs::write(&not_a_zip, b"definitely not a zip").expect("write source file");
 
-        assert!(install(&paths, &registered(&[]), &not_a_zip).is_err());
+        assert!(
+            install(
+                &paths,
+                &registered(&[]),
+                &mut PendingChanges::default(),
+                &not_a_zip
+            )
+            .is_err()
+        );
         assert!(dir_entries(&paths.gadgets_dir).is_empty());
     }
 
@@ -332,7 +367,15 @@ mod tests {
         let (_root, paths) = temp_paths();
         let (_src, archive) = write_archive_without_manifest(&[("README.md", b"no manifest here")]);
 
-        assert!(install(&paths, &registered(&[]), &archive).is_err());
+        assert!(
+            install(
+                &paths,
+                &registered(&[]),
+                &mut PendingChanges::default(),
+                &archive
+            )
+            .is_err()
+        );
         assert!(dir_entries(&paths.gadgets_dir).is_empty());
     }
 
@@ -357,6 +400,7 @@ mod tests {
         let result = uninstall(
             &paths,
             &registered(&[("weather", GadgetSourceKind::User)]),
+            &mut PendingChanges::default(),
             &settings,
             "weather",
         )
@@ -375,11 +419,24 @@ mod tests {
         let settings = MemorySettings::with_keys(&[]);
         let registry = registered(&[("clipboard-manager", GadgetSourceKind::Builtin)]);
 
-        let unknown = uninstall(&paths, &registry, &settings, "weather").expect_err("unknown id");
+        let unknown = uninstall(
+            &paths,
+            &registry,
+            &mut PendingChanges::default(),
+            &settings,
+            "weather",
+        )
+        .expect_err("unknown id");
         assert!(format!("{unknown:#}").contains("unknown gadget id `weather`"));
 
-        let builtin =
-            uninstall(&paths, &registry, &settings, "clipboard-manager").expect_err("builtin");
+        let builtin = uninstall(
+            &paths,
+            &registry,
+            &mut PendingChanges::default(),
+            &settings,
+            "clipboard-manager",
+        )
+        .expect_err("builtin");
         assert!(format!("{builtin:#}").contains("only user-installed gadgets can be uninstalled"));
         assert_eq!(settings.save_count(), 0);
     }
@@ -393,11 +450,68 @@ mod tests {
         let error = uninstall(
             &paths,
             &registered(&[("weather", GadgetSourceKind::User)]),
+            &mut PendingChanges::default(),
             &settings,
             "weather",
         )
         .expect_err("a failed save must not be reported as success");
 
         assert!(format!("{error:#}").contains("persist settings"));
+    }
+
+    // =========================================================
+    // Changes before restart
+    // =========================================================
+
+    #[test]
+    fn a_gadget_installed_in_this_session_can_be_uninstalled_again() {
+        let (_root, paths) = temp_paths();
+        let registry = registered(&[]);
+        let mut pending = PendingChanges::default();
+        let settings = MemorySettings::with_keys(&[]);
+        let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
+        install(&paths, &registry, &mut pending, &archive).expect("install should succeed");
+
+        uninstall(&paths, &registry, &mut pending, &settings, "weather")
+            .expect("uninstall of a pending install should succeed");
+
+        assert!(!paths.archive("weather").exists());
+        assert!(pending.get("weather").is_none());
+        // With the record gone, the same file installs again.
+        install(&paths, &registry, &mut pending, &archive).expect("reinstall should succeed");
+    }
+
+    #[test]
+    fn an_uninstalled_gadget_can_be_reinstalled_before_restart() {
+        let (_root, paths) = temp_paths();
+        install_user_gadget_on_disk(&paths, "weather");
+        let registry = registered(&[("weather", GadgetSourceKind::User)]);
+        let mut pending = PendingChanges::default();
+        let settings = MemorySettings::with_keys(&[]);
+        uninstall(&paths, &registry, &mut pending, &settings, "weather")
+            .expect("uninstall should succeed");
+        let (_src, archive) = archive_with_manifest("weather", "1.5.0", "");
+
+        let info = install(&paths, &registry, &mut pending, &archive)
+            .expect("reinstall after uninstall should succeed");
+
+        assert_eq!(info.version, "1.5.0");
+        assert!(paths.archive("weather").exists());
+    }
+
+    #[test]
+    fn a_second_uninstall_before_restart_asks_for_a_restart() {
+        let (_root, paths) = temp_paths();
+        install_user_gadget_on_disk(&paths, "weather");
+        let registry = registered(&[("weather", GadgetSourceKind::User)]);
+        let mut pending = PendingChanges::default();
+        let settings = MemorySettings::with_keys(&[]);
+        uninstall(&paths, &registry, &mut pending, &settings, "weather")
+            .expect("uninstall should succeed");
+
+        let error = uninstall(&paths, &registry, &mut pending, &settings, "weather")
+            .expect_err("a second uninstall should be rejected");
+
+        assert!(format!("{error:#}").contains("already uninstalled"));
     }
 }

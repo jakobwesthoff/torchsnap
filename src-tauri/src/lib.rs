@@ -883,6 +883,9 @@ pub fn run() {
                 host.gadget_sources(),
             ));
             app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
+            app.manage(Arc::new(std::sync::Mutex::new(
+                gadget_install::PendingChanges::default(),
+            )));
 
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
