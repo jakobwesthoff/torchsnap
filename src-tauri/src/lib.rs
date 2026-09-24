@@ -611,6 +611,7 @@ pub fn run() {
             gadget_install::install_gadget_archive,
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
+            gadget_install::gadget_permissions,
             build_info,
         ])
         .plugin(tauri_plugin_opener::init())
