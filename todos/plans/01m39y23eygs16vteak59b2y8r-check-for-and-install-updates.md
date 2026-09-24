@@ -28,7 +28,11 @@ welcome window (`welcome.html`, `src/welcome/`, `src-tauri/src/welcome.rs`),
 all with tests. The maintainer tested them in unsigned builds
 (0.11.95 to 0.11.96) on 2026-09-24: everything worked except the
 launcher after the update restart, now fixed (`73ca3d3`); the welcome
-was reworked after that test (step 8). Work
+was reworked after that test (step 8). Step 9 done on torchsnap-web's
+`auto-updater` branch (`48676de`, its ADR 0009): the build serves the
+latest `release.json` as `/updates/latest.json` and shows the version
+in the macOS pill; `TORCHSNAP_RELEASE_FEED` points it at another feed.
+It merges after 0.12.0 is published. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -293,7 +297,7 @@ Each step ends in commits on the `auto-updater` branches and a note in
    four pages, the still launcher preview on page 1, forward buttons
    named after the next page, fade-in per page. The animation moved to
    its own todo.
-9. **Website (torchsnap-web).** The build downloads
+9. **Website (torchsnap-web), done.** The build downloads
    `releases/latest/download/release.json` from GitHub and serves it as
    `/updates/latest.json`, failing when the download fails. The version
    appears next to the download button (wording and placement follow
