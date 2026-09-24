@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restarts it, showing the launcher once it is back. "Later" keeps the
   update in the menu-bar menu, "Skip This Version" stops automatic
   checks from offering it again.
+- Settings → General has an Updates section: a switch for automatic
+  checks (once a day, asking torchsnap.app) and a "Check for Updates"
+  button.
 
 ## [0.11.1] - 2026-09-24
 
