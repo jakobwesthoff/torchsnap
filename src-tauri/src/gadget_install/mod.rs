@@ -66,7 +66,9 @@ mod staging;
 mod store;
 
 pub use archive_ops::{process_uninstall_markers, remove_stale_backups};
-pub use commands::{QUEUE_CHANGED_EVENT, process_in_background, submit_opened_urls};
+pub use commands::{
+    QUEUE_CHANGED_EVENT, process_in_background, submit_command_line, submit_opened_urls,
+};
 pub use paths::InstallPaths;
 pub use pending::PendingChanges;
 pub use queue::{InstallQueue, QueueContext};

@@ -473,26 +473,49 @@ fn launcher_set_layout(
     }
 }
 
-pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
-    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
+/// What bringing up the launcher takes, given its current state.
+#[derive(Debug, PartialEq, Eq)]
+enum LauncherShowStep {
+    AlreadyVisible,
+    /// The frontend has not reported its layout yet; the show is
+    /// queued and fires once the layout arrives.
+    WaitForLayout,
+    Show,
+}
 
-    if is_visible {
-        request_launcher_dismiss(app);
-        return;
+fn launcher_show_step(is_visible: bool, layout_ready: bool) -> LauncherShowStep {
+    match (is_visible, layout_ready) {
+        (true, _) => LauncherShowStep::AlreadyVisible,
+        (false, false) => LauncherShowStep::WaitForLayout,
+        (false, true) => LauncherShowStep::Show,
     }
+}
 
-    // If the frontend hasn't reported layout dimensions yet,
-    // queue the show so it fires once the layout arrives.
+pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
+    if PlatformLauncherPanel::is_visible(app).unwrap_or(false) {
+        request_launcher_dismiss(app);
+    } else {
+        show_launcher_window(app);
+    }
+}
+
+/// Bring up the launcher without hiding it when it is already open,
+/// for callers that mean "show", like launching Torchsnap again.
+pub(crate) fn show_launcher_window(app: &tauri::AppHandle) {
+    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
     let layout_state = app.state::<LauncherLayoutState>();
-    let Some(layout) = layout_state.get().copied() else {
-        layout_state.request_show();
-        return;
-    };
+    let layout = layout_state.get().copied();
 
-    position_launcher_on_cursor_monitor(app, &layout);
-
-    if let Err(e) = show_launcher(app) {
-        eprintln!("failed to show launcher: {e:#}");
+    match launcher_show_step(is_visible, layout.is_some()) {
+        LauncherShowStep::AlreadyVisible => {}
+        LauncherShowStep::WaitForLayout => layout_state.request_show(),
+        LauncherShowStep::Show => {
+            let layout = layout.expect("Show is only chosen once the layout is known");
+            position_launcher_on_cursor_monitor(app, &layout);
+            if let Err(e) = show_launcher(app) {
+                eprintln!("failed to show launcher: {e:#}");
+            }
+        }
     }
 }
 
@@ -590,6 +613,24 @@ pub fn run() {
     let install_queue = Arc::new(gadget_install::InstallQueue::new());
 
     let builder = tauri::Builder::default()
+        // Must be the first plugin: a second launch is detected and
+        // handed to this running instance before anything else starts.
+        // The second process passes its arguments (archives to install
+        // when a file manager opened one) and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let queue = app.state::<Arc<gadget_install::InstallQueue>>();
+            let submission = gadget_install::submit_command_line(
+                &queue,
+                args.into_iter().map(std::ffi::OsString::from),
+                std::path::Path::new(&cwd),
+            );
+            if submission.is_empty() {
+                show_launcher_window(app);
+            } else if !submission.queued.is_empty() {
+                gadget_install::process_in_background(queue.inner(), submission.queued);
+                show_settings_window(app);
+            }
+        }))
         .manage(Arc::clone(&install_queue))
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
@@ -947,13 +988,23 @@ pub fn run() {
                     let _ = queue_changed.emit(gadget_install::QUEUE_CHANGED_EVENT, ());
                 }),
             });
+            // Archives named on this process's own command line (a file
+            // manager starting Torchsnap for an opened file on Linux, or
+            // a direct start of the binary with a path).
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let from_command_line =
+                gadget_install::submit_command_line(&install_queue, std::env::args_os(), &cwd);
+
             // Files opened before startup finished (double-clicking an
-            // archive while Torchsnap was not running) end up here, so
-            // the review window has to be opened from setup.
-            if !buffered_requests.is_empty() {
+            // archive while Torchsnap was not running) and command-line
+            // archives end up here, so the review window has to be
+            // opened from setup.
+            let mut to_process = buffered_requests;
+            to_process.extend(from_command_line.queued);
+            if !to_process.is_empty() {
                 show_settings_window(app.handle());
             }
-            gadget_install::process_in_background(&install_queue, buffered_requests);
+            gadget_install::process_in_background(&install_queue, to_process);
 
             app.manage(install_paths);
             app.manage(install_staging);
@@ -1335,4 +1386,34 @@ fn load_single_wasm_gadget(
         .insert(gadget_id.clone(), source);
 
     Ok(gadget_id)
+}
+
+#[cfg(test)]
+mod launcher_tests {
+    use super::*;
+
+    #[test]
+    fn a_visible_launcher_stays_as_it_is() {
+        assert_eq!(
+            launcher_show_step(true, true),
+            LauncherShowStep::AlreadyVisible
+        );
+        assert_eq!(
+            launcher_show_step(true, false),
+            LauncherShowStep::AlreadyVisible
+        );
+    }
+
+    #[test]
+    fn a_hidden_launcher_waits_for_its_layout() {
+        assert_eq!(
+            launcher_show_step(false, false),
+            LauncherShowStep::WaitForLayout
+        );
+    }
+
+    #[test]
+    fn a_hidden_launcher_with_layout_is_shown() {
+        assert_eq!(launcher_show_step(false, true), LauncherShowStep::Show);
+    }
 }

@@ -2,7 +2,6 @@
 kind: feature
 status: deferred
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
-depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
 ---
 
 # Install gadgets from a `torchsnap://` link
@@ -26,9 +25,10 @@ double-click steps.
   download replaces the copy in the staging step (same 16 MiB cap).
 - The install review (`src/settings/install/InstallReviewModal.tsx`),
   shown for every install anyway.
-- On Linux,
-  `todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md`,
-  since URLs arrive in argv there.
+- On Linux, the command-line intake (`submit_command_line` in
+  `src-tauri/src/gadget_install/commands.rs`), since URLs arrive in
+  argv there. It passes URLs through `archive_path`, which accepts
+  only `file://` today.
 
 ## How Tauri handles it
 
