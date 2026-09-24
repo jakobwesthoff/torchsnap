@@ -127,6 +127,8 @@ export interface CommandMap {
   install_queue_dismiss: { params: { requestId: string }; result: void };
   gadget_permissions: { params: void; result: Record<string, PermissionItem[]> };
   pending_gadget_changes: { params: void; result: Record<string, PendingGadget> };
+  take_settings_start_section: { params: void; result: string | null };
+  restart_to_apply_gadget_changes: { params: void; result: void };
   build_info: { params: void; result: { version: string; gitHash: string } };
 }
 

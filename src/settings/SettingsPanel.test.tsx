@@ -22,6 +22,7 @@ vi.mock("./sections/GadgetsManagementPanel", () => ({
 describe("SettingsPanel", () => {
   it("opens the Gadgets section when install requests are waiting", async () => {
     mockCommands({
+      take_settings_start_section: () => null,
       install_queue_snapshot: () => [
         {
           id: "r1",
@@ -37,8 +38,19 @@ describe("SettingsPanel", () => {
     expect(await screen.findByText("gadgets section")).toBeInTheDocument();
   });
 
+  it("opens the section the backend asks to start on", async () => {
+    mockCommands({
+      install_queue_snapshot: () => [],
+      take_settings_start_section: () => "gadgets",
+    });
+
+    render(<SettingsPanel />);
+
+    expect(await screen.findByText("gadgets section")).toBeInTheDocument();
+  });
+
   it("starts on General without install requests", async () => {
-    mockCommands({ install_queue_snapshot: () => [] });
+    mockCommands({ install_queue_snapshot: () => [], take_settings_start_section: () => null });
 
     render(<SettingsPanel />);
 

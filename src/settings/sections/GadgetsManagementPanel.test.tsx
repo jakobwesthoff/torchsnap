@@ -295,6 +295,31 @@ describe("GadgetsManagementPanel", () => {
     expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
   });
 
+  it("restarts through the backend so Settings reopens on Gadgets", async () => {
+    const restart = vi.fn();
+    mockCommands({
+      pending_gadget_changes: () => ({
+        weather: {
+          kind: "installed",
+          name: "Weather",
+          description: "Forecasts",
+          version: "1.0.0",
+          previousVersion: null,
+        },
+      }),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({}),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+      restart_to_apply_gadget_changes: restart,
+    });
+    render(<GadgetsManagementPanel />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Restart now" }));
+
+    expect(restart).toHaveBeenCalledOnce();
+  });
+
   it("shows no restart bar without pending changes", async () => {
     mockCardCommands({});
     render(<GadgetsManagementPanel />);

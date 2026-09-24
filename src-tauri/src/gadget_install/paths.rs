@@ -20,6 +20,9 @@ pub struct InstallPaths {
     pub gadgets_dir: PathBuf,
     /// `<app_data_dir>/gadget-home/`, one state tree per gadget id.
     pub gadget_home_dir: PathBuf,
+    /// Marker that makes the next start open Settings on the Gadgets
+    /// section, written by "Restart now".
+    pub reopen_settings_marker: PathBuf,
 }
 
 impl InstallPaths {
@@ -27,6 +30,7 @@ impl InstallPaths {
         Self {
             gadgets_dir: app_data_dir.join("gadgets"),
             gadget_home_dir: app_data_dir.join("gadget-home"),
+            reopen_settings_marker: app_data_dir.join(".reopen-gadget-settings"),
         }
     }
 
@@ -89,6 +93,10 @@ mod tests {
         assert_eq!(
             paths.uninstall_marker("weather"),
             Path::new("/data/gadgets/.weather.uninstall")
+        );
+        assert_eq!(
+            paths.reopen_settings_marker,
+            Path::new("/data/.reopen-gadget-settings")
         );
     }
 }
