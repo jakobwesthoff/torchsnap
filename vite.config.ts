@@ -6,12 +6,13 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { guardedPagesCsp } from "./vite/csp";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), guardedPagesCsp(["update.html"])],
 
   // Stable import paths for gadget SDK surface. Must be kept in
   // sync with tsconfig.json paths.
