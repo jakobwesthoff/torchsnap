@@ -32,6 +32,8 @@ import { Switch } from "../../components/Switch";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
+import { PermissionSummary } from "../install/PermissionSummary";
+import type { PermissionItem } from "../install/types";
 
 // =========================================================
 // Types
@@ -43,6 +45,7 @@ interface PluginRow {
   description?: string;
   icon?: string;
   sourceKind: GadgetSourceKind;
+  permissions: PermissionItem[];
 }
 
 // =========================================================
@@ -53,6 +56,7 @@ export function GadgetsManagementPanel() {
   const gadgetMetadata = useMemo(() => getGadgetsWithSettings(), []);
   const [sourceKinds, setSourceKinds] = useState<Record<string, GadgetSourceKind>>({});
   const [loadingSourceKinds, setLoadingSourceKinds] = useState(true);
+  const [permissions, setPermissions] = useState<Record<string, PermissionItem[]>>({});
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -80,6 +84,22 @@ export function GadgetsManagementPanel() {
     };
   }, []);
 
+  // Permissions only exist for WASM gadgets; native ones are compiled
+  // into the app and have no manifest, so their cards show none.
+  useEffect(() => {
+    let cancelled = false;
+    command("gadget_permissions")
+      .then((byGadget) => {
+        if (!cancelled) {
+          setPermissions(byGadget);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const rows: PluginRow[] = useMemo(() => {
     return gadgetMetadata
       .filter((gadget) => sourceKinds[gadget.id] != null)
@@ -89,8 +109,9 @@ export function GadgetsManagementPanel() {
         description: gadget.description,
         icon: gadget.icon,
         sourceKind: sourceKinds[gadget.id],
+        permissions: permissions[gadget.id] ?? [],
       }));
-  }, [gadgetMetadata, sourceKinds]);
+  }, [gadgetMetadata, sourceKinds, permissions]);
 
   // =========================================================
   // Install: file picker path
@@ -218,7 +239,7 @@ function PluginRowView({
   const canUninstall = row.sourceKind === "user";
 
   return (
-    <div className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+    <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
       {row.icon && (
         <Icon
           icon={row.icon}
@@ -230,6 +251,7 @@ function PluginRowView({
         {row.description && (
           <span className="text-xs text-text-tertiary truncate">{row.description}</span>
         )}
+        <PermissionSummary items={row.permissions} className="mt-1.5" />
       </div>
       <Switch checked={enabled ?? true} onChange={setEnabled} />
       {/* Trailing slot: Uninstall for user gadgets, source badge

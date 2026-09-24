@@ -9,7 +9,10 @@ plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-t
 
 Two features needed:
 
-## 1. Settings page: permission display
+## 1. Settings page: permission display (done)
+
+Done in plan step 13: the gadget cards in Settings → Gadgets list each
+WASM gadget's permissions through `PermissionSummary`.
 
 Each gadget's settings page should automatically show its declared permissions
 in a structured, readable format alongside the enable toggle. Users should be

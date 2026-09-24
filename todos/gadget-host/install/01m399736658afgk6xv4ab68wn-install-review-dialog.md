@@ -64,9 +64,8 @@ yes. The dialog replaces a plain confirm step entirely.
   (deleted, content above).
 - Section 2 of
   `todos/product/features/01krp751n5tddffjtb8fr7nnpr-permission-ui-transparency.md`;
-  its section 1 and
-  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`
-  are covered by the shared component (plan step 13).
+  its section 1 and the former show-permissions-in-settings todo are
+  done: the gadget cards use the shared component (plan step 13).
 
 ## Out of scope
 
