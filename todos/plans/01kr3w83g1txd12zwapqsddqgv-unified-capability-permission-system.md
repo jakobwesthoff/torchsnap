@@ -65,8 +65,10 @@ the already-permissioned capabilities.
 ## Key design properties
 
 - **Uniform permission data.** The same `CapRequest` enum is used for WASM
-  manifest parsing, native gadget declarations, and (future) install-time UI
-  presentation to the user.
+  manifest parsing, native gadget declarations, and install-time UI
+  presentation to the user. The install review and the permission lines
+  in Settings → Gadgets exist, but build their items from the manifest
+  (`src-tauri/src/gadget_install/review.rs`), not from `CapRequest`.
 
 - **Capabilities enforce their own permissions.** Only `OpenerCap` knows how
   to check URL schemes. Only `FilesystemCap` knows how path canonicalization
