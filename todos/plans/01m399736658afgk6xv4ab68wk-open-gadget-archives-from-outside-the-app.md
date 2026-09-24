@@ -19,6 +19,10 @@ permissions), and the "Later" items. Every open question is decided (see "Decisi
 remains unverified is listed under "Unverified assumptions", each with
 the step that settles it.
 
+The maintainer tested the unsigned release build after the follow-up
+redesign (`todos/plans/01m39p14c2hmnfz54fjffnb1rf-gadget-list-and-permission-redesign.md`)
+and reported that it works; both branches were merged into `main`.
+
 ## Goal
 
 A user double-clicks a `.torchsnap` file, or picks it in the Gadgets
