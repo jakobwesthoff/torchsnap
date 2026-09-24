@@ -16,7 +16,11 @@ committed (`just build --config`, plugin registration, feed override,
 tray item with native dialogs). Step 2 done: the real key pair exists
 (`~/.config/torchsnap/updater.key`, named in `release.env`), its public
 key is in `tauri.conf.json`, ADR 0053 records the feed and key
-handling, and README "Releasing" lists the key. Work
+handling, and README "Releasing" lists the key. Step 3 done: `tools/release-feed`
+(with tests in `tools/tests/`, run by `just test-tools`) writes
+`release.json`; `release-build` builds and checks the update archive,
+`release-publish` uploads four assets and starts the torchsnap-web
+deploy. Not run end to end yet; the first real `release-build` does. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -247,7 +251,7 @@ Each step ends in commits on the `auto-updater` branches and a note in
    decided, put the public key into `tauri.conf.json`. ADR for the
    update feed (plugin, torchsnap.app URL, `release.json`, key
    handling), amending ADR 0050 for the release flow.
-3. **Release pipeline (torchsnap).** `just build` gets a way to pass
+3. **Release pipeline (torchsnap), done.** `just build` gets a way to pass
    `--config` to `tauri build`. `release-build` checks the updater key
    variables, builds with `createUpdaterArtifacts`, verifies the archive
    (stapled ticket, signature, `version:` in the trusted comment) and
