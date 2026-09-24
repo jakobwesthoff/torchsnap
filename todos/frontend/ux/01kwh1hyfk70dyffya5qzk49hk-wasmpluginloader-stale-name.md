@@ -1,8 +1,11 @@
-# `wasmPluginLoader.ts` kept its pre-rename name; docs already cite `wasmGadgetLoader.ts`
+---
+kind: improvement
+severity: low
+status: open
+area: [src/gadgets/wasmPluginLoader.ts]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src/gadgets/wasmPluginLoader.ts
+# `wasmPluginLoader.ts` kept its pre-rename name; docs already cite `wasmGadgetLoader.ts`
 
 ## Problem
 

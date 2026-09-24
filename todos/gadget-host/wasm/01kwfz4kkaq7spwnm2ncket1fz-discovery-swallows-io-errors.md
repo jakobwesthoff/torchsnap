@@ -1,8 +1,11 @@
-# Gadget discovery silently swallows I/O errors
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/discovery.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/wasm/discovery.rs
+# Gadget discovery silently swallows I/O errors
 
 ## Problem
 `scan_gadget_entries` treats every `read_dir` failure as an empty

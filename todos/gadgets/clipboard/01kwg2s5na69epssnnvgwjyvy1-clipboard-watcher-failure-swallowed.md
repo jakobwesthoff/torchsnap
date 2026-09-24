@@ -1,8 +1,12 @@
-# Clipboard gadget reports success when the watcher fails to start
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadgets/clipboard/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadgets/clipboard/mod.rs
+# Clipboard gadget reports success when the watcher fails to start
 
 ## Problem
 

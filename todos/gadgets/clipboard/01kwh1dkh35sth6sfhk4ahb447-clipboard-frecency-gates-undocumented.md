@@ -1,8 +1,12 @@
-# `clipboard` / `frecency` permission gates missing from gadget guide and WIT docs
+---
+kind: bug
+severity: medium
+status: open
+area: [docs/api/gadget-development.md, gadgets/gadget-sdk/wit/torchsnap-gadget.wit]
+tags: [docs]
+---
 
-**Kind:** bug (documentation)
-**Severity:** medium
-**Area:** docs/api/gadget-development.md, gadgets/gadget-sdk/wit/torchsnap-gadget.wit
+# `clipboard` / `frecency` permission gates missing from gadget guide and WIT docs
 
 ## Problem
 

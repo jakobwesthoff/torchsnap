@@ -1,8 +1,12 @@
-# ZeroTier: auth/daemon state is frozen at enable() — daemon starting or dying later is misreported
+---
+kind: bug
+severity: medium
+status: open
+area: [gadgets/zerotier/src/lib.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** gadgets/zerotier/src/lib.rs
+# ZeroTier: auth/daemon state is frozen at enable() — daemon starting or dying later is misreported
 
 ## Problem
 

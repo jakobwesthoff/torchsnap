@@ -1,3 +1,8 @@
+---
+kind: feature
+status: deferred
+---
+
 # Clipboard: Source app identification and icon display
 
 The clipboard manager UI shows an icon per entry indicating where the

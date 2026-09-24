@@ -1,6 +1,12 @@
+---
+kind: feature
+status: needs-discussion
+tags: [api-design]
+---
+
 # Type-safe execute data via SDK associated type
 
-**Status: needs discussion** — depends on the opaque `data`
+Depends on the opaque `data`
 field, already landed as `ScoredEntry::data`.
 
 ## Problem

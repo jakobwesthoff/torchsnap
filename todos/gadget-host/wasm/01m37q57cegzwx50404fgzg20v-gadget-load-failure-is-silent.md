@@ -1,8 +1,13 @@
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/cached_component.rs]
+---
+
 # A gadget that fails to load is invisible to the user
 
-**Kind:** improvement (robustness)
-**Severity:** medium
-**Area:** src-tauri/src/wasm/runtime/cached_component.rs, gadget load path, frontend gadget settings
+Gadget load path and frontend gadget settings are also involved.
 
 ## Problem
 

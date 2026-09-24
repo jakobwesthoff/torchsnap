@@ -1,8 +1,12 @@
-# `DirectorySource::open` reads `manifest.toml` with a raw, unguarded `read_to_string` (symlink-follow out of root)
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/source.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug (security hardening)
-**Severity:** low
-**Area:** src-tauri/src/wasm/source.rs
+# `DirectorySource::open` reads `manifest.toml` with a raw, unguarded `read_to_string` (symlink-follow out of root)
 
 Surfaced during the B6 security-pass analysis
 (`01kwfz4kkaq7spwnm2ncket1g1-directory-read-fallback-raw-path.md`),

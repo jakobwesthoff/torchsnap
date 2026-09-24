@@ -1,8 +1,12 @@
-# HTTP origin validation accepts opaque origins and drops paths silently
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/manifest/permissions/http.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/manifest/permissions/http.rs
+# HTTP origin validation accepts opaque origins and drops paths silently
 
 ## Problem
 `HttpPermissionsDef::validate` normalizes each declared origin

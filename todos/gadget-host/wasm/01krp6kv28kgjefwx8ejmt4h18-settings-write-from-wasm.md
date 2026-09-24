@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Add settings write to WIT interface
 
 The WIT `settings` interface currently only has `get`. WASM gadgets cannot

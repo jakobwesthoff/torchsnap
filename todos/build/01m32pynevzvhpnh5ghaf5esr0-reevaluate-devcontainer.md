@@ -1,7 +1,9 @@
-# Re-evaluate the Claude devcontainer: keep, remove or replace
+---
+kind: decision
+status: open
+---
 
-**Kind:** decision
-**Status:** open, raised 2026-09-21
+# Re-evaluate the Claude devcontainer: keep, remove or replace
 
 ## What it is
 

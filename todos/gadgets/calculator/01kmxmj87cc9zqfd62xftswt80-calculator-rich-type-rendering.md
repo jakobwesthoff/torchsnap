@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Calculator: rich per-type result rendering
 
 ## Problem

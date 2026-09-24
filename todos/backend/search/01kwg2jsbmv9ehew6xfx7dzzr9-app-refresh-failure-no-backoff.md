@@ -1,8 +1,11 @@
-# App-launcher background refresh retries on every keystroke after a discovery failure
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/gadgets/app_launcher.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/gadgets/app_launcher.rs
+# App-launcher background refresh retries on every keystroke after a discovery failure
 
 ## Problem
 

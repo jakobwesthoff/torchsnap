@@ -1,3 +1,9 @@
+---
+kind: chore
+status: open
+tags: [testing]
+---
+
 # Frontend Test Infrastructure and Tests
 
 ## Problem

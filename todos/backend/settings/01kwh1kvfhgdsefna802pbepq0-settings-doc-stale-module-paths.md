@@ -1,8 +1,12 @@
-# 06-settings-reactivity.md cites pre-refactor settings file paths
+---
+kind: improvement
+severity: low
+status: open
+area: [docs/Gadget-Architecture/06-settings-reactivity.md]
+tags: [docs]
+---
 
-**Kind:** improvement (documentation)
-**Severity:** low
-**Area:** docs/Gadget-Architecture/06-settings-reactivity.md
+# 06-settings-reactivity.md cites pre-refactor settings file paths
 
 ## Problem
 

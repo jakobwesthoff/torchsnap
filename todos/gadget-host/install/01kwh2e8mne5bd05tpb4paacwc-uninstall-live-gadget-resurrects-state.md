@@ -1,8 +1,11 @@
-# Uninstalling a running gadget deletes state under a live instance, which can resurrect it
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadget_install.rs]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src-tauri/src/gadget_install.rs
+# Uninstalling a running gadget deletes state under a live instance, which can resurrect it
 
 ## Problem
 

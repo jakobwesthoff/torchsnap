@@ -1,8 +1,12 @@
-# CommandCap: stdin write runs before output readers and outside the timeout
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/caps/command.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/caps/command.rs
+# CommandCap: stdin write runs before output readers and outside the timeout
 
 ## Problem
 `run_child_with_caps` sequences the child I/O as: spawn → write

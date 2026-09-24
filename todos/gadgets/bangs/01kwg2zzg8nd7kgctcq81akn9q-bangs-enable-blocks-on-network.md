@@ -1,8 +1,11 @@
-# Bangs first-launch enable() blocks up to 30 s on the network before falling back to bundled data
+---
+kind: improvement
+severity: low
+status: open
+area: [gadgets/bangs/src/lib.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** gadgets/bangs/src/lib.rs
+# Bangs first-launch enable() blocks up to 30 s on the network before falling back to bundled data
 
 ## Problem
 

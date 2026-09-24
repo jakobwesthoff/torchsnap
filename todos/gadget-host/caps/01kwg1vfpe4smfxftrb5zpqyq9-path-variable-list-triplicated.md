@@ -1,8 +1,11 @@
-# Path-variable name list is maintained in three places
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/paths.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/paths.rs
+# Path-variable name list is maintained in three places
 
 ## Problem
 The set of valid `${...}` variable names is spelled out

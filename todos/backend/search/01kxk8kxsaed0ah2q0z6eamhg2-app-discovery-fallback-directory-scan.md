@@ -1,3 +1,8 @@
+---
+kind: bug
+status: open
+---
+
 # App discovery: fallback directory scan when Spotlight results are implausible
 
 `MdfindDiscovery::discover()` relies exclusively on

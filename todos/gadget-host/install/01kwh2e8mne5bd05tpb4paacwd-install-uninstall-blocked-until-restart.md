@@ -1,8 +1,11 @@
-# Install→uninstall and uninstall→reinstall are blocked until restart, with misleading errors
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadget_install.rs]
+---
 
-**Kind:** bug
-**Severity:** low
-**Area:** src-tauri/src/gadget_install.rs
+# Install→uninstall and uninstall→reinstall are blocked until restart, with misleading errors
 
 ## Problem
 

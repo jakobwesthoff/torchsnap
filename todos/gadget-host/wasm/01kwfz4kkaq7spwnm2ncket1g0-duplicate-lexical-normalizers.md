@@ -1,8 +1,11 @@
-# Two near-identical lexical path normalizers in wasm module
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/wasm/source.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/wasm/source.rs
+# Two near-identical lexical path normalizers in wasm module
 
 ## Problem
 `source.rs` defines `normalize_path`

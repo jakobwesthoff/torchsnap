@@ -1,3 +1,8 @@
+---
+kind: question
+status: open
+---
+
 # Evaluate SQL transaction wrapper in WIT interface
 
 Gadgets currently manage SQLite transactions manually via

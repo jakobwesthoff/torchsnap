@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/settings/sections/GeneralSection.tsx]
+tags: [unconfirmed, error-handling]
+---
+
 # GeneralSection: autostart and build-info promises have no error handling
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/settings/sections/GeneralSection.tsx
 
 ## Problem
 Three promise chains in `GeneralSection` lack rejection handling:

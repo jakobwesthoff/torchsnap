@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # Set up import aliases for lib and shared frontend modules
 
 ## Problem

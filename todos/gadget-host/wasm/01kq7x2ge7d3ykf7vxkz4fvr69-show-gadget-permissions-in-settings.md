@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Surface gadget permissions in the settings UI
 
 ## Context

@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/components/TitleBar.tsx]
+tags: [unconfirmed]
+---
+
 # TitleBar Alt-pressed state sticks when the window loses focus with Alt held
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/components/TitleBar.tsx
 
 ## Problem
 `MacTitleBar` tracks the Alt/Option key with paired window keydown /

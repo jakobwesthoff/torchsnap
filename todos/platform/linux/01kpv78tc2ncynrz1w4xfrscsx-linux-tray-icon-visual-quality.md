@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Linux tray icon visual quality
 
 Discovered while bringing up the project on Fedora 43 + GNOME. Getting

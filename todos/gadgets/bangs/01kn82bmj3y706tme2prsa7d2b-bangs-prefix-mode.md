@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Bangs gadget: `!` prefix mode with custom UI
 
 ## Overview

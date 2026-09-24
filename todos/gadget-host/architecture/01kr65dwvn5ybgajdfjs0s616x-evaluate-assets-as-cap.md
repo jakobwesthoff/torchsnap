@@ -1,3 +1,8 @@
+---
+kind: decision
+status: open
+---
+
 # Evaluate assets host import as a capability
 
 ## Context

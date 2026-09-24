@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance, concurrency]
+---
+
 # Make entries() calls concurrent or isolated
 
 `entries()` calls for all catalog gadgets currently run sequentially inside a

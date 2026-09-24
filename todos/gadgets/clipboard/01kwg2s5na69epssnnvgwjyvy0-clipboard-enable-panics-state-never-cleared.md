@@ -1,8 +1,11 @@
-# Clipboard gadget: enable() panics on DB failure, state is never cleared on disable, handle_message panics before enable completes
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/gadgets/clipboard/mod.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/gadgets/clipboard/mod.rs
+# Clipboard gadget: enable() panics on DB failure, state is never cleared on disable, handle_message panics before enable completes
 
 ## Problem
 

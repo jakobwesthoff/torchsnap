@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # Two parallel reactive-settings systems with different semantics
 
 ## Problem

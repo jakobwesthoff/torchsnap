@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Install-time permission consent prompt for User gadgets
 
 ## Context

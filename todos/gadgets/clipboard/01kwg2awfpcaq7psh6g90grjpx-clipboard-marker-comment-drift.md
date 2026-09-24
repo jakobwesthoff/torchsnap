@@ -1,8 +1,11 @@
-# Clipboard self-write marker: module comment names the wrong pasteboard type
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/platform/macos/clipboard.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/platform/macos/clipboard.rs
+# Clipboard self-write marker: module comment names the wrong pasteboard type
 
 ## Problem
 

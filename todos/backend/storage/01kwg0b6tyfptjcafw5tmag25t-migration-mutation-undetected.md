@@ -1,8 +1,12 @@
-# Edited SQL migrations are silently never re-applied
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/storage/sql_storage.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/storage/sql_storage.rs
+# Edited SQL migrations are silently never re-applied
 
 ## Problem
 `SqlStorage::open` applies migrations via `rusqlite_migration`

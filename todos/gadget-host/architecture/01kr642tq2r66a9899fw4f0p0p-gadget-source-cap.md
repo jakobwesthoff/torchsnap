@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: deferred
+---
+
 # Encapsulate GadgetSource as a capability
 
 ## Context

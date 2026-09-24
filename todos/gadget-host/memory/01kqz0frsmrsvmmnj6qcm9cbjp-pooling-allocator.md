@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Pooling allocator for wasmtime Engine
 
 ## Problem

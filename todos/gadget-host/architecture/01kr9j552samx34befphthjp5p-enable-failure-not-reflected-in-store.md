@@ -1,3 +1,8 @@
+---
+kind: bug
+status: open
+---
+
 # Enable failure not reflected in settings store
 
 ## Problem

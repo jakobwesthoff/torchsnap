@@ -1,8 +1,13 @@
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src]
+---
+
 # Host-side errors go only to stderr (`eprintln!`) — invisible in a packaged app
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** src-tauri/src (cross-cutting; ~30 call sites)
+The pattern is codebase-wide (approximately 30 call sites).
 
 ## Problem
 

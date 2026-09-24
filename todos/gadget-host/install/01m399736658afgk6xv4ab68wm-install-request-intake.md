@@ -1,8 +1,10 @@
-# Install request intake: one pipeline for every way a gadget archive arrives
+---
+kind: feature
+status: needs-discussion
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+---
 
-**Kind:** feature (design first)
-**Status:** needs discussion before implementation
-**Plan:** `todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md`
+# Install request intake: one pipeline for every way a gadget archive arrives
 
 ## Why
 

@@ -1,8 +1,12 @@
-# Command env: guest overrides bypass the credential filter (LD_PRELOAD → native code exec) and the denylist itself is provably leaky
+---
+kind: bug
+severity: critical
+status: needs-discussion
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/runtime/host/command.rs, docs/adr/0040-wasm-plugin-command-api.md]
+tags: [security]
+---
 
-**Kind:** bug (security) + design decision under review
-**Severity:** critical (gated on a threat-model decision), with an independently-valid high
-**Area:** src-tauri/src/caps/command.rs, src-tauri/src/wasm/runtime/host/command.rs, docs/adr/0040-wasm-plugin-command-api.md
+# Command env: guest overrides bypass the credential filter (LD_PRELOAD → native code exec) and the denylist itself is provably leaky
 
 ## Problem
 `build_command_env` (`command.rs:232-259`) builds the child env by

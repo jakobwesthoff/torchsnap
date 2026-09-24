@@ -1,8 +1,11 @@
-# Website-metadata negative cache grows without bound
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/network/website_metadata/mod.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/network/website_metadata/mod.rs
+# Website-metadata negative cache grows without bound
 
 ## Problem
 `negative_cache` is a `Mutex<HashMap<String, Instant>>` that

@@ -1,8 +1,12 @@
-# Filesystem read patterns accept relative paths at parse time
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/permissions/filesystem.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/permissions/filesystem.rs
+# Filesystem read patterns accept relative paths at parse time
 
 ## Problem
 `validate_fs_pattern`

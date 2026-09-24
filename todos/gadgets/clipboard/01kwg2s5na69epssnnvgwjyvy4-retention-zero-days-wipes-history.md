@@ -1,8 +1,12 @@
-# `retentionDays = 0` silently wipes the entire clipboard history every 30 minutes
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadgets/clipboard/storage.rs, src-tauri/src/gadgets/clipboard/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadgets/clipboard/storage.rs, src-tauri/src/gadgets/clipboard/mod.rs
+# `retentionDays = 0` silently wipes the entire clipboard history every 30 minutes
 
 ## Problem
 

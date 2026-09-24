@@ -1,7 +1,11 @@
+---
+kind: investigation
+status: open
+---
+
 # 0.9.2 does not give back 5 to 9 MB that 0.9.1 reclaims late in the benchmark
 
-**Kind:** investigation
-**Status:** open, measured 2026-09-21, cause unknown
+Measured 2026-09-21, cause unknown.
 
 ## Observation
 

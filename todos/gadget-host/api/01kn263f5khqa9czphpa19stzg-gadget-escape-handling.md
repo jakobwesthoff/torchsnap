@@ -1,3 +1,9 @@
+---
+kind: bug
+status: needs-discussion
+tags: [ux]
+---
+
 # Gadget ESC key handling for execute-activated views `[discuss]`
 
 ## Problem

@@ -1,8 +1,11 @@
-# execute() records frecency before validating the entry or action
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/gadget_host.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/gadget_host.rs
+# execute() records frecency before validating the entry or action
 
 ## Problem
 `GadgetHost::execute` records frecency as its very first step

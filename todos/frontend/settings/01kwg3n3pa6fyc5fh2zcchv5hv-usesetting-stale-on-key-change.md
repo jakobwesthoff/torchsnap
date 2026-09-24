@@ -1,8 +1,11 @@
-# `useSetting` returns the previous key's value when its `key` argument changes
+---
+kind: bug
+severity: medium
+status: open
+area: [src/hooks/useSetting.ts]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src/hooks/useSetting.ts
+# `useSetting` returns the previous key's value when its `key` argument changes
 
 ## Problem
 

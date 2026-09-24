@@ -1,8 +1,12 @@
-# TS `ActionId` mirror is missing the `openSettings` variant that reaches the frontend at runtime
+---
+kind: bug
+severity: low
+status: open
+area: [src/types.ts]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src/types.ts
+# TS `ActionId` mirror is missing the `openSettings` variant that reaches the frontend at runtime
 
 ## Problem
 

@@ -1,8 +1,12 @@
-# logging-system.md shows gadget views receiving `logger`/`sendMessage` as props
+---
+kind: bug
+severity: low
+status: open
+area: [docs/api/logging-system.md]
+tags: [docs]
+---
 
-**Kind:** bug (documentation)
-**Severity:** low
-**Area:** docs/api/logging-system.md
+# logging-system.md shows gadget views receiving `logger`/`sendMessage` as props
 
 ## Problem
 

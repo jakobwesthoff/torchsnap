@@ -1,8 +1,11 @@
-# Verify POSIX-vs-Quartz weekday numbering in task schedules
+---
+kind: question
+severity: medium
+status: open
+area: [src-tauri/src/wasm/manifest/tasks.rs]
+---
 
-**Kind:** question
-**Severity:** medium
-**Area:** src-tauri/src/wasm/manifest/tasks.rs
+# Verify POSIX-vs-Quartz weekday numbering in task schedules
 
 ## Problem
 `parse_cron_schedule` documents the gadget-facing syntax as

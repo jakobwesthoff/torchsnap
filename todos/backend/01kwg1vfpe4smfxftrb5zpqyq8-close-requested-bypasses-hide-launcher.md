@@ -1,8 +1,12 @@
-# Launcher CloseRequested handler bypasses hide_launcher (no shrink, no Linux blanking)
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/lib.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/lib.rs
+# Launcher CloseRequested handler bypasses hide_launcher (no shrink, no Linux blanking)
 
 ## Problem
 All regular dismiss paths funnel through

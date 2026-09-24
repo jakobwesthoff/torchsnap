@@ -1,8 +1,11 @@
-# ZeroTier: `parse_entry_id` splices unvalidated input into daemon URL paths
+---
+kind: improvement
+severity: low
+status: open
+area: [gadgets/zerotier/src/query.rs, gadgets/zerotier/src/api/client.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** gadgets/zerotier/src/query.rs, gadgets/zerotier/src/api/client.rs
+# ZeroTier: `parse_entry_id` splices unvalidated input into daemon URL paths
 
 ## Problem
 

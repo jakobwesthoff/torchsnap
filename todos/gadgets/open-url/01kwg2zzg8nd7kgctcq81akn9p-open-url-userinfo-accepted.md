@@ -1,8 +1,11 @@
-# open-url: bare-domain detection accepts userinfo — email-shaped input becomes a URL entry
+---
+kind: improvement
+severity: low
+status: open
+area: [gadgets/open-url/src/lib.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** gadgets/open-url/src/lib.rs
+# open-url: bare-domain detection accepts userinfo — email-shaped input becomes a URL entry
 
 ## Problem
 

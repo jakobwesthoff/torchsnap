@@ -1,3 +1,8 @@
+---
+kind: investigation
+status: open
+---
+
 # Investigate: does a slow gadget block the entire result list, or just its own row?
 
 ## Context

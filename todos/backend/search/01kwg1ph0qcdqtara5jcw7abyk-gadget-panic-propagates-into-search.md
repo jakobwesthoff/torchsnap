@@ -1,8 +1,12 @@
-# A panicking gadget aborts the whole search/execute pipeline via expect()
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadget_host.rs, src-tauri/src/commands/mod.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadget_host.rs, src-tauri/src/commands/mod.rs
+# A panicking gadget aborts the whole search/execute pipeline via expect()
 
 ## Problem
 Every place the host runs gadget code on the blocking pool

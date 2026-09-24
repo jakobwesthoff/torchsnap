@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Wayland-aware clipboard watcher on Linux
 
 ## Context

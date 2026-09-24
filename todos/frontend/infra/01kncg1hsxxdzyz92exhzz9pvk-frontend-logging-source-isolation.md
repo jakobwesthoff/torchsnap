@@ -1,3 +1,9 @@
+---
+kind: bug
+status: deferred
+tags: [security]
+---
+
 # Gadget Frontend API Isolation
 
 ## Problem

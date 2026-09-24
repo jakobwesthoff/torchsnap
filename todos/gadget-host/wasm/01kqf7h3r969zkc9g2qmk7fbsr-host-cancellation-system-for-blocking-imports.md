@@ -1,6 +1,9 @@
-# Host-side cancellation system for blocking host imports
+---
+kind: feature
+status: needs-discussion
+---
 
-## Status: requires major design discussion before implementation
+# Host-side cancellation system for blocking host imports
 
 This todo captures the *full architectural problem* and a
 preliminary design space, but the actual implementation is

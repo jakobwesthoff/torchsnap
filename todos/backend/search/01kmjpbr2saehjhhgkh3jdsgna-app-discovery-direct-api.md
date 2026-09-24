@@ -1,3 +1,8 @@
+---
+kind: decision
+status: open
+---
+
 # App Discovery: Evaluate Direct API Instead of mdfind
 
 Evaluate replacing the `mdfind` subprocess call with a direct API for

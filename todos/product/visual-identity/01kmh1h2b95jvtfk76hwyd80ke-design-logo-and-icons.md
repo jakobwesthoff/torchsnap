@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Design logo, icons, and visual assets
 
 Create the visual identity assets for torchsnap based on the

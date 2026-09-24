@@ -1,7 +1,13 @@
+---
+kind: bug
+status: open
+tags: [macos]
+---
+
 # macOS 27 tray left-click opens the menu instead of the launcher
 
-Kind: bug. Status: researched 2026-09-21, not fixed. Decision on
-approach still open (recommendation below).
+Researched 2026-09-21, not fixed. Decision on approach still open
+(recommendation below).
 
 ## Symptom
 

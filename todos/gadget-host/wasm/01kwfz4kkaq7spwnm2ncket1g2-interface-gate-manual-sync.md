@@ -1,8 +1,11 @@
-# Interface gate lists are hand-synced with the WIT file
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/interface_gate.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/wasm/interface_gate.rs
+# Interface gate lists are hand-synced with the WIT file
 
 ## Problem
 The gate's knowledge of interfaces exists in four hand-maintained

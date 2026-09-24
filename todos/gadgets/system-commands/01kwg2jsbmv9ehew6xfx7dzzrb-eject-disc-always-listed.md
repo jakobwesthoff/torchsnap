@@ -1,8 +1,11 @@
-# Eject Disc is always listed although availability is checkable
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/gadgets/system_commands/macos_commands/utilities.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/gadgets/system_commands/macos_commands/utilities.rs
+# Eject Disc is always listed although availability is checkable
 
 ## Problem
 

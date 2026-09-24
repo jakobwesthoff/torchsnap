@@ -1,8 +1,11 @@
-# Disabling the Control API leaves established client connections alive
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/control/mod.rs]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src-tauri/src/control/mod.rs
+# Disabling the Control API leaves established client connections alive
 
 ## Problem
 

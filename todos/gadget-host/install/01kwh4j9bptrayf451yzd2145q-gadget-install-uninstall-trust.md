@@ -1,8 +1,12 @@
-# Install/uninstall trust chain holds (load re-validates; `remove_dir_all` symlink-safe), but the loader has no duplicate-id gate → builtin-id shadowing
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadget_install.rs, src-tauri/src/lib.rs, src-tauri/src/gadget_host.rs]
+tags: [security, unconfirmed]
+---
 
-**Kind:** possible-bug (security / robustness)
-**Severity:** low
-**Area:** src-tauri/src/gadget_install.rs, src-tauri/src/lib.rs, src-tauri/src/gadget_host.rs
+# Install/uninstall trust chain holds (load re-validates; `remove_dir_all` symlink-safe), but the loader has no duplicate-id gate → builtin-id shadowing
 
 ## Problem
 Re-examined install and uninstall as a unit. The core trust chain is

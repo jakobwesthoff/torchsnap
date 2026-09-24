@@ -1,8 +1,12 @@
-# CachedComponent re-acquire trusts a cache file that can vanish or go stale
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/cached_component.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/runtime/cached_component.rs
+# CachedComponent re-acquire trusts a cache file that can vanish or go stale
 
 ## Problem
 After the first acquire, `acquire_inner` takes the fast path for

@@ -1,8 +1,11 @@
-# Clipboard gadget: three comment/code drift sites
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/gadgets/clipboard/]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/gadgets/clipboard/
+# Clipboard gadget: three comment/code drift sites
 
 ## Problem
 

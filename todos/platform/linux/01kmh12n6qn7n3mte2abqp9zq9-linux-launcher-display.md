@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Linux launcher display support
 
 The current launcher display works on macOS via NSPanel. The

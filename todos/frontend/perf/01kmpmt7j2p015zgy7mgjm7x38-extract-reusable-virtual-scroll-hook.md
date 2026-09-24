@@ -1,3 +1,9 @@
+---
+kind: refactor
+status: open
+tags: [performance]
+---
+
 # Extract reusable virtual scroll hook/component
 
 **Priority: near-term evaluation**

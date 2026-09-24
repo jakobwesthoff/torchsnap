@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [accessibility, ux]
+---
+
 # Accessibility
 
 The launcher should be usable by everyone, including users who

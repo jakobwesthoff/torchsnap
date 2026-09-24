@@ -1,3 +1,8 @@
+---
+kind: refactor
+status: open
+---
+
 # Migrate type-alias caps to full struct implementations
 
 ## Context

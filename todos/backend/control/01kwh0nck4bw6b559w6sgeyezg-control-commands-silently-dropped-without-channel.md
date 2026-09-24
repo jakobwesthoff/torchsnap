@@ -1,8 +1,11 @@
-# Control `query`/`dismiss` report success while the frontend command is silently dropped
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/control/mod.rs, src-tauri/src/control/handlers/query.rs]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src-tauri/src/control/mod.rs, src-tauri/src/control/handlers/query.rs
+# Control `query`/`dismiss` report success while the frontend command is silently dropped
 
 ## Problem
 

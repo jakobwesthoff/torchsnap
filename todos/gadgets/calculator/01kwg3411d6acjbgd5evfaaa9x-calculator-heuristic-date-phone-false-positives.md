@@ -1,8 +1,12 @@
-# Calculator heuristic treats dates and phone-style numbers as subtraction
+---
+kind: bug
+severity: low
+status: open
+area: [gadgets/calculator/src/lib.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** gadgets/calculator/src/lib.rs
+# Calculator heuristic treats dates and phone-style numbers as subtraction
 
 ## Problem
 

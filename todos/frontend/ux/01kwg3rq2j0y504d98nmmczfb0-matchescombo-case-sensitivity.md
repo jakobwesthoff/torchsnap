@@ -1,8 +1,11 @@
-# matchesCombo breaks on CapsLock and makes Shift+letter combos inexpressible
+---
+kind: bug
+severity: high
+status: open
+area: [src/keybindings/matching.ts, src-tauri/src/wasm/bindings.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src/keybindings/matching.ts, src-tauri/src/wasm/bindings.rs
+# matchesCombo breaks on CapsLock and makes Shift+letter combos inexpressible
 
 > Severity raised medium → high (2026-07-02, cross-boundary
 > pass): the inexpressible Shift+letter case is not just a

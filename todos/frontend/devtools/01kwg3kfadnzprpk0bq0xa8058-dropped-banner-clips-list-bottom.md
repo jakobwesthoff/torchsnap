@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/devtools/console/LogList.tsx]
+---
+
 # Dropped-messages banner pushes the log list's bottom rows out of view
-
-**Kind:** bug
-**Severity:** low
-
-**Area:** src/devtools/console/LogList.tsx
 
 ## Problem
 Both list components render the dropped-messages banner as a

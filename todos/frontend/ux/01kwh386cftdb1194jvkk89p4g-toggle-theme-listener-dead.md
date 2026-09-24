@@ -1,8 +1,12 @@
-# ThemeProvider listens for a `toggle-theme` event that nothing emits
+---
+kind: bug
+severity: low
+status: open
+area: [src/contexts/ThemeProvider.tsx]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src/contexts/ThemeProvider.tsx
+# ThemeProvider listens for a `toggle-theme` event that nothing emits
 
 ## Problem
 

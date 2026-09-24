@@ -1,3 +1,8 @@
+---
+kind: docs
+status: open
+---
+
 # Update Gadget Documentation After Provisioning Refactor
 
 Once the provisioning restructuring is complete, gadget documentation must

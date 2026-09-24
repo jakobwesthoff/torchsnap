@@ -1,8 +1,11 @@
-# Built-in gadgets request broader opener grants than they use
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/gadgets/app_launcher.rs, src-tauri/src/gadgets/system_preferences.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/gadgets/app_launcher.rs, src-tauri/src/gadgets/system_preferences.rs
+# Built-in gadgets request broader opener grants than they use
 
 ## Problem
 
