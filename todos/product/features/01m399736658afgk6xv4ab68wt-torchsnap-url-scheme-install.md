@@ -1,7 +1,6 @@
 ---
 kind: feature
 status: deferred
-plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Install gadgets from a `torchsnap://` link

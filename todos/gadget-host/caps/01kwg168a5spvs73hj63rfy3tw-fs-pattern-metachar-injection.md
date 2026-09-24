@@ -75,7 +75,8 @@ variable to reference, never the value:
   (`source.rs:488-490`). The claim is actually stronger than "id is
   clean": the install flow renames the archive to
   `<app_data_dir>/gadgets/<gadget_id>.torchsnap` using the validated id
-  (`gadget_install.rs:150,164-166`), so a malicious author shipping
+  (`gadget_install/archive_ops.rs:26-60`, `publish_fresh` and
+  `publish_replace`), so a malicious author shipping
   `evil*.torchsnap` gets normalized to `evil-gadget.torchsnap` on
   install; the distributed filename never reaches the substitution.
   Native gadgets have `None` source path → empty (and are trusted host

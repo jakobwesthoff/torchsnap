@@ -75,11 +75,14 @@ Realistic impact of an unauthenticated peer: UI manipulation
 (show/hide/toggle/dismiss, query injection with the beacon caveat) plus
 a visibility boolean. No secrets, no execution.
 
-### Socket steal / no single-instance guard
-`mod.rs:120` unconditionally `remove_file`s before bind, and
-**Torchsnap has no single-instance guard** (`tauri-plugin-single-instance`
-is absent from `Cargo.toml`; no flock/lockfile/pidfile anywhere in
-`src-tauri/src`). The steal is real and bidirectional:
+### Socket steal
+`tauri-plugin-single-instance` is now registered (`lib.rs`, first
+plugin on the builder): a second launch hands its arguments to the
+running instance and exits before its setup runs, so the steal below no
+longer happens through a normal second launch. Whether any other
+path still runs two instances is not established. `mod.rs:120` still
+unconditionally `remove_file`s before bind, so if two instances do
+run, the steal is unchanged:
 - Instance B unlinks A's socket and binds its own; A keeps serving
   already-connected clients on the unlinked inode, while all new
   clients silently reach B.
@@ -101,7 +104,8 @@ Opt-in and default-off; the handler set has no execute capability;
 platform defaults and on typical Linux via the umask-022 socket mode
 the kernel enforces on connect. Residual exposure: (a) permissive-umask
 Linux setups leaking UI control + a fetch beacon to other local users;
-(b) same-user multi-instance silent takeover/DoS.
+(b) same-user multi-instance silent takeover/DoS, if two instances
+still run despite the single-instance plugin.
 
 ## Suggested fix (in order of value)
 1. **Make the mode explicit:** `set_permissions(0600)` on the socket
@@ -133,10 +137,9 @@ Linux setups leaking UI control + a fetch beacon to other local users;
    surface the conflict). Gate the unlink in `stop()`/exit cleanup on
    still owning the file (compare `fstat` of the listener inode vs
    `lstat` of the path) so a dying first instance does not clobber the
-   second's socket. Preferably, adopt `tauri-plugin-single-instance`
-   (macOS + Linux on Tauri v2), which makes the steal moot and
-   simultaneously fixes the `settings.json`/SQLite double-writer and
-   global-shortcut races that multi-instance already causes today.
+   second's socket. `tauri-plugin-single-instance` is in place
+   (added for gadget install handoff); the probe and ownership check
+   remain a safeguard should two instances run anyway.
 
 ## Files
 `control/mod.rs` (`:116-128` bind, `:161`/`:169-171` unlink, `:265-270`

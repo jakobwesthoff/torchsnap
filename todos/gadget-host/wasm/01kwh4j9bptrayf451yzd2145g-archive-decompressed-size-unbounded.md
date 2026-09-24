@@ -63,8 +63,13 @@ Torchsnap.
   lazily on first activation/instantiation.
 - `ArchiveSource::open`'s `manifest.toml` `read_to_string`
   (`source.rs:423-426`) — **also uncapped**, and it runs
-  unconditionally at both install (`gadget_install.rs:118`) and
-  startup load (`open_gadget_source`, `lib.rs:1139-1145`).
+  unconditionally at both install (on the staged copy,
+  `gadget_install/staging.rs:74`) and startup load
+  (`open_gadget_source`, `lib.rs:1139-1145`).
+
+Install now rejects archives whose file is larger than 16 MiB
+(`gadget_install/staging.rs:26`). That caps the compressed size only;
+a zip bomb under 16 MiB still expands without limit on these reads.
 
 ## Impact
 Denial of service only — no memory disclosure, no code execution —
@@ -137,8 +142,9 @@ runtime `take` cap. Recommendation: skip the ratio heuristics, keep
 the hard runtime cap.
 
 **(e) Install-time fail-fast (optional hardening).**
-`gadget_install.rs` already opens the archive (`:118`) and copies it
-(`:165`); adding a capped `read_wasm()` during install rejects an
+Staging already copies the archive and opens the copy
+(`gadget_install/staging.rs:64-74`); adding a capped `read_wasm()`
+there rejects an
 oversized/bomb WASM at install with a clear error rather than at
 first activation. Low cost; optional given the runtime cap.
 
@@ -199,5 +205,5 @@ reads (the decoder stops naturally well before `CAP+1`).
 `source.rs:406-466` (both bugs), `cached_component.rs:244-247`
 (`read_wasm` at activation), `bridge.rs:188-199` (migration reads at
 load), `lib.rs:1139-1147,1188` (startup load path),
-`gadget_install.rs:118,165` (install path), `protocol.rs:147` (asset
+`gadget_install/staging.rs:64-74` (install path), `protocol.rs:147` (asset
 serving).

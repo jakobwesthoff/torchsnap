@@ -1,7 +1,6 @@
 ---
 kind: feature
 status: blocked
-plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 depends-on: [todos/platform/linux/01m399736658afgk6xv4ab68wr-linux-torchsnap-file-association.md]
 ---
 
