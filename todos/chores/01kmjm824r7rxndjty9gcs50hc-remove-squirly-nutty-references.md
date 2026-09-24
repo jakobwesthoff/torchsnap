@@ -1,3 +1,8 @@
+---
+kind: chore
+status: open
+---
+
 # Remove squirly/nutty references from codebase
 
 Comments and documentation throughout the codebase reference squirly

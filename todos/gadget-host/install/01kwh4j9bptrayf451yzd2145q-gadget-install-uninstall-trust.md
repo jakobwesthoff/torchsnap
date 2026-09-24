@@ -1,8 +1,13 @@
-# Install/uninstall trust chain holds (load re-validates; `remove_dir_all` symlink-safe), but the loader has no duplicate-id gate → builtin-id shadowing
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/gadget_install.rs, src-tauri/src/lib.rs, src-tauri/src/gadget_host.rs]
+tags: [security, unconfirmed]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
+---
 
-**Kind:** possible-bug (security / robustness)
-**Severity:** low
-**Area:** src-tauri/src/gadget_install.rs, src-tauri/src/lib.rs, src-tauri/src/gadget_host.rs
+# Install/uninstall trust chain holds (load re-validates; `remove_dir_all` symlink-safe), but the loader has no duplicate-id gate → builtin-id shadowing
 
 ## Problem
 Re-examined install and uninstall as a unit. The core trust chain is
@@ -107,17 +112,14 @@ inconsistent), but not a privilege boundary crossing.
    `host.gadget_sources().keys()` (or make `register_with_caps` bail on
    a duplicate id). This closes builtin-id shadowing for *any* file that
    lands in the user gadgets dir, race or no race.
-2. **Reorder install to validate-what-you-publish.** Copy `archive_path`
-   to a randomized tmp name first, run `ArchiveSource::open` on the
-   *tmp copy*, then rename to `<id>.torchsnap` using the id from that
-   validated copy. Kills the TOCTOU and the stem/id mismatch at the
-   root (the current order cannot, since the tmp name depends on the
-   not-yet-known id).
+2. Done (plan step 7): install copies the archive into a staging
+   directory under a random name, validates that copy and publishes it
+   as `<id>.torchsnap` with the id from the validated manifest.
 3. **Enforce `file_stem == manifest id` for User-root archives at load**
    (skip + error log on mismatch). Restores the filename↔id bijection
    uninstall depends on and makes manual drops self-consistent.
-4. **Uninstall: log (don't silently skip) when the expected archive
-   file is absent** — the observable symptom of every mismatch scenario.
+4. Done (plan step 3): uninstall logs when neither the archive nor the
+   directory form of a registered user gadget is present.
 5. **Size cap at install** (fold into the archive-size todo), and a
    one-line comment on the `remove_dir_all` calls noting the
    symlink-safety reliance on post-1.58.1 std, so a future refactor to a
@@ -125,9 +127,7 @@ inconsistent), but not a privilege boundary crossing.
 
 ## Related
 - Archive decompressed-size cap (install-time size check anchors here):
-  `../host-wasm/01kwh4j9bptrayf451yzd2145g-archive-decompressed-size-unbounded.md`.
-- Uninstall-of-live-gadget state resurrection:
-  `01kwh2e8mne5bd05tpb4paacwc-uninstall-live-gadget-resurrects-state.md`.
+  `todos/gadget-host/wasm/01kwh4j9bptrayf451yzd2145g-archive-decompressed-size-unbounded.md`.
 
 ## Files
 `gadget_install.rs:108-174,197-270`; `lib.rs:1031-1147`;

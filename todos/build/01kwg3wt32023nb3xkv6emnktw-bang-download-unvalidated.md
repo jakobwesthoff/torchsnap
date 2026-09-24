@@ -1,8 +1,11 @@
-# `asset-bang-data` commits whatever DDG returns without validating it is JSON
+---
+kind: improvement
+severity: low
+status: open
+area: [just/bangs.just]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** just/bangs.just
+# `asset-bang-data` commits whatever DDG returns without validating it is JSON
 
 ## Problem
 

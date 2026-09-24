@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [ux]
+---
+
 # User-provided themes / skins
 
 The current theme system uses hardcoded CSS custom properties for

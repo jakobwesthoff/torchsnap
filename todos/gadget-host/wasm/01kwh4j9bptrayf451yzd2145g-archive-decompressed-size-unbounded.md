@@ -1,8 +1,12 @@
-# ArchiveSource pre-allocates from attacker zip metadata and never caps decompressed size (zip-bomb / OOM DoS, host boot-loop)
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/source.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** medium
-**Area:** src-tauri/src/wasm/source.rs
+# ArchiveSource pre-allocates from attacker zip metadata and never caps decompressed size (zip-bomb / OOM DoS, host boot-loop)
 
 ## Problem
 `ArchiveSource::read_file` (`source.rs:446-466`) pre-allocates from

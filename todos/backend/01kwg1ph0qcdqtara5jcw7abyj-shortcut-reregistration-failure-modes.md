@@ -1,8 +1,12 @@
-# register_all_shortcuts: one bad combo (or missing store key) disables all shortcuts
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadget_host.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadget_host.rs
+# register_all_shortcuts: one bad combo (or missing store key) disables all shortcuts
 
 ## Problem
 `register_all_shortcuts` (`src-tauri/src/gadget_host.rs:533-614`)

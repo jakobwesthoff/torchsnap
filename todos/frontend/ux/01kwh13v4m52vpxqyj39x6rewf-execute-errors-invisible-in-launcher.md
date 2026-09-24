@@ -1,8 +1,11 @@
-# Gadget `execute()` errors never surface in the launcher UI
+---
+kind: bug
+severity: medium
+status: open
+area: [src/launcher/Launcher.tsx]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src/launcher/Launcher.tsx
+# Gadget `execute()` errors never surface in the launcher UI
 
 ## Problem
 

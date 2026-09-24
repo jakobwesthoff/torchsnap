@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Mascot feature vertical (`src/mascot/`)
 
 Collapse all mascot-related code into a single `src/mascot/` vertical.

@@ -1,8 +1,11 @@
-# No CPU or memory limits on WASM guest execution
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/engine.rs]
+---
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** src-tauri/src/wasm/runtime/engine.rs
+# No CPU or memory limits on WASM guest execution
 
 ## Problem
 `WasmRuntime::new` configures the engine with only the component

@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Execute-triggered custom UI: state snapshot and restore
 
 When a catalog-mode gadget entry's `execute()` returns `PostAction::ShowCustomUI`,

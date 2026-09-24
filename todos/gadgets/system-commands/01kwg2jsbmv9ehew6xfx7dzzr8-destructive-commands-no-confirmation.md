@@ -1,8 +1,11 @@
-# Destructive system commands execute on a single Enter — confirmation hook exists but is dead code
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src/gadgets/system_commands]
+---
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** src-tauri/src/gadgets/system_commands/
+# Destructive system commands execute on a single Enter — confirmation hook exists but is dead code
 
 ## Problem
 

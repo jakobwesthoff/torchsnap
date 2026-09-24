@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Redirect gadget stdout/stderr to the host logging system
 
 Gadget WASM components are instantiated with `.inherit_stdout()` and

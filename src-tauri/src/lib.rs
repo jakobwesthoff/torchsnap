@@ -24,7 +24,7 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::Context;
 use tauri::{
-    Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
+    Emitter, Listener, Manager, RunEvent, WebviewUrl, WindowEvent, ipc::Channel,
     webview::WebviewWindowBuilder,
 };
 
@@ -473,26 +473,49 @@ fn launcher_set_layout(
     }
 }
 
-pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
-    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
+/// What bringing up the launcher takes, given its current state.
+#[derive(Debug, PartialEq, Eq)]
+enum LauncherShowStep {
+    AlreadyVisible,
+    /// The frontend has not reported its layout yet; the show is
+    /// queued and fires once the layout arrives.
+    WaitForLayout,
+    Show,
+}
 
-    if is_visible {
-        request_launcher_dismiss(app);
-        return;
+fn launcher_show_step(is_visible: bool, layout_ready: bool) -> LauncherShowStep {
+    match (is_visible, layout_ready) {
+        (true, _) => LauncherShowStep::AlreadyVisible,
+        (false, false) => LauncherShowStep::WaitForLayout,
+        (false, true) => LauncherShowStep::Show,
     }
+}
 
-    // If the frontend hasn't reported layout dimensions yet,
-    // queue the show so it fires once the layout arrives.
+pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
+    if PlatformLauncherPanel::is_visible(app).unwrap_or(false) {
+        request_launcher_dismiss(app);
+    } else {
+        show_launcher_window(app);
+    }
+}
+
+/// Bring up the launcher without hiding it when it is already open,
+/// for callers that mean "show", like launching Torchsnap again.
+pub(crate) fn show_launcher_window(app: &tauri::AppHandle) {
+    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
     let layout_state = app.state::<LauncherLayoutState>();
-    let Some(layout) = layout_state.get().copied() else {
-        layout_state.request_show();
-        return;
-    };
+    let layout = layout_state.get().copied();
 
-    position_launcher_on_cursor_monitor(app, &layout);
-
-    if let Err(e) = show_launcher(app) {
-        eprintln!("failed to show launcher: {e:#}");
+    match launcher_show_step(is_visible, layout.is_some()) {
+        LauncherShowStep::AlreadyVisible => {}
+        LauncherShowStep::WaitForLayout => layout_state.request_show(),
+        LauncherShowStep::Show => {
+            let layout = layout.expect("Show is only chosen once the layout is known");
+            position_launcher_on_cursor_monitor(app, &layout);
+            if let Err(e) = show_launcher(app) {
+                eprintln!("failed to show launcher: {e:#}");
+            }
+        }
     }
 }
 
@@ -583,7 +606,32 @@ fn control_subscribe(channel: Channel<control::ControlCommand>, app: tauri::AppH
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The install queue exists before the app does: on macOS a
+    // double-clicked archive can arrive before `setup` has run, and the
+    // queue buffers it until `setup` starts it (see
+    // `gadget_install::queue`).
+    let install_queue = Arc::new(gadget_install::InstallQueue::new());
+
     let builder = tauri::Builder::default()
+        // Must be the first plugin: a second launch is detected and
+        // handed to this running instance before anything else starts.
+        // The second process passes its arguments (archives to install
+        // when a file manager opened one) and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let queue = app.state::<Arc<gadget_install::InstallQueue>>();
+            let submission = gadget_install::submit_command_line(
+                &queue,
+                args.into_iter().map(std::ffi::OsString::from),
+                std::path::Path::new(&cwd),
+            );
+            if submission.is_empty() {
+                show_launcher_window(app);
+            } else if !submission.queued.is_empty() {
+                gadget_install::process_in_background(queue.inner(), submission.queued);
+                show_settings_window(app);
+            }
+        }))
+        .manage(Arc::clone(&install_queue))
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
         // adding, removing, or changing a command signature here,
@@ -608,8 +656,16 @@ pub fn run() {
             wasm::logging::commands::logger_span_end,
             wasm_gadgets,
             gadget_sources,
-            gadget_install::install_gadget_archive,
             gadget_install::uninstall_user_gadget,
+            gadget_install::install_undo,
+            gadget_install::gadget_permissions,
+            gadget_install::pending_gadget_changes,
+            gadget_install::take_settings_start_section,
+            gadget_install::restart_to_apply_gadget_changes,
+            gadget_install::commands::install_queue_snapshot,
+            gadget_install::commands::install_queue_submit,
+            gadget_install::commands::install_queue_confirm,
+            gadget_install::commands::install_queue_dismiss,
             build_info,
         ])
         .plugin(tauri_plugin_opener::init())
@@ -652,6 +708,44 @@ pub fn run() {
             use tauri_plugin_store::StoreExt;
 
             let store = app.store("settings.json").expect("settings store");
+            let app_data_dir = app.path().app_data_dir().context("resolve app data dir")?;
+            let install_paths = gadget_install::InstallPaths::new(&app_data_dir);
+
+            // =========================================================
+            // Finish uninstalls from the previous session
+            //
+            // Uninstall only removes the archive and leaves a marker;
+            // the gadget's data and settings are deleted here, before
+            // settings are initialized and before any gadget loads,
+            // so no running instance can write them back. A failure
+            // keeps the marker for the next start, so it is logged
+            // rather than stopping the app.
+            // =========================================================
+            match gadget_install::process_uninstall_markers(&install_paths, store.as_ref()) {
+                Ok(cleaned) if !cleaned.is_empty() => {
+                    eprintln!("finished uninstalling gadgets: {}", cleaned.join(", "));
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("failed to finish pending gadget uninstalls: {e:#}"),
+            }
+            let reopen_gadget_settings = gadget_install::take_reopen_marker(&install_paths)
+                .unwrap_or_else(|e| {
+                    eprintln!("failed to read the reopen marker for Settings: {e:#}");
+                    false
+                });
+            if let Err(e) = gadget_install::remove_stale_backups(&install_paths) {
+                eprintln!("failed to remove gadget replace backups: {e:#}");
+            }
+            let install_staging = gadget_install::StagingArea::new(
+                app.path()
+                    .app_cache_dir()
+                    .context("resolve app cache dir")?
+                    .join("install-staging"),
+            );
+            if let Err(e) = install_staging.sweep() {
+                eprintln!("failed to clear the install staging directory: {e:#}");
+            }
+
             settings::SettingsInit::from_store(&store, "")
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
@@ -670,7 +764,6 @@ pub fn run() {
             // =========================================================
             // Frecency store
             // =========================================================
-            let app_data_dir = app.path().app_data_dir().context("resolve app data dir")?;
             let frecency_store = frecency::FrecencyStore::open(&app_data_dir, &notifier, &store)
                 .context("initialize frecency store")?;
             let frecency_store = Arc::new(frecency_store);
@@ -874,6 +967,63 @@ pub fn run() {
             // and re-registers all shortcuts when relevant keys change.
             host.start_shortcut_reactor(app.handle());
 
+            // Install and uninstall work on plain values rather than
+            // the host, so they stay testable without a Tauri runtime.
+            // The registry snapshot is final here: slots never change
+            // after setup.
+            let registered_gadgets = gadget_install::RegisteredGadgets::from_host(
+                host.gadget_sources(),
+                &source_registry
+                    .read()
+                    .expect("source registry lock is never poisoned"),
+            );
+            let pending_changes = Arc::new(std::sync::Mutex::new(
+                gadget_install::PendingChanges::default(),
+            ));
+
+            // Install requests that arrived before this point (an archive
+            // double-clicked to launch the app) were buffered by the
+            // queue; starting it queues them for staging.
+            let install_queue =
+                Arc::clone(app.state::<Arc<gadget_install::InstallQueue>>().inner());
+            let queue_changed = app.handle().clone();
+            let buffered_requests = install_queue.start(gadget_install::QueueContext {
+                paths: install_paths.clone(),
+                registered: registered_gadgets.clone(),
+                pending: Arc::clone(&pending_changes),
+                staging: install_staging.clone(),
+                on_change: Arc::new(move || {
+                    let _ = queue_changed.emit(gadget_install::QUEUE_CHANGED_EVENT, ());
+                }),
+            });
+            // Archives named on this process's own command line (a file
+            // manager starting Torchsnap for an opened file on Linux, or
+            // a direct start of the binary with a path).
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let from_command_line =
+                gadget_install::submit_command_line(&install_queue, std::env::args_os(), &cwd);
+
+            // Files opened before startup finished (double-clicking an
+            // archive while Torchsnap was not running) and command-line
+            // archives end up here, so the review window has to be
+            // opened from setup. A restart from "Restart now" opens it
+            // too, to show the applied changes.
+            let mut to_process = buffered_requests;
+            to_process.extend(from_command_line.queued);
+            if !to_process.is_empty() || reopen_gadget_settings {
+                show_settings_window(app.handle());
+            }
+            gadget_install::process_in_background(&install_queue, to_process);
+
+            app.manage(install_paths);
+            app.manage(install_staging);
+            app.manage(registered_gadgets);
+            app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
+            app.manage(pending_changes);
+            app.manage(gadget_install::SettingsStartSection::new(
+                reopen_gadget_settings.then_some("gadgets"),
+            ));
+
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
             app.manage(Arc::clone(&metadata_service));
@@ -996,6 +1146,19 @@ pub fn run() {
             api.prevent_close();
             if let Some(win) = app.get_webview_window(label) {
                 let _ = win.hide();
+            }
+        }
+        // macOS hands files opened from Finder ("Open With",
+        // double-click) to the running app as URLs. Before `setup`
+        // has started the install queue they are only buffered, and
+        // setup opens the review itself.
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            let queue = app.state::<Arc<gadget_install::InstallQueue>>();
+            let submission = gadget_install::submit_opened_urls(&queue, urls);
+            if !submission.queued.is_empty() {
+                gadget_install::process_in_background(queue.inner(), submission.queued);
+                show_settings_window(app);
             }
         }
         RunEvent::Exit => {
@@ -1235,4 +1398,34 @@ fn load_single_wasm_gadget(
         .insert(gadget_id.clone(), source);
 
     Ok(gadget_id)
+}
+
+#[cfg(test)]
+mod launcher_tests {
+    use super::*;
+
+    #[test]
+    fn a_visible_launcher_stays_as_it_is() {
+        assert_eq!(
+            launcher_show_step(true, true),
+            LauncherShowStep::AlreadyVisible
+        );
+        assert_eq!(
+            launcher_show_step(true, false),
+            LauncherShowStep::AlreadyVisible
+        );
+    }
+
+    #[test]
+    fn a_hidden_launcher_waits_for_its_layout() {
+        assert_eq!(
+            launcher_show_step(false, false),
+            LauncherShowStep::WaitForLayout
+        );
+    }
+
+    #[test]
+    fn a_hidden_launcher_with_layout_is_shown() {
+        assert_eq!(launcher_show_step(false, true), LauncherShowStep::Show);
+    }
 }

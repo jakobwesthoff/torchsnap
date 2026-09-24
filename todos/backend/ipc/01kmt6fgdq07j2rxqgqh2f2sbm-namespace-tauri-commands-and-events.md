@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Namespace Tauri Commands and Events
 
 ## Context

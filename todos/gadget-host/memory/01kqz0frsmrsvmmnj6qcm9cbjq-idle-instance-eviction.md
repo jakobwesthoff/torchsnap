@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Idle instance eviction when launcher is hidden
 
 ## Problem

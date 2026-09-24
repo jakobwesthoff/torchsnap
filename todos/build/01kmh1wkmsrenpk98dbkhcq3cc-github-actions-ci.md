@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # GitHub Actions CI pipeline
 
 Set up automated builds to catch cross-platform compilation

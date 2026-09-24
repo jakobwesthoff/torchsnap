@@ -1,7 +1,11 @@
+---
+kind: improvement
+status: needs-discussion
+---
+
 # Replace `thread_local!` gadget state with WIT resource exports
 
-**Status: needs discussion** — initial idea, not yet validated
-against WIT/wasmtime resource export constraints.
+Initial idea, not yet validated against WIT/wasmtime resource export constraints.
 
 ## Problem
 

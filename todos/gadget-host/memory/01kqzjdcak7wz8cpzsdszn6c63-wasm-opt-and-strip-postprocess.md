@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Post-process gadget WASM with `wasm-opt` and `wasm-tools strip`
 
 ## Problem

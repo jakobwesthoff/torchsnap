@@ -1,8 +1,12 @@
-# Clipboard storage multi-statement operations are not atomic — races leave orphan files and dangling file refs
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/gadgets/clipboard/storage.rs]
+tags: [unconfirmed, concurrency]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/gadgets/clipboard/storage.rs
+# Clipboard storage multi-statement operations are not atomic — races leave orphan files and dangling file refs
 
 ## Problem
 

@@ -1,8 +1,12 @@
-# Opener capability: `open_path`/`reveal_path` have no root constraint; `open_url` `*` short-circuits before parse (re-enables `file://`/deep-links)
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/opener.rs, src-tauri/src/wasm/manifest/permissions/opener.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** medium (open_path standalone, open_url `*`); high (open_path chained with a write/command grant); low (reveal_path)
-**Area:** src-tauri/src/caps/opener.rs, src-tauri/src/wasm/manifest/permissions/opener.rs
+# Opener capability: `open_path`/`reveal_path` have no root constraint; `open_url` `*` short-circuits before parse (re-enables `file://`/deep-links)
 
 ## Problem
 `OpenerCap` gates `open_path`/`reveal_path` on a plain boolean and

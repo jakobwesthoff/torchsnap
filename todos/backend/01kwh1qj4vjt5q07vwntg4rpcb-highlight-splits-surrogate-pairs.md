@@ -1,8 +1,11 @@
-# Highlighting a multi-code-unit grapheme splits surrogate pairs (renders U+FFFD)
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/unicode.rs, src/lib/highlightText.tsx]
+---
 
-**Kind:** bug
-**Severity:** medium
-**Area:** src-tauri/src/unicode.rs, src/lib/highlightText.tsx
+# Highlighting a multi-code-unit grapheme splits surrogate pairs (renders U+FFFD)
 
 ## Problem
 

@@ -1,8 +1,12 @@
-# Website-metadata service is a gadget-driven SSRF (reachability oracle + redirect amplification + internal-HTML read); favicon protocol echoes Origin and spawns a thread per request
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/network/website_metadata/fetch.rs, src-tauri/src/network/website_metadata/mod.rs, src-tauri/src/network/website_metadata/protocol.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** medium (SSRF); low (CORS echo, thread-per-request)
-**Area:** src-tauri/src/network/website_metadata/fetch.rs, src-tauri/src/network/website_metadata/mod.rs, src-tauri/src/network/website_metadata/protocol.rs
+# Website-metadata service is a gadget-driven SSRF (reachability oracle + redirect amplification + internal-HTML read); favicon protocol echoes Origin and spawns a thread per request
 
 ## Invocation surface — gadget-driven (decisive for severity)
 The website-metadata service is exposed to untrusted WASM gadgets as a

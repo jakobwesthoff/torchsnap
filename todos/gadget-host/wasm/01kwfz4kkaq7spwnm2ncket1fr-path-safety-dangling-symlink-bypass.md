@@ -1,8 +1,12 @@
-# `canonical_under_root` accepts dangling symlinks that point outside the root
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/wasm/path_safety.rs]
+tags: [security]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/wasm/path_safety.rs
+# `canonical_under_root` accepts dangling symlinks that point outside the root
 
 ## Problem
 `canonical_under_root` (src-tauri/src/wasm/path_safety.rs:98) walks up

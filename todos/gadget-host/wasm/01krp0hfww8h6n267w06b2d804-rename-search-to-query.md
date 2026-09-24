@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Rename `search` interface to `query`
 
 The WIT `search` interface combines catalog entries, query-driven search, and

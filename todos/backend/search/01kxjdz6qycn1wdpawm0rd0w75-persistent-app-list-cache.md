@@ -1,6 +1,11 @@
+---
+kind: investigation
+status: needs-discussion
+---
+
 # Evaluate persistent storage/cache for discovered applications
 
-Status: open — to be discussed and decided.
+To be discussed and decided.
 
 ## Problem
 

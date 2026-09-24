@@ -1,3 +1,8 @@
+---
+kind: feature
+status: deferred
+---
+
 # Pinning and favorites
 
 Allow users to pin items so they always appear at the top of the

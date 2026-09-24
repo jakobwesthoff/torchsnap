@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Clipboard: Load image content from copied files
 
 When a file is copied from Finder and it's an image (PNG, JPEG, etc.),

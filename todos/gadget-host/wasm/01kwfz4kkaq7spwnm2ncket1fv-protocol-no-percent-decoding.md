@@ -1,8 +1,12 @@
-# Gadget asset protocol does not percent-decode request paths
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/protocol.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/protocol.rs
+# Gadget asset protocol does not percent-decode request paths
 
 ## Problem
 `serve_gadget_asset` takes the raw URI path and uses it directly

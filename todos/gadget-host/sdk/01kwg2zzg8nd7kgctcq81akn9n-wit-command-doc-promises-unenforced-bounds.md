@@ -1,8 +1,12 @@
-# WIT command interface documents per-rule bounds the host never enforces
+---
+kind: improvement
+severity: medium
+status: open
+area: [gadgets/gadget-sdk/wit/torchsnap-gadget.wit]
+tags: [docs]
+---
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** gadgets/gadget-sdk/wit/torchsnap-gadget.wit
+# WIT command interface documents per-rule bounds the host never enforces
 
 ## Problem
 

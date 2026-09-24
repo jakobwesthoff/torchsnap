@@ -1,3 +1,8 @@
+---
+kind: decision
+status: open
+---
+
 # Evaluate logging and platform as capabilities
 
 ## Context

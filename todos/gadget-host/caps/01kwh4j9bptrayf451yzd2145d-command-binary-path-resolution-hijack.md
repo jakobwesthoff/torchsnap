@@ -1,8 +1,12 @@
-# Command rule binary resolved through attacker-controllable PATH at spawn (allowlist bypass → native code exec)
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs]
+tags: [security]
+---
 
-**Kind:** bug (security)
-**Severity:** high
-**Area:** src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs
+# Command rule binary resolved through attacker-controllable PATH at spawn (allowlist bypass → native code exec)
 
 ## Problem
 A `[[permissions.command]]` rule binary may be a non-absolute,

@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [api-design]
+---
+
 # Stop intercepting OpenSettings in the host
 
 `ActionId::OpenSettings` is currently intercepted by

@@ -1,8 +1,12 @@
-# DirectorySource::read_file missing-file branch reads via raw path
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/source.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/source.rs
+# DirectorySource::read_file missing-file branch reads via raw path
 
 ## Problem
 `DirectorySource::read_file` handles the missing-file case

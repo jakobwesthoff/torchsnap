@@ -1,8 +1,12 @@
-# ClipboardSettings "Clear All" disabled-condition uses `&&` where the semantics need `||`
+---
+kind: bug
+severity: low
+status: open
+area: [src/gadgets/clipboard/ClipboardSettings.tsx]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src/gadgets/clipboard/ClipboardSettings.tsx
+# ClipboardSettings "Clear All" disabled-condition uses `&&` where the semantics need `||`
 
 ## Problem
 

@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: open
+---
+
 # Use spawn_blocking instead of std::thread::spawn for Tokio-dependent threads
 
 ## Context

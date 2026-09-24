@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Gadget-bundled executables + runtime platform detection
 
 ## Context

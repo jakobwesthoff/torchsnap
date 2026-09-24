@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Replace `dlmalloc` with a smaller wasm allocator
 
 ## Problem

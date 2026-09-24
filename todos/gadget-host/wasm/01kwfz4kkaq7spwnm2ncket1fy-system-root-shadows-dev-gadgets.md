@@ -1,8 +1,11 @@
-# System gadget root shadows Dev root during development
+---
+kind: question
+severity: medium
+status: open
+area: [src-tauri/src/wasm/discovery.rs]
+---
 
-**Kind:** question
-**Severity:** medium
-**Area:** src-tauri/src/wasm/discovery.rs
+# System gadget root shadows Dev root during development
 
 ## Problem
 `enumerate_search_roots` returns roots in the order System, Dev,

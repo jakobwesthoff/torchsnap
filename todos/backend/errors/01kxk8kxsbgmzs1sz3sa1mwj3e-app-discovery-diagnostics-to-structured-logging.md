@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [logging]
+---
+
 # Route app discovery diagnostics into the structured logging system
 
 All diagnostics in the app-launcher discovery path are plain

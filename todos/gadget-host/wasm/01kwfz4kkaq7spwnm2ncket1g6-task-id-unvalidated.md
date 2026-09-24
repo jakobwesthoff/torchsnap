@@ -1,8 +1,11 @@
-# Scheduled task ids are not validated
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/tasks.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/tasks.rs
+# Scheduled task ids are not validated
 
 ## Problem
 `validate_task_definitions`

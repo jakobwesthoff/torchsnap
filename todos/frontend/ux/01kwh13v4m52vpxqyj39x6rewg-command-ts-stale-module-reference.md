@@ -1,8 +1,11 @@
-# Frontend comments reference the nonexistent `src-tauri/src/search/` module
+---
+kind: improvement
+severity: low
+status: open
+area: [src/lib/command.ts, src/types.ts, src/launcher/compareEntries.ts]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src/lib/command.ts, src/types.ts, src/launcher/compareEntries.ts
+# Frontend comments reference the nonexistent `src-tauri/src/search/` module
 
 ## Problem
 

@@ -1,8 +1,12 @@
-# SettingsNotifier: notify() racing a first subscribe is silently dropped
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/settings/notifier.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/settings/notifier.rs
+# SettingsNotifier: notify() racing a first subscribe is silently dropped
 
 ## Problem
 `SettingsNotifier::notify` ignores keys that have no channel yet

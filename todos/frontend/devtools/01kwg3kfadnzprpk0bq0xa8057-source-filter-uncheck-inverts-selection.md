@@ -1,9 +1,12 @@
+---
+kind: bug
+severity: low
+status: open
+area: [src/devtools/console/useLogFilters.ts]
+tags: [unconfirmed]
+---
+
 # Console source filter: unchecking a source while "all" selected inverts the selection
-
-**Kind:** possible-bug
-**Severity:** low
-
-**Area:** src/devtools/console/useLogFilters.ts
 
 ## Problem
 When the source filter is in the `"all"` state, the dropdown renders

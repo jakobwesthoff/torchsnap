@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Add arbitrary data field to ScoredEntry for custom UIs
 
 ## Problem

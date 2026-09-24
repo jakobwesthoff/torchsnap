@@ -1,8 +1,11 @@
-# Per-rule command limits (cwd, timeout, output, stdin) are parsed but never enforced
+---
+kind: bug
+severity: high
+status: open
+area: [src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs]
+---
 
-**Kind:** bug
-**Severity:** high
-**Area:** src-tauri/src/caps/command.rs, src-tauri/src/wasm/argv_matcher.rs
+# Per-rule command limits (cwd, timeout, output, stdin) are parsed but never enforced
 
 ## Problem
 `[[permissions.command]]` rules carry four per-rule constraint
@@ -39,10 +42,9 @@ So a manifest saying `timeout-ms-max = 1000` still gets the
 64 MiB, and a declared rule `cwd` is silently ignored.
 
 ## Impact
-The manifest's permission surface lies: reviewers (and the
-future permission-consent UI, see
-`todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr6a-install-time-permission-consent.md`)
-read constraints that have no runtime effect. Gadgets relying on
+The manifest's permission surface lies: manifest reviewers read
+constraints that have no runtime effect. The install review leaves
+them out until they are enforced (`src-tauri/src/gadget_install/review.rs`). Gadgets relying on
 a rule-declared default cwd run in the wrong directory.
 Separately, the guest-supplied `options.cwd` is used verbatim
 with no validation at all; see

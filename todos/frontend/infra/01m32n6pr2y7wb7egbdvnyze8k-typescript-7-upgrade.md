@@ -1,7 +1,10 @@
-# Upgrade to TypeScript 7 once typescript-eslint supports it
+---
+kind: chore
+status: blocked
+tags: [dependencies, migration]
+---
 
-**Kind:** dependency upgrade, blocked upstream
-**Status:** waiting on typescript-eslint
+# Upgrade to TypeScript 7 once typescript-eslint supports it
 
 ## Problem
 

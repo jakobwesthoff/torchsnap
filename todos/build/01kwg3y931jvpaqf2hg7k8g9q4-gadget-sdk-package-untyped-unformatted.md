@@ -1,8 +1,11 @@
-# `packages/gadget-sdk` is outside the type-check and format quality gates
+---
+kind: improvement
+severity: medium
+status: open
+area: [packages/gadget-sdk/]
+---
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** tsconfig.json, package.json, packages/gadget-sdk/
+# `packages/gadget-sdk` is outside the type-check and format quality gates
 
 ## Problem
 

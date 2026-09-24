@@ -1,3 +1,9 @@
+---
+kind: feature
+status: open
+tags: [ux]
+---
+
 # Gadget loading suspense fallback design
 
 The Suspense fallback when lazy-loading a gadget custom UI component

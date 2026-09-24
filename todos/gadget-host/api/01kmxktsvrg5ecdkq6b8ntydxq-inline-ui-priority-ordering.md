@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Inline UI priority ordering for competing gadgets
 
 ## Problem

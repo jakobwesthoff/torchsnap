@@ -1,8 +1,12 @@
-# Missing or misnamed gadget bundle export suspends the view forever ("Loading…" with no error)
+---
+kind: bug
+severity: medium
+status: open
+area: [src/gadgets/wasmPluginLoader.ts, src/lib/gadgetComponent.tsx]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src/gadgets/wasmPluginLoader.ts, src/lib/gadgetComponent.tsx
+# Missing or misnamed gadget bundle export suspends the view forever ("Loading…" with no error)
 
 ## Problem
 

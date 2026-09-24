@@ -1,3 +1,8 @@
+---
+kind: investigation
+status: open
+---
+
 # Linux launcher: realize webview without mapping the window
 
 ## Context

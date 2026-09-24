@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: medium
+status: open
+area: [src/devtools/console/useLogStream.ts]
+---
+
 # Devtools log stream permanently misses items between history fetch and subscribe
-
-**Kind:** bug
-**Severity:** medium
-
-**Area:** src/devtools/console/useLogStream.ts
 
 ## Problem
 `useLogStream` connects in two sequential steps (`src/devtools/console/useLogStream.ts:161-192`):

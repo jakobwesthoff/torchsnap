@@ -23,12 +23,18 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
 import type { DevToolsMessage, LogItem, LogLevel, LogStats } from "../devtools/types";
+import type {
+  InstallOrigin,
+  InstallRequestView,
+  PendingGadget,
+  PermissionItem,
+} from "../settings/install/types";
 
 // =========================================================
 // Command Registry
 // =========================================================
 
-interface CommandMap {
+export interface CommandMap {
   launcher_hide: { params: void; result: void };
   launcher_set_layout: {
     params: {
@@ -101,14 +107,28 @@ interface CommandMap {
   };
   wasm_gadgets: { params: void; result: WasmGadgetManifest[] };
   gadget_sources: { params: void; result: Record<string, GadgetSourceKind> };
-  install_gadget_archive: {
-    params: { archivePath: string };
-    result: InstalledGadgetInfo;
-  };
   uninstall_user_gadget: {
     params: { gadgetId: string };
     result: UninstallResult;
   };
+  install_undo: {
+    params: { gadgetId: string };
+    result: UndoResult;
+  };
+  install_queue_snapshot: { params: void; result: InstallRequestView[] };
+  install_queue_submit: {
+    params: { paths: string[]; origin: InstallOrigin };
+    result: void;
+  };
+  install_queue_confirm: {
+    params: { requestId: string };
+    result: InstalledGadgetInfo;
+  };
+  install_queue_dismiss: { params: { requestId: string }; result: void };
+  gadget_permissions: { params: void; result: Record<string, PermissionItem[]> };
+  pending_gadget_changes: { params: void; result: Record<string, PendingGadget> };
+  take_settings_start_section: { params: void; result: string | null };
+  restart_to_apply_gadget_changes: { params: void; result: void };
   build_info: { params: void; result: { version: string; gitHash: string } };
 }
 
@@ -120,10 +140,22 @@ interface CommandMap {
 // sites stay idiomatic.
 // =========================================================
 
+/** Mirrors the Rust `VersionRelation` enum. */
+export type VersionRelation = "upgrade" | "same" | "downgrade" | "unknown";
+
 export interface InstalledGadgetInfo {
   id: string;
   name: string;
   version: string;
+  /** Set when the install replaced another version of the gadget. */
+  previousVersion: string | null;
+  versionRelation: VersionRelation | null;
+  requiresRestart: boolean;
+}
+
+export interface UndoResult {
+  /** The version back on disk, or `null` when the undo removed the gadget. */
+  restoredVersion: string | null;
   requiresRestart: boolean;
 }
 
@@ -173,7 +205,7 @@ export interface WasmGadgetManifest {
   };
 }
 
-type CommandName = keyof CommandMap;
+export type CommandName = keyof CommandMap;
 
 // =========================================================
 // Typed command wrapper

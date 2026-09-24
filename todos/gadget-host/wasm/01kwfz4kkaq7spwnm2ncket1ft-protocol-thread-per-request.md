@@ -1,8 +1,11 @@
-# Gadget asset protocol spawns one OS thread per request
+---
+kind: improvement
+severity: low
+status: open
+area: [src-tauri/src/wasm/protocol.rs]
+---
 
-**Kind:** improvement
-**Severity:** low
-**Area:** src-tauri/src/wasm/protocol.rs
+# Gadget asset protocol spawns one OS thread per request
 
 ## Problem
 The `torchsnap-gadget://` protocol handler spawns a fresh OS

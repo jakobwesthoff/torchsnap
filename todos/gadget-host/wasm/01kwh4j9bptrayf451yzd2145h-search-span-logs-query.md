@@ -1,8 +1,12 @@
-# `search` span records the full user query as log metadata (per-keystroke, cross-gadget-readable via the release devtools console)
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/instance.rs]
+tags: [privacy, unconfirmed]
+---
 
-**Kind:** possible-bug (privacy / info disclosure)
-**Severity:** low–medium
-**Area:** src-tauri/src/wasm/runtime/instance.rs
+# `search` span records the full user query as log metadata (per-keystroke, cross-gadget-readable via the release devtools console)
 
 ## Problem
 `WasmGadgetInstance::search` records the full user query as span

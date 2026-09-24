@@ -1,8 +1,11 @@
-# Manifest parse leniency silently hides author mistakes
+---
+kind: improvement
+severity: medium
+status: open
+area: [src-tauri/src/wasm/manifest/mod.rs]
+---
 
-**Kind:** improvement
-**Severity:** medium
-**Area:** src-tauri/src/wasm/manifest/mod.rs
+# Manifest parse leniency silently hides author mistakes
 
 ## Problem
 Three leniency choices in manifest parsing combine to make gadget

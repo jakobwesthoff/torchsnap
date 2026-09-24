@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Nightly `build-std` + `panic_immediate_abort` for gadget builds
 
 ## Problem

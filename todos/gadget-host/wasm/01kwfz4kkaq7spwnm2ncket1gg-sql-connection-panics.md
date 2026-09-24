@@ -1,8 +1,12 @@
-# sql::connection() panics instead of failing gracefully
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/runtime/host/sql.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/runtime/host/sql.rs
+# sql::connection() panics instead of failing gracefully
 
 ## Problem
 The `sql::connection()` host import has two panic paths

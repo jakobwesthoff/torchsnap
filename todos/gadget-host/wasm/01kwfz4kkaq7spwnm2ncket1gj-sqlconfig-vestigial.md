@@ -1,8 +1,11 @@
-# Bridge SqlConfig carries a hardcoded empty migrations list
+---
+kind: refactor
+severity: low
+status: open
+area: [src-tauri/src/wasm/bridge.rs]
+---
 
-**Kind:** refactor
-**Severity:** low
-**Area:** src-tauri/src/wasm/bridge.rs
+# Bridge SqlConfig carries a hardcoded empty migrations list
 
 ## Problem
 `WasmGadgetBridge::new` builds its `SqlConfig` with an

@@ -1,3 +1,9 @@
+---
+kind: improvement
+status: open
+tags: [performance]
+---
+
 # Tune the gadget Cargo release profile for size
 
 ## Problem

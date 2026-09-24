@@ -1,7 +1,12 @@
+---
+kind: chore
+status: blocked
+tags: [dependencies]
+---
+
 # Track the Tauri 3 migration
 
-**Kind:** dependency upgrade, tracking
-**Status:** watching; Tauri 3 is in alpha
+Watching; Tauri 3 is in alpha.
 
 This is the single todo that tracks the move from Tauri 2 to Tauri 3,
 from the first alpha until the migration makes sense. Add new findings

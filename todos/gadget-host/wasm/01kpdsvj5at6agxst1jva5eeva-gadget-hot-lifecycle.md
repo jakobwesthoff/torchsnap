@@ -1,11 +1,14 @@
+---
+kind: feature
+status: needs-discussion
+---
+
 # Gadget Hot Lifecycle — Hot Install, Hot Uninstall, Hot Reload
 
 Three related capabilities that all unblock on the same piece of
 infrastructure: a runtime gadget-registration API on `GadgetHost` that
 does not rely on `&mut self` and the "gadget-set-frozen-after-setup"
 assumption baked into current startup.
-
-**Status:** needs discussion
 
 **Depends on:** the bundled/user-installable gadgets plan
 (`.claude/plans/cosmic-seeking-rivest.md`) landing first — that ships

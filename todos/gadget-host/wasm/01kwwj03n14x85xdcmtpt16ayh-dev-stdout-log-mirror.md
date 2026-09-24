@@ -1,3 +1,8 @@
+---
+kind: improvement
+status: needs-discussion
+---
+
 # Dev-Mode stdout Mirror for Gadget Logs
 
 Mirror gadget/host `LogItem`s to stdout (or stderr) in debug builds so
@@ -14,8 +19,6 @@ feature (2026-07-06), gadget-level warnings (e.g. the resolve pass
 dropping an icon) were unobservable from outside the running app —
 headless tooling had no way to see whether a gadget loaded, enabled,
 or warned. The internal log UI is the only consumer.
-
-**Status:** needs discussion
 
 **Discussion needed:**
 - `cfg(debug_assertions)`-only, or additionally gated behind an env

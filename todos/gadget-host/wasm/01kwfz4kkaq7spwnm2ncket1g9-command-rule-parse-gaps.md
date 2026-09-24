@@ -1,8 +1,12 @@
-# Command-rule validation gaps: uncompiled globs, zero ceilings
+---
+kind: bug
+severity: low
+status: open
+area: [src-tauri/src/wasm/manifest/permissions/command.rs]
+tags: [unconfirmed]
+---
 
-**Kind:** possible-bug
-**Severity:** low
-**Area:** src-tauri/src/wasm/manifest/permissions/command.rs
+# Command-rule validation gaps: uncompiled globs, zero ceilings
 
 ## Problem
 Two parse-time validation gaps in `[[permissions.command]]`

@@ -1,3 +1,8 @@
+---
+kind: feature
+status: open
+---
+
 # Clipboard: Pinned entries
 
 Allow users to pin clipboard history entries so they persist at the top

@@ -1,8 +1,12 @@
-# Command-permission globs match across `/` (globset default)
+---
+kind: bug
+severity: medium
+status: open
+area: [src-tauri/src/wasm/argv_matcher.rs]
+tags: [unconfirmed, security]
+---
 
-**Kind:** possible-bug
-**Severity:** medium
-**Area:** src-tauri/src/wasm/argv_matcher.rs
+# Command-permission globs match across `/` (globset default)
 
 ## Problem
 `compile_constraint` compiles `glob` argv constraints with globset

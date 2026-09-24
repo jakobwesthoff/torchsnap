@@ -1,3 +1,8 @@
+---
+kind: question
+status: open
+---
+
 # Gate devtools panel behind a settings toggle
 
 The devtools panel (tray menu entry, launcher catalog entry, window) is

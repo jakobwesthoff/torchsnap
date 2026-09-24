@@ -1,9 +1,11 @@
+---
+kind: bug
+severity: medium
+status: open
+area: [src/devtools/console/useLogStream.ts]
+---
+
 # Devtools log subscription is never torn down — leaked backend stream per subscribe
-
-**Kind:** bug
-**Severity:** medium
-
-**Area:** src/devtools/console/useLogStream.ts
 
 ## Problem
 The `useSyncExternalStore` subscribe callback in `useLogStream`
