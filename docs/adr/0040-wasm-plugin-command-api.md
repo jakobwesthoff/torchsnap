@@ -452,7 +452,7 @@ documented in the SDK docs.
   Requires archive-format mode preservation and (on macOS)
   quarantine-attribute handling and code-signing strategy.
 * **Settings UI display of plugin permissions**. Implemented by the
-  gadget cards in Settings → Gadgets (`src/settings/install/PermissionSummary.tsx`).
+  gadget cards in Settings → Gadgets (`src/settings/install/PermissionGroups.tsx`).
 * **Install-time consent prompt for User-source plugins
   declaring `[[permissions.command]]`**. Implemented by the install
   review (`src/settings/install/InstallReviewModal.tsx`), shown for
