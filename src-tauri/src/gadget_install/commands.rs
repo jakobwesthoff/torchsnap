@@ -30,30 +30,61 @@ pub fn process_in_background(queue: &Arc<InstallQueue>, ids: Vec<RequestId>) {
     }
 }
 
-/// What `submit_opened_urls` did with the URLs the OS handed over.
+/// What a submission from outside the settings window produced.
 #[derive(Debug, Default)]
-pub struct OpenedSubmission {
+pub struct Submission {
     /// Requests queued now; they still need `process_in_background`.
     pub queued: Vec<RequestId>,
     /// Archives held until `setup` starts the queue.
     pub buffered: usize,
 }
 
+impl Submission {
+    /// True when nothing was an archive, so there is nothing to review.
+    pub fn is_empty(&self) -> bool {
+        self.queued.is_empty() && self.buffered == 0
+    }
+
+    fn record(&mut self, submitted: Submitted) {
+        match submitted {
+            Submitted::Queued(id) => self.queued.push(id),
+            Submitted::Buffered => self.buffered += 1,
+            Submitted::Ignored => {}
+        }
+    }
+}
+
 /// Queue the files macOS asks the app to open (Finder double-click,
 /// "Open With"). Anything that is not a `file://` URL to a
 /// `.torchsnap` archive is ignored by the queue with a log line.
-pub fn submit_opened_urls(queue: &InstallQueue, urls: &[url::Url]) -> OpenedSubmission {
-    let mut submission = OpenedSubmission::default();
+pub fn submit_opened_urls(queue: &InstallQueue, urls: &[url::Url]) -> Submission {
+    let mut submission = Submission::default();
     for url in urls {
-        match queue.submit(
+        submission.record(queue.submit(
             OsStr::new(url.as_str()),
             Path::new("/"),
             InstallOrigin::OsOpenFile,
-        ) {
-            Submitted::Queued(id) => submission.queued.push(id),
-            Submitted::Buffered => submission.buffered += 1,
-            Submitted::Ignored => {}
+        ));
+    }
+    submission
+}
+
+/// Queue the archives named on a command line. `args` starts with the
+/// program name; arguments starting with `-` are flags, not files.
+/// Relative paths resolve against `cwd`, the directory the command was
+/// run in. On Linux and Windows this is how a file association hands
+/// over the opened file.
+pub fn submit_command_line(
+    queue: &InstallQueue,
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+    cwd: &Path,
+) -> Submission {
+    let mut submission = Submission::default();
+    for arg in args.into_iter().skip(1) {
+        if arg.as_encoded_bytes().starts_with(b"-") {
+            continue;
         }
+        submission.record(queue.submit(&arg, cwd, InstallOrigin::CommandLine));
     }
     submission
 }
@@ -372,6 +403,98 @@ mod tests {
         let submitted = submit_opened_urls(&queue, &opened(&["file:///tmp/weather.torchsnap"]));
 
         assert!(submitted.queued.is_empty());
+        assert_eq!(submitted.buffered, 1);
+    }
+
+    // =========================================================
+    // Command line
+    // =========================================================
+
+    fn args(values: &[&str]) -> Vec<std::ffi::OsString> {
+        values.iter().map(std::ffi::OsString::from).collect()
+    }
+
+    #[test]
+    fn command_line_skips_the_program_name_and_flags() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
+
+        let submitted = submit_command_line(
+            &queue,
+            vec![
+                std::ffi::OsString::from("/Applications/Torchsnap.app/Contents/MacOS/torchsnap"),
+                std::ffi::OsString::from("--flag"),
+                archive.clone().into_os_string(),
+            ],
+            Path::new("/"),
+        );
+
+        assert_eq!(submitted.queued.len(), 1);
+        let snapshot = queue.snapshot();
+        assert_eq!(snapshot[0].origin, InstallOrigin::CommandLine);
+        assert_eq!(snapshot[0].source_path, archive.display().to_string());
+    }
+
+    #[test]
+    fn command_line_paths_resolve_against_the_working_directory() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (src, archive) = archive_with_manifest("weather", "1.0.0", "");
+        let file_name = archive.file_name().expect("archive has a file name");
+
+        submit_command_line(
+            &queue,
+            vec![
+                std::ffi::OsString::from("torchsnap"),
+                file_name.to_os_string(),
+            ],
+            src.path(),
+        );
+
+        assert_eq!(
+            queue.snapshot()[0].source_path,
+            archive.display().to_string()
+        );
+    }
+
+    #[test]
+    fn a_launch_without_files_submits_nothing() {
+        let queue = Arc::new(InstallQueue::new());
+
+        let submitted = submit_command_line(&queue, args(&["torchsnap"]), Path::new("/"));
+
+        assert!(submitted.is_empty());
+    }
+
+    #[test]
+    fn command_line_files_before_start_are_buffered() {
+        let queue = Arc::new(InstallQueue::new());
+
+        let submitted = submit_command_line(
+            &queue,
+            args(&["torchsnap", "/tmp/weather.torchsnap"]),
+            Path::new("/"),
+        );
+
+        assert_eq!(submitted.buffered, 1);
+        assert!(!submitted.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_command_line_paths_are_kept() {
+        use std::os::unix::ffi::OsStrExt as _;
+
+        let queue = Arc::new(InstallQueue::new());
+        let raw = OsStr::from_bytes(b"/tmp/caf\xe9.torchsnap").to_os_string();
+
+        let submitted = submit_command_line(
+            &queue,
+            vec![std::ffi::OsString::from("torchsnap"), raw],
+            Path::new("/"),
+        );
+
         assert_eq!(submitted.buffered, 1);
     }
 }

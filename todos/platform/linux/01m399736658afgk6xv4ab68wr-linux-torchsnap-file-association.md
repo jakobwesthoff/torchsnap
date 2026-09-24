@@ -2,7 +2,6 @@
 kind: feature
 status: blocked
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
-depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
 ---
 
 # Linux: register `.torchsnap` for deb and rpm packages
@@ -69,9 +68,10 @@ Checked against the bundler source
 ## Receiving files
 
 Paths arrive in argv, and on an already running instance through the
-single-instance plugin. Both are covered by
-`todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md`,
-which this depends on.
+single-instance plugin. Both are in place (`submit_command_line` in
+`src-tauri/src/gadget_install/commands.rs`, wired in `run()` and
+`setup`). The plugin uses DBus on Linux, which snap and flatpak block
+unless the package manifest declares the name.
 
 ## Not covered here
 

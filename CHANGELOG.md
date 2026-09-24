@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grants highlighted.
 - Installs and replacements can be undone from the result list until
   Torchsnap restarts.
+- `.torchsnap` paths passed on the command line open the install
+  review, also when Torchsnap is already running. Starting Torchsnap a
+  second time without a file shows the launcher instead of a second
+  instance.
 
 ### Changed
 
