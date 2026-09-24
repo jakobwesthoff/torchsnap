@@ -8,7 +8,7 @@ depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-reques
 # Accept gadget archives from the command line and from a second launch
 
 Ships together with the macOS file association (decided 2026-09-24).
-Plan step 16.
+Plan step 17.
 
 ## Why
 
@@ -22,9 +22,10 @@ someone starts `Torchsnap.app/Contents/MacOS/<binary>` directly.
 ## Decisions
 
 - **First instance:** at the end of `setup`, pass
-  `std::env::args()` through `intake::paths_from_args` (skip the
-  program name and anything starting with `-`, accept paths and
-  `file://` URLs) and submit with origin `CommandLine`.
+  `std::env::args_os()` (`args()` panics on non-UTF-8) through
+  `intake::paths_from_args` (skip the program name and anything
+  starting with `-`, accept paths and `file://` URLs) and submit with
+  origin `CommandLine`.
 - **Later launches:** `tauri-plugin-single-instance` (2.4.3),
   registered first in `run()` as its docs require. The callback gets
   `(app, args, cwd)`; relative paths resolve against `cwd`.

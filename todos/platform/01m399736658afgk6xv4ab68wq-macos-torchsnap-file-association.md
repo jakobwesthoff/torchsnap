@@ -8,8 +8,8 @@ depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-reques
 
 # macOS: register `.torchsnap` with Torchsnap and receive opened files
 
-First implementation target, after the intake pipeline. Plan steps 15
-and 17.
+First implementation target, after the intake pipeline. Plan steps 16
+and 19.
 
 ## Goal
 
@@ -47,21 +47,24 @@ install intake
 - `src-tauri/icons/gadget-document.icns` is generated from
   `app-icon-source.png` by a `just` recipe and placed in
   `Contents/Resources` through `bundle.resources`.
-- `just verify-bundle-plist` reads the built bundle's `Info.plist`
-  with `plutil -extract` and fails if any value above is missing or
-  different. It runs after `just build` and in the release recipe.
+- `just verify-bundle` reads the built bundle's `Info.plist` with
+  `plutil -extract` and fails if any value above is missing or
+  different or the icon file is absent. It runs from `release-build`
+  and by hand after `just build`.
 
 ## Receiving files
 
 `RunEvent::Opened { urls }` is compiled only for macOS, iOS and
-Android. A new arm in the `app.run` closure passes the URLs through
+Android. A new `#[cfg(target_os = "macos")]` arm in the `app.run`
+closure passes the URLs through
 `intake::paths_from_opened_urls` (keeps `file://`, logs others),
 submits them with origin `OsOpenFile`, and shows the settings window.
 
-tao forwards `application:openURLs:` only when its callback is
-installed and has no queue. The intake queue is created in `run()`
-before the builder and shared with the run-loop closure, so the order
-of `Opened` and `setup` on a cold launch does not matter.
+tao forwards `application:openURLs:` whenever its callback is
+installed, without a queue, and on a Finder cold start it probably
+arrives before `setup`. The intake queue is created in `run()`, shared
+with the run-loop closure, and buffers raw inputs until `setup` starts
+it.
 
 ## Platform notes
 
@@ -70,13 +73,14 @@ of `Opened` and `setup` on a cold launch does not matter.
 - **Not sandboxed.** `src-tauri/Entitlements.plist` only holds the
   hardened-runtime exceptions from ADR 0046, so reading paths and
   xattrs from open events needs no security-scoped bookmarks.
-- **Dev builds register nothing.** `tauri dev` embeds only
-  `CFBundleName` and the version keys of `src-tauri/Info.plist` into
-  the binary. Associations only exist for the bundled app.
+- **Dev builds register nothing.** `tauri dev` embeds
+  `src-tauri/Info.plist` into the binary, but a bare binary is never
+  registered with LaunchServices. Associations only exist for the
+  bundled app.
 
 ## Testing
 
-Automated: the URL filter (unit tests) and `just verify-bundle-plist`.
+Automated: the URL filter (unit tests) and `just verify-bundle`.
 Manual: the checklist in the plan (cold start, running app, several
 files, quarantined download, replace, notarized DMG). Useful commands:
 

@@ -8,7 +8,7 @@ depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-reques
 # Install review dialog: show what a gadget asks for before installing it
 
 Part of the first delivery (decided 2026-09-24). Implementation steps
-7, 8, 12 and 13 of the plan.
+8, 9, 13 and 14 of the plan.
 
 ## Why
 
@@ -22,10 +22,16 @@ yes. The dialog replaces a plain confirm step entirely.
 - **Always shown**, for every install request and every origin.
 - **Content:** name, version, id, description; the source path;
   download provenance on macOS when available ("Downloaded from
-  github.com"); a replace notice with installed and incoming version;
+  github.com"); on replace the installed and incoming version with
+  their relation (upgrade, same, downgrade as a warning, unknown);
   every declared permission, grouped, in plain language, with broad
-  grants highlighted; Install / Cancel. A rejected request (builtin,
-  system or dev id) shows the reason and only a dismiss action.
+  grants highlighted and, on replace, added permissions marked and
+  removed ones listed; Install / Cancel. A rejected request (builtin,
+  system or dev id, a directory-form user gadget, or a downgrade with
+  fewer SQL migrations) shows the reason and only a dismiss action.
+- **Fine-grained items** (one per HTTP origin, filesystem pattern,
+  opener scheme, command rule and flag), so a change to one origin
+  does not mark the whole HTTP block as changed.
 - **Severity rules** (Rust, `review.rs`): any `command` rule, HTTP
   origin `"*"` and `opener.open_path` are warnings; other HTTP
   origins, opener schemes, `reveal_path`, filesystem read patterns,
@@ -60,7 +66,7 @@ yes. The dialog replaces a plain confirm step entirely.
   `todos/product/features/01krp751n5tddffjtb8fr7nnpr-permission-ui-transparency.md`;
   its section 1 and
   `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`
-  are covered by the shared component (plan step 12).
+  are covered by the shared component (plan step 13).
 
 ## Out of scope
 
