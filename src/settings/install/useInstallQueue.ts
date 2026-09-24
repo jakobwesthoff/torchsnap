@@ -10,43 +10,30 @@
 // so requests that arrived while the settings window was closed are
 // there the moment it opens.
 //
-// Results of confirmed installs collect into one batch until the
-// user acknowledges them, so several files installed in a row end in
-// a single summary with a single restart prompt.
+// What a confirmed install changed is shown by the gadget list
+// through `usePendingChanges`, which the backend keeps across
+// Settings being closed and reopened.
 // =========================================================
 
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { command, type InstalledGadgetInfo } from "../../lib/command";
+import { command } from "../../lib/command";
 import { INSTALL_QUEUE_CHANGED, type InstallRequestView } from "./types";
-
-export interface InstallResult {
-  kind: "installed";
-  info: InstalledGadgetInfo;
-  undone: boolean;
-  /** Whether this entry still needs a restart to take effect. */
-  requiresRestart: boolean;
-}
 
 export interface InstallQueueState {
   requests: InstallRequestView[];
   /** False until the first pull finished. */
   loaded: boolean;
-  results: InstallResult[];
   /** The last failed action, for display next to the queue. */
   error: string | null;
   confirm: (requestId: string) => Promise<void>;
   dismiss: (requestId: string) => Promise<void>;
-  undo: (gadgetId: string) => Promise<void>;
-  /** Clear the batch results, which also ends the chance to undo them. */
-  acknowledge: () => void;
   dismissError: () => void;
 }
 
 export function useInstallQueue(): InstallQueueState {
   const [requests, setRequests] = useState<InstallRequestView[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [results, setResults] = useState<InstallResult[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Pull the queue and apply it. `isCurrent` lets the mount effect
@@ -96,11 +83,7 @@ export function useInstallQueue(): InstallQueueState {
     async (requestId: string) => {
       setError(null);
       try {
-        const info = await command("install_queue_confirm", { requestId });
-        setResults((previous) => [
-          ...previous,
-          { kind: "installed", info, undone: false, requiresRestart: info.requiresRestart },
-        ]);
+        await command("install_queue_confirm", { requestId });
       } catch (e) {
         setError(formatError(e));
       }
@@ -122,26 +105,9 @@ export function useInstallQueue(): InstallQueueState {
     [refresh],
   );
 
-  const undo = useCallback(async (gadgetId: string) => {
-    setError(null);
-    try {
-      const undone = await command("install_undo", { gadgetId });
-      setResults((previous) =>
-        previous.map((result) =>
-          result.info.id === gadgetId
-            ? { ...result, undone: true, requiresRestart: undone.requiresRestart }
-            : result,
-        ),
-      );
-    } catch (e) {
-      setError(formatError(e));
-    }
-  }, []);
-
-  const acknowledge = useCallback(() => setResults([]), []);
   const dismissError = useCallback(() => setError(null), []);
 
-  return { requests, loaded, results, error, confirm, dismiss, undo, acknowledge, dismissError };
+  return { requests, loaded, error, confirm, dismiss, dismissError };
 }
 
 function formatError(error: unknown): string {

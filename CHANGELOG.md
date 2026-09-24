@@ -19,8 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into what it is allowed to do (run commands, reach websites, read
   files and so on). Permissions that reach beyond the gadget's own data
   are labelled "Broad access".
-- Installs and replacements can be undone from the result list until
-  Torchsnap restarts.
+- Settings → Gadgets lists installs, updates and uninstalls that wait
+  for a restart, with the version change and an Undo for each, and a
+  bar with the number of pending changes and "Restart now". The list
+  keeps showing them after Settings is closed and reopened. Uninstalls
+  can be undone as well until Torchsnap restarts.
+- Gadgets in Settings → Gadgets show their version.
 - `.torchsnap` paths passed on the command line open the install
   review, also when Torchsnap is already running. Starting Torchsnap a
   second time without a file shows the launcher instead of a second

@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { mockWindows } from "@tauri-apps/api/mocks";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCommands } from "../../test/tauri";
+import type { PendingGadget } from "../install/types";
 import { GadgetsManagementPanel } from "./GadgetsManagementPanel";
 
 vi.mock("../../gadgets/registry", () => ({
@@ -54,6 +55,7 @@ describe("GadgetsManagementPanel", () => {
   function mockPanelCommands(submitted: unknown[]) {
     mockCommands({
       pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => [],
@@ -129,6 +131,7 @@ describe("GadgetsManagementPanel", () => {
   function mockCardCommands(permissions: Record<string, unknown[]>) {
     mockCommands({
       pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
       gadget_permissions: () => permissions as never,
       install_queue_snapshot: () => [],
@@ -188,16 +191,31 @@ describe("GadgetsManagementPanel", () => {
     expect(within(weather).getByRole("button", { name: "No permissions" })).toBeDisabled();
   });
 
-  it("shows a gadget awaiting its uninstall instead of offering it again", async () => {
-    let pending: Record<string, "installed" | "replaced" | "uninstalled"> = {};
+  it("shows an uninstalled gadget as removed on restart with an undo", async () => {
+    let pending: Record<string, PendingGadget> = {};
+    const undone: string[] = [];
     mockCommands({
       pending_gadget_changes: () => pending,
+      wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user" }),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => [],
       uninstall_user_gadget: () => {
-        pending = { weather: "uninstalled" };
+        pending = {
+          weather: {
+            kind: "uninstalled",
+            name: "Weather",
+            description: "Forecasts",
+            version: null,
+            previousVersion: "1.0.0",
+          },
+        };
         return { requiresRestart: true };
+      },
+      install_undo: ({ gadgetId }) => {
+        undone.push(gadgetId);
+        pending = {};
+        return { restoredVersion: "1.0.0", requiresRestart: false };
       },
     });
     render(<GadgetsManagementPanel />);
@@ -205,14 +223,117 @@ describe("GadgetsManagementPanel", () => {
 
     await userEvent.click(within(weather).getByRole("button", { name: "Uninstall" }));
 
-    const removed = await within(weather).findByRole("button", { name: "Removed on restart" });
-    expect(removed).toBeDisabled();
+    expect(await within(weather).findByText("Removed on restart")).toBeInTheDocument();
     expect(within(weather).queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(weather).getByRole("button", { name: "Undo" }));
+
+    expect(undone).toEqual(["weather"]);
+    expect(await within(weather).findByRole("button", { name: "Uninstall" })).toBeInTheDocument();
+  });
+
+  it("lists pending changes with their versions and an undo", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({
+        weather: {
+          kind: "replaced",
+          name: "Weather",
+          description: "Forecasts",
+          version: "2.0.0",
+          previousVersion: "1.0.0",
+        },
+        calendar: {
+          kind: "installed",
+          name: "Calendar",
+          description: "Dates",
+          version: "1.0.0",
+          previousVersion: null,
+        },
+      }),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const weather = await card("Weather");
+    expect(within(weather).getByText("1.0.0 → 2.0.0")).toBeInTheDocument();
+    expect(within(weather).getByText("Updates to 2.0.0 on restart")).toBeInTheDocument();
+    expect(within(weather).getByRole("button", { name: "Undo" })).toBeInTheDocument();
+
+    // Not loaded yet, so it only exists as a pending change.
+    const calendar = await card("Calendar");
+    expect(within(calendar).getByText("Installs on restart")).toBeInTheDocument();
+    expect(within(calendar).getByText("1.0.0")).toBeInTheDocument();
+    expect(within(calendar).getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  });
+
+  it("counts pending changes in a restart bar that survives reopening", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({
+        calendar: {
+          kind: "installed",
+          name: "Calendar",
+          description: "Dates",
+          version: "1.0.0",
+          previousVersion: null,
+        },
+      }),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({}),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+    });
+
+    const { unmount } = render(<GadgetsManagementPanel />);
+    expect(await screen.findByText("1 change applies after a restart")).toBeInTheDocument();
+    unmount();
+
+    render(<GadgetsManagementPanel />);
+    expect(await screen.findByText("1 change applies after a restart")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
+  });
+
+  it("shows no restart bar without pending changes", async () => {
+    mockCardCommands({});
+    render(<GadgetsManagementPanel />);
+    await card("Weather");
+
+    expect(screen.queryByRole("button", { name: "Restart now" })).not.toBeInTheDocument();
+  });
+
+  it("shows the version of an installed gadget after its name", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [
+        {
+          gadget: {
+            id: "weather",
+            name: "Weather",
+            description: "Forecasts",
+            version: "1.4.2",
+            wasm: "gadget.wasm",
+            icon: "heroicons:sun",
+            prefixes: [],
+          },
+          settings: {},
+          shortcuts: {},
+        } as never,
+      ],
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    expect(within(await card("Weather")).getByText("1.4.2")).toBeInTheDocument();
   });
 
   it("labels gadgets that ship with the app as bundled", async () => {
     mockCommands({
       pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "system" }),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => [],
@@ -255,14 +376,25 @@ describe("GadgetsManagementPanel", () => {
       },
     ];
     const confirmed: string[] = [];
+    let pending: Record<string, PendingGadget> = {};
     mockCommands({
-      pending_gadget_changes: () => ({}),
+      pending_gadget_changes: () => pending,
+      wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => queue,
       install_queue_confirm: ({ requestId }) => {
         confirmed.push(requestId);
         queue = [];
+        pending = {
+          weather: {
+            kind: "installed",
+            name: "Weather",
+            description: "Forecasts",
+            version: "1.0.0",
+            previousVersion: null,
+          },
+        };
         return {
           id: "weather",
           name: "Weather",
@@ -281,6 +413,7 @@ describe("GadgetsManagementPanel", () => {
 
     expect(confirmed).toEqual(["r1"]);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("Installed Weather 1.0.0.")).toBeInTheDocument();
+    const weather = await card("Weather");
+    expect(within(weather).getByText("Installs on restart")).toBeInTheDocument();
   });
 });
