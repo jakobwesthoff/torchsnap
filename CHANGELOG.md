@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The ZeroTier gadget's warning results (token missing, token rejected,
+  service not running) appeared under every search. They now appear
+  only when the query starts with `zerotier` (or at least `zer`), is a
+  network ID, or matches a remembered network.
+- The ZeroTier gadget kept reporting the ZeroTier service as not running
+  after it started, until the gadget was re-enabled. It now checks again
+  on the next ZeroTier search, at most every 5 seconds.
+- Pressing Enter on the ZeroTier "daemon not running" result showed an
+  error. The result is now informational and has no action.
+
 ## [0.10.0] - 2026-09-23
 
 ### Added

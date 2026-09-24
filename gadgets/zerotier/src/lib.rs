@@ -20,7 +20,7 @@
 //!   clear-all, validate-token, auth-state).
 
 use std::cell::RefCell;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use torchsnap_gadget_sdk::platform::Os;
@@ -67,6 +67,10 @@ struct Runtime {
     /// Drives the failure-state entries surfaced in
     /// `search()`.
     auth_state: AuthState,
+    /// When token resolution and validation last ran. Drives
+    /// the throttled retry in `search()` while `auth_state`
+    /// is not `Validated`.
+    last_auth_attempt: Option<Instant>,
     /// Cached `list_networks` result for up to
     /// `DEFAULT_TTL`. The slot stores the full
     /// `Result` so cache hits don't lose error context.
@@ -79,9 +83,44 @@ impl Runtime {
             auth: None,
             client: None,
             auth_state: AuthState::Unconfigured,
+            last_auth_attempt: None,
             network_cache: RateLimitCache::new(DEFAULT_TTL),
         }
     }
+}
+
+/// Minimum time between two automatic auth retries. The
+/// daemon may start, or its token file may appear, after the
+/// gadget was enabled; retrying lets the gadget pick that up
+/// without a restart. A refused connection to the loopback
+/// port fails immediately, so the interval only bounds how
+/// often the token files are re-read while the daemon is down.
+const AUTH_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Whether `search()` should re-run token resolution and
+/// validation. A validated token is never re-checked: the
+/// daemon never rotates it.
+fn auth_retry_due(state: AuthState, last_attempt: Option<Instant>, now: Instant) -> bool {
+    if state == AuthState::Validated {
+        return false;
+    }
+    match last_attempt {
+        None => true,
+        Some(at) => now.duration_since(at) >= AUTH_RETRY_INTERVAL,
+    }
+}
+
+/// Whether this search should retry auth. Only queries about
+/// ZeroTier retry, so unrelated searches never pay for token
+/// reads or a status call.
+fn should_retry_auth(
+    runtime: &Runtime,
+    intent: &Intent,
+    known: &[NetworkRow],
+    now: Instant,
+) -> bool {
+    query::addresses_zerotier(intent, known)
+        && auth_retry_due(runtime.auth_state, runtime.last_auth_attempt, now)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -140,6 +179,7 @@ impl LifecycleGuest for ZeroTierPlugin {
 // =========================================================
 
 fn initialize(runtime: &mut Runtime) {
+    runtime.last_auth_attempt = Some(Instant::now());
     let resolved = auth::resolve();
     runtime.auth = Some(resolved.clone());
 
@@ -199,9 +239,23 @@ impl SearchGuest for ZeroTierPlugin {
             return SearchResponse::Nothing;
         }
 
+        // Remembered networks come from the local history table,
+        // so they are available even while the daemon is down.
+        // They decide whether the query is about ZeroTier at all.
+        let known = load_known_rows();
+        let known_rows = merge_live_and_known(&[], &known);
+
         RUNTIME.with(|cell| {
+            {
+                let mut runtime = cell.borrow_mut();
+                if should_retry_auth(&runtime, &intent, &known_rows, Instant::now()) {
+                    initialize(&mut runtime);
+                    runtime.network_cache.invalidate();
+                }
+            }
+
             let runtime = cell.borrow();
-            let entries = build_search_entries(&runtime, &intent);
+            let entries = build_search_entries(&runtime, &intent, &known, &known_rows);
             if entries.is_empty() {
                 SearchResponse::Nothing
             } else {
@@ -266,18 +320,21 @@ impl SearchGuest for ZeroTierPlugin {
 // Search-entry assembly
 // =========================================================
 
-fn build_search_entries(runtime: &Runtime, intent: &Intent) -> Vec<ScoredEntry> {
-    // Failure-state entries — surfaced only when the query
-    // has ZT context (bare ID, or a non-empty `Match` that
-    // would otherwise produce results) so unrelated queries
-    // aren't polluted.
-    if let Some(failure) = failure_entry(runtime, intent) {
+/// `known` is the raw history table; `known_rows` is the same
+/// data as `KnownOnly` rows, used to decide whether a failure
+/// entry applies before any daemon call.
+fn build_search_entries(
+    runtime: &Runtime,
+    intent: &Intent,
+    known: &[history::HistoryRow],
+    known_rows: &[NetworkRow],
+) -> Vec<ScoredEntry> {
+    if let Some(failure) = failure_entry(runtime, intent, known_rows) {
         return vec![failure];
     }
 
     let live = current_live_state(runtime);
-    let known = load_known_rows();
-    let rows = merge_live_and_known(&live, &known);
+    let rows = merge_live_and_known(&live, known);
 
     match intent {
         Intent::None => Vec::new(),
@@ -303,24 +360,29 @@ fn build_search_entries(runtime: &Runtime, intent: &Intent) -> Vec<ScoredEntry> 
     }
 }
 
-fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
-    if matches!(intent, Intent::None) {
-        return None;
-    }
-    let (title, label, action_id) = match runtime.auth_state {
+/// The warning entry for an unusable auth state, shown only
+/// for queries about ZeroTier (see
+/// [`query::addresses_zerotier`]) so unrelated searches stay
+/// clean. Token problems link to the settings panel where the
+/// token is pasted. A stopped daemon is informational only:
+/// nothing in Torchsnap can start it, and `search()` retries
+/// on its own once it runs.
+fn failure_entry(runtime: &Runtime, intent: &Intent, known: &[NetworkRow]) -> Option<ScoredEntry> {
+    let (title, action) = match runtime.auth_state {
         AuthState::Validated => return None,
         AuthState::Unconfigured => (
             "ZeroTier token not configured",
-            "Open settings",
-            ActionId::OpenSettings,
+            Some(open_settings_action()),
         ),
         AuthState::Rejected => (
             "ZeroTier authentication failed",
-            "Open settings",
-            ActionId::OpenSettings,
+            Some(open_settings_action()),
         ),
-        AuthState::DaemonUnreachable => ("ZeroTier daemon not running", "Dismiss", ActionId::Open),
+        AuthState::DaemonUnreachable => ("ZeroTier daemon not running", None),
     };
+    if !query::addresses_zerotier(intent, known) {
+        return None;
+    }
     Some(ScoredEntry {
         id: format!("failure:{title}"),
         title: title.to_string(),
@@ -329,12 +391,16 @@ fn failure_entry(runtime: &Runtime, intent: &Intent) -> Option<ScoredEntry> {
         score: 1,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
-        actions: vec![Action {
-            id: action_id,
-            label: label.to_string(),
-        }],
+        actions: action.into_iter().collect(),
         data: None,
     })
+}
+
+fn open_settings_action() -> Action {
+    Action {
+        id: ActionId::OpenSettings,
+        label: "Open settings".to_string(),
+    }
 }
 
 // Bundled ZeroTier brand glyph in `assets/icon.svg`. The host
@@ -655,3 +721,202 @@ impl MessagingGuest for ZeroTierPlugin {
 }
 
 impl_noop_tasks!(ZeroTierPlugin);
+
+// =========================================================
+// Tests
+// =========================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime_with(state: AuthState) -> Runtime {
+        let mut runtime = Runtime::new();
+        runtime.auth_state = state;
+        runtime
+    }
+
+    const FAILING_STATES: [AuthState; 3] = [
+        AuthState::Unconfigured,
+        AuthState::Rejected,
+        AuthState::DaemonUnreachable,
+    ];
+
+    fn id_intent() -> Intent {
+        Intent::JoinById("abcdef0123456789".into())
+    }
+
+    fn remembered(name: &str) -> NetworkRow {
+        NetworkRow {
+            id: "aaaa000000000001".into(),
+            name: name.into(),
+            state: NetworkState::KnownOnly,
+            assigned_addresses: vec![],
+        }
+    }
+
+    // ---- failure_entry ---------------------------------------
+
+    #[test]
+    fn unrelated_query_shows_no_failure_entry() {
+        let known = [remembered("starling-lab")];
+        for state in FAILING_STATES {
+            let runtime = runtime_with(state);
+            let intent = Intent::Match("firefox".into());
+            assert!(
+                failure_entry(&runtime, &intent, &known).is_none(),
+                "{state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_query_shows_no_failure_entry() {
+        for state in FAILING_STATES {
+            let runtime = runtime_with(state);
+            assert!(
+                failure_entry(&runtime, &Intent::None, &[]).is_none(),
+                "{state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn zerotier_queries_show_the_failure_entry() {
+        let known = [remembered("starling-lab")];
+        let intents = [
+            id_intent(),
+            Intent::Match("zerotier".into()),
+            Intent::Match("starling".into()),
+        ];
+        for state in FAILING_STATES {
+            let runtime = runtime_with(state);
+            for intent in &intents {
+                assert!(
+                    failure_entry(&runtime, intent, &known).is_some(),
+                    "{state:?} {intent:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validated_auth_shows_no_failure_entry() {
+        let runtime = runtime_with(AuthState::Validated);
+        assert!(failure_entry(&runtime, &id_intent(), &[]).is_none());
+    }
+
+    #[test]
+    fn daemon_unreachable_entry_has_no_action() {
+        let runtime = runtime_with(AuthState::DaemonUnreachable);
+        let entry =
+            failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
+        assert_eq!(entry.title, "ZeroTier daemon not running");
+        assert!(entry.actions.is_empty());
+    }
+
+    #[test]
+    fn token_problems_link_to_the_settings() {
+        for (state, title) in [
+            (AuthState::Unconfigured, "ZeroTier token not configured"),
+            (AuthState::Rejected, "ZeroTier authentication failed"),
+        ] {
+            let runtime = runtime_with(state);
+            let entry =
+                failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
+            assert_eq!(entry.title, title);
+            assert_eq!(entry.actions.len(), 1);
+            assert!(matches!(entry.actions[0].id, ActionId::OpenSettings));
+            assert_eq!(entry.actions[0].label, "Open settings");
+        }
+    }
+
+    #[test]
+    fn failure_entry_ranks_below_every_network_result() {
+        let runtime = runtime_with(AuthState::DaemonUnreachable);
+        let entry =
+            failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
+        assert!(entry.score < query::SYNTHETIC_CONNECT_SCORE);
+        assert!(entry.id.starts_with("failure:"));
+        assert!(query::parse_entry_id(&entry.id).is_none());
+    }
+
+    // ---- auth_retry_due --------------------------------------
+
+    #[test]
+    fn failed_auth_is_retried_once_the_interval_has_passed() {
+        let now = Instant::now();
+        let recent = now
+            .checked_sub(Duration::from_secs(1))
+            .expect("process has run for longer than a second");
+        let stale = now
+            .checked_sub(AUTH_RETRY_INTERVAL)
+            .expect("process has run for longer than the retry interval");
+
+        assert!(!auth_retry_due(
+            AuthState::DaemonUnreachable,
+            Some(recent),
+            now
+        ));
+        assert!(auth_retry_due(
+            AuthState::DaemonUnreachable,
+            Some(stale),
+            now
+        ));
+        assert!(auth_retry_due(AuthState::Unconfigured, None, now));
+    }
+
+    #[test]
+    fn validated_auth_is_never_retried() {
+        assert!(!auth_retry_due(AuthState::Validated, None, Instant::now()));
+    }
+
+    // ---- should_retry_auth -----------------------------------
+
+    #[test]
+    fn zerotier_query_retries_failed_auth() {
+        let runtime = runtime_with(AuthState::DaemonUnreachable);
+        let known = [remembered("starling-lab")];
+        for intent in [
+            id_intent(),
+            Intent::Match("zero".into()),
+            Intent::Match("starling".into()),
+        ] {
+            assert!(
+                should_retry_auth(&runtime, &intent, &known, Instant::now()),
+                "{intent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_query_never_retries_auth() {
+        let runtime = runtime_with(AuthState::DaemonUnreachable);
+        let known = [remembered("starling-lab")];
+        for intent in [Intent::None, Intent::Match("firefox".into())] {
+            assert!(
+                !should_retry_auth(&runtime, &intent, &known, Instant::now()),
+                "{intent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn retry_respects_the_interval_after_an_attempt() {
+        let now = Instant::now();
+        let mut runtime = runtime_with(AuthState::DaemonUnreachable);
+        runtime.last_auth_attempt = Some(now);
+        assert!(!should_retry_auth(&runtime, &id_intent(), &[], now));
+    }
+
+    #[test]
+    fn validated_auth_is_not_retried_for_zerotier_queries() {
+        let runtime = runtime_with(AuthState::Validated);
+        assert!(!should_retry_auth(
+            &runtime,
+            &id_intent(),
+            &[],
+            Instant::now()
+        ));
+    }
+}
