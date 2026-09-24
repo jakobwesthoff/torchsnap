@@ -613,13 +613,6 @@ pub fn update_install(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Close the window; the found update stays in the tray until the next
-/// restart.
-#[tauri::command]
-pub fn update_later(app: tauri::AppHandle) {
-    crate::close_update_window(&app);
-}
-
 /// The version "Skip This Version" applies to.
 fn skip_target(phase: &Phase) -> Option<String> {
     match phase {
@@ -640,21 +633,20 @@ pub fn update_skip(app: tauri::AppHandle) {
 }
 
 /// Closing the window after "up to date" or an error returns to idle;
-/// an offered or installing update keeps its phase.
-fn settles_on_dismiss(phase: &Phase) -> bool {
+/// an offered update keeps its phase, which is what "Later" means, and
+/// so does one that is installing.
+fn settles_on_close(phase: &Phase) -> bool {
     !matches!(
         phase,
         Phase::Available(_) | Phase::Downloading { .. } | Phase::Installing { .. }
     )
 }
 
-/// Close the window without choosing Later or Skip.
-#[tauri::command]
-pub fn update_dismiss(app: tauri::AppHandle) {
-    if settles_on_dismiss(&app.state::<UpdateState>().lock().phase) {
-        set_phase(&app, Phase::Idle);
+/// The update window was closed, by any of its controls.
+pub fn update_window_closed(app: &tauri::AppHandle) {
+    if settles_on_close(&app.state::<UpdateState>().lock().phase) {
+        set_phase(app, Phase::Idle);
     }
-    crate::close_update_window(&app);
 }
 
 // =========================================================
@@ -902,17 +894,17 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_settles_finished_phases_only() {
-        assert!(settles_on_dismiss(&Phase::Checking));
-        assert!(settles_on_dismiss(&Phase::UpToDate {
+    fn closing_settles_finished_phases_only() {
+        assert!(settles_on_close(&Phase::Checking));
+        assert!(settles_on_close(&Phase::UpToDate {
             installed: "0.12.0".into()
         }));
-        assert!(settles_on_dismiss(&Phase::Failed {
+        assert!(settles_on_close(&Phase::Failed {
             message: "x".into()
         }));
-        assert!(!settles_on_dismiss(&available("0.12.0", None)));
-        assert!(!settles_on_dismiss(&downloading()));
-        assert!(!settles_on_dismiss(&installing()));
+        assert!(!settles_on_close(&available("0.12.0", None)));
+        assert!(!settles_on_close(&downloading()));
+        assert!(!settles_on_close(&installing()));
     }
 
     #[test]

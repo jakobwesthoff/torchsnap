@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "update",
+  "description": "Capability for the update window: its title bar controls and opening links in the browser. Everything else goes through the app's own update_* commands (ADR 0053).",
+  "windows": ["update"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-start-dragging",
+    "opener:allow-open-url",
+    "opener:allow-default-urls"
+  ]
+}

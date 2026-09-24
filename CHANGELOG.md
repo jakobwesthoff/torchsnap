@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- "Check for Updates..." in the menu-bar menu looks for a newer
-  Torchsnap, and installs it and restarts after asking.
+- Torchsnap updates itself. "Check for Updates..." in the menu-bar
+  menu opens a window with the notes of every newer version, and
+  "Install and Restart" downloads the update, replaces the app and
+  restarts it, showing the launcher once it is back. "Later" keeps the
+  update in the menu-bar menu, "Skip This Version" stops automatic
+  checks from offering it again.
 
 ## [0.11.1] - 2026-09-24
 

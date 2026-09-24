@@ -29,6 +29,7 @@ import type {
   PendingGadget,
   PermissionItem,
 } from "../settings/install/types";
+import type { UpdatePhase } from "../update/types";
 
 // =========================================================
 // Command Registry
@@ -130,6 +131,10 @@ export interface CommandMap {
   take_settings_start_section: { params: void; result: string | null };
   restart_to_apply_gadget_changes: { params: void; result: void };
   build_info: { params: void; result: { version: string; gitHash: string } };
+  update_phase: { params: void; result: UpdatePhase };
+  update_check: { params: void; result: void };
+  update_install: { params: void; result: void };
+  update_skip: { params: void; result: void };
 }
 
 // =========================================================
