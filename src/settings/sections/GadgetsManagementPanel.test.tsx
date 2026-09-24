@@ -53,6 +53,7 @@ describe("GadgetsManagementPanel", () => {
 
   function mockPanelCommands(submitted: unknown[]) {
     mockCommands({
+      pending_gadget_changes: () => ({}),
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => [],
@@ -127,6 +128,7 @@ describe("GadgetsManagementPanel", () => {
 
   function mockCardCommands(permissions: Record<string, unknown[]>) {
     mockCommands({
+      pending_gadget_changes: () => ({}),
       gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
       gadget_permissions: () => permissions as never,
       install_queue_snapshot: () => [],
@@ -186,6 +188,40 @@ describe("GadgetsManagementPanel", () => {
     expect(within(weather).getByRole("button", { name: "No permissions" })).toBeDisabled();
   });
 
+  it("shows a gadget awaiting its uninstall instead of offering it again", async () => {
+    let pending: Record<string, "installed" | "replaced" | "uninstalled"> = {};
+    mockCommands({
+      pending_gadget_changes: () => pending,
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+      uninstall_user_gadget: () => {
+        pending = { weather: "uninstalled" };
+        return { requiresRestart: true };
+      },
+    });
+    render(<GadgetsManagementPanel />);
+    const weather = await card("Weather");
+
+    await userEvent.click(within(weather).getByRole("button", { name: "Uninstall" }));
+
+    const removed = await within(weather).findByRole("button", { name: "Removed on restart" });
+    expect(removed).toBeDisabled();
+    expect(within(weather).queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
+  });
+
+  it("labels gadgets that ship with the app as bundled", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({}),
+      gadget_sources: () => ({ weather: "system" }),
+      gadget_permissions: () => ({}),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    expect(within(await card("Weather")).getByText("Bundled")).toBeInTheDocument();
+  });
+
   it("puts every switch in the same place, whatever sits next to it", async () => {
     mockCardCommands({});
     render(<GadgetsManagementPanel />);
@@ -220,6 +256,7 @@ describe("GadgetsManagementPanel", () => {
     ];
     const confirmed: string[] = [];
     mockCommands({
+      pending_gadget_changes: () => ({}),
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
       install_queue_snapshot: () => queue,

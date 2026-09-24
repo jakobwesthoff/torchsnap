@@ -59,7 +59,7 @@ pub fn decide_install(
         }
         Some(Registration::System) => {
             return InstallDecision::Reject(format!(
-                "A system gadget with id `{gadget_id}` is bundled with the app. Overriding system gadgets is not supported."
+                "A bundled gadget with id `{gadget_id}` ships with Torchsnap. Bundled gadgets cannot be replaced."
             ));
         }
         Some(Registration::Dev) => {
@@ -136,9 +136,9 @@ pub fn decide_uninstall(
     gadget_id: &str,
 ) -> UninstallDecision {
     let kind = match registered {
-        Some(Registration::Builtin) => Some("Builtin"),
-        Some(Registration::System) => Some("System"),
-        Some(Registration::Dev) => Some("Dev"),
+        Some(Registration::Builtin) => Some("built-in"),
+        Some(Registration::System) => Some("bundled"),
+        Some(Registration::Dev) => Some("development"),
         Some(Registration::User { .. }) | None => None,
     };
     if let Some(kind) = kind {
@@ -311,7 +311,7 @@ mod tests {
             ),
             (
                 Registration::System,
-                "A system gadget with id `weather` is bundled with the app",
+                "A bundled gadget with id `weather` ships with Torchsnap",
             ),
             (
                 Registration::Dev,

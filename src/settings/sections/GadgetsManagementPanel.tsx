@@ -51,6 +51,8 @@ interface PluginRow {
   icon?: string;
   sourceKind: GadgetSourceKind;
   permissions: PermissionItem[];
+  /** Set once the gadget was uninstalled in this session. */
+  uninstallPending: boolean;
 }
 
 // =========================================================
@@ -62,6 +64,22 @@ export function GadgetsManagementPanel() {
   const [sourceKinds, setSourceKinds] = useState<Record<string, GadgetSourceKind>>({});
   const [loadingSourceKinds, setLoadingSourceKinds] = useState(true);
   const [permissions, setPermissions] = useState<Record<string, PermissionItem[]>>({});
+  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+
+  // Uninstalls only finish on restart, so the panel asks the backend
+  // which gadgets are already uninstalled rather than offering the
+  // action twice.
+  const loadPendingChanges = useCallback(
+    () =>
+      command("pending_gadget_changes").then(
+        (changes) => setPendingChanges(changes),
+        () => {},
+      ),
+    [],
+  );
+  useEffect(() => {
+    void loadPendingChanges();
+  }, [loadPendingChanges]);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const installQueue = useInstallQueue();
@@ -118,8 +136,9 @@ export function GadgetsManagementPanel() {
         icon: gadget.icon,
         sourceKind: sourceKinds[gadget.id],
         permissions: permissions[gadget.id] ?? [],
+        uninstallPending: pendingChanges[gadget.id] === "uninstalled",
       }));
-  }, [gadgetMetadata, sourceKinds, permissions]);
+  }, [gadgetMetadata, sourceKinds, permissions, pendingChanges]);
 
   const submitToQueue = useCallback(
     async (paths: string[], origin: "settingsPicker" | "settingsDrop") => {
@@ -191,21 +210,25 @@ export function GadgetsManagementPanel() {
     };
   }, [submitToQueue]);
 
-  const handleUninstall = useCallback(async (gadgetId: string) => {
-    try {
-      const result = await command("uninstall_user_gadget", { gadgetId });
-      setBanner({
-        kind: "success",
-        message: `Uninstalled gadget "${gadgetId}".`,
-        requiresRestart: result.requiresRestart,
-      });
-    } catch (e) {
-      setBanner({
-        kind: "error",
-        message: formatError(e, "Failed to uninstall gadget"),
-      });
-    }
-  }, []);
+  const handleUninstall = useCallback(
+    async (gadgetId: string) => {
+      try {
+        const result = await command("uninstall_user_gadget", { gadgetId });
+        setBanner({
+          kind: "success",
+          message: `Uninstalled gadget "${gadgetId}".`,
+          requiresRestart: result.requiresRestart,
+        });
+      } catch (e) {
+        setBanner({
+          kind: "error",
+          message: formatError(e, "Failed to uninstall gadget"),
+        });
+      }
+      await loadPendingChanges();
+    },
+    [loadPendingChanges],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -294,8 +317,17 @@ function PluginRowView({
       {/* Trailing slot: Uninstall for user gadgets, source badge
           for every other kind. Its fixed width keeps every switch
           in the same column whichever of the two it holds. */}
-      <div data-slot="trailing" className="flex w-20 shrink-0 justify-end">
-        {canUninstall ? (
+      <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
+        {row.uninstallPending ? (
+          <button
+            type="button"
+            disabled
+            title="The gadget keeps running until Torchsnap restarts."
+            className="px-2 py-1 text-xs text-text-tertiary"
+          >
+            Removed on restart
+          </button>
+        ) : canUninstall ? (
           <button
             type="button"
             onClick={() => onUninstall(row.id)}
@@ -403,9 +435,8 @@ function badgeMetadata(kind: GadgetSourceKind): {
       };
     case "system":
       return {
-        label: "System",
-        tooltip:
-          "WASM gadget bundled with the app. Upgraded when the app is updated; not uninstallable.",
+        label: "Bundled",
+        tooltip: "Bundled with the app. Updated with Torchsnap; cannot be uninstalled.",
         className: "bg-surface-hover text-text-secondary",
       };
     case "user":

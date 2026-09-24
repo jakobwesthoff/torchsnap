@@ -121,6 +121,10 @@ export interface CommandMap {
   };
   install_queue_dismiss: { params: { requestId: string }; result: void };
   gadget_permissions: { params: void; result: Record<string, PermissionItem[]> };
+  pending_gadget_changes: {
+    params: void;
+    result: Record<string, "installed" | "replaced" | "uninstalled">;
+  };
   build_info: { params: void; result: { version: string; gitHash: string } };
 }
 
