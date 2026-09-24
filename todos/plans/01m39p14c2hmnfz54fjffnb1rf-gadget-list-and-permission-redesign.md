@@ -52,52 +52,20 @@ Decided in the question round of 2026-09-24:
 
 ## Steps
 
-**B. Pending overview with names and versions (backend).** Implemented
-and tested, not committed: `pending_gadget_changes` returns, per gadget,
-the kind (`installed`, `replaced`, `uninstalled`, `reinstalled`), name,
-description, the version on disk after restart and the version running
-until then. It lands together with C, because the current panel expects
-the old string values.
+| Step | Commit |
+|---|---|
+| B. Pending overview with kind, name, description and versions (`pending_gadget_changes`) | `bbda2b3` |
+| C. Pending states in the list, restart bar, versions; result banner removed | `bbda2b3` |
+| D. Grouped permission component on the cards and in the review | `135334c` |
+| F. "Restart now" calls `restart_to_apply_gadget_changes`, which leaves `.reopen-gadget-settings` in the app data dir; `setup` consumes it, opens Settings, and the frontend starts on Gadgets via `take_settings_start_section` | `0d39de3` |
+| E. ADR 51 and CHANGELOG | `e9cb0e1` |
+| E. torchsnap-docs Settings page | docs `ab3f893` |
 
-**C. Pending states in the list, restart bar, versions (frontend).**
-- Merge registered gadgets with pending installs that are not
-  registered yet.
-- Row states: "Installs on restart", "Updates to X on restart",
-  "Reinstalls on restart", "Removed on restart"; dimmed row; Undo in the
-  trailing slot.
-- Restart bar above the list with the number of pending changes.
-- Version after the name.
-- Remove `InstallResultBanner` and the batch results in
-  `useInstallQueue`; confirm, undo and uninstall refresh the pending
-  state instead.
-- Tests first for each state, the bar, versions, and persistence across
-  remounts.
+Open:
 
-**D. Grouped permission component.**
-- Group mapping, path shortening and other-OS detection as pure,
-  tested functions.
-- One component with a collapsed line (group names, broad-access label)
-  and an expanded grouped view; diff mode with New/Removed markers and
-  the Adds/Drops summary.
-- Used on the gadget cards and in `InstallReviewModal`.
-
-**F. Reopen Settings on Gadgets after "Restart now".**
-- "Restart now" calls a backend command that records a one-shot marker
-  and relaunches.
-- `setup` consumes the marker and opens Settings; the settings frontend
-  starts on the Gadgets section.
-- Tests for the marker round trip and the start section.
-
-**E. Records and docs.**
-- ADR 51: uninstall keeps the startup archive and is undoable; pending
-  state is shown in the list instead of a result banner.
-- CHANGELOG entries for the user-visible changes.
-- torchsnap-docs Settings page: list states, restart bar, grouped
-  permissions.
 - New Settings → Gadgets screenshots, which the maintainer provides.
-
-**Then:** rebuild the unsigned release bundle (`just build --release`,
-`just verify-bundle release`) for the maintainer's next review round.
+- The maintainer's next review round of the rebuilt unsigned release
+  bundle.
 
 ## Working rules
 
