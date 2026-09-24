@@ -138,13 +138,16 @@ pub trait Tray {
     /// (toggle launcher, check for updates, show settings, show
     /// devtools, quit) without the platform module knowing about those
     /// concepts.
+    ///
+    /// Returns the "Check for Updates..." item, whose text the updater
+    /// changes to name an update the user postponed.
     fn build(
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
         on_check_updates: fn(&tauri::AppHandle),
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<tauri::menu::MenuItem<tauri::Wry>>;
 }
 
 /// Abstraction over hiding a window's native title-bar controls so

@@ -30,7 +30,7 @@ impl Tray for FallbackTray {
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
         on_check_updates: fn(&tauri::AppHandle),
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<MenuItem<tauri::Wry>> {
         // Opening this menu blurs the launcher, which dismisses it, so
         // by the time the item is clicked the toggle always shows it.
         let launcher_item = MenuItem::with_id(app, "launcher", "Open Launcher", true, None::<&str>)
@@ -99,6 +99,6 @@ impl Tray for FallbackTray {
             .build(app)
             .context("build tray icon")?;
 
-        Ok(())
+        Ok(updates_item)
     }
 }
