@@ -8,6 +8,13 @@ tags: [security]
 
 # `csp: null` and over-broad `assetProtocol.scope` — untrusted gadget JS can load remote code and read every gadget's SQLite/settings
 
+**Progress (0.12.0):** the update and welcome windows, which show no
+gadget code, get a CSP in production builds from the Vite plugin in
+`vite/csp.ts` (hashes of inline scripts such as the theme preload, no
+remote sources). That plugin answers "What breaks" item 1 for any page
+it is applied to. The launcher, Settings and Developer Tools windows
+still run without a CSP, and the asset-protocol scope is unchanged.
+
 ```json
 "security": {
   "csp": null,

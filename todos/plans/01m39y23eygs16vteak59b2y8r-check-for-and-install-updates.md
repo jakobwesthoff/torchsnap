@@ -5,10 +5,9 @@ status: open
 
 # Check for and install updates
 
-Coordinates `todos/product/features/01kmh1ah0j1c2cx7pa39rmp7k0-auto-updater.md`.
-The todo holds the background (current release flow, what Tauri's
-updater plugin offers, the cross-platform notes). This file holds the
-decisions and the steps.
+Started from the auto-updater todo, which now only holds the Linux and
+Windows part (`todos/product/features/01kmh1ah0j1c2cx7pa39rmp7k0-updates-on-linux-and-windows.md`).
+This file holds the decisions and the steps.
 
 **Progress (2026-09-24):** decisions made; step 1 (spike) done, its
 results are under "Spike results". The wiring from the spike is
@@ -103,7 +102,7 @@ Decided with the maintainer on 2026-09-24.
 | Feed URL on torchsnap.app | `https://torchsnap.app/updates/latest.json`. |
 | Feed file in the release | `release.json`. It merges with the staging receipt `release-build` writes today (`src-tauri/target/release/dist/release.json`: version, commit, DMG SHA-256): `release-build` writes the full file with the feed content plus commit and DMG checksum, `release-publish` checks against it as today and uploads it as a release asset. |
 | Pre-releases | Never offered by the updater. They stay manual downloads. Their CHANGELOG sections are left out of `releases`, so someone updating from `0.12.0-beta.2` to `0.12.0` sees only the `0.12.0` section. |
-| Onboarding todo | `todos/product/features/01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md` is deleted when this plan is cleaned up. |
+| Onboarding todo | Deleted once the welcome window was done (release preparation of 0.12.0). |
 | Updater signing key | Key file `~/.config/torchsnap/updater.key`, named in `release.env` as `TORCHSNAP_UPDATER_KEY_PATH`, its password there as `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, next to the Apple credentials. Key and password are also kept in the maintainer's password manager. Like the Apple credentials, `release-build` exports them to every process of the build (`bun`, cargo build scripts); scoping them to `tauri build` would not help, because that call starts those processes itself. The ADR states this. |
 | Signed version | `plugins.updater.requireSignedVersion: true`, so the app rejects signatures without a version. `release-build` checks that the trusted comment of the `.sig` contains `version:<version>`. |
 | Untrusted feed content | The feed is not signed, only the archive is. Notes are rendered with raw HTML disabled and sanitized; links open in the browser through `opener`. Both new windows get an `on_navigation` guard that allows only the app's own origin, and a CSP. The backend treats `raw_json` as untrusted (size cap, bad entries skipped). |
@@ -319,9 +318,10 @@ Each step ends in commits on the `auto-updater` branches and a note in
 11. **Release.** Publish 0.12.0, merge and deploy the website, check
     `https://torchsnap.app/updates/latest.json`. Publish a follow-up
     release and update to it from an installed 0.12.0.
-12. **Clean up.** Delete this plan, the auto-updater todo and the
-    onboarding todo, and drop `plan:` lines that point here.
+12. **Clean up.** Delete this plan. Done ahead of that with the release
+    preparation: the onboarding todo is deleted, the auto-updater todo
+    is trimmed to Linux and Windows, and no `plan:` line points here.
 
 ## Later
 
-- Linux and Windows, per the todo's cross-platform section.
+- Linux and Windows: `todos/product/features/01kmh1ah0j1c2cx7pa39rmp7k0-updates-on-linux-and-windows.md`.
