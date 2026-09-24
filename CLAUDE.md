@@ -106,3 +106,23 @@ Record decisions in `docs/adr/`:
   `Torchsnap.app.tar.gz`, its `.sig` and `release.json`, the update
   feed written by `tools/release-feed`. torchsnap.app serves the latest
   `release.json` as `/updates/latest.json` (ADR 0053).
+- Release order (README "Making a release"): version bump and CHANGELOG
+  section committed and pushed, torchsnap-docs pushed with it,
+  `release-build`, the maintainer tries the DMG, `release-publish`, then
+  check `https://torchsnap.app/updates/latest.json`.
+- From `release-build` until `release-publish` has finished, change
+  nothing in the main checkout: `release-build` refuses a build that
+  changed tracked files, and `release-publish` refuses when `HEAD`
+  moved. Prepare other changes in a worktree and merge them afterwards.
+- Run `release-build` with the sandbox disabled; notarization and code
+  signing timestamps need Apple's servers.
+- Never print or read the updater key or its password
+  (`TORCHSNAP_UPDATER_KEY_PATH`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in
+  `release.env`); scripts load them into the environment without
+  echoing them.
+- Everyday builds make no update archive. `just build --config <json>`
+  passes `bundle.createUpdaterArtifacts` (and test-only settings such as
+  `plugins.updater.dangerousInsecureTransportProtocol`) to `tauri build`.
+  `TORCHSNAP_UPDATE_FEED` points an installed build at a test feed;
+  start the app with `open --env TORCHSNAP_UPDATE_FEED=<url>`, since
+  `launchctl setenv` does not reach apps opened from Finder.
