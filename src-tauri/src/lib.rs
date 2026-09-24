@@ -676,6 +676,15 @@ pub fn run() {
             if let Err(e) = gadget_install::remove_stale_backups(&install_paths) {
                 eprintln!("failed to remove gadget replace backups: {e:#}");
             }
+            let install_staging = gadget_install::StagingArea::new(
+                app.path()
+                    .app_cache_dir()
+                    .context("resolve app cache dir")?
+                    .join("install-staging"),
+            );
+            if let Err(e) = install_staging.sweep() {
+                eprintln!("failed to clear the install staging directory: {e:#}");
+            }
 
             settings::SettingsInit::from_store(&store, "")
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
@@ -903,6 +912,7 @@ pub fn run() {
             // The registry snapshot is final here: slots never change
             // after setup.
             app.manage(install_paths);
+            app.manage(install_staging);
             app.manage(gadget_install::RegisteredGadgets::from_host(
                 host.gadget_sources(),
                 &source_registry
