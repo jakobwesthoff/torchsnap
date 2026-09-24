@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks (once a day, asking torchsnap.app), a "Check for Updates"
   button and "Show Welcome".
 
+### Fixed
+
+- Opening Torchsnap again while it was still starting showed the
+  launcher and hid it again at once. The launcher now stays open.
+
 ## [0.11.1] - 2026-09-24
 
 ### Fixed

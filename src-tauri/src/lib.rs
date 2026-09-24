@@ -539,22 +539,53 @@ fn launcher_set_layout(
     };
     let state = app.state::<LauncherLayoutState>();
     state.set(layout);
+    let steps = layout_steps(state.take_pending_show());
 
-    // Set the frame and warm up the compositor so that the first
-    // real show has no flash of empty content.
-    position_launcher_on_cursor_monitor(&app, &layout);
-    if let Err(e) = PlatformLauncherPanel::warm_up(&app) {
-        eprintln!("failed to warm up launcher: {e:#}");
-    }
-
-    // If a show was requested before the layout arrived, trigger
-    // it now that the window is ready.
-    if state.take_pending_show() {
-        position_launcher_on_cursor_monitor(&app, &layout);
-        if let Err(e) = show_launcher(&app) {
-            eprintln!("failed to show launcher (deferred): {e:#}");
+    // Positioning, the warm-up that gives the first show a rendered
+    // frame, and a show requested before the layout arrived all touch
+    // the panel, so they run in this order in one main-thread task.
+    let handle = app.clone();
+    let dispatched = app.run_on_main_thread(move || {
+        for step in steps {
+            let result = match step {
+                LayoutStep::Position => {
+                    position_launcher_on_cursor_monitor(&handle, &layout);
+                    Ok(())
+                }
+                LayoutStep::WarmUp => PlatformLauncherPanel::warm_up(&handle),
+                LayoutStep::Show => show_launcher(&handle),
+            };
+            if let Err(e) = result {
+                eprintln!("launcher {step:?} after the layout arrived failed: {e:#}");
+            }
         }
+    });
+    if let Err(e) = dispatched {
+        eprintln!("failed to prepare the launcher on the main thread: {e:#}");
     }
+}
+
+/// One thing `launcher_set_layout` does to the launcher panel.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum LayoutStep {
+    /// Place the panel on the monitor with the cursor.
+    Position,
+    /// Show the panel invisibly and hide it, so the compositor has
+    /// rendered a first frame before the real show.
+    WarmUp,
+    /// The show requested before the layout arrived.
+    Show,
+}
+
+/// The steps once the layout is known, in the order they run. The
+/// warm-up ends by hiding the panel, so a pending show has to come
+/// after it.
+fn layout_steps(show_pending: bool) -> Vec<LayoutStep> {
+    let mut steps = vec![LayoutStep::Position, LayoutStep::WarmUp];
+    if show_pending {
+        steps.extend([LayoutStep::Position, LayoutStep::Show]);
+    }
+    steps
 }
 
 /// What bringing up the launcher takes, given its current state.
@@ -1556,6 +1587,29 @@ mod launcher_tests {
         assert_eq!(
             launcher_show_step(false, false),
             LauncherShowStep::WaitForLayout
+        );
+    }
+
+    #[test]
+    fn a_pending_show_comes_after_the_warm_up() {
+        // The warm-up ends by hiding the panel; a show before it would
+        // be undone at once.
+        assert_eq!(
+            layout_steps(true),
+            [
+                LayoutStep::Position,
+                LayoutStep::WarmUp,
+                LayoutStep::Position,
+                LayoutStep::Show
+            ]
+        );
+    }
+
+    #[test]
+    fn without_a_pending_show_the_launcher_only_warms_up() {
+        assert_eq!(
+            layout_steps(false),
+            [LayoutStep::Position, LayoutStep::WarmUp]
         );
     }
 
