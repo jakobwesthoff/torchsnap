@@ -3,14 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Updates in Settings → General: the automatic-check switch and a
- * manual check (ADR 0053).
+ * Updates in Settings → General: the automatic-check switch, a
+ * manual check (ADR 0053), and the way back to the welcome window.
  *
  * `updates.automaticChecks` has no default: it stays unset until the
  * user answers in the welcome window or flips this switch, and unset
  * means no automatic checks, which the switch shows as off.
  */
 
+import type { ReactNode } from "react";
 import { useSetting } from "../hooks/useSetting";
 import { command } from "../lib/command";
 import { Section } from "./Section";
@@ -32,15 +33,26 @@ export function UpdatesSection() {
       >
         <Switch checked={automaticChecks === true} onChange={setAutomaticChecks} />
       </Entry>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => void command("update_check").catch(() => {})}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-        >
+      <div className="flex justify-end gap-2">
+        <QuietButton onClick={() => void command("welcome_show").catch(() => {})}>
+          Show Welcome
+        </QuietButton>
+        <QuietButton onClick={() => void command("update_check").catch(() => {})}>
           Check for Updates
-        </button>
+        </QuietButton>
       </div>
     </Section>
+  );
+}
+
+function QuietButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+    >
+      {children}
+    </button>
   );
 }

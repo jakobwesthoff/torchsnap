@@ -20,6 +20,7 @@ mod storage;
 mod unicode;
 mod updates;
 mod wasm;
+mod welcome;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -344,6 +345,34 @@ const UPDATE_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
 
 pub(crate) fn show_update_window(app: &tauri::AppHandle) {
     show_auxiliary_window(app, &UPDATE_WINDOW);
+}
+
+// =========================================================
+// Welcome Window
+// =========================================================
+
+const WELCOME_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "welcome",
+    url: "welcome.html",
+    title: "Welcome to Torchsnap",
+    width: 640.0,
+    height: 520.0,
+    min_width: 560.0,
+    min_height: 480.0,
+    hide_native_chrome: true,
+    restrict_navigation: true,
+};
+
+pub(crate) fn show_welcome_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(app, &WELCOME_WINDOW);
+}
+
+pub(crate) fn close_welcome_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(WELCOME_WINDOW.label)
+        && let Err(e) = window.close()
+    {
+        eprintln!("failed to close the welcome window: {e:#}");
+    }
 }
 
 pub(crate) fn close_update_window(app: &tauri::AppHandle) {
@@ -688,6 +717,7 @@ pub fn run() {
         }))
         .manage(Arc::clone(&install_queue))
         .manage(updates::UpdateState::new())
+        .manage(welcome::WelcomeState::default())
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
         // adding, removing, or changing a command signature here,
@@ -727,6 +757,10 @@ pub fn run() {
             updates::update_check,
             updates::update_install,
             updates::update_skip,
+            welcome::welcome_ready_to_finish,
+            welcome::welcome_not_ready,
+            welcome::welcome_finish,
+            welcome::welcome_show,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1203,6 +1237,7 @@ pub fn run() {
                 Err(e) => eprintln!("failed to read the show-launcher marker: {e:#}"),
             }
             updates::start_scheduler(app.handle().clone());
+            welcome::show_if_due(app.handle());
 
             Ok(())
         })
@@ -1232,6 +1267,22 @@ pub fn run() {
             event: WindowEvent::Destroyed,
             ..
         } if label == UPDATE_WINDOW.label => updates::update_window_closed(app),
+        // The welcome window closes only once it is finished; before
+        // that, its close control and Cmd+W do nothing.
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == WELCOME_WINDOW.label => {
+            if !welcome::may_close(app) {
+                api.prevent_close();
+            }
+        }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } if label == WELCOME_WINDOW.label => welcome::window_closed(app),
         // macOS hands files opened from Finder ("Open With",
         // double-click) to the running app as URLs. Before `setup`
         // has started the install queue they are only buffered, and
