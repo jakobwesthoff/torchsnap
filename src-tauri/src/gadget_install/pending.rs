@@ -21,7 +21,10 @@
 //! | `Replaced` | undo | none |
 //! | `Installed` | uninstall, not registered | none |
 //! | any | uninstall, registered | `Uninstalled` |
-//! | `Uninstalled` | fresh install | `Installed` |
+//! | `Uninstalled` | fresh install | `Reinstalled` |
+//! | `Reinstalled` | replace | `Reinstalled` with the new manifest |
+//! | `Reinstalled` | undo | `Uninstalled` |
+//! | `Uninstalled` | undo | none |
 //!
 //! "Uninstalled but not registered" never exists: an id that only
 //! lived as a pending install simply has no record after uninstall.
@@ -45,15 +48,19 @@ pub enum PendingChange {
     /// The gadget registered at startup was uninstalled. It keeps
     /// running until restart.
     Uninstalled,
+    /// The gadget registered at startup was uninstalled and then
+    /// installed again. Its data is still deleted on restart; undoing
+    /// this returns to `Uninstalled`.
+    Reinstalled { manifest: Manifest },
 }
 
 impl PendingChange {
     /// The manifest of the archive currently on disk, if any.
     pub fn manifest(&self) -> Option<&Manifest> {
         match self {
-            PendingChange::Installed { manifest } | PendingChange::Replaced { manifest, .. } => {
-                Some(manifest)
-            }
+            PendingChange::Installed { manifest }
+            | PendingChange::Replaced { manifest, .. }
+            | PendingChange::Reinstalled { manifest } => Some(manifest),
             PendingChange::Uninstalled => None,
         }
     }
@@ -68,6 +75,7 @@ pub enum PendingKind {
     Installed,
     Replaced,
     Uninstalled,
+    Reinstalled,
 }
 
 #[derive(Debug, Default)]
@@ -81,8 +89,11 @@ impl PendingChanges {
     }
 
     pub fn record_install(&mut self, gadget_id: &str, manifest: Manifest) {
-        self.changes
-            .insert(gadget_id.to_string(), PendingChange::Installed { manifest });
+        let change = match self.changes.get(gadget_id) {
+            Some(PendingChange::Uninstalled) => PendingChange::Reinstalled { manifest },
+            _ => PendingChange::Installed { manifest },
+        };
+        self.changes.insert(gadget_id.to_string(), change);
     }
 
     /// Record that the archive for `gadget_id` was swapped for one with
@@ -92,6 +103,7 @@ impl PendingChanges {
     pub fn record_replace(&mut self, gadget_id: &str, previous_version: &str, manifest: Manifest) {
         let change = match self.changes.remove(gadget_id) {
             Some(PendingChange::Installed { .. }) => PendingChange::Installed { manifest },
+            Some(PendingChange::Reinstalled { .. }) => PendingChange::Reinstalled { manifest },
             Some(PendingChange::Replaced {
                 previous_version, ..
             }) => PendingChange::Replaced {
@@ -128,6 +140,7 @@ impl PendingChanges {
                     PendingChange::Installed { .. } => PendingKind::Installed,
                     PendingChange::Replaced { .. } => PendingKind::Replaced,
                     PendingChange::Uninstalled => PendingKind::Uninstalled,
+                    PendingChange::Reinstalled { .. } => PendingKind::Reinstalled,
                 };
                 (id.clone(), kind)
             })
@@ -258,8 +271,11 @@ mod tests {
         }
     }
 
+    /// Undoing a reinstall has to return to "uninstalled", not to the
+    /// version that loaded at startup, so the state stays distinct
+    /// from a plain install.
     #[test]
-    fn reinstalling_after_uninstall_records_the_install() {
+    fn reinstalling_after_uninstall_is_recorded_as_a_reinstall() {
         let mut pending = PendingChanges::default();
         pending.record_uninstall("weather", true);
 
@@ -267,8 +283,24 @@ mod tests {
 
         assert!(matches!(
             pending.get("weather"),
-            Some(PendingChange::Installed { .. })
+            Some(PendingChange::Reinstalled { .. })
         ));
+        assert_eq!(pending.overview()["weather"], PendingKind::Reinstalled);
+    }
+
+    #[test]
+    fn replacing_a_reinstall_stays_a_reinstall() {
+        let mut pending = PendingChanges::default();
+        pending.record_uninstall("weather", true);
+        pending.record_install("weather", manifest("1.0.0"));
+
+        pending.record_replace("weather", "1.0.0", manifest("1.1.0"));
+
+        assert!(matches!(
+            pending.get("weather"),
+            Some(PendingChange::Reinstalled { .. })
+        ));
+        assert_eq!(version_on_disk(&pending).as_deref(), Some("1.1.0"));
     }
 
     /// A registered gadget that was uninstalled, reinstalled and

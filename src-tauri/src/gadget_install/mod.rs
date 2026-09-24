@@ -81,7 +81,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Context;
 use serde::Serialize;
 
-use archive_ops::Undone;
 use decision::{
     InstallDecision, UninstallDecision, VersionRelation, decide_install, decide_uninstall,
 };
@@ -263,35 +262,50 @@ fn undo(
     pending: &mut PendingChanges,
     gadget_id: &str,
 ) -> anyhow::Result<UndoResult> {
-    let change = match pending.get(gadget_id) {
-        Some(change @ (PendingChange::Installed { .. } | PendingChange::Replaced { .. })) => {
-            change.clone()
-        }
-        None | Some(PendingChange::Uninstalled) => {
-            anyhow::bail!("nothing to undo for `{gadget_id}` in this session")
-        }
+    let Some(change) = pending.get(gadget_id).cloned() else {
+        anyhow::bail!("nothing to undo for `{gadget_id}` in this session");
     };
 
-    let restored_version = match (archive_ops::undo_publish(paths, gadget_id)?, change) {
+    let restored_version = match change {
         // The backup is the archive that loaded at startup, so the
         // startup state is back and nothing is pending any more.
-        (Undone::Restored, PendingChange::Replaced { .. }) => {
+        PendingChange::Replaced { .. } => {
+            archive_ops::restore_backup(paths, gadget_id)?;
             pending.forget(gadget_id);
             Some(manifest_on_disk(paths, gadget_id)?.gadget.version)
         }
-        // The backup is the first install of this session.
-        (Undone::Restored, _) => {
-            let manifest = manifest_on_disk(paths, gadget_id)?;
-            let version = manifest.gadget.version.clone();
-            pending.record_install(gadget_id, manifest);
-            Some(version)
+        // A backup here is the first install of this session, replaced
+        // since; without one the install was the only one and goes.
+        PendingChange::Installed { .. } => {
+            if archive_ops::restore_backup(paths, gadget_id)? {
+                let manifest = manifest_on_disk(paths, gadget_id)?;
+                let version = manifest.gadget.version.clone();
+                pending.record_install(gadget_id, manifest);
+                Some(version)
+            } else {
+                archive_ops::remove_archive(paths, gadget_id)?;
+                pending.forget(gadget_id);
+                None
+            }
         }
-        // A fresh install is gone again. A registered gadget that was
-        // uninstalled before it keeps its uninstall marker, so it is
-        // back to plain "uninstalled".
-        (Undone::Removed, _) => {
+        // Back to "uninstalled": the startup archive stays in its backup
+        // and the uninstall marker stays in place.
+        PendingChange::Reinstalled { .. } => {
+            archive_ops::remove_archive(paths, gadget_id)?;
             pending.record_uninstall(gadget_id, registered.get(gadget_id).is_some());
             None
+        }
+        // Uninstall kept the startup archive as a backup; putting it back
+        // and removing the marker leaves nothing for the next start.
+        PendingChange::Uninstalled => {
+            if !archive_ops::restore_backup(paths, gadget_id)? {
+                anyhow::bail!(
+                    "the uninstall of `{gadget_id}` cannot be undone: it was installed as a directory, which is not kept"
+                );
+            }
+            archive_ops::remove_marker(paths, gadget_id)?;
+            pending.forget(gadget_id);
+            Some(manifest_on_disk(paths, gadget_id)?.gadget.version)
         }
     };
 
@@ -330,7 +344,7 @@ fn uninstall(
         UninstallDecision::Reject(message) => anyhow::bail!(message),
     }
 
-    let removal = archive_ops::remove_user_gadget(paths, gadget_id)?;
+    let removal = archive_ops::remove_user_gadget(paths, gadget_id, registration.is_some())?;
     // A registered user gadget without `<id>.torchsnap` means the
     // file on disk does not match its manifest id (a renamed or
     // hand-placed archive). Its state is still cleaned up, but the
@@ -677,6 +691,40 @@ mod tests {
     }
 
     #[test]
+    fn undo_of_an_uninstall_brings_the_gadget_back() {
+        let (_root, paths) = temp_paths();
+        let registry = registered_user_gadget(&paths, "weather", "1.0.0");
+        let mut pending = PendingChanges::default();
+        uninstall(&paths, &registry, &mut pending, "weather").expect("uninstall");
+
+        let undone = undo(&paths, &registry, &mut pending, "weather").expect("undo should succeed");
+
+        assert_eq!(undone.restored_version.as_deref(), Some("1.0.0"));
+        assert!(!undone.requires_restart);
+        assert_eq!(
+            manifest_of(&paths.archive("weather")).gadget.version,
+            "1.0.0"
+        );
+        assert!(!paths.uninstall_marker("weather").exists());
+        assert!(pending.get("weather").is_none());
+    }
+
+    #[test]
+    fn undo_of_an_uninstall_after_a_replace_returns_to_the_startup_version() {
+        let (_root, paths) = temp_paths();
+        let registry = registered_user_gadget(&paths, "weather", "1.0.0");
+        let mut pending = PendingChanges::default();
+        let (_src, v2) = archive_with_manifest("weather", "2.0.0", "");
+        install(&paths, &registry, &mut pending, &v2).expect("replace");
+        uninstall(&paths, &registry, &mut pending, "weather").expect("uninstall");
+
+        let undone = undo(&paths, &registry, &mut pending, "weather").expect("undo should succeed");
+
+        assert_eq!(undone.restored_version.as_deref(), Some("1.0.0"));
+        assert!(pending.get("weather").is_none());
+    }
+
+    #[test]
     fn undo_without_a_change_in_this_session_is_rejected() {
         let (_root, paths) = temp_paths();
         let registry = registered_user_gadget(&paths, "weather", "1.0.0");
@@ -701,7 +749,10 @@ mod tests {
             .expect("uninstall should succeed");
 
         assert!(result.requires_restart);
-        assert_eq!(dir_entries(&paths.gadgets_dir), vec![".weather.uninstall"]);
+        assert_eq!(
+            dir_entries(&paths.gadgets_dir),
+            vec![".weather.torchsnap.prev", ".weather.uninstall"]
+        );
         assert!(paths.home("weather").join("storage.sqlite3").exists());
     }
 

@@ -148,9 +148,14 @@ pub fn decide_uninstall(
     }
 
     match (registered, pending) {
-        (_, Some(PendingChange::Installed { .. } | PendingChange::Replaced { .. })) => {
-            UninstallDecision::Allowed
-        }
+        (
+            _,
+            Some(
+                PendingChange::Installed { .. }
+                | PendingChange::Replaced { .. }
+                | PendingChange::Reinstalled { .. },
+            ),
+        ) => UninstallDecision::Allowed,
         (Some(_), Some(PendingChange::Uninstalled)) => UninstallDecision::Reject(format!(
             "gadget `{gadget_id}` is already uninstalled; restart Torchsnap to finish removing it"
         )),
