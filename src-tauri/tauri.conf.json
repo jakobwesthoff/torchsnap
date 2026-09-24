@@ -32,8 +32,23 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../target/bundled-gadgets/": "gadgets/"
+      "../target/bundled-gadgets/": "gadgets/",
+      "icons/gadget-document.icns": "gadget-document.icns"
     },
+    "fileAssociations": [
+      {
+        "ext": ["torchsnap"],
+        "name": "Torchsnap Gadget",
+        "description": "Torchsnap Gadget",
+        "role": "Viewer",
+        "rank": "Owner",
+        "mimeType": "application/vnd.torchsnap.gadget+zip",
+        "exportedType": {
+          "identifier": "app.torchsnap.gadget",
+          "conformsTo": ["public.data"]
+        }
+      }
+    ],
     "macOS": {
       "entitlements": "Entitlements.plist"
     }

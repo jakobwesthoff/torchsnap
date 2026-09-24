@@ -103,6 +103,7 @@ release-build version:
     [ "$(lipo -archs "$app/Contents/MacOS/$executable")" = arm64 ] || fail "$app is not an arm64-only build"
     bundle_version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")
     [ "$bundle_version" = "$version" ] || fail "$app reports version $bundle_version"
+    tools/verify-bundle-plist "$app" >/dev/null || fail "$app does not register .torchsnap files as decided"
 
     rm -rf "{{ RELEASE_DIST }}"
     mkdir -p "{{ RELEASE_DIST }}"

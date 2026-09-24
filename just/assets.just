@@ -179,6 +179,46 @@ asset-app-icons:
         echo "App icons: up to date."
     fi
 
+# The document icon Finder shows for `.torchsnap` files: a white page
+# with a folded corner carrying the app icon. `iconutil` only exists on
+# macOS, which is also the only platform that uses the `.icns`.
+
+# Generate the `.torchsnap` document icon from the app icon source (macOS, incremental)
+[macos]
+asset-document-icon: asset-app-icons
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source_icon="src-tauri/icons/app-icon-source.png"
+    icns="src-tauri/icons/gadget-document.icns"
+    if [ -f "$icns" ] && [ "$icns" -nt "$source_icon" ]; then
+        echo "Document icon: up to date."
+        exit 0
+    fi
+
+    echo "Generating document icon..."
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+
+    # 1024x1024 page: rounded white sheet with a light border and a
+    # folded top-right corner, app icon centered in its lower part.
+    magick -size 1024x1024 xc:none \
+        -fill white -stroke '#d4d4d8' -strokewidth 8 \
+        -draw "path 'M 208,72 L 648,72 L 840,264 L 840,920 Q 840,952 808,952 L 240,952 Q 208,952 208,920 L 208,104 Q 208,72 240,72 Z'" \
+        -fill '#e4e4e7' -draw "path 'M 648,72 L 648,232 Q 648,264 680,264 L 840,264 Z'" \
+        \( "$source_icon" -filter Lanczos -resize 440x440 \) \
+        -gravity center -geometry +0+96 -composite \
+        -depth 8 -define png:color-type=6 "$work/page.png"
+
+    iconset="$work/gadget-document.iconset"
+    mkdir "$iconset"
+    for size in 16 32 128 256 512; do
+        magick "$work/page.png" -filter Lanczos -resize "${size}x${size}" "$iconset/icon_${size}x${size}.png"
+        double=$((size * 2))
+        magick "$work/page.png" -filter Lanczos -resize "${double}x${double}" "$iconset/icon_${size}x${size}@2x.png"
+    done
+    iconutil -c icns "$iconset" -o "$icns"
+    echo "Document icon: done."
+
 # Generate the menubar tray icon as a macOS template alpha mask (incremental)
 asset-tray-icon:
     #!/usr/bin/env bash
