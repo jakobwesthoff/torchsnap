@@ -28,7 +28,7 @@ import type { DevToolsMessage, LogItem, LogLevel, LogStats } from "../devtools/t
 // Command Registry
 // =========================================================
 
-interface CommandMap {
+export interface CommandMap {
   launcher_hide: { params: void; result: void };
   launcher_set_layout: {
     params: {
@@ -173,7 +173,7 @@ export interface WasmGadgetManifest {
   };
 }
 
-type CommandName = keyof CommandMap;
+export type CommandName = keyof CommandMap;
 
 // =========================================================
 // Typed command wrapper

@@ -6,8 +6,8 @@
 # linting, eslint, formatting, and build verification. The `fullcycle`
 # recipe runs them all in sequence as a pre-push validation step.
 
-# Run all tests (src-tauri Rust suite + gadget workspace)
-test: test-crates test-gadgets
+# Run all tests (src-tauri Rust suite + gadget workspace + frontend)
+test: test-crates test-gadgets test-frontend
 
 # Unit tests plus integration tests under `src-tauri/tests/` — the
 # latter load the committed `.wasm` fixtures from `tests/fixtures/`,
@@ -27,6 +27,14 @@ test-crates:
 # Run gadget unit tests (forces host target over the wasm32-wasip2 default)
 test-gadgets:
     cd gadgets && cargo test --target "$(rustc -vV | sed -n 's|host: ||p')"
+
+# Tests import application modules, and some of those import the
+# generated `src/derived/mascots.json`, so it has to exist first (the
+# same reason `check-types` depends on it).
+
+# Run the frontend test suite (Vitest)
+test-frontend: asset-mascot-data
+    bun run test
 
 # Check compilation (Rust + WIT + WASM gadgets) and types (TypeScript)
 check: check-crates check-wit check-gadgets check-types
