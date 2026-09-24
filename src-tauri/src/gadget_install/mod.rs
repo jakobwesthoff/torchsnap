@@ -181,6 +181,19 @@ pub async fn install_undo(
     .map_err(|e| format!("{e:#}"))
 }
 
+/// Changes made since startup that wait for a restart, keyed by
+/// gadget id. The settings panel uses it to show gadgets that are
+/// already uninstalled as such.
+#[tauri::command]
+pub fn pending_gadget_changes(
+    pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
+) -> std::collections::HashMap<String, pending::PendingKind> {
+    pending
+        .lock()
+        .expect("pending changes lock is never poisoned")
+        .overview()
+}
+
 /// Permissions of every loaded WASM gadget, keyed by gadget id,
 /// for the gadget cards in the settings.
 #[tauri::command]
@@ -464,7 +477,7 @@ mod tests {
             ),
             (
                 Registration::System,
-                "A system gadget with id `weather` is bundled with the app",
+                "A bundled gadget with id `weather` ships with Torchsnap",
             ),
             (
                 Registration::Dev,

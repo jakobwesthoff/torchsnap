@@ -659,6 +659,7 @@ pub fn run() {
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,
+            gadget_install::pending_gadget_changes,
             gadget_install::commands::install_queue_snapshot,
             gadget_install::commands::install_queue_submit,
             gadget_install::commands::install_queue_confirm,

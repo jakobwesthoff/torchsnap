@@ -59,6 +59,17 @@ impl PendingChange {
     }
 }
 
+/// What the settings panel needs to know about a gadget's pending
+/// change: enough to show "Removed on restart" instead of offering
+/// the uninstall again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PendingKind {
+    Installed,
+    Replaced,
+    Uninstalled,
+}
+
 #[derive(Debug, Default)]
 pub struct PendingChanges {
     changes: HashMap<String, PendingChange>,
@@ -106,6 +117,21 @@ impl PendingChanges {
         } else {
             self.changes.remove(gadget_id);
         }
+    }
+
+    /// The kind of every recorded change, keyed by gadget id.
+    pub fn overview(&self) -> HashMap<String, PendingKind> {
+        self.changes
+            .iter()
+            .map(|(id, change)| {
+                let kind = match change {
+                    PendingChange::Installed { .. } => PendingKind::Installed,
+                    PendingChange::Replaced { .. } => PendingKind::Replaced,
+                    PendingChange::Uninstalled => PendingKind::Uninstalled,
+                };
+                (id.clone(), kind)
+            })
+            .collect()
     }
 
     /// Drop the record, used when undo restored the startup state.
@@ -260,5 +286,24 @@ mod tests {
             pending.get("weather"),
             Some(PendingChange::Uninstalled)
         ));
+    }
+
+    #[test]
+    fn the_overview_reports_each_recorded_kind() {
+        let mut pending = PendingChanges::default();
+        pending.record_install("weather", manifest("1.0.0"));
+        pending.record_replace("calendar", "1.0.0", manifest("1.1.0"));
+        pending.record_uninstall("zerotier", true);
+
+        let overview = pending.overview();
+
+        assert_eq!(overview.len(), 3);
+        assert_eq!(overview["weather"], PendingKind::Installed);
+        assert_eq!(overview["calendar"], PendingKind::Replaced);
+        assert_eq!(overview["zerotier"], PendingKind::Uninstalled);
+        assert_eq!(
+            serde_json::to_value(overview["zerotier"]).expect("serializes"),
+            "uninstalled"
+        );
     }
 }
