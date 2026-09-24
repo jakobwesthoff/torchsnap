@@ -1071,8 +1071,10 @@ gadget **code** which lives under
 | `<resource_dir>/gadgets/`                                         | App-bundle gadgets (read-only). |
 
 Uninstalling a user gadget removes both `gadgets/<id>.torchsnap`
-and `gadget-home/<id>/`. See ADR 0035 (distribution) and
-ADR 0018 (SQL storage).
+and `gadget-home/<id>/` on the next start, before any gadget loads.
+Until then the gadget keeps running and the uninstall can be undone.
+See ADR 0035 (distribution), ADR 0051 (install review) and ADR 0018
+(SQL storage).
 
 ---
 
@@ -1120,10 +1122,23 @@ workspace) — those are unrelated.
 
 ### Sharing a gadget with users
 
-Send users the `.torchsnap` file. They drop it onto the
-Gadgets settings panel (file picker or drag-drop); the app
-copies it to `<app_data_dir>/gadgets/<id>.torchsnap` and
-prompts for a restart.
+Send users the `.torchsnap` file. They open it in Torchsnap:
+double-click in Finder, the Gadgets settings panel (file picker
+or drag-drop), or its path on the command line. Torchsnap stages
+a copy (archives over 16 MiB are rejected), shows a review with
+the gadget's details and every declared permission, and installs
+it to `<app_data_dir>/gadgets/<id>.torchsnap` when the user
+confirms. The gadget loads after a restart (ADR 0051).
+
+To ship an update, keep the `id`, raise the `version` (compared
+as semver to label an update or an older version) and only append
+SQL migrations. An archive with fewer migrations than the
+installed version is refused. The review marks permissions the
+installed version did not have as new.
+
+In a debug build every gadget under `gadgets/` loads as a Dev
+gadget, and installing an archive with a Dev gadget's id is
+refused. Try the install flow in a release build.
 
 ### Trust model (ADR 0036)
 

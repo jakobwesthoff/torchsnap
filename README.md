@@ -17,23 +17,29 @@ The primary supported platform today is macOS.
 
 ## Installing gadgets
 
-Third-party gadgets ship as `.torchsnap` files — single-file
-archives you can hand-share. To install one:
+Third-party gadgets ship as `.torchsnap` files, single-file archives
+you can hand-share. Open one in Torchsnap to install it: double-click
+it in Finder, drop it on **Settings → Gadgets** (or use **Choose a
+file…** there), or pass its path to the binary on the command line.
+Torchsnap then shows a review with the gadget's details and every
+permission it declares. Nothing is installed until you confirm.
 
-1. Open **Settings → Gadgets**.
-2. Click **Choose a file…** and pick the `.torchsnap`, or drop the
-   file onto the drop zone.
-3. When prompted, click **Restart now**. The gadget is active after
-   restart.
+Installs, updates and uninstalls take effect after a restart. Until
+then the Gadgets list shows each pending change with an **Undo**
+button, and a bar above the list offers **Restart now**.
 
 Installed user gadgets live under
 `<app_data_dir>/gadgets/<id>.torchsnap` and their host-managed state
-(SQLite databases, caches) under
-`<app_data_dir>/gadget-home/<id>/`. Uninstalling a gadget from the
-Gadgets panel removes both.
+(SQLite databases, caches) under `<app_data_dir>/gadget-home/<id>/`.
+Installing another version of a gadget replaces the archive and keeps
+that state. Uninstalling deletes both on the next start.
 
 Gadgets bundled with the app (like the calculator) cannot be
-uninstalled — they are upgraded along with Torchsnap itself.
+uninstalled. They are upgraded along with Torchsnap itself.
+
+[Installing Gadgets](https://docs.torchsnap.app/start/gadgets/installing/)
+in the user documentation covers the review, updates and uninstalling
+in detail.
 
 ## Developing gadgets
 
