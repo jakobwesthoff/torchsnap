@@ -3,6 +3,7 @@ kind: feature
 status: needs-discussion
 area: [src-tauri/tauri.conf.json, src-tauri/Cargo.toml, just/release.just, src-tauri/src/platform/macos/tray.rs, src/settings/sections/GeneralSection.tsx]
 tags: [macos, security, privacy]
+plan: todos/plans/01m39y23eygs16vteak59b2y8r-check-for-and-install-updates.md
 ---
 
 # Check for and install updates

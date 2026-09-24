@@ -95,6 +95,8 @@ pub trait LauncherPanel {
     ///
     /// Should be called once after the layout dimensions are known
     /// and the frame has been set, but before the first real show.
+    /// Runs on the caller's thread, which has to be the main thread;
+    /// a show queued before it would be hidden again by it.
     /// The default implementation is a no-op.
     fn warm_up(_app: &tauri::AppHandle) -> anyhow::Result<()> {
         Ok(())
@@ -135,14 +137,19 @@ pub trait Tray {
     /// Build and attach the system tray icon during `setup()`.
     ///
     /// The callbacks let the caller wire up app-level actions
-    /// (toggle launcher, show settings, show devtools, quit)
-    /// without the platform module knowing about those concepts.
+    /// (toggle launcher, check for updates, show settings, show
+    /// devtools, quit) without the platform module knowing about those
+    /// concepts.
+    ///
+    /// Returns the "Check for Updates..." item, whose text the updater
+    /// changes to name an update the user postponed.
     fn build(
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
-    ) -> anyhow::Result<()>;
+        on_check_updates: fn(&tauri::AppHandle),
+    ) -> anyhow::Result<tauri::menu::MenuItem<tauri::Wry>>;
 }
 
 /// Abstraction over hiding a window's native title-bar controls so

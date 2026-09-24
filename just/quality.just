@@ -6,8 +6,16 @@
 # linting, eslint, formatting, and build verification. The `fullcycle`
 # recipe runs them all in sequence as a pre-push validation step.
 
-# Run all tests (src-tauri Rust suite + gadget workspace + frontend)
-test: test-crates test-gadgets test-frontend
+# Run all tests (src-tauri Rust suite + gadget workspace + frontend + tools)
+test: test-crates test-gadgets test-frontend test-tools
+
+# Tools under `tools/` that the release depends on carry unittest
+# suites in `tools/tests/`. They use only the Python standard library,
+# so the CI runner's `python3` is enough.
+
+# Run the tests of the tools under tools/
+test-tools:
+    PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 
 # Unit tests plus integration tests under `src-tauri/tests/` — the
 # latter load the committed `.wasm` fixtures from `tests/fixtures/`,

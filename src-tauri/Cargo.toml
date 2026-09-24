@@ -92,6 +92,7 @@ tauri-plugin-dialog = "2.7.0"
 globset = "0.4.18"
 semver = "1.0.28"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "2.1"

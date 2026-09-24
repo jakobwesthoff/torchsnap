@@ -102,3 +102,7 @@ Record decisions in `docs/adr/`:
 - Releases are made locally with `just release-build <version>` and
   `just release-publish <version>`, never from CI; no signing secrets in
   GitHub (ADR 0050, README "Releasing").
+- Next to the DMG, a release uploads the update archive
+  `Torchsnap.app.tar.gz`, its `.sig` and `release.json`, the update
+  feed written by `tools/release-feed`. torchsnap.app serves the latest
+  `release.json` as `/updates/latest.json` (ADR 0053).

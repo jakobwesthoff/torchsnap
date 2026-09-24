@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Write the `release.json` of a release (ADR 0053).
+#
+# The file is the update feed that installed apps read through
+# torchsnap.app, and at the same time the staging receipt
+# `release-publish` checks before it publishes: version, commit and the
+# checksum of the DMG `release-build` staged.
+#
+# Besides the fields `tauri-plugin-updater` reads (`version`,
+# `pub_date`, `notes`, `platforms`), it carries `releases`: the notes of
+# every released version, so the update window can show everything that
+# changed since the installed version.
+#
+# Before writing anything it checks the updater signature: it has to
+# name this version in its trusted comment, because the app sets
+# `requireSignedVersion`, and it has to come from the key whose public
+# half the app trusts.
+#
+# Usage:
+#   tools/release-feed --changelog CHANGELOG.md --version 0.12.0 \
+#       --pub-date 2026-10-02T14:03:00Z --commit <sha> \
+#       --dmg-sha256 <hex> --signature Torchsnap.app.tar.gz.sig \
+#       --pubkey <plugins.updater.pubkey> --repo owner/name
+
+import argparse
+import base64
+import json
+import re
+import sys
+
+ARCHIVE_NAME = "Torchsnap.app.tar.gz"
+PLATFORM = "darwin-aarch64"
+
+SECTION_HEADING = re.compile(r"^## \[([^\]]+)\](?: - (\d{4}-\d{2}-\d{2}))?\s*$")
+LINK_DEFINITION = re.compile(r"^\[[^\]]+\]: ")
+SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
+
+
+class FeedError(Exception):
+    pass
+
+
+# =========================================================
+# CHANGELOG sections
+# =========================================================
+
+
+def changelog_sections(text):
+    """Return `(version, date, notes)` for every dated section, newest first.
+
+    A section runs from its `## [version] - date` heading to the next
+    `## [` heading or the link definitions at the end of the file. Blank
+    lines at either end of a section are dropped; the ones inside stay,
+    so the Markdown renders as written. `[Unreleased]` has no date and
+    is skipped.
+    """
+    sections = []
+    current = None
+    for line in text.splitlines():
+        heading = SECTION_HEADING.match(line)
+        if heading or LINK_DEFINITION.match(line):
+            if current is not None:
+                sections.append(current)
+                current = None
+            if heading and heading.group(2):
+                current = (heading.group(1), heading.group(2), [])
+            continue
+        if current is not None:
+            current[2].append(line)
+    if current is not None:
+        sections.append(current)
+
+    return [(version, date, "\n".join(lines).strip("\n")) for version, date, lines in sections]
+
+
+def is_prerelease(version):
+    return "-" in version
+
+
+# =========================================================
+# Updater signature
+# =========================================================
+
+# minisign keeps the algorithm (2 bytes) and the key id (8 bytes) at the
+# start of both the public key and the signature, so comparing the ids
+# tells whether a signature was made with the trusted key without
+# verifying it cryptographically.
+
+
+def _key_id(minisign_text, what):
+    lines = [line for line in minisign_text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise FeedError(f"{what} is not in minisign format")
+    try:
+        raw = base64.b64decode(lines[1], validate=True)
+    except ValueError as err:
+        raise FeedError(f"{what} is not in minisign format: {err}") from err
+    if len(raw) < 10:
+        raise FeedError(f"{what} is too short to carry a key id")
+    return raw[2:10]
+
+
+def check_signature(signature_b64, pubkey_b64, version):
+    """Check the `.sig` content Tauri wrote against the trusted key and version.
+
+    Both values are base64 of the minisign text files, the form Tauri
+    writes to `.sig` and expects in `plugins.updater.pubkey`.
+    """
+    try:
+        signature = base64.b64decode(signature_b64.strip(), validate=True).decode()
+        pubkey = base64.b64decode(pubkey_b64.strip(), validate=True).decode()
+    except ValueError as err:
+        raise FeedError(f"signature or public key is not base64: {err}") from err
+
+    if _key_id(signature, "signature") != _key_id(pubkey, "public key"):
+        raise FeedError("the archive is signed with another key than plugins.updater.pubkey")
+
+    trusted = [line for line in signature.splitlines() if line.startswith("trusted comment:")]
+    fields = trusted[0].split(":", 1)[1].split() if trusted else []
+    if f"version:{version}" not in fields:
+        raise FeedError(f"the signature's trusted comment does not name version:{version}")
+
+
+# =========================================================
+# Feed
+# =========================================================
+
+
+def build_feed(changelog, version, pub_date, commit, dmg_sha256, signature, repo):
+    if not SEMVER.match(version):
+        raise FeedError(f"'{version}' is not a semver version")
+
+    sections = changelog_sections(changelog)
+    own = next((section for section in sections if section[0] == version), None)
+    if own is None:
+        raise FeedError(f"CHANGELOG.md has no dated section for {version}")
+    if not own[2]:
+        raise FeedError(f"CHANGELOG section for {version} is empty")
+
+    return {
+        "version": version,
+        "pub_date": pub_date,
+        "notes": own[2],
+        "platforms": {
+            PLATFORM: {
+                # Pinned to this release: `latest/download` could hand an
+                # older feed a newer archive while the website catches up.
+                "url": f"https://github.com/{repo}/releases/download/v{version}/{ARCHIVE_NAME}",
+                "signature": signature.strip(),
+            }
+        },
+        "releases": [
+            {"version": v, "date": d, "notes": n}
+            for v, d, n in sections
+            if not is_prerelease(v) and n
+        ],
+        "commit": commit,
+        "dmg_sha256": dmg_sha256,
+    }
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Write the release.json of a release.")
+    parser.add_argument("--changelog", required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--pub-date", required=True, help="RFC 3339, e.g. 2026-10-02T14:03:00Z")
+    parser.add_argument("--commit", required=True)
+    parser.add_argument("--dmg-sha256", required=True)
+    parser.add_argument("--signature", required=True, help="path of the updater .sig file")
+    parser.add_argument("--pubkey", required=True, help="plugins.updater.pubkey")
+    parser.add_argument("--repo", required=True, help="owner/name on GitHub")
+    args = parser.parse_args(argv)
+
+    with open(args.changelog, encoding="utf-8") as f:
+        changelog = f.read()
+    with open(args.signature, encoding="utf-8") as f:
+        signature = f.read()
+
+    try:
+        check_signature(signature, args.pubkey, args.version)
+        feed = build_feed(
+            changelog,
+            args.version,
+            args.pub_date,
+            args.commit,
+            args.dmg_sha256,
+            signature,
+            args.repo,
+        )
+    except FeedError as err:
+        print(f"release-feed: {err}", file=sys.stderr)
+        return 1
+
+    json.dump(feed, sys.stdout, indent=2, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

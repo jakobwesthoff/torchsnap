@@ -11,13 +11,16 @@ mod gadget_host;
 mod gadget_install;
 mod gadgets;
 mod icons;
+mod navigation_guard;
 mod network;
 mod paths;
 mod platform;
 mod settings;
 mod storage;
 mod unicode;
+mod updates;
 mod wasm;
+mod welcome;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -170,6 +173,10 @@ struct AuxiliaryWindowConfig {
     /// own title bar. See ADR 0034 for the rationale behind this
     /// approach over `decorations(false)`.
     hide_native_chrome: bool,
+    /// When true, the webview may only show the app's own pages
+    /// (`navigation_guard`). For windows that display text from
+    /// outside the app bundle.
+    restrict_navigation: bool,
 }
 
 /// Build an on-demand auxiliary window that stays hidden until the
@@ -218,6 +225,25 @@ fn show_auxiliary_window_main_thread(
         .visible(false)
         .focused(false)
         .center();
+
+    let builder = if config.restrict_navigation {
+        // The dev server only serves the frontend in debug builds; a
+        // release build allows its bundled pages alone.
+        let dev_url = if cfg!(debug_assertions) {
+            app.config().build.dev_url.clone()
+        } else {
+            None
+        };
+        builder.on_navigation(move |target| {
+            let allowed = navigation_guard::navigation_allowed(target, dev_url.as_ref());
+            if !allowed {
+                eprintln!("refused navigation of a guarded window to {target}");
+            }
+            allowed
+        })
+    } else {
+        builder
+    };
 
     // Shadowed on macOS to extend the builder without requiring `mut`
     // on platforms where the extension does not apply.
@@ -274,6 +300,7 @@ const SETTINGS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     min_width: 600.0,
     min_height: 400.0,
     hide_native_chrome: true,
+    restrict_navigation: false,
 };
 
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
@@ -293,10 +320,67 @@ const DEVTOOLS_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
     min_width: 700.0,
     min_height: 400.0,
     hide_native_chrome: true,
+    restrict_navigation: false,
 };
 
 pub(crate) fn show_devtools_window(app: &tauri::AppHandle) {
     show_auxiliary_window(app, &DEVTOOLS_WINDOW);
+}
+
+// =========================================================
+// Update Window
+// =========================================================
+
+const UPDATE_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "update",
+    url: "update.html",
+    title: "Torchsnap Update",
+    width: 560.0,
+    height: 480.0,
+    min_width: 460.0,
+    min_height: 360.0,
+    hide_native_chrome: true,
+    restrict_navigation: true,
+};
+
+pub(crate) fn show_update_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(app, &UPDATE_WINDOW);
+}
+
+// =========================================================
+// Welcome Window
+// =========================================================
+
+const WELCOME_WINDOW: AuxiliaryWindowConfig = AuxiliaryWindowConfig {
+    label: "welcome",
+    url: "welcome.html",
+    title: "Welcome to Torchsnap",
+    width: 640.0,
+    height: 520.0,
+    min_width: 560.0,
+    min_height: 480.0,
+    hide_native_chrome: true,
+    restrict_navigation: true,
+};
+
+pub(crate) fn show_welcome_window(app: &tauri::AppHandle) {
+    show_auxiliary_window(app, &WELCOME_WINDOW);
+}
+
+pub(crate) fn close_welcome_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(WELCOME_WINDOW.label)
+        && let Err(e) = window.close()
+    {
+        eprintln!("failed to close the welcome window: {e:#}");
+    }
+}
+
+pub(crate) fn close_update_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(UPDATE_WINDOW.label)
+        && let Err(e) = window.close()
+    {
+        eprintln!("failed to close the update window: {e:#}");
+    }
 }
 
 // =========================================================
@@ -455,22 +539,53 @@ fn launcher_set_layout(
     };
     let state = app.state::<LauncherLayoutState>();
     state.set(layout);
+    let steps = layout_steps(state.take_pending_show());
 
-    // Set the frame and warm up the compositor so that the first
-    // real show has no flash of empty content.
-    position_launcher_on_cursor_monitor(&app, &layout);
-    if let Err(e) = PlatformLauncherPanel::warm_up(&app) {
-        eprintln!("failed to warm up launcher: {e:#}");
-    }
-
-    // If a show was requested before the layout arrived, trigger
-    // it now that the window is ready.
-    if state.take_pending_show() {
-        position_launcher_on_cursor_monitor(&app, &layout);
-        if let Err(e) = show_launcher(&app) {
-            eprintln!("failed to show launcher (deferred): {e:#}");
+    // Positioning, the warm-up that gives the first show a rendered
+    // frame, and a show requested before the layout arrived all touch
+    // the panel, so they run in this order in one main-thread task.
+    let handle = app.clone();
+    let dispatched = app.run_on_main_thread(move || {
+        for step in steps {
+            let result = match step {
+                LayoutStep::Position => {
+                    position_launcher_on_cursor_monitor(&handle, &layout);
+                    Ok(())
+                }
+                LayoutStep::WarmUp => PlatformLauncherPanel::warm_up(&handle),
+                LayoutStep::Show => show_launcher(&handle),
+            };
+            if let Err(e) = result {
+                eprintln!("launcher {step:?} after the layout arrived failed: {e:#}");
+            }
         }
+    });
+    if let Err(e) = dispatched {
+        eprintln!("failed to prepare the launcher on the main thread: {e:#}");
     }
+}
+
+/// One thing `launcher_set_layout` does to the launcher panel.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum LayoutStep {
+    /// Place the panel on the monitor with the cursor.
+    Position,
+    /// Show the panel invisibly and hide it, so the compositor has
+    /// rendered a first frame before the real show.
+    WarmUp,
+    /// The show requested before the layout arrived.
+    Show,
+}
+
+/// The steps once the layout is known, in the order they run. The
+/// warm-up ends by hiding the panel, so a pending show has to come
+/// after it.
+fn layout_steps(show_pending: bool) -> Vec<LayoutStep> {
+    let mut steps = vec![LayoutStep::Position, LayoutStep::WarmUp];
+    if show_pending {
+        steps.extend([LayoutStep::Position, LayoutStep::Show]);
+    }
+    steps
 }
 
 /// What bringing up the launcher takes, given its current state.
@@ -632,6 +747,8 @@ pub fn run() {
             }
         }))
         .manage(Arc::clone(&install_queue))
+        .manage(updates::UpdateState::new())
+        .manage(welcome::WelcomeState::default())
         // The command registry must stay in sync with the frontend's
         // typed `command()` wrapper in `src/lib/command.ts`. When
         // adding, removing, or changing a command signature here,
@@ -667,12 +784,21 @@ pub fn run() {
             gadget_install::commands::install_queue_confirm,
             gadget_install::commands::install_queue_dismiss,
             build_info,
+            updates::update_phase,
+            updates::update_check,
+            updates::update_install,
+            updates::update_skip,
+            welcome::welcome_ready_to_finish,
+            welcome::welcome_not_ready,
+            welcome::welcome_finish,
+            welcome::welcome_show,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_autostart::init(
@@ -1087,13 +1213,16 @@ pub fn run() {
             // =========================================================
             // Tray icon with context menu
             // =========================================================
-            PlatformTray::build(
+            let updates_item = PlatformTray::build(
                 app,
                 toggle_launcher_window,
                 show_settings_window,
                 show_devtools_window,
+                updates::tray_clicked,
             )
             .context("build platform tray")?;
+            app.state::<updates::UpdateState>()
+                .set_tray_item(updates_item);
 
             // =========================================================
             // Preload windows
@@ -1127,6 +1256,20 @@ pub fn run() {
             PlatformLauncherPanel::init(&launcher_win)
                 .context("initialize platform launcher panel")?;
 
+            // =========================================================
+            // Updates
+            //
+            // After installing an update the app restarts into the new
+            // version and shows the launcher once, as a sign it is back.
+            // =========================================================
+            match updates::take_show_launcher_marker(&app_data_dir) {
+                Ok(true) => show_launcher_window(app.handle()),
+                Ok(false) => {}
+                Err(e) => eprintln!("failed to read the show-launcher marker: {e:#}"),
+            }
+            updates::start_scheduler(app.handle().clone());
+            welcome::show_if_due(app.handle());
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -1148,6 +1291,29 @@ pub fn run() {
                 let _ = win.hide();
             }
         }
+        // However the update window closes (its close control, Later,
+        // Close), the update state learns about it here.
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } if label == UPDATE_WINDOW.label => updates::update_window_closed(app),
+        // The welcome window closes only once it is finished; before
+        // that, its close control and Cmd+W do nothing.
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == WELCOME_WINDOW.label => {
+            if !welcome::may_close(app) {
+                api.prevent_close();
+            }
+        }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } if label == WELCOME_WINDOW.label => welcome::window_closed(app),
         // macOS hands files opened from Finder ("Open With",
         // double-click) to the running app as URLs. Before `setup`
         // has started the install queue they are only buffered, and
@@ -1421,6 +1587,29 @@ mod launcher_tests {
         assert_eq!(
             launcher_show_step(false, false),
             LauncherShowStep::WaitForLayout
+        );
+    }
+
+    #[test]
+    fn a_pending_show_comes_after_the_warm_up() {
+        // The warm-up ends by hiding the panel; a show before it would
+        // be undone at once.
+        assert_eq!(
+            layout_steps(true),
+            [
+                LayoutStep::Position,
+                LayoutStep::WarmUp,
+                LayoutStep::Position,
+                LayoutStep::Show
+            ]
+        );
+    }
+
+    #[test]
+    fn without_a_pending_show_the_launcher_only_warms_up() {
+        assert_eq!(
+            layout_steps(false),
+            [LayoutStep::Position, LayoutStep::WarmUp]
         );
     }
 
