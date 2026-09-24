@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-24
+
 ### Added
 
 - `.torchsnap` gadget files open in Torchsnap from Finder (double-click
@@ -411,6 +413,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.11.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.11.0
 [0.10.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.10.0
 [0.9.3]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.3
 [0.9.2]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.9.2
