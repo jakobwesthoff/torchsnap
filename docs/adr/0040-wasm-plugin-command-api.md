@@ -454,8 +454,9 @@ documented in the SDK docs.
 * **Settings UI display of plugin permissions**. Implemented by the
   gadget cards in Settings → Gadgets (`src/settings/install/PermissionSummary.tsx`).
 * **Install-time consent prompt for User-source plugins
-  declaring `[[permissions.command]]`**. Tracked in
-  `todos/gadget-host/install/01m399736658afgk6xv4ab68wn-install-review-dialog.md`.
+  declaring `[[permissions.command]]`**. Implemented by the install
+  review (`src/settings/install/InstallReviewModal.tsx`), shown for
+  every install.
   Composes with future signing (ADR 0036).
 * **Per-binary env quirks tables** (`GIT_CONFIG_NOSYSTEM`,
   equivalents). Mechanism deferred; limitation accepted.

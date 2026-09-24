@@ -32,7 +32,10 @@ import { Switch } from "../../components/Switch";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
+import { InstallResultBanner } from "../install/InstallResultBanner";
+import { InstallReviewModal } from "../install/InstallReviewModal";
 import { PermissionSummary } from "../install/PermissionSummary";
+import { useInstallQueue } from "../install/useInstallQueue";
 import type { PermissionItem } from "../install/types";
 
 // =========================================================
@@ -59,6 +62,9 @@ export function GadgetsManagementPanel() {
   const [permissions, setPermissions] = useState<Record<string, PermissionItem[]>>({});
   const [banner, setBanner] = useState<Banner | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const installQueue = useInstallQueue();
+  // Requests are reviewed one at a time, in the order they arrived.
+  const nextRequest = installQueue.requests[0];
 
   // Fetch the authoritative id→kind map from the backend.
   // Gadgets registered in the frontend registry but absent
@@ -202,6 +208,20 @@ export function GadgetsManagementPanel() {
 
       {banner && <BannerView banner={banner} onDismiss={() => setBanner(null)} />}
 
+      {installQueue.results.length > 0 && (
+        <InstallResultBanner
+          results={installQueue.results}
+          onUndo={(gadgetId) => void installQueue.undo(gadgetId)}
+          onDismiss={installQueue.acknowledge}
+        />
+      )}
+      {installQueue.error && (
+        <BannerView
+          banner={{ kind: "error", message: installQueue.error }}
+          onDismiss={installQueue.dismissError}
+        />
+      )}
+
       <Section title="Install">
         <InstallArea onInstallClick={handleInstallClick} dragActive={dragActive} />
       </Section>
@@ -219,6 +239,14 @@ export function GadgetsManagementPanel() {
           </div>
         )}
       </Section>
+
+      {nextRequest && (
+        <InstallReviewModal
+          request={nextRequest}
+          onInstall={(requestId) => void installQueue.confirm(requestId)}
+          onCancel={(requestId) => void installQueue.dismiss(requestId)}
+        />
+      )}
     </div>
   );
 }
