@@ -1,13 +1,21 @@
 ---
 kind: plan
-status: open
+status: in-progress
 ---
 
 # Open `.torchsnap` archives from outside the app
 
 Planned in full on 2026-09-24, then reviewed against the code and
 revised the same day (review findings and the follow-up discussion are
-folded in). Every open question is decided (see "Decisions"). What
+folded in).
+
+**Progress (2026-09-24):** steps 1 to 20 are implemented on branch
+`gadget-file-association` (torchsnap) and `gadget-file-association`
+(torchsnap-docs). Steps 10 and 11 landed as one commit; ADR 52 landed
+with step 19 so its Info.plist claims were checked against a built
+bundle. Still open: the manual verification checklist below, the
+Settings → Gadgets screenshots in torchsnap-docs (the panel now shows
+permissions), and the "Later" items. Every open question is decided (see "Decisions"). What
 remains unverified is listed under "Unverified assumptions", each with
 the step that settles it.
 
