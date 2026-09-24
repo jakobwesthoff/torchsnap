@@ -53,6 +53,7 @@ mod decision;
 mod paths;
 mod pending;
 mod registered;
+mod review;
 mod staging;
 mod store;
 
@@ -193,6 +194,18 @@ pub async fn install_undo(
     .await
     .map_err(|e| format!("undo task panicked: {e}"))?
     .map_err(|e| format!("{e:#}"))
+}
+
+/// Permissions of every loaded WASM gadget, keyed by gadget id,
+/// for the gadget cards in the settings.
+#[tauri::command]
+pub fn gadget_permissions(
+    registry: tauri::State<'_, crate::wasm::protocol::GadgetSourceRegistry>,
+) -> std::collections::HashMap<String, Vec<review::PermissionItem>> {
+    let sources = registry
+        .read()
+        .expect("source registry lock is never poisoned");
+    review::installed_gadget_permissions(&sources)
 }
 
 // =========================================================
