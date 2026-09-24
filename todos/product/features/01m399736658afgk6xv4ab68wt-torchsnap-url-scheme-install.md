@@ -2,7 +2,7 @@
 kind: feature
 status: deferred
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
-depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md, todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
+depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wp-argv-intake-and-single-instance.md]
 ---
 
 # Install gadgets from a `torchsnap://` link
@@ -21,7 +21,7 @@ double-click steps.
 
 ## Depends on
 
-- `todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md`.
+- The install queue (`src-tauri/src/gadget_install/queue.rs`).
   The URL scheme adds an origin `UrlScheme` and a remote source; the
   download replaces the copy in the staging step (same 16 MiB cap).
 - The install review (`src/settings/install/InstallReviewModal.tsx`),

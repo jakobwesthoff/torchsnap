@@ -3,7 +3,6 @@ kind: feature
 status: open
 tags: [macos]
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
-depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
 ---
 
 # macOS: register `.torchsnap` with Torchsnap and receive opened files
@@ -16,7 +15,8 @@ and 19.
 Double-clicking a `.torchsnap` file in Finder, or choosing "Open With
 → Torchsnap", starts Torchsnap if needed and hands the file to the
 install intake
-(`todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md`).
+(`src-tauri/src/gadget_install/queue.rs`). Receiving opened files is
+done (plan step 16); what remains is registering the type (step 19).
 
 ## Decisions (2026-09-24)
 

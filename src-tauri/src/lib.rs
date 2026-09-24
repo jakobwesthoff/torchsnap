@@ -947,6 +947,12 @@ pub fn run() {
                     let _ = queue_changed.emit(gadget_install::QUEUE_CHANGED_EVENT, ());
                 }),
             });
+            // Files opened before startup finished (double-clicking an
+            // archive while Torchsnap was not running) end up here, so
+            // the review window has to be opened from setup.
+            if !buffered_requests.is_empty() {
+                show_settings_window(app.handle());
+            }
             gadget_install::process_in_background(&install_queue, buffered_requests);
 
             app.manage(install_paths);
@@ -1077,6 +1083,19 @@ pub fn run() {
             api.prevent_close();
             if let Some(win) = app.get_webview_window(label) {
                 let _ = win.hide();
+            }
+        }
+        // macOS hands files opened from Finder ("Open With",
+        // double-click) to the running app as URLs. Before `setup`
+        // has started the install queue they are only buffered, and
+        // setup opens the review itself.
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            let queue = app.state::<Arc<gadget_install::InstallQueue>>();
+            let submission = gadget_install::submit_opened_urls(&queue, urls);
+            if !submission.queued.is_empty() {
+                gadget_install::process_in_background(queue.inner(), submission.queued);
+                show_settings_window(app);
             }
         }
         RunEvent::Exit => {
