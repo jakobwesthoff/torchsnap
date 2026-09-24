@@ -10,7 +10,10 @@ The todo holds the background (current release flow, what Tauri's
 updater plugin offers, the cross-platform notes). This file holds the
 decisions and the steps.
 
-**Progress (2026-09-24):** decisions made, no step started. Work
+**Progress (2026-09-24):** decisions made; step 1 (spike) done, its
+results are under "Spike results". The wiring from the spike is
+committed (`just build --config`, plugin registration, feed override,
+tray item with native dialogs). Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -142,8 +145,8 @@ Checked in the repositories on 2026-09-24.
 - **Signed version check depends on the signature.** The plugin checks
   the announced version against a `version:` entry in the signature's
   trusted comment, and skips the check when that entry is missing
-  unless `requireSignedVersion` is set. Whether the repository's Tauri
-  CLI writes the entry is checked in the spike.
+  unless `requireSignedVersion` is set. The repository's Tauri CLI
+  writes the entry (see "Spike results").
 - **HTTPS only in release builds.** `UpdaterBuilder::endpoints` rejects
   non-https URLs in release builds unless
   `dangerousInsecureTransportProtocol` is set.
@@ -189,26 +192,47 @@ Checked in the repositories on 2026-09-24.
   `ShortcutRecorder`, used by `src/settings/ShortcutSection.tsx`.
 - **CHANGELOG size.** 22 KB with 8 version sections (2026-09-24).
 
-## Unverified assumptions
+## Spike results
 
-Settled by the spike (step 1).
+Run on 2026-09-24 with two signed, notarized builds (0.11.90 installed
+from a quarantined DMG by drag and drop, 0.11.91 served as the update
+from a localhost feed) and a throwaway key.
 
-- The `.app` inside `Torchsnap.app.tar.gz` carries the stapled
-  notarization ticket.
-- A drag-and-drop install into `/Applications` is writable by the user
-  who made it, so the plain rename succeeds and no password prompt
-  appears.
-- Gatekeeper accepts the replaced app without a prompt (see #3082
-  above), and the launch agent still starts it at login.
-- The Tauri CLI writes `version:` into the trusted comment of the
-  `.sig`.
+- **Notarization inside the archive.** `tauri build` notarizes and
+  staples the `.app` before it packs `Torchsnap.app.tar.gz`. The
+  unpacked app passes `stapler validate`, `spctl` ("Notarized Developer
+  ID") and `codesign --verify --deep --strict`.
+- **Signed version.** The `.sig` trusted comment reads
+  `timestamp:… file:Torchsnap.app.tar.gz version:0.11.91`, so
+  `requireSignedVersion: true` works with the repository's Tauri CLI.
+- **Install.** "Install and Restart" replaced
+  `/Applications/Torchsnap.app` without a password prompt and without a
+  Gatekeeper prompt, and Torchsnap restarted by itself on 0.11.91. The
+  bundle stayed owned by the user. It carries no `com.apple.quarantine`
+  (only `com.apple.macl` and `com.apple.provenance`), passes `spctl`,
+  `codesign --verify --deep --strict` and `stapler validate`.
+- **After the update.** Opening from Finder showed no prompt. Launch at
+  login started 0.11.91 after logging out and in; the launch agent
+  keeps pointing at `/Applications/Torchsnap.app/Contents/MacOS/torchsnap`.
+- **Signing key variable.** The Tauri CLI ignored
+  `TAURI_SIGNING_PRIVATE_KEY_PATH` ("A public key has been found, but
+  no private key"), although `tauri signer generate` names it. The key
+  content in `TAURI_SIGNING_PRIVATE_KEY` works. `release.env` and
+  `release-build` use that.
+- **Passing the feed override.** `launchctl setenv` did not reach an
+  app opened from Finder. `open --env TORCHSNAP_UPDATE_FEED=<url>
+  /Applications/Torchsnap.app` did, and the restart after the update
+  kept the variable. A later plain Finder launch has no override again.
+- **Error wording.** A 404 from the feed reaches the user as "Could not
+  fetch a valid release JSON from the remote". The update window words
+  plugin errors itself.
 
 ## Steps
 
 Each step ends in commits on the `auto-updater` branches and a note in
 "Progress".
 
-1. **Spike (torchsnap).** Add the plugin with the feed URL and the
+1. **Spike (torchsnap), done.** Add the plugin with the feed URL and the
    `TORCHSNAP_UPDATE_FEED` override, generate a throwaway key, build a
    signed, notarized app with `createUpdaterArtifacts` passed through
    `--config`, serve a hand-written feed from localhost, and update an
@@ -266,6 +290,11 @@ Each step ends in commits on the `auto-updater` branches and a note in
     release and update to it from an installed 0.12.0.
 12. **Clean up.** Delete this plan, the auto-updater todo and the
     onboarding todo, and drop `plan:` lines that point here.
+
+## Open questions
+
+1. **Launcher after an update restart.** Whether Torchsnap shows the
+   launcher (or something else) after restarting into the new version.
 
 ## Later
 
