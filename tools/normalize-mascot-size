@@ -1,0 +1,187 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow", "numpy", "scipy"]
+# ///
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Scale mascot sources so Snappy's body has the same size in every
+# variant.
+#
+# The launcher draws every variant at the same pixel size, so how large
+# Snappy appears depends on how much of the 1024x1024 canvas the owl
+# covers in the source. The visible bounding box is no measure of that:
+# wings, umbrellas, boxes and swords make it large while the owl stays
+# small. The distance between the two pupils is: every variant has two
+# large dark pupils, and their distance follows the size of the owl,
+# whatever it wears or holds.
+#
+# For each source, the tool finds the pupils, compares their distance
+# with REFERENCE_PUPIL_DISTANCE and, when the owl is larger by more than
+# the tolerance, scales the image down. The bottom centre of the visible
+# figure stays where it was, so the feet keep their position. Owls that
+# are smaller than the reference are reported and left alone:
+# enlarging would blur the drawing and can push props off the canvas.
+#
+# When detection fails (sunglasses, hidden eyes), pass the pupil centres
+# by hand with --eyes. A second run over a normalized source reports it
+# as within tolerance and changes nothing.
+#
+# Usage:
+#   tools/normalize-mascot-size [--dry-run] [--eyes X1,Y1,X2,Y2] <png>...
+#
+# Run `just asset-mascots asset-mascot-data` afterwards to regenerate the
+# WebPs and trim data.
+#
+
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+from scipy import ndimage
+
+# Median pupil distance, in pixels on the 1024x1024 canvas, of the 128
+# variants the detector could measure among those that existed before
+# the 0.11.0 costumes. `original` measures 232.7.
+REFERENCE_PUPIL_DISTANCE = 221.5
+
+# Differences below this are drawing variation, not a size problem.
+TOLERANCE = 0.03
+
+CANVAS = 1024
+
+# Alpha above this counts as visible, matching the 75% threshold that
+# `asset-mascot-data` uses for the trim values.
+VISIBLE_ALPHA = 191
+
+
+# =========================================================
+# Pupil detection
+# =========================================================
+
+
+def find_pupils(rgba: np.ndarray):
+    """Return the two pupil centres as ((x1, y1), (x2, y2)), or None."""
+    alpha = rgba[..., 3]
+    luminance = rgba[..., :3] @ np.array([0.299, 0.587, 0.114])
+    rows = np.nonzero(alpha > VISIBLE_ALPHA)[0]
+    top, height = rows.min(), rows.max() - rows.min()
+
+    # Pupils are near-black. Each dark blob gets its own holes filled,
+    # which closes the white highlight inside a pupil; filling across
+    # the whole image would instead close the dark outline some variants
+    # draw around the figure and swallow the entire owl.
+    dark = (alpha > 200) & (luminance < 50)
+    labels, _ = ndimage.label(dark)
+    candidates = []
+    for index, box in enumerate(ndimage.find_objects(labels), start=1):
+        blob = ndimage.binary_fill_holes(labels[box] == index)
+        area = int(blob.sum())
+        blob_height = box[0].stop - box[0].start
+        blob_width = box[1].stop - box[1].start
+        # Round, solid and of pupil size.
+        if not 600 <= area <= 25000:
+            continue
+        if not 0.6 <= blob_width / blob_height <= 1.7:
+            continue
+        if area / (blob_width * blob_height) < 0.5:
+            continue
+        cy, cx = ndimage.center_of_mass(blob)
+        cy += box[0].start
+        cx += box[1].start
+        # Eyes sit in the upper part of the figure.
+        if cy > top + 0.65 * height:
+            continue
+        candidates.append((area, cx, cy))
+
+    # The pupils are the largest pair of similar size, at about the same
+    # height, a plausible distance apart.
+    best = None
+    for i, (area1, x1, y1) in enumerate(candidates):
+        for area2, x2, y2 in candidates[i + 1 :]:
+            if max(area1, area2) / min(area1, area2) > 1.8:
+                continue
+            if abs(y1 - y2) > 0.08 * height:
+                continue
+            if not 80 <= abs(x1 - x2) <= 500:
+                continue
+            if best is None or area1 + area2 > best[0]:
+                best = (area1 + area2, (x1, y1), (x2, y2))
+    return None if best is None else (best[1], best[2])
+
+
+# =========================================================
+# Scaling
+# =========================================================
+
+
+def scale_around_feet(image: Image.Image, factor: float) -> Image.Image:
+    """Scale the drawing by `factor`, keeping the bottom centre of the
+    visible figure at its position on the canvas."""
+    alpha = np.asarray(image)[..., 3]
+    rows, cols = np.nonzero(alpha > VISIBLE_ALPHA)
+    anchor_x = (cols.min() + cols.max()) / 2
+    anchor_y = rows.max()
+
+    size = round(CANVAS * factor)
+    scaled = image.resize((size, size), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    canvas.paste(
+        scaled,
+        (round(anchor_x - anchor_x * factor), round(anchor_y - anchor_y * factor)),
+    )
+    return canvas
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Scale mascot sources to a common body size.")
+    parser.add_argument("sources", nargs="+", type=Path)
+    parser.add_argument("--dry-run", action="store_true", help="measure only")
+    parser.add_argument(
+        "--eyes",
+        help="pupil centres X1,Y1,X2,Y2 for a single source whose pupils cannot be detected",
+    )
+    args = parser.parse_args()
+    if args.eyes and len(args.sources) != 1:
+        parser.error("--eyes applies to exactly one source")
+
+    failed = False
+    for path in args.sources:
+        image = Image.open(path).convert("RGBA")
+        if image.size != (CANVAS, CANVAS):
+            print(f"{path}: {image.size[0]}x{image.size[1]}, expected {CANVAS}x{CANVAS}", file=sys.stderr)
+            failed = True
+            continue
+
+        if args.eyes:
+            x1, y1, x2, y2 = (float(v) for v in args.eyes.split(","))
+            pupils = ((x1, y1), (x2, y2))
+        else:
+            pupils = find_pupils(np.asarray(image).astype(np.float32))
+        if pupils is None:
+            print(f"{path}: pupils not found, pass them with --eyes", file=sys.stderr)
+            failed = True
+            continue
+
+        (x1, y1), (x2, y2) = pupils
+        distance = float(np.hypot(x2 - x1, y2 - y1))
+        factor = REFERENCE_PUPIL_DISTANCE / distance
+        if factor > 1 - TOLERANCE:
+            note = "within tolerance" if factor < 1 + TOLERANCE else "smaller than reference, left alone"
+            print(f"{path}: pupil distance {distance:.1f}, {note}")
+            continue
+
+        print(f"{path}: pupil distance {distance:.1f}, scaling by {factor:.3f}")
+        if not args.dry_run:
+            scale_around_feet(image, factor).save(path, optimize=True)
+
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

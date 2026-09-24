@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One non-family-friendly Snappy costume was shown stretched wide and
   misplaced above the launcher, because its image was not square. The
   asset build now rejects mascot images that are not 1024×1024.
+- Snappy appeared larger in most costumes added in 0.11.0 than in the
+  others. Those costumes are scaled down to the usual size.
 
 ## [0.11.0] - 2026-09-24
 
