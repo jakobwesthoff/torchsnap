@@ -56,7 +56,7 @@
   "plugins": {
     "updater": {
       "endpoints": ["https://torchsnap.app/updates/latest.json"],
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4QUUxMzg4MzdERjFBQwpSV1NzOFgyRE9PR0tDV2JoUGRzdCtQc2wxakJmY1kwbHpWcUZMM3RxV05GWXlmMkFUQkFjQ1Z1WQo=",
       "requireSignedVersion": true
     }
   }
