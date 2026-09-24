@@ -26,12 +26,12 @@ vi.mock("../../hooks/useSetting", () => ({
 }));
 
 describe("GeneralSection", () => {
-  it("has the updates section below the other settings", async () => {
+  it("has the updates section between startup and advanced", async () => {
     mockCommands({ build_info: () => ({ version: "0.12.0", gitHash: "abc1234" }) });
     render(<GeneralSection />);
 
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    expect(titles).toEqual(["Startup", "Advanced", "Updates"]);
+    expect(titles).toEqual(["Startup", "Updates", "Advanced"]);
     expect(await screen.findByText("Build: v0.12.0 (abc1234)")).toBeInTheDocument();
   });
 });

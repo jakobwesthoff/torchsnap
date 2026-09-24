@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Settings → General lists Updates before Advanced, and every settings
+  row keeps a gap between its text and its switch.
+
 ## [0.12.0] - 2026-09-24
 
 ### Added
