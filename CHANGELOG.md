@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Nine new Snappy costumes in the regular rotation, and five
+  Christmas-movie costumes that join Santa during the Christmas window.
+
 ### Fixed
 
 - The ZeroTier gadget's warning results (token missing, token rejected,
