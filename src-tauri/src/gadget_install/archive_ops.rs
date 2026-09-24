@@ -12,7 +12,7 @@ use std::path::Path;
 
 use anyhow::Context;
 
-use super::paths::{InstallPaths, UNINSTALL_MARKER_SUFFIX};
+use super::paths::{BACKUP_SUFFIX, InstallPaths, UNINSTALL_MARKER_SUFFIX};
 use super::store::{SettingsKeys, strip_gadget_settings};
 use crate::wasm::manifest::validate_gadget_id;
 
@@ -33,6 +33,48 @@ pub fn publish_fresh(paths: &InstallPaths, source: &Path, gadget_id: &str) -> an
     std::fs::rename(&tmp_path, paths.archive(gadget_id))
         .context("move the staged archive into place")?;
     Ok(())
+}
+
+/// Swap the archive at `gadgets/<id>.torchsnap` for `source`, keeping
+/// the current one as `.<id>.torchsnap.prev` for undo.
+///
+/// The backup is written only if none exists yet, so it always holds
+/// what was on disk before the first replace of this session: the
+/// version that runs until restart, or the first pending install. The
+/// current archive is renamed rather than copied, which keeps its
+/// inode, so a running gadget holding it open keeps reading the same
+/// bytes.
+pub fn publish_replace(paths: &InstallPaths, source: &Path, gadget_id: &str) -> anyhow::Result<()> {
+    let archive = paths.archive(gadget_id);
+    let backup = paths.backup(gadget_id);
+    if !backup.exists() && archive.exists() {
+        std::fs::rename(&archive, &backup).context("keep the replaced archive as a backup")?;
+    }
+    publish_fresh(paths, source, gadget_id)
+}
+
+/// What `undo_publish` did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Undone {
+    /// The backup of a replaced archive is back in place.
+    Restored,
+    /// There was no backup, so the fresh install was removed.
+    Removed,
+}
+
+/// Reverse the last publish for `gadget_id` in this session.
+pub fn undo_publish(paths: &InstallPaths, gadget_id: &str) -> anyhow::Result<Undone> {
+    let archive = paths.archive(gadget_id);
+    let backup = paths.backup(gadget_id);
+    if backup.exists() {
+        std::fs::rename(&backup, &archive).context("restore the replaced archive")?;
+        Ok(Undone::Restored)
+    } else {
+        if archive.exists() {
+            std::fs::remove_file(&archive).context("remove the installed archive")?;
+        }
+        Ok(Undone::Removed)
+    }
 }
 
 /// What `remove_user_gadget` found on disk.
@@ -63,6 +105,13 @@ pub fn remove_user_gadget(paths: &InstallPaths, gadget_id: &str) -> anyhow::Resu
         std::fs::remove_dir_all(&directory).context("remove the gadget directory")?;
     }
 
+    // Without this, undoing a later fresh install of the same id would
+    // bring back an archive from before the uninstall.
+    let backup = paths.backup(gadget_id);
+    if backup.exists() {
+        std::fs::remove_file(&backup).context("remove the replaced archive's backup")?;
+    }
+
     std::fs::create_dir_all(&paths.gadgets_dir).context("create the user gadgets directory")?;
     std::fs::write(paths.uninstall_marker(gadget_id), b"").context("write the uninstall marker")?;
 
@@ -70,6 +119,27 @@ pub fn remove_user_gadget(paths: &InstallPaths, gadget_id: &str) -> anyhow::Resu
         archive_removed,
         directory_removed,
     })
+}
+
+/// Delete the replace backups of the previous session. Undo only
+/// works until restart, and after a restart the archive on disk is
+/// the one that runs.
+pub fn remove_stale_backups(paths: &InstallPaths) -> anyhow::Result<()> {
+    let entries = match std::fs::read_dir(&paths.gadgets_dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e).context("read the user gadgets directory"),
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let is_backup = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with('.') && name.ends_with(BACKUP_SUFFIX));
+        if is_backup {
+            std::fs::remove_file(entry.path()).context("remove a stale replace backup")?;
+        }
+    }
+    Ok(())
 }
 
 /// Finish every uninstall from the previous session: delete the
@@ -324,5 +394,128 @@ mod tests {
             process_uninstall_markers(&paths, &settings).expect("processing should succeed");
 
         assert!(cleaned.is_empty());
+    }
+
+    // =========================================================
+    // Replace, backup and undo
+    // =========================================================
+
+    fn source_file(contents: &[u8]) -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().expect("create source file");
+        std::fs::write(file.path(), contents).expect("write source");
+        file
+    }
+
+    fn read(path: &std::path::Path) -> Vec<u8> {
+        std::fs::read(path).expect("read file")
+    }
+
+    #[test]
+    fn replace_backs_up_the_current_archive_and_publishes_the_new_one() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
+        let v2 = source_file(b"v2");
+
+        publish_replace(&paths, v2.path(), "weather").expect("replace should succeed");
+
+        assert_eq!(read(&paths.archive("weather")), b"v2");
+        assert_eq!(read(&paths.backup("weather")), b"v1");
+    }
+
+    /// The backup holds what ran when the session started, so a second
+    /// replace must not overwrite it with the intermediate version.
+    #[test]
+    fn a_second_replace_keeps_the_original_backup() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
+        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("first replace");
+
+        publish_replace(&paths, source_file(b"v3").path(), "weather").expect("second replace");
+
+        assert_eq!(read(&paths.archive("weather")), b"v3");
+        assert_eq!(read(&paths.backup("weather")), b"v1");
+    }
+
+    /// Renaming keeps the inode, so a running gadget that holds the old
+    /// archive open keeps reading the same bytes after the replace.
+    #[cfg(unix)]
+    #[test]
+    fn replace_keeps_the_old_archive_readable_through_an_open_handle() {
+        use std::io::Read as _;
+
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
+        let mut open_handle = std::fs::File::open(paths.archive("weather")).expect("open archive");
+
+        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
+
+        let mut contents = Vec::new();
+        open_handle
+            .read_to_end(&mut contents)
+            .expect("read through old handle");
+        assert_eq!(contents, b"v1");
+    }
+
+    #[test]
+    fn undo_restores_the_backup() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
+        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
+
+        let undone = undo_publish(&paths, "weather").expect("undo should succeed");
+
+        assert_eq!(undone, Undone::Restored);
+        assert_eq!(read(&paths.archive("weather")), b"v1");
+        assert!(!paths.backup("weather").exists());
+    }
+
+    #[test]
+    fn undo_without_a_backup_removes_the_fresh_install() {
+        let (_root, paths) = temp_paths();
+        publish_fresh(&paths, source_file(b"v1").path(), "weather").expect("fresh install");
+
+        let undone = undo_publish(&paths, "weather").expect("undo should succeed");
+
+        assert_eq!(undone, Undone::Removed);
+        assert!(!paths.archive("weather").exists());
+    }
+
+    #[test]
+    fn uninstall_removes_the_backup() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.archive("weather"), b"v1").expect("write installed archive");
+        publish_replace(&paths, source_file(b"v2").path(), "weather").expect("replace");
+
+        remove_user_gadget(&paths, "weather").expect("removal should succeed");
+
+        assert!(!paths.backup("weather").exists());
+        assert!(!paths.archive("weather").exists());
+    }
+
+    #[test]
+    fn startup_removes_leftover_backups_only() {
+        let (_root, paths) = temp_paths();
+        std::fs::create_dir_all(&paths.gadgets_dir).expect("create gadgets dir");
+        std::fs::write(paths.backup("weather"), b"v1").expect("write backup");
+        std::fs::write(paths.archive("weather"), b"v2").expect("write archive");
+        std::fs::write(paths.uninstall_marker("calendar"), b"").expect("write marker");
+
+        remove_stale_backups(&paths).expect("sweep should succeed");
+
+        assert!(!paths.backup("weather").exists());
+        assert!(paths.archive("weather").exists());
+        assert!(paths.uninstall_marker("calendar").exists());
+    }
+
+    #[test]
+    fn startup_backup_sweep_without_a_gadgets_dir_does_nothing() {
+        let (_root, paths) = temp_paths();
+
+        remove_stale_backups(&paths).expect("sweep should succeed");
     }
 }

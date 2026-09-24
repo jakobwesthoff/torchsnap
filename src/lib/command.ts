@@ -109,6 +109,10 @@ export interface CommandMap {
     params: { gadgetId: string };
     result: UninstallResult;
   };
+  install_undo: {
+    params: { gadgetId: string };
+    result: UndoResult;
+  };
   build_info: { params: void; result: { version: string; gitHash: string } };
 }
 
@@ -120,10 +124,22 @@ export interface CommandMap {
 // sites stay idiomatic.
 // =========================================================
 
+/** Mirrors the Rust `VersionRelation` enum. */
+export type VersionRelation = "upgrade" | "same" | "downgrade" | "unknown";
+
 export interface InstalledGadgetInfo {
   id: string;
   name: string;
   version: string;
+  /** Set when the install replaced another version of the gadget. */
+  previousVersion: string | null;
+  versionRelation: VersionRelation | null;
+  requiresRestart: boolean;
+}
+
+export interface UndoResult {
+  /** The version back on disk, or `null` when the undo removed the gadget. */
+  restoredVersion: string | null;
   requiresRestart: boolean;
 }
 

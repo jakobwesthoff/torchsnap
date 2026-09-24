@@ -610,6 +610,7 @@ pub fn run() {
             gadget_sources,
             gadget_install::install_gadget_archive,
             gadget_install::uninstall_user_gadget,
+            gadget_install::install_undo,
             build_info,
         ])
         .plugin(tauri_plugin_opener::init())
@@ -671,6 +672,9 @@ pub fn run() {
                 }
                 Ok(_) => {}
                 Err(e) => eprintln!("failed to finish pending gadget uninstalls: {e:#}"),
+            }
+            if let Err(e) = gadget_install::remove_stale_backups(&install_paths) {
+                eprintln!("failed to remove gadget replace backups: {e:#}");
             }
 
             settings::SettingsInit::from_store(&store, "")
@@ -899,8 +903,11 @@ pub fn run() {
             // The registry snapshot is final here: slots never change
             // after setup.
             app.manage(install_paths);
-            app.manage(gadget_install::RegisteredGadgets::from_kinds(
+            app.manage(gadget_install::RegisteredGadgets::from_host(
                 host.gadget_sources(),
+                &source_registry
+                    .read()
+                    .expect("source registry lock is never poisoned"),
             ));
             app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
             app.manage(Arc::new(std::sync::Mutex::new(
