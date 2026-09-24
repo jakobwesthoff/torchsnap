@@ -85,7 +85,7 @@ roots:
    Stripped from release artifacts via `cfg(debug_assertions)`. Tagged
    `GadgetSourceKind::Dev` for the settings UI badge.
 3. **User** (`<app_data_dir>/gadgets/`). Install target for
-   user-dropped `.torchsnap` archives. Uninstallable.
+   `.torchsnap` archives the user installs. Uninstallable.
 
 Within a single root, an archive shadows a sibling directory of the
 same stem. Across roots, the earlier root wins and the collision is
@@ -100,29 +100,64 @@ rest of the host treats them interchangeably.
 
 ### Install and uninstall
 
-`src-tauri/src/gadget_install.rs` exposes two Tauri commands for
-managing user gadgets at runtime.
+`src-tauri/src/gadget_install/` handles installing, replacing,
+undoing and uninstalling user gadgets at runtime (ADR 0051). Each
+submodule's header comment has the details.
 
-**Install** (`install_gadget_archive`): opens the `.torchsnap` archive
-via `ArchiveSource::open` (which validates the zip, parses
-`manifest.toml`, and runs a path-traversal guard), then checks for id
-collisions against all loaded gadgets. Each `GadgetSourceKind` gets a
-distinct error message (e.g. "uninstall the existing version, then
-retry" for User, "built-in gadgets cannot be replaced" for Builtin).
-The archive is written atomically: first copied to a dot-prefixed temp
-file (`.<id>.torchsnap.tmp`) in the same directory, then `rename`d
-into place. A crash mid-copy leaves only the temp file, which the
-directory scanner ignores.
+**Entry points.** The settings file picker and drop zone
+(`install_queue_submit`), files macOS asks the app to open
+(`RunEvent::Opened`), and `.torchsnap` paths on the command line,
+including those a second launch hands to the running instance through
+`tauri-plugin-single-instance`. `intake.rs` turns each into an
+absolute archive path.
 
-**Uninstall** (`uninstall_user_gadget`): only `GadgetSourceKind::User`
-gadgets can be uninstalled. The command removes the archive (or
-unpacked directory), the state tree at
-`<app_data_dir>/gadget-home/<id>/`, and strips all settings keys
-matching `enabled.<id>` or the prefix `gadgets.<id>.` (the trailing
-dot prevents `calc` from matching `calculator.*`).
+**Queue** (`queue.rs`). Every path becomes a request in one
+`InstallQueue`. The queue is created before the Tauri app is built and
+buffers requests until `setup` starts it. A request is `Staging`,
+`Ready` with a review, or `Failed`. `install-queue-changed` announces
+every change; the settings window pulls `install_queue_snapshot` and
+shows the first request.
 
-Both commands return `requires_restart: true` unconditionally because
-the `GadgetHost` slot list is frozen after app setup. Hot
+**Staging** (`staging.rs`). Each archive is copied to
+`<app_cache_dir>/install-staging/<ulid>.torchsnap` (16 MiB cap) and
+opened there with `ArchiveSource::open`, which validates the zip,
+parses the manifest and runs the path guard. The review and the
+install both use the staged copy.
+
+**Review** (`review.rs`, `provenance.rs`). Lists every grant of the
+manifest as its own item with a severity, and on a replace marks what
+is new and what the new version drops. On macOS it adds the download
+origin from the `kMDItemWhereFroms` and quarantine extended
+attributes. The frontend groups the items by what they touch
+(`src/settings/install/permissionModel.ts`).
+
+**Decision** (`decision.rs`). Pure functions over two views of an id:
+the registry snapshot taken at startup (`registered.rs`, frozen like
+the host's slot list) and the changes made since (`pending.rs`).
+Built-in, bundled and dev ids are rejected; an installed user archive
+is replaced, unless it is a directory form or the incoming manifest
+declares fewer SQL migrations. Confirming re-runs the decision under
+the queue and pending-changes locks.
+
+**Filesystem steps** (`archive_ops.rs`). A fresh install publishes the
+staged copy as `gadgets/<id>.torchsnap`. The first replace of an id in
+a session keeps the current archive as `gadgets/.<id>.torchsnap.prev`
+so undo can restore it. Uninstall moves the startup archive to that
+backup, removes anything installed since, and writes
+`gadgets/.<id>.uninstall`. At the next startup, before settings are
+initialized and before any gadget loads, each marker's
+`gadget-home/<id>/` tree and `enabled.<id>` / `gadgets.<id>.*`
+settings keys are deleted, and leftover backups and staged copies are
+removed.
+
+**Pending changes.** `pending_gadget_changes` reports every change
+since startup, which the Gadgets list shows with an Undo
+(`install_undo`) and a restart bar. `restart_to_apply_gadget_changes`
+writes `<app_data_dir>/.reopen-gadget-settings` and restarts; the next
+setup consumes it and opens Settings on the Gadgets section.
+
+Every change takes effect only after a restart because the
+`GadgetHost` slot list is frozen after app setup. Hot
 reload/lifecycle is not yet implemented.
 
 ## Gadget layout
