@@ -35,11 +35,13 @@
 // 1. Decide the same way (`decision::decide_uninstall`):
 //    user gadgets and installs made since startup can be
 //    removed, built-in, system and dev gadgets cannot.
-// 2. Remove the archive, the directory form if any, and the
-//    state tree (`archive_ops::remove_user_gadget`).
-// 3. Strip the gadget's settings keys and persist the store
-//    (`store::strip_gadget_settings`), then record the
-//    uninstall in `PendingChanges`.
+// 2. Remove the archive and the directory form if any, and
+//    leave an uninstall marker (`archive_ops::remove_user_gadget`).
+//    The gadget keeps running until restart, so its state tree
+//    and settings are deleted by the next startup
+//    (`archive_ops::process_uninstall_markers`), before any
+//    gadget loads.
+// 3. Record the uninstall in `PendingChanges`.
 // =========================================================
 
 mod archive_ops;
@@ -49,6 +51,7 @@ mod pending;
 mod registered;
 mod store;
 
+pub use archive_ops::process_uninstall_markers;
 pub use paths::InstallPaths;
 pub use pending::PendingChanges;
 pub use registered::RegisteredGadgets;
@@ -127,24 +130,16 @@ pub async fn uninstall_user_gadget(
     paths: tauri::State<'_, InstallPaths>,
     registered: tauri::State<'_, RegisteredGadgets>,
     pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
-    settings: tauri::State<'_, Arc<dyn SettingsKeys>>,
     gadget_id: String,
 ) -> Result<UninstallResult, String> {
     let paths = paths.inner().clone();
     let registered = registered.inner().clone();
     let pending = Arc::clone(pending.inner());
-    let settings = Arc::clone(settings.inner());
     tokio::task::spawn_blocking(move || {
         let mut pending = pending
             .lock()
             .expect("pending changes lock is never poisoned");
-        uninstall(
-            &paths,
-            &registered,
-            &mut pending,
-            settings.as_ref(),
-            &gadget_id,
-        )
+        uninstall(&paths, &registered, &mut pending, &gadget_id)
     })
     .await
     .map_err(|e| format!("uninstall task panicked: {e}"))?
@@ -197,7 +192,6 @@ fn uninstall(
     paths: &InstallPaths,
     registered: &RegisteredGadgets,
     pending: &mut PendingChanges,
-    settings: &dyn SettingsKeys,
     gadget_id: &str,
 ) -> anyhow::Result<UninstallResult> {
     let registered_kind = registered.kind(gadget_id);
@@ -209,7 +203,7 @@ fn uninstall(
     let removal = archive_ops::remove_user_gadget(paths, gadget_id)?;
     // A registered user gadget without `<id>.torchsnap` means the
     // file on disk does not match its manifest id (a renamed or
-    // hand-placed archive). Its state is still removed, but the
+    // hand-placed archive). Its state is still cleaned up, but the
     // stray archive would load again after restart, so this is
     // worth a trace.
     if !removal.archive_removed && !removal.directory_removed {
@@ -220,7 +214,6 @@ fn uninstall(
         );
     }
 
-    store::strip_gadget_settings(settings, gadget_id)?;
     pending.record_uninstall(gadget_id, registered_kind.is_some());
 
     Ok(UninstallResult {
@@ -237,7 +230,6 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::gadget_install::store::MemorySettings;
     use crate::wasm::manifest::test_helpers::{
         archive_with_manifest, write_archive_without_manifest,
     };
@@ -391,72 +383,41 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_removes_the_archive_the_directory_form_and_the_home_tree() {
+    fn uninstall_removes_both_forms_and_defers_the_state_cleanup() {
         let (_root, paths) = temp_paths();
         install_user_gadget_on_disk(&paths, "weather");
         std::fs::create_dir_all(paths.directory("weather")).expect("create directory form");
-        let settings = MemorySettings::with_keys(&["enabled.weather", "gadgets.weather.city"]);
 
         let result = uninstall(
             &paths,
             &registered(&[("weather", GadgetSourceKind::User)]),
             &mut PendingChanges::default(),
-            &settings,
             "weather",
         )
         .expect("uninstall should succeed");
 
         assert!(result.requires_restart);
-        assert!(dir_entries(&paths.gadgets_dir).is_empty());
-        assert!(!paths.home("weather").exists());
-        assert!(settings.keys().is_empty());
-        assert_eq!(settings.save_count(), 1);
+        assert_eq!(dir_entries(&paths.gadgets_dir), vec![".weather.uninstall"]);
+        assert!(paths.home("weather").join("storage.sqlite3").exists());
     }
 
     #[test]
     fn uninstall_rejects_unknown_ids_and_non_user_gadgets() {
         let (_root, paths) = temp_paths();
-        let settings = MemorySettings::with_keys(&[]);
         let registry = registered(&[("clipboard-manager", GadgetSourceKind::Builtin)]);
 
-        let unknown = uninstall(
-            &paths,
-            &registry,
-            &mut PendingChanges::default(),
-            &settings,
-            "weather",
-        )
-        .expect_err("unknown id");
+        let unknown = uninstall(&paths, &registry, &mut PendingChanges::default(), "weather")
+            .expect_err("unknown id");
         assert!(format!("{unknown:#}").contains("unknown gadget id `weather`"));
 
         let builtin = uninstall(
             &paths,
             &registry,
             &mut PendingChanges::default(),
-            &settings,
             "clipboard-manager",
         )
         .expect_err("builtin");
         assert!(format!("{builtin:#}").contains("only user-installed gadgets can be uninstalled"));
-        assert_eq!(settings.save_count(), 0);
-    }
-
-    #[test]
-    fn uninstall_propagates_a_failed_settings_save() {
-        let (_root, paths) = temp_paths();
-        install_user_gadget_on_disk(&paths, "weather");
-        let settings = MemorySettings::with_keys(&["enabled.weather"]).failing_save();
-
-        let error = uninstall(
-            &paths,
-            &registered(&[("weather", GadgetSourceKind::User)]),
-            &mut PendingChanges::default(),
-            &settings,
-            "weather",
-        )
-        .expect_err("a failed save must not be reported as success");
-
-        assert!(format!("{error:#}").contains("persist settings"));
     }
 
     // =========================================================
@@ -468,11 +429,10 @@ mod tests {
         let (_root, paths) = temp_paths();
         let registry = registered(&[]);
         let mut pending = PendingChanges::default();
-        let settings = MemorySettings::with_keys(&[]);
         let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
         install(&paths, &registry, &mut pending, &archive).expect("install should succeed");
 
-        uninstall(&paths, &registry, &mut pending, &settings, "weather")
+        uninstall(&paths, &registry, &mut pending, "weather")
             .expect("uninstall of a pending install should succeed");
 
         assert!(!paths.archive("weather").exists());
@@ -487,9 +447,7 @@ mod tests {
         install_user_gadget_on_disk(&paths, "weather");
         let registry = registered(&[("weather", GadgetSourceKind::User)]);
         let mut pending = PendingChanges::default();
-        let settings = MemorySettings::with_keys(&[]);
-        uninstall(&paths, &registry, &mut pending, &settings, "weather")
-            .expect("uninstall should succeed");
+        uninstall(&paths, &registry, &mut pending, "weather").expect("uninstall should succeed");
         let (_src, archive) = archive_with_manifest("weather", "1.5.0", "");
 
         let info = install(&paths, &registry, &mut pending, &archive)
@@ -505,11 +463,9 @@ mod tests {
         install_user_gadget_on_disk(&paths, "weather");
         let registry = registered(&[("weather", GadgetSourceKind::User)]);
         let mut pending = PendingChanges::default();
-        let settings = MemorySettings::with_keys(&[]);
-        uninstall(&paths, &registry, &mut pending, &settings, "weather")
-            .expect("uninstall should succeed");
+        uninstall(&paths, &registry, &mut pending, "weather").expect("uninstall should succeed");
 
-        let error = uninstall(&paths, &registry, &mut pending, &settings, "weather")
+        let error = uninstall(&paths, &registry, &mut pending, "weather")
             .expect_err("a second uninstall should be rejected");
 
         assert!(format!("{error:#}").contains("already uninstalled"));

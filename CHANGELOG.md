@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uninstalling a gadget reports an error when the settings cannot be
   saved, instead of claiming success while the gadget's settings
   reappear on the next start.
+- Uninstalling a running gadget no longer leaves its data behind or
+  lets the still-running gadget recreate it. Its data and settings are
+  removed on the next start, before any gadget loads.
 
 ## [0.10.0] - 2026-09-23
 

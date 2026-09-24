@@ -652,6 +652,27 @@ pub fn run() {
             use tauri_plugin_store::StoreExt;
 
             let store = app.store("settings.json").expect("settings store");
+            let app_data_dir = app.path().app_data_dir().context("resolve app data dir")?;
+            let install_paths = gadget_install::InstallPaths::new(&app_data_dir);
+
+            // =========================================================
+            // Finish uninstalls from the previous session
+            //
+            // Uninstall only removes the archive and leaves a marker;
+            // the gadget's data and settings are deleted here, before
+            // settings are initialized and before any gadget loads,
+            // so no running instance can write them back. A failure
+            // keeps the marker for the next start, so it is logged
+            // rather than stopping the app.
+            // =========================================================
+            match gadget_install::process_uninstall_markers(&install_paths, store.as_ref()) {
+                Ok(cleaned) if !cleaned.is_empty() => {
+                    eprintln!("finished uninstalling gadgets: {}", cleaned.join(", "));
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("failed to finish pending gadget uninstalls: {e:#}"),
+            }
+
             settings::SettingsInit::from_store(&store, "")
                 .ensure("globalShortcut", "CmdOrCtrl+Shift+Space")
                 .ensure("mascotMode", "center")
@@ -670,7 +691,6 @@ pub fn run() {
             // =========================================================
             // Frecency store
             // =========================================================
-            let app_data_dir = app.path().app_data_dir().context("resolve app data dir")?;
             let frecency_store = frecency::FrecencyStore::open(&app_data_dir, &notifier, &store)
                 .context("initialize frecency store")?;
             let frecency_store = Arc::new(frecency_store);
@@ -878,7 +898,7 @@ pub fn run() {
             // the host, so they stay testable without a Tauri runtime.
             // The registry snapshot is final here: slots never change
             // after setup.
-            app.manage(gadget_install::InstallPaths::new(&app_data_dir));
+            app.manage(install_paths);
             app.manage(gadget_install::RegisteredGadgets::from_kinds(
                 host.gadget_sources(),
             ));

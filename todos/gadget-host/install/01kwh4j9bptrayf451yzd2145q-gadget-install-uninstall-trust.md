@@ -130,9 +130,7 @@ inconsistent), but not a privilege boundary crossing.
 
 ## Related
 - Archive decompressed-size cap (install-time size check anchors here):
-  `../host-wasm/01kwh4j9bptrayf451yzd2145g-archive-decompressed-size-unbounded.md`.
-- Uninstall-of-live-gadget state resurrection:
-  `01kwh2e8mne5bd05tpb4paacwc-uninstall-live-gadget-resurrects-state.md`.
+  `todos/gadget-host/wasm/01kwh4j9bptrayf451yzd2145g-archive-decompressed-size-unbounded.md`.
 
 ## Files
 `gadget_install.rs:108-174,197-270`; `lib.rs:1031-1147`;
