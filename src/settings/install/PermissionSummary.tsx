@@ -6,9 +6,10 @@
 // Permission summary
 //
 // The list of what a gadget may do, shared by the install review
-// and the installed gadget cards. Broad grants come first and are
-// highlighted; the review additionally marks what a new version
-// adds and lists what it drops.
+// and the installed gadget cards. Broad grants come first and carry
+// a "Broad access" label that explains itself on hover, so meaning
+// never depends on colour alone. The review additionally marks what
+// a new version adds and lists what it drops.
 // =========================================================
 
 import { cn } from "../../lib/cn";
@@ -17,11 +18,8 @@ import type { PermissionItem, Severity } from "./types";
 
 const SEVERITY_ORDER: Record<Severity, number> = { warning: 0, notice: 1, info: 2 };
 
-const SEVERITY_STYLE: Record<Severity, string> = {
-  warning: "border-l-amber-500 text-text-primary",
-  notice: "border-l-accent/60 text-text-primary",
-  info: "border-l-border-divider text-text-secondary",
-};
+const BROAD_ACCESS_HINT =
+  "This permission reaches beyond the gadget's own data, for example running programs, contacting any website or opening files.";
 
 export function PermissionSummary({
   items,
@@ -67,14 +65,21 @@ export function PermissionSummary({
 function PermissionRow({ item, markAdded }: { item: PermissionItem; markAdded: boolean }) {
   const { title, detail } = permissionText(item.permission);
   return (
-    <li
-      data-severity={item.severity}
-      className={cn("border-l-2 pl-2 text-xs", SEVERITY_STYLE[item.severity])}
-    >
+    <li data-severity={item.severity} className="text-xs">
       <div className="flex items-center gap-1.5">
-        <span className={item.change === "removed" ? "line-through" : undefined}>{title}</span>
+        <span className={cn("text-text-secondary", item.change === "removed" && "line-through")}>
+          {title}
+        </span>
+        {item.severity === "warning" && (
+          <span
+            title={BROAD_ACCESS_HINT}
+            className="rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-500"
+          >
+            Broad access
+          </span>
+        )}
         {markAdded && item.change === "added" && (
-          <span className="rounded bg-amber-500/15 px-1 text-[10px] font-medium uppercase text-amber-500">
+          <span className="rounded bg-accent/15 px-1 text-[10px] font-medium uppercase text-accent">
             New
           </span>
         )}
