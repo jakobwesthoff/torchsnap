@@ -125,31 +125,78 @@ describe("GadgetsManagementPanel", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 
-  it("shows each gadget's permissions on its card", async () => {
+  function mockCardCommands(permissions: Record<string, unknown[]>) {
     mockCommands({
       gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
-      gadget_permissions: () => ({
-        weather: [
-          {
-            permission: { kind: "httpOrigin", origin: "https://api.weather.example" },
-            severity: "notice",
-            change: "unchanged",
-          },
-        ],
-      }),
+      gadget_permissions: () => permissions as never,
       install_queue_snapshot: () => [],
     });
+  }
 
+  async function card(name: string): Promise<HTMLElement> {
+    return (await screen.findByText(name)).closest("[data-gadget]") as HTMLElement;
+  }
+
+  it("summarizes a gadget's permissions in one line and expands them on click", async () => {
+    mockCardCommands({
+      weather: [
+        {
+          permission: { kind: "httpOrigin", origin: "*" },
+          severity: "warning",
+          change: "unchanged",
+        },
+        {
+          permission: { kind: "settings" },
+          severity: "info",
+          change: "unchanged",
+        },
+      ],
+    });
+    render(<GadgetsManagementPanel />);
+    const weather = await card("Weather");
+
+    const toggle = await within(weather).findByRole("button", {
+      name: /2 permissions · 1 with broad access/,
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(weather).queryByText("Connect to any website")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(weather).getByText("Connect to any website")).toBeInTheDocument();
+  });
+
+  it("says that built-in gadgets have no permission list", async () => {
+    mockCardCommands({});
+    render(<GadgetsManagementPanel />);
+    const builtin = await card("Clipboard");
+
+    const line = within(builtin).getByRole("button", {
+      name: "Permissions aren't listed for built-in gadgets",
+    });
+    expect(line).toBeDisabled();
+  });
+
+  it("says when a gadget asks for no permissions", async () => {
+    mockCardCommands({ weather: [] });
+    render(<GadgetsManagementPanel />);
+    const weather = await card("Weather");
+
+    expect(within(weather).getByRole("button", { name: "No permissions" })).toBeDisabled();
+  });
+
+  it("puts every switch in the same place, whatever sits next to it", async () => {
+    mockCardCommands({});
     render(<GadgetsManagementPanel />);
 
-    const card = (await screen.findByText("Weather")).closest("[data-gadget]");
-    expect(card).not.toBeNull();
-    expect(
-      within(card as HTMLElement).getByText("Connect to https://api.weather.example"),
-    ).toBeInTheDocument();
+    const slots = [await card("Weather"), await card("Clipboard")].map(
+      (element) => element.querySelector("[data-slot='trailing']") as HTMLElement,
+    );
 
-    const builtin = screen.getByText("Clipboard").closest("[data-gadget]") as HTMLElement;
-    expect(within(builtin).queryByRole("list", { name: "Permissions" })).not.toBeInTheDocument();
+    expect(slots.every((slot) => slot !== null)).toBe(true);
+    expect(slots[0].className).toBe(slots[1].className);
+    expect(slots[0].className).toMatch(/\bw-\d+/);
   });
 
   it("reviews the first queued request and reports the install", async () => {

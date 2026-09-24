@@ -288,24 +288,84 @@ function PluginRowView({
         {row.description && (
           <span className="text-xs text-text-tertiary truncate">{row.description}</span>
         )}
-        <PermissionSummary items={row.permissions} className="mt-1.5" />
+        <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />
       </div>
       <Switch checked={enabled ?? true} onChange={setEnabled} />
       {/* Trailing slot: Uninstall for user gadgets, source badge
-          for every other kind. Mutually exclusive by design. */}
-      {canUninstall ? (
-        <button
-          type="button"
-          onClick={() => onUninstall(row.id)}
-          title="Uninstall this user gadget"
-          className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-        >
-          Uninstall
-        </button>
-      ) : (
-        <SourceBadge kind={row.sourceKind} />
-      )}
+          for every other kind. Its fixed width keeps every switch
+          in the same column whichever of the two it holds. */}
+      <div data-slot="trailing" className="flex w-20 shrink-0 justify-end">
+        {canUninstall ? (
+          <button
+            type="button"
+            onClick={() => onUninstall(row.id)}
+            title="Uninstall this user gadget"
+            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            Uninstall
+          </button>
+        ) : (
+          <SourceBadge kind={row.sourceKind} />
+        )}
+      </div>
     </div>
+  );
+}
+
+// =========================================================
+// Permission line — one quiet line per card that expands into
+// the full list. Built-in gadgets are native code without a
+// manifest, so there is nothing to list for them.
+// =========================================================
+
+function PermissionLine({
+  sourceKind,
+  items,
+}: {
+  sourceKind: GadgetSourceKind;
+  items: PermissionItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const quiet = "mt-1 self-start text-left text-xs text-text-tertiary";
+
+  if (sourceKind === "builtin") {
+    return (
+      <button type="button" disabled className={quiet}>
+        Permissions aren't listed for built-in gadgets
+      </button>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <button type="button" disabled className={quiet}>
+        No permissions
+      </button>
+    );
+  }
+
+  const broad = items.filter((item) => item.severity === "warning").length;
+  const count = `${items.length} ${items.length === 1 ? "permission" : "permissions"}`;
+  const broadText = broad > 0 ? ` · ${broad} with broad access` : "";
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={count + broadText}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(quiet, "flex items-center gap-1 hover:text-text-secondary")}
+      >
+        <Icon
+          icon="heroicons:chevron-right"
+          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+        />
+        <span>
+          {count}
+          {broadText && <span className="text-amber-500">{broadText}</span>}
+        </span>
+      </button>
+      {open && <PermissionSummary items={items} className="mt-1.5 pl-4" />}
+    </>
   );
 }
 

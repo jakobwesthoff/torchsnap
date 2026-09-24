@@ -68,4 +68,17 @@ describe("PermissionSummary", () => {
     const removedList = screen.getByRole("list", { name: "No longer requested" });
     expect(removedList).toHaveTextContent("Copy text to the clipboard");
   });
+
+  it("labels broad permissions in words instead of by colour alone", () => {
+    render(<PermissionSummary items={[anyWebsite, clipboard, settings]} />);
+
+    const [broad, notice, info] = screen.getAllByRole("listitem");
+    expect(within(broad).getByText("Broad access")).toHaveAttribute(
+      "title",
+      expect.stringContaining("beyond"),
+    );
+    expect(within(notice).queryByText("Broad access")).not.toBeInTheDocument();
+    expect(within(info).queryByText("Broad access")).not.toBeInTheDocument();
+    expect(notice.className).toBe(info.className);
+  });
 });
