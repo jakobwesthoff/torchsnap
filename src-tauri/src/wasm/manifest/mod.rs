@@ -182,7 +182,7 @@ impl<'de> Deserialize<'de> for GadgetId {
     }
 }
 
-fn validate_gadget_id(id: &str) -> Result<(), String> {
+pub(crate) fn validate_gadget_id(id: &str) -> Result<(), String> {
     if id.is_empty() {
         return Err("gadget id must not be empty".into());
     }

@@ -10,6 +10,8 @@
 
 use std::path::{Path, PathBuf};
 
+pub const UNINSTALL_MARKER_SUFFIX: &str = ".uninstall";
+
 #[derive(Debug, Clone)]
 pub struct InstallPaths {
     /// `<app_data_dir>/gadgets/`, the user gadget root that startup
@@ -42,6 +44,13 @@ impl InstallPaths {
     pub fn home(&self, gadget_id: &str) -> PathBuf {
         self.gadget_home_dir.join(gadget_id)
     }
+
+    /// Marker left by uninstall, `gadgets/.<id>.uninstall`. The leading
+    /// dot keeps it out of startup discovery.
+    pub fn uninstall_marker(&self, gadget_id: &str) -> PathBuf {
+        self.gadgets_dir
+            .join(format!(".{gadget_id}{UNINSTALL_MARKER_SUFFIX}"))
+    }
 }
 
 #[cfg(test)]
@@ -63,6 +72,10 @@ mod tests {
         assert_eq!(
             paths.home("weather"),
             Path::new("/data/gadget-home/weather")
+        );
+        assert_eq!(
+            paths.uninstall_marker("weather"),
+            Path::new("/data/gadgets/.weather.uninstall")
         );
     }
 }
