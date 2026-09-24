@@ -1,0 +1,119 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow", "numpy"]
+# ///
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Draw a comparison sheet for reviewing mascot sizes before any source
+# changes.
+#
+# Each candidate gets one row: reference variants that have the right
+# size, then the candidate as it is, then the proposed version from
+# --proposed-dir when one exists (`tools/normalize-mascot-size
+# --output-dir` writes those). Every image is drawn the way the launcher
+# draws it: at one fixed size, with the lowest visible pixel (the feet)
+# on a shared baseline. The pupil distance is only a measurement; this
+# sheet is where a person decides, as described in
+# `assets/mascot/docs/Adding-a-Mascot.md`.
+#
+# Usage:
+#   tools/mascot-size-sheet -o <sheet.png> [--proposed-dir DIR]
+#                           [--reference <png>]... <candidate png>...
+#
+
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+MASCOT_DIR = Path("assets/mascot")
+
+# Variants whose size the maintainer confirmed as right: the plain owl,
+# one with hat and props, and one of the costumes normalized with
+# `tools/normalize-mascot-size`.
+DEFAULT_REFERENCES = [
+    MASCOT_DIR / "snappy-original-1024.png",
+    MASCOT_DIR / "snappy-time-wanderer-striped-scarf-1024.png",
+    MASCOT_DIR / "snappy-towel-and-dressing-gown-1024.png",
+]
+
+TILE = 192
+LABEL_HEIGHT = 40
+BASELINE = TILE + 4
+
+# Matches the 75% threshold of `asset-mascot-data`, which positions the
+# feet in the launcher.
+VISIBLE_ALPHA = 191
+
+REFERENCE_COLOR = (42, 125, 42)
+CURRENT_COLOR = (51, 51, 51)
+PROPOSED_COLOR = (176, 58, 46)
+
+
+def tile(path: Path, label: str, color) -> Image.Image:
+    """One image drawn launcher-style, with its label below the baseline."""
+    image = Image.open(path).convert("RGBA")
+    alpha = np.asarray(image)[..., 3]
+    bottom = np.nonzero(alpha > VISIBLE_ALPHA)[0].max()
+    # The launcher places the image so its lowest visible row sits on
+    # the baseline; the same offset is used here.
+    top = BASELINE - round(TILE * (bottom + 1) / image.height)
+
+    cell = Image.new("RGBA", (TILE, TILE + LABEL_HEIGHT), (242, 242, 242, 255))
+    cell.alpha_composite(image.resize((TILE, TILE), Image.Resampling.LANCZOS), (0, top))
+    draw = ImageDraw.Draw(cell)
+    draw.line((0, BASELINE, TILE, BASELINE), fill=(187, 187, 187), width=1)
+    font = ImageFont.load_default(size=11)
+    text = label
+    while draw.textlength(text, font=font) > TILE - 4:
+        text = text[:-2] + "…"
+    width = draw.textlength(text, font=font)
+    draw.text(((TILE - width) / 2, BASELINE + 8), text, fill=color, font=font)
+    return cell
+
+
+def variant_name(path: Path) -> str:
+    return path.name.removeprefix("snappy-").removesuffix("-1024.png")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Draw a mascot size comparison sheet.")
+    parser.add_argument("candidates", nargs="+", type=Path)
+    parser.add_argument("-o", "--output", type=Path, required=True)
+    parser.add_argument("--proposed-dir", type=Path, help="directory with the proposed versions")
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        action="append",
+        help="reference image, repeatable (default: original, time-wanderer-striped-scarf, towel-and-dressing-gown)",
+    )
+    args = parser.parse_args()
+    references = args.reference or DEFAULT_REFERENCES
+
+    rows = []
+    for candidate in args.candidates:
+        row = [tile(ref, f"{variant_name(ref)} (ref)", REFERENCE_COLOR) for ref in references]
+        row.append(tile(candidate, f"{variant_name(candidate)} now", CURRENT_COLOR))
+        proposed = args.proposed_dir / candidate.name if args.proposed_dir else None
+        if proposed and proposed.exists():
+            row.append(tile(proposed, "proposed", PROPOSED_COLOR))
+        rows.append(row)
+
+    columns = max(len(row) for row in rows)
+    sheet = Image.new("RGBA", (columns * TILE, len(rows) * (TILE + LABEL_HEIGHT)), (242, 242, 242, 255))
+    for r, row in enumerate(rows):
+        for c, cell in enumerate(row):
+            sheet.alpha_composite(cell, (c * TILE, r * (TILE + LABEL_HEIGHT)))
+    sheet.convert("RGB").save(args.output)
+    print(f"wrote {args.output} ({len(rows)} rows)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
