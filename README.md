@@ -206,7 +206,8 @@ carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
   manager; a new key pair (`bun run tauri signer generate`) cuts off
   every installed app from updates.
 
-- The GitHub CLI `gh`, logged in with push access to this repository.
+- The GitHub CLI `gh`, logged in with push access to this repository
+  and allowed to start workflows in `jakobwesthoff/torchsnap-web`.
 
 ### Making a release
 
@@ -219,19 +220,25 @@ carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
 3. Commit and push to `main`.
 4. `just release-build <version>` checks all of the above, runs
    `just install` and `just fullcycle`, builds, signs and notarizes the
-   app and the DMG, verifies them, and stages
-   `src-tauri/target/release/dist/Torchsnap.dmg`. Try that DMG.
+   app and the DMG, verifies them and the app inside the update archive,
+   and stages in `src-tauri/target/release/dist/`: `Torchsnap.dmg`, the
+   update archive `Torchsnap.app.tar.gz` with its `.sig`, and
+   `release.json`, the update feed written by `tools/release-feed`
+   (ADR 0053). Try that DMG.
 5. `just release-publish <version>` tags `v<version>`, pushes the tag and
-   creates the GitHub release "Torchsnap <version>" with `Torchsnap.dmg`.
-   The notes are the CHANGELOG section plus the installation link and the
-   DMG's SHA-256.
+   creates the GitHub release "Torchsnap <version>" with those four
+   files. The notes are the CHANGELOG section plus the installation link
+   and the DMG's SHA-256. For a stable version it then starts the
+   torchsnap-web deploy, which publishes the new `release.json` as
+   `https://torchsnap.app/updates/latest.json`; installed apps see the
+   release once that deploy has finished.
 
 A version with a pre-release part, such as `0.10.0-beta.1`, becomes a
 GitHub prerelease and is not marked latest, so the download link on
 torchsnap.app keeps serving the last stable release.
 
 If the build must change, fix it on `main` and run `release-build` again:
-`release-publish` only publishes the DMG staged for the current commit.
+`release-publish` only publishes what was staged for the current commit.
 
 ## License
 
