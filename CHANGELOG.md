@@ -18,10 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings → Gadgets lists what each installed gadget is allowed to do
   (run commands, reach websites, read files and so on), with broad
   grants highlighted.
+- Installs and replacements can be undone from the result list until
+  Torchsnap restarts.
 
 ### Changed
 
 - Gadget archives larger than 16 MiB are rejected at install.
+- Installing a gadget from Settings → Gadgets shows a review first: the
+  gadget, where the file came from, and every permission it asks for,
+  with new permissions marked when it replaces an installed version.
+  Several dropped files are reviewed one after another and end in one
+  summary with a single restart prompt.
 
 ### Fixed
 
@@ -42,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uninstalling a running gadget no longer leaves its data behind or
   lets the still-running gadget recreate it. Its data and settings are
   removed on the next start, before any gadget loads.
+- Dropping gadget files after switching settings sections no longer
+  installs them twice, and a failed install among several dropped
+  files is no longer hidden by the next one's success message.
 
 ## [0.10.0] - 2026-09-23
 

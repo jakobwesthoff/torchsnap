@@ -9,7 +9,9 @@
 // gadget, shows its source badge, lets users enable/disable
 // it, and — for user-installed gadgets only — uninstall it.
 // Also hosts the Install flow: a file-picker button plus a
-// drop zone accepting `.torchsnap` archives.
+// drop zone accepting `.torchsnap` archives. Both hand the files
+// to the backend install queue, and every queued request is
+// reviewed in `InstallReviewModal` before anything is installed.
 //
 // Both install and uninstall require an app restart to take
 // effect because `GadgetHost::register` freezes the gadget
@@ -119,9 +121,16 @@ export function GadgetsManagementPanel() {
       }));
   }, [gadgetMetadata, sourceKinds, permissions]);
 
-  // =========================================================
-  // Install: file picker path
-  // =========================================================
+  const submitToQueue = useCallback(
+    async (paths: string[], origin: "settingsPicker" | "settingsDrop") => {
+      try {
+        await command("install_queue_submit", { paths, origin });
+      } catch (e) {
+        setBanner({ kind: "error", message: formatError(e, "Failed to open the gadget file") });
+      }
+    },
+    [],
+  );
 
   const handleInstallClick = useCallback(async () => {
     const selected = await openFileDialog({
@@ -131,22 +140,23 @@ export function GadgetsManagementPanel() {
     if (typeof selected !== "string") {
       return;
     }
-    await runInstall(selected, setBanner);
-  }, []);
+    await submitToQueue([selected], "settingsPicker");
+  }, [submitToQueue]);
 
   // =========================================================
   // Install: drag-and-drop path
   //
-  // Tauri exposes drag events through `getCurrentWebview`. The
-  // listener is registered for the lifetime of the mounted
-  // component; the returned unlistener cleans up on unmount.
-  // Dropped files arrive as absolute paths — exactly what
-  // `install_gadget_archive` expects.
+  // Tauri exposes drag events through `getCurrentWebview`.
+  // Dropped files arrive as absolute paths. Registration
+  // resolves asynchronously; if the panel unmounts first, the
+  // late unlistener is called on arrival instead of leaking a
+  // listener that would submit every later drop twice.
   // =========================================================
 
   useEffect(() => {
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
-    getCurrentWebview()
+    void getCurrentWebview()
       .onDragDropEvent((event) => {
         if (event.payload.type === "enter" || event.payload.type === "over") {
           setDragActive(true);
@@ -165,22 +175,21 @@ export function GadgetsManagementPanel() {
             });
             return;
           }
-          // Sequentially install each dropped archive so
-          // collision errors for one do not block the others.
-          (async () => {
-            for (const path of paths) {
-              await runInstall(path, setBanner);
-            }
-          })();
+          void submitToQueue(paths, "settingsDrop");
         }
       })
       .then((u) => {
-        unlisten = u;
+        if (cancelled) {
+          u();
+        } else {
+          unlisten = u;
+        }
       });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [submitToQueue]);
 
   const handleUninstall = useCallback(async (gadgetId: string) => {
     try {
@@ -428,27 +437,6 @@ function BannerView({ banner, onDismiss }: { banner: Banner; onDismiss: () => vo
       </button>
     </div>
   );
-}
-
-// =========================================================
-// Install shared handler — extracted so both the file-picker
-// and drag-drop paths report results identically.
-// =========================================================
-
-async function runInstall(archivePath: string, setBanner: (banner: Banner) => void): Promise<void> {
-  try {
-    const info = await command("install_gadget_archive", { archivePath });
-    setBanner({
-      kind: "success",
-      message: `Installed ${info.name} ${info.version}.`,
-      requiresRestart: info.requiresRestart,
-    });
-  } catch (e) {
-    setBanner({
-      kind: "error",
-      message: formatError(e, "Failed to install gadget"),
-    });
-  }
 }
 
 function formatError(error: unknown, fallback: string): string {
