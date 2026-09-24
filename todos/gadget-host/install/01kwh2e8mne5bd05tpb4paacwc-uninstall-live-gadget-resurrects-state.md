@@ -3,6 +3,7 @@ kind: bug
 severity: medium
 status: open
 area: [src-tauri/src/gadget_install.rs]
+plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
 ---
 
 # Uninstalling a running gadget deletes state under a live instance, which can resurrect it

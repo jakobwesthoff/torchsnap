@@ -7,7 +7,7 @@ plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-t
 # Install request intake: one pipeline for every way a gadget archive arrives
 
 Design settled on 2026-09-24. Implementation steps, tests and module
-layout are in the plan (steps 3 to 11 and 15).
+layout are in the plan (steps 3 to 12 and 16).
 
 ## Why
 
@@ -43,17 +43,24 @@ exist once.
   arrives while the settings window does not exist is still there
   when it opens. This avoids the lost-event problem in
   `todos/backend/settings/01kwh386ce7p2p40xksx8gph3j-open-gadget-settings-event-has-no-listener.md`.
-- **The queue exists before the app is built.** tao drops
-  `RunEvent::Opened` if its callback is not installed, and delivery
-  order relative to `setup` on a cold launch is unverified. Creating
-  the queue in `run()` and sharing it with the run-loop closure makes
-  the order irrelevant.
+- **The queue exists before the app is built.** tao forwards
+  `RunEvent::Opened` without a queue, and on a cold launch it probably
+  arrives before `setup`. Creating the queue in `run()` and sharing it
+  with the run-loop closure makes the order irrelevant.
 - **Several files** are reviewed one after another in arrival order.
   Results collect into one summary with a single restart prompt.
 - **Already installed ids are replaced** on confirmation, keeping the
   gadget's data. This needs the pending-change tracking from
   `todos/gadget-host/install/01kwh2e8mne5bd05tpb4paacwd-install-uninstall-blocked-until-restart.md`,
   which the plan implements first.
+- **Undo until restart.** Every install and replace in the result
+  banner can be undone; replace keeps the previous archive as
+  `.<id>.torchsnap.prev` for that.
+- **Requests before `setup` are buffered.** The queue only collects
+  raw inputs until `setup` starts it with its dependencies, since a
+  Finder cold start probably delivers `Opened` before `setup`.
+- **Confirm re-checks the decision** and fails the request if another
+  install or an uninstall changed it since the review.
 - **No control-socket origin** until the socket has authentication
   (`todos/backend/control/01kwh4j9bptrayf451yzd2145v-control-socket-no-auth.md`).
 - **The review dialog is part of this pipeline from the start.** No
