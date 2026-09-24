@@ -18,6 +18,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use super::decision::{InstallDecision, VersionRelation};
+use super::provenance::Provenance;
 use crate::wasm::manifest::{ArgvConstraint, Manifest};
 use crate::wasm::source::GadgetSource;
 
@@ -291,6 +292,7 @@ pub enum ReviewAction {
 pub struct InstallReview {
     pub gadget: GadgetSummary,
     pub source_path: String,
+    pub provenance: Option<Provenance>,
     pub action: ReviewAction,
     pub permissions: Vec<PermissionItem>,
     pub removed_permissions: Vec<PermissionItem>,
@@ -302,6 +304,7 @@ pub struct InstallReview {
 pub fn build_review(
     incoming: &Manifest,
     source_path: &Path,
+    provenance: Option<Provenance>,
     decision: &InstallDecision,
 ) -> InstallReview {
     let (action, previous) = match decision {
@@ -330,6 +333,7 @@ pub fn build_review(
             version: incoming.gadget.version.clone(),
         },
         source_path: source_path.display().to_string(),
+        provenance,
         action,
         permissions,
         removed_permissions,
@@ -667,6 +671,7 @@ mod tests {
         let review = build_review(
             &incoming,
             Path::new("/downloads/weather.torchsnap"),
+            None,
             &decision,
         );
 
@@ -683,7 +688,12 @@ mod tests {
     fn a_rejected_review_carries_the_reason() {
         let decision = InstallDecision::Reject("Built-in gadgets cannot be replaced.".to_string());
 
-        let review = build_review(&manifest("1.0.0", ""), Path::new("/x.torchsnap"), &decision);
+        let review = build_review(
+            &manifest("1.0.0", ""),
+            Path::new("/x.torchsnap"),
+            None,
+            &decision,
+        );
 
         assert_eq!(
             review.action,
@@ -709,6 +719,7 @@ mod tests {
         let review = build_review(
             &incoming,
             Path::new("/downloads/weather.torchsnap"),
+            None,
             &decision,
         );
 
@@ -722,6 +733,7 @@ mod tests {
                     "version": "1.1.0"
                 },
                 "sourcePath": "/downloads/weather.torchsnap",
+                "provenance": null,
                 "action": {
                     "kind": "replace",
                     "previousVersion": "1.0.0",
@@ -767,5 +779,27 @@ mod tests {
         let items = &permissions["weather"];
         assert_eq!(kinds(items), vec![&Permission::Clipboard]);
         assert_eq!(items[0].change, Change::Unchanged);
+    }
+
+    #[test]
+    fn a_review_carries_the_download_provenance() {
+        let provenance = Provenance {
+            download_url: Some(
+                "https://github.com/acme/weather/releases/download/v1/weather.torchsnap"
+                    .to_string(),
+            ),
+            referrer_url: None,
+            downloaded_by: Some("Safari".to_string()),
+        };
+
+        let review = build_review(
+            &manifest("1.0.0", ""),
+            Path::new("/downloads/weather.torchsnap"),
+            Some(provenance.clone()),
+            &InstallDecision::Fresh,
+        );
+
+        assert_eq!(review.provenance, Some(provenance));
+        assert_eq!(review.action, ReviewAction::Install);
     }
 }
