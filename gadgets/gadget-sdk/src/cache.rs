@@ -56,15 +56,38 @@ impl<T: Clone> RateLimitCache<T> {
     where
         F: FnOnce() -> T,
     {
+        self.get_or_fetch_with_clock(Instant::now, fetch)
+    }
+
+    /// [`get_or_fetch`](Self::get_or_fetch) with an injectable
+    /// clock, so tests can place reads at exact instants instead
+    /// of sleeping. The clock is read twice: once to check
+    /// expiry, and once after `fetch` returns to stamp the new
+    /// value. Stamping after the fetch keeps a slow fetch from
+    /// eating into the TTL window of its own result.
+    fn get_or_fetch_with_clock<F>(&self, clock: impl Fn() -> Instant, fetch: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
         if let Some((when, value)) = self.slot.borrow().as_ref()
-            && when.elapsed() < self.ttl
+            && clock().saturating_duration_since(*when) < self.ttl
         {
             return value.clone();
         }
 
         let value = fetch();
-        *self.slot.borrow_mut() = Some((Instant::now(), value.clone()));
+        *self.slot.borrow_mut() = Some((clock(), value.clone()));
         value
+    }
+
+    /// Read at a fixed instant: the clock reports `now` both for
+    /// the expiry check and for the stamp of a fresh fetch.
+    #[cfg(test)]
+    fn get_or_fetch_at<F>(&self, now: Instant, fetch: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        self.get_or_fetch_with_clock(|| now, fetch)
     }
 
     /// Drop the cached value so the next `get_or_fetch` will
@@ -81,7 +104,6 @@ impl<T: Clone> RateLimitCache<T> {
 mod tests {
     use super::*;
     use std::cell::Cell;
-    use std::thread::sleep;
 
     #[test]
     fn first_call_invokes_fetch() {
@@ -110,19 +132,33 @@ mod tests {
 
     #[test]
     fn call_after_ttl_expiry_refetches() {
-        // Tight TTL so the test stays fast.
         let cache: RateLimitCache<u32> = RateLimitCache::new(Duration::from_millis(20));
         let invocations = Cell::new(0);
-        cache.get_or_fetch(|| {
+        let t0 = Instant::now();
+        cache.get_or_fetch_at(t0, || {
             invocations.set(invocations.get() + 1);
             1
         });
-        sleep(Duration::from_millis(40));
-        cache.get_or_fetch(|| {
+        let v = cache.get_or_fetch_at(t0 + Duration::from_millis(40), || {
             invocations.set(invocations.get() + 1);
             2
         });
+        assert_eq!(v, 2);
         assert_eq!(invocations.get(), 2);
+    }
+
+    #[test]
+    fn value_expires_exactly_at_ttl() {
+        // The window is half-open: a read at `fetch + ttl`
+        // already refetches, a read just before it does not.
+        let ttl = Duration::from_millis(40);
+        let cache: RateLimitCache<u32> = RateLimitCache::new(ttl);
+        let t0 = Instant::now();
+        cache.get_or_fetch_at(t0, || 1);
+        let just_before = cache.get_or_fetch_at(t0 + ttl - Duration::from_nanos(1), || 2);
+        let at_ttl = cache.get_or_fetch_at(t0 + ttl, || 3);
+        assert_eq!(just_before, 1);
+        assert_eq!(at_ttl, 3);
     }
 
     #[test]
@@ -149,28 +185,50 @@ mod tests {
         // window.
         let cache: RateLimitCache<u32> = RateLimitCache::new(Duration::from_millis(40));
         let invocations = Cell::new(0);
+        let t0 = Instant::now();
 
-        cache.get_or_fetch(|| {
+        cache.get_or_fetch_at(t0, || {
             invocations.set(invocations.get() + 1);
             1
         });
-        sleep(Duration::from_millis(20));
-        cache.get_or_fetch(|| {
+        // +20 ms is inside the window: a cache hit. If hits
+        // extended the window, the +50 ms read below would
+        // still hit (20 + 40 > 50).
+        let hit = cache.get_or_fetch_at(t0 + Duration::from_millis(20), || {
             invocations.set(invocations.get() + 1);
             2
         });
-        sleep(Duration::from_millis(30)); // total: 50 ms > 40 ms TTL
-        cache.get_or_fetch(|| {
+        let refetched = cache.get_or_fetch_at(t0 + Duration::from_millis(50), || {
             invocations.set(invocations.get() + 1);
             3
         });
 
-        // Three fetches expected: initial, expired-after-first
-        // attempt at 20 ms? no — the second access at +20ms
-        // is within TTL, so cache hit (1 invocation total).
-        // The third access at +50 ms is past TTL and refetches
-        // (2 invocations total).
+        assert_eq!(hit, 1);
+        assert_eq!(refetched, 3);
         assert_eq!(invocations.get(), 2);
+    }
+
+    #[test]
+    fn ttl_starts_when_the_fetch_finishes() {
+        // A slow fetch must not eat into its own TTL window: the
+        // value is stamped after `fetch` returns. The fetch here
+        // advances the clock by 30 ms, so the value is stamped at
+        // +30 ms and still valid at +60 ms (< 30 + 40).
+        let cache: RateLimitCache<u32> = RateLimitCache::new(Duration::from_millis(40));
+        let t0 = Instant::now();
+        let clock = Cell::new(t0);
+
+        cache.get_or_fetch_with_clock(
+            || clock.get(),
+            || {
+                clock.set(t0 + Duration::from_millis(30));
+                1
+            },
+        );
+        clock.set(t0 + Duration::from_millis(60));
+        let v = cache.get_or_fetch_with_clock(|| clock.get(), || 2);
+
+        assert_eq!(v, 1);
     }
 
     #[test]
