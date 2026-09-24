@@ -927,71 +927,11 @@ mod tests {
     // with ArchiveSource.
     // =====================================================
 
-    /// Helper: build a `.torchsnap` zip file in a temp directory.
-    /// Returns the temp dir (for lifetime) and the archive path.
-    fn make_archive(manifest_toml: &str, files: &[(&str, &[u8])]) -> (tempfile::TempDir, PathBuf) {
-        use std::io::{Cursor, Write as _};
-        use zip::ZipWriter;
-        use zip::write::SimpleFileOptions;
-
-        let mut buf = Cursor::new(Vec::new());
-        {
-            let mut writer = ZipWriter::new(&mut buf);
-            let options =
-                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-
-            writer
-                .start_file("manifest.toml", options)
-                .expect("start manifest entry");
-            writer
-                .write_all(manifest_toml.as_bytes())
-                .expect("write manifest");
-
-            for (path, contents) in files {
-                writer.start_file(*path, options).expect("start file entry");
-                writer.write_all(contents).expect("write file");
-            }
-
-            writer.finish().expect("finalize zip");
-        }
-
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let archive_path = dir.path().join("gadget.torchsnap");
-        std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
-
-        (dir, archive_path)
-    }
-
-    /// Helper: build a zip without a manifest.toml.
-    fn make_archive_without_manifest(files: &[(&str, &[u8])]) -> (tempfile::TempDir, PathBuf) {
-        use std::io::{Cursor, Write as _};
-        use zip::ZipWriter;
-        use zip::write::SimpleFileOptions;
-
-        let mut buf = Cursor::new(Vec::new());
-        {
-            let mut writer = ZipWriter::new(&mut buf);
-            let options =
-                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-
-            for (path, contents) in files {
-                writer.start_file(*path, options).expect("start file entry");
-                writer.write_all(contents).expect("write file");
-            }
-
-            writer.finish().expect("finalize zip");
-        }
-
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let archive_path = dir.path().join("gadget.torchsnap");
-        std::fs::write(&archive_path, buf.into_inner()).expect("write archive");
-
-        (dir, archive_path)
-    }
+    use crate::wasm::manifest::test_helpers::{write_archive, write_archive_without_manifest};
 
     #[test]
     fn archive_open_valid() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"fake wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"fake wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
@@ -1000,7 +940,7 @@ mod tests {
     #[test]
     fn archive_read_wasm() {
         let wasm_bytes = b"\x00asm fake component";
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", wasm_bytes)]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", wasm_bytes)]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let bytes = source.read_wasm().expect("should read wasm");
@@ -1009,7 +949,7 @@ mod tests {
 
     #[test]
     fn archive_read_nested_file() {
-        let (_dir, path) = make_archive(
+        let (_dir, path) = write_archive(
             MINIMAL_MANIFEST,
             &[
                 ("gadget.wasm", b"wasm"),
@@ -1027,7 +967,7 @@ mod tests {
     #[test]
     fn archive_read_binary_preserves_bytes() {
         let binary: Vec<u8> = (0..=255).collect();
-        let (_dir, path) = make_archive(
+        let (_dir, path) = write_archive(
             MINIMAL_MANIFEST,
             &[("gadget.wasm", b"wasm"), ("data.bin", &binary)],
         );
@@ -1039,7 +979,7 @@ mod tests {
 
     #[test]
     fn archive_manifest_accessible() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let manifest = source.manifest();
@@ -1052,7 +992,7 @@ mod tests {
 
     #[test]
     fn archive_reject_missing_manifest() {
-        let (_dir, path) = make_archive_without_manifest(&[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive_without_manifest(&[("gadget.wasm", b"wasm")]);
 
         let result = ArchiveSource::open(&path);
         assert!(result.is_err(), "should fail without manifest.toml");
@@ -1060,7 +1000,7 @@ mod tests {
 
     #[test]
     fn archive_reject_invalid_manifest() {
-        let (_dir, path) = make_archive("not valid toml [[[", &[]);
+        let (_dir, path) = write_archive("not valid toml [[[", &[]);
 
         let result = ArchiveSource::open(&path);
         assert!(result.is_err(), "should fail with invalid toml");
@@ -1068,7 +1008,7 @@ mod tests {
 
     #[test]
     fn archive_reject_nonexistent_file() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("does-not-exist.txt");
@@ -1077,7 +1017,7 @@ mod tests {
 
     #[test]
     fn archive_reject_path_traversal() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("../../../etc/passwd");
@@ -1090,7 +1030,7 @@ mod tests {
 
     #[test]
     fn archive_reject_dot_segment_escape() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("frontend/../../secret");
@@ -1099,7 +1039,7 @@ mod tests {
 
     #[test]
     fn archive_reject_absolute_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_file("/etc/passwd");
@@ -1113,7 +1053,7 @@ mod tests {
     #[test]
     fn archive_read_wasm_missing() {
         // Manifest references gadget.wasm but archive doesn't contain it.
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[]);
 
         let source = ArchiveSource::open(&path).expect("should open");
         let result = source.read_wasm();
@@ -1355,7 +1295,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_returns_true_for_existing_entry() {
-        let (_dir, path) = make_archive(
+        let (_dir, path) = write_archive(
             MINIMAL_MANIFEST,
             &[("gadget.wasm", b"wasm"), ("data/bangs.json", b"[]")],
         );
@@ -1365,7 +1305,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_returns_false_for_missing_entry() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         assert!(
             !source
@@ -1376,7 +1316,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_traversal_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("../../../etc/passwd")
@@ -1389,7 +1329,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_absolute_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("/etc/passwd")
@@ -1402,7 +1342,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_backslash_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source
             .file_exists("frontend\\launcher.js")
@@ -1415,7 +1355,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_rejects_empty_path() {
-        let (_dir, path) = make_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let (_dir, path) = write_archive(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
         let source = ArchiveSource::open(&path).expect("open");
         let err = source.file_exists("").expect_err("empty must error");
         assert!(
@@ -1426,7 +1366,7 @@ mod tests {
 
     #[test]
     fn archive_file_exists_handles_nested_entry() {
-        let (_dir, path) = make_archive(
+        let (_dir, path) = write_archive(
             MINIMAL_MANIFEST,
             &[("gadget.wasm", b"wasm"), ("a/b/c/d/deep.txt", b"deep")],
         );
@@ -1445,7 +1385,7 @@ mod tests {
         // consume or corrupt the shared mutex-protected
         // reader. Run several reads / probes in sequence
         // and verify both shapes of call continue to work.
-        let (_dir, path) = make_archive(
+        let (_dir, path) = write_archive(
             MINIMAL_MANIFEST,
             &[("gadget.wasm", b"wasm"), ("a.txt", b"a"), ("b.txt", b"b")],
         );
