@@ -38,6 +38,7 @@ export interface InstallQueueState {
   undo: (gadgetId: string) => Promise<void>;
   /** Clear the batch results, which also ends the chance to undo them. */
   acknowledge: () => void;
+  dismissError: () => void;
 }
 
 export function useInstallQueue(): InstallQueueState {
@@ -131,8 +132,9 @@ export function useInstallQueue(): InstallQueueState {
   }, []);
 
   const acknowledge = useCallback(() => setResults([]), []);
+  const dismissError = useCallback(() => setError(null), []);
 
-  return { requests, loaded, results, error, confirm, dismiss, undo, acknowledge };
+  return { requests, loaded, results, error, confirm, dismiss, undo, acknowledge, dismissError };
 }
 
 function formatError(error: unknown): string {

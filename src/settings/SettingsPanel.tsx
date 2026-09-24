@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { type ComponentType, Suspense, useMemo, useState } from "react";
+import { type ComponentType, Suspense, useCallback, useMemo, useState } from "react";
 import { getGadgetSettingsComponent, getGadgetsWithSettings } from "../gadgets/registry";
 import type { GadgetSettingsProps } from "../gadgets/types";
 import { createLogger } from "../lib/logger";
@@ -18,6 +18,7 @@ import { FrecencySection } from "./sections/FrecencySection";
 import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
 import { GadgetsManagementPanel } from "./sections/GadgetsManagementPanel";
 import { GadgetSettingsWrapper } from "./GadgetSettingsWrapper";
+import { useQueueArrival } from "./install/useQueueArrival";
 
 // =========================================================
 // Built-in sidebar sections
@@ -40,6 +41,11 @@ const CUSTOMIZATION_SECTIONS: SidebarItem[] = [
 
 export function SettingsPanel() {
   const [activeSection, setActiveSection] = useState("general");
+
+  // Install requests are reviewed in the Gadgets section, so the window
+  // goes there when requests arrive (including ones that were waiting
+  // before it opened).
+  useQueueArrival(useCallback(() => setActiveSection("gadgets"), []));
 
   // Discover which gadgets have settings components. This is
   // evaluated once per mount — gadgets are registered statically.
