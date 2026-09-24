@@ -30,6 +30,34 @@ pub fn process_in_background(queue: &Arc<InstallQueue>, ids: Vec<RequestId>) {
     }
 }
 
+/// What `submit_opened_urls` did with the URLs the OS handed over.
+#[derive(Debug, Default)]
+pub struct OpenedSubmission {
+    /// Requests queued now; they still need `process_in_background`.
+    pub queued: Vec<RequestId>,
+    /// Archives held until `setup` starts the queue.
+    pub buffered: usize,
+}
+
+/// Queue the files macOS asks the app to open (Finder double-click,
+/// "Open With"). Anything that is not a `file://` URL to a
+/// `.torchsnap` archive is ignored by the queue with a log line.
+pub fn submit_opened_urls(queue: &InstallQueue, urls: &[url::Url]) -> OpenedSubmission {
+    let mut submission = OpenedSubmission::default();
+    for url in urls {
+        match queue.submit(
+            OsStr::new(url.as_str()),
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        ) {
+            Submitted::Queued(id) => submission.queued.push(id),
+            Submitted::Buffered => submission.buffered += 1,
+            Submitted::Ignored => {}
+        }
+    }
+    submission
+}
+
 #[tauri::command]
 pub fn install_queue_snapshot(
     queue: tauri::State<'_, Arc<InstallQueue>>,
@@ -293,5 +321,57 @@ mod tests {
             .expect("confirm succeeds");
 
         assert_eq!(test.app.webview_windows().len(), 1);
+    }
+
+    // =========================================================
+    // Files opened by the OS
+    // =========================================================
+
+    fn opened(urls: &[&str]) -> Vec<url::Url> {
+        urls.iter()
+            .map(|url| url::Url::parse(url).expect("valid test url"))
+            .collect()
+    }
+
+    #[test]
+    fn opened_archive_urls_are_queued() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
+        let file_url = url::Url::from_file_path(&archive).expect("absolute path");
+
+        let submitted = submit_opened_urls(&queue, &[file_url]);
+
+        assert_eq!(submitted.queued.len(), 1);
+        assert_eq!(submitted.buffered, 0);
+        assert_eq!(queue.snapshot()[0].origin, InstallOrigin::OsOpenFile);
+    }
+
+    #[test]
+    fn opened_urls_that_are_not_archives_are_ignored() {
+        let queue = Arc::new(InstallQueue::new());
+
+        let submitted = submit_opened_urls(
+            &queue,
+            &opened(&[
+                "https://example.com/weather.torchsnap",
+                "file:///tmp/notes.txt",
+            ]),
+        );
+
+        assert!(submitted.queued.is_empty());
+        assert_eq!(submitted.buffered, 0);
+    }
+
+    /// Before `setup` starts the queue, opened files are held back;
+    /// `setup` then queues them and opens the settings window itself.
+    #[test]
+    fn opened_files_before_start_are_buffered() {
+        let queue = Arc::new(InstallQueue::new());
+
+        let submitted = submit_opened_urls(&queue, &opened(&["file:///tmp/weather.torchsnap"]));
+
+        assert!(submitted.queued.is_empty());
+        assert_eq!(submitted.buffered, 1);
     }
 }

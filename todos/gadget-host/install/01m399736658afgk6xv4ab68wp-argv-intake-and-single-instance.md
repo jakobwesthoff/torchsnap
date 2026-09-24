@@ -2,7 +2,6 @@
 kind: feature
 status: open
 plan: todos/plans/01m399736658afgk6xv4ab68wk-open-gadget-archives-from-outside-the-app.md
-depends-on: [todos/gadget-host/install/01m399736658afgk6xv4ab68wm-install-request-intake.md]
 ---
 
 # Accept gadget archives from the command line and from a second launch
