@@ -10,11 +10,11 @@ infrastructure: a runtime gadget-registration API on `GadgetHost` that
 does not rely on `&mut self` and the "gadget-set-frozen-after-setup"
 assumption baked into current startup.
 
-**Depends on:** the bundled/user-installable gadgets plan
-(`.claude/plans/cosmic-seeking-rivest.md`) landing first — that ships
-`install_gadget_archive` and `uninstall_user_gadget` with an explicit
-"restart required" banner, which is the known-good fallback this work
-replaces.
+**Replaces:** the restart-based flow of ADR 0051. Installs, updates
+and uninstalls are recorded as pending changes, shown in Settings →
+Gadgets with Undo and a "Restart now" bar, and take effect on the next
+start (`src-tauri/src/gadget_install/`). That is the known-good
+fallback this work replaces.
 
 ## The three capabilities
 

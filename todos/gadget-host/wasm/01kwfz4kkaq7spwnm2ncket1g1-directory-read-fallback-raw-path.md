@@ -113,7 +113,8 @@ marginally: the loader picks the source by `path.is_dir()`
 directory placed under `<app_data_dir>/gadgets/<id>/` loads as a
 `User` gadget via `DirectorySource`. But the sanctioned in-app
 installer only ever writes `<id>.torchsnap` archives
-(`gadget_install.rs`), never a directory, so reaching a
+(`gadget_install/archive_ops.rs`, `publish_fresh` and
+`publish_replace`), never a directory, so reaching a
 directory-form user gadget still requires a same-user actor to
 place the directory by other means. The same-user /
 no-privilege-gain ceiling is unchanged.
