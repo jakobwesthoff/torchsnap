@@ -874,6 +874,16 @@ pub fn run() {
             // and re-registers all shortcuts when relevant keys change.
             host.start_shortcut_reactor(app.handle());
 
+            // Install and uninstall work on plain values rather than
+            // the host, so they stay testable without a Tauri runtime.
+            // The registry snapshot is final here: slots never change
+            // after setup.
+            app.manage(gadget_install::InstallPaths::new(&app_data_dir));
+            app.manage(gadget_install::RegisteredGadgets::from_kinds(
+                host.gadget_sources(),
+            ));
+            app.manage::<Arc<dyn gadget_install::SettingsKeys>>(store.clone());
+
             app.manage(Arc::clone(&host));
             app.manage(Arc::clone(&frecency_store));
             app.manage(Arc::clone(&metadata_service));

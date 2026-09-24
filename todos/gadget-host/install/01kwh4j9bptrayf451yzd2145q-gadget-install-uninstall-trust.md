@@ -121,8 +121,8 @@ inconsistent), but not a privilege boundary crossing.
 3. **Enforce `file_stem == manifest id` for User-root archives at load**
    (skip + error log on mismatch). Restores the filename↔id bijection
    uninstall depends on and makes manual drops self-consistent.
-4. **Uninstall: log (don't silently skip) when the expected archive
-   file is absent** — the observable symptom of every mismatch scenario.
+4. Done (plan step 3): uninstall logs when neither the archive nor the
+   directory form of a registered user gadget is present.
 5. **Size cap at install** (fold into the archive-size todo), and a
    one-line comment on the `remove_dir_all` calls noting the
    symlink-safety reliance on post-1.58.1 std, so a future refactor to a
