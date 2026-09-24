@@ -52,21 +52,33 @@ Decided with the maintainer on 2026-09-24.
 | Getting the feed onto torchsnap.app | `release-publish` uploads the feed file to the GitHub release. The site build downloads it and serves it. `release-publish` then starts the site deploy with `gh workflow run deploy.yml -R jakobwesthoff/torchsnap-web`. |
 | Feed download fails during the site build | The build fails, and the previous deployment stays live. |
 | Version near the download button | Part of this plan, from the same build-time download. It replaces option A/B of torchsnap-web `todos/01m39tc7baqfjta27mqhh4796q-show-latest-version-near-download.md`. |
-| Welcome window counts as seen | When the user clicks Done or closes the window. |
+| Closing the welcome window | Not possible before the last step; the window has no close control and Escape does not close it. Quitting Torchsnap stays possible (tray, Cmd+Q). |
+| Update switch in welcome step 4 | Prefilled with on. |
+| Reopened welcome window | Same rules as the first run, not closable before Done (one code path; the maintainer left the choice to the easier implementation). |
+| Skip and manual checks | A manual check ignores the skipped version; automatic checks honor it. |
+| Bootstrap order | The torchsnap-web branch merges after 0.12.0 is published. Until the site is deployed, automatic checks of 0.12.0 get a 404, which is only logged. |
+| Welcome window counts as seen | When the user clicks Done on the last step. Quitting before that shows it again at the next launch. |
 | Welcome state storage | A revision number in `settings.json` (for example `welcome.seenRevision`). The window shows while the stored number is lower than the app's welcome revision. Bumping the revision shows a reworked welcome once more. |
 | App in a place it cannot update | Before offering Install, the app checks its bundle path (a mounted volume under `/Volumes/`, or an App Translocation path). There the window explains that Torchsnap has to be moved to Applications to install updates and offers the download link instead of Install. |
 | Failed automatic check | Only logged; the next scheduled check tries again. A failed manual check shows its error in the update window. |
 | "Later" across a restart | The postponed update is kept in memory only. After a restart the tray item returns with the next check that finds the update. |
 | Pending gadget changes | The update window says in one line that the restart also applies the pending gadget changes, with their count. |
-| Test feed | An environment variable (for example `TORCHSNAP_UPDATE_FEED`) overrides the feed URL in every build, including signed release builds. Its use is logged. The minisign check against the compiled-in public key still applies. |
+| Test feed | An environment variable (for example `TORCHSNAP_UPDATE_FEED`) overrides the feed URL in every build, including signed release builds. Its use is logged with the URL. Release builds accept only https there (the plugin rejects other schemes unless `dangerousInsecureTransportProtocol` is set); debug builds only warn. `TORCHSNAP_UPDATE_INTERVAL` overrides the 24 hours the same way for testing. |
 | "How it works" visual | A storyboard comes first; the medium is picked after it. Candidate to look at then: the scripted React demo torchsnap-web removed from its hero in `1e02fd0` as too distracting there (`web/src/launcher/DemoLauncher.tsx`, `useScriptedDemo.ts`, `scenarios.ts`, `candidates.ts`, `match.ts`), reduced to a minimal example. |
 | Notes of versions in between | `release-publish` writes the notes of every version from `CHANGELOG.md` into an extra field of the feed. The update window shows all versions newer than the installed one. The plugin exposes the whole feed as `Update::raw_json`. |
 | Feed content | `version`, `pub_date` (RFC 3339), `notes` (newest CHANGELOG section), `platforms.darwin-aarch64` with `url` pinned to the version (`releases/download/v<version>/…`, not `latest/download`) and `signature` (contents of the `.sig`), and a custom `releases` array with version, date and Markdown notes of every CHANGELOG section, without a cutoff. No forced-update flag, no rollout, no minimum macOS version until a release raises it. |
 | Feed URL on torchsnap.app | `https://torchsnap.app/updates/latest.json`. |
 | Feed file in the release | `release.json`. It merges with the staging receipt `release-build` writes today (`src-tauri/target/release/dist/release.json`: version, commit, DMG SHA-256): `release-build` writes the full file with the feed content plus commit and DMG checksum, `release-publish` checks against it as today and uploads it as a release asset. |
-| Pre-releases | Never offered by the updater. They stay manual downloads. |
+| Pre-releases | Never offered by the updater. They stay manual downloads. Their CHANGELOG sections are left out of `releases`, so someone updating from `0.12.0-beta.2` to `0.12.0` sees only the `0.12.0` section. |
 | Onboarding todo | `todos/product/features/01kmh2c7pem81px3twgqhsz4th-onboarding-first-run.md` is deleted when this plan is cleaned up. |
-| Updater signing key | Key file under `~/.config/torchsnap/`, its path and password in `release.env` next to the Apple credentials. Key and password are also kept in the maintainer's password manager. |
+| Updater signing key | Key file under `~/.config/torchsnap/`, its path and password in `release.env` next to the Apple credentials. Key and password are also kept in the maintainer's password manager. Like the Apple credentials, `release-build` exports them to every process of the build (`bun`, cargo build scripts); scoping them to `tauri build` would not help, because that call starts those processes itself. The ADR states this. |
+| Signed version | `plugins.updater.requireSignedVersion: true`, so the app rejects signatures without a version. `release-build` checks that the trusted comment of the `.sig` contains `version:<version>`. |
+| Untrusted feed content | The feed is not signed, only the archive is. Notes are rendered with raw HTML disabled and sanitized; links open in the browser through `opener`. Both new windows get an `on_navigation` guard that allows only the app's own origin, and a CSP. The backend treats `raw_json` as untrusted (size cap, bad entries skipped). |
+| Capabilities of the new windows | One minimal capability per window. The update window gets `core:default` and `opener` only; Later, Skip and the automatic-check answer go through backend commands. The welcome window gets what `ShortcutRecorder`, the settings store and the autostart switch need. |
+| Automatic checks before the answer | No stored answer means no automatic checks. The first automatic check waits until the welcome window is completed. Every completed welcome has passed step 4, so the answer is always stored when the welcome counts as seen. |
+| Scheduling | A tick every 15 minutes calls a pure `check_is_due(now, last_check, last_attempt)`: due when 24 hours passed since the last successful check, or when the stored last check lies in the future. A failed check does not advance the last check; the next attempt comes at least one hour after the failed one (`last_attempt` kept in memory). |
+| Location check | Derived from `std::env::current_exe()`, the same path the plugin replaces. |
+| Download | The plugin buffers the whole archive in memory and has no cancel; the first version offers no cancel button. |
 
 ## Findings that shape the design
 
@@ -123,9 +135,26 @@ Checked in the repositories on 2026-09-24.
   the key.
 - **Rust-only use.** `app.updater()?.check()` and the install calls
   are plain Rust methods. The capabilities `updater:*` only gate the JS
-  commands. A Rust-driven updater needs no new webview capability.
+  commands, so the updater itself needs no webview capability. New
+  windows still need capabilities of their own:
+  `src-tauri/capabilities/default.json` only lists `main`, `settings`
+  and `devtools`.
+- **Signed version check depends on the signature.** The plugin checks
+  the announced version against a `version:` entry in the signature's
+  trusted comment, and skips the check when that entry is missing
+  unless `requireSignedVersion` is set. Whether the repository's Tauri
+  CLI writes the entry is checked in the spike.
+- **HTTPS only in release builds.** `UpdaterBuilder::endpoints` rejects
+  non-https URLs in release builds unless
+  `dangerousInsecureTransportProtocol` is set.
+- **`just build` passes no extra arguments to `tauri build`**
+  (`just/build.just`), and `release-publish` checks for exactly one
+  asset, `Torchsnap.dmg` (`just/release.just`).
 - **Endpoints and format.** `endpoints` is an ordered list; the plugin
-  tries the next one only after a non-2xx answer. The feed needs
+  moves to the next one after a non-2xx answer, a network error or an
+  unparsable response, and stops at the first parsed release. It looks
+  up the platform entry before comparing versions, so a feed without
+  `darwin-aarch64` fails even when there is no update. The feed needs
   `version` and per platform (`darwin-aarch64`) `url` and `signature`;
   `notes` and `pub_date` (RFC 3339) are optional. The plugin passes
   `notes` through as a string.
@@ -171,8 +200,8 @@ Settled by the spike (step 1).
   appears.
 - Gatekeeper accepts the replaced app without a prompt (see #3082
   above), and the launch agent still starts it at login.
-- The plugin follows GitHub's redirect from
-  `releases/download/v<version>/Torchsnap.app.tar.gz` to the file.
+- The Tauri CLI writes `version:` into the trusted comment of the
+  `.sig`.
 
 ## Steps
 
@@ -183,18 +212,24 @@ Each step ends in commits on the `auto-updater` branches and a note in
    `TORCHSNAP_UPDATE_FEED` override, generate a throwaway key, build a
    signed, notarized app with `createUpdaterArtifacts` passed through
    `--config`, serve a hand-written feed from localhost, and update an
-   older build installed in `/Applications`. Settles the unverified
-   assumptions. What survives becomes the start of step 4.
+   older build installed in `/Applications`. The spike build alone sets
+   `dangerousInsecureTransportProtocol` through `--config` so a plain
+   http feed on localhost works; that never reaches step 2. Settles the
+   unverified assumptions. What survives becomes the start of step 4.
 2. **Key and ADR (torchsnap).** Generate the real key pair, store it as
    decided, put the public key into `tauri.conf.json`. ADR for the
    update feed (plugin, torchsnap.app URL, `release.json`, key
    handling), amending ADR 0050 for the release flow.
-3. **Release pipeline (torchsnap).** `release-build` checks the updater
-   key variables, builds with `createUpdaterArtifacts`, verifies the
-   archive (stapled ticket, signature) and writes the full
-   `release.json`, including `releases` from every CHANGELOG section.
-   `release-publish` checks it, uploads DMG, archive, signature and
-   `release.json`, then starts the torchsnap-web deploy.
+3. **Release pipeline (torchsnap).** `just build` gets a way to pass
+   `--config` to `tauri build`. `release-build` checks the updater key
+   variables, builds with `createUpdaterArtifacts`, verifies the archive
+   (stapled ticket, signature, `version:` in the trusted comment) and
+   writes the full `release.json`, including the platform entry and
+   `releases` from every CHANGELOG section. A `tools/` script with a
+   fixture test turns `CHANGELOG.md` into `releases`. `release-publish`
+   checks it, uploads DMG, archive, signature and `release.json` (the
+   single-asset check becomes a four-asset check), then starts the
+   torchsnap-web deploy.
 4. **Updater backend (torchsnap).** Settings keys (automatic checks,
    last check, skipped version), scheduling, manual and automatic
    checks, the location check, install with the pending-gadget count,
