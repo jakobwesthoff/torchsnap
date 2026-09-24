@@ -107,6 +107,42 @@ pub fn base_score_for(state: NetworkState) -> u32 {
     }
 }
 
+/// Keyword that addresses the gadget by name. Any prefix of at
+/// least [`MIN_KEYWORD_LEN`] characters counts, so `zer`,
+/// `zero` and `zerotier` all do.
+const KEYWORD: &str = "zerotier";
+
+/// Shortest keyword prefix that still addresses the gadget.
+/// Shorter prefixes match too many unrelated queries in a
+/// global keystroke search.
+const MIN_KEYWORD_LEN: usize = 3;
+
+/// Whether the query is about ZeroTier, independent of the
+/// daemon's state. Failure entries (missing token, rejected
+/// token, daemon down) appear only for such queries, so they
+/// don't show up under every unrelated search.
+///
+/// A query is about ZeroTier when it is a full network id,
+/// when its first word is a keyword prefix, or when it
+/// matches the name of a remembered network. `known` comes
+/// from the local history table, which stays readable while
+/// the daemon is down.
+pub fn addresses_zerotier(intent: &Intent, known: &[NetworkRow]) -> bool {
+    match intent {
+        Intent::None => false,
+        Intent::JoinById(_) => true,
+        Intent::Match(q) => {
+            let first = q
+                .split_whitespace()
+                .next()
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            let is_keyword = first.len() >= MIN_KEYWORD_LEN && KEYWORD.starts_with(&first);
+            is_keyword || !match_networks(q, known).is_empty()
+        }
+    }
+}
+
 /// Synthetic Intent B base score — slot below every state
 /// tier so a real-network match for an exact-id input
 /// outranks the synthetic.
@@ -357,5 +393,43 @@ mod tests {
         let known = base_score_for(NetworkState::KnownOnly);
         assert!(connected > joined && joined > known);
         assert!(known > SYNTHETIC_CONNECT_SCORE);
+    }
+
+    // ---- addresses_zerotier ---------------------------------
+
+    #[test]
+    fn empty_intent_does_not_address_zerotier() {
+        assert!(!addresses_zerotier(&Intent::None, &[]));
+    }
+
+    #[test]
+    fn network_id_addresses_zerotier() {
+        let intent = intent_for("abcdef0123456789");
+        assert!(addresses_zerotier(&intent, &[]));
+    }
+
+    #[test]
+    fn keyword_prefix_addresses_zerotier() {
+        for query in ["zer", "Zero", "zerotier", "zerotier lab"] {
+            assert!(addresses_zerotier(&intent_for(query), &[]), "{query}");
+        }
+    }
+
+    #[test]
+    fn short_or_foreign_first_word_does_not_address_zerotier() {
+        for query in ["ze", "zeroth", "lab zerotier", "firefox"] {
+            assert!(!addresses_zerotier(&intent_for(query), &[]), "{query}");
+        }
+    }
+
+    #[test]
+    fn remembered_network_name_addresses_zerotier() {
+        let known = [live_row(
+            "aaaa000000000001",
+            "starling-lab",
+            NetworkState::KnownOnly,
+        )];
+        assert!(addresses_zerotier(&intent_for("starling"), &known));
+        assert!(!addresses_zerotier(&intent_for("firefox"), &known));
     }
 }
