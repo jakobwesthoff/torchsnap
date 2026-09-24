@@ -51,7 +51,7 @@ Decided with the maintainer on 2026-09-24.
 | Skip This Version | Hides that version for good; a newer one is offered again. |
 | Release notes | Rendered as Markdown, for every version between the installed and the new one. |
 | First-launch question | Lives in a separate welcome window, not in the update window. |
-| Welcome window flow | 1. Welcome: mascot and one sentence. 2. How it works: a visual. 3. Shortcut: the Settings shortcut recorder with the current shortcut filled in. 4. Launch at login and automatic update checks: two switches, with a short text on what the update check sends where. 5. Done: "Press <shortcut> now". Every step comes prefilled, so continuing through all steps is valid. Appearance, Control API and gadgets stay in Settings only. |
+| Welcome window flow | 1. Welcome: mascot and one sentence. 2. How it works: a visual. 3. Shortcut: the Settings shortcut recorder with the current shortcut filled in. 4. Launch at login and automatic update checks: two switches, with a short text on what the update check sends where. 5. Done: "Press <shortcut> now" (see "Finishing the welcome"). Every step comes prefilled, so continuing through all steps is valid. Appearance, Control API and gadgets stay in Settings only. |
 | Who sees the welcome window | Everyone running a version that has it and has not completed it yet, new users and users upgrading from 0.11.x alike. |
 | Showing it again | A button in Settings opens the welcome window again at any time. |
 | Welcome window state | Stored persistently, so a later version does not show it again to someone who has seen it. |
@@ -66,8 +66,13 @@ Decided with the maintainer on 2026-09-24.
 | Update switch in welcome step 4 | Prefilled with on. |
 | Reopened welcome window | Same rules as the first run, not closable before Done (one code path; the maintainer left the choice to the easier implementation). |
 | Skip and manual checks | A manual check ignores the skipped version; automatic checks honor it. |
+| Welcome window at startup | Opens right after startup whenever it is due, in front of everything, also on a launch-at-login start. |
+| Finishing the welcome | Step 5 has no Done button: pressing the global shortcut finishes the welcome, closes it and shows the launcher. A secondary "Open the launcher" button below the keycaps does the same, for when the shortcut does not fire. |
+| First automatic check after the welcome | One minute after the welcome is finished, if automatic checks were left on; then the normal 24-hour rhythm. |
+| Other windows while the welcome is open | Everything works as usual (install requests from Finder, tray items, the shortcut on earlier steps); other windows open above the welcome, which stays open and not closable until finished. |
+| After an update restart | The launcher is shown once. |
 | Bootstrap order | The torchsnap-web branch merges after 0.12.0 is published. Until the site is deployed, automatic checks of 0.12.0 get a 404, which is only logged. |
-| Welcome window counts as seen | When the user clicks Done on the last step. Quitting before that shows it again at the next launch. |
+| Welcome window counts as seen | When the user finishes the last step (shortcut or "Open the launcher"). Quitting before that shows it again at the next launch. |
 | Welcome state storage | A revision number in `settings.json` (for example `welcome.seenRevision`). The window shows while the stored number is lower than the app's welcome revision. Bumping the revision shows a reworked welcome once more. |
 | App in a place it cannot update | Before offering Install, the app checks its bundle path (a mounted volume under `/Volumes/`, or an App Translocation path). There the window explains that Torchsnap has to be moved to Applications to install updates and offers the download link instead of Install. |
 | Failed automatic check | Only logged; the next scheduled check tries again. A failed manual check shows its error in the update window. |
@@ -297,11 +302,6 @@ Each step ends in commits on the `auto-updater` branches and a note in
     release and update to it from an installed 0.12.0.
 12. **Clean up.** Delete this plan, the auto-updater todo and the
     onboarding todo, and drop `plan:` lines that point here.
-
-## Open questions
-
-1. **Launcher after an update restart.** Whether Torchsnap shows the
-   launcher (or something else) after restarting into the new version.
 
 ## Later
 
