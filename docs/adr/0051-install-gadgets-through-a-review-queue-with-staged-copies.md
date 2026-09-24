@@ -65,6 +65,12 @@ outside it. The review shows:
 - for a replace, which permissions are new and which the new version no
   longer asks for.
 
+The items are grouped by what they touch: programs, network, files,
+links, clipboard and the gadget's own data. A group with a warning item
+is labelled "Broad access". Filesystem paths that only apply to another
+operating system are behind a toggle. The gadget cards in the Gadgets
+section show the same groups for every loaded WASM gadget.
+
 Per-rule command limits (`cwd`, `timeout-ms-max`, `max-output-bytes`,
 `max-stdin-bytes`) are not shown, because the host does not enforce
 them.
@@ -89,18 +95,37 @@ when:
   the gadget from loading.
 
 Before the first replace of an id in a session, the current archive is
-kept as `gadgets/.<id>.torchsnap.prev`. Each install and replace can be
-undone from the result list until that list is dismissed or the app
-restarts. Leftover backups are removed at startup.
+kept as `gadgets/.<id>.torchsnap.prev`. Each install, replace and
+uninstall can be undone until the app restarts. Leftover backups are
+removed at startup.
 
 Installs, replaces, undos and uninstalls made since startup are tracked
 next to the registry snapshot taken at startup, so uninstalling and
 reinstalling an id works before the restart.
 
+### Pending changes in the Gadgets list
+
+Changes waiting for a restart are shown on the gadget's row in the
+Gadgets section: the row is dimmed (except for a replace, whose running
+version stays usable), a note names the change and the version it
+brings, and an Undo button replaces Uninstall. Installs of new ids get
+their own row. While any change is pending, a bar shows how many there
+are and offers "Restart now". The list is built from the backend's
+record of pending changes, so it is the same after Settings is closed
+and reopened.
+
+"Restart now" writes `<app_data_dir>/.reopen-gadget-settings` and
+restarts the app. The next startup removes the marker and opens
+Settings on the Gadgets section.
+
 ### Deferred uninstall cleanup
 
-Uninstall removes the archive (and a hand-placed directory form) and
-writes `gadgets/.<id>.uninstall`. At the next startup, before settings
+Uninstall moves the archive that loaded at startup to
+`gadgets/.<id>.torchsnap.prev`, removes an archive installed since and a
+hand-placed directory form, and writes `gadgets/.<id>.uninstall`.
+Undoing the uninstall puts the startup archive back and removes the
+marker. A directory form is not kept, so its uninstall cannot be
+undone. At the next startup, before settings
 are initialized and before any gadget loads, each marker's
 `gadget-home/<id>/` tree and `enabled.<id>` / `gadgets.<id>.*` settings
 are deleted and the marker is removed.
