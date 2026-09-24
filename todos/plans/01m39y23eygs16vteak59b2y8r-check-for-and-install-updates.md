@@ -20,7 +20,13 @@ handling, and README "Releasing" lists the key. Step 3 done: `tools/release-feed
 (with tests in `tools/tests/`, run by `just test-tools`) writes
 `release.json`; `release-build` builds and checks the update archive,
 `release-publish` uploads four assets and starts the torchsnap-web
-deploy. Not run end to end yet; the first real `release-build` does. Work
+deploy. Not run end to end yet; the first real `release-build` does.
+Steps 4 to 7 done: `src-tauri/src/updates/` (state machine, schedule,
+location check, release notes), the update window (`update.html`,
+`src/update/`), the Updates section in Settings → General, and the
+welcome window (`welcome.html`, `src/welcome/`, `src-tauri/src/welcome.rs`),
+all with tests. Step 2 of the welcome shows a short list until step 8
+decides the visual. Not yet tried in a running app. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
@@ -47,7 +53,7 @@ Decided with the maintainer on 2026-09-24.
 | Check timing (when automatic) | A few seconds after startup, then every 24 hours while running. The time of the last check is stored, so a restart within 24 hours does not check again. |
 | Download timing | Only after the user clicks "Install and Restart", with progress. |
 | Where a found update appears | A small dedicated update window with the new version, the notes, **Install and Restart**, **Later** and **Skip This Version**. |
-| Later | Closes the window. The tray menu shows an item for the pending update until it is installed or skipped. The next automatic check opens the window again. |
+| Later | Closes the window. The tray's "Check for Updates..." item reads "Update to <version>..." and reopens the window until the update is installed or skipped. The next automatic check opens the window again. Closing the window any other way means the same. |
 | Skip This Version | Hides that version for good; a newer one is offered again. |
 | Release notes | Rendered as Markdown, for every version between the installed and the new one. |
 | First-launch question | Lives in a separate welcome window, not in the update window. |
@@ -266,19 +272,19 @@ Each step ends in commits on the `auto-updater` branches and a note in
    checks it, uploads DMG, archive, signature and `release.json` (the
    single-asset check becomes a four-asset check), then starts the
    torchsnap-web deploy.
-4. **Updater backend (torchsnap).** Settings keys (automatic checks,
+4. **Updater backend (torchsnap), done.** Settings keys (automatic checks,
    last check, skipped version), scheduling, manual and automatic
    checks, the location check, install with the pending-gadget count,
    commands and events for the windows, the tray item. Tests for the
    scheduling, version filtering and location logic.
-5. **Update window (torchsnap).** New auxiliary window: versions and
+5. **Update window (torchsnap), done.** New auxiliary window: versions and
    Markdown notes newer than the installed one, Install and Restart
    with progress, Later, Skip This Version, the pending-gadget line,
    the "move to Applications" state, "up to date" and error states for
    manual checks.
-6. **Settings → General (torchsnap).** The area next to the build line:
+6. **Settings → General (torchsnap), done.** The area next to the build line:
    Check for Updates, automatic-check switch, Show Welcome.
-7. **Welcome window (torchsnap).** New auxiliary window with the five
+7. **Welcome window (torchsnap), done.** New auxiliary window with the five
    steps, step 2 still a placeholder; revision check at startup and
    the Settings button.
 8. **"How it works" (torchsnap).** Storyboard, then the medium with the
