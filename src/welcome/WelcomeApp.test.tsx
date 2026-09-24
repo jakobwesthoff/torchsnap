@@ -38,10 +38,12 @@ vi.mock("../hooks/useSetting", () => ({
   },
 }));
 
-async function goToStep(step: number) {
+const FORWARD = ["Choose your shortcut", "Next: Startup and updates", "Next: Try it"];
+
+async function goToPage(page: number) {
   const main = within(screen.getByRole("main"));
-  for (let i = 1; i < step; i++) {
-    await userEvent.click(main.getByRole("button", { name: "Continue" }));
+  for (const label of FORWARD.slice(0, page - 1)) {
+    await userEvent.click(main.getByRole("button", { name: label }));
   }
 }
 
@@ -57,7 +59,7 @@ describe("WelcomeApp", () => {
   it("reads launch at login and turns it on", async () => {
     mockCommands({});
     render(<WelcomeApp />);
-    await goToStep(4);
+    await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
     await waitFor(() => expect(toggle).toBeEnabled());
     await userEvent.click(toggle);
@@ -69,7 +71,7 @@ describe("WelcomeApp", () => {
     autostart.isEnabled.mockResolvedValue(true);
     mockCommands({});
     render(<WelcomeApp />);
-    await goToStep(4);
+    await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
     await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
     await userEvent.click(toggle);
@@ -80,7 +82,7 @@ describe("WelcomeApp", () => {
     autostart.isEnabled.mockRejectedValue(new Error("no launch agent"));
     mockCommands({});
     render(<WelcomeApp />);
-    await goToStep(4);
+    await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
     await waitFor(() => expect(toggle).toBeEnabled());
     expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -90,7 +92,7 @@ describe("WelcomeApp", () => {
     settings.set("updates.automaticChecks", false);
     mockCommands({});
     render(<WelcomeApp />);
-    await goToStep(4);
+    await goToPage(3);
     expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveAttribute(
       "aria-checked",
       "false",
@@ -105,10 +107,10 @@ describe("WelcomeApp", () => {
       welcome_finish: () => void calls.push(["finish"]),
     });
     render(<WelcomeApp />);
-    await goToStep(5);
+    await goToPage(4);
     const main = within(screen.getByRole("main"));
     await userEvent.click(main.getByRole("button", { name: "Back" }));
-    await userEvent.click(main.getByRole("button", { name: "Continue" }));
+    await userEvent.click(main.getByRole("button", { name: "Next: Try it" }));
     await userEvent.click(main.getByRole("button", { name: "Open the launcher" }));
 
     await waitFor(() => expect(calls).toHaveLength(4));
@@ -128,7 +130,7 @@ describe("WelcomeApp", () => {
       },
     });
     render(<WelcomeApp />);
-    await goToStep(5);
+    await goToPage(4);
     const main = within(screen.getByRole("main"));
     await userEvent.click(main.getByRole("button", { name: "Open the launcher" }));
     expect(main.getByRole("button", { name: "Open the launcher" })).toBeInTheDocument();

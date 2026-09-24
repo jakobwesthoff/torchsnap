@@ -16,10 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update in the menu-bar menu, "Skip This Version" stops automatic
   checks from offering it again.
 - A welcome window introduces Torchsnap on the first start after
-  installing or updating to this version: how the launcher works, the
-  shortcut, launch at login and whether to check for updates
-  automatically. It finishes when you press the shortcut, and opens
-  again from Settings → General → "Show Welcome".
+  installing or updating to this version and sets up the shortcut,
+  launch at login and whether to check for updates automatically. It
+  finishes when you press the shortcut, and opens again from Settings →
+  General → "Show Welcome".
 - Settings → General has an Updates section: a switch for automatic
   checks (once a day, asking torchsnap.app), a "Check for Updates"
   button and "Show Welcome".
