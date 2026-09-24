@@ -32,7 +32,10 @@ was reworked after that test (step 8). Step 9 done on torchsnap-web's
 `auto-updater` branch (`48676de`, its ADR 0009): the build serves the
 latest `release.json` as `/updates/latest.json` and shows the version
 in the macOS pill; `TORCHSNAP_RELEASE_FEED` points it at another feed.
-It merges after 0.12.0 is published. Work
+It merges after 0.12.0 is published. Step 10 text done on torchsnap-docs'
+`auto-updater` branch (`18e52fc`): installation page (welcome window,
+"Updating", the one manual update from 0.11.x) and the Settings rows.
+Screenshots still open: `settings-general` lacks the Updates section. Work
 happens on branch `auto-updater` in three git worktrees next to the
 main checkouts: `../torchsnap--auto-updater`,
 `../torchsnap-docs--auto-updater` and `../torchsnap-web--auto-updater`.
