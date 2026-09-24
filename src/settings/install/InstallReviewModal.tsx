@@ -13,7 +13,8 @@
 
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
-import { PermissionSummary } from "./PermissionSummary";
+import { PermissionGroups } from "./PermissionGroups";
+import { currentPlatform } from "./platform";
 import type { InstallRequestView, InstallReview, Provenance } from "./types";
 
 export function InstallReviewModal({
@@ -98,9 +99,10 @@ export function InstallReviewModal({
           <>
             <GadgetIdentity review={review} />
             {isReplace && <ReplaceNotice review={review} />}
-            <PermissionSummary
+            <PermissionGroups
               items={review.permissions}
               removed={review.removedPermissions}
+              platform={currentPlatform()}
               showChanges={isReplace}
             />
             {review.permissions.length === 0 && (

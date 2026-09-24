@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { InstallReviewModal } from "./InstallReviewModal";
@@ -101,8 +101,15 @@ describe("InstallReviewModal", () => {
       }),
     );
 
-    expect(screen.getByText("New")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "No longer requested" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("group", { name: "Network" })).getByText("New"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("group", { name: "Clipboard" })).getByText("Removed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Adds: any website · Drops: copy text to the clipboard"),
+    ).toBeInTheDocument();
   });
 
   it("offers only dismissal for a rejected gadget", async () => {

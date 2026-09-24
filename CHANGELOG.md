@@ -15,10 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps its data and settings. A version that could not open the
   installed version's stored data (fewer storage migrations) is
   refused with instructions.
-- Each gadget in Settings → Gadgets has a permission line that expands
-  into what it is allowed to do (run commands, reach websites, read
-  files and so on). Permissions that reach beyond the gadget's own data
-  are labelled "Broad access".
+- Each gadget in Settings → Gadgets has a permission line naming what
+  it touches (programs, network, files, links, clipboard, its own data)
+  that expands into the details. Groups that reach beyond the gadget's
+  own data are labelled "Broad access", and paths that only apply to
+  another operating system are set aside. The install review shows the
+  same groups, and for a replace marks what is new or removed.
 - Settings → Gadgets lists installs, updates and uninstalls that wait
   for a restart, with the version change and an Undo for each, and a
   bar with the number of pending changes and "Restart now". The list

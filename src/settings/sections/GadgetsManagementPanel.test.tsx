@@ -142,7 +142,7 @@ describe("GadgetsManagementPanel", () => {
     return (await screen.findByText(name)).closest("[data-gadget]") as HTMLElement;
   }
 
-  it("summarizes a gadget's permissions in one line and expands them on click", async () => {
+  it("names the permission groups in one line and expands them on click", async () => {
     mockCardCommands({
       weather: [
         {
@@ -161,15 +161,15 @@ describe("GadgetsManagementPanel", () => {
     const weather = await card("Weather");
 
     const toggle = await within(weather).findByRole("button", {
-      name: /2 permissions · 1 with broad access/,
+      name: "Permissions: Network, Own data, with broad access",
     });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(within(weather).queryByText("Connect to any website")).not.toBeInTheDocument();
+    expect(within(weather).queryByText("any website")).not.toBeInTheDocument();
 
     await userEvent.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(within(weather).getByText("Connect to any website")).toBeInTheDocument();
+    expect(within(weather).getByText("any website")).toBeInTheDocument();
   });
 
   it("says that built-in gadgets have no permission list", async () => {
