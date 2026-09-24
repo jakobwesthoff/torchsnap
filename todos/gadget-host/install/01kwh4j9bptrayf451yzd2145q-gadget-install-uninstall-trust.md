@@ -112,12 +112,9 @@ inconsistent), but not a privilege boundary crossing.
    `host.gadget_sources().keys()` (or make `register_with_caps` bail on
    a duplicate id). This closes builtin-id shadowing for *any* file that
    lands in the user gadgets dir, race or no race.
-2. **Reorder install to validate-what-you-publish.** Copy `archive_path`
-   to a randomized tmp name first, run `ArchiveSource::open` on the
-   *tmp copy*, then rename to `<id>.torchsnap` using the id from that
-   validated copy. Kills the TOCTOU and the stem/id mismatch at the
-   root (the current order cannot, since the tmp name depends on the
-   not-yet-known id).
+2. Done (plan step 7): install copies the archive into a staging
+   directory under a random name, validates that copy and publishes it
+   as `<id>.torchsnap` with the id from the validated manifest.
 3. **Enforce `file_stem == manifest id` for User-root archives at load**
    (skip + error log on mismatch). Restores the filename↔id bijection
    uninstall depends on and makes manual drops self-consistent.

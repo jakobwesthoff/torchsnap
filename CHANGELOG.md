@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed version's stored data (fewer storage migrations) is
   refused with instructions.
 
+### Changed
+
+- Gadget archives larger than 16 MiB are rejected at install.
+
 ### Fixed
 
 - The ZeroTier gadget's warning results (token missing, token rejected,

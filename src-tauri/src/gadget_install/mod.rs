@@ -20,10 +20,12 @@
 //
 // Install steps:
 //
-// 1. Open the source `.torchsnap` via `ArchiveSource::open`,
-//    which validates the zip and parses the manifest. The
+// 1. Copy the source into the staging area and open the copy
+//    with `ArchiveSource::open`, which validates the zip and
+//    parses the manifest (`staging::StagingArea::stage`). The
 //    path guard that runs during `Manifest::parse` catches
-//    traversal here.
+//    traversal here. Every later step uses the staged copy, so
+//    the file the user picked can no longer change what lands.
 // 2. Decide from the frozen registry and the changes made
 //    since startup (`decision::decide_install`).
 // 3. Publish the archive as `gadgets/<id>.torchsnap`, either
@@ -51,12 +53,14 @@ mod decision;
 mod paths;
 mod pending;
 mod registered;
+mod staging;
 mod store;
 
 pub use archive_ops::{process_uninstall_markers, remove_stale_backups};
 pub use paths::InstallPaths;
 pub use pending::PendingChanges;
 pub use registered::RegisteredGadgets;
+pub use staging::StagingArea;
 pub use store::SettingsKeys;
 
 use std::path::{Path, PathBuf};
@@ -126,17 +130,19 @@ pub async fn install_gadget_archive(
     paths: tauri::State<'_, InstallPaths>,
     registered: tauri::State<'_, RegisteredGadgets>,
     pending: tauri::State<'_, Arc<Mutex<PendingChanges>>>,
+    staging: tauri::State<'_, StagingArea>,
     archive_path: String,
 ) -> Result<InstalledGadgetInfo, String> {
     let paths = paths.inner().clone();
     let registered = registered.inner().clone();
     let pending = Arc::clone(pending.inner());
+    let staging = staging.inner().clone();
     let archive_path = PathBuf::from(archive_path);
     tokio::task::spawn_blocking(move || {
         let mut pending = pending
             .lock()
             .expect("pending changes lock is never poisoned");
-        install(&paths, &registered, &mut pending, &archive_path)
+        install(&paths, &registered, &mut pending, &staging, &archive_path)
     })
     .await
     .map_err(|e| format!("install task panicked: {e}"))?
@@ -197,11 +203,24 @@ fn install(
     paths: &InstallPaths,
     registered: &RegisteredGadgets,
     pending: &mut PendingChanges,
+    staging: &StagingArea,
     archive_path: &Path,
 ) -> anyhow::Result<InstalledGadgetInfo> {
-    let source =
-        ArchiveSource::open(archive_path).context("open gadget archive for installation")?;
-    let manifest = source.manifest().clone();
+    let staged = staging
+        .stage(archive_path)
+        .context("open gadget archive for installation")?;
+    let result = install_staged(paths, registered, pending, &staged);
+    staged.discard();
+    result
+}
+
+fn install_staged(
+    paths: &InstallPaths,
+    registered: &RegisteredGadgets,
+    pending: &mut PendingChanges,
+    staged: &staging::StagedArchive,
+) -> anyhow::Result<InstalledGadgetInfo> {
+    let manifest = staged.manifest().clone();
     let gadget_id = manifest.gadget.id.as_str().to_string();
 
     let decision = decide_install(
@@ -210,19 +229,15 @@ fn install(
         &manifest,
     );
 
-    // The archive handle has to be closed before the copy: on
-    // Windows an open file blocks the later rename.
-    drop(source);
-
     let (previous_version, version_relation) = match decision {
         InstallDecision::Reject(message) => anyhow::bail!(message),
         InstallDecision::Fresh => {
-            archive_ops::publish_fresh(paths, archive_path, &gadget_id)?;
+            archive_ops::publish_fresh(paths, staged.path(), &gadget_id)?;
             pending.record_install(&gadget_id, manifest.clone());
             (None, None)
         }
         InstallDecision::Replace { previous, relation } => {
-            archive_ops::publish_replace(paths, archive_path, &gadget_id)?;
+            archive_ops::publish_replace(paths, staged.path(), &gadget_id)?;
             pending.record_replace(&gadget_id, &previous.gadget.version, manifest.clone());
             (Some(previous.gadget.version), Some(relation))
         }
@@ -354,6 +369,17 @@ mod tests {
         let root = tempfile::tempdir().expect("create temp app data dir");
         let paths = InstallPaths::new(root.path());
         (root, paths)
+    }
+
+    /// Install through a staging area next to the test's gadgets dir.
+    fn install(
+        paths: &InstallPaths,
+        registered: &RegisteredGadgets,
+        pending: &mut PendingChanges,
+        archive_path: &Path,
+    ) -> anyhow::Result<InstalledGadgetInfo> {
+        let staging = StagingArea::new(paths.gadgets_dir.with_file_name("install-staging"));
+        super::install(paths, registered, pending, &staging, archive_path)
     }
 
     fn manifest_of(archive: &Path) -> Manifest {
@@ -729,5 +755,49 @@ mod tests {
             .expect_err("a second uninstall should be rejected");
 
         assert!(format!("{error:#}").contains("already uninstalled"));
+    }
+
+    // =========================================================
+    // Staging
+    // =========================================================
+
+    #[test]
+    fn install_leaves_no_staged_copy_behind() {
+        let (root, paths) = temp_paths();
+        let staging = StagingArea::new(root.path().join("install-staging"));
+        let (_src, archive) = archive_with_manifest("weather", "1.4.0", "");
+
+        super::install(
+            &paths,
+            &RegisteredGadgets::default(),
+            &mut PendingChanges::default(),
+            &staging,
+            &archive,
+        )
+        .expect("install should succeed");
+
+        assert!(dir_entries(&root.path().join("install-staging")).is_empty());
+    }
+
+    #[test]
+    fn a_rejected_install_leaves_no_staged_copy_behind() {
+        let (root, paths) = temp_paths();
+        let staging = StagingArea::new(root.path().join("install-staging"));
+        let (_src, archive) = archive_with_manifest("clipboard-manager", "1.0.0", "");
+        let registry = RegisteredGadgets::from_entries([(
+            "clipboard-manager".to_string(),
+            Registration::Builtin,
+        )]);
+
+        super::install(
+            &paths,
+            &registry,
+            &mut PendingChanges::default(),
+            &staging,
+            &archive,
+        )
+        .expect_err("builtin id must be rejected");
+
+        assert!(dir_entries(&root.path().join("install-staging")).is_empty());
     }
 }
