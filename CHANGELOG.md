@@ -7,22 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-24
+
 ### Added
 
 - Torchsnap updates itself. "Check for Updates..." in the menu-bar
-  menu opens a window with the notes of every newer version, and
-  "Install and Restart" downloads the update, replaces the app and
-  restarts it, showing the launcher once it is back. "Later" keeps the
-  update in the menu-bar menu, "Skip This Version" stops automatic
-  checks from offering it again.
+  menu, or the button in Settings → General, opens a window with the
+  notes of every version since yours. "Install and Restart" downloads
+  the update, checks that it is signed by the Torchsnap project,
+  replaces the app and restarts it, showing the launcher once it is
+  back. "Later" keeps the update in the menu-bar menu, "Skip This
+  Version" stops automatic checks from offering it again. Coming from
+  0.11.1 or earlier, install this version by hand once; later versions
+  arrive through the update window.
+- Automatic update checks: once a day, Torchsnap asks torchsnap.app
+  for the newest version. They run only after you agreed in the
+  welcome window or turned them on in Settings → General. The request
+  carries your IP address and nothing else about you.
 - A welcome window introduces Torchsnap on the first start after
   installing or updating to this version and sets up the shortcut,
   launch at login and whether to check for updates automatically. It
   finishes when you press the shortcut, and opens again from Settings →
   General → "Show Welcome".
-- Settings → General has an Updates section: a switch for automatic
-  checks (once a day, asking torchsnap.app), a "Check for Updates"
-  button and "Show Welcome".
 
 ### Fixed
 
@@ -445,6 +451,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.12.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.12.0
 [0.11.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.11.1
 [0.11.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.11.0
 [0.10.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.10.0
