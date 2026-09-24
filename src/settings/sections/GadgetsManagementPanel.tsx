@@ -35,7 +35,9 @@ import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
 import { InstallReviewModal } from "../install/InstallReviewModal";
-import { PermissionSummary } from "../install/PermissionSummary";
+import { BroadAccessTag, PermissionGroups } from "../install/PermissionGroups";
+import { groupPermissions } from "../install/permissionModel";
+import { currentPlatform } from "../install/platform";
 import { useInstallQueue } from "../install/useInstallQueue";
 import { usePendingChanges } from "../install/usePendingChanges";
 import type { PendingGadget, PermissionItem } from "../install/types";
@@ -467,15 +469,16 @@ function PermissionLine({
     );
   }
 
-  const broad = items.filter((item) => item.severity === "warning").length;
-  const count = `${items.length} ${items.length === 1 ? "permission" : "permissions"}`;
-  const broadText = broad > 0 ? ` · ${broad} with broad access` : "";
+  const platform = currentPlatform();
+  const groups = groupPermissions(items, [], platform);
+  const titles = groups.map((group) => group.title);
+  const broad = groups.some((group) => group.broad);
   return (
     <>
       <button
         type="button"
         aria-expanded={open}
-        aria-label={count + broadText}
+        aria-label={`Permissions: ${titles.join(", ")}${broad ? ", with broad access" : ""}`}
         onClick={() => setOpen((value) => !value)}
         className={cn(quiet, "flex items-center gap-1 hover:text-text-secondary")}
       >
@@ -483,12 +486,10 @@ function PermissionLine({
           icon="heroicons:chevron-right"
           className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
         />
-        <span>
-          {count}
-          {broadText && <span className="text-amber-500">{broadText}</span>}
-        </span>
+        <span>{titles.join(" · ")}</span>
+        {broad && <BroadAccessTag />}
       </button>
-      {open && <PermissionSummary items={items} className="mt-1.5 pl-4" />}
+      {open && <PermissionGroups items={items} platform={platform} className="mt-1.5 pl-4" />}
     </>
   );
 }
