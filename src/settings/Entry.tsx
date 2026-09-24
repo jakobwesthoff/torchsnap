@@ -20,7 +20,7 @@ interface EntryProps {
 
 export function Entry({ label, description, children }: EntryProps) {
   return (
-    <label className="flex items-center justify-between cursor-pointer">
+    <label className="flex items-center justify-between gap-6 cursor-pointer">
       <div className="flex flex-col">
         <span className="text-sm text-text-primary">{label}</span>
         {description && <span className="text-xs text-text-tertiary">{description}</span>}

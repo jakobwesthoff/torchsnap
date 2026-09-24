@@ -62,13 +62,13 @@ export function GeneralSection() {
 
       <ShortcutSection globalShortcut={globalShortcut} setGlobalShortcut={setGlobalShortcut} />
 
+      <UpdatesSection />
+
       <Section title="Advanced">
         <Entry label="Control API">
           <Switch checked={controlApiEnabled} onChange={setControlApiEnabled} />
         </Entry>
       </Section>
-
-      <UpdatesSection />
 
       {buildInfo && (
         <p className="mt-auto pt-4 text-right text-[11px] text-text-muted/90">
