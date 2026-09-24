@@ -451,8 +451,8 @@ documented in the SDK docs.
   `todos/gadget-host/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`.
   Requires archive-format mode preservation and (on macOS)
   quarantine-attribute handling and code-signing strategy.
-* **Settings UI display of plugin permissions**. Tracked in
-  `todos/gadget-host/wasm/01kq7x2ge7d3ykf7vxkz4fvr69-show-gadget-permissions-in-settings.md`.
+* **Settings UI display of plugin permissions**. Implemented by the
+  gadget cards in Settings → Gadgets (`src/settings/install/PermissionSummary.tsx`).
 * **Install-time consent prompt for User-source plugins
   declaring `[[permissions.command]]`**. Tracked in
   `todos/gadget-host/install/01m399736658afgk6xv4ab68wn-install-review-dialog.md`.

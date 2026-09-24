@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps its data and settings. A version that could not open the
   installed version's stored data (fewer storage migrations) is
   refused with instructions.
+- Settings → Gadgets lists what each installed gadget is allowed to do
+  (run commands, reach websites, read files and so on), with broad
+  grants highlighted.
 
 ### Changed
 
