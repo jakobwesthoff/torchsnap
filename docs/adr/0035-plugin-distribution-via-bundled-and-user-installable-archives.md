@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [51. Install gadgets through a review queue with staged copies](0051-install-gadgets-through-a-review-queue-with-staged-copies.md)
+
 ## Context
 
 The WASM plugin system reached a point where two distribution
