@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nine new Snappy costumes in the regular rotation, and five
   Christmas-movie costumes that join Santa during the Christmas window.
+- Installing another version of an installed gadget replaces it and
+  keeps its data and settings. A version that could not open the
+  installed version's stored data (fewer storage migrations) is
+  refused with instructions.
 
 ### Fixed
 

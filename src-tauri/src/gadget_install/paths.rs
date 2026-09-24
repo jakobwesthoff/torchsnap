@@ -11,6 +11,7 @@
 use std::path::{Path, PathBuf};
 
 pub const UNINSTALL_MARKER_SUFFIX: &str = ".uninstall";
+pub const BACKUP_SUFFIX: &str = ".torchsnap.prev";
 
 #[derive(Debug, Clone)]
 pub struct InstallPaths {
@@ -45,6 +46,14 @@ impl InstallPaths {
         self.gadget_home_dir.join(gadget_id)
     }
 
+    /// Copy of the archive that was replaced in this session,
+    /// `gadgets/.<id>.torchsnap.prev`, kept so the replace can be
+    /// undone. The leading dot keeps it out of startup discovery.
+    pub fn backup(&self, gadget_id: &str) -> PathBuf {
+        self.gadgets_dir
+            .join(format!(".{gadget_id}{BACKUP_SUFFIX}"))
+    }
+
     /// Marker left by uninstall, `gadgets/.<id>.uninstall`. The leading
     /// dot keeps it out of startup discovery.
     pub fn uninstall_marker(&self, gadget_id: &str) -> PathBuf {
@@ -72,6 +81,10 @@ mod tests {
         assert_eq!(
             paths.home("weather"),
             Path::new("/data/gadget-home/weather")
+        );
+        assert_eq!(
+            paths.backup("weather"),
+            Path::new("/data/gadgets/.weather.torchsnap.prev")
         );
         assert_eq!(
             paths.uninstall_marker("weather"),
