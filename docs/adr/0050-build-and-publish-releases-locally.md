@@ -6,6 +6,8 @@ Date: 2026-09-23
 
 Accepted
 
+Amended by [53. Deliver updates through a signed feed on torchsnap.app](0053-deliver-updates-through-a-signed-feed-on-torchsnap-app.md)
+
 ## Context
 
 A release DMG has to be signed with the Developer ID certificate and
