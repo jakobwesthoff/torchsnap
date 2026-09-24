@@ -33,6 +33,13 @@ asset-mascots:
             webp="$dst/${name}-${size}.webp"
             if [ ! -f "$webp" ] || [ "$file" -nt "$webp" ]; then
                 needed=true
+                # The launcher draws every variant in a square box, so a
+                # non-square source would come out distorted or offset.
+                dims=$(magick identify -format "%wx%h" "$file")
+                if [ "$dims" != "1024x1024" ]; then
+                    echo "error: $file is $dims, mascot sources must be 1024x1024" >&2
+                    exit 1
+                fi
                 tmp=$(mktemp /tmp/mascot-XXXXXX.png)
                 magick "$file" -filter Lanczos -resize ${size}x${size} "$tmp"
                 cwebp -q 90 -m 6 -alpha_q 100 -sharp_yuv -metadata none "$tmp" -o "$webp"
@@ -90,6 +97,13 @@ asset-mascot-data:
         [ -e "$png" ] || continue
         variant=$(basename "$png" -1024.png)
         variant="${variant#snappy-}"
+
+        # The trim percentages below are relative to a 1024x1024 canvas.
+        dims=$(magick identify -format "%wx%h" "$png")
+        if [ "$dims" != "1024x1024" ]; then
+            echo "error: $png is $dims, mascot sources must be 1024x1024" >&2
+            exit 1
+        fi
 
         # Threshold alpha at 75% before computing the bounding box. This
         # discards faint glows, sparkles, and soft shadows that ImageMagick
