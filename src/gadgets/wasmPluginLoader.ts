@@ -28,6 +28,25 @@ import type { GadgetViewProps, InlineViewProps } from "./types";
 // WASM Gadget Registration
 // =========================================================
 
+/**
+ * Pick the component a manifest names from a loaded bundle. A missing
+ * export is an author mistake (a typo, or a component renamed in the
+ * bundle but not in `manifest.toml`), so the error names the gadget,
+ * the bundle and the export.
+ */
+export function namedExport<P>(
+  mod: Record<string, unknown>,
+  exportName: string,
+  gadgetId: string,
+  bundleUrl: string,
+): { default: ComponentType<P> } {
+  const component = mod[exportName];
+  if (component == null) {
+    throw new Error(`gadget ${gadgetId}: bundle ${bundleUrl} has no export "${exportName}"`);
+  }
+  return { default: component as ComponentType<P> };
+}
+
 export type WebviewContext = "launcher" | "settings";
 
 /**
@@ -58,9 +77,9 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
 
       for (const [viewName, exportName] of Object.entries(frontend.views)) {
         views[viewName] = launcherComponent(() =>
-          import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-            default: mod[exportName],
-          })),
+          import(/* @vite-ignore */ bundleUrl).then((mod) =>
+            namedExport<GadgetViewProps>(mod, exportName, gadgetId, bundleUrl),
+          ),
         );
       }
 
@@ -74,9 +93,9 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
 
       for (const [viewName, exportName] of Object.entries(frontend.inlineViews)) {
         inlineViews[viewName] = launcherComponent(() =>
-          import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-            default: mod[exportName],
-          })),
+          import(/* @vite-ignore */ bundleUrl).then((mod) =>
+            namedExport<InlineViewProps>(mod, exportName, gadgetId, bundleUrl),
+          ),
         );
       }
 
@@ -89,9 +108,9 @@ export function registerWasmGadget(manifest: WasmGadgetManifest, webview: Webvie
       const exportName = frontend.settings.component;
 
       entry.settings = settingsComponent(() =>
-        import(/* @vite-ignore */ bundleUrl).then((mod) => ({
-          default: mod[exportName],
-        })),
+        import(/* @vite-ignore */ bundleUrl).then((mod) =>
+          namedExport(mod, exportName, gadgetId, bundleUrl),
+        ),
       );
     }
 
