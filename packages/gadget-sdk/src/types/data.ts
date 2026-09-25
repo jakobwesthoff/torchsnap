@@ -24,6 +24,7 @@ export type ActionId =
   | { type: "reveal" }
   | { type: "openWith" }
   | { type: "delete" }
+  | { type: "openSettings" }
   | { type: "custom"; value: string };
 
 export interface ActionKeybinding {
