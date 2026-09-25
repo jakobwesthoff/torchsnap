@@ -17,8 +17,9 @@
 //!
 //! impl LifecycleGuest for MyGadget { /* ... */ }
 //! impl SearchGuest for MyGadget { /* ... */ }
-//! // MessagingGuest / TasksGuest via `impl_noop_messaging!` /
-//! // `impl_noop_tasks!` when the gadget doesn't use those.
+//! impl Messaging for MyGadget { /* ... */ }
+//! // `impl_noop_messaging!` / `impl_noop_tasks!` when the
+//! // gadget has no messages or scheduled tasks.
 //! ```
 //!
 //! ## Cross-crate macro mechanics
@@ -106,13 +107,17 @@ pub mod prelude {
     //! Common glob import for gadget authors.
     //!
     //! `use torchsnap_gadget_sdk::prelude::*;` pulls in the
-    //! four guest traits, the search record / variant types
-    //! gadgets work with every file, the SDK's helper
-    //! modules, and the `define_gadget!` / `impl_noop_*!`
-    //! macros gadgets use to wire themselves up. Host
-    //! import modules (`assets`, `clipboard`, `frecency`,
-    //! `http`, `opener`) are also surfaced so gadget code
-    //! can call them without an extra `use`.
+    //! four guest traits, the typed [`Messaging`] trait, the
+    //! search record / variant types gadgets work with every
+    //! file, the SDK's helper modules, and the
+    //! `define_gadget!` / `impl_noop_*!` macros gadgets use to
+    //! wire themselves up. Host import modules (`assets`,
+    //! `clipboard`, `frecency`, `http`, `opener`) are also
+    //! surfaced so gadget code can call them without an extra
+    //! `use`. The `messaging` module's JSON helpers, meant for
+    //! a hand-written `MessagingGuest`, are imported from
+    //! `torchsnap_gadget_sdk::messaging` directly.
+    pub use super::messaging::Messaging;
     pub use super::{
         Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry, SearchResponse,
         ViewResponse,
@@ -122,9 +127,7 @@ pub mod prelude {
         assets, clipboard, filesystem, frecency, http, opener, path_resolver, platform,
         website_metadata_host,
     };
-    pub use super::{
-        cache, command, data, logging, messaging, settings, sql_storage, website_metadata,
-    };
+    pub use super::{cache, command, data, logging, settings, sql_storage, website_metadata};
     // Macros re-exported through the prelude so a single
     // `use torchsnap_gadget_sdk::prelude::*;` is enough to
     // write a minimal gadget.

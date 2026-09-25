@@ -184,8 +184,8 @@ Messaging gets a typed layer in the same refactor, with the same
 pattern: a `Messaging` trait with a `Request` enum and a blanket impl of
 `MessagingGuest`. The WIT `handle-message` and the frontend's
 `sendMessage` stay as they are, and launcher views and settings panels
-keep sharing one message channel
-(`todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md`).
+keep sharing one message channel. For methods without arguments, the
+frontend's `{}` payload is accepted by a unit variant.
 
 ### Host
 

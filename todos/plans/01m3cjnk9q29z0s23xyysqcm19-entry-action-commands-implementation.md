@@ -13,7 +13,6 @@ and coordinates these todos:
 
 | Todo | Phase |
 |---|---|
-| `todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md` | 4 |
 | `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md` | 5 to 7 |
 
 The ADRs hold the design decisions. The todos hold the per-topic
@@ -126,20 +125,23 @@ also a `LauncherActions` function.
 
 ## Phase 4: typed messaging
 
-Todo `01m3cg9f3dnqqvgf4pr1rwtt7j`. Independent of the WIT switch.
+Done: `Messaging` in `gadgets/gadget-sdk/src/messaging.rs`, used by
+bangs, calculator, template and zerotier. A `{}` payload is decoded as
+given first and without the payload only when that fails, so both unit
+variants and `Variant {}` accept it.
 
-- [ ] SDK: `Messaging` trait with `type Request` and a blanket
+- [x] SDK: `Messaging` trait with `type Request` and a blanket
   `MessagingGuest` impl in `gadgets/gadget-sdk/src/messaging.rs`. A
   `{}` payload is treated as no payload. Tests on the host target:
   known method, unknown method, payload mismatch, `{}` for a unit
   variant, response encoding.
-- [ ] Prelude exports the `Messaging` trait. `parse_payload` and
+- [x] Prelude exports the `Messaging` trait. `parse_payload` and
   `to_response` stay in the module but leave the prelude.
-- [ ] Convert bangs, calculator (including the new `copy`), template
+- [x] Convert bangs, calculator (including the new `copy`), template
   and zerotier. Adapt their tests.
-- [ ] Delete the todo; ADR 55 cites its path under "Rust gadget SDK":
+- [x] Delete the todo; ADR 55 cites its path under "Rust gadget SDK":
   keep the facts, drop the path.
-- [ ] `just fullcycle`, commit (SDK and gadgets may be two commits).
+- [x] `just fullcycle`, commit (SDK and gadgets may be two commits).
 
 ## Checkpoint: merge phases 1 to 4
 

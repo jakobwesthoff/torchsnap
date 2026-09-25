@@ -15,9 +15,9 @@
 //!   Connected / JoinedOffline / KnownOnly entries.
 //! * `execute()` translates an entry's primary or secondary
 //!   action into Connect / Disconnect / Forget.
-//! * `handle_message()` exposes the frontend RPC contract
+//! * `Messaging::handle()` exposes the frontend RPC contract
 //!   the settings panel needs (refresh, reimport, forget,
-//!   clear-all, validate-token, auth-state).
+//!   clear-all, validate-token, auth-state, list-known).
 
 use std::cell::RefCell;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -615,79 +615,84 @@ struct KnownNetwork {
     state: &'static str,
 }
 
-impl MessagingGuest for ZeroTierPlugin {
-    fn handle_message(method: String, payload: String) -> Result<String, String> {
-        match method.as_str() {
-            "refresh" => {
+/// Every method the ZeroTier settings panel calls through
+/// `sendMessage`.
+#[derive(Debug, serde::Deserialize, PartialEq)]
+#[serde(tag = "method", content = "payload", rename_all = "snake_case")]
+enum Request {
+    /// Drop the cached live network list so the next search
+    /// asks the daemon again.
+    Refresh,
+    /// Merge the networks from the daemon's saved-networks file
+    /// into the history.
+    Reimport,
+    /// Leave (if joined) and forget one network.
+    Forget { id: String },
+    /// Delete the whole history.
+    ClearAll,
+    /// The current auth state only.
+    ValidateToken,
+    /// The auth state plus where the token came from.
+    AuthState,
+    /// Every known network with its live state.
+    ListKnown,
+}
+
+impl Messaging for ZeroTierPlugin {
+    type Request = Request;
+
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        match request {
+            Request::Refresh => {
                 RUNTIME.with(|cell| {
                     cell.borrow_mut().network_cache.invalidate();
                 });
-                Ok("{\"ok\":true}".into())
+                Ok(serde_json::json!({ "ok": true }))
             }
 
-            "reimport" => {
+            Request::Reimport => {
                 let inserted = merge_saved_networks().map_err(|e| e.to_string())?;
-                Ok(format!("{{\"inserted\":{inserted}}}"))
+                Ok(serde_json::json!({ "inserted": inserted }))
             }
 
-            "forget" => {
-                #[derive(serde::Deserialize)]
-                struct Req {
-                    id: String,
-                }
-                let req: Req =
-                    serde_json::from_str(&payload).map_err(|e| format!("parse payload: {e}"))?;
-                RUNTIME.with(|cell| -> Result<String, String> {
-                    let runtime = cell.borrow();
-                    let Some(client) = runtime.client.as_ref() else {
-                        return Err("ZeroTier auth not configured".into());
-                    };
-                    let live = current_live_state(&runtime);
-                    let joined = live.iter().any(|n| n.id == req.id);
-                    actions::forget(client, &history::connection(), &req.id, joined)?;
-                    Ok("{\"ok\":true}".into())
-                })
-            }
-
-            "clear_all" => {
-                history::clear_all(&history::connection())?;
-                Ok("{\"ok\":true}".into())
-            }
-
-            "validate_token" => RUNTIME.with(|cell| {
+            Request::Forget { id } => RUNTIME.with(|cell| {
                 let runtime = cell.borrow();
-                let state = match runtime.auth_state {
-                    AuthState::Validated => "validated",
-                    AuthState::Rejected => "rejected",
-                    AuthState::Unconfigured => "unconfigured",
-                    AuthState::DaemonUnreachable => "daemon-unreachable",
+                let Some(client) = runtime.client.as_ref() else {
+                    return Err("ZeroTier auth not configured".into());
                 };
-                Ok(format!("{{\"state\":\"{state}\"}}"))
+                let live = current_live_state(&runtime);
+                let joined = live.iter().any(|n| n.id == id);
+                actions::forget(client, &history::connection(), &id, joined)?;
+                Ok(serde_json::json!({ "ok": true }))
             }),
 
-            "auth_state" => RUNTIME.with(|cell| {
+            Request::ClearAll => {
+                history::clear_all(&history::connection())?;
+                Ok(serde_json::json!({ "ok": true }))
+            }
+
+            Request::ValidateToken => RUNTIME.with(|cell| {
                 let runtime = cell.borrow();
-                let state = match runtime.auth_state {
-                    AuthState::Validated => "validated",
-                    AuthState::Rejected => "rejected",
-                    AuthState::Unconfigured => "unconfigured",
-                    AuthState::DaemonUnreachable => "daemon-unreachable",
-                };
+                Ok(serde_json::json!({ "state": auth_state_name(runtime.auth_state) }))
+            }),
+
+            Request::AuthState => RUNTIME.with(|cell| {
+                let runtime = cell.borrow();
                 let source = match runtime.auth.as_ref().map(|a| a.source) {
                     Some(TokenSource::AutoDetected) => "auto",
                     Some(TokenSource::ManualPaste) => "manual",
                     _ => "none",
                 };
                 let is_macos = matches!(torchsnap_gadget_sdk::platform::current_os(), Os::Macos);
-                serde_json::to_string(&AuthStateResponse {
-                    state,
+                serde_json::to_value(AuthStateResponse {
+                    state: auth_state_name(runtime.auth_state),
                     source,
                     is_macos,
                 })
                 .map_err(|e| e.to_string())
             }),
 
-            "list_known" => RUNTIME.with(|cell| {
+            Request::ListKnown => RUNTIME.with(|cell| {
                 let runtime = cell.borrow();
                 let live = current_live_state(&runtime);
                 let known = load_known_rows();
@@ -712,11 +717,19 @@ impl MessagingGuest for ZeroTierPlugin {
                         }
                     })
                     .collect();
-                serde_json::to_string(&networks).map_err(|e| e.to_string())
+                serde_json::to_value(networks).map_err(|e| e.to_string())
             }),
-
-            other => Err(format!("unknown method: {other}")),
         }
+    }
+}
+
+/// The auth state as the settings panel names it.
+fn auth_state_name(state: AuthState) -> &'static str {
+    match state {
+        AuthState::Validated => "validated",
+        AuthState::Rejected => "rejected",
+        AuthState::Unconfigured => "unconfigured",
+        AuthState::DaemonUnreachable => "daemon-unreachable",
     }
 }
 
@@ -729,6 +742,47 @@ impl_noop_tasks!(ZeroTierPlugin);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use torchsnap_gadget_sdk::messaging;
+
+    #[test]
+    fn settings_requests_decode_from_the_payloads_the_panel_sends() {
+        assert_eq!(
+            messaging::decode_request("forget", r#"{"id":"8056c2e21c000001"}"#),
+            Ok(Request::Forget {
+                id: "8056c2e21c000001".into()
+            })
+        );
+        for (method, request) in [
+            ("refresh", Request::Refresh),
+            ("reimport", Request::Reimport),
+            ("clear_all", Request::ClearAll),
+            ("validate_token", Request::ValidateToken),
+            ("auth_state", Request::AuthState),
+            ("list_known", Request::ListKnown),
+        ] {
+            assert_eq!(
+                messaging::decode_request(method, "{}"),
+                Ok(request),
+                "{method}"
+            );
+        }
+    }
+
+    #[test]
+    fn forget_without_an_id_is_rejected() {
+        messaging::decode_request::<Request>("forget", "{}").expect_err("id is required");
+    }
+
+    #[test]
+    fn auth_state_names_match_the_settings_panel() {
+        assert_eq!(auth_state_name(AuthState::Validated), "validated");
+        assert_eq!(auth_state_name(AuthState::Rejected), "rejected");
+        assert_eq!(auth_state_name(AuthState::Unconfigured), "unconfigured");
+        assert_eq!(
+            auth_state_name(AuthState::DaemonUnreachable),
+            "daemon-unreachable"
+        );
+    }
 
     fn runtime_with(state: AuthState) -> Runtime {
         let mut runtime = Runtime::new();
