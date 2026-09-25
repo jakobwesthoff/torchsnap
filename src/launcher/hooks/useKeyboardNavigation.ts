@@ -16,7 +16,7 @@
  *    Disabled when a gadget custom UI is active (`enabled=false`),
  *    since the gadget handles its own navigation.
  *
- * 3. **Dynamic action bindings** — the keys of the selected
+ * 3. **Dynamic action bindings**: the keys of the selected
  *    entry's filled slots other than `primary` (see
  *    `actionSlots.ts`). Also disabled when a gadget is active.
  *
@@ -175,7 +175,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
     if (!enabled) return [];
 
     // ESLINT: The linter flags `stateRef` because the returned
-    // definitions hold closures that capture it — but they are only
+    // definitions hold closures that capture it. They are only
     // stored, not invoked. A handler only runs from a DOM `keydown`
     // event, which React guarantees flushes pending effects
     // (including our stateRef update) before dispatching.
