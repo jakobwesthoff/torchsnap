@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Gadget views get `openSettings()` from `useLauncher()`. It opens the
+  Settings window on the gadget's own section and closes the launcher,
+  as returning `open-settings` from `execute()` does.
 - Settings explains a global shortcut that does not work below its
   row: no shortcut set, not a valid shortcut, already used by another
   Torchsnap shortcut, or refused by the system because another app

@@ -65,6 +65,10 @@ export interface GadgetRuntime {
 export interface LauncherActions {
   goBack: () => void;
   dismiss: () => void;
+  /** Open the Settings window on this gadget's section and close the
+   *  launcher, like the `open-settings` post-action from `execute()`.
+   *  Rejects, leaving the launcher open, when the window cannot open. */
+  openSettings: () => Promise<void>;
   onExecute: (entryId: string, actionId: ActionId) => void;
   onFooterChange: (state: FooterState) => void;
   setDisplayQuery: (query: string) => void;
