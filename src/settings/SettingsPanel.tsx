@@ -2,10 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { type ComponentType, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { type ComponentType, Suspense, useCallback, useMemo, useState } from "react";
 import { getGadgetSettingsComponent, getGadgetsWithSettings } from "../gadgets/registry";
 import type { GadgetSettingsProps } from "../gadgets/types";
-import { command } from "../lib/command";
 import { createLogger } from "../lib/logger";
 import { useSetting } from "../hooks/useSetting";
 import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
@@ -20,6 +19,7 @@ import { WebsiteMetadataSection } from "./sections/WebsiteMetadataSection";
 import { GadgetsManagementPanel } from "./sections/GadgetsManagementPanel";
 import { GadgetSettingsWrapper } from "./GadgetSettingsWrapper";
 import { useQueueArrival } from "./install/useQueueArrival";
+import { useStartSection } from "./useStartSection";
 
 // =========================================================
 // Built-in sidebar sections
@@ -48,24 +48,24 @@ export function SettingsPanel() {
   // before it opened).
   useQueueArrival(useCallback(() => setActiveSection("gadgets"), []));
 
-  // After "Restart now" the backend asks to start on Gadgets, where
-  // the applied changes are visible. The section is handed out once,
-  // so a result that arrives after an unmount is still applied: a
-  // development remount would otherwise receive nothing.
-  useEffect(() => {
-    command("take_settings_start_section").then(
-      (section) => {
-        if (section) {
-          setActiveSection(section);
-        }
-      },
-      () => {},
-    );
-  }, []);
-
   // Discover which gadgets have settings components. This is
   // evaluated once per mount — gadgets are registered statically.
   const gadgetSections = useMemo(() => getGadgetsWithSettings(), []);
+
+  // The backend asks for Gadgets after "Restart now", and for a
+  // gadget's id when that gadget opens its settings. A gadget without
+  // a section of its own gets Gadgets, where every gadget is listed.
+  const knownSections = useMemo(
+    () =>
+      new Set([...GENERAL_SECTIONS, ...CUSTOMIZATION_SECTIONS, ...gadgetSections].map((s) => s.id)),
+    [gadgetSections],
+  );
+  useStartSection(
+    useCallback(
+      (section: string) => setActiveSection(knownSections.has(section) ? section : "gadgets"),
+      [knownSections],
+    ),
+  );
 
   return (
     <div className="relative flex h-screen font-sans antialiased bg-surface text-text-primary">

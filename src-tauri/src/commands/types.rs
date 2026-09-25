@@ -48,6 +48,9 @@ pub enum PostAction {
     Quit,
     /// Open the settings window. Handled by the host; never forwarded to the frontend.
     ShowSettings,
+    /// Open the settings window on the executing gadget's section. Handled by the
+    /// host; never forwarded to the frontend.
+    OpenSettings,
     /// Open the developer tools window. Handled by the host; never forwarded to the frontend.
     ShowDevtools,
 }
@@ -68,9 +71,9 @@ pub enum ActionId {
     Reveal,
     OpenWith,
     Delete,
-    /// Jump to the originating gadget's settings panel.
-    /// Useful as the primary action on synthetic
-    /// "configuration required" entries.
+    /// Open the originating gadget's settings. Dispatched to the
+    /// gadget like every other action; the gadget answers with
+    /// `PostAction::OpenSettings` to have the host open them.
     OpenSettings,
     Custom(String),
 }

@@ -89,6 +89,34 @@ enum ViewKind {
 }
 
 // =========================================================
+// Host-level PostActions
+// =========================================================
+
+/// Work a gadget's `PostAction` asks the host to do outside the
+/// launcher.
+#[derive(Debug, PartialEq, Eq)]
+enum HostEffect {
+    Quit,
+    ShowSettings,
+    OpenGadgetSettings,
+    ShowDevtools,
+}
+
+/// Split a gadget's `PostAction` into the host's share and what the
+/// launcher frontend receives. The frontend has no use for host-level
+/// actions, so it gets `Dismiss` in their place.
+fn split_post_action(post_action: PostAction) -> (Option<HostEffect>, PostAction) {
+    let effect = match post_action {
+        PostAction::Quit => HostEffect::Quit,
+        PostAction::ShowSettings => HostEffect::ShowSettings,
+        PostAction::OpenSettings => HostEffect::OpenGadgetSettings,
+        PostAction::ShowDevtools => HostEffect::ShowDevtools,
+        launcher_action => return (None, launcher_action),
+    };
+    (Some(effect), PostAction::Dismiss)
+}
+
+// =========================================================
 // Shortcut Types
 // =========================================================
 
@@ -961,22 +989,6 @@ impl GadgetHost {
         // regardless of whether the action succeeds.
         self.frecency.record(source, entry_id);
 
-        // `OpenSettings` is a host-managed action: regardless of which
-        // gadget emitted the entry, navigation to the settings panel is
-        // the host's responsibility, and the gadget has nothing useful
-        // to do with the action. Short-circuit before dispatching so
-        // every gadget gets the behaviour for free without each
-        // implementing the same routing.
-        if matches!(action_id, ActionId::OpenSettings) {
-            if let Err(e) = app.emit(
-                "open-gadget-settings",
-                serde_json::json!({ "gadgetId": source }),
-            ) {
-                eprintln!("emit open-gadget-settings failed: {e:#}");
-            }
-            return Ok(PostAction::Dismiss);
-        }
-
         let Some(entry) = self.entry_store.get(source, entry_id) else {
             eprintln!(
                 "execute: entry '{entry_id}' from gadget '{source}' not found in entry store \
@@ -986,24 +998,16 @@ impl GadgetHost {
         };
 
         if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            let post_action = slot.gadget.execute(&entry, action_id)?;
-            // Host-level PostActions are handled here and mapped to Dismiss
-            // before returning, since the frontend has no use for them.
-            return Ok(match post_action {
-                PostAction::Quit => {
-                    app.exit(0);
-                    PostAction::Dismiss
-                }
-                PostAction::ShowSettings => {
-                    crate::show_settings_window(app);
-                    PostAction::Dismiss
-                }
-                PostAction::ShowDevtools => {
-                    crate::show_devtools_window(app);
-                    PostAction::Dismiss
-                }
-                other => other,
-            });
+            let (effect, forwarded) = split_post_action(slot.gadget.execute(&entry, action_id)?);
+            match effect {
+                Some(HostEffect::Quit) => app.exit(0),
+                Some(HostEffect::ShowSettings) => crate::show_settings_window(app),
+                // Settings sections are keyed by gadget id.
+                Some(HostEffect::OpenGadgetSettings) => crate::show_settings_window_at(app, source),
+                Some(HostEffect::ShowDevtools) => crate::show_devtools_window(app),
+                None => {}
+            }
+            return Ok(forwarded);
         }
         anyhow::bail!("unknown gadget source: {source}");
     }
@@ -1716,6 +1720,38 @@ mod tests {
         assert_eq!(map["system-x"], GadgetSourceKind::System);
         assert_eq!(map["user-y"], GadgetSourceKind::User);
         assert_eq!(map["dev-z"], GadgetSourceKind::Dev);
+    }
+
+    // -------------------------------------------------------
+    // Host-level PostActions
+    // -------------------------------------------------------
+
+    #[test]
+    fn host_level_post_actions_become_host_effects_and_dismiss() {
+        for (post_action, effect) in [
+            (PostAction::Quit, HostEffect::Quit),
+            (PostAction::ShowSettings, HostEffect::ShowSettings),
+            (PostAction::OpenSettings, HostEffect::OpenGadgetSettings),
+            (PostAction::ShowDevtools, HostEffect::ShowDevtools),
+        ] {
+            let (host, forwarded) = split_post_action(post_action);
+            assert_eq!(host, Some(effect));
+            assert!(matches!(forwarded, PostAction::Dismiss));
+        }
+    }
+
+    #[test]
+    fn launcher_post_actions_reach_the_frontend_unchanged() {
+        let (host, forwarded) = split_post_action(PostAction::KeepOpen);
+        assert_eq!(host, None);
+        assert!(matches!(forwarded, PostAction::KeepOpen));
+
+        let (host, forwarded) = split_post_action(PostAction::ShowCustomUI {
+            view: "history".into(),
+            data: None,
+        });
+        assert_eq!(host, None);
+        assert!(matches!(forwarded, PostAction::ShowCustomUI { view, .. } if view == "history"));
     }
 
     // -------------------------------------------------------

@@ -199,11 +199,14 @@ enum post-action {
   nothing,
   dismiss,
   keep-open,
+  open-settings,
 }
 ```
 
 `nothing` leaves the launcher state unchanged, `dismiss` hides it,
-`keep-open` is the multi-select escape hatch. WASM gadgets cannot
+`keep-open` is the multi-select escape hatch. `open-settings` hides the
+launcher and opens the Settings window on the executing gadget's
+section (ADR 0054). WASM gadgets cannot
 trigger custom-UI takeover from `execute`. That path exists only on
 the host `PostAction` enum (`PostAction::ShowCustomUI { view, data
 }`) and is reachable only from native gadgets. WASM gadgets request

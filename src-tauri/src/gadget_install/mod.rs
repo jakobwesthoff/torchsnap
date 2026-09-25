@@ -265,13 +265,19 @@ pub fn gadget_permissions(
 // section, where the list shows the applied changes.
 // =========================================================
 
-/// The section the settings window starts on, handed out once to the
-/// first settings frontend that asks.
+/// The section the settings window shows next, handed out once to the
+/// first settings frontend that asks. Set at startup after "Restart
+/// now", and by `crate::show_settings_window_at` at runtime.
 pub struct SettingsStartSection(Mutex<Option<String>>);
 
 impl SettingsStartSection {
     pub fn new(section: Option<&str>) -> Self {
         Self(Mutex::new(section.map(str::to_string)))
+    }
+
+    /// Replace whatever section is waiting, so the latest request wins.
+    pub fn set(&self, section: &str) {
+        *self.0.lock().expect("start section lock is never poisoned") = Some(section.to_string());
     }
 
     pub fn take(&self) -> Option<String> {
@@ -1037,5 +1043,15 @@ mod tests {
         assert_eq!(start.take().as_deref(), Some("gadgets"));
         assert_eq!(start.take(), None);
         assert_eq!(SettingsStartSection::new(None).take(), None);
+    }
+
+    #[test]
+    fn a_requested_settings_section_replaces_the_waiting_one() {
+        let start = SettingsStartSection::new(Some("gadgets"));
+
+        start.set("zerotier");
+
+        assert_eq!(start.take().as_deref(), Some("zerotier"));
+        assert_eq!(start.take(), None);
     }
 }
