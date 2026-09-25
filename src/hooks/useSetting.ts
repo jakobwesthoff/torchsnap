@@ -14,32 +14,28 @@
  *   ensures all defaults exist in the store at startup.
  * - Re-renders automatically when the value changes, whether the write
  *   originated in this webview or another one.
- * - Referential stability: `setValue` is stable across renders, and
- *   the returned value only triggers a re-render when it actually
- *   differs (shallow equality).
+ * - Referential stability: `setValue` is stable while `key` stays the
+ *   same, and the returned value only triggers a re-render when it
+ *   actually differs (`Object.is`).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { getSettingSync, setSetting, subscribe } from "../settingsStore";
 
 export function useSetting<T>(key: string): [value: T, setValue: (v: T) => Promise<void>] {
-  // Initial value is read synchronously from the pre-loaded cache.
-  // No async gap, no loading state, no default parameter needed.
-  const [value, setValueState] = useState<T>(() => getSettingSync<T>(key));
-
-  // Subscribe to changes (same-window and cross-window). The updater
-  // form of setState gives us access to the current value without a
-  // ref, so we can skip no-op updates without re-subscribing on every
-  // state change.
-  useEffect(
-    () =>
-      subscribe((changedKey, newValue) => {
-        if (changedKey !== key) return;
-        const resolved = newValue as T;
-        setValueState((prev) => (resolved === prev ? prev : resolved));
+  // The store's cache is the source of truth and is updated before
+  // listeners run, so React reads the value straight from it. Reading
+  // on every render (instead of once into state) means a changed `key`
+  // returns the new key's value immediately; components such as the
+  // launcher switch keys without remounting.
+  const subscribeToKey = useCallback(
+    (onChange: () => void) =>
+      subscribe((changedKey) => {
+        if (changedKey === key) onChange();
       }),
     [key],
   );
+  const value = useSyncExternalStore(subscribeToKey, () => getSettingSync<T>(key));
 
   const setValue = useCallback((v: T) => setSetting(key, v), [key]);
 

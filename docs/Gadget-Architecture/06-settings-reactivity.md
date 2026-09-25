@@ -45,7 +45,8 @@ the wrapper adds:
    never see `undefined`.
 
 `useSetting<T>(key)` (`src/hooks/useSetting.ts`) sits on top:
-`useState` seeded from the cache, `subscribe` for updates,
+`useSyncExternalStore` over the cache and `subscribe`, so a changed
+`key` returns the new key's value on the same render, and
 `setSetting` for writes. `useGadgetSetting<T>(key)`
 (`src/contexts/useGadgetSetting.ts`) prepends `gadgets.<id>.` derived
 from the surrounding `GadgetContextProvider`.
