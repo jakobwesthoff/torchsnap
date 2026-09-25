@@ -7,8 +7,7 @@ status: deferred
 
 Needs heavy discussion before implementation.
 
-Spun off from the ZeroTier integration discussion
-(`01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md`). Not blocking
+Spun off from the ZeroTier integration discussion. Not blocking
 for ZeroTier itself (which uses TCP loopback to `localhost:9993`), but
 is the single most likely future extension to the fetch host import.
 

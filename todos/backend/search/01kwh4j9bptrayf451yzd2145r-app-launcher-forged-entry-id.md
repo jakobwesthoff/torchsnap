@@ -6,56 +6,72 @@ area: [src-tauri/src/gadgets/app_launcher.rs, src-tauri/src/gadgets/system_prefe
 tags: [security, unconfirmed]
 ---
 
-# app-launcher `execute` opens a webview-supplied `entry.id`; forgery is blocked by an incidental entry-store gate, leaving a low-severity cross-gadget app-launch proxy
+# app-launcher `execute` opens a path embedded in a stored command; forgery is blocked by an incidental entry-store gate, leaving a low-severity cross-gadget app-launch proxy
 
 The entry-store lookup acts as an incidental control; see below for nuance.
 
+Since ADR 55/56 (fixed action slots, typed gadget commands), the
+shape changed from an `ActionId` selecting a field on `entry.id` to a
+`Command` enum carrying the path as payload, but the same gate and the
+same residual risk apply.
+
 ## Problem
-`AppLauncherGadget::execute` (`app_launcher.rs:231-257`) passes the
-`ScoredEntry`'s `id` to the opener without re-checking it against the
-discovered-apps cache:
+`AppLauncherGadget::execute` (`app_launcher.rs:236-253`) passes the
+path carried by the command straight to the opener, without
+re-checking it against the discovered-apps cache:
 
 ```rust
-ActionId::Open   => opener.open_path(&entry.id)...,
-ActionId::Reveal => opener.reveal_path(&entry.id)...,
+match command {
+    Command::Open(id) => opener.open_path(&id)...,
+    Command::Reveal(id) => opener.reveal_path(&id)...,
+}
 ```
 
-For app entries `entry.id` is the app's filesystem path.
-`SystemPreferencesGadget::execute` (`system_preferences.rs:151-179`)
-is the same shape: `open_url(pane_url(&entry.id))` builds
-`x-apple.systempreferences:<entry.id>` from the id. `open_path` routes
-to the OS default-open handler and can launch apps
+For app entries, `id` is the app's filesystem path, produced by
+`app_actions(&app.id)` (`app_launcher.rs:204`) at search time and
+stored on the entry's `EntryActions`. `SystemPreferencesGadget::execute`
+(`system_preferences.rs:161-178`) is the same shape: `Command::OpenPane(pane_id)`
+builds `x-apple.systempreferences:<pane_id>` via `pane_url`. `open_path`
+routes to the OS default-open handler and can launch apps
 (`opener.rs:110-127`).
 
 The `search_execute` IPC command lets the caller supply the target
-`source` and `entry_id` (`commands/mod.rs:47-62`), which raised the
-concern that a gadget-controlled webview could forge
-`search_execute("app-launcher", "/arbitrary/path", Open)` to open an
-arbitrary path.
+`source`, `entry_id` and `slot` (`commands/mod.rs:47-62`), which raised
+the concern that a gadget-controlled webview could forge
+`search_execute("app-launcher", "/arbitrary/path", Slot::Primary)` to
+open an arbitrary path.
 
 ### Correction — the premise of "arbitrary-path forgery" is wrong
-`search_execute` does **not** hand the raw `entry_id` to the gadget.
-`GadgetHost::execute` (`gadget_host.rs:979-985`) looks the entry up in
-an `EntryStore` and passes the **stored** `ScoredEntry`:
+`search_execute` does **not** hand the caller-supplied path to the
+gadget. `GadgetHost::execute` (`gadget_host.rs:1022-1049`) resolves the
+command through `resolve_command`, which looks the entry up in an
+`EntryStore` and reads the command string stored on the requested slot:
 
 ```rust
-let Some(entry) = self.entry_store.get(source, entry_id) else {
-    eprintln!("execute: entry '{entry_id}' ... not found in entry store \
-               (bug — the UI should only execute entries from the current search)");
-    return Ok(PostAction::Nothing);
-};
+fn resolve_command(
+    store: &EntryStore,
+    source: &str,
+    entry_id: &str,
+    slot: Slot,
+) -> Result<String, Unresolved> {
+    let entry = store.get(source, entry_id).ok_or(Unresolved::UnknownEntry)?;
+    entry.actions.get(slot).map(|action| action.command.clone())
+        .ok_or(Unresolved::EmptySlot)
+}
 ```
 
-The `EntryStore` (`entry_store.rs:49-65`) is keyed by
-`(source, entry.id)`, populated only from real search results
-(`store_sourced_entries` → `insert(entry.source, entry.inner)`,
-`gadget_host.rs:832-835`, with `entry.source` set by the host to
-`gadget.id()`), and cleared at the top of every `search()`
-(`gadget_host.rs:661`). So for `source="app-launcher"` the only
-executable `entry_id`s are real discovered `.app` paths;
-`/arbitrary/path` → `get()` returns `None` → `PostAction::Nothing`,
-nothing opens. Cross-source injection is impossible too: a gadget's
-own results land under its own source key, never under
+Both failure cases (`UnknownEntry`, `EmptySlot`) return
+`PostAction::Nothing` without dispatching to the gadget
+(`gadget_host.rs:1035-1048`).
+
+The `EntryStore` (`entry_store.rs:45-90`) is keyed by
+`(source, entry.id)`, populated only from real search results and
+cleared at the top of every `search()`. So for `source="app-launcher"`
+the only resolvable commands are the ones the gadget itself produced
+from real discovered `.app` paths; a caller-supplied `/arbitrary/path`
+never reaches the gadget because it is not a valid `entry_id`/`slot`
+pair in the store. Cross-source injection is impossible too: a
+gadget's own results land under its own source key, never under
 `app-launcher`.
 
 **This gate is load-bearing for security but incidental.** It is
@@ -94,7 +110,7 @@ arbitrary open. A malicious gadget frontend can:
    (`search_catalogs_static` stores any scored title/keyword match),
    then
 2. `invoke("search_execute", { source: "app-launcher",
-   entryId: "<that app's real path>", actionId: "Open" })`.
+   entryId: "<that app's real path>", slot: "primary" })`.
 
 This silently launches any **installed** application, with no user
 interaction at the moment of launch and regardless of the malicious
@@ -131,10 +147,11 @@ removed/refactored the severity reverts to arbitrary `open_path`
 ## Suggested fix
 **(a) Gadget-level cache re-validation (defense-in-depth; cheap).** In
 `AppLauncherGadget::execute`, before `open_path`/`reveal_path`, verify
-`entry.id` is present in `self.cache` (the discovered
-`Vec<DiscoveredApp>`) and reject otherwise; in
-`SystemPreferencesGadget::execute`, verify `entry.id` is a discovered
-pane before building the URL. This makes each gadget self-defending
+the path carried by `Command::Open`/`Command::Reveal` is present in
+`self.cache` (the discovered `Vec<DiscoveredApp>`) and reject
+otherwise; in `SystemPreferencesGadget::execute`, verify the pane id
+carried by `Command::OpenPane` is a discovered pane before building the
+URL. This makes each gadget self-defending
 independent of the entry_store gate and pins the security-relevance of
 the check in the gadget that owns the risk. Be clear what it does
 *not* do: for the current threat it is redundant with the entry_store
@@ -148,7 +165,7 @@ fix; architectural, raise with Jakob before implementing).** The
 cache validation. The root cause is that gadget frontend JS runs at
 host origin in the same webview as the trusted launcher UI, inheriting
 the full host IPC surface: `search_execute` for any `source`,
-`gadget_message` for any `source` (`gadget_host.rs:1010`), and every
+`gadget_message` for any `source` (`commands/mod.rs:75`), and every
 other app command. `search_execute` is inherently cross-gadget by
 design (the unified launcher dispatches the user's selection across
 gadgets), so cross-source calls cannot simply be forbidden at the
@@ -176,7 +193,7 @@ current app-launcher case. Any new gadget with an open-path action
 over gadget-chosen paths must be reviewed against this.
 
 ## Key files
-`gadget_host.rs` (`execute` :952-1008, `search`/store :660-836),
+`gadget_host.rs` (`execute` :1022-1062, `search` from :724),
 `entry_store.rs`, `gadgets/app_launcher.rs`,
 `gadgets/system_preferences.rs`, `caps/opener.rs`, `wasm/protocol.rs`,
 `src/gadgets/wasmPluginLoader.ts`, `capabilities/default.json`,

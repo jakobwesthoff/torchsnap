@@ -17,8 +17,11 @@ let span = self.logger.span("search").meta("query", query).start();
 ```
 
 `query` is the per-keystroke launcher input. The adjacent `execute`
-span records `entry_id` (`instance.rs:304`), which for the app-launcher
-gadget is a filesystem path.
+span (`instance.rs:298`) records no metadata at all since ADR 55
+replaced the `entry_id`/`action_id` execute signature with a single
+`command` string, so the `entry_id` privacy concern raised below no
+longer applies; the `query` span is the sole remaining exposure this
+todo tracks.
 
 ## Impact
 
@@ -81,10 +84,6 @@ devtools console and by any gadget UI bundle, cross-gadget.
   gadget, the highest-sensitivity input in the app. Launcher queries
   generally contain file names, contact names, and pasted content
   (URLs with embedded tokens are a realistic paste).
-- **`execute` `entry_id`** is gadget-defined; for the app launcher a
-  filesystem path. User-action history, lower volume (one per explicit
-  action, not per keystroke) and lower sensitivity than free text, but a
-  file-search gadget would put full home-directory paths here.
 - The `search` query is the outlier in a file that otherwise shows
   selective-metadata discipline: `entries` records only `result_count`,
   `handle_message` records `method` not `payload`, `on_setting_changed`
@@ -117,11 +116,7 @@ asks), so the raw query must never enter the mpsc channel.
    accidentally) checked at the span call site; when on, record the raw
    query as today. Keeps the "why did this query return the wrong
    results" workflow available deliberately.
-3. **Gate `execute`'s `entry_id`** (`instance.rs:304`) behind the same
-   flag — default recording nothing or the source-gadget id only. Lower
-   urgency (user-initiated, low volume), but one flag for both is the
-   simplest mental model.
-4. **Convention note for gadget authors:** host-side redaction cannot
+3. **Convention note for gadget authors:** host-side redaction cannot
    stop a gadget logging its received query via the WIT `logging`
    import. The achievable guarantee is "the host never records query
    text by default"; bundled gadgets should follow the same convention
@@ -136,6 +131,6 @@ Tauri app-command permissions) — a cheap hardening step. Shares the
 architectural root with the CSP/asset and CORS findings.
 
 ## Key files
-`instance.rs:264,304`; `wasm/logging/{spans.rs,channel.rs,storage.rs,commands.rs,mod.rs}`;
+`instance.rs:264`; `wasm/logging/{spans.rs,channel.rs,storage.rs,commands.rs,mod.rs}`;
 `gadget_host.rs:660-828`; `src/launcher/hooks/useSearch.ts:153`;
 `src/gadgets/wasmPluginLoader.ts:54-92`; `capabilities/default.json`.

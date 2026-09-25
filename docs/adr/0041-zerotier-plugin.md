@@ -238,8 +238,6 @@ existing plugin recompiles cleanly against the SDK bump).
 
 ## Related todos
 
-- `01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md` —
-  iterative design discussion that produced this ADR.
 - `01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md` —
   deferred Unix socket transport, needed for Docker / podman / etc.
   plugins but not for ZeroTier.

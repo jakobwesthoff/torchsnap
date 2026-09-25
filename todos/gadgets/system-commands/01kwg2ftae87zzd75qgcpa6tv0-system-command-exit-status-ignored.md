@@ -14,15 +14,15 @@ Three system commands spawn a subprocess with `.status()` and
 propagate only the *spawn* error; a non-zero exit status is
 discarded and the command reports success:
 
-- Lock Screen (`power.rs:55-59`):
+- Lock Screen (`power.rs:49-52`):
   ```rust
   Command::new("pmset")
       .arg("displaysleepnow")
       .status()
       .context("lock screen via pmset")?;
   ```
-- Start Screen Saver (`utilities.rs:92-97`): `open -a ScreenSaverEngine`
-- Eject Disc (`utilities.rs:123-127`): `drutil eject`
+- Start Screen Saver (`utilities.rs:82-87`): `open -a ScreenSaverEngine`
+- Eject Disc (`utilities.rs:124-129`): `drutil eject`
 
 `.status()` returns `Ok(ExitStatus)` even when the tool exits
 non-zero, so the `?` never fires for command-level failures. Each

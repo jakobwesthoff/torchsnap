@@ -10,7 +10,11 @@ area: [src/lib/command.ts, src/types.ts, src/launcher/compareEntries.ts]
 ## Problem
 
 Several frontend sync-obligation comments point at a module path
-that no longer exists:
+that no longer exists. The `src/types.ts` "Action Types" section
+was already fixed as a side effect of the entry-action-commands
+rewrite (it now says "Mirrors `src-tauri/src/commands/types.rs`",
+`src/types.ts:18`), but the rest of the file and two other files
+still point at the dead path:
 
 - `src/lib/command.ts:16-18`:
 
@@ -18,11 +22,12 @@ that no longer exists:
   > registration and `#[tauri::command]` signatures in
   > `src-tauri/src/lib.rs` and `src-tauri/src/search/mod.rs`.
 
-- `src/types.ts` — five section headers cite the dead path:
-  lines 18, 57, 95 ("Mirrors `src-tauri/src/search/types.rs`"),
-  line 45 ("Mirrors `PostAction` in
-  `src-tauri/src/search/types.rs`"), and line 108 ("Mirrors
-  `SearchMessage` in `src-tauri/src/search/mod.rs`").
+- `src/types.ts`: four remaining section headers cite the dead
+  path: line 39 ("Mirrors `PostAction` in
+  `src-tauri/src/search/types.rs`"), line 51 ("Mirrors
+  `src-tauri/src/search/types.rs`", Entry Types), line 89 (same,
+  Gadget View Reference), and line 102 ("Mirrors `SearchMessage`
+  in `src-tauri/src/search/mod.rs`").
 
 - `src/launcher/compareEntries.ts:11-12`: "The Rust backend has
   an equivalent method `SourcedEntry::cmp_sort_key` in
@@ -39,12 +44,12 @@ search/gadget command handlers live in
 `src-tauri/src/commands/types.rs`.
 
 Since these comments state the sync obligations that keep the
-typed `CommandMap` and the `PostAction` mirror honest, pointing
-them at a dead path sends the next maintainer grepping in the
-wrong place.
+typed `CommandMap` and the `PostAction`/entry/message mirrors
+honest, pointing them at a dead path sends the next maintainer
+grepping in the wrong place.
 
 ## Suggested fix
 
-Point both comments at `src-tauri/src/commands/mod.rs` /
+Point the remaining comments at `src-tauri/src/commands/mod.rs` /
 `src-tauri/src/commands/types.rs` (the `src-tauri/src/lib.rs`
 half of the command.ts comment is still correct).

@@ -10,10 +10,10 @@ area: [just/gadgets.just]
 ## Problem
 
 `package-gadget` documents its blacklist as excluding "build
-inputs and developer-only artifacts" (`just/gadgets.just:70-100`)
+inputs and developer-only artifacts" (`just/gadgets.just:80-99`)
 and excludes `Cargo.toml`, `Cargo.lock`, and `src/*` — but not
 `build.rs`, which is equally a Rust build input living at the
-gadget root. The emoji-picker gadget has one
+gadget root. The emoji-picker gadget still has one
 (`gadgets/emoji-picker/build.rs`), so its `.torchsnap` archive
 ships the build script alongside the compiled `.wasm`.
 
@@ -27,7 +27,7 @@ those too.
 ## Suggested fix
 
 Add to the `zip` exclusion list in `package-gadget`
-(`gadgets.just:117-131`):
+(`gadgets.just:129-144`):
 
 ```
 -x 'build.rs' \

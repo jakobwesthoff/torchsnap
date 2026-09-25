@@ -9,9 +9,8 @@ Exploratory follow-up, not blocking.
 
 ## Context
 
-During the ZeroTier gadget work (todo
-`01kqaqzdma111a817snbna5n8b-zerotier-one-integration.md`) a new
-shared `<List>` component was added to the gadget SDK
+During the ZeroTier gadget work a new shared `<List>` component was
+added to the gadget SDK
 (`packages/gadget-sdk/src/shims/components.ts`, host implementation
 at `src/components/List.tsx`). The ZeroTier settings page is its
 first consumer, used to render the "remembered networks" management
@@ -19,7 +18,7 @@ view.
 
 The calculator gadget already renders a list of records — its
 history view at
-`gadgets/calculator/frontend/src/views/CalculatorView.tsx:248-300`
+`gadgets/calculator/frontend/src/views/CalculatorView.tsx:225-271`
 — but it predates the shared component and rolls its own DOM.
 It was actually the reference DOM shape used while designing
 `<List>`.
@@ -66,7 +65,7 @@ to absorb every list-shaped UI in the codebase.
 ## Implementation outline (when we do it)
 
 - Replace the manual `div + .map()` row rendering at
-  `CalculatorView.tsx:248-300` with `<List>`.
+  `CalculatorView.tsx:225-271` with `<List>`.
 - Verify `useWindowedList` integration via the component's
   `virtualized` prop still produces equivalent scroll behaviour.
 - Verify keyboard navigation (selected-row highlight, action

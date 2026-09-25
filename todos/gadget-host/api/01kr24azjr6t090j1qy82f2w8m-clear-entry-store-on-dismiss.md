@@ -36,5 +36,6 @@ large command payloads to their actions.
 
 ## Related
 
-- `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md`:
-  replaces `ScoredEntry::data` with per-slot commands.
+- ADR 55 (`docs/adr/0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md`):
+  per-slot commands on each entry's actions, stored in the entry
+  store.
