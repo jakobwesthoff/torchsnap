@@ -4,7 +4,6 @@ status: open
 area: [gadgets/gadget-sdk/wit/torchsnap-gadget.wit, gadgets/gadget-sdk/src/lib.rs, gadgets/gadget-sdk/src/data.rs, src-tauri/src/gadgets/mod.rs, src-tauri/src/commands/types.rs, src-tauri/src/commands/mod.rs, src-tauri/src/gadget_host.rs, src-tauri/src/entry_store.rs, src-tauri/src/wasm/bindings.rs, src-tauri/src/wasm/bridge.rs, src/types.ts, src/launcher/Launcher.tsx, src/launcher/ResultRow.tsx, src/launcher/hooks/useKeyboardNavigation.ts, packages/gadget-sdk/src/types/data.ts, packages/gadget-sdk/src/shims/hooks.ts]
 tags: [api-design, wasm, sdk]
 plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
-depends-on: [todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md]
 ---
 
 # Entry action commands and fixed slots
@@ -149,9 +148,5 @@ actions" section at line 381), `development/interfaces/imports.mdx:45`,
 - `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md`:
   fix it before this refactor. Its fix already follows the ADR's rule
   for views.
-- `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md`
-  (in `depends-on`): overlapping searches can leave stale entries in
-  the store. With commands, a stale entry runs a stale command. Land
-  that fix first.
 - `todos/product/features/01kmh12n6r0mq94rwav32eczdn-keybind-system.md`:
   gadget-defined bindings, deferred by the ADR.

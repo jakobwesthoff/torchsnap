@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- While typing fast, a slow gadget's results for an earlier keystroke
+  no longer replace the results of the current one in the host. Before,
+  an action could run with the older entry, or do nothing because the
+  entry was gone.
 - The gadget interface docs name the filesystem permission section
   `[permissions.filesystem]`, the name the manifest parser accepts.
   They said `[permissions.fs]`, which grants nothing.

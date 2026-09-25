@@ -26,10 +26,10 @@ function itself treats as non-executions:
    the current search)" and returns `Nothing`
    (`gadget_host.rs:979-985`) — but the frecency hit for the
    phantom `(source, entry_id)` pair has already been stored.
-   Given the overlapping-search race in
-   `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md`,
-   this branch is reachable in practice, so garbage ids
-   accumulate in the frecency database.
+   Overlapping searches used to make this branch reachable in
+   practice; `EntryStore` now drops results of an older search.
+   Whenever the branch is still reached, a garbage id lands in
+   the frecency database.
 
 2. **`OpenSettings`.** The host short-circuits this action
    before any gadget dispatch (`gadget_host.rs:969-977`) —

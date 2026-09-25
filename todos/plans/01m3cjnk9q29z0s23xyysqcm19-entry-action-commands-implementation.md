@@ -13,7 +13,6 @@ and coordinates these todos:
 
 | Todo | Phase |
 |---|---|
-| `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md` | 1 |
 | `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md` | 2 |
 | `todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md` | 4 |
 | `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md` | 5 to 7 |
@@ -50,29 +49,29 @@ checks. Tick the boxes as the work progresses.
 
 ## Phase 0: setup
 
-- [ ] `git worktree add ../torchsnap.worktrees/entry-action-commands -b entry-action-commands main`
-- [ ] Baseline `just fullcycle` in the worktree. If it fails, stop and
+- [x] `git worktree add ../torchsnap.worktrees/entry-action-commands -b entry-action-commands main`
+- [x] Baseline `just fullcycle` in the worktree. If it fails, stop and
   report what fails before changing anything.
 
 ## Phase 1: generation guard for the entry store
 
-Todo `01kwg1ph0qcdqtara5jcw7abym`. Must land before phase 5, because
-with commands a stale entry runs a stale command.
+Done: `EntryStore` drops results of an older search. Must land before
+phase 5, because with commands a stale entry runs a stale command.
 
-- [ ] Failing tests in `src-tauri/src/entry_store.rs`: a new generation
+- [x] Failing tests in `src-tauri/src/entry_store.rs`: a new generation
   clears the store; an insert for the current generation is stored; an
-  insert for an older generation is dropped; the S1/S2 interleaving
-  from the todo leaves only S2's entries.
-- [ ] Give `EntryStore` a generation: starting a search clears the map
+  insert for an older generation is dropped; two overlapping searches
+  leave only the newer one's entries.
+- [x] Give `EntryStore` a generation: starting a search clears the map
   and returns a new generation, and `insert` takes the generation it
   was produced for. Check and insert happen under the same write lock.
-- [ ] `GadgetHost::search` takes the generation at the top and passes
+- [x] `GadgetHost::search` takes the generation at the top and passes
   it to every `store_sourced_entries` call.
-- [ ] `CHANGELOG.md`, Fixed.
-- [ ] Delete the todo, remove its `depends-on` entry from
+- [x] `CHANGELOG.md`, Fixed.
+- [x] Delete the todo, remove its `depends-on` entry from
   `01kr2357mcz36g4gte0c0t1qz5` and its row in this plan's table, and
   update the other references.
-- [ ] `just fullcycle`, commit.
+- [x] `just fullcycle`, commit.
 
 ## Phase 2: calculator copy on Enter
 
