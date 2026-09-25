@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_store::Store;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -41,11 +41,15 @@ use crate::commands::types::{
 };
 use crate::entry_store::EntryStore;
 use crate::frecency::FrecencyStore;
-use crate::gadgets::{Gadget, GadgetShortcut};
+use crate::gadgets::Gadget;
 use crate::icons::IconCache;
 use crate::network::website_metadata::WebsiteMetadataService;
 use crate::settings::SettingsInit;
 use crate::settings::coalescing_dispatcher::CoalescingDispatcher;
+use crate::shortcuts::{
+    LAUNCHER_SETTINGS_KEY, SHORTCUT_PROBLEMS_CHANGED, ShortcutPlan, ShortcutProblem,
+    ShortcutProblems, ShortcutRequest, plan_shortcuts,
+};
 use crate::unicode::Utf16Positions;
 use crate::wasm::source::GadgetSourceKind;
 
@@ -110,6 +114,35 @@ where
 }
 
 // =========================================================
+// Shortcut dispatch
+// =========================================================
+
+fn dispatch_shortcut(handle: &tauri::AppHandle, target: &ShortcutTarget) {
+    match target {
+        ShortcutTarget::Launcher => {
+            // On the welcome's last step the shortcut finishes the
+            // welcome, which opens the launcher already.
+            if !crate::welcome::launcher_shortcut_pressed(handle) {
+                crate::toggle_launcher_window(handle);
+            }
+        }
+        ShortcutTarget::Gadget {
+            gadget_id,
+            shortcut_id,
+            owner,
+        } => match owner.handle_shortcut(shortcut_id) {
+            Ok(PostAction::ShowCustomUI { view, data }) => {
+                show_launcher_with_gadget(handle, gadget_id, &view, data);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("shortcut: {gadget_id}.{shortcut_id} handler failed: {e:#}");
+            }
+        },
+    }
+}
+
+// =========================================================
 // Host-level PostActions
 // =========================================================
 
@@ -141,14 +174,21 @@ fn split_post_action(post_action: PostAction) -> (Option<HostEffect>, PostAction
 // Shortcut Types
 // =========================================================
 
-/// A registered shortcut with enough context to route the
-/// activation back to the owning gadget.
-struct RegisteredShortcut {
-    shortcut: Shortcut,
-    gadget_id: String,
-    shortcut_id: String,
-    owner: Arc<dyn Gadget>,
+/// What pressing a registered shortcut does.
+enum ShortcutTarget {
+    /// Toggle the launcher window.
+    Launcher,
+    /// Route the press back to the gadget that declared the shortcut.
+    Gadget {
+        gadget_id: String,
+        shortcut_id: String,
+        owner: Arc<dyn Gadget>,
+    },
 }
+
+/// Name Settings gives the launcher shortcut; shown when a gadget
+/// shortcut collides with it.
+const LAUNCHER_SHORTCUT_LABEL: &str = "Global Shortcut";
 
 /// Payload emitted with the `activate-gadget-custom-ui` event.
 #[derive(Clone, serde::Serialize)]
@@ -217,6 +257,7 @@ pub struct GadgetHost {
     watched_keys: HashSet<String>,
     shortcut_signal_tx: mpsc::Sender<()>,
     shortcut_signal_rx: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
+    shortcut_problems: ShortcutProblems,
 }
 
 impl GadgetHost {
@@ -230,6 +271,7 @@ impl GadgetHost {
             watched_keys: HashSet::new(),
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
+            shortcut_problems: ShortcutProblems::default(),
         }
     }
 
@@ -484,7 +526,7 @@ impl GadgetHost {
         // -------------------------------------------------------
         // Collect watched keys for reactive re-registration
         // -------------------------------------------------------
-        self.watched_keys.insert("globalShortcut".to_string());
+        self.watched_keys.insert(LAUNCHER_SETTINGS_KEY.to_string());
 
         let mut keys_to_watch = Vec::new();
         for slot in &self.slots {
@@ -571,125 +613,101 @@ impl GadgetHost {
     // Shortcut Registration
     // =========================================================
 
+    /// Why shortcuts from the latest registration are not active,
+    /// keyed by settings key. Read by the Settings shortcut rows.
+    pub fn shortcut_problems(&self) -> std::collections::BTreeMap<String, ShortcutProblem> {
+        self.shortcut_problems.snapshot()
+    }
+
     fn register_all_shortcuts(&self, app: &tauri::AppHandle) {
+        // Plan before unregistering: a missing, invalid or duplicate
+        // combo is found here and costs only its own shortcut.
+        let ShortcutPlan {
+            accepted,
+            mut problems,
+        } = plan_shortcuts(self.shortcut_requests());
+
         // Unregister everything first — the only safe way to
         // re-register with tauri-plugin-global-shortcut.
         let _ = app.global_shortcut().unregister_all();
 
-        let mut registered: Vec<RegisteredShortcut> = Vec::new();
-
-        // Collect shortcuts from all enabled gadgets.
-        for slot in &self.slots {
-            if !slot.is_active() {
-                continue;
-            }
-            let gadget = &slot.gadget;
-            let gadget_id = gadget.id().to_string();
-            for decl in gadget.shortcuts() {
-                if let Some(r) = self.resolve_shortcut(&gadget_id, &decl, Arc::clone(gadget)) {
-                    registered.push(r);
-                }
+        // One registration per shortcut, so a combo the OS refuses
+        // (another app holds it, or the system reserves it) loses only
+        // itself.
+        for (shortcut, request) in accepted {
+            let ShortcutRequest {
+                settings_key,
+                target,
+                ..
+            } = request;
+            let handle = app.clone();
+            let registered =
+                app.global_shortcut()
+                    .on_shortcut(shortcut, move |_app, _shortcut, event| {
+                        if event.state == ShortcutState::Pressed {
+                            dispatch_shortcut(&handle, &target);
+                        }
+                    });
+            if let Err(e) = registered {
+                problems.insert(
+                    settings_key,
+                    ShortcutProblem::Rejected {
+                        reason: e.to_string(),
+                    },
+                );
             }
         }
 
-        // Read the launcher toggle shortcut.
-        let launcher_combo_str = self
-            .store
-            .get("globalShortcut")
-            .and_then(|v| v.as_str().map(String::from))
-            .expect("globalShortcut initialized by settings defaults");
-
-        let launcher_shortcut = match launcher_combo_str.parse::<Shortcut>() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("shortcut: invalid launcher combo '{launcher_combo_str}': {e}");
-                return;
-            }
-        };
-
-        // Collect all combos for bulk registration.
-        let mut all_combos: Vec<Shortcut> = vec![launcher_shortcut];
-        for r in &registered {
-            all_combos.push(r.shortcut);
+        for (settings_key, problem) in &problems {
+            eprintln!("shortcut: {settings_key} is not registered: {problem:?}");
         }
-
-        let registered = Arc::new(registered);
-        let handle = app.clone();
-
-        if let Err(e) =
-            app.global_shortcut()
-                .on_shortcuts(all_combos, move |_app, shortcut, event| {
-                    if event.state != ShortcutState::Pressed {
-                        return;
-                    }
-
-                    // Launcher toggle.
-                    if *shortcut == launcher_shortcut {
-                        // On the welcome's last step the shortcut
-                        // finishes the welcome, which opens the
-                        // launcher already.
-                        if !crate::welcome::launcher_shortcut_pressed(&handle) {
-                            crate::toggle_launcher_window(&handle);
-                        }
-                        return;
-                    }
-
-                    // Gadget shortcut routing.
-                    let Some(r) = registered.iter().find(|r| r.shortcut == *shortcut) else {
-                        return;
-                    };
-
-                    let result = r.owner.handle_shortcut(&r.shortcut_id);
-
-                    match result {
-                        Ok(PostAction::ShowCustomUI { view, data }) => {
-                            show_launcher_with_gadget(&handle, &r.gadget_id, &view, data);
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!(
-                                "shortcut: {}.{} handler failed: {e:#}",
-                                r.gadget_id, r.shortcut_id
-                            );
-                        }
-                    }
-                })
-        {
-            eprintln!("shortcut: failed to register shortcuts: {e}");
+        self.shortcut_problems.replace(problems);
+        if let Err(e) = app.emit(SHORTCUT_PROBLEMS_CHANGED, ()) {
+            eprintln!("shortcut: failed to announce registration problems: {e}");
         }
     }
 
-    fn resolve_shortcut(
-        &self,
-        gadget_id: &str,
-        decl: &GadgetShortcut,
-        owner: Arc<dyn Gadget>,
-    ) -> Option<RegisteredShortcut> {
-        let full_key = format!("gadgets.{gadget_id}.{}", decl.settings_key);
+    /// Every shortcut to register, in the order that decides
+    /// collisions: the launcher first, then active gadgets in their
+    /// registration order. A gadget shortcut without a stored combo
+    /// uses its declared default; the launcher has none, since the
+    /// settings defaults always store one.
+    fn shortcut_requests(&self) -> Vec<ShortcutRequest<ShortcutTarget>> {
+        let mut requests = vec![ShortcutRequest {
+            settings_key: LAUNCHER_SETTINGS_KEY.to_string(),
+            label: LAUNCHER_SHORTCUT_LABEL.to_string(),
+            combo: self.stored_combo(LAUNCHER_SETTINGS_KEY),
+            target: ShortcutTarget::Launcher,
+        }];
 
-        let combo_str = self
-            .store
-            .get(&full_key)
-            .and_then(|v| v.as_str().map(String::from))
-            .unwrap_or_else(|| decl.default_shortcut.to_string());
-
-        let shortcut = match combo_str.parse::<Shortcut>() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!(
-                    "shortcut: invalid combo '{combo_str}' for {gadget_id}.{}: {e}",
-                    decl.id
-                );
-                return None;
+        for slot in self.slots.iter().filter(|slot| slot.is_active()) {
+            let gadget_id = slot.gadget.id().to_string();
+            for decl in slot.gadget.shortcuts() {
+                let settings_key = format!("gadgets.{gadget_id}.{}", decl.settings_key);
+                let combo = self
+                    .stored_combo(&settings_key)
+                    .unwrap_or_else(|| decl.default_shortcut.to_string());
+                requests.push(ShortcutRequest {
+                    settings_key,
+                    label: decl.label.to_string(),
+                    combo: Some(combo),
+                    target: ShortcutTarget::Gadget {
+                        gadget_id: gadget_id.clone(),
+                        shortcut_id: decl.id.to_string(),
+                        owner: Arc::clone(&slot.gadget),
+                    },
+                });
             }
-        };
+        }
 
-        Some(RegisteredShortcut {
-            shortcut,
-            gadget_id: gadget_id.to_string(),
-            shortcut_id: decl.id.to_string(),
-            owner,
-        })
+        requests
+    }
+
+    /// The combo stored under `settings_key`, if it holds a string.
+    fn stored_combo(&self, settings_key: &str) -> Option<String> {
+        self.store
+            .get(settings_key)
+            .and_then(|v| v.as_str().map(String::from))
     }
 
     // =========================================================
@@ -1260,6 +1278,7 @@ fn show_launcher_with_gadget(
 mod tests {
     use super::*;
     use crate::commands::types::CatalogEntry;
+    use tauri_plugin_global_shortcut::Shortcut;
 
     // -------------------------------------------------------
     // Mock Gadget
@@ -1827,10 +1846,10 @@ mod tests {
     //
     // `ShortcutRecorder.tsx` writes these accelerator strings to
     // the settings store and `register_all_shortcuts` parses
-    // them into `Shortcut`s. Dispatch compares parsed shortcuts
-    // with `==`, so every combo the recorder can produce must
-    // parse, and combos that differ only in a modifier must
-    // stay distinct.
+    // them into `Shortcut`s. Shortcut planning finds collisions
+    // by comparing parsed shortcuts with `==`, so every combo the
+    // recorder can produce must parse, and combos that differ
+    // only in a modifier must stay distinct.
     // -------------------------------------------------------
 
     /// Non-modifier keys as `buildAccelerator` spells them: `e.code`
