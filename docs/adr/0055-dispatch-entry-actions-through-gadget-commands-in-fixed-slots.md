@@ -52,7 +52,7 @@ In the gadgets of this repository:
   WASM gadgets get Cmd+Shift+R for `reveal`.
 - The calculator views call `onExecute` with the computed result as the
   entry id. The host finds no stored entry with that id, so nothing is
-  copied (`todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md`).
+  copied.
 
 The gadget API may change incompatibly before the 1.0.0 release, and no
 external gadgets exist yet.
