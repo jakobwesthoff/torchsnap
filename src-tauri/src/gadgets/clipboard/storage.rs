@@ -354,8 +354,10 @@ impl SharedState {
     }
 
     /// Delete entries older than the given retention period (in days).
+    /// A period below one day counts as one day: a cutoff of "now"
+    /// would delete the whole history.
     pub fn delete_expired_entries(&self, retention_days: u32) -> Result<()> {
-        let cutoff = format!("-{retention_days} days");
+        let cutoff = format!("-{} days", retention_days.max(1));
 
         let old_ids: Vec<String> = self.sql.query_map(
             "SELECT id FROM clipboard_entries
@@ -690,6 +692,43 @@ mod tests {
 
     fn ids(entries: &[ClipboardListEntry]) -> Vec<&str> {
         entries.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    // -----------------------------------------------------
+    // Retention
+    // -----------------------------------------------------
+
+    fn store_now(state: &SharedState, id: &str, text: &str) {
+        let formats = vec![CapturedFormat {
+            format: "text".to_owned(),
+            data: text.as_bytes().to_vec(),
+        }];
+        state
+            .store_entry(id, text, &formats)
+            .expect("store test entry");
+    }
+
+    #[test]
+    fn retention_deletes_entries_older_than_the_period_only() {
+        let (state, _dir) = test_state();
+        store_text(&state, "old", "from long ago", "2020-01-01T00:00:00.000Z");
+        store_now(&state, "new", "from just now");
+
+        state.delete_expired_entries(30).expect("cleanup runs");
+
+        let remaining = state.search_history(None).expect("history loads");
+        assert_eq!(ids(&remaining), vec!["new"]);
+    }
+
+    #[test]
+    fn retention_of_zero_days_keeps_todays_entries() {
+        let (state, _dir) = test_state();
+        store_now(&state, "new", "from just now");
+
+        state.delete_expired_entries(0).expect("cleanup runs");
+
+        let remaining = state.search_history(None).expect("history loads");
+        assert_eq!(ids(&remaining), vec!["new"]);
     }
 
     // -----------------------------------------------------

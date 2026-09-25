@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepts a path that goes through a symlink whose target does not
   exist. Writing to such a path would have created the target outside
   the allowed folder.
+- A Clipboard Manager retention of 0 days, or a value too large to
+  store, no longer deletes the whole clipboard history. Retention is
+  at least one day.
 - Recording a shortcut no longer accepts a single key or Shift plus a
   key, which took that key away from every other app. A shortcut needs
   Cmd, Ctrl or Alt, or is an F-key on its own. While recording, a hint

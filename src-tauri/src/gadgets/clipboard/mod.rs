@@ -143,6 +143,14 @@ impl ClipboardGadget {
     }
 }
 
+/// The stored `retentionDays` setting as a day count. The settings
+/// slider offers 1 to 365, but the store accepts any number: below one
+/// day counts as one day, and values beyond `u32` saturate instead of
+/// wrapping around to zero.
+fn retention_days_from(days: u64) -> u32 {
+    u32::try_from(days).unwrap_or(u32::MAX).max(1)
+}
+
 /// Start the clipboard watcher and retention cleanup thread.
 ///
 /// Standalone function (not a method) so it can be called from
@@ -310,7 +318,9 @@ impl Gadget for ClipboardGadget {
 
         // Read initial values for settings managed via setting_changed.
         let settings = self.caps.settings();
-        let retention: u32 = settings.get("retentionDays").unwrap_or(30);
+        let retention = settings
+            .get::<u64>("retentionDays")
+            .map_or(30, retention_days_from);
         self.retention_days.store(retention, Ordering::Relaxed);
 
         let bring_to_front: bool = settings.get("bringToFrontOnPaste").unwrap_or(true);
@@ -353,7 +363,8 @@ impl Gadget for ClipboardGadget {
         match key {
             "retentionDays" => {
                 if let Some(days) = value.as_u64() {
-                    self.retention_days.store(days as u32, Ordering::Relaxed);
+                    self.retention_days
+                        .store(retention_days_from(days), Ordering::Relaxed);
                     // Wake the retention thread so it picks up the new value.
                     self.retention_condvar.notify_all();
                 }
@@ -653,5 +664,51 @@ mod tests {
                 .handle_message("stats", serde_json::Value::Null, discarding_channel())
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_retention_below_one_day_counts_as_one_day() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        gadget.setting_changed("retentionDays", serde_json::json!(0));
+
+        assert_eq!(gadget.retention_days.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn an_oversized_retention_saturates_instead_of_wrapping_to_zero() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        gadget.setting_changed("retentionDays", serde_json::json!(4_294_967_296u64));
+
+        assert_eq!(gadget.retention_days.load(Ordering::Relaxed), u32::MAX);
+    }
+
+    #[test]
+    fn a_retention_in_range_is_used_as_is() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        gadget.setting_changed("retentionDays", serde_json::json!(90));
+
+        assert_eq!(gadget.retention_days.load(Ordering::Relaxed), 90);
+    }
+
+    #[test]
+    fn a_retention_that_is_not_a_whole_number_is_ignored() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        for value in [
+            serde_json::json!(-5),
+            serde_json::json!("7"),
+            serde_json::json!(1.5),
+        ] {
+            gadget.setting_changed("retentionDays", value);
+        }
+
+        assert_eq!(gadget.retention_days.load(Ordering::Relaxed), 30);
     }
 }
