@@ -46,6 +46,13 @@ function gadgetComponent<P extends object>(
     if (!promise) {
       promise = factory().then(
         (mod) => {
+          // A module without a component would leave the wrapper
+          // suspended on an already-resolved promise forever, so it
+          // counts as a failed load.
+          if (mod.default == null) {
+            error = new Error("gadget module resolved without a component");
+            return;
+          }
           Component = mod.default;
         },
         (err) => {

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Clipboard Manager retention of 0 days, or a value too large to
   store, no longer deletes the whole clipboard history. Retention is
   at least one day.
+- A gadget whose `manifest.toml` names a view or settings component
+  that its bundle does not export shows an error card naming the
+  missing export instead of "Loading…" forever.
 - Recording a shortcut no longer accepts a single key or Shift plus a
   key, which took that key away from every other app. A shortcut needs
   Cmd, Ctrl or Alt, or is an F-key on its own. While recording, a hint
