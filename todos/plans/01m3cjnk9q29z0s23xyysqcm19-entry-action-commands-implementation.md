@@ -215,7 +215,7 @@ here. Commits in this phase may not build. Commit after each step.
 
 ## Phase 6: documentation
 
-- [ ] In this repository: `docs/api/gadget-development.md`,
+- [x] In this repository: `docs/api/gadget-development.md`,
   `docs/Gadget-Architecture/01-overview.md` to `06-settings-reactivity.md`
   where they describe actions, `execute()`, `data` or the version, the
   crate docs at the top of `gadgets/gadget-sdk/src/lib.rs`, and the

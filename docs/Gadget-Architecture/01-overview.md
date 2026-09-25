@@ -1,18 +1,28 @@
 # Gadget Architecture Overview
 
 Torchsnap gadgets are sandboxed WebAssembly components conforming to the
-`torchsnap:gadget@0.1.0` world defined in
+`torchsnap:gadget@0.2.0` world defined in
 `gadgets/gadget-sdk/wit/torchsnap-gadget.wit`. The host (Rust + Tauri)
 loads them at runtime, mediates every capability they reach for, and
 streams their search results into the launcher UI.
+
+The WIT package, the Rust SDK crate `torchsnap-gadget-sdk` and the
+TypeScript SDK package `@torchsnap/gadget-sdk` share one version
+number, currently 0.2.0. When any of the three changes incompatibly,
+all three move to the same new version (ADR 0056).
 
 A small number of capabilities (clipboard, app launcher, system
 preferences, system commands) still ship as **Builtin** native Rust
 gadgets compiled into the host binary. Everything new is WASM. Both
 kinds implement the same `Gadget` trait
-(`src-tauri/src/gadgets/mod.rs`). For WASM gadgets, that trait is
-implemented by `WasmGadgetBridge` (`src-tauri/src/wasm/bridge.rs`),
-which forwards every call across the WIT boundary.
+(`src-tauri/src/gadgets/mod.rs`), whose supertrait `ErasedSearch`
+holds `entries()`, `search()` and `execute()` with action commands
+as opaque strings. Native gadgets implement `Gadget` plus the typed
+`Search` trait, and a blanket impl turns `Search` into
+`ErasedSearch`. For WASM gadgets, both traits are implemented by
+`WasmGadgetBridge` (`src-tauri/src/wasm/bridge.rs`), which forwards
+every call across the WIT boundary and passes command strings
+through unchanged.
 
 ## Component model
 
@@ -219,11 +229,12 @@ only a disk-cached compiled artifact, not a live store.
    to the same key, then call `lifecycle::on-setting-changed(key,
    json)` on the live instance. `key` is namespace-relative (the
    `gadgets.<id>.` prefix is stripped).
-5. **Execute** is invoked when the user activates a result. The
-   full `scored-entry` (including the opaque `data` payload from
-   `search()`) is passed back to the gadget. See
-   [02-data-types.md](02-data-types.md#execution) for the complete
-   type contract and post-action semantics.
+5. **Execute** is invoked when the user runs an action of a result.
+   Each action sits in a fixed slot and carries a command, which the
+   gadget set in `search()` or `entries()`. The host passes the
+   command of the triggered slot back to `search::execute(command)`.
+   See [02-data-types.md](02-data-types.md#execution) for the
+   complete type contract and post-action semantics.
 6. **Scheduled tasks.** If the manifest declares `[[tasks]]`, the
    bridge spawns a tokio scheduler loop that walks every parsed cron
    expression and invokes `tasks::run-task(task-id)` on the live
@@ -315,14 +326,24 @@ rationale.
 generated bindings and adds higher-level helpers on top of the raw
 WIT interfaces:
 
-- `prelude::*` brings the four guest traits, the search records, the
-  flat host import aliases, and the `define_gadget!` /
-  `impl_noop_*!` macros into scope.
+- `prelude::*` brings the typed `Search` and `Messaging` traits, the
+  `LifecycleGuest` and `TasksGuest` guest traits, the SDK's entry
+  and action types (`CatalogEntry`, `ScoredEntry`, `SearchResponse`,
+  `ViewResponse`, `Actions`, `Action`, `Slot`, `EntryIcon`,
+  `PostAction`), the flat host import aliases, and the
+  `define_gadget!` / `impl_noop_*!` macros into scope. The generated
+  `SearchGuest` and `MessagingGuest` stay at the crate root for
+  gadgets that implement them by hand.
+- `Search` is generic over the gadget's own `Command` type. The SDK
+  encodes each action's command to JSON for the WIT and decodes it
+  again before `execute()` runs.
+- `Messaging` decodes each frontend call into the gadget's own
+  `Request` enum before `handle()` runs.
 - `settings::get` / `get_or` / `get_or_else` fold the JSON parse
   into the lookup.
 - `sql_storage::Row` plus `query_one` / `query_all` give typed column
   access over the raw `Vec<Vec<sql-value>>` interface.
-- `command`, `messaging`, `logging`, `website_metadata` modules wrap
+- `command`, `logging`, `website_metadata` modules wrap
   the raw imports with conveniences (typed builders, `tracing`-style
   span helpers, etc.).
 
@@ -337,5 +358,5 @@ impl_noop_messaging!(MyGadget);
 impl_noop_tasks!(MyGadget);
 
 impl LifecycleGuest for MyGadget { /* enable / disable / on_setting_changed */ }
-impl SearchGuest for MyGadget { /* entries / search / execute */ }
+impl Search for MyGadget { /* type Command; entries / search / execute */ }
 ```

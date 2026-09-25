@@ -18,8 +18,9 @@ post-action behavior, and ancillary settings shapes.
 | Pre-scored entry | `search.scored-entry` | `ScoredEntry` |
 | Inline / custom UI payload | `search.view-response` | inside `GadgetResponse::CustomUI` / `InlineUI` |
 | Search return value | `search.search-response` | `Option<GadgetResponse>` |
-| Action | `types.action` | `Action` (adds `keybinding`) |
-| Action ID | `types.action-id` | `ActionId` |
+| Action | `types.action` | `Action<C>` |
+| Actions of an entry | `types.entry-actions` | `EntryActions<C>` |
+| Action slot | (the fields of `entry-actions`) | `Slot` |
 | Icon | `types.entry-icon` | `EntryIcon` |
 | Post-action | `search.post-action` | `PostAction` (adds `ShowCustomUI`) |
 
@@ -45,39 +46,54 @@ website-metadata service returns for favicons (as absolute paths) and
 what gadgets use for bundled icon assets (as relative paths within
 their archive).
 
-### `action-id`
-
-```wit
-variant action-id {
-  open,
-  copy,
-  reveal,
-  open-with,
-  delete,
-  open-settings,
-  custom(string),
-}
-```
-
-The well-known variants exist so the host can attach default
-keybindings, icons, and labels. `open-settings` jumps to the
-originating gadget's own settings panel, making it useful as the
-primary action on synthetic "configuration required" entries. `custom` is
-the escape hatch for gadget-specific actions.
-
 ### `action`
 
 ```wit
 record action {
-  id: action-id,
-  label: string,
+  label: option<string>,
+  command: string,
 }
 ```
 
-The host `Action` adds an optional `keybinding: ActionKeybinding`
-({ `modifiers: Vec<String>`, `key: String` }) which the host
-attaches based on the well-known `action-id`. Gadgets never set it
-themselves; the WIT record has no field for it.
+`command` is a gadget-defined value that says what running the
+action does. The host stores it with the entry, never inspects it,
+and hands it back unchanged to `execute()` when the user runs the
+action. Its encoding is up to the gadget. The Rust SDK encodes the
+gadget's `Command` type as JSON.
+
+`label` is what the launcher shows. The `primary` and `secondary`
+slots require one, and the launcher falls back to the entry's title
+when it is missing there. For the other slots, `none` shows the
+slot's default label.
+
+### `entry-actions`
+
+```wit
+record entry-actions {
+  primary: option<action>,        // Enter, or a click on the entry
+  secondary: option<action>,      // Cmd+Enter
+  copy: option<action>,           // Cmd+C
+  reveal: option<action>,         // Cmd+Shift+R
+  delete: option<action>,         // Cmd+Backspace
+  open-settings: option<action>,  // Cmd+,
+}
+```
+
+The slot alone decides how the user runs an action. The order of
+the fields has no meaning, and an empty slot has no key and no
+footer hint. The same command may fill several slots. Outside macOS,
+Ctrl takes the place of Cmd. The default labels for `none` are
+"Copy", "Reveal in Finder", "Delete" and "Open settings", the same
+English text on every platform. The frontend owns the table from
+slot to key and default label (`src/launcher/actionSlots.ts`).
+
+The host mirrors both records as `Action<C>` and `EntryActions<C>`
+(`src-tauri/src/commands/types.rs`), generic over the command type.
+The host holds commands as `String`. Native gadgets use their own
+type through the typed `Search` trait, which encodes it to a
+`String`. `EntryActions` serializes to the frontend as a list of
+`{ slot, label }` in slot order, without the commands, and `Slot`
+serializes in camelCase (`"openSettings"`).
 
 ## Catalog mode
 
@@ -92,16 +108,15 @@ record catalog-entry {
   subtitle: option<string>,
   icon: option<entry-icon>,
   keywords: list<string>,
-  actions: list<action>,
+  actions: entry-actions,
 }
 ```
 
 `keywords` is the catalog-only fallback match target: scored against
 `title + keywords`, but match positions on keyword hits are not
-highlighted. The host `CatalogEntry`
-(`src-tauri/src/commands/types.rs`) is identical apart from the
-`keywords` field carrying a comment that the first action is the
-primary one (Enter activation).
+highlighted. The host `CatalogEntry<C>`
+(`src-tauri/src/commands/types.rs`) has the same fields, with
+`actions: EntryActions<C>`.
 
 ## Query mode
 
@@ -117,16 +132,14 @@ record scored-entry {
   score: u32,
   title-highlight-positions: list<u32>,    // UTF-16 code unit offsets
   subtitle-highlight-positions: list<u32>, // UTF-16 code unit offsets
-  actions: list<action>,
-  data: option<string>,                    // opaque gadget-defined payload
+  actions: entry-actions,
 }
 ```
 
-`data` is an opaque gadget-defined payload round-tripped by the host.
-Gadgets attach it in `search()` and read it back in `execute()`.
-The host never inspects the contents. The host `ScoredEntry` mirrors this
-field as `pub data: Option<String>` with `#[serde(skip)]` so it is
-never serialized to the frontend.
+Anything `execute()` needs travels in the commands of the entry's
+actions. The host `ScoredEntry<C>` carries them in
+`actions: EntryActions<C>`, which never serializes a command to the
+frontend.
 
 The host `ScoredEntry` uses a `Utf16Positions` newtype around the
 highlight offsets and implements `FrecencyTarget` so the host can
@@ -184,15 +197,21 @@ constructing `GadgetViewRef`.
 
 ## Execution
 
-`search::execute(entry: scored-entry, action-id: action-id) ->
-result<post-action, string>`.
+`search::execute(command: string) -> result<post-action, string>`.
 
-The full `scored-entry`, including the opaque `data` field, is
-passed back to the gadget. This lets gadgets store context during
-`search()` and retrieve it in `execute()` without maintaining
-external state. The host's `Gadget` trait mirrors this with
-`execute(&self, entry: &ScoredEntry, action_id: &ActionId) ->
-anyhow::Result<PostAction>`.
+`command` is the `command` of the action the user triggered, exactly
+as the gadget returned it. The gadget receives neither the entry nor
+the slot. The frontend's `search_execute(source, entryId, slot)`
+names the entry and the slot. The host looks up the entry of the
+current search by `(source, entryId)` and passes the command in that
+slot. If the entry is gone or the slot is empty, the host logs it
+and returns `Nothing` without calling the gadget.
+
+The host's `ErasedSearch` trait (a supertrait of `Gadget`) mirrors
+this with `execute(&self, command: &str) ->
+anyhow::Result<PostAction>`. Its typed counterpart `Search` has
+`execute(&self, command: Self::Command)`, and a blanket impl decodes
+the JSON string into `Self::Command` before calling it.
 
 ```wit
 enum post-action {
@@ -317,7 +336,11 @@ never overwritten).
 
 Both `payload` and the `Ok` arm are JSON-encoded strings. The
 gadget parses with `serde_json::from_str` on the way in and
-serializes the response on the way out. Strict request/response;
+serializes the response on the way out. The Rust SDK's `Messaging`
+trait does both: it decodes each call into the gadget's `Request`
+enum and serializes the `serde_json::Value` that `handle()` returns
+(see [05-gadget-messaging.md](05-gadget-messaging.md#rust-sdk)).
+Strict request/response;
 WASM gadgets cannot stream. Native gadgets still receive a streaming
 `Channel<Value>` via `Gadget::handle_message`; only the WIT bridge
 is one-shot.
