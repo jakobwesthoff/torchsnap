@@ -11,7 +11,7 @@ tags: [unconfirmed]
 ## Problem
 
 `enable()` treats a watcher startup failure as non-fatal
-(`src-tauri/src/gadgets/clipboard/mod.rs:328-337`):
+(`src-tauri/src/gadgets/clipboard/mod.rs:336-345`):
 
 ```rust
 if let Err(e) = start_watcher(

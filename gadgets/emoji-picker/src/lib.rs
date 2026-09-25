@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use torchsnap_gadget_sdk::prelude::*;
 
 struct EmojiPickerPlugin;
@@ -262,7 +262,7 @@ fn char_positions_to_utf16(s: &str, char_positions: &[u32]) -> Vec<u32> {
 // without any double-counting on our side.
 // =========================================================
 
-fn empty_query_results(entries: &[EmojiData]) -> Vec<ScoredEntry> {
+fn empty_query_results(entries: &[EmojiData]) -> Vec<ScoredEntry<Command>> {
     if frecency::is_enabled() {
         let top = frecency::top_items(EMPTY_QUERY_LIMIT as u32);
         if top.len() >= FRECENCY_MIN_ITEMS {
@@ -313,7 +313,7 @@ struct EmojiMatch {
     shortcode_idx: usize,
 }
 
-fn search_entries(query: &str, entries: &[EmojiData]) -> Vec<ScoredEntry> {
+fn search_entries(query: &str, entries: &[EmojiData]) -> Vec<ScoredEntry<Command>> {
     // `prefer_prefix` gives shortcodes that start with the
     // query (`hug` → `hugs`) a distance-weighted bonus,
     // keeping prefix hits above mid-word matches like
@@ -452,7 +452,7 @@ fn build_scored_entry(
     score: u32,
     title_char_positions: &[u32],
     subtitle_char_positions: &[u32],
-) -> ScoredEntry {
+) -> ScoredEntry<Command> {
     let display_shortcode = entry
         .shortcodes
         .get(shortcode_idx)
@@ -470,14 +470,22 @@ fn build_scored_entry(
         subtitle: Some(subtitle),
         icon: Some(EntryIcon::Emoji(entry.emoji.clone())),
         score,
-        // Keybindings for well-known `ActionId`s are filled
-        // in by the host, not the guest.
-        actions: vec![Action {
-            id: ActionId::Copy,
-            label: "Copy to Clipboard".into(),
-        }],
-        data: None,
+        actions: emoji_actions(&entry.emoji),
     }
+}
+
+/// What an emoji's action does: copy the emoji itself.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum Command {
+    Copy(String),
+}
+
+/// The picker grid runs the `copy` slot on Enter and on click.
+fn emoji_actions(emoji: &str) -> Actions<Command> {
+    Actions::new().copy(Action::labeled(
+        "Copy to Clipboard",
+        Command::Copy(emoji.to_string()),
+    ))
 }
 
 // =========================================================
@@ -514,15 +522,13 @@ impl LifecycleGuest for EmojiPickerPlugin {
 // Search
 // =========================================================
 
-impl SearchGuest for EmojiPickerPlugin {
-    fn entries() -> Vec<CatalogEntry> {
-        // Prefix-only gadget: it contributes nothing to the
-        // always-on catalog, so typing a plain word like
-        // "grinning" won't surface emoji.
-        Vec::new()
-    }
+// Prefix-only gadget: `entries()` keeps the trait's empty
+// default, so typing a plain word like "grinning" won't surface
+// emoji in the always-on catalog.
+impl Search for EmojiPickerPlugin {
+    type Command = Command;
 
-    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
+    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
         // Outside prefix mode we have nothing to contribute;
         // returning `Nothing` lets the host route the query
         // to other always-on gadgets.
@@ -556,12 +562,11 @@ impl SearchGuest for EmojiPickerPlugin {
         })
     }
 
-    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
-        // `entry.id` is the emoji character itself — we set
-        // `ScoredEntry.id = entry.emoji` when building the
-        // response. The host has already recorded the
-        // frecency selection by the time this runs.
-        clipboard::write_text(&entry.id).map_err(|e| format!("write emoji to clipboard: {e}"))?;
+    fn execute(command: Command) -> Result<PostAction, String> {
+        // The host has already recorded the frecency selection
+        // by the time this runs.
+        let Command::Copy(emoji) = command;
+        clipboard::write_text(&emoji).map_err(|e| format!("write emoji to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }
 }
@@ -576,6 +581,19 @@ impl_noop_tasks!(EmojiPickerPlugin);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emoji_actions_copy_the_emoji() {
+        let actions = emoji_actions("🦀");
+        assert_eq!(
+            actions.copy,
+            Some(Action::labeled(
+                "Copy to Clipboard",
+                Command::Copy("🦀".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 1);
+    }
 
     fn shortcodes_for(data: &[EmojiData], label: &str) -> Vec<String> {
         data.iter()

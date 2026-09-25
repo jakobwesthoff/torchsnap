@@ -11,7 +11,9 @@
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use torchsnap_gadget_sdk::{Action, ActionId, EntryIcon, ScoredEntry};
+use torchsnap_gadget_sdk::{EntryIcon, ScoredEntry};
+
+use crate::{Command, petname_actions};
 
 // =========================================================
 // Word Lists
@@ -148,7 +150,7 @@ pub fn generate_petnames(count: usize) -> Vec<String> {
 // entries with highlight positions.
 // =========================================================
 
-pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
+pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry<Command>> {
     // `prefer_prefix` nudges matches that start at the
     // beginning of the name above interior matches — the
     // autocompletion bias we want for short query strings.
@@ -164,7 +166,7 @@ pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
     );
 
     let mut buf = Vec::new();
-    let mut results: Vec<ScoredEntry> = Vec::new();
+    let mut results: Vec<ScoredEntry<Command>> = Vec::new();
 
     for name in names {
         let haystack = Utf32Str::new(name, &mut buf);
@@ -187,11 +189,7 @@ pub fn fuzzy_search(query: &str, names: &[String]) -> Vec<ScoredEntry> {
                 score: score as u32,
                 title_highlight_positions: utf16_positions,
                 subtitle_highlight_positions: vec![],
-                actions: vec![Action {
-                    id: ActionId::Copy,
-                    label: "Copy".into(),
-                }],
-                data: None,
+                actions: petname_actions(name),
             });
         }
 

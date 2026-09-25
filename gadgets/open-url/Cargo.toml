@@ -10,6 +10,7 @@ edition = "2024"
 torchsnap-gadget-sdk = { path = "../gadget-sdk" }
 url = "2"
 addr = "0.15"
+serde = { version = "1.0.229", features = ["derive"] }
 
 [lib]
 crate-type = ["cdylib"]

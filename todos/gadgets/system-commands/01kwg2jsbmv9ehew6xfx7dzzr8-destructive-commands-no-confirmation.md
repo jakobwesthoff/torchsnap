@@ -10,13 +10,13 @@ area: [src-tauri/src/gadgets/system_commands]
 ## Problem
 
 Restart, Shut Down, Log Out (`macos_commands/power.rs`), and Empty
-Trash (`macos_commands/utilities.rs:56-59`) execute immediately
+Trash (`macos_commands/utilities.rs:50-51`) execute immediately
 when the user presses Enter on the entry. Empty Trash permanently
 deletes data (`tell application "Finder" to empty trash`); the
 power commands end the session.
 
 The `SystemCommand` trait already has the hook for this
-(`src-tauri/src/gadgets/system_commands/mod.rs:42-47`):
+(`src-tauri/src/gadgets/system_commands/mod.rs:44-49`):
 
 ```rust
 /// Whether the command requires user confirmation before executing.
@@ -28,8 +28,8 @@ fn needs_confirmation(&self) -> bool {
 ```
 
 It is `#[allow(dead_code)]` and never called; no command overrides
-it, and the gadget's `execute()` (`mod.rs:108-121`) dispatches
-straight to `cmd.execute()`.
+it, and the gadget's `execute()` dispatches straight to
+`cmd.execute()`.
 
 A fuzzy launcher makes accidental triggers realistic: "Empty
 Trash" and "Eject Disc" share the keyword `disk`/`trash`-adjacent

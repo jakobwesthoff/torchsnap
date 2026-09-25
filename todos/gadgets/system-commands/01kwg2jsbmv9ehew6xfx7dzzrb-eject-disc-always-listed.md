@@ -10,7 +10,7 @@ area: [src-tauri/src/gadgets/system_commands/macos_commands/utilities.rs]
 ## Problem
 
 `EjectDisc::is_available` returns `true` unconditionally
-(`utilities.rs:109-111`). Modern Macs have not shipped an optical
+(`utilities.rs:104-106`). Modern Macs have not shipped an optical
 drive since 2012ish; for virtually all users this entry is
 permanent noise in the result list ("eject", "disk" are common
 search fragments) and executing it runs `drutil eject` against
@@ -22,7 +22,7 @@ The `SystemCommand` trait explicitly designed `is_available` for
 this: "Whether this command should appear in the launcher right
 now. Called on every search keystroke — implementations should be
 cheap (no I/O, or cached I/O)"
-(`src-tauri/src/gadgets/system_commands/mod.rs:34-37`).
+(`src-tauri/src/gadgets/system_commands/mod.rs:35-38`).
 
 ## Suggested fix
 

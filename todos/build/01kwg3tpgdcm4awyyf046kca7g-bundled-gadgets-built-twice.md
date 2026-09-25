@@ -9,10 +9,10 @@ area: [just/build.just, just/gadgets.just]
 
 ## Problem
 
-The top-level build recipe (`just/build.just:16-19`) runs:
+The top-level build recipe (`just/build.just:37-40`) runs:
 
 ```
-build profile="debug":
+build profile="debug" sign="" config="": asset-mascot-data
     just stage-bundled-gadgets
     just build-gadgets
     bun run tauri build ...
@@ -20,9 +20,9 @@ build profile="debug":
 
 `stage-bundled-gadgets` already invokes `just build-gadget "$id"`
 for every gadget listed in `gadgets/bundled.toml`
-(`just/gadgets.just:186-190`). `build-gadgets` then loops over
+(`just/gadgets.just:200-201`). `build-gadgets` then loops over
 *all* gadget directories and calls `just build-gadget` again
-(`just/gadgets.just:17-24`) — including the five bundled ones that
+(`just/gadgets.just:20-23`), including the five bundled ones that
 were just built.
 
 Per duplicated gadget that repeats: `bun install` + `bun run

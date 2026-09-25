@@ -11,7 +11,7 @@ tags: [unconfirmed]
 ## Problem
 
 The heuristic-mode detector fires on any `digit - digit` pattern
-(`gadgets/calculator/src/lib.rs:504-507`):
+(`gadgets/calculator/src/lib.rs:538-539`):
 
 ```rust
 static SUBTRACTION: LazyLock<Regex> =
@@ -28,10 +28,10 @@ results:
 - Ticket/issue ids like `JIRA-1234-5678` partially match too
   (the `\d-\d` core), though evaluation then fails and the entry
   is suppressed — only inputs that *evaluate* leak through
-  (`heuristic_mode_search`, `lib.rs:212-237`).
+  (`heuristic_mode_search`, `lib.rs:228`).
 
 The test suite covers `v1.2.3` and `VS Code 2` as non-matches
-(`lib.rs:766-774`) but has no date or phone-number cases, so the
+(`lib.rs:863`, `lib.rs:868`) but has no date or phone-number cases, so the
 gap is untested rather than decided.
 
 ## Impact

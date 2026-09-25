@@ -5,25 +5,28 @@ status: open
 
 # Handle backend errors in the frontend
 
-Currently all `invoke` and `sendMessage` calls in the frontend either
-ignore errors entirely (fire-and-forget) or silently swallow them.
-Failed clipboard pastes, broken searches, and gadget message errors
-are invisible to the user.
+The typed `command()` wrapper (`src/lib/command.ts:245-253`) now logs
+every rejection with `console.warn` before rethrowing, so failures are
+visible in development. `sendMessage` routes through the
+`gadget_message` command (`src/lib/gadgetMessage.ts:31`), so it gets
+that logging too. Nothing surfaces to the user: there is still no
+toast or inline error banner, so failed clipboard pastes, broken
+searches, and gadget message errors remain invisible in a release
+build.
 
 ## What's needed
 
 - A lightweight error notification system (e.g., transient toast or
   inline error banner in the launcher).
-- Consistent error handling at call sites: `invoke` / `sendMessage`
-  rejections should surface through the notification system rather
-  than being caught and discarded.
+- Route the errors `command()` already catches into that notification
+  system for actionable cases, instead of leaving them at
+  `console.warn`.
 - Consider which errors are actionable (user can retry) vs. internal
   (just log), and only surface actionable ones.
 
 ## Affected call sites
 
-- `sendMessage("paste", ...)` — clipboard write failure
-- `sendMessage("delete", ...)` — entry deletion failure
-- `sendMessage("subscribe", ...)` — subscription setup failure
-- `invoke("execute_action", ...)` — action execution failure
-- `invoke("search", ...)` — search failures (currently silent)
+- `sendMessage("paste", ...)` (`src/gadgets/clipboard/ClipboardView.tsx:338`): clipboard write failure
+- `sendMessage("delete", ...)` (`src/gadgets/clipboard/ClipboardView.tsx:345`): entry deletion failure
+- `command("search_execute", ...)`: action execution failure
+- `command("search", ...)`: search failures

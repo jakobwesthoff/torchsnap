@@ -3,12 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { describe, expect, it } from "vitest";
-import type { ActionId } from "./types";
+import type { ActionSlot } from "./types";
 
-// `ActionId` mirrors the Rust enum; the type check is the real test.
-describe("ActionId", () => {
-  it("covers openSettings, which gadgets put on configuration entries", () => {
-    const id: ActionId = { type: "openSettings" };
-    expect(id).toEqual({ type: "openSettings" });
+// `ActionSlot` mirrors the Rust `Slot` enum; the type check is the
+// real test.
+describe("ActionSlot", () => {
+  it("names every slot the host serializes", () => {
+    const slots: ActionSlot[] = [
+      "primary",
+      "secondary",
+      "copy",
+      "reveal",
+      "delete",
+      "openSettings",
+    ];
+    expect(slots).toHaveLength(6);
   });
 });

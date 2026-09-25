@@ -98,13 +98,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Clipboard Manager's settings show statistics and offer "Clear
   All" only while the gadget is on, and "Clear All" stays unavailable
   while the history is empty.
-- Gadget API: `OpenSettings` actions reach the gadget's `execute()`
-  like every other action. To open its settings, a gadget returns the
-  new `open-settings` post-action (`PostAction::OpenSettings` in the
-  Rust SDK). Gadgets built against the previous interface need a
-  rebuild.
+- Gadget API 0.2.0: the WIT package `torchsnap:gadget`, the Rust SDK
+  and the TypeScript SDK move to version 0.2.0 together. An entry's
+  actions sit in fixed slots, and the slot decides the key: `primary`
+  (Enter or a click), `secondary` (Cmd+Enter), `copy` (Cmd+C),
+  `reveal` (Cmd+Shift+R), `delete` (Cmd+Backspace) and `open-settings`
+  (Cmd+,). Each action carries a command that the host hands back
+  unchanged to `execute(command)`. Rust gadgets implement `Search`
+  with their own `Command` type, and gadget views run an entry's
+  action with `onExecute(entryId, slot)`. Gadgets built against 0.1.0
+  need changes and a rebuild.
+- Gadget API: to open its settings, a gadget returns the new
+  `open-settings` post-action from `execute()`
+  (`PostAction::OpenSettings` in the Rust SDK).
 - Settings → General lists Updates before Advanced, and every settings
   row keeps a gap between its text and its switch.
+
+### Removed
+
+- Gadget API: the `custom` and `open-with` action ids, and the entry
+  `data` field. A command on each action replaces `data`, and the
+  Rust SDK's `data` module is no longer public.
 
 ## [0.12.0] - 2026-09-24
 
