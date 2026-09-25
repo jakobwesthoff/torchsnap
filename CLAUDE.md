@@ -23,6 +23,16 @@
   `-D warnings`, so a clippy warning is a failure. Fix it rather than
   silencing it with `#[allow]`.
 
+## Todos
+
+- Once a todo is implemented, delete its file and every reference to it
+  (find them with `rg <ulid>`). If a referencing file needs information
+  from the todo, copy just that part into it, compact and precise.
+- After a large work package is done, have Sonnet or Haiku agents
+  (choose per scan) check all todos for work that is already done.
+  Delete todos that are fully done and rewrite partly done ones so they
+  cover only the remaining work.
+
 ## License headers
 
 Every source file starts with the MPL-2.0 header, after a shebang line if
