@@ -115,28 +115,13 @@ export function matchesCombo(event: KeyboardEvent, combo: KeyCombo, isMacOS: boo
   const wantsShift = combo.modifiers.includes("Shift");
   const wantsAlt = combo.modifiers.includes("Alt");
 
-  // Meta maps to metaKey on macOS, ctrlKey on others.
-  const metaPressed = isMacOS ? event.metaKey : event.ctrlKey;
-
-  if (wantsMeta !== metaPressed) {
-    return false;
-  }
-
-  // Ctrl always maps to the physical ctrlKey.
-  if (wantsCtrl !== event.ctrlKey) {
-    return false;
-  }
-
-  // On macOS, reject ctrlKey as a stray modifier when the binding
-  // wants neither Meta nor Ctrl. This prevents bare Ctrl presses
-  // from matching unmodified or Meta-only bindings.
-  if (isMacOS && event.ctrlKey && !wantsMeta && !wantsCtrl) {
-    return false;
-  }
-
-  // On macOS, reject Ctrl+Cmd chords unless the binding explicitly
-  // wants both — prevents Ctrl+Cmd+X from matching a Cmd+X binding.
-  if (isMacOS && event.ctrlKey && event.metaKey && !(wantsMeta && wantsCtrl)) {
+  if (isMacOS) {
+    // Cmd and Ctrl are separate keys, so each must match on its own.
+    if (wantsMeta !== event.metaKey || wantsCtrl !== event.ctrlKey) {
+      return false;
+    }
+  } else if ((wantsMeta || wantsCtrl) !== event.ctrlKey) {
+    // Meta and Ctrl both mean the Ctrl key, so either one asks for it.
     return false;
   }
 

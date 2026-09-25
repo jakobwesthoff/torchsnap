@@ -103,6 +103,26 @@ describe("matchesCombo", () => {
       expect(matchesCombo(keydown("c", { ctrl: true }), combo("c", "Meta"), MAC)).toBe(false);
     });
 
+    it("maps both Meta and Ctrl to the Ctrl key elsewhere", () => {
+      const ctrlC = keydown("c", { ctrl: true });
+      expect(matchesCombo(ctrlC, combo("c", "Meta"), OTHER)).toBe(true);
+      expect(matchesCombo(ctrlC, combo("c", "Ctrl"), OTHER)).toBe(true);
+      expect(matchesCombo(ctrlC, combo("c", "Meta", "Ctrl"), OTHER)).toBe(true);
+    });
+
+    it("keeps Ctrl letter bindings working under CapsLock elsewhere", () => {
+      expect(matchesCombo(keydown("U", { ctrl: true }), combo("u", "Ctrl"), OTHER)).toBe(true);
+    });
+
+    it("does not match a Meta or Ctrl binding without Ctrl elsewhere", () => {
+      expect(matchesCombo(keydown("c"), combo("c", "Meta"), OTHER)).toBe(false);
+      expect(matchesCombo(keydown("c"), combo("c", "Ctrl"), OTHER)).toBe(false);
+    });
+
+    it("does not match an unmodified binding with Ctrl held elsewhere", () => {
+      expect(matchesCombo(keydown("c", { ctrl: true }), combo("c"), OTHER)).toBe(false);
+    });
+
     it("rejects a stray Ctrl on macOS", () => {
       expect(matchesCombo(keydown("x", { ctrl: true }), combo("x"), MAC)).toBe(false);
     });
