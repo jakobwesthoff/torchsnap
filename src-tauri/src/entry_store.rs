@@ -94,6 +94,7 @@ impl EntryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::types::EntryActions;
     use crate::unicode::Utf16Positions;
 
     fn entry(id: &str, score: u32) -> ScoredEntry {
@@ -105,8 +106,7 @@ mod tests {
             score,
             title_positions: Utf16Positions::empty(),
             subtitle_positions: Utf16Positions::empty(),
-            actions: vec![],
-            data: None,
+            actions: EntryActions::new(),
         }
     }
 
@@ -210,16 +210,17 @@ mod tests {
     }
 
     #[test]
-    fn data_field_round_trips() {
+    fn action_commands_round_trip() {
         let store = EntryStore::new();
         let generation = store.begin_search();
         let mut e = entry("e1", 50);
-        e.data = Some(r#"{"url":"https://example.com"}"#.to_string());
+        e.actions =
+            EntryActions::new().primary("Open", r#"{"OpenUrl":"https://example.com"}"#.to_string());
         store.insert(generation, "gadget-a", &[e]);
         let retrieved = store.get("gadget-a", "e1").expect("e1 present");
         assert_eq!(
-            retrieved.data.as_deref(),
-            Some(r#"{"url":"https://example.com"}"#)
+            retrieved.actions.primary.map(|a| a.command).as_deref(),
+            Some(r#"{"OpenUrl":"https://example.com"}"#)
         );
     }
 }

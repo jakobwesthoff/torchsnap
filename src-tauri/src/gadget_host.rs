@@ -36,7 +36,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::commands::types::{
-    ActionId, GadgetResponse, GadgetViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage,
+    GadgetResponse, GadgetViewRef, PostAction, ResultSource, ScoredEntry, SearchMessage, Slot,
     SourcedEntry,
 };
 use crate::entry_store::{EntryStore, SearchGeneration};
@@ -986,7 +986,6 @@ impl GadgetHost {
                             title_positions,
                             subtitle_positions: Utf16Positions::empty(),
                             actions: entry.actions,
-                            data: None,
                         },
                     ));
                 }
@@ -1007,8 +1006,8 @@ impl GadgetHost {
     // Execute / Message Routing
     // =========================================================
 
-    /// Dispatch a launcher action to the gadget that owns
-    /// `entry_id`.
+    /// Run the action in `slot` of the entry `entry_id`: hand its
+    /// command to the gadget that owns the entry.
     ///
     /// Tokio runtime precondition: callers must invoke this from a
     /// thread that has a current Tokio runtime (a worker or a
@@ -1024,23 +1023,33 @@ impl GadgetHost {
         &self,
         source: &str,
         entry_id: &str,
-        action_id: &ActionId,
+        slot: Slot,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
         // Record frecency before execution — captures user intent
         // regardless of whether the action succeeds.
         self.frecency.record(source, entry_id);
 
-        let Some(entry) = self.entry_store.get(source, entry_id) else {
-            eprintln!(
-                "execute: entry '{entry_id}' from gadget '{source}' not found in entry store \
-                 (bug — the UI should only execute entries from the current search)"
-            );
-            return Ok(PostAction::Nothing);
+        let command = match resolve_command(&self.entry_store, source, entry_id, slot) {
+            Ok(command) => command,
+            Err(Unresolved::UnknownEntry) => {
+                eprintln!(
+                    "execute: entry '{entry_id}' from gadget '{source}' not found in entry store \
+                     (bug — the UI should only execute entries from the current search)"
+                );
+                return Ok(PostAction::Nothing);
+            }
+            Err(Unresolved::EmptySlot) => {
+                eprintln!(
+                    "execute: entry '{entry_id}' from gadget '{source}' has no action in slot \
+                     {slot:?} (bug: the UI should only offer filled slots)"
+                );
+                return Ok(PostAction::Nothing);
+            }
         };
 
-        if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            let (effect, forwarded) = split_post_action(slot.gadget.execute(&entry, action_id)?);
+        if let Some(gadget_slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
+            let (effect, forwarded) = split_post_action(gadget_slot.gadget.execute(&command)?);
             match effect {
                 Some(HostEffect::Quit) => app.exit(0),
                 Some(HostEffect::ShowSettings) => crate::show_settings_window(app),
@@ -1149,6 +1158,36 @@ impl GadgetHost {
             });
         }
     }
+}
+
+// =========================================================
+// Execute Helpers (standalone for testability)
+// =========================================================
+
+/// Why an execute request found no command to run.
+#[derive(Debug, PartialEq, Eq)]
+enum Unresolved {
+    /// The entry is not in the current search's entry store.
+    UnknownEntry,
+    /// The entry has no action in the requested slot.
+    EmptySlot,
+}
+
+/// The command of the action in `slot` of the stored entry.
+fn resolve_command(
+    store: &EntryStore,
+    source: &str,
+    entry_id: &str,
+    slot: Slot,
+) -> Result<String, Unresolved> {
+    let entry = store
+        .get(source, entry_id)
+        .ok_or(Unresolved::UnknownEntry)?;
+    entry
+        .actions
+        .get(slot)
+        .map(|action| action.command.clone())
+        .ok_or(Unresolved::EmptySlot)
 }
 
 // =========================================================
@@ -1283,7 +1322,8 @@ fn show_launcher_with_gadget(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::types::CatalogEntry;
+    use crate::commands::types::{Action, CatalogEntry, EntryActions};
+    use crate::gadgets::ErasedSearch;
     use tauri_plugin_global_shortcut::Shortcut;
 
     // -------------------------------------------------------
@@ -1345,7 +1385,9 @@ mod tests {
         fn search_prefixes(&self) -> &[String] {
             &self.prefixes
         }
+    }
 
+    impl ErasedSearch for MockGadget {
         fn entries(&self) -> Vec<CatalogEntry> {
             self.catalog_entries.clone()
         }
@@ -1354,11 +1396,7 @@ mod tests {
             self.search_response.clone()
         }
 
-        fn execute(
-            &self,
-            _entry: &ScoredEntry,
-            _action_id: &ActionId,
-        ) -> anyhow::Result<PostAction> {
+        fn execute(&self, _command: &str) -> anyhow::Result<PostAction> {
             Ok(self.execute_response.clone())
         }
     }
@@ -1373,9 +1411,60 @@ mod tests {
             score,
             title_positions: Utf16Positions::empty(),
             subtitle_positions: Utf16Positions::empty(),
-            actions: vec![],
-            data: None,
+            actions: EntryActions::new(),
         }
+    }
+
+    // ---- resolve_command -------------------------------------
+
+    fn store_with_entry(actions: EntryActions) -> EntryStore {
+        let store = EntryStore::new();
+        let generation = store.begin_search();
+        let mut entry = scored_entry("e1", 1);
+        entry.actions = actions;
+        store.insert(generation, "gadget-a", &[entry]);
+        store
+    }
+
+    #[test]
+    fn resolve_command_returns_the_command_in_the_slot() {
+        let store = store_with_entry(EntryActions {
+            copy: Some(Action {
+                label: None,
+                command: "copy".to_string(),
+            }),
+            ..EntryActions::new().primary("Join", "join".to_string())
+        });
+        assert_eq!(
+            resolve_command(&store, "gadget-a", "e1", Slot::Copy),
+            Ok("copy".to_string())
+        );
+        assert_eq!(
+            resolve_command(&store, "gadget-a", "e1", Slot::Primary),
+            Ok("join".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_command_reports_an_empty_slot() {
+        let store = store_with_entry(EntryActions::new().primary("Join", "join".to_string()));
+        assert_eq!(
+            resolve_command(&store, "gadget-a", "e1", Slot::Delete),
+            Err(Unresolved::EmptySlot)
+        );
+    }
+
+    #[test]
+    fn resolve_command_reports_an_unknown_entry() {
+        let store = store_with_entry(EntryActions::new().primary("Join", "join".to_string()));
+        assert_eq!(
+            resolve_command(&store, "gadget-a", "missing", Slot::Primary),
+            Err(Unresolved::UnknownEntry)
+        );
+        assert_eq!(
+            resolve_command(&store, "gadget-b", "e1", Slot::Primary),
+            Err(Unresolved::UnknownEntry)
+        );
     }
 
     /// Helper to wrap mock gadgets in `GadgetSlot`. Tests
@@ -1402,7 +1491,7 @@ mod tests {
     #[test]
     fn default_search_returns_none() {
         let gadget = MockGadget::new("empty");
-        assert!(Gadget::search(&gadget, "anything", None).is_none());
+        assert!(ErasedSearch::search(&gadget, "anything", None).is_none());
     }
 
     #[test]
@@ -1410,7 +1499,7 @@ mod tests {
         let gadget = MockGadget::new("test")
             .with_search_response(GadgetResponse::Results(vec![scored_entry("r1", 100)]));
 
-        let result = Gadget::search(&gadget, "query", None);
+        let result = ErasedSearch::search(&gadget, "query", None);
         assert!(result.is_some());
 
         match result.unwrap() {
@@ -1430,7 +1519,7 @@ mod tests {
             results: vec![scored_entry("h1", 50)],
         });
 
-        let result = Gadget::search(&gadget, "=2+2", Some("="));
+        let result = ErasedSearch::search(&gadget, "=2+2", Some("="));
         match result.unwrap() {
             GadgetResponse::CustomUI {
                 view,
@@ -1453,7 +1542,7 @@ mod tests {
             results: vec![],
         });
 
-        let result = Gadget::search(&gadget, "42", None);
+        let result = ErasedSearch::search(&gadget, "42", None);
         match result.unwrap() {
             GadgetResponse::InlineUI { view, .. } => {
                 assert_eq!(view, "result");

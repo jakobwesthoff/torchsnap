@@ -24,7 +24,7 @@ wit_bindgen::generate!({
 use exports::torchsnap::gadget::lifecycle::Guest as LifecycleGuest;
 use exports::torchsnap::gadget::messaging::Guest as MessagingGuest;
 use exports::torchsnap::gadget::search::{
-    ActionId, CatalogEntry, Guest as SearchGuest, PostAction, ScoredEntry, SearchResponse,
+    CatalogEntry, Guest as SearchGuest, PostAction, SearchResponse,
 };
 use exports::torchsnap::gadget::tasks::Guest as TasksGuest;
 use torchsnap::gadget::http::{
@@ -51,7 +51,7 @@ impl SearchGuest for OpenerHttpPlugin {
         SearchResponse::Nothing
     }
 
-    fn execute(_entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
+    fn execute(_command: String) -> Result<PostAction, String> {
         Ok(PostAction::Nothing)
     }
 }

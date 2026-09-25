@@ -32,27 +32,8 @@ import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { openGadgetSettings } from "./openGadgetSettings";
 import { CARD_TOP_OFFSET } from "./layout";
-import type { Action, ActionId, FooterState, GadgetViewRef, SourcedEntry } from "../types";
-
-/** Derive a generic FooterState from an entry's action list. */
-function actionsToFooterState(actions: Action[]): FooterState {
-  const primary = actions[0];
-  const hints = actions
-    .slice(1)
-    .filter((a) => a.keybinding)
-    .map((a) => ({
-      combo: {
-        modifiers: a.keybinding!.modifiers ?? [],
-        key: a.keybinding!.key,
-      },
-      label: a.label,
-    }));
-
-  return {
-    primary: primary ? { combo: { modifiers: [], key: "Enter" }, label: primary.label } : undefined,
-    hints,
-  };
-}
+import { actionsToFooterState, hasSlot } from "./actionSlots";
+import type { ActionSlot, FooterState, GadgetViewRef, SourcedEntry } from "../types";
 
 /** A footer published by a gadget view, tagged with the view it came
  *  from. `viewKey` is `null` only for the initial empty entry. */
@@ -396,19 +377,22 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     gadgetFooter ??
     (inlineSelected && inlineFooter
       ? inlineFooter
-      : actionsToFooterState(results[listSelectedIndex]?.actions ?? []));
+      : actionsToFooterState(
+          results[listSelectedIndex]?.actions ?? [],
+          results[listSelectedIndex]?.title ?? "",
+        ));
 
   // Gadget execute handler — wraps the Tauri invoke with the
   // gadget's source ID and handles PostAction.
   const handleGadgetExecute = useCallback(
-    async (entryId: string, actionId: ActionId) => {
+    async (entryId: string, slot: ActionSlot) => {
       const view = customGadgetViewRef.current;
       if (!view) return;
 
       const postAction = await command("search_execute", {
         source: view.gadgetId,
         entryId,
-        actionId,
+        slot,
       });
 
       if (postAction === "Dismiss") {
@@ -423,14 +407,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Inline view execute handler — routes through the inline
   // view's gadget ID.
   const handleInlineExecute = useCallback(
-    async (entryId: string, actionId: ActionId) => {
+    async (entryId: string, slot: ActionSlot) => {
       const view = activeInlineViewRef.current;
       if (!view) return;
 
       const postAction = await command("search_execute", {
         source: view.gadgetId,
         entryId,
-        actionId,
+        slot,
       });
 
       if (postAction === "Dismiss") {
@@ -612,17 +596,15 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // Stable entry executor — always receives an explicit entry.
   // Used by ResultList (via React.memo, so stability matters).
+  // A click on a row runs its primary action, like Enter.
   const executeEntry = useCallback(
-    async (entry: SourcedEntry, actionIndex = 0) => {
-      if (entry.actions.length === 0) return;
-
-      const action = entry.actions[actionIndex];
-      if (!action) return;
+    async (entry: SourcedEntry, slot: ActionSlot = "primary") => {
+      if (!hasSlot(entry.actions, slot)) return;
 
       const postAction = await command("search_execute", {
         source: entry.source,
         entryId: entry.id,
-        actionId: action.id,
+        slot,
       });
 
       if (postAction === "Dismiss") {
@@ -646,9 +628,9 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // results/listSelectedIndex), but useKeyboardNavigation stores
   // handlers in refs so instability costs nothing.
   const executeSelected = useCallback(
-    (actionIndex?: number) => {
+    (slot: ActionSlot) => {
       const target = results[listSelectedIndex];
-      if (target) executeEntry(target, actionIndex);
+      if (target) executeEntry(target, slot);
     },
     [results, listSelectedIndex, executeEntry],
   );

@@ -25,8 +25,8 @@ use chrono::Utc;
 use cron::Schedule;
 use tauri::async_runtime::JoinHandle;
 
-use crate::commands::types::{ActionId, CatalogEntry, GadgetResponse, PostAction, ScoredEntry};
-use crate::gadgets::Gadget;
+use crate::commands::types::{CatalogEntry, GadgetResponse, PostAction};
+use crate::gadgets::{ErasedSearch, Gadget};
 use crate::settings::SettingsInit;
 
 use super::logging::channel::{LogContext, LogSender};
@@ -648,70 +648,6 @@ impl Gadget for WasmGadgetBridge {
         }
     }
 
-    fn entries(&self) -> Vec<CatalogEntry> {
-        let Some(instance) = self.current_instance() else {
-            self.log_dispatched_while_disabled("entries()");
-            return vec![];
-        };
-        match instance.entries() {
-            Ok(mut entries) => {
-                let warnings = super::bindings::resolve_catalog_entries_asset_icons(
-                    &mut entries,
-                    &self.gadget_id,
-                    self.app_icon_resolver
-                        .as_ref()
-                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
-                );
-                for w in warnings {
-                    self.log(LogLevel::Warn, w);
-                }
-                entries
-            }
-            Err(e) => {
-                self.log(LogLevel::Error, format!("entries() failed: {e:#}"));
-                vec![]
-            }
-        }
-    }
-
-    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
-        let Some(instance) = self.current_instance() else {
-            self.log_dispatched_while_disabled("execute()");
-            anyhow::bail!("execute() called on disabled gadget");
-        };
-        instance.execute(entry, action_id)
-    }
-
-    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {
-        let Some(instance) = self.current_instance() else {
-            self.log_dispatched_while_disabled("search()");
-            return None;
-        };
-        match instance.search(query, matched_prefix) {
-            // `None` is reserved for "gadget not participating"
-            // (disabled / errored); an empty Results must pass
-            // through so the host can forward it and evict stale
-            // per-source entries on the frontend.
-            Ok(mut response) => {
-                let warnings = super::bindings::resolve_search_response_asset_icons(
-                    &mut response,
-                    &self.gadget_id,
-                    self.app_icon_resolver
-                        .as_ref()
-                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
-                );
-                for w in warnings {
-                    self.log(LogLevel::Warn, w);
-                }
-                Some(response)
-            }
-            Err(e) => {
-                self.log(LogLevel::Error, format!("search() failed: {e:#}"));
-                None
-            }
-        }
-    }
-
     fn search_prefixes(&self) -> &[String] {
         &self.manifest.gadget.prefixes
     }
@@ -757,6 +693,75 @@ impl Gadget for WasmGadgetBridge {
             .map_err(|e| anyhow::anyhow!("gadget error: {e}"))?;
 
         serde_json::from_str(&result_json).context("parse guest handle-message response")
+    }
+}
+
+/// The component's command strings pass through unchanged: the
+/// component encoded them in `search()` and decodes them itself in
+/// `execute()`.
+impl ErasedSearch for WasmGadgetBridge {
+    fn entries(&self) -> Vec<CatalogEntry> {
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled("entries()");
+            return vec![];
+        };
+        match instance.entries() {
+            Ok(mut entries) => {
+                let warnings = super::bindings::resolve_catalog_entries_asset_icons(
+                    &mut entries,
+                    &self.gadget_id,
+                    self.app_icon_resolver
+                        .as_ref()
+                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
+                );
+                for w in warnings {
+                    self.log(LogLevel::Warn, w);
+                }
+                entries
+            }
+            Err(e) => {
+                self.log(LogLevel::Error, format!("entries() failed: {e:#}"));
+                vec![]
+            }
+        }
+    }
+
+    fn execute(&self, command: &str) -> anyhow::Result<PostAction> {
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled("execute()");
+            anyhow::bail!("execute() called on disabled gadget");
+        };
+        instance.execute(command)
+    }
+
+    fn search(&self, query: &str, matched_prefix: Option<&str>) -> Option<GadgetResponse> {
+        let Some(instance) = self.current_instance() else {
+            self.log_dispatched_while_disabled("search()");
+            return None;
+        };
+        match instance.search(query, matched_prefix) {
+            // `None` is reserved for "gadget not participating"
+            // (disabled / errored); an empty Results must pass
+            // through so the host can forward it and evict stale
+            // per-source entries on the frontend.
+            Ok(mut response) => {
+                let warnings = super::bindings::resolve_search_response_asset_icons(
+                    &mut response,
+                    &self.gadget_id,
+                    self.app_icon_resolver
+                        .as_ref()
+                        .map(|r| r as &dyn super::bindings::ResolveAppIcon),
+                );
+                for w in warnings {
+                    self.log(LogLevel::Warn, w);
+                }
+                Some(response)
+            }
+            Err(e) => {
+                self.log(LogLevel::Error, format!("search() failed: {e:#}"));
+                None
+            }
+        }
     }
 }
 

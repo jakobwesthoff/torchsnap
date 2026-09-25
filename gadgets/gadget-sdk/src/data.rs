@@ -3,21 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // =========================================================
-// Execute-Time Data Helpers
+// Command encoding
 //
-// Typed encode/decode over the opaque `data: option<string>`
-// field on `ScoredEntry`. Gadgets attach data in `search()`
-// and read it back in `execute()` without manual JSON
-// serialization.
+// The WIT carries an action's command as an opaque string.
+// The `Search` layer encodes the gadget's command type to JSON
+// with these helpers and decodes it again in `execute()`.
 // =========================================================
 
-/// Encode a serializable value into a string for the `data`
-/// field of `ScoredEntry`.
+/// Encode a serializable value into a JSON string.
 pub fn encode<T: serde::Serialize>(value: &T) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| format!("data::encode: {e}"))
 }
 
-/// Decode an opaque data string back into a typed value.
+/// Decode a JSON string back into a typed value.
 pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
     serde_json::from_str(s).map_err(|e| format!("data::decode: {e}"))
 }

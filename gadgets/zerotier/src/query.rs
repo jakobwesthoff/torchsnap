@@ -155,13 +155,6 @@ pub fn entry_id(network_id: &str) -> String {
     format!("network:{}", network_id.to_ascii_lowercase())
 }
 
-/// Parse a `network:<id>` entry id back into the bare network
-/// id. Returns `None` for entry ids the action handler
-/// shouldn't act on (synthetic, malformed).
-pub fn parse_entry_id(entry_id: &str) -> Option<String> {
-    entry_id.strip_prefix("network:").map(|s| s.to_string())
-}
-
 /// Match a query against the supplied rows and return one
 /// scored entry per match. Rows whose name doesn't match drop
 /// out; matches keep their network state in the score so
@@ -278,25 +271,11 @@ mod tests {
         assert_eq!(intent, Intent::JoinById("abcdef0123456789".into()));
     }
 
-    // ---- entry_id round-trip --------------------------------
+    // ---- entry_id -------------------------------------------
 
     #[test]
     fn entry_id_is_lowercase_prefixed() {
         assert_eq!(entry_id("ABCDEF0123456789"), "network:abcdef0123456789");
-    }
-
-    #[test]
-    fn parse_entry_id_extracts_network_id() {
-        assert_eq!(
-            parse_entry_id("network:abcdef0123456789"),
-            Some("abcdef0123456789".into())
-        );
-    }
-
-    #[test]
-    fn parse_entry_id_rejects_malformed() {
-        assert_eq!(parse_entry_id("synthetic:foo"), None);
-        assert_eq!(parse_entry_id("abcdef0123456789"), None);
     }
 
     // ---- match_networks -------------------------------------

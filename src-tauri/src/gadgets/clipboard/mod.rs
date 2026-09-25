@@ -41,7 +41,7 @@ use clipboard_rs::{
 use tauri::ipc::Channel;
 
 use crate::caps::{CapRequest, ProvisionedCaps};
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
+use crate::commands::types::{CatalogEntry, EntryActions, EntryIcon, PostAction};
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::settings::SettingsInit;
 use crate::storage::{FileStorage, SqlStorage};
@@ -51,7 +51,7 @@ use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
-use super::Gadget;
+use super::{Gadget, Search};
 
 /// How often the retention cleanup thread wakes to delete expired
 /// entries. Chosen to be infrequent enough to be negligible, but
@@ -378,36 +378,6 @@ impl Gadget for ClipboardGadget {
         }
     }
 
-    fn entries(&self) -> Vec<CatalogEntry> {
-        vec![CatalogEntry {
-            id: "clipboard-history".into(),
-            title: "Clipboard History".into(),
-            subtitle: Some("Browse and paste from clipboard history".into()),
-            icon: Some(EntryIcon::HeroIcon("clipboard-document-list".into())),
-            keywords: vec![
-                "clipboard".into(),
-                "paste".into(),
-                "history".into(),
-                "copy".into(),
-            ],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Open".into(),
-                keybinding: None,
-            }],
-        }]
-    }
-
-    fn execute(&self, _entry: &ScoredEntry, action_id: &ActionId) -> Result<PostAction> {
-        match action_id {
-            ActionId::Open => Ok(PostAction::ShowCustomUI {
-                view: "history".into(),
-                data: None,
-            }),
-            other => anyhow::bail!("unsupported action {other:?} for clipboard-manager"),
-        }
-    }
-
     fn handle_message(
         &self,
         method: &str,
@@ -552,6 +522,42 @@ impl Gadget for ClipboardGadget {
     }
 }
 
+/// What the clipboard gadget's catalog entry does.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Command {
+    /// Switch the launcher to the clipboard history view.
+    ShowHistory,
+}
+
+impl Search for ClipboardGadget {
+    type Command = Command;
+
+    fn entries(&self) -> Vec<CatalogEntry<Command>> {
+        vec![CatalogEntry {
+            id: "clipboard-history".into(),
+            title: "Clipboard History".into(),
+            subtitle: Some("Browse and paste from clipboard history".into()),
+            icon: Some(EntryIcon::HeroIcon("clipboard-document-list".into())),
+            keywords: vec![
+                "clipboard".into(),
+                "paste".into(),
+                "history".into(),
+                "copy".into(),
+            ],
+            actions: EntryActions::new().primary("Open", Command::ShowHistory),
+        }]
+    }
+
+    fn execute(&self, command: Command) -> Result<PostAction> {
+        match command {
+            Command::ShowHistory => Ok(PostAction::ShowCustomUI {
+                view: "history".into(),
+                data: None,
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,6 +621,23 @@ mod tests {
 
     fn discarding_channel() -> Channel<serde_json::Value> {
         Channel::new(|_| Ok(()))
+    }
+
+    #[test]
+    fn catalog_entry_opens_the_history_view() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        let entries = Search::entries(&gadget);
+        assert_eq!(entries.len(), 1);
+        let primary = entries[0].actions.primary.as_ref().expect("primary action");
+        assert_eq!(primary.command, Command::ShowHistory);
+
+        let post_action = Search::execute(&gadget, Command::ShowHistory).expect("runs");
+        assert!(matches!(
+            post_action,
+            PostAction::ShowCustomUI { ref view, data: None } if view == "history"
+        ));
     }
 
     #[test]

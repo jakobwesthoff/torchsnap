@@ -18,24 +18,17 @@ import type { ReactNode } from "react";
 
 // ---- Actions --------------------------------------------
 
-export type ActionId =
-  | { type: "open" }
-  | { type: "copy" }
-  | { type: "reveal" }
-  | { type: "openWith" }
-  | { type: "delete" }
-  | { type: "openSettings" }
-  | { type: "custom"; value: string };
+/** The slot an action sits in. The slot alone decides the key that
+ *  runs the action and its default label (see
+ *  `src/launcher/actionSlots.ts`). */
+export type ActionSlot = "primary" | "secondary" | "copy" | "reveal" | "delete" | "openSettings";
 
-export interface ActionKeybinding {
-  modifiers?: string[];
-  key: string;
-}
-
+/** One action of an entry. Its command stays in the host; the
+ *  frontend runs it by naming the entry and the slot. */
 export interface Action {
-  id: ActionId;
-  label: string;
-  keybinding: ActionKeybinding | null;
+  slot: ActionSlot;
+  /** `null` shows the slot's default label. */
+  label: string | null;
 }
 
 // ---- Entries --------------------------------------------

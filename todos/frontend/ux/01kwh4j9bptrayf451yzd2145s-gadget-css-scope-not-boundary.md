@@ -14,7 +14,7 @@ tags: [unconfirmed, security]
 wrapped in `@scope ([data-gadget="${gadgetId}"]) {\n${raw}\n}`, with the
 body set via `style.textContent`. Call site: `wasmPluginLoader.ts:100-105`
 (fire-and-forget on gadget registration); container:
-`Launcher.tsx:94,119` (`<div data-gadget={gadgetId}>`). `textContent`
+`Launcher.tsx:93,118` (`<div data-gadget={gadgetId}>`). `textContent`
 (not `innerHTML`) rules out any HTML/`</style>` vector.
 
 ## Impact

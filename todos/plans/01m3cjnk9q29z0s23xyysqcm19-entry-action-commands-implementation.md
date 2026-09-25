@@ -145,38 +145,38 @@ variants and `Variant {}` accept it.
 
 ## Checkpoint: merge phases 1 to 4
 
-- [ ] `just fullcycle` on the branch tip.
-- [ ] Merge the branch into `main` with `--no-ff`. Push `main` after
+- [x] `just fullcycle` on the branch tip.
+- [x] Merge the branch into `main` with `--no-ff`. Push `main` after
   the maintainer confirms.
-- [ ] Keep working on the same branch for phases 5 to 7.
+- [x] Keep working on the same branch for phases 5 to 7.
 
 ## Phase 5: the switch
 
 Todo `01kr2357mcz36g4gte0c0t1qz5` holds the details for every step
 here. Commits in this phase may not build. Commit after each step.
 
-- [ ] **5.1 WIT and versions.** New `action` and `entry-actions`
+- [x] **5.1 WIT and versions.** New `action` and `entry-actions`
   records in `catalog-entry` and `scored-entry`, `execute(command:
   string)`, no `scored-entry.data`, no `action-id`. Package version
   `0.2.0`; `gadgets/gadget-sdk/Cargo.toml` and
   `packages/gadget-sdk/package.json` to `0.2.0` (ADR 56). `just
   check-wit`.
-- [ ] **5.2 Rust SDK.** `Search` trait, SDK-owned generic entry types,
+- [x] **5.2 Rust SDK.** `Search` trait, SDK-owned generic entry types,
   `Actions<C>` with builder (label required for `primary` and
   `secondary`) and `iter()`, blanket `SearchGuest`. Decode failure in
   `execute()` returns `Err`; encode failure logs a warning and drops
   the entry. Prelude swap; `data` becomes internal. Tests on the host
   target for encode, decode and the error paths.
-- [ ] **5.2a Blanket impl check.** Convert template first and build it
+- [x] **5.2a Blanket impl check.** Convert template first and build it
   for `wasm32-wasip2`. If the blanket impl does not work with the
   `wit_bindgen` `export!`, stop and bring it to the maintainer.
-- [ ] **5.3 WASM gadgets.** The remaining seven, per the migration
+- [x] **5.3 WASM gadgets.** The remaining seven, per the migration
   table. hello-world gets `clipboard = true` and really copies. `just
   check-gadgets`, `just test-gadgets`.
-- [ ] **5.4 Test fixtures.** Update the six fixtures in
+- [x] **5.4 Test fixtures.** Update the six fixtures in
   `src-tauri/tests/fixtures/` (hand-written `SearchGuest` against raw
   `wit_bindgen`), `just build-test-fixtures`, commit the `.wasm` files.
-- [ ] **5.5 Host.** Slot types, `EntryActions<C>`, generic entry and
+- [x] **5.5 Host.** Slot types, `EntryActions<C>`, generic entry and
   response types, `ErasedSearch` and typed `Search` with blanket impl,
   `Gadget: ErasedSearch`. Actions serialize to the frontend as `{ slot,
   label }` in slot table order, without commands. `search_execute`
@@ -185,10 +185,10 @@ here. Commits in this phase may not build. Commit after each step.
   `bridge.rs` and `runtime/instance.rs`; `default_keybinding_for`
   goes away. Tests: commands never serialized, list order, empty slot,
   blanket encode and decode, conversions.
-- [ ] **5.6 Native gadgets.** app_launcher, clipboard, commands,
+- [x] **5.6 Native gadgets.** app_launcher, clipboard, commands,
   system_preferences, system_commands on `Search`. App launcher's
   Reveal goes to `secondary`. Adapt their tests.
-- [ ] **5.7 Frontend.** One slot table (keys, default labels, title
+- [x] **5.7 Frontend.** One slot table (keys, default labels, title
   fallback for `primary` and `secondary`). Slot types in `src/types.ts`
   and `packages/gadget-sdk/src/types/data.ts`. Footer, `executeEntry`,
   row click and keyboard navigation use the slot table and the
@@ -197,25 +197,30 @@ here. Commits in this phase may not build. Commit after each step.
   and calculator history rows call `onExecute(entry.id, "copy")`.
   Tests for the slot table, the footer derivation and the key
   bindings.
-- [ ] **5.8 Green.** `just fullcycle` passes on the branch.
-- [ ] **5.9 Checks,** report the results to the maintainer:
+- [x] **5.8 Green.** `just fullcycle` passes on the branch.
+- [x] **5.9 Checks,** report the results to the maintainer:
   - What a gadget built against `0.1.0` reports when loaded, for
-    example a fixture `.wasm` from `main`.
+    example a fixture `.wasm` from `main`. Result: loading succeeds,
+    `enable()` fails with "no exported instance named
+    `torchsnap:gadget/lifecycle@0.2.0`", and the host disables the
+    gadget.
   - The cost of encoding commands in `entries()`, which runs on every
     search without a prefix, for app_launcher with its installed apps.
-    No caching unless the maintainer decides so.
-- [ ] `CHANGELOG.md`: Changed (gadget API `0.2.0`: slots, commands,
+    No caching unless the maintainer decides so. Result (release build,
+    per call): about 15 µs for 200 apps, 48 µs for 500, 147 µs for
+    1000.
+- [x] `CHANGELOG.md`: Changed (gadget API `0.2.0`: slots, commands,
   `execute(command)`), Removed (`custom`, `open-with`, `data`), Added
   (`secondary` slot on Cmd+Enter), plus anything else user-visible.
 
 ## Phase 6: documentation
 
-- [ ] In this repository: `docs/api/gadget-development.md`,
+- [x] In this repository: `docs/api/gadget-development.md`,
   `docs/Gadget-Architecture/01-overview.md` to `06-settings-reactivity.md`
   where they describe actions, `execute()`, `data` or the version, the
   crate docs at the top of `gadgets/gadget-sdk/src/lib.rs`, and the
   feature list in `gadgets/template/src/lib.rs`.
-- [ ] In torchsnap-docs, following its `CLAUDE.md` and
+- [x] In torchsnap-docs, following its `CLAUDE.md` and
   `docs/documentation-writing-howto.md`: `development/search.mdx`,
   `development/interfaces/index.mdx` (version note),
   `development/interfaces/imports.mdx`,
@@ -227,13 +232,13 @@ here. Commits in this phase may not build. Commit after each step.
 
 ## Phase 7: landing
 
-- [ ] `just fullcycle` on the branch tip.
-- [ ] Delete todo `01kr2357mcz36g4gte0c0t1qz5` and its references;
+- [x] `just fullcycle` on the branch tip.
+- [x] Delete todo `01kr2357mcz36g4gte0c0t1qz5` and its references;
   ADR 55 and ADR 56 keep their facts.
 - [ ] Merge into `main` with `--no-ff`. Push `main` after the
   maintainer confirms.
 - [ ] Right after the code is on `main`: merge the torchsnap-docs
   branch into its `main` and push it.
-- [ ] Sweep all todos for work that is now done, with Sonnet or Haiku
+- [x] Sweep all todos for work that is now done, with Sonnet or Haiku
   agents (`CLAUDE.md`, "Todos").
 - [ ] Remove the worktree and delete this plan.

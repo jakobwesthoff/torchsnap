@@ -15,7 +15,9 @@
  * - Index 1+: history entries (with standard selection highlight)
  *
  * Enter copies the current result, or the selected history row, to
- * the clipboard, records it in the history and dismisses.
+ * the clipboard, records it in the history and dismisses. The
+ * current result goes through the backend's `copy` message; a history
+ * row is an entry and runs its own copy command.
  */
 
 import { memo, useEffect, useState, type ReactNode } from "react";
@@ -56,7 +58,7 @@ export const CalculatorView = memo(function CalculatorView({
   query,
   matchedPrefix,
 }: GadgetViewProps) {
-  const { goBack, mouseActiveRef, onFooterChange, setDisplayQuery } = useLauncher();
+  const { goBack, mouseActiveRef, onExecute, onFooterChange, setDisplayQuery } = useLauncher();
   const copyResult = useCopyResult();
 
   // The backend's search() returns the eval result in the `data`
@@ -143,14 +145,9 @@ export const CalculatorView = memo(function CalculatorView({
         if (selectedIndex === 0 && evalResult) {
           void copyResult(evalResult);
         } else if (selectedIndex > 0 && selectedIndex - 1 < historyEntries.length) {
-          // History rows store the expression as title and the
-          // result as subtitle, without a result type.
-          const entry = historyEntries[selectedIndex - 1];
-          void copyResult({
-            expression: entry.title,
-            result: entry.subtitle ?? entry.title,
-            resultType: "number",
-          });
+          // History rows are entries: their copy command copies the
+          // stored result and records it again.
+          onExecute(historyEntries[selectedIndex - 1].id, "copy");
         }
       },
     },
@@ -246,13 +243,7 @@ export const CalculatorView = memo(function CalculatorView({
                 }}
                 onClick={() => {
                   setSelectedIndex(globalIndex + 1);
-                  if (entry.subtitle) {
-                    void copyResult({
-                      expression: entry.title,
-                      result: entry.subtitle,
-                      resultType: "number",
-                    });
-                  }
+                  onExecute(entry.id, "copy");
                 }}
               >
                 {/* Clock icon */}

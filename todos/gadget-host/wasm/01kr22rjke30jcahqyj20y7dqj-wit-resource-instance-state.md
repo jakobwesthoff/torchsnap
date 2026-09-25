@@ -20,12 +20,11 @@ Current `thread_local!` usage by category:
 
 | Gadget       | Cell                                     | Purpose                            |
 |-------------|------------------------------------------|------------------------------------|
-| bangs       | `PENDING_URL: RefCell<Option<String>>`   | search→execute data handoff        |
-| open-url    | `PENDING_URL: RefCell<Option<String>>`   | search→execute data handoff        |
 | calculator  | `HEURISTIC_ENABLED: Cell<bool>`, etc.    | settings cache                     |
 | emoji-picker| `ENTRIES: OnceCell<Vec<EmojiData>>`      | lazy one-time init                 |
 | zerotier    | `RUNTIME: RefCell<Runtime>`              | full runtime state struct          |
 | hello-world | `PETNAMES: RefCell<Vec<String>>`         | per-instance state                 |
+| awake       | `RUNTIME: RefCell<...>`                  | per-instance state                 |
 
 The safety argument is sound (WASM is single-threaded, host
 serializes calls on the store mutex), but the ergonomics are
@@ -42,10 +41,14 @@ poor:
   host ever pipelines calls or a background task touches the
   cell (see the bangs gadget's safety comment).
 
-Note: the `PENDING_URL` handoff specifically is better solved
-by the `data` field on `scored-entry`, already landed as
-`ScoredEntry::data`. This todo addresses the broader
-instance-state problem that remains after that fix.
+Note: the `PENDING_URL` handoff that `bangs` and `open-url` used
+to need is gone. ADR 55/56 gave every entry action a gadget-defined
+`command: string`, and `execute(command)` now receives that command
+directly, so both gadgets moved the URL into a typed `Command` enum
+(see `gadgets/bangs/src/lib.rs`, `enum Command` / `execute`) instead
+of stashing it in `thread_local!` state. This todo addresses the
+broader instance-state problem that remains for the gadgets still
+listed above.
 
 ## Idea: export a WIT resource instead of free functions
 
@@ -73,7 +76,7 @@ world gadget {
 
 ```wit
 interface gadget-instance {
-  use types.{entry-icon, action-id, action};
+  use types.{entry-icon, entry-actions};
 
   // All the same types as today (catalog-entry,
   // scored-entry, search-response, etc.) live here or
@@ -92,7 +95,7 @@ interface gadget-instance {
 
     entries: func() -> list<catalog-entry>;
     search: func(query: string, matched-prefix: option<string>) -> search-response;
-    execute: func(entry-id: string, action-id: action-id) -> result<post-action, string>;
+    execute: func(command: string) -> result<post-action, string>;
 
     handle-message: func(method: string, payload: string) -> result<string, string>;
     run-task: func(task-id: string) -> result<_, string>;
@@ -223,9 +226,10 @@ inspects it.
 
 ## Related
 
-- `ScoredEntry::data` in `src-tauri/src/commands/types.rs`: the
-  narrower search to execute data handoff fix, already landed
-  independently.
+- `docs/adr/0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md`,
+  `docs/adr/0056-version-the-wit-contract-and-both-gadget-sdks-in-lockstep.md`:
+  fixed action slots and gadget commands, the fix that already
+  retired the `PENDING_URL`-style search to execute handoff.
 - `gadgets/gadget-sdk/wit/torchsnap-gadget.wit` — current
   WIT world definition.
 - `gadgets/gadget-sdk/src/lib.rs` — `define_gadget!` macro.

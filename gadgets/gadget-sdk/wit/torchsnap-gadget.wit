@@ -6,7 +6,7 @@
 ///
 /// Minimal initial definition covering lifecycle, catalog search,
 /// query search, and execution. Expanded as real gadgets are converted.
-package torchsnap:gadget@0.1.0;
+package torchsnap:gadget@0.2.0;
 
 /// ─── Host imports (provided by the host to gadgets) ─────
 interface logging {
@@ -693,33 +693,43 @@ interface types {
     app-icon(string),
   }
 
-  /// Well-known action identifiers. Gadgets use these for
-  /// standard actions so the host can assign default keybindings
-  /// and icons. Use `custom` for gadget-specific actions.
-  ///
-  /// `open-settings` jumps to the originating gadget's own
-  /// settings panel — useful as a primary action on synthetic
-  /// "configuration required" entries (e.g. "API token missing —
-  /// configure gadget"). The host routes the action to the
-  /// settings page scoped to the gadget id that returned the entry.
-  variant action-id {
-    open,
-    copy,
-    reveal,
-    open-with,
-    delete,
-    open-settings,
-    custom(string),
+  /// One action the user can run on an entry.
+  record action {
+    /// What the launcher shows for the action. Required for the
+    /// `primary` and `secondary` slots; the launcher shows the
+    /// entry's title when it is missing there. For every other
+    /// slot, `none` shows the slot's default label ("Copy",
+    /// "Reveal in Finder", "Delete", "Open settings").
+    label: option<string>,
+    /// Gadget-defined value that says what running the action
+    /// does. The host stores it with the entry, never inspects
+    /// it, and hands it back unchanged to `execute()` when the
+    /// user runs the action. Its encoding is up to the gadget.
+    command: string,
   }
 
-  record action {
-    id: action-id,
-    label: string,
+  /// The actions of an entry, one optional field per slot. The
+  /// slot alone decides how the user runs the action; an empty
+  /// slot has no key and no footer hint.
+  record entry-actions {
+    /// Enter, or a click on the entry.
+    primary: option<action>,
+    /// Cmd+Enter (Ctrl+Enter outside macOS).
+    secondary: option<action>,
+    /// Cmd+C.
+    copy: option<action>,
+    /// Cmd+Shift+R.
+    reveal: option<action>,
+    /// Cmd+Backspace.
+    delete: option<action>,
+    /// Cmd+,. Its command typically returns the `open-settings`
+    /// post-action.
+    open-settings: option<action>,
   }
 }
 
 interface search {
-  use types.{entry-icon, action-id, action};
+  use types.{entry-icon, entry-actions};
 
   record catalog-entry {
     id: string,
@@ -727,7 +737,7 @@ interface search {
     subtitle: option<string>,
     icon: option<entry-icon>,
     keywords: list<string>,
-    actions: list<action>,
+    actions: entry-actions,
   }
 
   /// A pre-scored search result returned by query gadgets.
@@ -743,11 +753,7 @@ interface search {
     title-highlight-positions: list<u32>,
     /// UTF-16 code unit offsets to highlight in the subtitle.
     subtitle-highlight-positions: list<u32>,
-    actions: list<action>,
-    /// Opaque gadget-defined payload round-tripped by the host.
-    /// Attached in `search()`, passed back in `execute()`. The
-    /// host never inspects the contents.
-    data: option<string>,
+    actions: entry-actions,
   }
 
   /// Payload for custom-ui and inline-ui search responses.
@@ -797,7 +803,9 @@ interface search {
   /// Returns scored results directly (call-return, no streaming).
   search: func(query: string, matched-prefix: option<string>) -> search-response;
 
-  execute: func(entry: scored-entry, action-id: action-id) -> result<post-action, string>;
+  /// Run an action. `command` is the `command` of the action the
+  /// user triggered, exactly as the gadget returned it.
+  execute: func(command: string) -> result<post-action, string>;
 }
 
 /// Custom frontend ↔ gadget RPC.

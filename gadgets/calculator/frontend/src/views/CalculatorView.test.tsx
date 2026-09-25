@@ -60,7 +60,7 @@ function renderView({
 }
 
 describe("CalculatorView", () => {
-  it("copies the evaluated result on Enter and closes the launcher", async () => {
+  it("copies the evaluated result through the backend and closes the launcher on Enter", async () => {
     const { sendMessage, dismiss, onExecute } = renderView();
 
     fireEvent.keyDown(document, { key: "Enter" });
@@ -70,31 +70,23 @@ describe("CalculatorView", () => {
     expect(onExecute).not.toHaveBeenCalled();
   });
 
-  it("copies the selected history row on Enter", async () => {
-    const { sendMessage, dismiss } = renderView();
+  it("runs the selected history row's copy action on Enter", () => {
+    const { sendMessage, onExecute } = renderView();
 
     fireEvent.keyDown(document, { key: "ArrowDown" });
     fireEvent.keyDown(document, { key: "Enter" });
 
-    expect(sendMessage).toHaveBeenCalledWith("copy", {
-      expression: "1+1",
-      result: "2",
-      resultType: "number",
-    });
-    await waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
+    expect(onExecute).toHaveBeenCalledWith("1", "copy");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("copies a history row when it is clicked", async () => {
-    const { sendMessage, dismiss } = renderView();
+  it("runs a history row's copy action when it is clicked", () => {
+    const { sendMessage, onExecute } = renderView();
 
     fireEvent.click(screen.getByText("10/4"));
 
-    expect(sendMessage).toHaveBeenCalledWith("copy", {
-      expression: "10/4",
-      result: "2.5",
-      resultType: "number",
-    });
-    await waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
+    expect(onExecute).toHaveBeenCalledWith("2", "copy");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("does nothing on Enter without a result or a selected row", () => {

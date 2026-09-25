@@ -7,6 +7,9 @@ wasm = "hello_world_gadget.wasm"
 icon = "heroicons:hand-raised"
 prefixes = ["!"]
 
+[permissions]
+clipboard = true
+
 [frontend]
 launcher-bundle = "frontend/launcher.js"
 launcher-css = "frontend/launcher.css"
