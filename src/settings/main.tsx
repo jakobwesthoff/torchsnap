@@ -4,6 +4,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { WindowErrorBoundary } from "../components/WindowErrorBoundary";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { command } from "../lib/command";
@@ -28,9 +29,11 @@ async function main() {
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <ThemeProvider>
-        <SettingsPanel />
-      </ThemeProvider>
+      <WindowErrorBoundary window="settings">
+        <ThemeProvider>
+          <SettingsPanel />
+        </ThemeProvider>
+      </WindowErrorBoundary>
     </StrictMode>,
   );
 
