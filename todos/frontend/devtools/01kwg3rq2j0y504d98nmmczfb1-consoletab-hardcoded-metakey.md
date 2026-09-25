@@ -29,8 +29,9 @@ const handleKeyDown = useCallback(
 
 `e.metaKey` is the Cmd key on macOS and the Windows/Super key
 elsewhere. The rest of the codebase deliberately maps `Meta` to
-`ctrlKey` on non-macOS (`src/keybindings/matching.ts:112-113`:
-`const metaPressed = isMacOS ? event.metaKey : event.ctrlKey;`), and
+`ctrlKey` on non-macOS (`matchesCombo` in
+`src/keybindings/matching.ts` matches both `Meta` and `Ctrl` bindings
+against `event.ctrlKey` there), and
 the backend ships a non-macOS `fallback` platform backend
 (`src-tauri/src/platform/mod.rs:43-47`), so non-macOS is a supported
 target. The clear button's tooltip advertises the shortcut
