@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A gadget whose WASM binary does not compile no longer stops
   Torchsnap from starting. It is skipped, the error is logged, and the
   other gadgets load.
+- The Clipboard Manager no longer panics when its database cannot be
+  opened. The gadget is disabled instead. Turning the gadget off closes
+  its database. A clipboard history opened before the gadget has
+  finished starting gets an error instead of a panic.
 
 ### Changed
 
