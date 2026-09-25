@@ -30,6 +30,7 @@ import { useSearch } from "./hooks/useSearch";
 import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
+import { openGadgetSettings } from "./openGadgetSettings";
 import { CARD_TOP_OFFSET } from "./layout";
 import type { Action, ActionId, FooterState, GadgetViewRef, SourcedEntry } from "../types";
 
@@ -441,6 +442,21 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     [dismiss],
   );
 
+  // `openSettings()` for the custom and the inline view. Each
+  // resolves the gadget id of its own view at call time, so a view
+  // opens only its own gadget's settings section.
+  const handleGadgetOpenSettings = useCallback(async () => {
+    const view = customGadgetViewRef.current;
+    if (!view) return;
+    await openGadgetSettings(view.gadgetId, dismiss);
+  }, [dismiss]);
+
+  const handleInlineOpenSettings = useCallback(async () => {
+    const view = activeInlineViewRef.current;
+    if (!view) return;
+    await openGadgetSettings(view.gadgetId, dismiss);
+  }, [dismiss]);
+
   // Inline view message handler — same pattern as the gadget
   // sendMessage but routed through the inline view's gadget ID.
   const sendInlineMessage = useCallback(
@@ -537,12 +553,20 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     () => ({
       goBack: handleGoBack,
       dismiss,
+      openSettings: handleGadgetOpenSettings,
       onExecute: handleGadgetExecute,
       onFooterChange: handleGadgetFooterChange,
       setDisplayQuery,
       mouseActiveRef,
     }),
-    [handleGoBack, dismiss, handleGadgetExecute, handleGadgetFooterChange, setDisplayQuery],
+    [
+      handleGoBack,
+      dismiss,
+      handleGadgetOpenSettings,
+      handleGadgetExecute,
+      handleGadgetFooterChange,
+      setDisplayQuery,
+    ],
   );
 
   const inlineInfo = useMemo<GadgetInfo>(
@@ -567,6 +591,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         }
       },
       dismiss,
+      openSettings: handleInlineOpenSettings,
       onExecute: handleInlineExecute,
       onFooterChange: handleInlineFooterChange,
       setDisplayQuery: () => {
@@ -578,7 +603,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       },
       mouseActiveRef,
     }),
-    [dismiss, handleInlineExecute, handleInlineFooterChange],
+    [dismiss, handleInlineOpenSettings, handleInlineExecute, handleInlineFooterChange],
   );
 
   // =========================================================

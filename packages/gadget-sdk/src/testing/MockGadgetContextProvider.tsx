@@ -30,17 +30,22 @@
 //
 // The mock uses the host's real GadgetContext object so the
 // shim hooks (`@torchsnap/gadget-sdk/hooks`) resolve through
-// the same React context the production code uses.
+// the same React context the production code uses. It also
+// installs the host's KeyBindingProvider, which the launcher
+// provides in production, so components that call
+// `useKeyBindings` render and react to `keydown` events on
+// `document`.
 // =========================================================
 
 import { useMemo, useRef, type ReactNode } from "react";
-import { GadgetContext } from "../../../src/contexts/GadgetContext";
+import { GadgetContext } from "../../../../src/contexts/GadgetContext";
+import { KeyBindingProvider } from "../../../../src/keybindings/KeyBindingProvider";
 import type {
   LauncherActions,
   GadgetContextValue,
   GadgetInfo,
   GadgetRuntime,
-} from "../../../src/contexts/GadgetContext";
+} from "../../../../src/contexts/GadgetContext";
 import type { Logger } from "../types/logger";
 
 // ---------------------------------------------------------
@@ -108,6 +113,7 @@ export function MockGadgetContextProvider({
         : {
             goBack: () => {},
             dismiss: () => {},
+            openSettings: async () => {},
             onExecute: () => {},
             onFooterChange: () => {},
             setDisplayQuery: () => {},
@@ -123,6 +129,8 @@ export function MockGadgetContextProvider({
   }, [info, runtime, launcher]);
 
   return (
-    <GadgetContext.Provider value={value}>{children}</GadgetContext.Provider>
+    <KeyBindingProvider>
+      <GadgetContext.Provider value={value}>{children}</GadgetContext.Provider>
+    </KeyBindingProvider>
   );
 }
