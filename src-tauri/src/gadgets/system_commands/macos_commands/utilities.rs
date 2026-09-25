@@ -12,8 +12,8 @@ use std::process::Command;
 
 use anyhow::Context;
 
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::gadgets::system_commands::SystemCommand;
+use crate::commands::types::{CatalogEntry, EntryIcon, PostAction};
+use crate::gadgets::system_commands::{RunCommand, SystemCommand, run_on_enter};
 use crate::platform::macos::osascript;
 
 // =========================================================
@@ -31,7 +31,7 @@ impl SystemCommand for EmptyTrash {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Empty Trash".into(),
@@ -43,11 +43,7 @@ impl SystemCommand for EmptyTrash {
                 "bin".into(),
                 "delete".into(),
             ],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Empty".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Empty"),
         }
     }
 
@@ -72,18 +68,14 @@ impl SystemCommand for StartScreenSaver {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Start Screen Saver".into(),
             subtitle: Some("Activate the screen saver".into()),
             icon: Some(EntryIcon::HeroIcon("tv".into())),
             keywords: vec!["screensaver".into(), "screen saver".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Start".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Start"),
         }
     }
 
@@ -113,7 +105,7 @@ impl SystemCommand for EjectDisc {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Eject Disc".into(),
@@ -125,11 +117,7 @@ impl SystemCommand for EjectDisc {
                 "disk".into(),
                 "optical".into(),
             ],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Eject".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Eject"),
         }
     }
 

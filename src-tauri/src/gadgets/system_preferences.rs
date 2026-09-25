@@ -28,12 +28,12 @@ use std::sync::{Arc, RwLock};
 use anyhow::Context;
 
 use crate::caps::{CapRequest, OpenerPermissions, ProvisionedCaps};
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction, ScoredEntry};
+use crate::commands::types::{CatalogEntry, EntryActions, EntryIcon, PostAction};
 use crate::icons::IconCache;
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
 use crate::storage::StorageKey;
 
-use super::Gadget;
+use super::{Gadget, Search};
 
 pub struct SystemPreferencesGadget {
     caps: Arc<ProvisionedCaps>,
@@ -121,8 +121,23 @@ impl Gadget for SystemPreferencesGadget {
         }
         Ok(())
     }
+}
 
-    fn entries(&self) -> Vec<CatalogEntry> {
+/// What a pane entry does: open the pane with the given id.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Command {
+    OpenPane(String),
+}
+
+/// Enter opens the pane.
+fn pane_actions(pane_id: &str) -> EntryActions<Command> {
+    EntryActions::new().primary("Open", Command::OpenPane(pane_id.to_string()))
+}
+
+impl Search for SystemPreferencesGadget {
+    type Command = Command;
+
+    fn entries(&self) -> Vec<CatalogEntry<Command>> {
         let cache = self.cache.read().expect("settings cache not poisoned");
 
         cache
@@ -138,42 +153,48 @@ impl Gadget for SystemPreferencesGadget {
                         .unwrap_or_else(|| EntryIcon::HeroIcon("cog-6-tooth".into())),
                 ),
                 keywords: vec!["settings".into(), "preferences".into(), "system".into()],
-                actions: vec![Action {
-                    id: ActionId::Open,
-                    label: "Open".into(),
-                    keybinding: None,
-                }],
+                actions: pane_actions(&pane.id),
             })
             .collect()
     }
 
-    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
+    fn execute(&self, command: Command) -> anyhow::Result<PostAction> {
         let opener = self.caps.opener();
+        let Command::OpenPane(pane_id) = command;
 
-        match action_id {
-            ActionId::Open => {
-                #[cfg(target_os = "macos")]
-                {
-                    let url = crate::platform::macos::MacosSettingsDiscovery::pane_url(&entry.id);
-                    opener
-                        .open_url(&url)
-                        .map_err(|e| anyhow::anyhow!(e))
-                        .context("open settings pane")?;
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = opener;
-                    anyhow::bail!("system-preferences open not implemented on this platform");
-                }
-            }
-            other => {
-                anyhow::bail!(
-                    "unsupported action {other:?} for system-preferences entry {}",
-                    entry.id
-                );
-            }
+        #[cfg(target_os = "macos")]
+        {
+            let url = crate::platform::macos::MacosSettingsDiscovery::pane_url(&pane_id);
+            opener
+                .open_url(&url)
+                .map_err(|e| anyhow::anyhow!(e))
+                .context("open settings pane")?;
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (opener, pane_id);
+            anyhow::bail!("system-preferences open not implemented on this platform");
         }
 
         Ok(PostAction::Dismiss)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::types::Action;
+
+    #[test]
+    fn pane_opens_on_enter() {
+        let actions = pane_actions("com.apple.Wi-Fi-Settings.extension");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Open",
+                Command::OpenPane("com.apple.Wi-Fi-Settings.extension".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 1);
     }
 }

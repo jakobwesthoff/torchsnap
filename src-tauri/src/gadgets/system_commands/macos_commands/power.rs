@@ -12,8 +12,8 @@ use std::process::Command;
 
 use anyhow::Context;
 
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::gadgets::system_commands::SystemCommand;
+use crate::commands::types::{CatalogEntry, EntryIcon, PostAction};
+use crate::gadgets::system_commands::{RunCommand, SystemCommand, run_on_enter};
 use crate::platform::macos::osascript;
 
 // =========================================================
@@ -31,18 +31,14 @@ impl SystemCommand for LockScreen {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Lock Screen".into(),
             subtitle: Some("Lock this Mac".into()),
             icon: Some(EntryIcon::HeroIcon("lock-closed".into())),
             keywords: vec!["lock".into(), "screen".into(), "security".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Lock".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Lock"),
         }
     }
 
@@ -74,18 +70,14 @@ impl SystemCommand for Sleep {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Sleep".into(),
             subtitle: Some("Put this Mac to sleep".into()),
             icon: Some(EntryIcon::HeroIcon("moon".into())),
             keywords: vec!["sleep".into(), "suspend".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Sleep".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Sleep"),
         }
     }
 
@@ -110,18 +102,14 @@ impl SystemCommand for Restart {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Restart".into(),
             subtitle: Some("Restart this Mac".into()),
             icon: Some(EntryIcon::HeroIcon("arrow-path".into())),
             keywords: vec!["restart".into(), "reboot".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Restart".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Restart"),
         }
     }
 
@@ -146,18 +134,14 @@ impl SystemCommand for Shutdown {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Shut Down".into(),
             subtitle: Some("Shut down this Mac".into()),
             icon: Some(EntryIcon::HeroIcon("power".into())),
             keywords: vec!["shutdown".into(), "power off".into(), "turn off".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Shut Down".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Shut Down"),
         }
     }
 
@@ -182,18 +166,14 @@ impl SystemCommand for LogOut {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Log Out".into(),
             subtitle: Some("Log out of this user account".into()),
             icon: Some(EntryIcon::HeroIcon("arrow-right-on-rectangle".into())),
             keywords: vec!["log out".into(), "logout".into(), "sign out".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Log Out".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Log Out"),
         }
     }
 

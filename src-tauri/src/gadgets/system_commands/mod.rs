@@ -15,8 +15,10 @@
 use std::sync::Arc;
 
 use crate::caps::{CapRequest, ProvisionedCaps};
-use crate::commands::types::{ActionId, CatalogEntry, PostAction, ScoredEntry};
-use crate::gadgets::Gadget;
+use serde::{Deserialize, Serialize};
+
+use crate::commands::types::{CatalogEntry, EntryActions, PostAction};
+use crate::gadgets::{Gadget, Search};
 
 // =========================================================
 // SystemCommand Trait
@@ -35,8 +37,9 @@ pub(crate) trait SystemCommand: Send + Sync {
     /// cheap (no I/O, or cached I/O).
     fn is_available(&self) -> bool;
 
-    /// The catalog entry for this command (title, subtitle, icon, keywords, actions).
-    fn entry(&self) -> CatalogEntry;
+    /// The catalog entry for this command (title, subtitle, icon,
+    /// keywords, and actions built with [`run_on_enter`]).
+    fn entry(&self) -> CatalogEntry<RunCommand>;
 
     /// Whether the command requires user confirmation before executing.
     /// Deferred — always returns false for now.
@@ -91,12 +94,25 @@ impl SystemCommandsGadget {
     }
 }
 
+/// What a system command entry does: run the command with this id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunCommand(pub String);
+
+/// The actions of a system command entry: Enter runs it.
+pub(crate) fn run_on_enter(id: &str, label: &str) -> EntryActions<RunCommand> {
+    EntryActions::new().primary(label, RunCommand(id.to_string()))
+}
+
 impl Gadget for SystemCommandsGadget {
     fn id(&self) -> &str {
         "system-commands"
     }
+}
 
-    fn entries(&self) -> Vec<CatalogEntry> {
+impl Search for SystemCommandsGadget {
+    type Command = RunCommand;
+
+    fn entries(&self) -> Vec<CatalogEntry<RunCommand>> {
         self.commands
             .iter()
             .filter(|cmd| cmd.is_available())
@@ -104,13 +120,100 @@ impl Gadget for SystemCommandsGadget {
             .collect()
     }
 
-    fn execute(&self, entry: &ScoredEntry, _action_id: &ActionId) -> anyhow::Result<PostAction> {
+    fn execute(&self, RunCommand(id): RunCommand) -> anyhow::Result<PostAction> {
         let cmd = self
             .commands
             .iter()
-            .find(|cmd| cmd.id() == entry.id)
-            .ok_or_else(|| anyhow::anyhow!("unknown system command: {}", entry.id))?;
+            .find(|cmd| cmd.id() == id)
+            .ok_or_else(|| anyhow::anyhow!("unknown system command: {id}"))?;
 
         cmd.execute()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::types::{Action, EntryIcon};
+
+    struct FakeCommand {
+        available: bool,
+    }
+
+    impl SystemCommand for FakeCommand {
+        fn id(&self) -> &str {
+            "fake"
+        }
+
+        fn is_available(&self) -> bool {
+            self.available
+        }
+
+        fn entry(&self) -> CatalogEntry<RunCommand> {
+            CatalogEntry {
+                id: self.id().into(),
+                title: "Fake".into(),
+                subtitle: None,
+                icon: Some(EntryIcon::HeroIcon("bolt".into())),
+                keywords: vec![],
+                actions: run_on_enter(self.id(), "Run"),
+            }
+        }
+
+        fn execute(&self) -> anyhow::Result<PostAction> {
+            Ok(PostAction::KeepOpen)
+        }
+    }
+
+    fn gadget_with(commands: Vec<Box<dyn SystemCommand>>) -> SystemCommandsGadget {
+        SystemCommandsGadget {
+            caps: Arc::new(ProvisionedCaps {
+                opener: None,
+                http: None,
+                filesystem: None,
+                command: None,
+                clipboard: None,
+                sql_storage: None,
+                website_metadata: None,
+                icon_cache: None,
+                settings: None,
+                frecency: None,
+                path_resolver: None,
+            }),
+            commands,
+        }
+    }
+
+    #[test]
+    fn run_on_enter_puts_the_command_id_in_the_primary_slot() {
+        let actions = run_on_enter("sleep", "Sleep");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled("Sleep", RunCommand("sleep".into())))
+        );
+        assert_eq!(actions.iter().count(), 1);
+    }
+
+    #[test]
+    fn only_available_commands_become_entries() {
+        let gadget = gadget_with(vec![
+            Box::new(FakeCommand { available: true }),
+            Box::new(FakeCommand { available: false }),
+        ]);
+        assert_eq!(Search::entries(&gadget).len(), 1);
+    }
+
+    #[test]
+    fn execute_runs_the_command_with_the_id() {
+        let gadget = gadget_with(vec![Box::new(FakeCommand { available: true })]);
+        let post_action = Search::execute(&gadget, RunCommand("fake".into())).expect("runs");
+        assert!(matches!(post_action, PostAction::KeepOpen));
+    }
+
+    #[test]
+    fn execute_rejects_an_unknown_id() {
+        let gadget = gadget_with(vec![]);
+        let error = Search::execute(&gadget, RunCommand("gone".into())).expect_err("unknown");
+        assert_eq!(error.to_string(), "unknown system command: gone");
     }
 }

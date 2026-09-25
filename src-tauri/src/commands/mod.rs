@@ -19,7 +19,7 @@ use tauri::ipc::Channel;
 
 use crate::gadget_host::GadgetHost;
 use serde_json::Value;
-use types::{ActionId, PostAction, SearchMessage};
+use types::{PostAction, SearchMessage, Slot};
 
 /// Search all registered gadgets and stream results to the
 /// frontend as they become available.
@@ -33,9 +33,10 @@ pub async fn search(
     Ok(())
 }
 
-/// Execute an action on a specific entry, routing to the gadget
-/// that owns it. Returns the gadget's `PostAction` so the frontend
-/// can decide whether to dismiss the launcher.
+/// Run the action in `slot` of a specific entry, routing its
+/// command to the gadget that owns the entry. Returns the gadget's
+/// `PostAction` so the frontend can decide whether to dismiss the
+/// launcher.
 ///
 /// `async fn` + `spawn_blocking` is required, not stylistic: a
 /// synchronous `#[tauri::command]` runs on Tauri's IPC blocking
@@ -48,13 +49,13 @@ pub async fn search(
 pub async fn search_execute(
     source: String,
     entry_id: String,
-    action_id: ActionId,
+    slot: Slot,
     state: State<'_, Arc<GadgetHost>>,
     app: tauri::AppHandle,
 ) -> Result<PostAction, String> {
     let host = Arc::clone(&state);
     tokio::task::spawn_blocking(move || {
-        host.execute(&source, &entry_id, &action_id, &app)
+        host.execute(&source, &entry_id, slot, &app)
             .map_err(|e| format!("{e:#}"))
     })
     .await

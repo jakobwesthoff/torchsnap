@@ -30,12 +30,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::Context;
 
 use crate::caps::{CapRequest, OpenerPermissions, ProvisionedCaps};
-use crate::commands::types::{
-    Action, ActionId, ActionKeybinding, CatalogEntry, EntryIcon, PostAction, ScoredEntry,
-};
+use crate::commands::types::{CatalogEntry, EntryActions, EntryIcon, PostAction};
 use crate::icons::IconCache;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 use crate::storage::StorageKey;
+
+use super::Search;
 
 use super::Gadget;
 
@@ -190,8 +190,27 @@ impl Gadget for AppLauncherGadget {
         }
         Ok(())
     }
+}
 
-    fn entries(&self) -> Vec<CatalogEntry> {
+/// What an app entry's actions do. Both carry the app's id, the
+/// path the opener works on (on macOS the `.app` bundle).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Command {
+    Open(String),
+    Reveal(String),
+}
+
+/// Enter opens the app; Cmd+Enter reveals it in the file manager.
+fn app_actions(id: &str) -> EntryActions<Command> {
+    EntryActions::new()
+        .primary("Open", Command::Open(id.to_string()))
+        .secondary("Reveal in Finder", Command::Reveal(id.to_string()))
+}
+
+impl Search for AppLauncherGadget {
+    type Command = Command;
+
+    fn entries(&self) -> Vec<CatalogEntry<Command>> {
         self.maybe_trigger_background_refresh();
 
         let cache = self.cache.read().expect("app cache not poisoned");
@@ -209,46 +228,26 @@ impl Gadget for AppLauncherGadget {
                         .unwrap_or_else(|| EntryIcon::HeroIcon("rocket-launch".into())),
                 ),
                 keywords: vec![],
-                actions: vec![
-                    Action {
-                        id: ActionId::Open,
-                        label: "Open".into(),
-                        keybinding: None,
-                    },
-                    Action {
-                        id: ActionId::Reveal,
-                        label: "Reveal in Finder".into(),
-                        keybinding: Some(ActionKeybinding {
-                            modifiers: vec!["Meta".into()],
-                            key: "Enter".into(),
-                        }),
-                    },
-                ],
+                actions: app_actions(&app.id),
             })
             .collect()
     }
 
-    fn execute(&self, entry: &ScoredEntry, action_id: &ActionId) -> anyhow::Result<PostAction> {
+    fn execute(&self, command: Command) -> anyhow::Result<PostAction> {
         let opener = self.caps.opener();
 
-        match action_id {
-            ActionId::Open => {
+        match command {
+            Command::Open(id) => {
                 opener
-                    .open_path(&entry.id)
+                    .open_path(&id)
                     .map_err(|e| anyhow::anyhow!(e))
                     .context("open application")?;
             }
-            ActionId::Reveal => {
+            Command::Reveal(id) => {
                 opener
-                    .reveal_path(&entry.id)
+                    .reveal_path(&id)
                     .map_err(|e| anyhow::anyhow!(e))
                     .context("reveal application in file manager")?;
-            }
-            other => {
-                anyhow::bail!(
-                    "unsupported action {other:?} for app-launcher entry {}",
-                    entry.id
-                );
             }
         }
 
@@ -266,4 +265,30 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::ZERO)
         .as_secs() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::types::Action;
+
+    #[test]
+    fn app_opens_on_enter_and_reveals_on_cmd_enter() {
+        let actions = app_actions("/Applications/Safari.app");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Open",
+                Command::Open("/Applications/Safari.app".into())
+            ))
+        );
+        assert_eq!(
+            actions.secondary,
+            Some(Action::labeled(
+                "Reveal in Finder",
+                Command::Reveal("/Applications/Safari.app".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 2);
+    }
 }
