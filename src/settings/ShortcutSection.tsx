@@ -8,13 +8,16 @@
  * Wraps the reusable `ShortcutRecorder`. When the user records a
  * new combo, we write it to the settings store. The backend's
  * shortcut reactor picks up the change and re-registers all
- * shortcuts automatically — no explicit Tauri command needed.
+ * shortcuts automatically — no explicit Tauri command needed. A
+ * shortcut the backend could not register is explained below the
+ * row.
  */
 
 import { useCallback, useState } from "react";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { Section } from "./Section";
 import { Entry } from "./Entry";
+import { ShortcutProblemNote } from "./ShortcutProblemNote";
 
 interface ShortcutSectionProps {
   globalShortcut: string;
@@ -42,6 +45,7 @@ export function ShortcutSection({ globalShortcut, setGlobalShortcut }: ShortcutS
         <ShortcutRecorder value={globalShortcut} onChange={handleChange} />
       </Entry>
       {error && <p className="text-sm text-red-500">{error}</p>}
+      <ShortcutProblemNote settingsKey="globalShortcut" />
     </Section>
   );
 }

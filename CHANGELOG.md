@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Settings explains a global shortcut that does not work below its
+  row: no shortcut set, not a valid shortcut, already used by another
+  Torchsnap shortcut, or refused by the system because another app
+  may hold it.
+
 ### Fixed
 
 - The gadget interface docs name the filesystem permission section

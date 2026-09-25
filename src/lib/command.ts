@@ -108,6 +108,7 @@ export interface CommandMap {
   };
   wasm_gadgets: { params: void; result: WasmGadgetManifest[] };
   gadget_sources: { params: void; result: Record<string, GadgetSourceKind> };
+  shortcut_problems: { params: void; result: Record<string, ShortcutProblem> };
   uninstall_user_gadget: {
     params: { gadgetId: string };
     result: UninstallResult;
@@ -182,6 +183,20 @@ export interface UninstallResult {
 // =========================================================
 
 export type GadgetSourceKind = "builtin" | "system" | "user" | "dev";
+
+// =========================================================
+// Shortcut Problem
+//
+// Mirrors the Rust `ShortcutProblem` enum: why a global
+// shortcut is not registered. Keyed by the shortcut's
+// settings key in the `shortcut_problems` result.
+// =========================================================
+
+export type ShortcutProblem =
+  | { kind: "missing" }
+  | { kind: "invalid"; combo: string }
+  | { kind: "takenBy"; label: string }
+  | { kind: "rejected"; reason: string };
 
 // =========================================================
 // WASM Gadget Manifest
