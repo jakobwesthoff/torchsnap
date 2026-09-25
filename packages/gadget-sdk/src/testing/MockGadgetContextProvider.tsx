@@ -113,6 +113,7 @@ export function MockGadgetContextProvider({
         : {
             goBack: () => {},
             dismiss: () => {},
+            openSettings: async () => {},
             onExecute: () => {},
             onFooterChange: () => {},
             setDisplayQuery: () => {},

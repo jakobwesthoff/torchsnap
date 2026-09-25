@@ -517,6 +517,15 @@ fn launcher_hide(app: tauri::AppHandle) {
     hide_launcher(&app);
 }
 
+/// Tauri command behind `openSettings()` in gadget views: open the
+/// settings window on the gadget's section, as the `open-settings`
+/// post-action does. The frontend closes the launcher afterwards,
+/// the same way it does for the post-action's forwarded `Dismiss`.
+#[tauri::command]
+fn gadget_open_settings(app: tauri::AppHandle, gadget_id: String) {
+    show_settings_window_at(&app, &gadget_id);
+}
+
 /// Show the launcher and, on Linux, tell the frontend it happened.
 ///
 /// The `launcher-shown` event is the deterministic "the launcher
@@ -784,6 +793,7 @@ pub fn run() {
             commands::gadget_message,
             control_subscribe,
             launcher_hide,
+            gadget_open_settings,
             launcher_set_layout,
             frecency_stats,
             frecency_clear,

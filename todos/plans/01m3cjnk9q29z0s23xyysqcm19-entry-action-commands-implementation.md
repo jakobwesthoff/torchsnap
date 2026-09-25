@@ -107,22 +107,22 @@ the ADR 55 rule for views: a view acting on its own state calls
 Additive, from ADR 55: every launcher effect of a WIT post-action is
 also a `LauncherActions` function.
 
-- [ ] Tauri command, for example `gadget_open_settings(gadget_id)`,
+- [x] Tauri command, for example `gadget_open_settings(gadget_id)`,
   that hides the launcher and calls `show_settings_window_at(app,
   gadget_id)`, the same effect as the `open-settings` post-action
   (decided in ADR 55).
   Register it and type it in `src/lib/command.ts`.
-- [ ] `openSettings()` in `LauncherActions` in
+- [x] `openSettings()` in `LauncherActions` in
   `src/contexts/GadgetContext.tsx` and
   `packages/gadget-sdk/src/shims/hooks.ts`, wired in
   `src/launcher/Launcher.tsx` for custom views and inline views with
   the view's gadget id. Add it to `MockGadgetContextProvider`.
-- [ ] Tests with `mockIPC`: calling `openSettings()` invokes the
+- [x] Tests with `mockIPC`: calling `openSettings()` invokes the
   command with the view's gadget id. If rendering `Launcher` is too
   heavy for a test, extract the construction of the launcher actions
   into a function and test that.
-- [ ] `CHANGELOG.md`, Added (for gadget authors).
-- [ ] `just fullcycle`, commit.
+- [x] `CHANGELOG.md`, Added (for gadget authors).
+- [x] `just fullcycle`, commit.
 
 ## Phase 4: typed messaging
 
