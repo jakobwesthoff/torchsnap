@@ -176,7 +176,7 @@ here. Commits in this phase may not build. Commit after each step.
 - [x] **5.4 Test fixtures.** Update the six fixtures in
   `src-tauri/tests/fixtures/` (hand-written `SearchGuest` against raw
   `wit_bindgen`), `just build-test-fixtures`, commit the `.wasm` files.
-- [ ] **5.5 Host.** Slot types, `EntryActions<C>`, generic entry and
+- [x] **5.5 Host.** Slot types, `EntryActions<C>`, generic entry and
   response types, `ErasedSearch` and typed `Search` with blanket impl,
   `Gadget: ErasedSearch`. Actions serialize to the frontend as `{ slot,
   label }` in slot table order, without commands. `search_execute`
@@ -185,7 +185,7 @@ here. Commits in this phase may not build. Commit after each step.
   `bridge.rs` and `runtime/instance.rs`; `default_keybinding_for`
   goes away. Tests: commands never serialized, list order, empty slot,
   blanket encode and decode, conversions.
-- [ ] **5.6 Native gadgets.** app_launcher, clipboard, commands,
+- [x] **5.6 Native gadgets.** app_launcher, clipboard, commands,
   system_preferences, system_commands on `Search`. App launcher's
   Reveal goes to `secondary`. Adapt their tests.
 - [ ] **5.7 Frontend.** One slot table (keys, default labels, title

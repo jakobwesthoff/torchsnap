@@ -104,71 +104,29 @@ impl From<native::EntryIcon> for wit::EntryIcon {
     }
 }
 
-impl From<wit::ActionId> for native::ActionId {
-    fn from(id: wit::ActionId) -> Self {
-        match id {
-            wit::ActionId::Open => native::ActionId::Open,
-            wit::ActionId::Copy => native::ActionId::Copy,
-            wit::ActionId::Reveal => native::ActionId::Reveal,
-            wit::ActionId::OpenWith => native::ActionId::OpenWith,
-            wit::ActionId::Delete => native::ActionId::Delete,
-            wit::ActionId::OpenSettings => native::ActionId::OpenSettings,
-            wit::ActionId::Custom(s) => native::ActionId::Custom(s),
-        }
-    }
-}
-
-impl From<native::ActionId> for wit::ActionId {
-    fn from(id: native::ActionId) -> Self {
-        match id {
-            native::ActionId::Open => wit::ActionId::Open,
-            native::ActionId::Copy => wit::ActionId::Copy,
-            native::ActionId::Reveal => wit::ActionId::Reveal,
-            native::ActionId::OpenWith => wit::ActionId::OpenWith,
-            native::ActionId::Delete => wit::ActionId::Delete,
-            native::ActionId::OpenSettings => wit::ActionId::OpenSettings,
-            native::ActionId::Custom(s) => wit::ActionId::Custom(s),
-        }
-    }
-}
-
-impl From<wit::Action> for native::Action {
-    fn from(action: wit::Action) -> Self {
-        let id: native::ActionId = action.id.into();
-        // Keybindings for well-known `ActionId`s are filled by the
-        // host. Without this, secondary actions on WASM gadget
-        // entries are invisible in the launcher footer (the footer
-        // filters out actions without a keybinding) and unreachable
-        // by keyboard (`useKeyboardNavigation` only registers
-        // handlers for actions that carry one).
-        let keybinding = default_keybinding_for(&id);
+// Actions carry the component's command strings unchanged; the
+// host never decodes them. Keys and default labels come from the
+// frontend's slot table, so nothing is filled in here.
+impl From<torchsnap::gadget::types::Action> for native::Action {
+    fn from(action: torchsnap::gadget::types::Action) -> Self {
         native::Action {
-            id,
             label: action.label,
-            keybinding,
+            command: action.command,
         }
     }
 }
 
-/// Default keybinding assignment for the well-known [`native::ActionId`]
-/// variants. `Open` stays unbound — the launcher wires Enter to the
-/// selected entry's primary action separately. `Custom` actions are
-/// gadget-specific and get no host-side default.
-fn default_keybinding_for(id: &native::ActionId) -> Option<native::ActionKeybinding> {
-    use native::{ActionId, ActionKeybinding};
-    let (mods, key): (&[&str], &str) = match id {
-        ActionId::Open => return None,
-        ActionId::Copy => (&["Meta"], "c"),
-        ActionId::Reveal => (&["Meta", "Shift"], "r"),
-        ActionId::OpenWith => (&["Meta", "Shift"], "o"),
-        ActionId::Delete => (&["Meta"], "Backspace"),
-        ActionId::OpenSettings => (&["Meta"], ","),
-        ActionId::Custom(_) => return None,
-    };
-    Some(ActionKeybinding {
-        modifiers: mods.iter().map(|s| (*s).to_string()).collect(),
-        key: key.to_string(),
-    })
+impl From<wit::EntryActions> for native::EntryActions {
+    fn from(actions: wit::EntryActions) -> Self {
+        native::EntryActions {
+            primary: actions.primary.map(Into::into),
+            secondary: actions.secondary.map(Into::into),
+            copy: actions.copy.map(Into::into),
+            reveal: actions.reveal.map(Into::into),
+            delete: actions.delete.map(Into::into),
+            open_settings: actions.open_settings.map(Into::into),
+        }
+    }
 }
 
 impl From<wit::CatalogEntry> for native::CatalogEntry {
@@ -179,7 +137,7 @@ impl From<wit::CatalogEntry> for native::CatalogEntry {
             subtitle: entry.subtitle,
             icon: entry.icon.map(Into::into),
             keywords: entry.keywords,
-            actions: entry.actions.into_iter().map(Into::into).collect(),
+            actions: entry.actions.into(),
         }
     }
 }
@@ -205,33 +163,7 @@ impl From<wit::ScoredEntry> for native::ScoredEntry {
             score: entry.score,
             title_positions: crate::unicode::Utf16Positions(entry.title_highlight_positions),
             subtitle_positions: crate::unicode::Utf16Positions(entry.subtitle_highlight_positions),
-            actions: entry.actions.into_iter().map(Into::into).collect(),
-            data: entry.data,
-        }
-    }
-}
-
-impl From<native::ScoredEntry> for wit::ScoredEntry {
-    fn from(entry: native::ScoredEntry) -> Self {
-        wit::ScoredEntry {
-            id: entry.id,
-            title: entry.title,
-            subtitle: entry.subtitle,
-            icon: entry.icon.map(Into::into),
-            score: entry.score,
-            title_highlight_positions: entry.title_positions.0,
-            subtitle_highlight_positions: entry.subtitle_positions.0,
-            actions: entry.actions.into_iter().map(Into::into).collect(),
-            data: entry.data,
-        }
-    }
-}
-
-impl From<native::Action> for wit::Action {
-    fn from(action: native::Action) -> Self {
-        wit::Action {
-            id: action.id.into(),
-            label: action.label,
+            actions: entry.actions.into(),
         }
     }
 }
@@ -460,8 +392,25 @@ mod tests {
             score,
             title_highlight_positions: vec![],
             subtitle_highlight_positions: vec![],
-            actions: vec![],
-            data: None,
+            actions: empty_wit_actions(),
+        }
+    }
+
+    fn empty_wit_actions() -> wit::EntryActions {
+        wit::EntryActions {
+            primary: None,
+            secondary: None,
+            copy: None,
+            reveal: None,
+            delete: None,
+            open_settings: None,
+        }
+    }
+
+    fn wit_action(label: Option<&str>, command: &str) -> torchsnap::gadget::types::Action {
+        torchsnap::gadget::types::Action {
+            label: label.map(str::to_string),
+            command: command.to_string(),
         }
     }
 
@@ -621,11 +570,11 @@ mod tests {
             score: 99,
             title_highlight_positions: vec![0, 1, 2],
             subtitle_highlight_positions: vec![5],
-            actions: vec![wit::Action {
-                id: wit::ActionId::Open,
-                label: "Open".to_string(),
-            }],
-            data: Some("payload".to_string()),
+            actions: wit::EntryActions {
+                primary: Some(wit_action(Some("Join"), r#"{"Toggle":"abc"}"#)),
+                copy: Some(wit_action(None, r#"{"CopyId":"abc"}"#)),
+                ..empty_wit_actions()
+            },
         }
     }
 
@@ -641,156 +590,54 @@ mod tests {
         assert_eq!(native_entry.score, 99);
         assert_eq!(native_entry.title_positions.0, vec![0, 1, 2]);
         assert_eq!(native_entry.subtitle_positions.0, vec![5]);
-        assert_eq!(native_entry.actions.len(), 1);
-        assert_eq!(native_entry.actions[0].label, "Open");
-        assert_eq!(native_entry.data.as_deref(), Some("payload"));
     }
 
     #[test]
-    fn scored_entry_data_none_preserved() {
-        let mut wit_entry = full_wit_scored_entry();
-        wit_entry.data = None;
-        let native_entry: native::ScoredEntry = wit_entry.into();
-        assert!(native_entry.data.is_none());
-    }
-
-    // =====================================================
-    // ScoredEntry conversion (native → WIT)
-    // =====================================================
-
-    fn full_native_scored_entry() -> native::ScoredEntry {
-        native::ScoredEntry {
-            id: "n1".to_string(),
-            title: "Native Title".to_string(),
-            subtitle: Some("Native Sub".to_string()),
-            icon: Some(native::EntryIcon::Emoji("🔥".to_string())),
-            score: 77,
-            title_positions: crate::unicode::Utf16Positions(vec![3, 4]),
-            subtitle_positions: crate::unicode::Utf16Positions(vec![]),
-            actions: vec![native::Action {
-                id: native::ActionId::Copy,
-                label: "Copy".to_string(),
-                keybinding: Some(native::ActionKeybinding {
-                    modifiers: vec!["Meta".to_string()],
-                    key: "c".to_string(),
-                }),
-            }],
-            data: Some(r#"{"url":"https://example.com"}"#.to_string()),
-        }
-    }
-
-    #[test]
-    fn native_to_wit_scored_entry_maps_all_fields() {
-        let wit_entry: wit::ScoredEntry = full_native_scored_entry().into();
-        assert_eq!(wit_entry.id, "n1");
-        assert_eq!(wit_entry.title, "Native Title");
-        assert_eq!(wit_entry.subtitle.as_deref(), Some("Native Sub"));
-        assert!(matches!(wit_entry.icon, Some(wit::EntryIcon::Emoji(ref s)) if s == "🔥"));
-        assert_eq!(wit_entry.score, 77);
-        assert_eq!(wit_entry.title_highlight_positions, vec![3, 4]);
-        assert!(wit_entry.subtitle_highlight_positions.is_empty());
-        assert_eq!(wit_entry.actions.len(), 1);
-        assert!(matches!(wit_entry.actions[0].id, wit::ActionId::Copy));
+    fn slots_keep_labels_and_pass_commands_through_unchanged() {
+        let native_entry: native::ScoredEntry = full_wit_scored_entry().into();
         assert_eq!(
-            wit_entry.data.as_deref(),
-            Some(r#"{"url":"https://example.com"}"#)
+            native_entry.actions.primary,
+            Some(native::Action::labeled(
+                "Join",
+                r#"{"Toggle":"abc"}"#.to_string()
+            ))
         );
+        assert_eq!(
+            native_entry.actions.copy,
+            Some(native::Action {
+                label: None,
+                command: r#"{"CopyId":"abc"}"#.to_string(),
+            })
+        );
+        assert_eq!(native_entry.actions.iter().count(), 2);
     }
 
     #[test]
-    fn native_to_wit_action_drops_keybinding() {
-        let action = native::Action {
-            id: native::ActionId::Reveal,
-            label: "Show".to_string(),
-            keybinding: Some(native::ActionKeybinding {
-                modifiers: vec!["Meta".to_string(), "Shift".to_string()],
-                key: "r".to_string(),
-            }),
-        };
-        let wit_action: wit::Action = action.into();
-        assert!(matches!(wit_action.id, wit::ActionId::Reveal));
-        assert_eq!(wit_action.label, "Show");
-    }
-
-    #[test]
-    fn scored_entry_round_trips_through_wit() {
-        let original = full_native_scored_entry();
-        let wit: wit::ScoredEntry = original.clone().into();
-        let back: native::ScoredEntry = wit.into();
-        assert_eq!(back.id, original.id);
-        assert_eq!(back.title, original.title);
-        assert_eq!(back.subtitle, original.subtitle);
-        assert_eq!(back.score, original.score);
-        assert_eq!(back.title_positions.0, original.title_positions.0);
-        assert_eq!(back.data, original.data);
-    }
-
-    // =====================================================
-    // ActionId conversions
-    // =====================================================
-
-    #[test]
-    fn action_id_wit_to_native_all_variants() {
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::Open),
-            native::ActionId::Open
-        ));
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::Copy),
-            native::ActionId::Copy
-        ));
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::Reveal),
-            native::ActionId::Reveal
-        ));
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::OpenWith),
-            native::ActionId::OpenWith
-        ));
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::Delete),
-            native::ActionId::Delete
-        ));
-        assert!(matches!(
-            native::ActionId::from(wit::ActionId::OpenSettings),
-            native::ActionId::OpenSettings
-        ));
-        match native::ActionId::from(wit::ActionId::Custom("foo".into())) {
-            native::ActionId::Custom(s) => assert_eq!(s, "foo"),
-            other => panic!("expected Custom, got {other:?}"),
+    fn every_wit_slot_maps_to_the_same_native_slot() {
+        let actions: native::EntryActions = wit::EntryActions {
+            primary: Some(wit_action(None, "1")),
+            secondary: Some(wit_action(None, "2")),
+            copy: Some(wit_action(None, "3")),
+            reveal: Some(wit_action(None, "4")),
+            delete: Some(wit_action(None, "5")),
+            open_settings: Some(wit_action(None, "6")),
         }
-    }
-
-    #[test]
-    fn action_id_native_to_wit_all_variants() {
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::Open),
-            wit::ActionId::Open
-        ));
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::Copy),
-            wit::ActionId::Copy
-        ));
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::Reveal),
-            wit::ActionId::Reveal
-        ));
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::OpenWith),
-            wit::ActionId::OpenWith
-        ));
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::Delete),
-            wit::ActionId::Delete
-        ));
-        assert!(matches!(
-            wit::ActionId::from(native::ActionId::OpenSettings),
-            wit::ActionId::OpenSettings
-        ));
-        match wit::ActionId::from(native::ActionId::Custom("bar".into())) {
-            wit::ActionId::Custom(s) => assert_eq!(s, "bar"),
-            other => panic!("expected Custom, got {other:?}"),
-        }
+        .into();
+        let commands: Vec<(native::Slot, &str)> = actions
+            .iter()
+            .map(|(slot, action)| (slot, action.command.as_str()))
+            .collect();
+        assert_eq!(
+            commands,
+            [
+                (native::Slot::Primary, "1"),
+                (native::Slot::Secondary, "2"),
+                (native::Slot::Copy, "3"),
+                (native::Slot::Reveal, "4"),
+                (native::Slot::Delete, "5"),
+                (native::Slot::OpenSettings, "6"),
+            ]
+        );
     }
 
     // =====================================================
@@ -805,10 +652,10 @@ mod tests {
             subtitle: Some("System settings".to_string()),
             icon: Some(wit::EntryIcon::Emoji("⚙️".to_string())),
             keywords: vec!["settings".to_string(), "config".to_string()],
-            actions: vec![wit::Action {
-                id: wit::ActionId::Open,
-                label: "Open".to_string(),
-            }],
+            actions: wit::EntryActions {
+                primary: Some(wit_action(Some("Open"), "open")),
+                ..empty_wit_actions()
+            },
         };
         let native_entry: native::CatalogEntry = wit_entry.into();
         assert_eq!(native_entry.id, "cat-1");
@@ -816,7 +663,10 @@ mod tests {
         assert_eq!(native_entry.subtitle.as_deref(), Some("System settings"));
         assert!(matches!(native_entry.icon, Some(native::EntryIcon::Emoji(ref s)) if s == "⚙️"));
         assert_eq!(native_entry.keywords, vec!["settings", "config"]);
-        assert_eq!(native_entry.actions.len(), 1);
+        assert_eq!(
+            native_entry.actions.primary,
+            Some(native::Action::labeled("Open", "open".to_string()))
+        );
     }
 
     // =====================================================
@@ -1066,8 +916,7 @@ mod tests {
                 score: 1,
                 title_positions: crate::unicode::Utf16Positions::empty(),
                 subtitle_positions: crate::unicode::Utf16Positions::empty(),
-                actions: vec![],
-                data: None,
+                actions: native::EntryActions::new(),
             }
         }
 
@@ -1083,7 +932,7 @@ mod tests {
                 subtitle: None,
                 icon: Some(native::EntryIcon::AppIcon("com.if.Amphetamine".into())),
                 keywords: vec![],
-                actions: vec![],
+                actions: native::EntryActions::new(),
             }];
             let _ =
                 resolve_catalog_entries_asset_icons(&mut catalog_entries, "awake", resolver_ref);

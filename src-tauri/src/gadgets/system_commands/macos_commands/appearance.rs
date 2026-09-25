@@ -10,8 +10,8 @@
 // which avoids osascript roundtrips on every keystroke.
 // =========================================================
 
-use crate::commands::types::{Action, ActionId, CatalogEntry, EntryIcon, PostAction};
-use crate::gadgets::system_commands::SystemCommand;
+use crate::commands::types::{CatalogEntry, EntryIcon, PostAction};
+use crate::gadgets::system_commands::{RunCommand, SystemCommand, run_on_enter};
 use crate::platform::macos::osascript;
 
 // =========================================================
@@ -29,7 +29,7 @@ impl SystemCommand for ToggleAppearance {
         true
     }
 
-    fn entry(&self) -> CatalogEntry {
+    fn entry(&self) -> CatalogEntry<RunCommand> {
         CatalogEntry {
             id: self.id().into(),
             title: "Toggle Dark / Light Mode".into(),
@@ -44,11 +44,7 @@ impl SystemCommand for ToggleAppearance {
                 "night".into(),
                 "appearance".into(),
             ],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Toggle".into(),
-                keybinding: None,
-            }],
+            actions: run_on_enter(self.id(), "Toggle"),
         }
     }
 

@@ -57,49 +57,163 @@ pub enum PostAction {
 
 // =========================================================
 // Action Types
+//
+// An entry's actions sit in fixed slots, and the slot alone
+// decides how the user runs an action (ADR 55). Each action
+// carries a command: a gadget-defined value the host stores
+// with the entry and hands back to the gadget's `execute()`.
+// `C` is the command type. The host holds commands as opaque
+// `String`s; native gadgets use their own type through
+// `gadgets::Search`, which encodes it to a `String`.
 // =========================================================
 
-/// Well-known action IDs with an escape hatch for custom gadget actions.
-///
-/// Using an enum rather than bare strings lets us exhaustively match
-/// for default keybinding assignment, display hints, and icon mapping.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", content = "value", rename_all = "camelCase")]
-pub enum ActionId {
-    Open,
+/// The slots of an entry's actions, in the order the launcher
+/// lists them. Serialized to the frontend, which maps each slot
+/// to its key binding and default label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Slot {
+    Primary,
+    Secondary,
     Copy,
     Reveal,
-    OpenWith,
     Delete,
-    /// Open the originating gadget's settings. Dispatched to the
-    /// gadget like every other action; the gadget answers with
-    /// `PostAction::OpenSettings` to have the host open them.
     OpenSettings,
-    Custom(String),
 }
 
-/// Keybinding info for an action, sent to the frontend for both
-/// rendering shortcut hints and registering dynamic key handlers.
-///
-/// Uses the same modifier vocabulary as the frontend keybinding
-/// engine: `"Meta"` (Cmd on macOS, Ctrl on others), `"Shift"`,
-/// `"Alt"`. The display label is derived from these in the frontend.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActionKeybinding {
-    /// Modifier keys, e.g. `["Meta"]` or `["Meta", "Shift"]`.
-    pub modifiers: Vec<String>,
-    /// The key name, e.g. `"Enter"`, `"c"`, `"Backspace"`.
-    pub key: String,
+/// One action: what the launcher shows and what running it does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Action<C = String> {
+    /// `None` shows the slot's default label in the frontend.
+    pub label: Option<String>,
+    pub command: C,
 }
 
-/// A single action that can be performed on a result entry.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Action {
-    pub id: ActionId,
-    pub label: String,
-    pub keybinding: Option<ActionKeybinding>,
+impl<C> Action<C> {
+    /// An action with its own label.
+    pub fn labeled(label: impl Into<String>, command: C) -> Self {
+        Self {
+            label: Some(label.into()),
+            command,
+        }
+    }
+}
+
+/// The actions of an entry, one optional field per slot. The
+/// builder covers the slots native gadgets fill; the others are
+/// set through the public fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryActions<C = String> {
+    pub primary: Option<Action<C>>,
+    pub secondary: Option<Action<C>>,
+    pub copy: Option<Action<C>>,
+    pub reveal: Option<Action<C>>,
+    pub delete: Option<Action<C>>,
+    pub open_settings: Option<Action<C>>,
+}
+
+// Written out instead of derived: the derive would require
+// `C: Default`, and an empty slot set needs no command at all.
+impl<C> Default for EntryActions<C> {
+    fn default() -> Self {
+        Self {
+            primary: None,
+            secondary: None,
+            copy: None,
+            reveal: None,
+            delete: None,
+            open_settings: None,
+        }
+    }
+}
+
+impl<C> EntryActions<C> {
+    /// No actions.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The Enter action. The frontend has no default label for it.
+    pub fn primary(mut self, label: impl Into<String>, command: C) -> Self {
+        self.primary = Some(Action::labeled(label, command));
+        self
+    }
+
+    /// The Cmd+Enter action. The frontend has no default label for it.
+    pub fn secondary(mut self, label: impl Into<String>, command: C) -> Self {
+        self.secondary = Some(Action::labeled(label, command));
+        self
+    }
+
+    /// The action in `slot`, if filled.
+    pub fn get(&self, slot: Slot) -> Option<&Action<C>> {
+        match slot {
+            Slot::Primary => self.primary.as_ref(),
+            Slot::Secondary => self.secondary.as_ref(),
+            Slot::Copy => self.copy.as_ref(),
+            Slot::Reveal => self.reveal.as_ref(),
+            Slot::Delete => self.delete.as_ref(),
+            Slot::OpenSettings => self.open_settings.as_ref(),
+        }
+    }
+
+    /// The filled slots, in [`Slot`] order.
+    pub fn iter(&self) -> impl Iterator<Item = (Slot, &Action<C>)> {
+        [
+            Slot::Primary,
+            Slot::Secondary,
+            Slot::Copy,
+            Slot::Reveal,
+            Slot::Delete,
+            Slot::OpenSettings,
+        ]
+        .into_iter()
+        .filter_map(|slot| self.get(slot).map(|action| (slot, action)))
+    }
+
+    /// Convert every command, failing on the first command that
+    /// does not convert.
+    pub fn try_map<D, E>(
+        self,
+        mut convert: impl FnMut(C) -> Result<D, E>,
+    ) -> Result<EntryActions<D>, E> {
+        let mut slot = |action: Option<Action<C>>| -> Result<Option<Action<D>>, E> {
+            action
+                .map(|action| {
+                    Ok(Action {
+                        label: action.label,
+                        command: convert(action.command)?,
+                    })
+                })
+                .transpose()
+        };
+        Ok(EntryActions {
+            primary: slot(self.primary)?,
+            secondary: slot(self.secondary)?,
+            copy: slot(self.copy)?,
+            reveal: slot(self.reveal)?,
+            delete: slot(self.delete)?,
+            open_settings: slot(self.open_settings)?,
+        })
+    }
+}
+
+/// What the frontend receives per action: the slot and the
+/// gadget's label. Commands never leave the host.
+#[derive(Serialize)]
+struct SlotLabel<'a> {
+    slot: Slot,
+    label: Option<&'a str>,
+}
+
+/// Serialized as a list of `{ slot, label }` in slot order.
+impl<C> Serialize for EntryActions<C> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter().map(|(slot, action)| SlotLabel {
+            slot,
+            label: action.label.as_deref(),
+        }))
+    }
 }
 
 // =========================================================
@@ -129,14 +243,14 @@ pub enum EntryIcon {
     AppIcon(String),
 }
 
-/// A pre-scored result returned by a `Gadget`'s `search()` method.
+/// A pre-scored result returned by a gadget's `search()` method.
 ///
 /// Intentionally omits `source` — gadget authors should not set or
 /// even think about this field. The host attaches it when wrapping
 /// into `SourcedEntry` via `SourcedEntry::new`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScoredEntry {
+pub struct ScoredEntry<C = String> {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -144,12 +258,27 @@ pub struct ScoredEntry {
     pub score: u32,
     pub title_positions: Utf16Positions,
     pub subtitle_positions: Utf16Positions,
-    pub actions: Vec<Action>,
-    /// Opaque gadget-defined payload round-tripped by the host.
-    /// Set in `search()`, passed back to `execute()` via the
-    /// entry store. Never serialized to the frontend.
-    #[serde(skip)]
-    pub data: Option<String>,
+    pub actions: EntryActions<C>,
+}
+
+impl<C> ScoredEntry<C> {
+    /// Convert the commands of every action; see
+    /// [`EntryActions::try_map`].
+    pub fn try_map_commands<D, E>(
+        self,
+        convert: impl FnMut(C) -> Result<D, E>,
+    ) -> Result<ScoredEntry<D>, E> {
+        Ok(ScoredEntry {
+            actions: self.actions.try_map(convert)?,
+            id: self.id,
+            title: self.title,
+            subtitle: self.subtitle,
+            icon: self.icon,
+            score: self.score,
+            title_positions: self.title_positions,
+            subtitle_positions: self.subtitle_positions,
+        })
+    }
 }
 
 impl FrecencyTarget for ScoredEntry {
@@ -165,7 +294,7 @@ impl FrecencyTarget for ScoredEntry {
 /// gadgets produce these, the catalog registry scores them, and
 /// `SourcedEntry` is what crosses the bridge to the frontend.
 #[derive(Debug, Clone)]
-pub struct CatalogEntry {
+pub struct CatalogEntry<C = String> {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -173,9 +302,25 @@ pub struct CatalogEntry {
     /// Additional match targets beyond the title. These are used
     /// for scoring but their match positions are not highlighted.
     pub keywords: Vec<String>,
-    /// Ordered list of actions. The first action is the primary
-    /// action triggered by Enter.
-    pub actions: Vec<Action>,
+    pub actions: EntryActions<C>,
+}
+
+impl<C> CatalogEntry<C> {
+    /// Convert the commands of every action; see
+    /// [`EntryActions::try_map`].
+    pub fn try_map_commands<D, E>(
+        self,
+        convert: impl FnMut(C) -> Result<D, E>,
+    ) -> Result<CatalogEntry<D>, E> {
+        Ok(CatalogEntry {
+            actions: self.actions.try_map(convert)?,
+            id: self.id,
+            title: self.title,
+            subtitle: self.subtitle,
+            icon: self.icon,
+            keywords: self.keywords,
+        })
+    }
 }
 
 /// A `ScoredEntry` attributed to its originating gadget, ready
@@ -236,23 +381,23 @@ impl FrecencyTarget for SourcedEntry {
 // and translates them into `SearchMessage`s for the frontend.
 // =========================================================
 
-/// Return type for `Gadget::search()`. Not serialized — only
+/// Return type of a gadget's `search()`. Not serialized — only
 /// used between gadget and host within the same process.
 #[derive(Debug, Clone)]
-pub enum GadgetResponse {
+pub enum GadgetResponse<C = String> {
     /// Standard result list entries.
-    Results(Vec<ScoredEntry>),
+    Results(Vec<ScoredEntry<C>>),
     /// Gadget requests full custom UI (replaces the result list).
     CustomUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<ScoredEntry>,
+        results: Vec<ScoredEntry<C>>,
     },
     /// Gadget requests inline UI (rendered above the result list).
     InlineUI {
         view: String,
         data: Option<serde_json::Value>,
-        results: Vec<ScoredEntry>,
+        results: Vec<ScoredEntry<C>>,
     },
 }
 
@@ -344,36 +489,45 @@ mod scored_entry_tests {
             score: 42,
             title_positions: Utf16Positions(vec![0, 1, 2]),
             subtitle_positions: Utf16Positions::empty(),
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Open".to_string(),
-                keybinding: None,
-            }],
-            data: None,
+            actions: EntryActions {
+                copy: Some(Action {
+                    label: None,
+                    command: "secret-copy".to_string(),
+                }),
+                ..EntryActions::new().primary("Open", "secret-open".to_string())
+            },
         }
     }
 
     #[test]
-    fn data_field_excluded_from_serialization() {
-        let mut entry = sample_scored_entry();
-        entry.data = Some("secret payload".to_string());
-        let json = serde_json::to_value(&entry).expect("serialize");
+    fn actions_serialize_as_slot_and_label_without_commands() {
+        let json = serde_json::to_value(sample_scored_entry()).expect("serialize");
+        assert_eq!(
+            json["actions"],
+            serde_json::json!([
+                { "slot": "primary", "label": "Open" },
+                { "slot": "copy", "label": null },
+            ])
+        );
         assert!(
-            json.get("data").is_none(),
-            "data must not appear in serialized JSON"
+            !json.to_string().contains("secret"),
+            "commands must never reach the frontend: {json}"
         );
     }
 
     #[test]
-    fn data_field_excluded_from_sourced_entry_serialization() {
-        let mut entry = sample_scored_entry();
-        entry.data = Some("secret payload".to_string());
-        let sourced = SourcedEntry::new("gadget".to_string(), entry);
+    fn commands_do_not_leak_through_sourced_entry_flatten() {
+        let sourced = SourcedEntry::new("gadget".to_string(), sample_scored_entry());
         let json = serde_json::to_value(&sourced).expect("serialize");
-        assert!(
-            json.get("data").is_none(),
-            "data must not leak through flatten"
-        );
+        assert!(!json.to_string().contains("secret"), "{json}");
+    }
+
+    #[test]
+    fn slots_serialize_in_camel_case() {
+        let json = serde_json::to_value([Slot::Primary, Slot::OpenSettings]).expect("serialize");
+        assert_eq!(json, serde_json::json!(["primary", "openSettings"]));
+        let slot: Slot = serde_json::from_str("\"openSettings\"").expect("deserialize");
+        assert_eq!(slot, Slot::OpenSettings);
     }
 
     #[test]
@@ -453,6 +607,90 @@ mod scored_entry_tests {
             a.cmp_sort_key(&b).is_lt(),
             "lower id sorts first on source+score tie"
         );
+    }
+}
+
+#[cfg(test)]
+mod entry_actions_tests {
+    use super::*;
+
+    fn unlabeled(command: u32) -> Option<Action<u32>> {
+        Some(Action {
+            label: None,
+            command,
+        })
+    }
+
+    fn all_slots() -> EntryActions<u32> {
+        EntryActions {
+            copy: unlabeled(3),
+            reveal: unlabeled(4),
+            delete: Some(Action::labeled("Forget", 5)),
+            open_settings: unlabeled(6),
+            ..EntryActions::new().secondary("Leave", 2).primary("Join", 1)
+        }
+    }
+
+    #[test]
+    fn empty_actions_have_no_slots() {
+        let actions = EntryActions::<u32>::new();
+        assert_eq!(actions.iter().count(), 0);
+        assert!(actions.get(Slot::Primary).is_none());
+    }
+
+    #[test]
+    fn get_returns_the_action_in_each_slot() {
+        let actions = all_slots();
+        for (slot, command) in [
+            (Slot::Primary, 1),
+            (Slot::Secondary, 2),
+            (Slot::Copy, 3),
+            (Slot::Reveal, 4),
+            (Slot::Delete, 5),
+            (Slot::OpenSettings, 6),
+        ] {
+            assert_eq!(
+                actions.get(slot).map(|a| a.command),
+                Some(command),
+                "{slot:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn iter_lists_filled_slots_in_slot_order() {
+        let actions = EntryActions {
+            delete: unlabeled(5),
+            ..EntryActions::new().primary("Join", 1)
+        };
+        let slots: Vec<Slot> = actions.iter().map(|(slot, _)| slot).collect();
+        assert_eq!(slots, [Slot::Primary, Slot::Delete]);
+    }
+
+    #[test]
+    fn builder_labels_primary_and_secondary() {
+        let actions = all_slots();
+        assert_eq!(actions.primary, Some(Action::labeled("Join", 1)));
+        assert_eq!(actions.secondary, Some(Action::labeled("Leave", 2)));
+        assert_eq!(actions.copy, unlabeled(3));
+    }
+
+    #[test]
+    fn try_map_converts_every_command_and_keeps_labels() {
+        let mapped = all_slots()
+            .try_map(|n| Ok::<_, ()>(n.to_string()))
+            .expect("all convert");
+        assert_eq!(
+            mapped.delete,
+            Some(Action::labeled("Forget", "5".to_string()))
+        );
+        assert_eq!(mapped.iter().count(), 6);
+    }
+
+    #[test]
+    fn try_map_fails_when_one_command_fails() {
+        let result = all_slots().try_map(|n| if n == 4 { Err("bad") } else { Ok(n) });
+        assert_eq!(result, Err("bad"));
     }
 }
 
