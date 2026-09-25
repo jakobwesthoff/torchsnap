@@ -37,7 +37,7 @@
 // =========================================================
 
 import { createContext, type RefObject } from "react";
-import type { ActionId, FooterState } from "../types";
+import type { ActionSlot, FooterState } from "../types";
 import type { Logger } from "../lib/logger";
 
 // ---------------------------------------------------------
@@ -69,7 +69,9 @@ export interface LauncherActions {
    *  launcher, like the `open-settings` post-action from `execute()`.
    *  Rejects, leaving the launcher open, when the window cannot open. */
   openSettings: () => Promise<void>;
-  onExecute: (entryId: string, actionId: ActionId) => void;
+  /** Run the action in `slot` of an entry the view received in
+   *  `results`. */
+  onExecute: (entryId: string, slot: ActionSlot) => void;
   onFooterChange: (state: FooterState) => void;
   setDisplayQuery: (query: string) => void;
   mouseActiveRef: RefObject<boolean>;
