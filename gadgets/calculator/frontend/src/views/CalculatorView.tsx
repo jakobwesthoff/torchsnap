@@ -14,20 +14,17 @@
  * - Index 0: inline result area (no visual highlight)
  * - Index 1+: history entries (with standard selection highlight)
  *
- * Enter always copies the current result to clipboard, saves to
- * history (if valid), and dismisses.
+ * Enter copies the current result, or the selected history row, to
+ * the clipboard, records it in the history and dismisses.
  */
 
 import { memo, useEffect, useState, type ReactNode } from "react";
 import type { FooterState, GadgetViewProps } from "@torchsnap/gadget-sdk";
-import {
-  useLauncher,
-  useGadgetRuntime,
-  useWindowedList,
-} from "@torchsnap/gadget-sdk/hooks";
+import { useLauncher, useWindowedList } from "@torchsnap/gadget-sdk/hooks";
 import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
 import { CalculatorError, CalculatorHelp } from "./CalculatorHelp";
+import { useCopyResult } from "./useCopyResult";
 
 // Layout constants. The inline area (result/help/error) has a fixed
 // height so the history list below it doesn't shift as the content
@@ -59,8 +56,8 @@ export const CalculatorView = memo(function CalculatorView({
   query,
   matchedPrefix,
 }: GadgetViewProps) {
-  const { goBack, mouseActiveRef, onExecute, onFooterChange, setDisplayQuery } = useLauncher();
-  const { sendMessage } = useGadgetRuntime();
+  const { goBack, mouseActiveRef, onFooterChange, setDisplayQuery } = useLauncher();
+  const copyResult = useCopyResult();
 
   // The backend's search() returns the eval result in the `data`
   // field of the CustomUI response, threaded through GadgetViewRef.
@@ -143,33 +140,17 @@ export const CalculatorView = memo(function CalculatorView({
       layer: LAYER.COMPONENT + 2,
       keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       handler: () => {
-        // Determine which result to copy.
-        let resultToCopy: string | null = null;
-        let expressionToSave: string | null = null;
-        let resultType: string | null = null;
-
         if (selectedIndex === 0 && evalResult) {
-          resultToCopy = evalResult.result;
-          expressionToSave = evalResult.expression;
-          resultType = evalResult.resultType;
+          void copyResult(evalResult);
         } else if (selectedIndex > 0 && selectedIndex - 1 < historyEntries.length) {
+          // History rows store the expression as title and the
+          // result as subtitle, without a result type.
           const entry = historyEntries[selectedIndex - 1];
-          resultToCopy = entry.subtitle ?? entry.title;
-          expressionToSave = entry.title;
-          resultType = "number";
-        }
-
-        if (resultToCopy) {
-          // Save to history before executing (which dismisses).
-          if (expressionToSave) {
-            sendMessage("save_history", {
-              expression: expressionToSave,
-              result: resultToCopy,
-              resultType: resultType ?? "number",
-            }).catch(() => {});
-          }
-
-          onExecute(resultToCopy, { type: "copy" });
+          void copyResult({
+            expression: entry.title,
+            result: entry.subtitle ?? entry.title,
+            resultType: "number",
+          });
         }
       },
     },
@@ -266,12 +247,11 @@ export const CalculatorView = memo(function CalculatorView({
                 onClick={() => {
                   setSelectedIndex(globalIndex + 1);
                   if (entry.subtitle) {
-                    sendMessage("save_history", {
+                    void copyResult({
                       expression: entry.title,
                       result: entry.subtitle,
                       resultType: "number",
-                    }).catch(() => {});
-                    onExecute(entry.subtitle, { type: "copy" });
+                    });
                   }
                 }}
               >

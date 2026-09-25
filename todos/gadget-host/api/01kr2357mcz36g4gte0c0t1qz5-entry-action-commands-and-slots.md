@@ -93,7 +93,7 @@ Implement typed messaging in the same refactor:
 | bangs | `primary`: open URL. `copy`: copy URL. |
 | open-url | `primary`: open URL. `copy`: copy URL. |
 | zerotier | `primary`: toggle(id), join or leave decided from live state at execute time. `copy`: copy id. `delete`: forget(id). Failure entries: `primary` labeled "Open settings" with a command that returns the `open-settings` post-action, so Enter keeps working. They do not fill the `open-settings` slot. `parse_entry_id` goes away. |
-| calculator | History rows: `primary` and `copy` with a copy command carrying expression and result. The current result goes through a message plus `dismiss()` (see the calculator bug todo below). |
+| calculator | History rows: `primary` and `copy` with a copy command carrying expression and result. The views copy through the `copy` message plus `dismiss()` already; history rows switch to `onExecute(entry.id, "copy")`. |
 | emoji-picker | `copy`: copy emoji. The grid calls `onExecute(entry.id, "copy")`. |
 | hello-world | Petnames: `primary` labeled "Copy" and `copy`, same command, since Enter copies today. `execute()` writes the name to the clipboard (today it only logs), which needs `clipboard = true` under `[permissions]` in its manifest. |
 | template | demo command in `primary`. |
@@ -145,8 +145,5 @@ actions" section at line 381), `development/interfaces/imports.mdx:45`,
 
 ## Related
 
-- `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md`:
-  fix it before this refactor. Its fix already follows the ADR's rule
-  for views.
 - `todos/product/features/01kmh12n6r0mq94rwav32eczdn-keybind-system.md`:
   gadget-defined bindings, deferred by the ADR.

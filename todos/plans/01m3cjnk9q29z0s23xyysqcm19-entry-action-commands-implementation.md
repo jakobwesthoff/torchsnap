@@ -13,7 +13,6 @@ and coordinates these todos:
 
 | Todo | Phase |
 |---|---|
-| `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md` | 2 |
 | `todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md` | 4 |
 | `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md` | 5 to 7 |
 
@@ -75,32 +74,33 @@ phase 5, because with commands a stale entry runs a stale command.
 
 ## Phase 2: calculator copy on Enter
 
-Todo `01m3cfkn09sjm61eemfe83vndq`. Uses the ADR 55 rule for views: a
-view acting on its own state calls `sendMessage`, then a launcher
-action.
+Done: the views copy through a `copy` message, then `dismiss()`. Uses
+the ADR 55 rule for views: a view acting on its own state calls
+`sendMessage`, then a launcher action.
 
-- [ ] Add gadget view tests to the vitest run: extend `include` in
+- [x] Add gadget view tests to the vitest run: extend `include` in
   `vitest.config.ts` with the gadget frontends, make the
   `@torchsnap/gadget-sdk/*` shims resolve, and call
   `setupSdkGlobalsForTesting()` from `packages/gadget-sdk/src/testing/`.
   Commit this on its own once a trivial gadget view test passes.
-- [ ] Failing tests with `MockGadgetContextProvider`: Enter in
+- [x] Failing tests with `MockGadgetContextProvider`: Enter in
   `CalculatorInline`, Enter in `CalculatorView` (current result and
   selected history row), and a click on a history row each call
   `sendMessage("copy", { expression, result, resultType })` and then
   `dismiss()`.
-- [ ] Calculator backend: a `copy` message that writes the result with
+- [x] Calculator backend: a `copy` message that writes the result with
   `clipboard::write_text` and saves the history entry. Unit-test its
   payload decoding (host imports cannot run in host-target tests).
   Remove `save_history` if nothing calls it anymore.
-- [ ] Views: `await sendMessage("copy", …)`, then `dismiss()`. No more
+- [x] Views: `await sendMessage("copy", …)`, then `dismiss()`. No more
   `onExecute` with a result string, no separate `save_history`.
 - [ ] Manual check in the app: `=2+2` and Enter, `2+2` inline and
   Enter, click on a history row. Each copies and closes the launcher.
-- [ ] `CHANGELOG.md`, Fixed.
-- [ ] Delete the todo. Its path is cited in ADR 55's Context and in
+  Left to the maintainer: the automated run cannot drive the app.
+- [x] `CHANGELOG.md`, Fixed.
+- [x] Delete the todo. Its path is cited in ADR 55's Context and in
   `01kr2357mcz36g4gte0c0t1qz5`: keep the facts, drop the path.
-- [ ] `just fullcycle`, commit.
+- [x] `just fullcycle`, commit.
 
 ## Phase 3: `openSettings()` for views
 

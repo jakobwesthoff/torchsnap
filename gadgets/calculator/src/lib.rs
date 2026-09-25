@@ -143,15 +143,13 @@ impl SearchGuest for CalculatorPlugin {
     }
 
     fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
-        // The launcher passes the result string as the
-        // entry id when it executes a copy action — both
-        // the inline view (`onExecute(calcData.result, ...)`)
-        // and the prefix-mode view (`onExecute(resultToCopy,
-        // ...)` after Enter on a history row) hand us the
-        // text to copy. Write it to the system clipboard
-        // via the WIT host import, then dismiss the
-        // launcher.
-        clipboard::write_text(&entry.id).map_err(|e| format!("copy to clipboard: {e}"))?;
+        // The only entries the calculator returns are history
+        // rows, whose subtitle holds the stored result. The
+        // views copy results through the `copy` message; this
+        // path covers a history row's Copy action run by the
+        // launcher itself.
+        let result = entry.subtitle.as_deref().unwrap_or(&entry.title);
+        clipboard::write_text(result).map_err(|e| format!("copy to clipboard: {e}"))?;
         Ok(PostAction::Dismiss)
     }
 }
@@ -243,10 +241,10 @@ fn heuristic_mode_search(query: &str) -> SearchResponse {
 impl MessagingGuest for CalculatorPlugin {
     fn handle_message(method: String, payload: String) -> Result<String, String> {
         match method.as_str() {
-            // Save an expression+result to history. Called
-            // by the frontend on Enter in prefix mode (and
-            // when clicking a previous history entry).
-            "save_history" => save_history_method(&payload),
+            // Copy a result to the clipboard and record it in
+            // the history. Called by both views on Enter and
+            // when a history row is clicked.
+            "copy" => copy_method(&payload),
 
             // Storage statistics — entry count + database
             // size. The frontend's settings panel displays
@@ -262,40 +260,52 @@ impl MessagingGuest for CalculatorPlugin {
     }
 }
 
-/// Frontend payload for `save_history`. Field names match
-/// the JSON keys the `CalculatorView` component sends.
-#[derive(Deserialize)]
-struct SaveHistoryPayload {
+/// Frontend payload for `copy`. Field names match the JSON keys
+/// the `CalculatorView` and `CalculatorInline` components send.
+#[derive(Debug, Deserialize, PartialEq)]
+struct CopyPayload {
     expression: String,
     result: String,
     #[serde(rename = "resultType")]
     result_type: String,
 }
 
-fn save_history_method(payload: &str) -> Result<String, String> {
-    if !HISTORY_ENABLED.with(Cell::get) {
-        return Ok(json!({ "saved": false }).to_string());
+/// Anything other than an explicit `"boolean"` flag is rendered
+/// numerically, since the frontend only distinguishes these two
+/// kinds.
+fn result_kind(result_type: &str) -> &'static str {
+    if result_type == "boolean" {
+        "boolean"
+    } else {
+        "number"
     }
+}
 
-    let req: SaveHistoryPayload = messaging::parse_payload(payload)?;
-    let db = sql_storage::connection();
-    save_to_history(
-        &db,
-        &req.expression,
-        &EvalResult {
-            value: req.result,
-            // Anything other than an explicit `"boolean"` flag
-            // is rendered numerically — the frontend only
-            // distinguishes these two kinds.
-            result_type: if req.result_type == "boolean" {
-                "boolean"
-            } else {
-                "number"
-            },
-        },
-    )?;
+fn copy_method(payload: &str) -> Result<String, String> {
+    let req: CopyPayload = messaging::parse_payload(payload)?;
+    clipboard::write_text(&req.result).map_err(|e| format!("copy to clipboard: {e}"))?;
 
-    Ok(json!({ "saved": true }).to_string())
+    // The copy has already happened, so a failing history write
+    // is logged instead of reported: the view would otherwise
+    // keep the launcher open although the result is on the
+    // clipboard.
+    let saved = HISTORY_ENABLED.with(Cell::get)
+        && {
+            let db = sql_storage::connection();
+            let entry = EvalResult {
+                value: req.result,
+                result_type: result_kind(&req.result_type),
+            };
+            match save_to_history(&db, &req.expression, &entry) {
+                Ok(()) => true,
+                Err(e) => {
+                    torchsnap_gadget_sdk::log_warn!("saving copied result to history failed", "error" => e);
+                    false
+                }
+            }
+        };
+
+    Ok(json!({ "copied": true, "saved": saved }).to_string())
 }
 
 fn stats_method() -> Result<String, String> {
@@ -670,6 +680,38 @@ fn expect_text(value: Option<&SqlValue>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_payload_decodes_the_views_json() {
+        let req: CopyPayload =
+            messaging::parse_payload(r#"{"expression":"6*7","result":"42","resultType":"number"}"#)
+                .expect("valid payload");
+        assert_eq!(
+            req,
+            CopyPayload {
+                expression: "6*7".into(),
+                result: "42".into(),
+                result_type: "number".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn copy_payload_without_a_result_is_rejected() {
+        let err = messaging::parse_payload::<CopyPayload>(
+            r#"{"expression":"6*7","resultType":"number"}"#,
+        )
+        .expect_err("result is required");
+        assert!(err.contains("result"), "error names the field: {err}");
+    }
+
+    #[test]
+    fn result_kind_keeps_booleans_and_treats_everything_else_as_number() {
+        assert_eq!(result_kind("boolean"), "boolean");
+        assert_eq!(result_kind("number"), "number");
+        assert_eq!(result_kind(""), "number");
+        assert_eq!(result_kind("Boolean"), "number");
+    }
 
     #[test]
     fn basic_arithmetic() {

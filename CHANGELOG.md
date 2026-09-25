@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enter on a calculator result, inline or after `=`, and a click on a
+  calculator history row copy the result and close the launcher.
+  Before, nothing was copied and the launcher stayed open.
 - The gadget SDK's test helpers `setupSdkGlobalsForTesting` and
   `MockGadgetContextProvider` load. They imported the host sources from
   a wrong path. `MockGadgetContextProvider` also provides the
