@@ -131,13 +131,15 @@ impl ClipboardGadget {
         }
     }
 
-    fn state(&self) -> Arc<SharedState> {
+    /// The state `enable()` opened. Messages from a still-open view
+    /// can arrive before `enable()` finishes or after `disable()`, so
+    /// its absence is an error for the caller, not a bug.
+    fn state(&self) -> Result<Arc<SharedState>> {
         self.state
             .lock()
             .expect("state not poisoned")
-            .as_ref()
-            .expect("clipboard state initialized")
             .clone()
+            .context("clipboard gadget is not enabled")
     }
 }
 
@@ -292,12 +294,10 @@ impl Gadget for ClipboardGadget {
             .expect("gadget-data is a recognized path variable")
             .to_path_buf();
 
-        let settings = self.caps.settings();
-
         let db_path = data_dir.join("sql").join("clipboard.sqlite3");
         let files_dir = data_dir.join("files");
 
-        let sql = SqlStorage::open(db_path, &[MIGRATION_001]).expect("open clipboard database");
+        let sql = SqlStorage::open(db_path, &[MIGRATION_001]).context("open clipboard database")?;
         let files = FileStorage::new(files_dir);
 
         let shared = Arc::new(SharedState {
@@ -309,6 +309,7 @@ impl Gadget for ClipboardGadget {
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
 
         // Read initial values for settings managed via setting_changed.
+        let settings = self.caps.settings();
         let retention: u32 = settings.get("retentionDays").unwrap_or(30);
         self.retention_days.store(retention, Ordering::Relaxed);
 
@@ -341,6 +342,11 @@ impl Gadget for ClipboardGadget {
             lc.app_shutting_down = true;
         }
         stop_watcher(&self.lifecycle, &self.retention_condvar);
+
+        // Drop the host's reference to the database and file storage.
+        // Operations already running hold their own `Arc` and finish;
+        // the database closes when the last one does.
+        self.state.lock().expect("state not poisoned").take();
     }
 
     fn setting_changed(&self, key: &str, value: serde_json::Value) {
@@ -397,7 +403,7 @@ impl Gadget for ClipboardGadget {
         payload: serde_json::Value,
         channel: Channel<serde_json::Value>,
     ) -> Result<serde_json::Value> {
-        let state = self.state();
+        let state = self.state()?;
 
         match method {
             // -----------------------------------------------
@@ -532,5 +538,120 @@ impl Gadget for ClipboardGadget {
 
             other => anyhow::bail!("unknown clipboard message method: {other}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::caps::PathResolverCap;
+    use crate::paths::{GadgetPaths, PlatformPaths};
+
+    struct QuietClipboard;
+
+    impl ClipboardPlatform for QuietClipboard {
+        fn is_sensitive(&self) -> bool {
+            false
+        }
+
+        fn is_self_written(&self) -> bool {
+            false
+        }
+
+        fn ownership_marker(&self) -> Option<clipboard_rs::ClipboardContent> {
+            None
+        }
+    }
+
+    /// Caps with only the path resolver, so `gadget-data` points at
+    /// `data_dir`. The settings cap needs a Tauri store and is left
+    /// out, which limits these tests to paths that fail or finish
+    /// before reading settings.
+    fn gadget_with_data_dir(data_dir: &std::path::Path) -> ClipboardGadget {
+        let paths = GadgetPaths {
+            platform: Arc::new(PlatformPaths {
+                home: data_dir.join("home"),
+                xdg_config: data_dir.join("config"),
+                xdg_data: data_dir.join("data"),
+            }),
+            gadget_data: data_dir.to_path_buf(),
+            gadget_archive: data_dir.join("archive"),
+        };
+        let caps = ProvisionedCaps {
+            opener: None,
+            http: None,
+            filesystem: None,
+            command: None,
+            clipboard: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: Some(Arc::new(PathResolverCap::new(Arc::new(paths)))),
+        };
+        ClipboardGadget::new(Arc::new(caps), QuietClipboard)
+    }
+
+    fn opened_state(data_dir: &std::path::Path) -> Arc<SharedState> {
+        Arc::new(SharedState {
+            sql: SqlStorage::open(data_dir.join("clipboard.sqlite3"), &[MIGRATION_001])
+                .expect("a fresh temp dir holds a database"),
+            files: FileStorage::new(data_dir.join("files")),
+            active_query: Mutex::new(None),
+        })
+    }
+
+    fn discarding_channel() -> Channel<serde_json::Value> {
+        Channel::new(|_| Ok(()))
+    }
+
+    #[test]
+    fn enable_reports_a_database_that_cannot_be_opened() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("sql"),
+            b"a file where the directory belongs",
+        )
+        .expect("write blocker file");
+
+        let error = gadget_with_data_dir(dir.path())
+            .enable()
+            .expect_err("enable fails without a database");
+
+        assert!(format!("{error:#}").contains("open clipboard database"));
+    }
+
+    #[test]
+    fn messages_before_enable_fail_instead_of_panicking() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+
+        let error = gadget
+            .handle_message("stats", serde_json::Value::Null, discarding_channel())
+            .expect_err("no state before enable");
+
+        assert!(format!("{error:#}").contains("not enabled"));
+    }
+
+    #[test]
+    fn disable_releases_the_database() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gadget = gadget_with_data_dir(dir.path());
+        *gadget.state.lock().expect("state not poisoned") = Some(opened_state(dir.path()));
+        assert!(
+            gadget
+                .handle_message("stats", serde_json::Value::Null, discarding_channel())
+                .is_ok()
+        );
+
+        gadget.disable();
+
+        assert!(gadget.state.lock().expect("state not poisoned").is_none());
+        assert!(
+            gadget
+                .handle_message("stats", serde_json::Value::Null, discarding_channel())
+                .is_err()
+        );
     }
 }

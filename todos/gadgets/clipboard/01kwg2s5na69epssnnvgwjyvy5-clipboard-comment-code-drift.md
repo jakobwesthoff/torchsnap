@@ -10,8 +10,7 @@ area: [src-tauri/src/gadgets/clipboard/]
 ## Problem
 
 Three places where comments describe behavior the code does not
-have (beyond the lifecycle drift covered in
-`01kwg2s5na69epssnnvgwjyvy0-clipboard-enable-panics-state-never-cleared.md`):
+have:
 
 1. **Format-priority comment contradicts the priority list.**
    `storage.rs:569-573`:
