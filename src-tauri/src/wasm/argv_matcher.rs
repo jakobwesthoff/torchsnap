@@ -296,6 +296,7 @@ fn position_matches(constraint: &CompiledArgvConstraint, arg: &str) -> bool {
             match path_safety::canonical_under_root(candidate, root) {
                 Ok(_) => true,
                 Err(PathError::EscapesRoot { .. })
+                | Err(PathError::DanglingSymlink(_))
                 | Err(PathError::CandidateCanonicalize(_))
                 | Err(PathError::CandidateNotAbsolute(_))
                 | Err(PathError::RootNotAbsolute(_))
@@ -647,6 +648,30 @@ mod tests {
         assert!(
             matches(&compiled, "ls", &args(&["relative/subpath"])).is_err(),
             "relative paths are not absolute, must mismatch"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn matches_path_under_rejects_path_through_dangling_symlink() {
+        let root_dir = TempDir::new().unwrap();
+        let outside_dir = TempDir::new().unwrap();
+        let link = root_dir.path().join("trapdoor");
+        std::os::unix::fs::symlink(outside_dir.path().join("not-yet-there"), &link).unwrap();
+
+        let ctx = ctx_with(PathBuf::from("/tmp/unused"), root_dir.path().to_path_buf());
+
+        let raw = rule(
+            "touch",
+            vec![ArgvConstraint::PathUnder {
+                root: "${gadget-data}".to_string(),
+            }],
+        );
+        let compiled = vec![compile_rule(&raw, 0, &ctx).unwrap()];
+
+        assert!(
+            matches(&compiled, "touch", &args(&[link.to_str().unwrap()])).is_err(),
+            "a dangling symlink must not match path-under"
         );
     }
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A gadget command permission with a `path-under` constraint no longer
+  accepts a path that goes through a symlink whose target does not
+  exist. Writing to such a path would have created the target outside
+  the allowed folder.
 - Recording a shortcut no longer accepts a single key or Shift plus a
   key, which took that key away from every other app. A shortcut needs
   Cmd, Ctrl or Alt, or is an F-key on its own. While recording, a hint
