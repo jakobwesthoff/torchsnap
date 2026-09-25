@@ -174,12 +174,6 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   const actionBindings: KeyBindingDefinition[] = useMemo(() => {
     if (!enabled) return [];
 
-    // ESLINT: The linter flags `stateRef` because the returned
-    // definitions hold closures that capture it. They are only
-    // stored, not invoked. A handler only runs from a DOM `keydown`
-    // event, which React guarantees flushes pending effects
-    // (including our stateRef update) before dispatching.
-    // eslint-disable-next-line react-hooks/refs
     return slotBindings(selectedActions).map(({ slot, combo }, i) => ({
       id: `launcher-action-${slot}`,
       layer: LAUNCHER_LAYER,
