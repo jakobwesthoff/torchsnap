@@ -1833,48 +1833,117 @@ mod tests {
     // stay distinct.
     // -------------------------------------------------------
 
+    /// Non-modifier keys as `buildAccelerator` spells them: `e.code`
+    /// with `Key` and `Digit` stripped.
+    const RECORDER_KEYS: &[&str] = &[
+        "A",
+        "K",
+        "Z",
+        "0",
+        "5",
+        "9",
+        "Space",
+        "Enter",
+        "Tab",
+        "Backspace",
+        "Delete",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "Minus",
+        "Equal",
+        "BracketLeft",
+        "BracketRight",
+        "Backslash",
+        "Semicolon",
+        "Quote",
+        "Backquote",
+        "Comma",
+        "Period",
+        "Slash",
+        "F1",
+        "F12",
+        "F13",
+        "F24",
+    ];
+
+    /// Modifier tokens in the order `buildAccelerator` writes them.
+    fn recorder_modifiers() -> [(&'static str, tauri_plugin_global_shortcut::Modifiers); 4] {
+        use tauri_plugin_global_shortcut::Modifiers;
+        [
+            ("Control", Modifiers::CONTROL),
+            ("Alt", Modifiers::ALT),
+            ("Shift", Modifiers::SHIFT),
+            ("Super", Modifiers::SUPER),
+        ]
+    }
+
     #[test]
-    fn recorder_accelerators_parse_into_distinct_shortcuts() {
+    fn every_modifier_combination_the_recorder_writes_parses_into_a_distinct_shortcut() {
         use tauri_plugin_global_shortcut::Modifiers;
 
-        let accelerators = [
-            "CommandOrControl+K",
-            "CommandOrControl+Shift+K",
-            "CommandOrControl+Alt+K",
-            "CommandOrControl+Alt+Shift+K",
-            "Alt+K",
-            "Alt+Shift+K",
-            "Alt+Space",
-            "CommandOrControl+1",
-            "F5",
-            "Shift+F5",
-            "CommandOrControl+Alt+F12",
-        ];
-        let shortcuts: Vec<Shortcut> = accelerators
-            .iter()
-            .map(|a| {
-                a.parse::<Shortcut>()
-                    .unwrap_or_else(|e| panic!("{a} should parse: {e}"))
-            })
-            .collect();
+        let modifiers = recorder_modifiers();
+        let mut parsed: Vec<(String, Shortcut)> = Vec::new();
 
-        for (i, a) in shortcuts.iter().enumerate() {
-            for (j, b) in shortcuts.iter().enumerate().skip(i + 1) {
-                assert_ne!(
-                    a, b,
-                    "{} and {} must be different shortcuts",
-                    accelerators[i], accelerators[j]
-                );
+        // Each bit of `mask` picks one modifier, so 0..16 covers every
+        // subset from no modifier to all four.
+        for mask in 0u8..16 {
+            let chosen: Vec<_> = modifiers
+                .iter()
+                .enumerate()
+                .filter(|(bit, _)| mask & (1 << bit) != 0)
+                .map(|(_, modifier)| *modifier)
+                .collect();
+            let expected_mods = chosen
+                .iter()
+                .fold(Modifiers::empty(), |acc, (_, flag)| acc | *flag);
+
+            for key in RECORDER_KEYS {
+                let accelerator = chosen
+                    .iter()
+                    .map(|(token, _)| *token)
+                    .chain(std::iter::once(*key))
+                    .collect::<Vec<_>>()
+                    .join("+");
+                let shortcut = accelerator
+                    .parse::<Shortcut>()
+                    .unwrap_or_else(|e| panic!("{accelerator} should parse: {e}"));
+                assert_eq!(shortcut.mods, expected_mods, "modifiers of {accelerator}");
+                parsed.push((accelerator, shortcut));
             }
         }
 
-        let all_three = shortcuts[3];
-        assert!(all_three.mods.contains(Modifiers::ALT | Modifiers::SHIFT));
-        assert!(
-            all_three
-                .mods
-                .intersects(Modifiers::SUPER | Modifiers::CONTROL)
-        );
+        for (i, (a_name, a)) in parsed.iter().enumerate() {
+            for (b_name, b) in parsed.iter().skip(i + 1) {
+                assert_ne!(a, b, "{a_name} and {b_name} must be different shortcuts");
+            }
+        }
+    }
+
+    #[test]
+    fn ctrl_and_cmd_stay_different_shortcuts() {
+        let ctrl = "Control+K".parse::<Shortcut>().expect("Control+K parses");
+        let cmd = "Super+K".parse::<Shortcut>().expect("Super+K parses");
+        assert_ne!(ctrl, cmd);
+    }
+
+    // Shortcuts saved before the recorder wrote `Super` and `Control`
+    // use `CommandOrControl`, which keeps meaning Cmd on macOS.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn saved_command_or_control_shortcuts_still_mean_cmd_on_macos() {
+        let saved = "CommandOrControl+Shift+Space"
+            .parse::<Shortcut>()
+            .expect("the saved accelerator parses");
+        let recorded = "Shift+Super+Space"
+            .parse::<Shortcut>()
+            .expect("the recorded accelerator parses");
+        assert_eq!(saved, recorded);
     }
 
     #[test]

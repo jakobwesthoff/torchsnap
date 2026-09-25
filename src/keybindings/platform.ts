@@ -15,13 +15,14 @@ import type { ModifierKey } from "./matching";
 // Platform Detection
 // =========================================================
 
-export type Platform = "macos" | "other";
+export type Platform = "macos" | "windows" | "linux";
 
 /**
  * Detect the current platform at module load time.
  *
  * Uses the modern `navigator.userAgentData.platform` API when available,
- * falling back to the legacy `navigator.platform` string.
+ * falling back to the legacy `navigator.platform` string. Anything that
+ * is neither macOS nor Windows counts as Linux.
  */
 export function detectPlatform(): Platform {
   const ua = navigator as {
@@ -29,41 +30,66 @@ export function detectPlatform(): Platform {
     platform?: string;
   };
   const raw: string = ua.userAgentData?.platform ?? ua.platform ?? "";
-  return /mac/i.test(raw) ? "macos" : "other";
+  if (/mac/i.test(raw)) {
+    return "macos";
+  }
+  return /win/i.test(raw) ? "windows" : "linux";
 }
 
 export const platform: Platform = detectPlatform();
 
 // =========================================================
 // Modifier Formatting
+//
+// Shortcuts are shown with the physical modifier keys they need.
+// Keybindings declare `Meta`, which is Cmd on macOS and Ctrl
+// elsewhere; global shortcuts name the keys directly. Both are
+// resolved to physical keys, then shown in one order on every
+// platform: Ctrl, Alt, Shift, Cmd/Win/Super. On macOS that is the
+// order menus use (⌃⌥⇧⌘).
 // =========================================================
 
-const MODIFIER_SYMBOLS_MACOS: Record<ModifierKey, string> = {
-  Meta: "⌘",
-  Ctrl: "⌃",
-  Shift: "⇧",
-  Alt: "⌥",
+/** A physical modifier key, named as Tauri's accelerator parser names it. */
+export type PhysicalModifier = "Control" | "Alt" | "Shift" | "Super";
+
+const MODIFIER_ORDER: readonly PhysicalModifier[] = ["Control", "Alt", "Shift", "Super"];
+
+const MODIFIER_LABELS: Record<Platform, Record<PhysicalModifier, string>> = {
+  macos: { Control: "⌃", Alt: "⌥", Shift: "⇧", Super: "⌘" },
+  windows: { Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" },
+  linux: { Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Super" },
 };
 
-const MODIFIER_LABELS_OTHER: Record<ModifierKey, string> = {
-  Meta: "Ctrl",
-  Ctrl: "Ctrl",
-  Shift: "Shift",
-  Alt: "Alt",
-};
-
-/**
- * Format a modifier key for display on a given platform.
- *
- * Exported with explicit platform parameter for testability;
- * consumers typically use `formatModifier` which reads the detected platform.
- */
-export function formatModifierForPlatform(modifier: ModifierKey, p: Platform): string {
-  return p === "macos" ? MODIFIER_SYMBOLS_MACOS[modifier] : MODIFIER_LABELS_OTHER[modifier];
+/** The physical key a keybinding modifier stands for on a given platform. */
+export function physicalModifierFor(modifier: ModifierKey, p: Platform): PhysicalModifier {
+  switch (modifier) {
+    case "Meta":
+      return p === "macos" ? "Super" : "Control";
+    case "Ctrl":
+      return "Control";
+    case "Alt":
+      return "Alt";
+    case "Shift":
+      return "Shift";
+  }
 }
 
-export function formatModifier(modifier: ModifierKey): string {
-  return formatModifierForPlatform(modifier, platform);
+/**
+ * Display labels for a set of modifiers, in the shared order and
+ * without duplicates.
+ *
+ * Exported with explicit platform parameter for testability;
+ * consumers typically use `formatModifiers` which reads the detected platform.
+ */
+export function formatModifiersForPlatform(
+  modifiers: readonly PhysicalModifier[],
+  p: Platform,
+): string[] {
+  return MODIFIER_ORDER.filter((m) => modifiers.includes(m)).map((m) => MODIFIER_LABELS[p][m]);
+}
+
+export function formatModifiers(modifiers: readonly PhysicalModifier[]): string[] {
+  return formatModifiersForPlatform(modifiers, platform);
 }
 
 // =========================================================
@@ -85,8 +111,8 @@ const UNIVERSAL_KEY_MAP: Record<string, string> = {
 
 /** Keys with platform-specific display strings. */
 const PLATFORM_KEY_MAP: Record<string, Record<Platform, string>> = {
-  Backspace: { macos: "⌫", other: "Backspace" },
-  Delete: { macos: "⌦", other: "Del" },
+  Backspace: { macos: "⌫", windows: "Backspace", linux: "Backspace" },
+  Delete: { macos: "⌦", windows: "Del", linux: "Del" },
 };
 
 /**

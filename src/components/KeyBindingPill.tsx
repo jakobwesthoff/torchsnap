@@ -6,11 +6,12 @@
  * Keyboard shortcut badge that renders a structured keybinding
  * as individual keycaps using the platform-aware formatters —
  * e.g., Meta + Enter renders as ⌘ ↵ on macOS and Ctrl ↵ on
- * Windows/Linux.
+ * Windows/Linux. Modifiers appear in the shared display order,
+ * whatever order the binding lists them in.
  */
 
 import type { ModifierKey } from "../keybindings";
-import { formatModifier, formatKey } from "../keybindings";
+import { formatKey, formatModifiers, physicalModifierFor, platform } from "../keybindings";
 import { cn } from "../lib/cn";
 import { KeyCap } from "./KeyCap";
 
@@ -22,10 +23,8 @@ interface KeyBindingPillProps {
 }
 
 export function KeyBindingPill({ modifiers, keyName, className, style }: KeyBindingPillProps) {
-  const parts = [
-    ...(modifiers ?? []).map((m) => formatModifier(m as ModifierKey)),
-    formatKey(keyName),
-  ];
+  const physical = (modifiers ?? []).map((m) => physicalModifierFor(m as ModifierKey, platform));
+  const parts = [...formatModifiers(physical), formatKey(keyName)];
 
   return (
     <span className={cn("inline-flex items-center gap-0.5", className)} style={style}>
