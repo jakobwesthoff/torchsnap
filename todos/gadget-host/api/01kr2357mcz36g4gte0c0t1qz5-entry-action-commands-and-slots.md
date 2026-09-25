@@ -15,8 +15,8 @@ The ADR holds the decisions: commands instead of `ActionId` and
 default labels, the typed `Search` traits in SDK and host, and the
 rule for views. This todo holds the migration work.
 
-Implement typed messaging in the same refactor:
-`todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md`.
+Typed messaging (`Messaging` trait with a blanket `MessagingGuest`
+impl) has landed already; `Search` follows the same pattern.
 
 ## Work
 

@@ -238,24 +238,31 @@ fn heuristic_mode_search(query: &str) -> SearchResponse {
 // Frontend ↔ gadget messaging
 // =========================================================
 
-impl MessagingGuest for CalculatorPlugin {
-    fn handle_message(method: String, payload: String) -> Result<String, String> {
-        match method.as_str() {
-            // Copy a result to the clipboard and record it in
-            // the history. Called by both views on Enter and
-            // when a history row is clicked.
-            "copy" => copy_method(&payload),
+/// Every method the calculator frontend calls through
+/// `sendMessage`.
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(tag = "method", content = "payload", rename_all = "snake_case")]
+enum Request {
+    /// Copy a result to the clipboard and record it in the
+    /// history. Sent by both views on Enter and when a history
+    /// row is clicked.
+    Copy(CopyPayload),
+    /// Storage statistics — entry count + database size. The
+    /// settings panel displays these in its Statistics section.
+    Stats,
+    /// Wipe the history table. The settings panel asks for
+    /// confirmation before sending this.
+    ClearHistory,
+}
 
-            // Storage statistics — entry count + database
-            // size. The frontend's settings panel displays
-            // these in its Statistics section.
-            "stats" => stats_method(),
+impl Messaging for CalculatorPlugin {
+    type Request = Request;
 
-            // Wipe the history table. Frontend asks for
-            // confirmation before sending this.
-            "clear_history" => clear_history_method(),
-
-            other => Err(format!("unknown calculator message: {other}")),
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        match request {
+            Request::Copy(payload) => copy_method(payload),
+            Request::Stats => stats_method(),
+            Request::ClearHistory => clear_history_method(),
         }
     }
 }
@@ -281,8 +288,7 @@ fn result_kind(result_type: &str) -> &'static str {
     }
 }
 
-fn copy_method(payload: &str) -> Result<String, String> {
-    let req: CopyPayload = messaging::parse_payload(payload)?;
+fn copy_method(req: CopyPayload) -> Result<serde_json::Value, String> {
     clipboard::write_text(&req.result).map_err(|e| format!("copy to clipboard: {e}"))?;
 
     // The copy has already happened, so a failing history write
@@ -305,10 +311,10 @@ fn copy_method(payload: &str) -> Result<String, String> {
             }
         };
 
-    Ok(json!({ "copied": true, "saved": saved }).to_string())
+    Ok(json!({ "copied": true, "saved": saved }))
 }
 
-fn stats_method() -> Result<String, String> {
+fn stats_method() -> Result<serde_json::Value, String> {
     let db = sql_storage::connection();
     let rows = db
         .query("SELECT COUNT(*) FROM calc_history", &[])
@@ -324,15 +330,14 @@ fn stats_method() -> Result<String, String> {
     Ok(json!({
         "entryCount": entry_count,
         "dbSize": 0,
-    })
-    .to_string())
+    }))
 }
 
-fn clear_history_method() -> Result<String, String> {
+fn clear_history_method() -> Result<serde_json::Value, String> {
     let db = sql_storage::connection();
     db.execute("DELETE FROM calc_history", &[])
         .map_err(|e| format!("delete: {e}"))?;
-    Ok(json!({ "cleared": true }).to_string())
+    Ok(json!({ "cleared": true }))
 }
 
 // =========================================================
@@ -680,29 +685,48 @@ fn expect_text(value: Option<&SqlValue>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use torchsnap_gadget_sdk::messaging;
 
     #[test]
-    fn copy_payload_decodes_the_views_json() {
-        let req: CopyPayload =
-            messaging::parse_payload(r#"{"expression":"6*7","result":"42","resultType":"number"}"#)
-                .expect("valid payload");
+    fn copy_request_decodes_the_views_json() {
+        let request: Request = messaging::decode_request(
+            "copy",
+            r#"{"expression":"6*7","result":"42","resultType":"number"}"#,
+        )
+        .expect("valid copy request");
         assert_eq!(
-            req,
-            CopyPayload {
+            request,
+            Request::Copy(CopyPayload {
                 expression: "6*7".into(),
                 result: "42".into(),
                 result_type: "number".into(),
-            }
+            })
         );
     }
 
     #[test]
-    fn copy_payload_without_a_result_is_rejected() {
-        let err = messaging::parse_payload::<CopyPayload>(
+    fn copy_request_without_a_result_is_rejected() {
+        let err = messaging::decode_request::<Request>(
+            "copy",
             r#"{"expression":"6*7","resultType":"number"}"#,
         )
         .expect_err("result is required");
         assert!(err.contains("result"), "error names the field: {err}");
+    }
+
+    #[test]
+    fn settings_requests_decode_from_the_empty_payload_the_panel_sends() {
+        assert_eq!(messaging::decode_request("stats", "{}"), Ok(Request::Stats));
+        assert_eq!(
+            messaging::decode_request("clear_history", "{}"),
+            Ok(Request::ClearHistory)
+        );
+    }
+
+    #[test]
+    fn save_history_is_no_longer_a_calculator_message() {
+        messaging::decode_request::<Request>("save_history", "{}")
+            .expect_err("copy replaced save_history");
     }
 
     #[test]

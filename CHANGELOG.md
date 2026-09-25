@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rust gadgets can implement `Messaging` from the gadget SDK instead of
+  `MessagingGuest`: one enum lists every method the frontend calls,
+  and the SDK decodes each call into it and rejects unknown methods
+  and mismatched payloads before gadget code runs. The JSON helpers
+  `parse_payload` and `to_response` are no longer in the prelude.
+  Import them from `torchsnap_gadget_sdk::messaging`.
 - Gadget views get `openSettings()` from `useLauncher()`. It opens the
   Settings window on the gadget's own section and closes the launcher,
   as returning `open-settings` from `execute()` does.
