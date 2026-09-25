@@ -95,7 +95,7 @@ path. Options:
   ```
 
   Independent declaration; explicit per-socket grants.
-- **b. Reuse `[permissions.fs]`.** Socket paths are filesystem
+- **b. Reuse `[permissions.filesystem]`.** Socket paths are filesystem
   objects, so declare them there. Pro: single fs allowlist covers
   reads + sockets. Con: conflates "read this file" with "open this
   socket" — different capabilities, different threat models.

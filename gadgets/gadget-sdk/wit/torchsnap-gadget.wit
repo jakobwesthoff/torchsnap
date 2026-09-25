@@ -336,7 +336,7 @@ interface http {
 /// manifest.
 ///
 /// Gadgets declare an exact-or-glob allowlist under
-/// `[permissions.fs]` in `manifest.toml`. The host expands
+/// `[permissions.filesystem]` in `manifest.toml`. The host expands
 /// `${home}` / `${xdg-config}` / `${xdg-data}` substitutions (same
 /// vocabulary as `[[permissions.command]]` and `paths::resolve`),
 /// canonicalizes the resulting patterns to resolve OS-level symlinks
@@ -344,7 +344,7 @@ interface http {
 /// `GlobSet`, and stores it on the per-gadget instance.
 ///
 /// ```toml
-/// [permissions.fs]
+/// [permissions.filesystem]
 /// read = [
 ///     "${xdg-config}/myapp/config.toml",
 ///     "/var/lib/myapp/data/*.json",
