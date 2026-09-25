@@ -775,10 +775,19 @@ interface search {
     inline-ui(view-response),
   }
 
+  /// What the launcher does after `execute()` succeeds.
   enum post-action {
+    /// Leave the launcher as it is.
     nothing,
+    /// Hide the launcher.
     dismiss,
+    /// Keep the launcher open.
     keep-open,
+    /// Hide the launcher and open the Settings window on this
+    /// gadget's section. A gadget without a settings section of
+    /// its own gets the Gadgets page. A typical use is the
+    /// primary action of a "configuration required" entry.
+    open-settings,
   }
 
   /// Return catalog entries for host-side fuzzy matching.

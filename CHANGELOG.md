@@ -20,9 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cmd+Shift+O (Open With) hints shown in the launcher footer.
 - The emoji picker finds ©, ® and the keycap emoji (#, * and 0 to 9),
   which never showed up before.
+- "Open settings" on a gadget's result, such as ZeroTier's "token not
+  configured" entry, opens the Settings window on that gadget's page.
+  Before, it only closed the launcher.
 
 ### Changed
 
+- Gadget API: `OpenSettings` actions reach the gadget's `execute()`
+  like every other action. To open its settings, a gadget returns the
+  new `open-settings` post-action (`PostAction::OpenSettings` in the
+  Rust SDK). Gadgets built against the previous interface need a
+  rebuild.
 - Settings → General lists Updates before Advanced, and every settings
   row keeps a gap between its text and its switch.
 

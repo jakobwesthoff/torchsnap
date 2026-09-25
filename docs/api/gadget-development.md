@@ -353,7 +353,7 @@ pub enum ActionId {
     Reveal,
     OpenWith,
     Delete,
-    OpenSettings,           // Jumps to this gadget's settings panel.
+    OpenSettings,           // Answer with PostAction::OpenSettings.
     Custom(String),         // Gadget-defined action.
 }
 ```
@@ -366,8 +366,12 @@ gadget-specific actions.
 `Result<PostAction, String>`:
 
 ```rust
-pub enum PostAction { Nothing, Dismiss, KeepOpen }
+pub enum PostAction { Nothing, Dismiss, KeepOpen, OpenSettings }
 ```
+
+`OpenSettings` hides the launcher and opens the Settings window on
+this gadget's section, or on the Gadgets page when the gadget has no
+settings section of its own.
 
 There is no `ShowCustomUI` variant — custom UI is mounted only
 through `SearchResponse::CustomUi` from `search()`.

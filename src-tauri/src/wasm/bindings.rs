@@ -190,6 +190,7 @@ impl From<wit::PostAction> for native::PostAction {
             wit::PostAction::Nothing => native::PostAction::Nothing,
             wit::PostAction::Dismiss => native::PostAction::Dismiss,
             wit::PostAction::KeepOpen => native::PostAction::KeepOpen,
+            wit::PostAction::OpenSettings => native::PostAction::OpenSettings,
         }
     }
 }
@@ -835,6 +836,10 @@ mod tests {
         assert!(matches!(
             native::PostAction::from(wit::PostAction::KeepOpen),
             native::PostAction::KeepOpen
+        ));
+        assert!(matches!(
+            native::PostAction::from(wit::PostAction::OpenSettings),
+            native::PostAction::OpenSettings
         ));
     }
 

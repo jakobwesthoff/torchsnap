@@ -307,6 +307,20 @@ pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
     show_auxiliary_window(app, &SETTINGS_WINDOW);
 }
 
+/// Open the settings window on `section`. The section waits in
+/// `SettingsStartSection`: a new window takes it on mount, and an open
+/// window takes it when the event arrives. The event carries no
+/// payload, so a window that is still loading and misses it loses
+/// nothing.
+pub(crate) fn show_settings_window_at(app: &tauri::AppHandle, section: &str) {
+    app.state::<gadget_install::SettingsStartSection>()
+        .set(section);
+    show_settings_window(app);
+    if let Err(e) = app.emit_to(SETTINGS_WINDOW.label, "settings-start-section", ()) {
+        eprintln!("failed to ask the settings window for a section: {e:#}");
+    }
+}
+
 // =========================================================
 // Developer Tools Window
 // =========================================================

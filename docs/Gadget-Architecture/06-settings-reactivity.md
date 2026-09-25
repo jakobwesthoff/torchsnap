@@ -348,7 +348,12 @@ The originating window receives the same event (no special-casing of
 self-emitted events), so its own `useSetting` cache stays consistent
 with the rest of the app through one code path.
 
-The host also routes the `OpenSettings` action variant: when a search
-result triggers `ActionId::OpenSettings`, `GadgetHost::execute`
-emits `"open-gadget-settings"` with the originating gadget id so the
-settings window can jump straight to that gadget's panel.
+A gadget opens its own settings by returning `PostAction::OpenSettings`
+(`open-settings` in WIT) from `execute()`, typically for
+`ActionId::OpenSettings` on a "configuration required" entry.
+`GadgetHost::execute` stores the gadget id in `SettingsStartSection`,
+opens the settings window and emits `"settings-start-section"` to it.
+The window takes the waiting section through
+`take_settings_start_section` on mount and on that event
+(`src/settings/useStartSection.ts`), and falls back to the Gadgets page
+for a gadget without a settings section of its own.

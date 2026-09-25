@@ -265,11 +265,11 @@ impl SearchGuest for ZeroTierPlugin {
     }
 
     fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        // `OpenSettings` is host-routed and never reaches us,
-        // but defend in depth — return Dismiss so we
-        // gracefully no-op if the host ever forwards it.
+        // The "token not configured" and "authentication failed"
+        // entries carry this action; the fix for both is the token
+        // field in the settings.
         if matches!(action_id, ActionId::OpenSettings) {
-            return Ok(PostAction::Dismiss);
+            return Ok(PostAction::OpenSettings);
         }
 
         let Some(network_id) = query::parse_entry_id(&entry.id) else {
@@ -829,6 +829,15 @@ mod tests {
             assert!(matches!(entry.actions[0].id, ActionId::OpenSettings));
             assert_eq!(entry.actions[0].label, "Open settings");
         }
+    }
+
+    #[test]
+    fn open_settings_asks_the_host_to_open_the_settings() {
+        let runtime = runtime_with(AuthState::Unconfigured);
+        let entry =
+            failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
+        let post_action = <ZeroTierPlugin as SearchGuest>::execute(entry, ActionId::OpenSettings);
+        assert_eq!(post_action, Ok(PostAction::OpenSettings));
     }
 
     #[test]
