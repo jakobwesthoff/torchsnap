@@ -12,6 +12,8 @@ Amended by [22. Use named view resolution for plugin UI components](0022-use-nam
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [55. Dispatch entry actions through gadget commands in fixed slots](0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md)
+
 ## Context
 
 The standard result list (vertical rows of icon + title + subtitle) works

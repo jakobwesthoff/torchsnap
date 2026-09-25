@@ -7,11 +7,12 @@ status: open
 
 ## Context
 
-The search entry store (introduced with the execute data
-parameter feature, `ScoredEntry::data`) holds
+The search entry store (`src-tauri/src/entry_store.rs`) holds
 the most recent search session's `ScoredEntry` values in a
 host-side map so `execute()` can pass the full entry back to
-the gadget.
+the gadget. After ADR 55 it serves the same purpose for the
+per-slot commands: the host takes the chosen slot's command
+from the stored entry.
 
 The store is cleared atomically at the start of each
 `search()` call. When the launcher panel is dismissed (click
@@ -31,9 +32,9 @@ dismiss and next search.
 
 Only worth implementing if profiling shows the retained
 entries consume meaningful memory — e.g. gadgets attaching
-large `data` payloads to entries.
+large command payloads to their actions.
 
 ## Related
 
-- `ScoredEntry::data` in `src-tauri/src/commands/types.rs`: the
-  feature that introduces the entry store.
+- `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md`:
+  replaces `ScoredEntry::data` with per-slot commands.

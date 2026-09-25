@@ -37,8 +37,32 @@ handled by `tauri-plugin-global-shortcut`).
 - Are keybinds stored in the settings store alongside other
   settings, or a separate config file?
 - How do gadgets declare their default keybinds in their manifest?
-- Should modifier keys on result rows (Cmd+Enter for secondary
-  action) be part of this system or the action model?
+- Should modifier keys on result rows be part of this system or the
+  action model? ADR 55 fixes them per action slot (`primary` Enter,
+  `secondary` Cmd+Enter, `copy` Cmd+C, `reveal` Cmd+Shift+R, `delete`
+  Cmd+Backspace, `open-settings` Cmd+,), in one frontend table. User
+  rebinding would change that table.
+
+## Gadget-defined actions with their own bindings
+
+ADR 55 defers these. Points raised so far, none decided:
+
+- They would sit next to the fixed slots in `entry-actions`, for
+  example as a `custom` list whose items carry a label, a command and
+  a requested binding.
+- A requested binding can collide with the slot keys, with launcher
+  keys (Esc, arrows, Tab, Cmd+K) and with other custom actions. ADR 9
+  makes the host responsible for shortcut assignment, so a gadget can
+  only request a binding.
+- User rebinding needs a stable name per custom action, for example
+  `zerotier.show-members`. Slots are named by their field and do not
+  need one. The name is for bindings only. The command still decides
+  what runs.
+- A settings page that lists rebindable actions must know them without
+  running a search, which points to declaring them in the gadget
+  manifest and referencing them by name from entries.
+- An action without a binding is reachable only through an action
+  palette, which does not exist yet.
 
 ## Implementation sketch
 

@@ -50,6 +50,10 @@ Related but distinct existing todos:
 `todos/gadget-host/api/01kr24azjr6t090j1qy82f2w8m-clear-entry-store-on-dismiss.md`
 (clearing on dismiss).
 
+`todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md`
+(ADR 55) depends on this fix. After that redesign, a stale store
+entry runs a stale command.
+
 ## Impact
 Fast typing plus a slow gadget (exactly the third-party WASM
 case) yields intermittent "entry not found" failures and

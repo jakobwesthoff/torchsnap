@@ -10,6 +10,8 @@ Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
 Amended by [54. Open gadget settings through a post-action](0054-open-gadget-settings-through-a-post-action.md)
 
+Amended by [55. Dispatch entry actions through gadget commands in fixed slots](0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md) (replaces the failure entry's `ActionId::OpenSettings` with a `primary` action)
+
 ## Context
 
 `zerotier-one` runs as a local daemon that exposes its full management
