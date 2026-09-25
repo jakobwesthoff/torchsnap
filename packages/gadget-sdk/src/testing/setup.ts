@@ -24,7 +24,7 @@
 // Path-based import into host source — works in-monorepo,
 // breaks on npm publish (which is explicitly out of scope per
 // the migration plan).
-import { initGadgetSdk } from "../../../src/lib/sdk";
+import { initGadgetSdk } from "../../../../src/lib/sdk";
 
 export function setupSdkGlobalsForTesting(): void {
   initGadgetSdk();

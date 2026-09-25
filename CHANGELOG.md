@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The gadget SDK's test helpers `setupSdkGlobalsForTesting` and
+  `MockGadgetContextProvider` load. They imported the host sources from
+  a wrong path. `MockGadgetContextProvider` also provides the
+  keybinding context, so components that register key bindings render
+  in tests.
 - While typing fast, a slow gadget's results for an earlier keystroke
   no longer replace the results of the current one in the host. Before,
   an action could run with the older entry, or do nothing because the
