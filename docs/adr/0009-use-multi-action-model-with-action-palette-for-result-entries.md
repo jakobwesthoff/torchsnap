@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [55. Dispatch entry actions through gadget commands in fixed slots](0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md)
+
 ## Context
 
 Result entries need to support more than just "open/launch." A file

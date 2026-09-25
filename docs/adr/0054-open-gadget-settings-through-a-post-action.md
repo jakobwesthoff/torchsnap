@@ -8,6 +8,8 @@ Accepted
 
 Amends [41. ZeroTier plugin architecture](0041-zerotier-plugin.md)
 
+Amended by [55. Dispatch entry actions through gadget commands in fixed slots](0055-dispatch-entry-actions-through-gadget-commands-in-fixed-slots.md)
+
 ## Context
 
 `ActionId::OpenSettings` was intercepted in `GadgetHost::execute`
