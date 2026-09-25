@@ -12,6 +12,7 @@ import { createLogger } from "../lib/logger";
 import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
 import type { LauncherActions, GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { GadgetErrorBoundary } from "../components/GadgetErrorBoundary";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { MascotInfoOverlay } from "../components/MascotInfoOverlay";
@@ -691,40 +692,53 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     contentFooter = <LauncherFooter footer={MEASURE_FOOTER} />;
   } else if (hasGadgetView) {
     contentBody = (
-      <Suspense fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}>
-        <PluginViewContainer
-          gadgetId={customGadgetView.gadgetId}
-          viewName={customGadgetView.view}
-          info={gadgetInfo}
-          runtime={gadgetRuntime}
-          launcher={gadgetLauncher}
-          results={results}
-          data={customGadgetView.data}
-          query={strippedQuery}
-          matchedPrefix={gadgetPrefix}
-        />
-      </Suspense>
+      <GadgetErrorBoundary
+        key={`${customGadgetView.gadgetId}/${customGadgetView.view}`}
+        gadgetId={customGadgetView.gadgetId}
+        onGoBack={handleGoBack}
+      >
+        <Suspense
+          fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
+        >
+          <PluginViewContainer
+            gadgetId={customGadgetView.gadgetId}
+            viewName={customGadgetView.view}
+            info={gadgetInfo}
+            runtime={gadgetRuntime}
+            launcher={gadgetLauncher}
+            results={results}
+            data={customGadgetView.data}
+            query={strippedQuery}
+            matchedPrefix={gadgetPrefix}
+          />
+        </Suspense>
+      </GadgetErrorBoundary>
     );
     contentFooter = <LauncherFooter footer={footer} />;
   } else if (activeInlineView != null || results.length > 0) {
     contentBody = (
       <>
         {activeInlineView != null && (
-          <Suspense
-            fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
+          <GadgetErrorBoundary
+            key={`${activeInlineView.gadgetId}/${activeInlineView.view}`}
+            gadgetId={activeInlineView.gadgetId}
           >
-            <InlineViewContainer
-              gadgetId={activeInlineView.gadgetId}
-              viewName={activeInlineView.view}
-              info={inlineInfo}
-              runtime={inlineRuntime}
-              launcher={inlineLauncher}
-              data={activeInlineView.data}
-              query={strippedQuery}
-              matchedPrefix={gadgetPrefix}
-              selected={inlineSelected}
-            />
-          </Suspense>
+            <Suspense
+              fallback={<div className="p-4 text-center text-text-muted text-sm">Loading…</div>}
+            >
+              <InlineViewContainer
+                gadgetId={activeInlineView.gadgetId}
+                viewName={activeInlineView.view}
+                info={inlineInfo}
+                runtime={inlineRuntime}
+                launcher={inlineLauncher}
+                data={activeInlineView.data}
+                query={strippedQuery}
+                matchedPrefix={gadgetPrefix}
+                selected={inlineSelected}
+              />
+            </Suspense>
+          </GadgetErrorBoundary>
         )}
         {results.length > 0 && (
           <ResultList
