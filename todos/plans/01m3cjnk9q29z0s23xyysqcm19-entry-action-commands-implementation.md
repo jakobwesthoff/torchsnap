@@ -173,7 +173,7 @@ here. Commits in this phase may not build. Commit after each step.
 - [x] **5.3 WASM gadgets.** The remaining seven, per the migration
   table. hello-world gets `clipboard = true` and really copies. `just
   check-gadgets`, `just test-gadgets`.
-- [ ] **5.4 Test fixtures.** Update the six fixtures in
+- [x] **5.4 Test fixtures.** Update the six fixtures in
   `src-tauri/tests/fixtures/` (hand-written `SearchGuest` against raw
   `wit_bindgen`), `just build-test-fixtures`, commit the `.wasm` files.
 - [ ] **5.5 Host.** Slot types, `EntryActions<C>`, generic entry and
