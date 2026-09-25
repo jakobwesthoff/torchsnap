@@ -12,7 +12,8 @@
  *
  * Every recorded combo becomes a system-wide accelerator, so a
  * combo is complete only when it cannot swallow ordinary typing:
- * Cmd, Ctrl or Alt plus a non-modifier key, or an F-key alone.
+ * Ctrl, Alt or Cmd (the Windows or Super key outside macOS) plus a
+ * non-modifier key, or an F-key alone.
  * Shift does not count, since Shift+letter is how capitals are
  * typed. Rejected combos keep the recorder listening and turn the
  * hint below it into an explanation.
@@ -23,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatModifier } from "../keybindings/platform";
+import { formatModifiers } from "../keybindings/platform";
 import { cn } from "../lib/cn";
 import { ShortcutKeys } from "./ShortcutKeys";
 
@@ -48,17 +49,25 @@ const MODIFIER_CODES = new Set([
  * Uses `e.code` (physical key name) for the non-modifier key,
  * which matches the names Tauri's shortcut parser expects
  * (e.g. "Space", "KeyA", "ArrowUp").
+ *
+ * Modifiers are recorded as the keys that were held, so Ctrl and
+ * Cmd stay apart on macOS. `metaKey` is Cmd on macOS and the
+ * Windows or Super key elsewhere; the parser calls it `Super` on
+ * every platform. The order matches the display order.
  */
 function buildAccelerator(e: KeyboardEvent): string {
   const parts: string[] = [];
-  if (e.metaKey || e.ctrlKey) {
-    parts.push("CommandOrControl");
+  if (e.ctrlKey) {
+    parts.push("Control");
   }
   if (e.altKey) {
     parts.push("Alt");
   }
   if (e.shiftKey) {
     parts.push("Shift");
+  }
+  if (e.metaKey) {
+    parts.push("Super");
   }
 
   if (!MODIFIER_CODES.has(e.code)) {
@@ -79,11 +88,9 @@ function isComplete(e: KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey || e.altKey || FUNCTION_KEY_CODE.test(e.code);
 }
 
-// "⌘, ⌃ or ⌥" on macOS. Elsewhere Meta and Ctrl both display as
-// "Ctrl" (`buildAccelerator` maps either to CommandOrControl), so
-// duplicates collapse to "Ctrl or Alt".
+// "⌃, ⌥ or ⌘" on macOS, "Ctrl, Alt or Win" on Windows.
 const REQUIRED_MODIFIERS = (() => {
-  const names = [...new Set((["Meta", "Ctrl", "Alt"] as const).map(formatModifier))];
+  const names = formatModifiers(["Control", "Alt", "Super"]);
   return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 })();
 

@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scrolling, keep working while CapsLock is on. Shortcuts with Shift
   and a letter work at all now, including the Cmd+Shift+R (Reveal) and
   Cmd+Shift+O (Open With) hints shown in the launcher footer.
+- On macOS, a recorded shortcut keeps Ctrl and Cmd apart. Before,
+  pressing Ctrl+Space saved Cmd+Space, and Cmd+Ctrl+K saved Cmd+K.
 - The emoji picker finds ©, ® and the keycap emoji (#, * and 0 to 9),
   which never showed up before.
 - "Open settings" on a gadget's result, such as ZeroTier's "token not
@@ -38,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Shortcuts show their modifiers in one order on every platform: Ctrl,
+  Alt, Shift, then Cmd (⌃⌥⇧⌘ on macOS). On Windows and Linux the
+  recorder also accepts the Windows or Super key, shown as "Win" or
+  "Super".
 - The Clipboard Manager's settings show statistics and offer "Clear
   All" only while the gadget is on, and "Clear All" stays unavailable
   while the history is empty.

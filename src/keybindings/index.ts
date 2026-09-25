@@ -13,12 +13,13 @@ export {
 } from "./matching";
 
 // Platform detection and formatting
-export type { Platform } from "./platform";
+export type { PhysicalModifier, Platform } from "./platform";
 export {
   platform,
   detectPlatform,
-  formatModifier,
-  formatModifierForPlatform,
+  physicalModifierFor,
+  formatModifiers,
+  formatModifiersForPlatform,
   formatKey,
   formatKeyForPlatform,
 } from "./platform";

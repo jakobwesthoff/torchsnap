@@ -13,15 +13,15 @@ vi.mock("../keybindings/platform", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../keybindings/platform")>();
   return {
     ...actual,
-    formatModifier: (m: Parameters<typeof actual.formatModifier>[0]) =>
-      actual.formatModifierForPlatform(m, "macos"),
+    formatModifiers: (modifiers: Parameters<typeof actual.formatModifiers>[0]) =>
+      actual.formatModifiersForPlatform(modifiers, "macos"),
   };
 });
 
 describe("ShortcutRecorder on macOS", () => {
-  it("names Cmd, Ctrl and Alt by their symbols in the hint", async () => {
+  it("names Ctrl, Option and Cmd by their symbols in the hint", async () => {
     render(<ShortcutRecorder value="CommandOrControl+Space" onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Change" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Hold ⌘, ⌃ or ⌥ and press a key.");
+    expect(screen.getByRole("status")).toHaveTextContent("Hold ⌃, ⌥ or ⌘ and press a key.");
   });
 });

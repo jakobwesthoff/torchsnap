@@ -2,29 +2,66 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import type { ModifierKey } from "./matching";
-import { formatKey, formatModifier } from "./platform";
+import {
+  formatKey,
+  formatModifiersForPlatform,
+  platform,
+  type PhysicalModifier,
+  type Platform,
+} from "./platform";
+
+/**
+ * Modifier tokens Tauri's accelerator parser accepts, uppercased. The
+ * combined `CommandOrControl` spellings resolve per platform, like the
+ * parser does: Cmd on macOS, Ctrl elsewhere.
+ */
+function modifierForToken(token: string, p: Platform): PhysicalModifier | null {
+  switch (token.toUpperCase()) {
+    case "CONTROL":
+    case "CTRL":
+      return "Control";
+    case "ALT":
+    case "OPTION":
+      return "Alt";
+    case "SHIFT":
+      return "Shift";
+    case "SUPER":
+    case "COMMAND":
+    case "CMD":
+      return "Super";
+    case "COMMANDORCONTROL":
+    case "COMMANDORCTRL":
+    case "CMDORCTRL":
+    case "CMDORCONTROL":
+      return p === "macos" ? "Super" : "Control";
+    default:
+      return null;
+  }
+}
 
 /**
  * Parse a Tauri accelerator string (`CmdOrCtrl+Shift+Space`) into
- * display-formatted parts using the app's platform-aware key
- * formatters.
+ * display parts: the modifiers in the shared order, then the key.
+ *
+ * Exported with explicit platform parameter for testability;
+ * consumers typically use `accelToDisplayParts`.
  */
-export function accelToDisplayParts(shortcut: string): string[] {
-  const tokens = shortcut.split("+");
-  const parts: string[] = [];
+export function accelToDisplayPartsForPlatform(shortcut: string, p: Platform): string[] {
+  const modifiers: PhysicalModifier[] = [];
+  const keys: string[] = [];
 
-  for (const token of tokens) {
-    if (token === "CommandOrControl" || token === "CmdOrCtrl") {
-      parts.push(formatModifier("Meta" as ModifierKey));
-    } else if (token === "Shift") {
-      parts.push(formatModifier("Shift" as ModifierKey));
-    } else if (token === "Alt") {
-      parts.push(formatModifier("Alt" as ModifierKey));
+  for (const token of shortcut.split("+")) {
+    const modifier = modifierForToken(token, p);
+    if (modifier) {
+      modifiers.push(modifier);
     } else {
-      parts.push(formatKey(token));
+      keys.push(formatKey(token));
     }
   }
 
-  return parts;
+  return [...formatModifiersForPlatform(modifiers, p), ...keys];
+}
+
+export function accelToDisplayParts(shortcut: string): string[] {
+  return accelToDisplayPartsForPlatform(shortcut, platform);
 }
