@@ -148,7 +148,7 @@ fn parse_emoji_data() -> Vec<EmojiData> {
     let raw_entries: Vec<EmojibaseEntry> =
         serde_json::from_str(EMOJI_DATA).expect("parse embedded emoji data");
 
-    // Shortcode files are keyed by hexcode (e.g. "1F680").
+    // Shortcode files are keyed by hexcode (e.g. "1F680", "00A9").
     let github: HashMap<String, ShortcodeValue> =
         serde_json::from_str(SHORTCODES_GITHUB).expect("parse embedded GitHub shortcodes");
     let emojibase: HashMap<String, ShortcodeValue> =
@@ -177,14 +177,15 @@ fn parse_emoji_data() -> Vec<EmojiData> {
     let mut data: Vec<EmojiData> = raw_entries
         .into_iter()
         .map(|entry| {
-            // Emojibase shortcode files use the variation-
-            // selector-stripped form for many entries, so we
-            // check both the full hexcode and the stripped
-            // version before giving up.
+            // Shortcode files spell each codepoint with at least
+            // four hex digits (`00A9-FE0F`). Emojibase shortcode
+            // files use the variation-selector-stripped form for
+            // many entries, so we check both the full hexcode and
+            // the stripped version before giving up.
             let hexcode = entry
                 .emoji
                 .chars()
-                .map(|c| format!("{:X}", c as u32))
+                .map(|c| format!("{:04X}", c as u32))
                 .collect::<Vec<_>>()
                 .join("-");
             let hexcode_stripped = hexcode.replace("-FE0F", "");
@@ -571,3 +572,49 @@ impl SearchGuest for EmojiPickerPlugin {
 // host logs as the macro stubs return an error.
 impl_noop_messaging!(EmojiPickerPlugin);
 impl_noop_tasks!(EmojiPickerPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shortcodes_for(data: &[EmojiData], label: &str) -> Vec<String> {
+        data.iter()
+            .find(|e| e.label == label)
+            .unwrap_or_else(|| panic!("embedded data has an emoji labelled {label:?}"))
+            .shortcodes
+            .clone()
+    }
+
+    // Shortcode files key codepoints below U+1000 with leading
+    // zeros (`00A9-FE0F`), so these are the emoji a hexcode
+    // without padding cannot find.
+    #[test]
+    fn emoji_with_low_codepoints_get_their_shortcodes() {
+        let data = parse_emoji_data();
+        for label in [
+            "copyright",
+            "registered",
+            "keycap: #",
+            "keycap: *",
+            "keycap: 0",
+        ] {
+            assert!(
+                !shortcodes_for(&data, label).is_empty(),
+                "{label} should have shortcodes"
+            );
+        }
+    }
+
+    // Entries without shortcodes are dropped from every result
+    // list, so a grouped emoji without them is unreachable.
+    #[test]
+    fn every_grouped_emoji_has_shortcodes() {
+        let data = parse_emoji_data();
+        let unreachable: Vec<&str> = data
+            .iter()
+            .filter(|e| e.group.is_some() && e.shortcodes.is_empty())
+            .map(|e| e.label.as_str())
+            .collect();
+        assert!(unreachable.is_empty(), "no shortcodes for {unreachable:?}");
+    }
+}

@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scrolling, keep working while CapsLock is on. Shortcuts with Shift
   and a letter work at all now, including the Cmd+Shift+R (Reveal) and
   Cmd+Shift+O (Open With) hints shown in the launcher footer.
+- The emoji picker finds ©, ® and the keycap emoji (#, * and 0 to 9),
+  which never showed up before.
 
 ### Changed
 
