@@ -16,6 +16,7 @@ mod network;
 mod paths;
 mod platform;
 mod settings;
+mod shortcuts;
 mod storage;
 mod unicode;
 mod updates;
@@ -717,6 +718,16 @@ fn gadget_sources(
     host.gadget_sources()
 }
 
+/// Why shortcuts from the latest registration are not active, keyed by
+/// settings key. The Settings shortcut rows read this on mount and
+/// again on `shortcut-problems-changed`.
+#[tauri::command]
+fn shortcut_problems(
+    host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
+) -> std::collections::BTreeMap<String, shortcuts::ShortcutProblem> {
+    host.shortcut_problems()
+}
+
 // =========================================================
 // Control API — frontend channel subscription
 // =========================================================
@@ -787,6 +798,7 @@ pub fn run() {
             wasm::logging::commands::logger_span_end,
             wasm_gadgets,
             gadget_sources,
+            shortcut_problems,
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,

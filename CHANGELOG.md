@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gadget views opened in the launcher see whether their gadget is
   enabled. Before, they got the flag of whatever the launcher showed
   earlier, usually no value at all, which reads as disabled.
+- One global shortcut that cannot be registered no longer takes the
+  others with it. Before, an invalid launcher shortcut, two shortcuts
+  on the same keys, or a combination another app holds left no
+  shortcut working at all, and a missing launcher shortcut stopped
+  shortcut updates until restart. Each shortcut now registers on its
+  own; on a collision the launcher shortcut wins, then the gadget
+  registered first.
 - A gadget command permission with a `path-under` constraint no longer
   accepts a path that goes through a symlink whose target does not
   exist. Writing to such a path would have created the target outside
