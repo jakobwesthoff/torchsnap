@@ -145,29 +145,29 @@ variants and `Variant {}` accept it.
 
 ## Checkpoint: merge phases 1 to 4
 
-- [ ] `just fullcycle` on the branch tip.
-- [ ] Merge the branch into `main` with `--no-ff`. Push `main` after
+- [x] `just fullcycle` on the branch tip.
+- [x] Merge the branch into `main` with `--no-ff`. Push `main` after
   the maintainer confirms.
-- [ ] Keep working on the same branch for phases 5 to 7.
+- [x] Keep working on the same branch for phases 5 to 7.
 
 ## Phase 5: the switch
 
 Todo `01kr2357mcz36g4gte0c0t1qz5` holds the details for every step
 here. Commits in this phase may not build. Commit after each step.
 
-- [ ] **5.1 WIT and versions.** New `action` and `entry-actions`
+- [x] **5.1 WIT and versions.** New `action` and `entry-actions`
   records in `catalog-entry` and `scored-entry`, `execute(command:
   string)`, no `scored-entry.data`, no `action-id`. Package version
   `0.2.0`; `gadgets/gadget-sdk/Cargo.toml` and
   `packages/gadget-sdk/package.json` to `0.2.0` (ADR 56). `just
   check-wit`.
-- [ ] **5.2 Rust SDK.** `Search` trait, SDK-owned generic entry types,
+- [x] **5.2 Rust SDK.** `Search` trait, SDK-owned generic entry types,
   `Actions<C>` with builder (label required for `primary` and
   `secondary`) and `iter()`, blanket `SearchGuest`. Decode failure in
   `execute()` returns `Err`; encode failure logs a warning and drops
   the entry. Prelude swap; `data` becomes internal. Tests on the host
   target for encode, decode and the error paths.
-- [ ] **5.2a Blanket impl check.** Convert template first and build it
+- [x] **5.2a Blanket impl check.** Convert template first and build it
   for `wasm32-wasip2`. If the blanket impl does not work with the
   `wit_bindgen` `export!`, stop and bring it to the maintainer.
 - [ ] **5.3 WASM gadgets.** The remaining seven, per the migration

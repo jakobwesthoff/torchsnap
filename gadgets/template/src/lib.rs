@@ -14,7 +14,8 @@
 //
 // - Catalog entries via `entries()`
 // - Custom UI via prefix-triggered `search()`
-// - Action execution via `execute()`
+// - Actions in fixed slots, each carrying a command of the
+//   gadget's own `Command` type, run via `execute()`
 // - Structured logging with metadata
 // - Reading gadget settings via the `settings::get` host
 //   import and parsing the JSON-encoded values
@@ -205,22 +206,41 @@ impl Messaging for TemplatePlugin {
     }
 }
 
-impl SearchGuest for TemplatePlugin {
-    fn entries() -> Vec<CatalogEntry> {
+// =========================================================
+// Search and actions
+//
+// Every action carries a command: a value of `Command` that
+// says what running the action does. The SDK encodes it when
+// entries leave the gadget and hands the decoded value back to
+// `execute()` when the user runs the action. The slot an action
+// sits in (`primary`, `secondary`, `copy`, `reveal`, `delete`,
+// `open_settings`) decides how the user runs it: Enter,
+// Cmd+Enter, Cmd+C, and so on.
+// =========================================================
+
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+enum Command {
+    /// The demo catalog entry's primary action.
+    Demo,
+    /// Open a website, used by the website-metadata snippet.
+    OpenUrl(String),
+}
+
+impl Search for TemplatePlugin {
+    type Command = Command;
+
+    fn entries() -> Vec<CatalogEntry<Command>> {
         vec![CatalogEntry {
             id: "template-demo".into(),
             title: "Template Demo".into(),
             subtitle: Some("Template WASM gadget demo".into()),
             icon: Some(EntryIcon::HeroIcon("puzzle-piece".into())),
             keywords: vec!["template".into(), "demo".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Open".into(),
-            }],
+            actions: Actions::new().primary("Open", Command::Demo),
         }]
     }
 
-    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
+    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
         if query.is_empty() {
             return SearchResponse::Nothing;
         }
@@ -241,13 +261,15 @@ impl SearchGuest for TemplatePlugin {
         SearchResponse::Nothing
     }
 
-    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
-        logging::log(
-            logging::LogLevel::Info,
-            &format!("Executed entry: {}", entry.id),
-            &[("entry_id".into(), entry.id)],
-            None,
-        );
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::Demo => {
+                logging::log(logging::LogLevel::Info, "Executed the demo entry", &[], None);
+            }
+            Command::OpenUrl(url) => {
+                opener::open_url(&url).map_err(|e| format!("open URL: {e}"))?;
+            }
+        }
         Ok(PostAction::Dismiss)
     }
 }
@@ -302,7 +324,7 @@ fn website_metadata_favicon_demo(domain: &str) -> EntryIcon {
 /// populated cache. Gadgets that genuinely need to wait for the
 /// fetch should swap in [`website_metadata::lookup_blocking`].
 #[allow(dead_code)]
-fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
+fn website_metadata_demo(domain: &str) -> Option<ScoredEntry<Command>> {
     use website_metadata::Metadata;
 
     let (title, icon) = match website_metadata::lookup_cached(domain) {
@@ -325,11 +347,10 @@ fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
         score: 500,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
-        actions: vec![Action {
-            id: ActionId::Open,
-            label: "Open in Browser".into(),
-        }],
-        data: None,
+        actions: Actions::new().primary(
+            "Open in Browser",
+            Command::OpenUrl(format!("https://{domain}")),
+        ),
     })
 }
 
