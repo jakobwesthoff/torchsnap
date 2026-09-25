@@ -360,10 +360,14 @@ self-emitted events), so its own `useSetting` cache stays consistent
 with the rest of the app through one code path.
 
 A gadget opens its own settings by returning `PostAction::OpenSettings`
-(`open-settings` in WIT) from `execute()`, typically for
-`ActionId::OpenSettings` on a "configuration required" entry.
-`GadgetHost::execute` stores the gadget id in `SettingsStartSection`,
-opens the settings window and emits `"settings-start-section"` to it.
+(`open-settings` in WIT) from `execute()`, typically for the command
+of a "configuration required" entry's `primary` action, as ZeroTier's
+"token not configured" entry does. A gadget view opens them with
+`openSettings()` from `useLauncher()`, which invokes the
+`gadget_open_settings` command with the view's gadget id. Both paths
+end in `show_settings_window_at`, which stores the gadget id in
+`SettingsStartSection`, opens the settings window and emits
+`"settings-start-section"` to it.
 The window takes the waiting section through
 `take_settings_start_section` on mount and on that event
 (`src/settings/useStartSection.ts`), and falls back to the Gadgets page

@@ -121,18 +121,47 @@ silently drops the channel rather than forwarding it; gadgets that
 genuinely need streaming must stay native or wait for an additive
 `messaging-stream` sub-interface.
 
-## Rust SDK helpers
+## Rust SDK
 
-`gadgets/gadget-sdk/src/messaging.rs`:
+`gadgets/gadget-sdk/src/messaging.rs` puts a typed `Messaging` trait
+in front of the generated `MessagingGuest`:
+
+```rust
+pub trait Messaging {
+    type Request: DeserializeOwned;
+
+    fn handle(request: Self::Request) -> Result<serde_json::Value, String>;
+}
+
+impl<T: Messaging> MessagingGuest for T { /* decodes, calls handle, encodes */ }
+```
+
+`Request` is deserialized from `{"method": <method>, "payload":
+<payload>}`. An enum with
+`#[serde(tag = "method", content = "payload")]` maps each method name
+to a variant and the payload to the variant's fields. Methods without
+arguments are unit variants. Unit variants reject any payload but a
+missing one or `null`, while the frontend sends `{}` for methods
+without arguments. `decode_request` therefore decodes an empty object
+as given first, so struct variants such as `ClearAll {}` keep
+working, and only when that fails decodes again without the payload.
+
+An unknown method, a payload that does not fit its variant, or a
+payload that is not JSON becomes an `Err` before gadget code runs.
+The value `handle` returns is serialized as the response, and
+`Err(string)` rejects the frontend's promise. `decode_request` is
+public so gadget tests can check their request enum against the
+payloads their frontend sends.
+
+A gadget can still implement `MessagingGuest` by hand. It is exported
+from the crate root, not from the prelude, and a type cannot
+implement both `Messaging` and `MessagingGuest`. For such an impl the
+module keeps two JSON helpers, also outside the prelude:
 
 ```rust
 pub fn parse_payload<T: DeserializeOwned>(payload: &str) -> Result<T, String>
 pub fn to_response<T: Serialize>(value: &T) -> Result<String, String>
 ```
-
-Both fold the `serde_json` diagnostic into the error string so log
-readers can distinguish a malformed payload from a gadget-level
-rejection.
 
 Gadgets that don't expose RPC implement the noop stub via
 `impl_noop_messaging!(MyGadget)`. The stub returns
@@ -141,25 +170,46 @@ misrouted calls still surface in logs.
 
 ### Gadget-side example
 
-From `gadgets/zerotier/src/lib.rs`:
+From `gadgets/zerotier/src/lib.rs` (abridged):
 
 ```rust
-impl MessagingGuest for ZeroTierGadget {
-    fn handle_message(method: String, payload: String) -> Result<String, String> {
-        match method.as_str() {
-            "refresh"  => { /* ... */ Ok(r#"{"ok":true}"#.into()) }
-            "reimport" => { /* ... */ }
-            "forget"   => {
-                #[derive(serde::Deserialize)] struct Req { id: String }
-                let req: Req = serde_json::from_str(&payload)
-                    .map_err(|e| format!("parse payload: {e}"))?;
-                /* ... */
+/// Every method the ZeroTier settings panel calls through
+/// `sendMessage`.
+#[derive(Debug, serde::Deserialize, PartialEq)]
+#[serde(tag = "method", content = "payload", rename_all = "snake_case")]
+enum Request {
+    /// Drop the cached live network list so the next search
+    /// asks the daemon again.
+    Refresh,
+    /// Leave (if joined) and forget one network.
+    Forget { id: String },
+    /// Delete the whole history.
+    ClearAll,
+}
+
+impl Messaging for ZeroTierPlugin {
+    type Request = Request;
+
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        match request {
+            Request::Refresh => {
+                RUNTIME.with(|cell| {
+                    cell.borrow_mut().network_cache.invalidate();
+                });
+                Ok(serde_json::json!({ "ok": true }))
             }
-            other => Err(format!("unknown method: {other}")),
+            Request::Forget { id } => { /* ... */ }
+            Request::ClearAll => {
+                history::clear_all(&history::connection())?;
+                Ok(serde_json::json!({ "ok": true }))
+            }
         }
     }
 }
 ```
+
+`sendMessage("forget", { id })` reaches `Request::Forget { id }`, and
+`sendMessage("clear_all", {})` reaches `Request::ClearAll`.
 
 ## Frontend Side
 

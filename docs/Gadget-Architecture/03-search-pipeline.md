@@ -39,7 +39,8 @@ matchedPrefix }` and `Done`. `source` is `ResultSource::Catalog` or
 `ResultSource::Gadget { id }`.
 
 Sibling commands in the same module:
-- `search_execute`: wraps `GadgetHost::execute` in
+- `search_execute(source, entry_id, slot)`: runs the action in `slot`
+  of an entry. Wraps `GadgetHost::execute` in
   `tokio::task::spawn_blocking`. The blocking pool is mandatory because
   gadget `execute()` may reach `http::fetch`, which calls
   `Handle::current()` inside reqwest. Tauri's sync IPC thread has no
@@ -207,21 +208,28 @@ contract is implicit (no type enforces it).
 ## EntryStore: search-to-execute handoff
 
 `EntryStore` (`src-tauri/src/entry_store.rs`) bridges the gap between
-the search phase and the execute phase. It is a
-`RwLock<HashMap<(String, String), ScoredEntry>>` keyed by
-`(source_gadget_id, entry_id)`.
+the search phase and the execute phase. It holds the `ScoredEntry`
+values of the most recent search, keyed by
+`(source_gadget_id, entry_id)`, together with the current search
+generation, both under one `RwLock`.
 
-- **During search**, `entry_store.clear()` runs unconditionally at the
-  top of every `GadgetHost::search` invocation. As each batch of
-  results (catalog or per-query-gadget) is produced, the entries are
-  inserted into the store.
-- **During execute**, `entry_store.get(source, entry_id)` retrieves
-  the full `ScoredEntry` to pass to the gadget's `execute()`. This is
-  how the opaque `data` field round-trips from `search()` back to
-  `execute()` without the frontend ever seeing it (`data` is
-  `#[serde(skip)]` on the host `ScoredEntry`). If the entry is absent
-  (stale UI referencing a previous search generation), the host logs
-  the mismatch and returns `PostAction::Nothing`.
+- **During search**, `entry_store.begin_search()` runs at the top of
+  every `GadgetHost::search` invocation, empty queries included. It clears the entries and
+  returns a new `SearchGeneration`. As each batch of results (catalog
+  or per-query-gadget) is produced, the entries are inserted together
+  with that generation. Every keystroke starts a new search without
+  cancelling the previous one, so an older search can still deliver
+  results. The store drops inserts from any generation but the
+  current one.
+- **During execute**, `GadgetHost::execute(source, entry_id, slot)`
+  looks up the entry with `entry_store.get(source, entry_id)` and
+  takes the command of the action in `slot`
+  (`resolve_command` in `gadget_host.rs`). That command goes to the
+  gadget's `execute()`. The commands stay on the host side:
+  `EntryActions` serializes to the frontend as `{ slot, label }`
+  only. If the entry is absent (stale UI referencing a previous
+  search) or the slot is empty, the host logs the mismatch and
+  returns `PostAction::Nothing`.
 
 See [02-data-types.md](02-data-types.md#execution) for the full
 execute type contract.
@@ -244,23 +252,34 @@ involved in the search-result-bonus path.
 
 ## Gadget contract
 
-Native gadgets implement `crate::gadgets::Gadget`
-(`gadgets/mod.rs`). The search-relevant entry points:
+The host holds every gadget as `Arc<dyn Gadget>`
+(`gadgets/mod.rs`). `Gadget` has the supertrait `ErasedSearch`, in
+which action commands are opaque `String`s. The search-relevant
+entry points:
 
-- `id() -> &str`: the `source` field on every emitted entry.
-- `search_prefixes() -> &[String]`: empty by default.
-- `entries() -> Vec<CatalogEntry>`: empty by default (query-only
-  gadgets).
-- `search(query, matched_prefix) -> Option<GadgetResponse>`: `None`
-  by default (catalog-only gadgets). `matched_prefix.is_some()` iff
-  this is the prefix-exclusive path.
-- `execute(entry: &ScoredEntry, action_id: &ActionId) ->
-  anyhow::Result<PostAction>`.
+- `Gadget::id() -> &str`: the `source` field on every emitted entry.
+- `Gadget::search_prefixes() -> &[String]`: empty by default.
+- `ErasedSearch::entries() -> Vec<CatalogEntry>`: empty by default
+  (query-only gadgets).
+- `ErasedSearch::search(query, matched_prefix) ->
+  Option<GadgetResponse>`: `None` by default (catalog-only gadgets).
+  `matched_prefix.is_some()` iff this is the prefix-exclusive path.
+- `ErasedSearch::execute(&self, command: &str) ->
+  anyhow::Result<PostAction>`: runs the command of the triggered
+  action.
+
+Native gadgets implement `Gadget` and the typed `Search` trait, which
+has the same three methods over the gadget's own
+`type Command: Serialize + DeserializeOwned`. A blanket impl provides
+`ErasedSearch` for every `Search` type. It encodes each command to
+JSON, drops and logs an entry whose command does not encode, and
+decodes the command string again before `Search::execute`.
 
 WASM gadgets implement the WIT `search` interface
 (`gadget-sdk/wit/torchsnap-gadget.wit`) and reach the host through
-`WasmGadgetBridge` (`wasm/bridge.rs`), which adapts the WIT types to
-the native `Gadget` trait. The bridge's `search_prefixes()` reads
+`WasmGadgetBridge` (`wasm/bridge.rs`), which implements `Gadget` and
+`ErasedSearch` directly and passes command strings through
+unchanged. The bridge's `search_prefixes()` reads
 `manifest.gadget.prefixes` from `manifest.toml` rather than a guest
 call, so prefix matching does not touch the WASM store mutex.
 
@@ -273,8 +292,9 @@ WIT differences worth noting:
 - WIT `scored-entry` carries `title-highlight-positions` and
   `subtitle-highlight-positions` as UTF-16 offsets, which match the
   host's `Utf16Positions`.
-- WIT `scored-entry` includes `data: option<string>` for opaque
-  payload round-tripping through `execute`.
+- WIT `catalog-entry` and `scored-entry` carry their actions as an
+  `entry-actions` record with one optional `action` per slot. Each
+  action's `command` string round-trips unchanged to `execute`.
 
 ## Sample gadget shapes
 

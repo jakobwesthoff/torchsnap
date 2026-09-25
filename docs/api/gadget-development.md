@@ -11,6 +11,13 @@ The single source of truth for the gadget contract is the WIT file at
 ergonomic helpers on top. When this guide and the WIT disagree, the
 WIT wins.
 
+The gadget API is at version 0.2.0: the WIT package
+`torchsnap:gadget@0.2.0`, the Rust SDK crate `torchsnap-gadget-sdk`
+and the TypeScript SDK package `@torchsnap/gadget-sdk` share one
+version number. When any of the three changes incompatibly, all three
+move to the same new version (ADR 0056). Gadgets built against 0.1.0
+need code changes and a rebuild.
+
 ## Contents
 
 - [Gadget model](#gadget-model)
@@ -122,6 +129,7 @@ state through `thread_local!` `Cell`s, `LazyLock`s, or static
 `OnceCell`s.
 
 ```rust
+use serde::{Deserialize, Serialize};
 use torchsnap_gadget_sdk::prelude::*;
 
 struct MyGadget;
@@ -135,12 +143,27 @@ impl LifecycleGuest for MyGadget {
     fn on_setting_changed(_key: String, _value: String) {}
 }
 
-impl SearchGuest for MyGadget {
-    fn entries() -> Vec<CatalogEntry> { Vec::new() }
-    fn search(_query: String, _matched_prefix: Option<String>) -> SearchResponse {
+/// What this gadget's actions do. The SDK hands the value an
+/// action carries back to `execute()` when the user runs it.
+#[derive(Serialize, Deserialize)]
+enum Command {
+    OpenDocs,
+}
+
+impl Search for MyGadget {
+    type Command = Command;
+
+    fn search(_query: String, _matched_prefix: Option<String>) -> SearchResponse<Command> {
         SearchResponse::Nothing
     }
-    fn execute(_entry_id: String, _action_id: ActionId) -> Result<PostAction, String> {
+
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::OpenDocs => {
+                opener::open_url("https://example.com/docs")
+                    .map_err(|e| format!("open URL: {e}"))?;
+            }
+        }
         Ok(PostAction::Dismiss)
     }
 }
@@ -151,9 +174,11 @@ impl_noop_messaging!(MyGadget);
 impl_noop_tasks!(MyGadget);
 ```
 
-`define_gadget!(MyGadget)` (`gadgets/gadget-sdk/src/lib.rs:150`)
+`define_gadget!(MyGadget)` (`gadgets/gadget-sdk/src/lib.rs`)
 expands to the `wit_bindgen`-generated `export!` macro, wiring
-the type to every component-model FFI shim. `impl_noop_messaging!`
+the type to every component-model FFI shim. `Search` has a default
+`entries()` that returns no catalog entries, so a query-only gadget
+leaves it out. `impl_noop_messaging!`
 and `impl_noop_tasks!` provide the stub implementations of the
 two exports a gadget almost always still has to declare even when
 it does not use them.
@@ -178,16 +203,33 @@ recipes assemble the `.torchsnap` archive.
 
 ## The four guest traits
 
-The SDK re-exports the four `wit_bindgen`-generated guest traits
-flatly through `torchsnap_gadget_sdk::prelude` so gadget code only
+Each of the four WIT exports has one trait a gadget implements. All
+four come from `torchsnap_gadget_sdk::prelude`, so gadget code only
 ever needs `use torchsnap_gadget_sdk::prelude::*;`:
 
 | Trait              | WIT export      | Methods                                           |
 |--------------------|-----------------|---------------------------------------------------|
 | `LifecycleGuest`   | `lifecycle`     | `enable`, `disable`, `on_setting_changed`         |
-| `SearchGuest`      | `search`        | `entries`, `search`, `execute`                    |
-| `MessagingGuest`   | `messaging`     | `handle_message`                                  |
+| `Search`           | `search`        | `entries` (optional), `search`, `execute`; associated type `Command` |
+| `Messaging`        | `messaging`     | `handle`; associated type `Request`               |
 | `TasksGuest`       | `tasks`         | `run_task`                                        |
+
+`LifecycleGuest` and `TasksGuest` are the `wit_bindgen`-generated
+guest traits. `Search` and `Messaging` are typed layers the SDK puts
+in front of the generated `SearchGuest` and `MessagingGuest`: a
+blanket impl provides the generated trait for every type that
+implements the typed one, and converts between the gadget's own types
+and the JSON strings the WIT carries (see
+[Actions and `execute()`](#actions-and-execute) and
+[Messaging](#messaging-frontend--gadget-rpc)).
+
+`SearchGuest` and `MessagingGuest` are exported from the crate root,
+not from the prelude. A gadget may implement one of them by hand
+instead of the typed trait, using the generated entry and response
+types from `torchsnap_gadget_sdk::wit_search`. A type cannot
+implement both `Search` and `SearchGuest`: the two impls conflict and
+the gadget does not compile (E0119). `impl_noop_messaging!` is such
+a hand-written `MessagingGuest`.
 
 All methods are **free associated functions on the implementing
 type** (no `&self`). State is held in `thread_local!`,
@@ -248,37 +290,35 @@ A gadget can serve any combination of three search modes:
 
 ### `entries()`
 
-Returns a `Vec<CatalogEntry>`. The host runs nucleo fuzzy
+Returns a `Vec<CatalogEntry<Self::Command>>`. The host runs nucleo fuzzy
 matching across `title` and `keywords` and merges the matches
 with the rest of the active result list. Called on every
-keystroke — keep it fast and side-effect free.
+keystroke, so keep it fast and side-effect free.
 
 ```rust
-fn entries() -> Vec<CatalogEntry> {
+fn entries() -> Vec<CatalogEntry<Command>> {
     vec![CatalogEntry {
         id: "my-action".into(),
         title: "My Action".into(),
         subtitle: Some("Does the thing".into()),
         icon: Some(EntryIcon::HeroIcon("bolt".into())),
         keywords: vec!["thing".into()],
-        actions: vec![Action {
-            id: ActionId::Open,
-            label: "Run".into(),
-        }],
+        actions: Actions::new().primary("Run", Command::DoTheThing),
     }]
 }
 ```
 
 ### `search(query, matched_prefix)`
 
-Returns a `SearchResponse` variant (WIT lines 733–745):
+Returns a `SearchResponse<Self::Command>` variant (the WIT's
+`search-response`):
 
 | Variant                 | Effect                                                         |
 |-------------------------|----------------------------------------------------------------|
 | `Nothing`               | Gadget contributes nothing this keystroke.                     |
-| `Results(Vec<ScoredEntry>)` | Pre-scored entries merged into the host's list.            |
-| `CustomUi(ViewResponse)`| Host mounts the gadget's named view component, replacing the result list. |
-| `InlineUi(ViewResponse)`| Host renders the gadget's inline view above the result list (only one gadget per search may claim the slot). |
+| `Results(Vec<ScoredEntry<C>>)` | Pre-scored entries merged into the host's list.         |
+| `CustomUi(ViewResponse<C>)`| Host mounts the gadget's named view component, replacing the result list. |
+| `InlineUi(ViewResponse<C>)`| Host renders the gadget's inline view above the result list (only one gadget per search may claim the slot). |
 
 `ViewResponse { view, data, results }`:
 
@@ -289,7 +329,9 @@ Returns a `SearchResponse` variant (WIT lines 733–745):
   deserialize with `serde_json`).
 - `results` is forwarded to the React component as props; use
   it or ignore it depending on whether the view wants to
-  render its own list.
+  render its own list. The view runs an action of one of these
+  entries with `onExecute(entryId, slot)` (see
+  [Frontend components](#frontend-components)).
 
 ### Prefix routing (ADR 0012)
 
@@ -306,7 +348,7 @@ could both match.
 ### `ScoredEntry`
 
 ```rust
-pub struct ScoredEntry {
+pub struct ScoredEntry<C> {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -314,9 +356,14 @@ pub struct ScoredEntry {
     pub score: u32,
     pub title_highlight_positions: Vec<u32>,    // UTF-16 code unit offsets
     pub subtitle_highlight_positions: Vec<u32>, // UTF-16 code unit offsets
-    pub actions: Vec<Action>,
+    pub actions: Actions<C>,
 }
 ```
+
+`CatalogEntry<C>`, `ScoredEntry<C>`, `ViewResponse<C>` and
+`SearchResponse<C>` are the SDK's own types, generic over the
+gadget's command type. The WIT records they map to carry the
+commands as strings.
 
 The gadget is responsible for scoring and for computing the
 highlight offsets that the launcher renders as bold characters
@@ -339,31 +386,108 @@ pub enum EntryIcon {
 
 ## Actions and `execute()`
 
-`Action` (WIT 688–691) is `{ id: ActionId, label: String }`. The
-ordered `actions` vector on a `CatalogEntry` / `ScoredEntry`
-puts the primary (Enter) action first; subsequent entries appear
-in the action palette (Cmd+K).
+### Commands
 
-`ActionId` (WIT 678–686):
+Every action carries a **command**: a value of the gadget's own
+`Command` type that says what running the action does. A command
+holds whatever `execute()` needs. The bangs gadget, for example,
+puts the resolved search URL into `Command::OpenUrl(url)`.
 
 ```rust
-pub enum ActionId {
-    Open,
-    Copy,
-    Reveal,
-    OpenWith,
-    Delete,
-    OpenSettings,           // Answer with PostAction::OpenSettings.
-    Custom(String),         // Gadget-defined action.
+#[derive(Serialize, Deserialize)]
+enum Command {
+    OpenUrl(String),
+    CopyUrl(String),
+}
+
+impl Search for BangsPlugin {
+    type Command = Command;
+
+    // search() builds each entry's actions from these commands.
+
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::OpenUrl(url) => {
+                opener::open_url(&url).map_err(|e| format!("open URL: {e}"))?;
+            }
+            Command::CopyUrl(url) => {
+                clipboard::write_text(&url).map_err(|e| format!("copy URL to clipboard: {e}"))?;
+            }
+        }
+        Ok(PostAction::Dismiss)
+    }
 }
 ```
 
-`Open`, `Copy`, etc. are well-known so the launcher can render
-default icons and key hints. `Custom("save-as-bookmark")` covers
-gadget-specific actions.
+`Command` must implement `Serialize` and `DeserializeOwned`. The
+WIT carries a command as an opaque `string`. The SDK encodes the
+command to JSON when entries leave the gadget, and the host stores
+it with the entry without inspecting it. When the user runs an
+action, the host passes that string back to the WIT `execute`, and
+the SDK decodes it before calling `Search::execute`. `execute()`
+receives only the command of the triggered action, not the entry id
+and not the slot. Commands never reach the frontend.
 
-`execute()` is called when the user activates an action. Returns
-`Result<PostAction, String>`:
+The SDK handles two failures itself:
+
+- A command that fails to encode in `search()` or `entries()` drops
+  its whole entry, and the SDK logs a warning.
+- A command that fails to decode in `execute()` returns
+  `Err("command decode: …")` without calling `Search::execute`.
+
+A gadget in another language, or one that implements `SearchGuest`
+by hand, chooses its own encoding for the command string.
+
+### Slots
+
+An entry's actions are an `Actions<C>`: one optional field per
+slot. The slot alone decides the key that runs the action. An empty
+slot has no key and no footer hint.
+
+| Slot            | Key                          | Label when `None`   |
+|-----------------|------------------------------|---------------------|
+| `primary`       | Enter, or a click on the row | the entry's title   |
+| `secondary`     | Cmd+Enter                    | the entry's title   |
+| `copy`          | Cmd+C                        | "Copy"              |
+| `reveal`        | Cmd+Shift+R                  | "Reveal in Finder"  |
+| `delete`        | Cmd+Backspace                | "Delete"            |
+| `open_settings` | Cmd+,                        | "Open settings"     |
+
+Outside macOS, Ctrl takes the place of Cmd. The default labels are
+the same English text on every platform. `primary` and `secondary`
+have no default label because their meaning differs per gadget, so
+always give them one.
+
+Each action is an `Action<C> { label: Option<String>, command: C }`.
+`Action::new(command)` leaves the label to the slot default,
+`Action::labeled(label, command)` sets it. Build the slots with the
+builder methods, which take a label for `primary` and `secondary`
+and an `Action` for the other slots:
+
+```rust
+/// A network entry's actions: Enter joins or leaves (`label` says
+/// which), Cmd+C copies the id, Cmd+Backspace forgets the network.
+fn network_actions(network_id: &str, label: &str) -> Actions<Command> {
+    Actions::new()
+        .primary(label, Command::Toggle(network_id.to_string()))
+        .copy(Action::labeled("Copy network id", Command::CopyId(network_id.to_string())))
+        .delete(Action::labeled("Forget", Command::Forget(network_id.to_string())))
+}
+```
+
+A second builder call for the same slot replaces the first.
+`Actions` also has public fields and `Default`, so a struct literal
+with `..Default::default()` works too. In a struct literal, filling
+a slot twice does not compile. `Actions::iter()` yields the filled
+slots as `(Slot, &Action<C>)` in the order of the table above.
+
+The same command may fill several slots. The calculator's history
+rows put one `Command::Copy { .. }` into both `primary` and `copy`,
+so Enter and Cmd+C both copy the result.
+
+### `execute()` and `PostAction`
+
+`Search::execute` returns `Result<PostAction, String>`:
 
 ```rust
 pub enum PostAction { Nothing, Dismiss, KeepOpen, OpenSettings }
@@ -371,68 +495,95 @@ pub enum PostAction { Nothing, Dismiss, KeepOpen, OpenSettings }
 
 `OpenSettings` hides the launcher and opens the Settings window on
 this gadget's section, or on the Gadgets page when the gadget has no
-settings section of its own.
+settings section of its own. ZeroTier's "token not configured"
+entry uses it: its `primary` action, labeled "Open settings", carries
+`Command::OpenSettings`, and `execute()` answers that command with
+`PostAction::OpenSettings`.
 
-There is no `ShowCustomUI` variant — custom UI is mounted only
-through `SearchResponse::CustomUi` from `search()`.
+There is no `ShowCustomUI` variant. A WASM gadget mounts custom UI
+only through `SearchResponse::CustomUi` from `search()`.
 
-```rust
-fn execute(entry_id: String, action_id: ActionId) -> Result<PostAction, String> {
-    match (entry_id.as_str(), &action_id) {
-        ("open-docs", ActionId::Open) => {
-            opener::open_url("https://example.com/docs")
-                .map_err(|e| format!("open url: {e:?}"))?;
-            Ok(PostAction::Dismiss)
-        }
-        _ => Err(format!("unhandled: {entry_id} / {action_id:?}")),
-    }
-}
-```
+Returning `Err(string)` rejects the launcher's `search_execute`
+call with `gadget execute() returned error: <string>`.
 
-Returning `Err(string)` surfaces in the host log and as a toast
-in the launcher; the user-visible error message is the returned
-string verbatim.
+On the host side, the launcher calls `search_execute` with the
+entry's source gadget, its id and the slot. The host records the
+selection for frecency, looks up the entry from the current search
+by `(source, id)`, and passes the command in that slot to the
+gadget. If the entry is not in the current search or the slot is
+empty, the host logs it and returns `PostAction::Nothing` without
+calling the gadget.
 
 ---
 
 ## Messaging (frontend ↔ gadget RPC)
 
-The WIT `messaging::handle-message` export (lines 790–793) is the
-single entry point a gadget's frontend component calls into when
-it needs backend work done. The SDK helpers in
-`gadgets/gadget-sdk/src/messaging.rs` cover the JSON encode /
-decode boilerplate.
+The WIT `messaging::handle-message` export is the single entry
+point a gadget's frontend components call into when they need
+backend work done. Launcher views and settings panels share this
+one channel.
+
+Implement the SDK's `Messaging` trait with one `Request` enum that
+lists every method the frontend may call. The SDK decodes each call
+into that enum before `handle` runs:
 
 ```rust
-use serde::{Deserialize, Serialize};
-
+/// Every method the calculator frontend calls through `sendMessage`.
 #[derive(Deserialize)]
-struct LookupRequest { domain: String }
+#[serde(tag = "method", content = "payload", rename_all = "snake_case")]
+enum Request {
+    /// Copy a result to the clipboard and record it in the history.
+    Copy(CopyPayload),
+    /// Entry count and database size for the settings panel.
+    Stats,
+    /// Wipe the history table.
+    ClearHistory,
+}
 
-#[derive(Serialize)]
-struct LookupResponse { title: Option<String> }
+impl Messaging for CalculatorPlugin {
+    type Request = Request;
 
-impl MessagingGuest for MyGadget {
-    fn handle_message(method: String, payload: String) -> Result<String, String> {
-        match method.as_str() {
-            "lookup" => {
-                let req: LookupRequest = messaging::parse_payload(&payload)?;
-                let title = lookup_title(&req.domain);
-                messaging::to_response(&LookupResponse { title })
-            }
-            other => Err(format!("unknown method: {other}")),
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        match request {
+            Request::Copy(payload) => copy_method(payload),
+            Request::Stats => stats_method(),
+            Request::ClearHistory => clear_history_method(),
         }
     }
 }
 ```
 
+The SDK deserializes `Request` from
+`{"method": <method>, "payload": <payload>}`. With
+`#[serde(tag = "method", content = "payload")]`, the method name
+selects the variant and the payload fills the variant's fields.
+`rename_all` makes the variant names match the method names the
+frontend sends: `sendMessage("clear_history", {})` reaches
+`Request::ClearHistory`. Methods without arguments are unit
+variants. The frontend sends `{}` for them, and the SDK accepts
+that payload for a unit variant.
+
+The SDK rejects an unknown method, a payload that does not fit its
+variant, or a payload that is not JSON before gadget code runs.
+`handle` returns the JSON value the frontend's `sendMessage`
+promise resolves with, and `Err(string)` rejects the promise.
+`messaging::decode_request::<Request>(method, payload)` runs the
+same decoding, so gadget tests can check their request enum against
+the payloads their frontend sends.
+
+A gadget can still implement the generated `MessagingGuest` from the
+crate root by hand. `torchsnap_gadget_sdk::messaging::parse_payload`
+and `to_response` cover the JSON for such an impl. Neither is in the
+prelude.
+
 **WASM gadgets cannot stream.** The export is strictly request /
 response. The TypeScript `sendMessage(method, payload, onMessage)`
-overload exists for symmetry with native gadgets but
-WASM-backed gadgets drop the channel callback silently — see ADR
-0030 and `packages/gadget-sdk/src/shims/hooks.ts:88` for the
-rationale and the future `messaging-stream` sub-interface that
-would lift the restriction.
+overload exists for symmetry with native gadgets, but WASM-backed
+gadgets drop the channel callback silently. See ADR 0030 and the
+`GadgetSendMessage` doc comment in
+`packages/gadget-sdk/src/shims/hooks.ts` for the rationale and the
+future `messaging-stream` sub-interface that would lift the
+restriction.
 
 ---
 
@@ -963,7 +1114,7 @@ SDK package at `packages/gadget-sdk/`. Subpath exports
 
 | Subpath                            | What it exports                                                |
 |------------------------------------|----------------------------------------------------------------|
-| `@torchsnap/gadget-sdk`            | Type-only: `GadgetViewProps`, `InlineViewProps`, `GadgetSettingsProps`, `ActionId`, `EntryIcon`, `SourcedEntry`, `Action`, `Logger`. |
+| `@torchsnap/gadget-sdk`            | Type-only: `GadgetViewProps`, `InlineViewProps`, `GadgetSettingsProps`, `ActionSlot`, `Action`, `EntryIcon`, `SourcedEntry`, `FooterHint`, `FooterState`, `Logger`, `LogLevel`, `UsePluginSetting`. |
 | `@torchsnap/gadget-sdk/hooks`      | The four host hooks (see below).                               |
 | `@torchsnap/gadget-sdk/components` | Shared launcher building blocks.                               |
 | `@torchsnap/gadget-sdk/keybindings`| Keybinding helper utilities.                                   |
@@ -1019,7 +1170,7 @@ import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
 export function MyView({ data, results, query, matchedPrefix }: GadgetViewProps) {
   const { id, enabled } = useGadgetInfo();              // identity (always)
   const { sendMessage, logger } = useGadgetRuntime();   // RPC + logging (always)
-  const { dismiss, onExecute, onFooterChange } = useLauncher(); // launcher tree only
+  const { dismiss, onExecute, openSettings, onFooterChange } = useLauncher(); // launcher tree only
   const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
   // ...
 }
@@ -1027,6 +1178,22 @@ export function MyView({ data, results, query, matchedPrefix }: GadgetViewProps)
 
 `useLauncher` throws when called from a settings panel; the
 other three are safe everywhere.
+
+A view runs an action of an entry it received in `results` with
+`onExecute(entryId, slot)`, where `slot` is an `ActionSlot`:
+`"primary"`, `"secondary"`, `"copy"`, `"reveal"`, `"delete"` or
+`"openSettings"`. The calculator's history view calls
+`onExecute(entry.id, "copy")` when a history row is clicked.
+`onExecute` only reaches entries of the current search: for an id
+the gadget did not return from that search, the host logs the miss
+and does nothing. A view that acts on its own state calls its backend with
+`sendMessage` and then a launcher action such as `dismiss()`. The
+calculator copies a freshly evaluated result that way.
+
+`openSettings()` opens the Settings window on the gadget's own
+section and closes the launcher, the same effect as the
+`open-settings` post-action from `execute()`. The returned promise
+rejects, leaving the launcher open, when the window cannot open.
 
 ### Per-render props
 
@@ -1048,7 +1215,8 @@ const result = await sendMessage<Req, Resp>("lookup", { domain: "example.com" })
 ```
 
 The `onMessage` streaming callback is silently dropped by the
-WASM bridge (`packages/gadget-sdk/src/shims/hooks.ts:88`).
+WASM bridge (see `GadgetSendMessage` in
+`packages/gadget-sdk/src/shims/hooks.ts`).
 
 ### Icons (ADR 0027)
 
@@ -1248,13 +1416,14 @@ impl LifecycleGuest for CalculatorPlugin {
 - Otherwise → contribute nothing.
 
 ```rust
-fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
+fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
     if matched_prefix.is_some() {
         let payload = json!({ "expression": query, "result": evaluate(&query) });
+        let history = query_history(&sql_storage::connection(), &query);
         return SearchResponse::CustomUi(ViewResponse {
             view:    "history".into(),
             data:    Some(payload.to_string()),
-            results: vec![],
+            results: history,
         });
     }
     if HEURISTIC_ENABLED.with(|c| c.get()) && looks_like_math(&query) {
@@ -1268,6 +1437,13 @@ fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
     SearchResponse::Nothing
 }
 ```
+
+The history rows in `results` are `ScoredEntry<Command>` values.
+Each one carries `Command::Copy { expression, result }` in its
+`primary` slot, labeled "Copy to Clipboard", and in its `copy` slot.
+`execute()` answers that command by copying the result to the
+clipboard and, with history enabled, recording it in the history
+again.
 
 The retention task piggy-backs on the SQL store and the
 manifest-declared cron schedule:
@@ -1291,13 +1467,15 @@ impl TasksGuest for CalculatorPlugin {
 }
 ```
 
-The frontend uses `useGadgetRuntime().sendMessage("save",
-{ … })` to persist new history rows, `useGadgetSetting<number>("retentionDays")`
-to render the settings slider, and `useLauncher().onExecute` to
-trigger the standard "copy result" action through the host's
-action palette. The Rust `MessagingGuest::handle_message`
-implementation dispatches `"save" | "load" | "delete"` against
-the SQL store.
+On Enter, both launcher views copy the evaluated result with
+`useGadgetRuntime().sendMessage("copy", { expression, result,
+resultType })` and then call `useLauncher().dismiss()`. Enter on a
+selected history row, or a click on one, runs that row's `copy`
+action with `useLauncher().onExecute(entry.id, "copy")`. The settings panel
+renders its slider from `useGadgetSetting<number>("retentionDays")`
+and sends `stats` and `clear_history`. The Rust `Messaging` impl
+decodes these calls into its `Request` enum (`Copy`, `Stats`,
+`ClearHistory`).
 
 The full source is at `gadgets/calculator/src/lib.rs`; reading
 it end-to-end is the fastest way to see every piece in

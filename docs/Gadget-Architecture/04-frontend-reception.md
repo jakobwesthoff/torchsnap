@@ -129,24 +129,60 @@ Selected by an if/else chain in `Launcher.tsx`:
 
 ### Action execution and `PostAction`
 
-List-mode `executeEntry` invokes the `search_execute` command and
-matches the returned `PostAction`:
+Each `SourcedEntry` carries its actions as a list of
+`{ slot, label }` (`Action` and `ActionSlot` in `src/types.ts`), in
+slot order. The commands stay in the host. `src/launcher/actionSlots.ts`
+owns the table from slot to key (`SLOT_KEYS`) and to default label:
+
+| Slot | Key | Default label |
+|---|---|---|
+| `primary` | Enter, click on the row | entry title |
+| `secondary` | Cmd+Enter | entry title |
+| `copy` | Cmd+C | "Copy" |
+| `reveal` | Cmd+Shift+R | "Reveal in Finder" |
+| `delete` | Cmd+Backspace | "Delete" |
+| `openSettings` | Cmd+, | "Open settings" |
+
+`SLOT_KEYS` writes Cmd as the `Meta` modifier, which matches Cmd on
+macOS and Ctrl elsewhere.
+`actionLabel` picks the gadget's label, then the slot's default,
+then the entry's title. `slotBindings` gives the keyboard navigation
+the combos of the selected entry's filled slots other than
+`primary`, whose Enter binding the launcher registers once.
+
+List-mode `executeEntry(entry, slot = "primary")` returns early when
+the entry has no action in `slot` (`hasSlot`). Otherwise it invokes
+`search_execute` with `{ source, entryId, slot }` and matches the
+returned `PostAction`:
 
 - `"Dismiss"`: dismiss the launcher.
 - `"Nothing"` / `"KeepOpen"`: explicit no-op.
 - `{ ShowCustomUI: { view, data } }`: switch to that gadget view
   and clear the query.
 
+A click on a row runs its `primary` action, like Enter.
+
 Gadget- and inline-view execute paths (`handleGadgetExecute`,
-`handleInlineExecute`) only handle `"Dismiss"` since `ShowCustomUI`
-is not meaningful from within a gadget-owned surface.
+`handleInlineExecute`) back `onExecute(entryId, slot)` on
+`LauncherActions`. They send the view's gadget id as `source` and
+only handle `"Dismiss"` since `ShowCustomUI` is not meaningful from
+within a gadget-owned surface.
+
+`openSettings()` on `LauncherActions` (`handleGadgetOpenSettings`,
+`handleInlineOpenSettings`) calls `openGadgetSettings` in
+`src/launcher/openGadgetSettings.ts` with the view's gadget id. That
+invokes the `gadget_open_settings` command, which opens the Settings
+window on that gadget's section, and then dismisses the launcher.
+When the command fails, the launcher stays open and the promise
+rejects.
 
 ### Footer priority
 
 `gadgetFooter` (custom view) > `inlineFooter` (when inline slot is
-selected) > footer derived from `results[listSelectedIndex].actions`.
-Gadgets set their footer through the `onFooterChange` action exposed
-on `LauncherActions`.
+selected) > footer derived by `actionsToFooterState` from
+`results[listSelectedIndex].actions`: the `primary` action on Enter,
+every other filled slot as a hint. Gadgets set their footer through
+the `onFooterChange` action exposed on `LauncherActions`.
 
 ## Result list rendering
 
@@ -248,9 +284,9 @@ The provider carries three slices:
 - `runtime: { sendMessage, logger }`: capabilities every gadget
   gets. `sendMessage` is bound to the active gadget's id;
   `logger` is created per active gadget via `createLogger(id)`.
-- `launcher: { goBack, dismiss, onExecute, onFooterChange,
-  setDisplayQuery, mouseActiveRef }`: only present inside the
-  launcher tree. Inline views receive a slice with no-op `goBack` /
+- `launcher: { goBack, dismiss, openSettings, onExecute,
+  onFooterChange, setDisplayQuery, mouseActiveRef }`: only present
+  inside the launcher tree. Inline views receive a slice with no-op `goBack` /
   `setDisplayQuery` (with dev-mode warnings) since neither makes
   sense above the result list.
 
@@ -295,7 +331,7 @@ consumed via `file:` protocol with a custom exports map (see
 
 | Subpath        | Purpose                                                  |
 | -------------- | -------------------------------------------------------- |
-| `.`            | Public type exports: `GadgetViewProps`, `InlineViewProps`, `GadgetSettingsProps`, `SourcedEntry`, `Action`, `EntryIcon`, `FooterState`, `Logger`, etc. (`src/types/`) |
+| `.`            | Public type exports: `GadgetViewProps`, `InlineViewProps`, `GadgetSettingsProps`, `SourcedEntry`, `Action`, `ActionSlot`, `EntryIcon`, `FooterState`, `Logger`, etc. (`src/types/`) |
 | `/hooks`       | Runtime shim exposing `useGadgetInfo`, `useGadgetRuntime`, `useLauncher`, `useGadgetSetting`, `useWindowedList` |
 | `/components`  | Shared UI primitives shim (`Switch`, `Slider`, `Section`, `Entry`, `List`) |
 | `/keybindings` | `useKeyBindings`, `LAYER` shim |
