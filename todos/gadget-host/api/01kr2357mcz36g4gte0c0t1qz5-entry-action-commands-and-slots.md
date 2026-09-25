@@ -3,6 +3,7 @@ kind: refactor
 status: open
 area: [gadgets/gadget-sdk/wit/torchsnap-gadget.wit, gadgets/gadget-sdk/src/lib.rs, gadgets/gadget-sdk/src/data.rs, src-tauri/src/gadgets/mod.rs, src-tauri/src/commands/types.rs, src-tauri/src/commands/mod.rs, src-tauri/src/gadget_host.rs, src-tauri/src/entry_store.rs, src-tauri/src/wasm/bindings.rs, src-tauri/src/wasm/bridge.rs, src/types.ts, src/launcher/Launcher.tsx, src/launcher/ResultRow.tsx, src/launcher/hooks/useKeyboardNavigation.ts, packages/gadget-sdk/src/types/data.ts, packages/gadget-sdk/src/shims/hooks.ts]
 tags: [api-design, wasm, sdk]
+plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
 depends-on: [todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md]
 ---
 
@@ -30,7 +31,9 @@ Implement typed messaging in the same refactor:
 - The doc comment on `command` says: opaque, returned unchanged, never
   inspected by the host. It does not mention JSON.
 - Bump the package version from `torchsnap:gadget@0.1.0` to
-  `torchsnap:gadget@0.2.0`. Other places
+  `torchsnap:gadget@0.2.0`, and both SDKs to `0.2.0` with it
+  (ADR 56): `gadgets/gadget-sdk/Cargo.toml` and
+  `packages/gadget-sdk/package.json`. Other places
   that name the version: `docs/Gadget-Architecture/01-overview.md:4`
   and the "Documentation version" note in torchsnap-docs
   `development/interfaces/index.mdx:215`.
@@ -93,7 +96,7 @@ Implement typed messaging in the same refactor:
 | zerotier | `primary`: toggle(id), join or leave decided from live state at execute time. `copy`: copy id. `delete`: forget(id). Failure entries: `primary` labeled "Open settings" with a command that returns the `open-settings` post-action, so Enter keeps working. They do not fill the `open-settings` slot. `parse_entry_id` goes away. |
 | calculator | History rows: `primary` and `copy` with a copy command carrying expression and result. The current result goes through a message plus `dismiss()` (see the calculator bug todo below). |
 | emoji-picker | `copy`: copy emoji. The grid calls `onExecute(entry.id, "copy")`. |
-| hello-world | Petnames: `primary` labeled "Copy" and `copy`, same command, since Enter copies today. |
+| hello-world | Petnames: `primary` labeled "Copy" and `copy`, same command, since Enter copies today. `execute()` writes the name to the clipboard (today it only logs), which needs `clipboard = true` under `[permissions]` in its manifest. |
 | template | demo command in `primary`. |
 | app_launcher | `primary`: open(path). `secondary`: reveal(path), label "Reveal in Finder", keeps Cmd+Enter. |
 | system_preferences | `primary`: open pane(id). |

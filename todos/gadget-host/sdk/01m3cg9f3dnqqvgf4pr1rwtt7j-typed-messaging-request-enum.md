@@ -3,6 +3,7 @@ kind: improvement
 status: open
 area: [gadgets/gadget-sdk/src/lib.rs, gadgets/gadget-sdk/src/messaging.rs, gadgets/bangs/src/lib.rs, gadgets/calculator/src/lib.rs, gadgets/template/src/lib.rs, gadgets/zerotier/src/lib.rs]
 tags: [api-design, wasm]
+plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
 ---
 
 # Typed messaging requests in the Rust gadget SDK
@@ -70,6 +71,13 @@ adjacently tagged unit variant rejects that:
 - `ClearHistory` with payload `null` or no payload: ok.
 - `ClearAll {}` (empty struct variant) with payload `{}`: ok.
 
-Either the SDK docs tell authors to write argument-less methods as
-`Variant {}`, or the blanket impl treats a `{}` payload like a missing
-one. Decide during implementation.
+Decided on 2026-09-25: the blanket impl treats a `{}` payload like a
+missing one before decoding, so unit variants such as `ClearHistory`
+accept it.
+
+## Existing helpers
+
+`messaging::parse_payload` and `messaging::to_response`
+(`gadgets/gadget-sdk/src/messaging.rs`) stay for hand-written
+`MessagingGuest` impls, but leave the prelude, as `SearchGuest` does in
+ADR 55. The typed `Messaging` trait is the documented default.

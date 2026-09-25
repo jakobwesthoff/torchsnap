@@ -4,6 +4,7 @@ severity: medium
 status: open
 area: [src-tauri/src/gadget_host.rs, src-tauri/src/commands/mod.rs]
 tags: [unconfirmed, concurrency]
+plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
 ---
 
 # Overlapping search() calls interleave entry_store clear/insert without a generation guard
@@ -61,10 +62,16 @@ executes against stale entry data. No memory unsafety, but
 user-visible actions can silently target the wrong entry
 version.
 
-## Suggested fix
-Introduce a search generation: an `AtomicU64` bumped at the top
-of `search()`; every `store_sourced_entries` and the final
-`Done` check the captured generation and no-op when superseded.
-Alternatively cancel the previous search outright (store an
-abort handle) — that also saves the wasted gadget work that the
-current code lets run to completion.
+## Decided fix
+A search generation, decided by the maintainer on 2026-09-25.
+`search()` starts a new generation at the top, and every insert
+into the entry store carries the generation it was produced
+for. The store drops inserts from an older generation.
+
+Put the generation in `EntryStore` so the interleaving can be
+tested there: `GadgetHost::search` has no test harness, because
+it needs a Tauri store and an IPC channel.
+
+Aborting the previous search was rejected. Gadget calls run in
+`spawn_blocking`, and tokio cannot abort a blocking task once it
+has started, so the gadget work would continue anyway.

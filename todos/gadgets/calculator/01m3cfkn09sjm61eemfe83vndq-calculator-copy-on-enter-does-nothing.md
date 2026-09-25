@@ -4,6 +4,7 @@ severity: high
 status: open
 area: [gadgets/calculator/src/lib.rs, gadgets/calculator/frontend/src/views/CalculatorInline.tsx, gadgets/calculator/frontend/src/views/CalculatorView.tsx, src-tauri/src/gadget_host.rs]
 tags: [wasm]
+plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
 ---
 
 # Calculator copy on Enter does nothing
@@ -47,6 +48,14 @@ through `sendMessage` before calling `onExecute`.
 
 Test-first: a regression test that shows the copy path failing, then
 the fix.
+
+Gadget frontends have no test runner yet: vitest only includes
+`src/**`. Decided on 2026-09-25: add gadget view tests to the vitest
+run, using the SDK's `setupSdkGlobalsForTesting` and
+`MockGadgetContextProvider` (`packages/gadget-sdk/src/testing/`). The
+regression test asserts that Enter in `CalculatorInline` and
+`CalculatorView` calls `sendMessage("copy", …)` and then `dismiss()`,
+and fails against today's `onExecute` call.
 
 A fix that needs no API change: add a calculator message, for example
 `copy`, whose handler writes the result to the clipboard with
