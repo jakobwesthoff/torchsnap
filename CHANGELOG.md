@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Clipboard Manager's settings show statistics and offer "Clear
+  All" only while the gadget is on, and "Clear All" stays unavailable
+  while the history is empty.
 - Gadget API: `OpenSettings` actions reach the gadget's `execute()`
   like every other action. To open its settings, a gadget returns the
   new `open-settings` post-action (`PostAction::OpenSettings` in the
