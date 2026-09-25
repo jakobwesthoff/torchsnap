@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Before, it only closed the launcher.
 - A gadget whose launcher view, inline result or settings panel fails
   to render shows an error card naming the gadget instead of blanking
-  the whole window. The launcher card offers "Go back".
+  the whole window. The launcher card offers "Go back". Any other
+  render error in a window shows the error and a "Reload window"
+  button.
 
 ### Changed
 

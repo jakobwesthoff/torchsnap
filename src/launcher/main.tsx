@@ -4,6 +4,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { WindowErrorBoundary } from "../components/WindowErrorBoundary";
 import { command } from "../lib/command";
 import { ThemeProvider } from "../contexts/ThemeProvider";
 import { KeyBindingProvider } from "../keybindings";
@@ -54,32 +55,36 @@ async function main() {
   await new Promise<void>((resolve) => {
     root.render(
       <StrictMode>
-        <ThemeProvider>
-          <KeyBindingProvider>
-            <Launcher
-              measureDummy
-              onMeasure={async (cardWidth, cardHeight) => {
-                await command("launcher_set_layout", {
-                  windowWidth: cardWidth + 2 * SHADOW_PADDING,
-                  windowHeight: SHADOW_PADDING + MASCOT_HEADROOM + cardHeight + SHADOW_PADDING,
-                  cardTopOffset: CARD_TOP_OFFSET,
-                });
-                resolve();
-              }}
-            />
-          </KeyBindingProvider>
-        </ThemeProvider>
+        <WindowErrorBoundary window="launcher">
+          <ThemeProvider>
+            <KeyBindingProvider>
+              <Launcher
+                measureDummy
+                onMeasure={async (cardWidth, cardHeight) => {
+                  await command("launcher_set_layout", {
+                    windowWidth: cardWidth + 2 * SHADOW_PADDING,
+                    windowHeight: SHADOW_PADDING + MASCOT_HEADROOM + cardHeight + SHADOW_PADDING,
+                    cardTopOffset: CARD_TOP_OFFSET,
+                  });
+                  resolve();
+                }}
+              />
+            </KeyBindingProvider>
+          </ThemeProvider>
+        </WindowErrorBoundary>
       </StrictMode>,
     );
   });
 
   root.render(
     <StrictMode>
-      <ThemeProvider>
-        <KeyBindingProvider>
-          <Launcher />
-        </KeyBindingProvider>
-      </ThemeProvider>
+      <WindowErrorBoundary window="launcher">
+        <ThemeProvider>
+          <KeyBindingProvider>
+            <Launcher />
+          </KeyBindingProvider>
+        </ThemeProvider>
+      </WindowErrorBoundary>
     </StrictMode>,
   );
 }
