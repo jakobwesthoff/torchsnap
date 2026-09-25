@@ -4,6 +4,7 @@
 
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mockCommands } from "../../test/tauri";
 import ClipboardSettings from "./ClipboardSettings";
 
 interface Stats {
@@ -83,5 +84,20 @@ describe("ClipboardSettings", () => {
 
     await waitFor(() => expect(gadget.sendMessage).toHaveBeenCalledWith("stats", {}));
     expect(await screen.findByText("Total entries")).toBeInTheDocument();
+  });
+
+  it("explains why the clipboard shortcut is not registered", async () => {
+    mockCommands({
+      shortcut_problems: () => ({
+        "gadgets.clipboard-manager.shortcut.open-clipboard": {
+          kind: "takenBy",
+          label: "Global Shortcut",
+        },
+      }),
+    });
+
+    render(<ClipboardSettings />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Already used by "Global Shortcut"/);
   });
 });

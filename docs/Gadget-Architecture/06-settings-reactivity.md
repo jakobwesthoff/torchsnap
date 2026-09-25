@@ -294,18 +294,28 @@ global shortcuts.
 `GadgetHost::register_all_shortcuts` (`src-tauri/src/gadget_host.rs`)
 runs a full unregister/re-register cycle every time it is called:
 
-1. `app.global_shortcut().unregister_all()` clears all existing
+1. `shortcut_requests` lists every shortcut in the order that decides
+   collisions: the launcher's `globalShortcut` first, then each
+   declaration of each active gadget, read from
+   `gadgets.<gadget_id>.<settings_key>` with `default_shortcut` as the
+   fallback.
+2. `plan_shortcuts` (`src-tauri/src/shortcuts.rs`) checks each request
+   on its own before anything is unregistered. A missing launcher
+   combo, a combo that does not parse, or a combo an earlier request
+   already holds becomes a `ShortcutProblem` for that settings key; a
+   missing or invalid launcher shortcut is skipped, not replaced.
+3. `app.global_shortcut().unregister_all()` clears all existing
    shortcuts.
-2. For each active (enabled) gadget slot, `gadget.shortcuts()` is
-   called and each declaration is resolved via `resolve_shortcut`,
-   which reads `gadgets.<gadget_id>.<settings_key>` from the store
-   (falling back to `default_shortcut` if absent) and parses the
-   string as a `Shortcut`. Parse failures are logged and skipped.
-3. The launcher's own `globalShortcut` key is read from the store.
-4. All resolved shortcuts (launcher + gadgets) are bulk-registered
-   with `on_shortcuts`. The closure routes activations: the launcher
-   toggle calls `toggle_launcher_window`; gadget shortcuts call
+4. Each accepted shortcut is registered with its own `on_shortcut`
+   call, so a combo the OS refuses becomes a `Rejected` problem for
+   that shortcut only. The launcher toggle calls
+   `toggle_launcher_window`; gadget shortcuts call
    `owner.handle_shortcut(&shortcut_id)`.
+5. The problems replace the previous ones and the host emits
+   `shortcut-problems-changed`. The `shortcut_problems` command hands
+   them to Settings, where `ShortcutProblemNote`
+   (`src/settings/ShortcutProblemNote.tsx`) explains each one below
+   the shortcut's row.
 
 `handle_shortcut` returns a `PostAction`. If it returns
 `ShowCustomUI { view, data }`, the host positions the launcher on the

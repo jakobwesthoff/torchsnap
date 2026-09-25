@@ -22,6 +22,7 @@ import { Entry } from "../../settings/Entry";
 import { Switch } from "../../components/Switch";
 import { Slider } from "../../components/Slider";
 import { ShortcutRecorder } from "../../components/ShortcutRecorder";
+import { ShortcutProblemNote } from "../../settings/ShortcutProblemNote";
 
 // =========================================================
 // Types
@@ -59,7 +60,7 @@ export default function ClipboardSettings() {
   // Identity (with reactive enabled flag) and runtime
   // capabilities are provided by the surrounding
   // GadgetContextProvider.
-  const { enabled } = useGadgetInfo();
+  const { id, enabled } = useGadgetInfo();
   const { sendMessage, logger } = useGadgetRuntime();
 
   const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
@@ -117,6 +118,7 @@ export default function ClipboardSettings() {
         <Entry label="Open Clipboard History">
           <ShortcutRecorder value={shortcut} onChange={setShortcut} disabled={!enabled} />
         </Entry>
+        <ShortcutProblemNote settingsKey={`gadgets.${id}.shortcut.open-clipboard`} />
       </Section>
 
       {/* ---- Behaviour ---- */}
