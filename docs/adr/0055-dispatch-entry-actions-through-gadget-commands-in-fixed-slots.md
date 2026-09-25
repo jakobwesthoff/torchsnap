@@ -16,6 +16,8 @@ Amends [41. ZeroTier plugin architecture](0041-zerotier-plugin.md) (replaces the
 
 Amends [54. Open gadget settings through a post-action](0054-open-gadget-settings-through-a-post-action.md)
 
+Amended by [56. Version the WIT contract and both gadget SDKs in lockstep](0056-version-the-wit-contract-and-both-gadget-sdks-in-lockstep.md) (the SDKs get the WIT's new version too)
+
 ## Context
 
 Each action on a result entry has an `ActionId` and a label. The
@@ -141,9 +143,10 @@ A custom or inline view runs an action of an entry it received in
 state calls its backend with `sendMessage` and then a launcher action
 such as `dismiss()`.
 
-`LauncherActions` gains `openSettings()`. The launcher supplies the
-view's gadget id, so a view opens only its own gadget's settings
-section. Every launcher effect that a WIT `post-action` variant
+`LauncherActions` gains `openSettings()`. Like the `open-settings`
+post-action, it hides the launcher and opens the Settings window on the
+gadget's section. The launcher supplies the view's gadget id, so a view
+opens only its own gadget's settings section. Every launcher effect that a WIT `post-action` variant
 triggers is also available as a `LauncherActions` function.
 
 ### Rust gadget SDK
