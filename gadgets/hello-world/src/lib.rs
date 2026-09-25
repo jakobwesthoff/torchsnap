@@ -15,6 +15,7 @@
 
 use std::cell::RefCell;
 
+use serde::{Deserialize, Serialize};
 use torchsnap_gadget_sdk::prelude::*;
 
 mod petnames;
@@ -64,22 +65,38 @@ impl LifecycleGuest for HelloWorld {
     fn on_setting_changed(_key: String, _value: String) {}
 }
 
-impl SearchGuest for HelloWorld {
-    fn entries() -> Vec<CatalogEntry> {
+/// What the gadget's actions do.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum Command {
+    /// The "Say Hello" catalog entry: log a greeting.
+    Greet,
+    /// Copy a petname to the clipboard.
+    CopyName(String),
+}
+
+/// A petname's actions: copying is the main action, so it runs on
+/// Enter as well as on Cmd+C.
+fn petname_actions(name: &str) -> Actions<Command> {
+    Actions::new()
+        .primary("Copy", Command::CopyName(name.to_string()))
+        .copy(Action::new(Command::CopyName(name.to_string())))
+}
+
+impl Search for HelloWorld {
+    type Command = Command;
+
+    fn entries() -> Vec<CatalogEntry<Command>> {
         vec![CatalogEntry {
             id: "greet".into(),
             title: "Say Hello".into(),
             subtitle: Some("Hello World WASM gadget".into()),
             icon: Some(EntryIcon::HeroIcon("hand-raised".into())),
             keywords: vec!["hello".into(), "greet".into(), "test".into()],
-            actions: vec![Action {
-                id: ActionId::Open,
-                label: "Run".into(),
-            }],
+            actions: Actions::new().primary("Run", Command::Greet),
         }]
     }
 
-    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
+    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
         if query.is_empty() {
             return SearchResponse::Nothing;
         }
@@ -114,13 +131,20 @@ impl SearchGuest for HelloWorld {
         }
     }
 
-    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
-        logging::log(
-            logging::LogLevel::Info,
-            &format!("Executed entry: {}", entry.id),
-            &[("entry_id".into(), entry.id.clone())],
-            None,
-        );
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::Greet => {
+                logging::log(
+                    logging::LogLevel::Info,
+                    "Hello from the WASM gadget",
+                    &[],
+                    None,
+                );
+            }
+            Command::CopyName(name) => {
+                clipboard::write_text(&name).map_err(|e| format!("copy to clipboard: {e}"))?;
+            }
+        }
         Ok(PostAction::Dismiss)
     }
 }
@@ -132,3 +156,32 @@ impl SearchGuest for HelloWorld {
 // host logs.
 impl_noop_messaging!(HelloWorld);
 impl_noop_tasks!(HelloWorld);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn petname_copies_on_enter_and_on_cmd_c() {
+        let actions = petname_actions("brave-otter");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Copy",
+                Command::CopyName("brave-otter".into())
+            ))
+        );
+        assert_eq!(
+            actions.copy,
+            Some(Action::new(Command::CopyName("brave-otter".into())))
+        );
+    }
+
+    #[test]
+    fn fuzzy_search_results_carry_the_petname_actions() {
+        let names = vec!["brave-otter".to_string(), "calm-heron".to_string()];
+        let results = petnames::fuzzy_search("otter", &names);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].actions, petname_actions("brave-otter"));
+    }
+}

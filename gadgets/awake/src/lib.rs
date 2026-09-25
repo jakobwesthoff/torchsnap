@@ -97,11 +97,11 @@ impl LifecycleGuest for AwakeGadget {
 }
 
 // =========================================================
-// Execute-time payload
+// Command
 //
-// The single action on each entry round-trips this operation
-// through the host's opaque `data` field: `search()` encodes it,
-// `execute()` decodes it and drives the backend accordingly.
+// The primary action of each entry carries this operation as
+// its command: `search()` attaches it, `execute()` receives it
+// back and drives the backend accordingly.
 // =========================================================
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -366,18 +366,10 @@ fn resolve_icon(
 /// Map the pure [`EntrySpec`] onto the host's [`ScoredEntry`],
 /// carrying the caller-chosen `icon`. Kept a pure mapper: the
 /// backend-dependent icon choice lives in `search()`.
-fn spec_to_entry(spec: EntrySpec, icon: EntryIcon) -> ScoredEntry {
-    let (actions, data) = match spec.action {
-        Some((label, op)) => (
-            vec![Action {
-                id: ActionId::Open,
-                label,
-            }],
-            // `Op` is a small serde enum with no float or map-key
-            // hazards, so JSON serialization cannot fail.
-            Some(data::encode(&op).expect("Op serializes to JSON")),
-        ),
-        None => (Vec::new(), None),
+fn spec_to_entry(spec: EntrySpec, icon: EntryIcon) -> ScoredEntry<Op> {
+    let actions = match spec.action {
+        Some((label, op)) => Actions::new().primary(label, op),
+        None => Actions::new(),
     };
 
     ScoredEntry {
@@ -389,7 +381,6 @@ fn spec_to_entry(spec: EntrySpec, icon: EntryIcon) -> ScoredEntry {
         title_highlight_positions: Vec::new(),
         subtitle_highlight_positions: Vec::new(),
         actions,
-        data,
     }
 }
 
@@ -397,12 +388,11 @@ fn spec_to_entry(spec: EntrySpec, icon: EntryIcon) -> ScoredEntry {
 // Search
 // =========================================================
 
-impl SearchGuest for AwakeGadget {
-    fn entries() -> Vec<CatalogEntry> {
-        vec![]
-    }
+// Query-only gadget: `entries()` keeps the trait's empty default.
+impl Search for AwakeGadget {
+    type Command = Op;
 
-    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse {
+    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse<Op> {
         let parsed = query::parse(&query);
         if matches!(parsed, Query::NoMatch) {
             return SearchResponse::Nothing;
@@ -426,20 +416,7 @@ impl SearchGuest for AwakeGadget {
         })
     }
 
-    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        // Every awake entry carries a single `Open` action; the
-        // host should never route another kind here.
-        if !matches!(action_id, ActionId::Open) {
-            return Err(format!("unsupported action: {action_id:?}"));
-        }
-
-        // The error entry carries no payload; a missing or
-        // undecodable payload therefore means "not executable".
-        let Some(payload) = entry.data.as_ref() else {
-            return Err("entry carries no executable action".to_string());
-        };
-        let op: Op = data::decode(payload)?;
-
+    fn execute(op: Op) -> Result<PostAction, String> {
         RUNTIME.with(|cell| {
             let runtime = cell.borrow();
             let Some(backend) = runtime.backend.as_ref() else {
@@ -744,7 +721,7 @@ mod tests {
     // ----- Op serde round-trip -------------------------------
 
     #[test]
-    fn op_round_trips_through_data_codec() {
+    fn op_round_trips_through_json() {
         for op in [
             Op::Start {
                 minutes: Some(30),
@@ -756,8 +733,8 @@ mod tests {
             },
             Op::Stop,
         ] {
-            let encoded = data::encode(&op).expect("encode");
-            let decoded: Op = data::decode(&encoded).expect("decode");
+            let encoded = serde_json::to_string(&op).expect("encode");
+            let decoded: Op = serde_json::from_str(&encoded).expect("decode");
             assert_eq!(decoded, op);
         }
     }
@@ -806,8 +783,9 @@ mod tests {
         ] {
             let entry = spec_to_entry(spec, default_icon());
             assert_eq!(entry.id, ID_START);
-            assert!(entry.data.is_some());
-            assert_eq!(entry.actions.len(), 1);
+            let primary = entry.actions.primary.as_ref().expect("start command");
+            assert!(matches!(primary.command, Op::Start { .. }));
+            assert_eq!(entry.actions.iter().count(), 1);
         }
     }
 
@@ -819,19 +797,19 @@ mod tests {
         ] {
             let entry = spec_to_entry(spec, default_icon());
             assert_eq!(entry.id, ID_STOP);
-            assert!(entry.data.is_some());
+            let primary = entry.actions.primary.as_ref().expect("stop command");
+            assert_eq!(primary.command, Op::Stop);
         }
     }
 
     #[test]
-    fn error_entry_carries_no_action_or_payload() {
+    fn error_entry_carries_no_action() {
         let entry = spec_to_entry(
             build_spec(&Err("boom".to_string()), &Query::Status),
             default_icon(),
         );
         assert_eq!(entry.id, ID_ERROR);
-        assert!(entry.data.is_none());
-        assert!(entry.actions.is_empty());
+        assert_eq!(entry.actions.iter().count(), 0);
     }
 
     // ----- resolve_icon ---------------------------------------

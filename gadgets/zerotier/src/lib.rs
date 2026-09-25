@@ -13,8 +13,9 @@
 //!   intent detection and the rate-limit cache, joining live
 //!   daemon state with the history table to surface
 //!   Connected / JoinedOffline / KnownOnly entries.
-//! * `execute()` translates an entry's primary or secondary
-//!   action into Connect / Disconnect / Forget.
+//! * `execute()` runs an action's `Command`: join or leave
+//!   (decided from live state), copy the id, forget, or open
+//!   the settings.
 //! * `Messaging::handle()` exposes the frontend RPC contract
 //!   the settings panel needs (refresh, reimport, forget,
 //!   clear-all, validate-token, auth-state, list-known).
@@ -22,9 +23,10 @@
 use std::cell::RefCell;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use torchsnap_gadget_sdk::platform::Os;
 use torchsnap_gadget_sdk::prelude::*;
+use torchsnap_gadget_sdk::sql_storage::SqlHandle;
 
 mod actions;
 mod api;
@@ -228,12 +230,27 @@ fn now_ms() -> i64 {
 // Search
 // =========================================================
 
-impl SearchGuest for ZeroTierPlugin {
-    fn entries() -> Vec<CatalogEntry> {
-        vec![]
-    }
+/// What an entry's actions do. Network commands carry the bare
+/// network id.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+enum Command {
+    /// Leave the network if joined, join it otherwise. Decided
+    /// from live state when the action runs, not when the entry
+    /// was built.
+    Toggle(String),
+    CopyId(String),
+    /// Leave (if joined) and drop the history row.
+    Forget(String),
+    /// The fix for a missing or rejected token is the token
+    /// field in the settings.
+    OpenSettings,
+}
 
-    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse {
+// Query-only gadget: `entries()` keeps the trait's empty default.
+impl Search for ZeroTierPlugin {
+    type Command = Command;
+
+    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse<Command> {
         let intent = query::intent_for(&query);
         if matches!(intent, Intent::None) {
             return SearchResponse::Nothing;
@@ -264,56 +281,62 @@ impl SearchGuest for ZeroTierPlugin {
         })
     }
 
-    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        // The "token not configured" and "authentication failed"
-        // entries carry this action; the fix for both is the token
-        // field in the settings.
-        if matches!(action_id, ActionId::OpenSettings) {
-            return Ok(PostAction::OpenSettings);
-        }
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::OpenSettings => Ok(PostAction::OpenSettings),
 
-        let Some(network_id) = query::parse_entry_id(&entry.id) else {
-            return Err(format!("not a network entry: {}", entry.id));
-        };
+            // Copy is independent of the daemon, network cache,
+            // and history table, so it works even when auth isn't
+            // configured (the user can still copy an id from a
+            // synthetic-Join entry, for example).
+            Command::CopyId(network_id) => {
+                torchsnap_gadget_sdk::clipboard::write_text(&network_id)
+                    .map_err(|e| format!("clipboard write: {e}"))?;
+                Ok(PostAction::Dismiss)
+            }
 
-        // Copy is independent of the daemon, network cache,
-        // and history table — handle it before reaching for
-        // the runtime borrow so it works even when auth isn't
-        // configured (the user can still copy an id from a
-        // synthetic-Join entry, for example).
-        if matches!(action_id, ActionId::Copy) {
-            torchsnap_gadget_sdk::clipboard::write_text(&network_id)
-                .map_err(|e| format!("clipboard write: {e}"))?;
-            return Ok(PostAction::Dismiss);
-        }
-
-        RUNTIME.with(|cell| -> Result<PostAction, String> {
-            let runtime = cell.borrow_mut();
-            let Some(client) = runtime.client.as_ref() else {
-                return Err("ZeroTier auth not configured".into());
-            };
-            let client = client.clone();
-            let db = history::connection();
-            let now = now_ms();
-            let live = current_live_state(&runtime);
-            let currently_joined = live.iter().any(|n| n.id.eq_ignore_ascii_case(&network_id));
-            let result = match action_id {
-                ActionId::Open => {
-                    if currently_joined {
-                        actions::disconnect(&client, &network_id)
+            Command::Toggle(network_id) => {
+                change_membership(&network_id, |runtime, client, db, joined| {
+                    if joined {
+                        actions::disconnect(client, &network_id)
                     } else {
-                        let name_hint = lookup_name_hint(&runtime, &network_id);
-                        actions::connect(&client, &db, &network_id, &name_hint, now)
+                        let name_hint = lookup_name_hint(runtime, &network_id);
+                        actions::connect(client, db, &network_id, &name_hint, now_ms())
                     }
-                }
-                ActionId::Delete => actions::forget(&client, &db, &network_id, currently_joined),
-                _ => return Err(format!("unsupported action: {action_id:?}")),
-            };
-            runtime.network_cache.invalidate();
-            result?;
-            Ok(PostAction::Dismiss)
-        })
+                })
+            }
+
+            Command::Forget(network_id) => {
+                change_membership(&network_id, |_, client, db, joined| {
+                    actions::forget(client, db, &network_id, joined)
+                })
+            }
+        }
     }
+}
+
+/// Run a daemon-side change for one network. Hands `change` the
+/// runtime, the API client, the history database and whether the
+/// network is currently joined, and invalidates the network cache
+/// afterwards so the next search shows the new state.
+fn change_membership(
+    network_id: &str,
+    change: impl FnOnce(&Runtime, &Client, &SqlHandle, bool) -> Result<(), String>,
+) -> Result<PostAction, String> {
+    RUNTIME.with(|cell| {
+        let runtime = cell.borrow_mut();
+        let Some(client) = runtime.client.as_ref() else {
+            return Err("ZeroTier auth not configured".into());
+        };
+        let client = client.clone();
+        let db = history::connection();
+        let live = current_live_state(&runtime);
+        let currently_joined = live.iter().any(|n| n.id.eq_ignore_ascii_case(network_id));
+        let result = change(&runtime, &client, &db, currently_joined);
+        runtime.network_cache.invalidate();
+        result?;
+        Ok(PostAction::Dismiss)
+    })
 }
 
 // =========================================================
@@ -328,7 +351,7 @@ fn build_search_entries(
     intent: &Intent,
     known: &[history::HistoryRow],
     known_rows: &[NetworkRow],
-) -> Vec<ScoredEntry> {
+) -> Vec<ScoredEntry<Command>> {
     if let Some(failure) = failure_entry(runtime, intent, known_rows) {
         return vec![failure];
     }
@@ -367,18 +390,19 @@ fn build_search_entries(
 /// token is pasted. A stopped daemon is informational only:
 /// nothing in Torchsnap can start it, and `search()` retries
 /// on its own once it runs.
-fn failure_entry(runtime: &Runtime, intent: &Intent, known: &[NetworkRow]) -> Option<ScoredEntry> {
-    let (title, action) = match runtime.auth_state {
+fn failure_entry(
+    runtime: &Runtime,
+    intent: &Intent,
+    known: &[NetworkRow],
+) -> Option<ScoredEntry<Command>> {
+    // Enter opens the settings; the entry has nothing else to do,
+    // so the `open_settings` slot stays empty.
+    let open_settings = || Actions::new().primary("Open settings", Command::OpenSettings);
+    let (title, actions) = match runtime.auth_state {
         AuthState::Validated => return None,
-        AuthState::Unconfigured => (
-            "ZeroTier token not configured",
-            Some(open_settings_action()),
-        ),
-        AuthState::Rejected => (
-            "ZeroTier authentication failed",
-            Some(open_settings_action()),
-        ),
-        AuthState::DaemonUnreachable => ("ZeroTier daemon not running", None),
+        AuthState::Unconfigured => ("ZeroTier token not configured", open_settings()),
+        AuthState::Rejected => ("ZeroTier authentication failed", open_settings()),
+        AuthState::DaemonUnreachable => ("ZeroTier daemon not running", Actions::new()),
     };
     if !query::addresses_zerotier(intent, known) {
         return None;
@@ -391,15 +415,27 @@ fn failure_entry(runtime: &Runtime, intent: &Intent, known: &[NetworkRow]) -> Op
         score: 1,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
-        actions: action.into_iter().collect(),
-        data: None,
+        actions,
     })
 }
 
-fn open_settings_action() -> Action {
-    Action {
-        id: ActionId::OpenSettings,
-        label: "Open settings".to_string(),
+/// A network entry's actions: Enter joins or leaves (`label` says
+/// which), Cmd+C copies the id, and Cmd+Backspace forgets the
+/// network when `forget` is set.
+fn network_actions(network_id: &str, label: &str, forget: bool) -> Actions<Command> {
+    let actions = Actions::new()
+        .primary(label, Command::Toggle(network_id.to_string()))
+        .copy(Action::labeled(
+            "Copy network id",
+            Command::CopyId(network_id.to_string()),
+        ));
+    if forget {
+        actions.delete(Action::labeled(
+            "Forget",
+            Command::Forget(network_id.to_string()),
+        ))
+    } else {
+        actions
     }
 }
 
@@ -420,7 +456,7 @@ fn network_icon() -> EntryIcon {
 const SUFFIX_DISCONNECT: &str = " · Disconnect ZeroTier Network";
 const SUFFIX_CONNECT: &str = " · Connect to ZeroTier Network";
 
-fn synthetic_connect_entry(id: &str) -> ScoredEntry {
+fn synthetic_connect_entry(id: &str) -> ScoredEntry<Command> {
     ScoredEntry {
         id: query::entry_id(id),
         title: format!("{id} · Join ZeroTier Network"),
@@ -429,21 +465,11 @@ fn synthetic_connect_entry(id: &str) -> ScoredEntry {
         score: query::SYNTHETIC_CONNECT_SCORE,
         title_highlight_positions: vec![],
         subtitle_highlight_positions: vec![],
-        actions: vec![
-            Action {
-                id: ActionId::Open,
-                label: "Join".to_string(),
-            },
-            Action {
-                id: ActionId::Copy,
-                label: "Copy network id".to_string(),
-            },
-        ],
-        data: None,
+        actions: network_actions(id, "Join", false),
     }
 }
 
-fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
+fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry<Command> {
     let row = &m.row;
     let (subtitle, primary_label, suffix) = match row.state {
         NetworkState::Connected => {
@@ -492,21 +518,7 @@ fn scored_match_to_entry(m: &ScoredMatch) -> ScoredEntry {
         score: m.score,
         title_highlight_positions,
         subtitle_highlight_positions: vec![],
-        actions: vec![
-            Action {
-                id: ActionId::Open,
-                label: primary_label.to_string(),
-            },
-            Action {
-                id: ActionId::Copy,
-                label: "Copy network id".to_string(),
-            },
-            Action {
-                id: ActionId::Delete,
-                label: "Forget".to_string(),
-            },
-        ],
-        data: None,
+        actions: network_actions(&row.id, primary_label, true),
     }
 }
 
@@ -861,12 +873,51 @@ mod tests {
     }
 
     #[test]
+    fn network_actions_toggle_copy_and_forget_the_network() {
+        let actions = network_actions("8056c2e21c000001", "Disconnect", true);
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Disconnect",
+                Command::Toggle("8056c2e21c000001".into())
+            ))
+        );
+        assert_eq!(
+            actions.copy,
+            Some(Action::labeled(
+                "Copy network id",
+                Command::CopyId("8056c2e21c000001".into())
+            ))
+        );
+        assert_eq!(
+            actions.delete,
+            Some(Action::labeled(
+                "Forget",
+                Command::Forget("8056c2e21c000001".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 3);
+    }
+
+    #[test]
+    fn synthetic_join_entry_cannot_be_forgotten() {
+        let entry = synthetic_connect_entry("8056c2e21c000001");
+        assert_eq!(entry.id, query::entry_id("8056c2e21c000001"));
+        assert_eq!(
+            entry.actions.primary.map(|a| a.command),
+            Some(Command::Toggle("8056c2e21c000001".into()))
+        );
+        assert!(entry.actions.copy.is_some());
+        assert!(entry.actions.delete.is_none());
+    }
+
+    #[test]
     fn daemon_unreachable_entry_has_no_action() {
         let runtime = runtime_with(AuthState::DaemonUnreachable);
         let entry =
             failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
         assert_eq!(entry.title, "ZeroTier daemon not running");
-        assert!(entry.actions.is_empty());
+        assert_eq!(entry.actions.iter().count(), 0);
     }
 
     #[test]
@@ -879,9 +930,11 @@ mod tests {
             let entry =
                 failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
             assert_eq!(entry.title, title);
-            assert_eq!(entry.actions.len(), 1);
-            assert!(matches!(entry.actions[0].id, ActionId::OpenSettings));
-            assert_eq!(entry.actions[0].label, "Open settings");
+            assert_eq!(
+                entry.actions.primary,
+                Some(Action::labeled("Open settings", Command::OpenSettings))
+            );
+            assert_eq!(entry.actions.iter().count(), 1);
         }
     }
 
@@ -890,7 +943,8 @@ mod tests {
         let runtime = runtime_with(AuthState::Unconfigured);
         let entry =
             failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
-        let post_action = <ZeroTierPlugin as SearchGuest>::execute(entry, ActionId::OpenSettings);
+        let command = entry.actions.primary.expect("settings action").command;
+        let post_action = <ZeroTierPlugin as Search>::execute(command);
         assert_eq!(post_action, Ok(PostAction::OpenSettings));
     }
 
@@ -901,7 +955,6 @@ mod tests {
             failure_entry(&runtime, &id_intent(), &[]).expect("an id query addresses ZeroTier");
         assert!(entry.score < query::SYNTHETIC_CONNECT_SCORE);
         assert!(entry.id.starts_with("failure:"));
-        assert!(query::parse_entry_id(&entry.id).is_none());
     }
 
     // ---- auth_retry_due --------------------------------------

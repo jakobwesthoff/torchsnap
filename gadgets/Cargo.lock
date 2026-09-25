@@ -244,6 +244,7 @@ name = "hello-world-gadget"
 version = "0.1.0"
 dependencies = [
  "nucleo-matcher",
+ "serde",
  "serde_json",
  "torchsnap-gadget-sdk",
 ]
@@ -449,6 +450,7 @@ name = "open-url-gadget"
 version = "0.1.0"
 dependencies = [
  "addr",
+ "serde",
  "torchsnap-gadget-sdk",
  "url",
 ]

@@ -37,7 +37,7 @@ use std::sync::LazyLock;
 
 use evalexpr::{Node, Operator, Value, build_operator_tree};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use torchsnap_gadget_sdk::prelude::*;
 use torchsnap_gadget_sdk::sql_storage::{SqlHandle, SqlValue};
@@ -125,16 +125,32 @@ impl LifecycleGuest for CalculatorPlugin {
     }
 }
 
-impl SearchGuest for CalculatorPlugin {
-    fn entries() -> Vec<CatalogEntry> {
-        // Calculator is purely query-driven — no static
-        // catalog entries. The host calls this once at
-        // startup; returning an empty list keeps it out of
-        // the always-on result list.
-        vec![]
-    }
+/// What a history row's actions do: copy its stored result and
+/// record it in the history again, like the views' `copy`
+/// message.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum Command {
+    Copy { expression: String, result: String },
+}
 
-    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse {
+/// Enter and Cmd+C both copy a history row.
+fn history_actions(expression: &str, result: &str) -> Actions<Command> {
+    let copy = || Command::Copy {
+        expression: expression.to_string(),
+        result: result.to_string(),
+    };
+    Actions::new()
+        .primary("Copy to Clipboard", copy())
+        .copy(Action::new(copy()))
+}
+
+// Calculator is purely query-driven: `entries()` keeps the
+// trait's empty default, which keeps it out of the always-on
+// result list.
+impl Search for CalculatorPlugin {
+    type Command = Command;
+
+    fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
         match matched_prefix.as_deref() {
             Some("=") => prefix_mode_search(&query),
             None => heuristic_mode_search(&query),
@@ -142,14 +158,16 @@ impl SearchGuest for CalculatorPlugin {
         }
     }
 
-    fn execute(entry: ScoredEntry, _action_id: ActionId) -> Result<PostAction, String> {
-        // The only entries the calculator returns are history
-        // rows, whose subtitle holds the stored result. The
-        // views copy results through the `copy` message; this
-        // path covers a history row's Copy action run by the
-        // launcher itself.
-        let result = entry.subtitle.as_deref().unwrap_or(&entry.title);
-        clipboard::write_text(result).map_err(|e| format!("copy to clipboard: {e}"))?;
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            // History rows store no result type; they render and
+            // are recorded as numbers.
+            Command::Copy { expression, result } => copy_method(CopyPayload {
+                expression,
+                result,
+                result_type: "number".to_string(),
+            })?,
+        };
         Ok(PostAction::Dismiss)
     }
 }
@@ -162,7 +180,7 @@ impl SearchGuest for CalculatorPlugin {
 /// queries history (if enabled), and returns a `CustomUI`
 /// response so the frontend's `CalculatorView` component
 /// takes over the result area.
-fn prefix_mode_search(query: &str) -> SearchResponse {
+fn prefix_mode_search(query: &str) -> SearchResponse<Command> {
     // Empty/whitespace queries are not evaluated — the
     // frontend renders a help screen when `data` has no
     // result and no error.
@@ -207,7 +225,7 @@ fn prefix_mode_search(query: &str) -> SearchResponse {
 /// inline result above the standard search list. Queries
 /// that fail the heuristic or fail evaluation pass through
 /// silently as `Nothing`.
-fn heuristic_mode_search(query: &str) -> SearchResponse {
+fn heuristic_mode_search(query: &str) -> SearchResponse<Command> {
     if !HEURISTIC_ENABLED.with(Cell::get) {
         return SearchResponse::Nothing;
     }
@@ -604,7 +622,7 @@ fn save_to_history(db: &SqlHandle, expression: &str, result: &EvalResult) -> Res
 /// Query history entries, optionally filtered by an
 /// expression substring. Returns entries ordered by most
 /// recent first.
-fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry> {
+fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry<Command>> {
     // We intentionally don't fetch `result_type` here. The
     // host's `ScoredEntry` has no metadata field to carry it
     // across the WIT boundary, so any data we read would just
@@ -649,17 +667,13 @@ fn query_history(db: &SqlHandle, filter: &str) -> Vec<ScoredEntry> {
             let result = expect_text(columns.get(2))?;
             Some(ScoredEntry {
                 id,
+                actions: history_actions(&expression, &result),
                 title: expression,
                 subtitle: Some(result),
                 icon: Some(EntryIcon::HeroIcon("clock".into())),
                 score: 0,
                 title_highlight_positions: vec![],
                 subtitle_highlight_positions: vec![],
-                actions: vec![Action {
-                    id: ActionId::Copy,
-                    label: "Copy to Clipboard".to_string(),
-                }],
-                data: None,
             })
         })
         .collect()
@@ -727,6 +741,22 @@ mod tests {
     fn save_history_is_no_longer_a_calculator_message() {
         messaging::decode_request::<Request>("save_history", "{}")
             .expect_err("copy replaced save_history");
+    }
+
+    #[test]
+    fn history_rows_copy_on_enter_and_on_cmd_c() {
+        let actions = history_actions("6*7", "42");
+        let command = Command::Copy {
+            expression: "6*7".into(),
+            result: "42".into(),
+        };
+        let primary = actions.primary.expect("primary copies");
+        assert_eq!(primary.label.as_deref(), Some("Copy to Clipboard"));
+        assert_eq!(primary.command, command);
+        let copy = actions.copy.expect("copy slot filled");
+        assert_eq!(copy.label, None);
+        assert_eq!(copy.command, command);
+        assert_eq!(actions.secondary, None);
     }
 
     #[test]
