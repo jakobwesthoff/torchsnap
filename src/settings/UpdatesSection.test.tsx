@@ -5,7 +5,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCommands } from "../test/tauri";
 import { UpdatesSection } from "./UpdatesSection";
 
@@ -27,6 +27,10 @@ vi.mock("../hooks/useSetting", () => ({
 
 describe("UpdatesSection", () => {
   beforeEach(() => settings.clear());
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("shows automatic checks off while the user has not answered", () => {
     render(<UpdatesSection />);
@@ -70,6 +74,10 @@ describe("UpdatesSection", () => {
   });
 
   it("stays usable when the check cannot start", async () => {
+    // `update_check` deliberately fails, so `command()` logs the
+    // rejection. That logging is part of the contract under test, so
+    // the warning is captured and asserted on instead of left to print.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockCommands({
       update_check: () => {
         throw new Error("no backend");
@@ -78,5 +86,6 @@ describe("UpdatesSection", () => {
     render(<UpdatesSection />);
     await userEvent.click(screen.getByRole("button", { name: "Check for Updates" }));
     expect(screen.getByRole("button", { name: "Check for Updates" })).toBeEnabled();
+    expect(warn).toHaveBeenCalledWith('command("update_check") failed:', expect.anything());
   });
 });

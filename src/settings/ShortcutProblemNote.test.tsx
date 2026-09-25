@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ShortcutProblem } from "../lib/command";
 import { emitTauriEvent, mockCommands } from "../test/tauri";
 import { SHORTCUT_PROBLEMS_CHANGED, ShortcutProblemNote } from "./ShortcutProblemNote";
@@ -15,6 +15,10 @@ function withProblems(problems: Record<string, ShortcutProblem>) {
 }
 
 describe("ShortcutProblemNote", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("shows nothing while the shortcut is registered", async () => {
     let asked = false;
     mockCommands({
@@ -70,9 +74,15 @@ describe("ShortcutProblemNote", () => {
   });
 
   it("shows nothing when the problems cannot be read", async () => {
+    // No handler for `shortcut_problems`, so the pull rejects. The note
+    // stays empty, but `command()` still warns about the rejection, so
+    // that warning is captured and asserted on rather than left to
+    // print past the test.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockCommands({});
     const { container } = render(<ShortcutProblemNote settingsKey={KEY} />);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(container).toBeEmptyDOMElement();
+    expect(warn).toHaveBeenCalledWith('command("shortcut_problems") failed:', expect.anything());
   });
 });

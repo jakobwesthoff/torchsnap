@@ -47,6 +47,11 @@ describe("ClipboardSettings", () => {
     gadget.sendMessage.mockImplementation((method: string) =>
       method === "stats" ? Promise.resolve(gadget.stats) : Promise.resolve(null),
     );
+    // The settings row renders `ShortcutProblemNote`, which asks the
+    // backend for shortcut problems on mount. Tests that care about
+    // that note install their own `mockCommands` call, which replaces
+    // this default.
+    mockCommands({ shortcut_problems: () => ({}) });
   });
 
   it("shows statistics and offers Clear All while enabled with entries", async () => {
