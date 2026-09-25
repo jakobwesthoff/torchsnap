@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cmd, Ctrl or Alt, or is an F-key on its own. While recording, a hint
   says so, and a combination that does not qualify keeps the recorder
   listening instead of ending it.
+- Letter shortcuts inside the launcher, such as Ctrl+D and Ctrl+U for
+  scrolling, keep working while CapsLock is on. Shortcuts with Shift
+  and a letter work at all now, including the Cmd+Shift+R (Reveal) and
+  Cmd+Shift+O (Open With) hints shown in the launcher footer.
 
 ### Changed
 
