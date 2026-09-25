@@ -43,7 +43,7 @@ After copying:
    the debug loader picks it up automatically.
 3. Declare the runtime permissions described in this todo —
    `[permissions.http]` with `origins = ["http://localhost:9993"]`,
-   and `[permissions.fs]` with the auth-token / saved-networks
+   and `[permissions.filesystem]` with the auth-token / saved-networks
    path patterns once the fs WIT prerequisite lands.
 
 ## Architecture decisions (settled)
@@ -460,7 +460,7 @@ A new host import is required. Proposed shape (open for refinement):
   the existing `[permissions.http]` shape:
 
   ```toml
-  [permissions.fs]
+  [permissions.filesystem]
   read = [
       "{user-config}/ZeroTier/One/authtoken.secret",
       "{system-config}/ZeroTier/One/authtoken.secret",

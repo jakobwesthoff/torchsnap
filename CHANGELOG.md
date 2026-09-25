@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The gadget interface docs name the filesystem permission section
+  `[permissions.filesystem]`, the name the manifest parser accepts.
+  They said `[permissions.fs]`, which grants nothing.
 - A gadget command permission with a `path-under` constraint no longer
   accepts a path that goes through a symlink whose target does not
   exist. Writing to such a path would have created the target outside

@@ -594,7 +594,7 @@ reveal-path  = true                  # for opener::reveal_path
 [permissions.http]
 origins = ["https://api.example.com"]   # or ["*"] for trust-all
 
-[permissions.fs]
+[permissions.filesystem]
 read = [
     "${xdg-config}/myapp/config.toml",
     "/var/lib/myapp/data/*.json",
@@ -612,7 +612,7 @@ The argv-constraint vocabulary (`literal`, `enum`, `glob`,
 `regex`, `path-under`, `any-string`, `rest`) is documented in
 `manifest.rs:570–610` and ADR 0040. `${gadget-data}`,
 `${gadget-archive}`, `${home}`, `${xdg-config}`, `${xdg-data}`
-substitution applies in both `[permissions.fs] read` patterns
+substitution applies in both `[permissions.filesystem] read` patterns
 and `[[permissions.command]]` `path-under` roots / per-rule
 `cwd`.
 
@@ -810,7 +810,7 @@ Read-only filesystem access through a manifest-declared
 allowlist:
 
 ```toml
-[permissions.fs]
+[permissions.filesystem]
 read = [
     "${xdg-config}/myapp/config.toml",
     "/var/lib/myapp/data/*.json",

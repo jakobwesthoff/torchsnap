@@ -298,14 +298,14 @@ call time.
 | `sql-storage` | `[storage.sql]` declared | Per-gadget SQLite at `gadget-home/<id>/sql/storage.sqlite3`. |
 | `opener` | `[permissions.opener]` | Per-capability flags: `schemes`, `open-path`, `reveal-path`. |
 | `http` | `[permissions.http] origins` | Origin allowlist or `"*"` for trust-all. |
-| `filesystem` | `[permissions.fs] read` | Globs canonicalized; symlinks resolved before match. |
+| `filesystem` | `[permissions.filesystem] read` | Globs canonicalized; symlinks resolved before match. |
 | `command` | `[[permissions.command]]` | Per-binary argv-shape rules; no shell wrapping. |
 | `website-metadata` | `[permissions] website-metadata = true` | Host-shared cache; favicons returned as `entry-icon`. |
 
 The `${gadget-data}`, `${gadget-archive}`, `${home}`,
 `${xdg-config}`, `${xdg-data}` substitution variables are recognized
 in `[permissions.command]` `path-under` roots, literal argv values,
-per-rule `cwd`, and `[permissions.fs] read` patterns. See the
+per-rule `cwd`, and `[permissions.filesystem] read` patterns. See the
 relevant ADR (0029–0032, 0037–0040) for each capability's design
 rationale.
 
