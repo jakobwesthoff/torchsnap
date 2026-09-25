@@ -26,8 +26,9 @@
 ## Todos
 
 - Once a todo is implemented, delete its file and every reference to it
-  (find them with `rg <ulid>`). If a referencing file needs information
-  from the todo, copy just that part into it, compact and precise.
+  (find them with `rg <ulid> . ../torchsnap-docs ../torchsnap-web`). If
+  a referencing file needs information from the todo, copy just that
+  part into it, compact and precise.
 - After a large work package is done, have Sonnet or Haiku agents
   (choose per scan) check all todos for work that is already done.
   Delete todos that are fully done and rewrite partly done ones so they
