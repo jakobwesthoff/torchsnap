@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Recording a shortcut no longer accepts a single key or Shift plus a
+  key, which took that key away from every other app. A shortcut needs
+  Cmd, Ctrl or Alt, or is an F-key on its own. While recording, a hint
+  says so, and a combination that does not qualify keeps the recorder
+  listening instead of ending it.
+
 ### Changed
 
 - Settings → General lists Updates before Advanced, and every settings
