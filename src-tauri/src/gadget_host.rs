@@ -89,6 +89,27 @@ enum ViewKind {
 }
 
 // =========================================================
+// Gadget construction
+// =========================================================
+
+/// Construct a gadget from its provisioned caps and wrap it in a slot.
+fn build_slot<G, F>(
+    caps: Arc<crate::caps::ProvisionedCaps>,
+    factory: F,
+    source_kind: GadgetSourceKind,
+) -> anyhow::Result<GadgetSlot>
+where
+    G: Gadget + 'static,
+    F: FnOnce(Arc<crate::caps::ProvisionedCaps>) -> anyhow::Result<G>,
+{
+    let gadget = factory(caps)?;
+    Ok(GadgetSlot::new(
+        Arc::new(gadget) as Arc<dyn Gadget>,
+        source_kind,
+    ))
+}
+
+// =========================================================
 // Host-level PostActions
 // =========================================================
 
@@ -390,6 +411,7 @@ impl GadgetHost {
     /// `ProvisionedCaps` from the declared `requests`, then calls
     /// the `factory` closure with the caps to construct the gadget.
     /// The gadget receives caps as a plain field at construction.
+    /// A failing factory registers nothing and returns its error.
     ///
     /// `source_path` is the gadget's archive/source root (for WASM
     /// gadgets); `None` for native gadgets.
@@ -404,14 +426,10 @@ impl GadgetHost {
     ) -> anyhow::Result<()>
     where
         G: Gadget + 'static,
-        F: FnOnce(Arc<crate::caps::ProvisionedCaps>) -> G,
+        F: FnOnce(Arc<crate::caps::ProvisionedCaps>) -> anyhow::Result<G>,
     {
         let caps = Self::build_provisioned_caps(gadget_id, &requests, ctx, source_path)?;
-        let gadget = factory(caps);
-        self.slots.push(GadgetSlot::new(
-            Arc::new(gadget) as Arc<dyn Gadget>,
-            source_kind,
-        ));
+        self.slots.push(build_slot(caps, factory, source_kind)?);
         Ok(())
     }
 
@@ -1720,6 +1738,56 @@ mod tests {
         assert_eq!(map["system-x"], GadgetSourceKind::System);
         assert_eq!(map["user-y"], GadgetSourceKind::User);
         assert_eq!(map["dev-z"], GadgetSourceKind::Dev);
+    }
+
+    // -------------------------------------------------------
+    // Gadget construction
+    //
+    // `WasmGadgetBridge::new` compiles the gadget's WASM and fails
+    // on a corrupt or incompatible binary. That failure must reach
+    // the loader as an error, which logs it and moves on to the
+    // next gadget.
+    // -------------------------------------------------------
+
+    fn no_caps() -> Arc<crate::caps::ProvisionedCaps> {
+        Arc::new(crate::caps::ProvisionedCaps {
+            opener: None,
+            http: None,
+            filesystem: None,
+            command: None,
+            clipboard: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: None,
+        })
+    }
+
+    #[test]
+    fn a_failing_gadget_factory_yields_an_error_and_no_slot() {
+        let result = build_slot::<MockGadget, _>(
+            no_caps(),
+            |_caps| anyhow::bail!("compile WASM component"),
+            GadgetSourceKind::User,
+        );
+
+        let error = result.err().expect("a failing factory yields no slot");
+        assert!(format!("{error:#}").contains("compile WASM component"));
+    }
+
+    #[test]
+    fn a_constructed_gadget_becomes_a_slot() {
+        let slot = build_slot(
+            no_caps(),
+            |_caps| Ok(MockGadget::new("weather")),
+            GadgetSourceKind::Dev,
+        )
+        .expect("a succeeding factory yields a slot");
+
+        assert_eq!(slot.gadget.id(), "weather");
+        assert_eq!(slot.source_kind, GadgetSourceKind::Dev);
     }
 
     // -------------------------------------------------------

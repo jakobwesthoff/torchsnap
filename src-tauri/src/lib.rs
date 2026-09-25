@@ -992,7 +992,7 @@ pub fn run() {
                 vec![],
                 &prov_ctx,
                 None,
-                |_caps| gadgets::commands::BuiltInCommandsGadget,
+                |_caps| Ok(gadgets::commands::BuiltInCommandsGadget),
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register builtin-commands gadget");
@@ -1001,7 +1001,7 @@ pub fn run() {
                 gadgets::system_commands::SystemCommandsGadget::cap_requests(),
                 &prov_ctx,
                 None,
-                gadgets::system_commands::SystemCommandsGadget::new,
+                |caps| Ok(gadgets::system_commands::SystemCommandsGadget::new(caps)),
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register system-commands gadget");
@@ -1011,10 +1011,10 @@ pub fn run() {
                 &prov_ctx,
                 None,
                 |caps| {
-                    gadgets::app_launcher::AppLauncherGadget::new(
+                    Ok(gadgets::app_launcher::AppLauncherGadget::new(
                         caps,
                         platform::PlatformAppDiscovery,
-                    )
+                    ))
                 },
                 wasm::source::GadgetSourceKind::Builtin,
             )
@@ -1025,10 +1025,10 @@ pub fn run() {
                 &prov_ctx,
                 None,
                 |caps| {
-                    gadgets::system_preferences::SystemPreferencesGadget::new(
+                    Ok(gadgets::system_preferences::SystemPreferencesGadget::new(
                         caps,
                         platform::PlatformSettingsDiscovery,
-                    )
+                    ))
                 },
                 wasm::source::GadgetSourceKind::Builtin,
             )
@@ -1038,7 +1038,12 @@ pub fn run() {
                 gadgets::clipboard::ClipboardGadget::cap_requests(),
                 &prov_ctx,
                 None,
-                |caps| gadgets::clipboard::ClipboardGadget::new(caps, platform::PlatformClipboard),
+                |caps| {
+                    Ok(gadgets::clipboard::ClipboardGadget::new(
+                        caps,
+                        platform::PlatformClipboard,
+                    ))
+                },
                 wasm::source::GadgetSourceKind::Builtin,
             )
             .expect("register clipboard-manager gadget");
@@ -1467,10 +1472,10 @@ fn load_wasm_gadgets(
                 Err(e) => {
                     // Removing from loaded_ids so a fallback
                     // copy in a later root could still get a
-                    // chance. The registration itself is already
-                    // rolled back — `register` is the last step
-                    // in `load_single_wasm_gadget` and the error
-                    // happens before it.
+                    // chance. Nothing was registered: a failing
+                    // cap provisioning or bridge construction
+                    // (such as a WASM binary that does not
+                    // compile) returns before the slot is added.
                     loaded_ids.remove(&gadget_id);
                     log_loader_error(log_sender, &path, source_kind, &e);
                 }
@@ -1565,7 +1570,6 @@ fn load_single_wasm_gadget(
                     app_data_dir,
                     caps,
                 )
-                .expect("bridge construction after cap provisioning")
             },
             source_kind,
         )?;

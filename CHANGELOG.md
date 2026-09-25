@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the whole window. The launcher card offers "Go back". Any other
   render error in a window shows the error and a "Reload window"
   button.
+- A gadget whose WASM binary does not compile no longer stops
+  Torchsnap from starting. It is skipped, the error is logged, and the
+  other gadgets load.
 
 ### Changed
 
