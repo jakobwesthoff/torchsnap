@@ -56,6 +56,11 @@ src/derived/mascots.json
 # ships inside the .torchsnap archive. Not checked in.
 gadgets/bangs/assets/bang.json
 
+# Python bytecode caches. `tools/mascot-size-sheet` imports
+# `tools/normalize-mascot-size` as a module, which writes one next
+# to the tools.
+__pycache__/
+
 # Memory benchmark output
 memsnap-*.json
 bench-memory-*.json
