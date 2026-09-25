@@ -42,9 +42,9 @@ need code changes and a rebuild.
 A Torchsnap gadget is a WASM **component** built for the
 `wasm32-wasip2` target. It exports four interfaces (`lifecycle`,
 `search`, `messaging`, `tasks`) and imports a fixed set of host
-capabilities (logging, sql, settings, http, …) defined in the WIT
-`gadget` world (`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`,
-lines 887–907).
+capabilities (logging, sql-storage, settings, http, …) defined in
+the `world gadget` block of the WIT file
+(`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`).
 
 The component is shipped inside a **`.torchsnap` zip archive**
 containing:
@@ -136,8 +136,9 @@ struct MyGadget;
 define_gadget!(MyGadget);
 
 impl LifecycleGuest for MyGadget {
-    fn enable() {
-        log_info!("gadget enabled");
+    fn enable() -> Result<(), String> {
+        torchsnap_gadget_sdk::log_info!("gadget enabled");
+        Ok(())
     }
     fn disable() {}
     fn on_setting_changed(_key: String, _value: String) {}
@@ -249,15 +250,20 @@ re-enable after a disable.
 ### `enable()`
 
 Called every time the gadget transitions from disabled to
-enabled. The host has already created the per-gadget SQLite
-database file and applied any declared migrations *before* this
-runs, so `sql::connection()` is immediately usable. Typical
-work:
+enabled. Signature: `fn enable() -> Result<(), String>`. The host
+has already created the per-gadget SQLite database file and applied
+any declared migrations *before* this runs, so
+`sql_storage::connection()` is immediately usable. Typical work:
 
 - Read settings via `settings::get_or` / `get_or_else`.
 - Seed in-memory caches from SQL, bundled assets, or HTTP.
 - Update reactive state (`thread_local! { Cell<…> }`) from
   defaults to the user's configured values.
+
+Returning `Err(string)` signals that initialization failed: the
+host sets the gadget's `enabled` flag to false and stops
+dispatching further calls to it (`src-tauri/src/gadget_host.rs`,
+the spawned `enable()` call around lines 559-571).
 
 ### `disable()`
 
@@ -377,10 +383,18 @@ them in themselves.
 pub enum EntryIcon {
     HeroIcon(String),    // Heroicon outline name, e.g. "bolt"
     DataUrl(String),     // Inline base64 data URL
-    AssetIcon(String),   // Path to a host-cached file
+    AssetIcon(String),   // Gadget-relative path to a bundled asset
     Emoji(String),       // Single Unicode emoji
+    AppIcon(String),     // Installed application's own icon
 }
 ```
+
+`AppIcon` carries a platform-native application identifier (a
+bundle identifier on macOS, e.g. `com.if.Amphetamine`) and the
+launcher renders that application's actual icon. It requires the
+`icon-cache` permission (`[permissions] icon-cache = true` in
+`manifest.toml`). If the application cannot be found, the entry is
+shown without an icon.
 
 ---
 
@@ -604,7 +618,7 @@ impl TasksGuest for MyGadget {
     fn run_task(task_id: String) -> Result<(), String> {
         match task_id.as_str() {
             "retention-cleanup" => {
-                let db = sql::connection();
+                let db = sql_storage::connection();
                 db.execute(
                     "DELETE FROM history WHERE created_at < datetime('now', '-30 days')",
                     &[],
@@ -643,8 +657,10 @@ Semantics:
 
 ## Manifest (`manifest.toml`)
 
-The full schema is in `src-tauri/src/wasm/manifest.rs`. Every
-table is documented inline there.
+The full schema is in the `src-tauri/src/wasm/manifest/` module
+directory (`mod.rs`, `frontend.rs`, `permissions/*.rs`,
+`storage.rs`, `tasks.rs`, `paths.rs`). Every table is documented
+inline there.
 
 ### `[gadget]` (required)
 
@@ -659,9 +675,10 @@ icon        = "heroicons:bolt"       # or a gadget-relative path to a WebP image
 prefixes    = ["="]                  # optional — exclusive query routing
 ```
 
-`id` validation is enforced in `manifest.rs:171`; the same string
-becomes the SQL namespace, settings prefix, frecency scope, data
-directory name, and frontend registry key.
+`id` validation is enforced by `validate_gadget_id` in
+`src-tauri/src/wasm/manifest/mod.rs`; the same string becomes the
+SQL namespace, settings prefix, frecency scope, data directory
+name, and frontend registry key.
 
 ### `[settings]`
 
@@ -760,8 +777,10 @@ argv   = [
 ```
 
 The argv-constraint vocabulary (`literal`, `enum`, `glob`,
-`regex`, `path-under`, `any-string`, `rest`) is documented in
-`manifest.rs:570–610` and ADR 0040. `${gadget-data}`,
+`regex`, `path-under`, `any-string`, `rest`) is documented on the
+`ArgvConstraint` enum in
+`src-tauri/src/wasm/manifest/permissions/command.rs` and ADR 0040.
+`${gadget-data}`,
 `${gadget-archive}`, `${home}`, `${xdg-config}`, `${xdg-data}`
 substitution applies in both `[permissions.filesystem] read` patterns
 and `[[permissions.command]]` `path-under` roots / per-rule
@@ -769,12 +788,13 @@ and `[[permissions.command]]` `path-under` roots / per-rule
 
 ### `[shortcuts]` (declarative only — currently inert for WASM)
 
-`manifest.rs:54` accepts a `[shortcuts]` table but the WIT does
-not currently expose a `handle-shortcut` guest export, so any
-declared shortcuts are parsed and stored but never fire for
-WASM gadgets. Native (built-in) gadgets still use them. Treat
-this section as reserved for a future API; do not plan around
-it.
+The `shortcuts` field on `Manifest` in
+`src-tauri/src/wasm/manifest/mod.rs` accepts a `[shortcuts]` table
+but the WIT does not currently expose a `handle-shortcut` guest
+export, so any declared shortcuts are parsed and stored but never
+fire for WASM gadgets. Native (built-in) gadgets still use them.
+Treat this section as reserved for a future API; do not plan
+around it.
 
 ### Path-safety rules
 
@@ -795,13 +815,28 @@ gadget never loads.
 
 ## Host APIs (WIT imports)
 
-The WIT `gadget` world (`torchsnap-gadget.wit:887–907`) imports
-fourteen interfaces. The SDK re-exports each one — either flat
-under `torchsnap_gadget_sdk::prelude::*` (`logging`, `clipboard`,
-`sql`, `frecency`, `settings`, `opener`, `http`, `fs`, `assets`,
-`command`, `platform`, `paths`, `messaging`, `website_metadata`)
-or under a `_host` alias when the SDK adds an ergonomic wrapper
-that would otherwise shadow the raw bindings.
+The `world gadget` block in `torchsnap-gadget.wit` imports
+fourteen interfaces: `logging`, `clipboard`, `sql-storage`,
+`frecency`, `settings`, `opener`, `http`, `filesystem`, `assets`,
+`command`, `platform`, `path-resolver`, `types`, and
+`website-metadata`. It exports four: `lifecycle`, `search`,
+`messaging`, `tasks`. `messaging` is a guest export, not an
+import, so it does not appear in the import list above.
+
+The SDK re-exports each import flat under
+`torchsnap_gadget_sdk::prelude::*`. Most keep the WIT interface's
+name (`clipboard`, `frecency`, `opener`, `http`, `filesystem`,
+`assets`, `command`, `platform`); `sql-storage` becomes
+`sql_storage` and `path-resolver` becomes `path_resolver`.
+`logging`, `settings`, `command`, and `website_metadata` also
+resolve to those same flat names, but each points at the SDK's own
+wrapper module rather than the raw WIT bindings; the raw bindings
+stay reachable under a `_host` alias (`logging_host`,
+`settings_host`, `command_host`, `website_metadata_host`) for
+callers that need the unwrapped surface. `types` has no
+gadget-facing module of its own. Its `entry-icon` and
+`entry-actions` shapes surface through the SDK's own `EntryIcon`,
+`Action`, and `Actions` types instead.
 
 ### `logging`
 
@@ -811,33 +846,40 @@ Structured logging with optional spans. The SDK's
 modelled on `tracing`:
 
 ```rust
-log_info!("user toggled feature", "feature" => "history", "enabled" => true);
+torchsnap_gadget_sdk::log_info!("user toggled feature", "feature" => "history", "enabled" => true);
 ```
+
+The macros are `#[macro_export]`, not part of the prelude, so call
+them by their crate-qualified path as above, or bring one into
+scope explicitly with `use torchsnap_gadget_sdk::log_info;`.
 
 For explicit timing spans, call `logging::span_start` /
 `logging::span_end` directly.
 
 ### `clipboard`
 
-Single operation: `clipboard::write_text(text) -> Result<(), String>`.
-Read access is intentionally not exposed — sandboxed gadgets must
-not be able to slurp arbitrary host clipboard contents (WIT
-lines 35–55).
+Single operation:
+`clipboard::write_text(text) -> Result<(), ClipboardError>`. The
+`ClipboardError` variant is `BackendFailure(String)`: the host
+clipboard backend reported a failure. Read access is intentionally
+not exposed: sandboxed gadgets must not be able to slurp arbitrary
+host clipboard contents (see the doc comment on `interface
+clipboard` in `torchsnap-gadget.wit`).
 
-### `sql` — per-gadget SQLite
+### `sql_storage` (WIT `sql-storage`): per-gadget SQLite
 
 Available only when the manifest declares `[storage.sql]`.
-`sql::connection()` is **infallible** for gadgets that opted in
-(the host has already initialized the database). The SDK's
-`sql::query_one` / `sql::query_all` collect rows into a typed
-`Row` newtype with `integer` / `text` / `real` / `blob` /
-`is_null` accessors. `From` impls on `SqlValue` cover the common
-parameter types:
+`sql_storage::connection()` is **infallible** for gadgets that
+opted in (the host has already initialized the database). The
+SDK's `sql_storage::query_one` / `sql_storage::query_all` collect
+rows into a typed `Row` newtype with `integer` / `text` / `real` /
+`blob` / `is_null` accessors. `From` impls on `SqlValue` cover the
+common parameter types:
 
 ```rust
-use torchsnap_gadget_sdk::sql::{query_all, SqlValue};
+use torchsnap_gadget_sdk::sql_storage::{query_all, SqlValue};
 
-let db = sql::connection();
+let db = sql_storage::connection();
 db.execute(
     "INSERT INTO history (expression, result) VALUES (?, ?)",
     &[SqlValue::from(expr), SqlValue::from(result)],
@@ -846,7 +888,7 @@ db.execute(
 let rows = query_all(&db, "SELECT id, expression FROM history ORDER BY id DESC LIMIT 50", &[])?;
 for row in &rows {
     if let (Some(id), Some(expr)) = (row.integer(0), row.text(1)) {
-        log_info!("history row", "id" => id, "expr" => expr);
+        torchsnap_gadget_sdk::log_info!("history row", "id" => id, "expr" => expr);
     }
 }
 ```
@@ -856,13 +898,6 @@ internal `List` variant — gadgets build their own `IN (?, ?, ?)`
 clauses (one `?` per element) before calling `query` / `execute`.
 Transactions are not currently exposed; raise the API gap if a
 gadget needs them.
-
-> The WIT doc-comment on `interface sql` (`torchsnap-gadget.wit:60-61`)
-> states the database file lives at
-> `app_data_dir/gadgets/<gadget-id>/storage.db`. That comment is
-> stale. The actual path used by the bridge is
-> `<app_data_dir>/gadget-home/<gadget-id>/sql/storage.sqlite3`
-> (see [Storage layout on disk](#storage-layout-on-disk)).
 
 ### `frecency`
 
@@ -955,7 +990,7 @@ for self-signed local daemons (Docker over TLS, k3s,
 zerotier-one). The origin allowlist still gates which endpoint
 the gadget can reach.
 
-### `fs`
+### `filesystem`
 
 Read-only filesystem access through a manifest-declared
 allowlist:
@@ -975,9 +1010,9 @@ are intentionally not supported.
 Three operations:
 
 ```rust
-fs::read_file(path) -> Result<Vec<u8>, FsError>
-fs::file_exists(path) -> bool                  // false on any failure
-fs::metadata(path) -> Result<FileMetadata, FsError>
+filesystem::read_file(path) -> Result<Vec<u8>, FsError>
+filesystem::file_exists(path) -> bool          // false on any failure
+filesystem::metadata(path) -> Result<FileMetadata, FsError>
 ```
 
 The host canonicalizes the requested path (resolving symlinks
@@ -1060,14 +1095,14 @@ match platform::current_os() {
 
 No permission required.
 
-### `paths`
+### `path_resolver` (WIT `path-resolver`)
 
 Resolve `${...}` substitution variables at runtime. Useful when
 constructing argv strings that must satisfy a `path-under`
 constraint referencing host-resolved paths:
 
 ```rust
-let helper = paths::resolve("${gadget-archive}/bin/helper")?;
+let helper = path_resolver::resolve("${gadget-archive}/bin/helper")?;
 let result = command::run(&helper).arg("status").invoke()?;
 ```
 
@@ -1389,10 +1424,11 @@ thread_local! {
 }
 
 impl LifecycleGuest for CalculatorPlugin {
-    fn enable() {
+    fn enable() -> Result<(), String> {
         HEURISTIC_ENABLED.with(|c| c.set(settings::get_or("heuristicEnabled", true)));
         HISTORY_ENABLED.with(|c|  c.set(settings::get_or("historyEnabled", true)));
         RETENTION_DAYS.with(|c|   c.set(settings::get_or("retentionDays", 30u32)));
+        Ok(())
     }
     fn disable() {}
     fn on_setting_changed(key: String, _value: String) {
@@ -1416,27 +1452,47 @@ impl LifecycleGuest for CalculatorPlugin {
 - Otherwise → contribute nothing.
 
 ```rust
-fn search(query: String, matched_prefix: Option<String>) -> SearchResponse<Command> {
-    if matched_prefix.is_some() {
-        let payload = json!({ "expression": query, "result": evaluate(&query) });
-        let history = query_history(&sql_storage::connection(), &query);
-        return SearchResponse::CustomUi(ViewResponse {
-            view:    "history".into(),
-            data:    Some(payload.to_string()),
-            results: history,
-        });
+fn prefix_mode_search(query: &str) -> SearchResponse<Command> {
+    let payload = match evaluate(query) {
+        Ok(r) => json!({ "expression": query, "result": r.value, "resultType": r.result_type }),
+        Err(error) => json!({ "expression": query, "error": error }),
+    };
+    let history = query_history(&sql_storage::connection(), query);
+    SearchResponse::CustomUi(ViewResponse {
+        view:    "history".into(),
+        data:    Some(payload.to_string()),
+        results: history,
+    })
+}
+
+fn heuristic_mode_search(query: &str) -> SearchResponse<Command> {
+    if !HEURISTIC_ENABLED.with(|c| c.get()) {
+        return SearchResponse::Nothing;
     }
-    if HEURISTIC_ENABLED.with(|c| c.get()) && looks_like_math(&query) {
-        let payload = json!({ "expression": query, "result": evaluate(&query) });
-        return SearchResponse::InlineUi(ViewResponse {
-            view:    "result".into(),
-            data:    Some(payload.to_string()),
-            results: vec![],
-        });
-    }
-    SearchResponse::Nothing
+    let Some(expr) = try_extract_math(query) else {
+        return SearchResponse::Nothing;
+    };
+    let Ok(result) = evaluate(expr) else {
+        return SearchResponse::Nothing;
+    };
+    SearchResponse::InlineUi(ViewResponse {
+        view:    "result".into(),
+        data:    Some(json!({ "expression": expr, "result": result.value, "resultType": result.result_type }).to_string()),
+        results: vec![],
+    })
 }
 ```
+
+`evaluate()` returns `Result<EvalResult, String>`, not a value
+`json!` can serialize directly, so both search modes match on it
+and build the payload from the `Ok` and `Err` arms separately.
+`search()` itself dispatches to one of these two functions by
+`matched_prefix` (see [Prefix routing](#prefix-routing-adr-0012)).
+The real `prefix_mode_search` also short-circuits an empty or
+whitespace-only query before calling `evaluate()`, so the
+frontend can render a help screen instead of an error; that
+branch is left out above to keep the excerpt focused on the
+result-matching shape.
 
 The history rows in `results` are `ScoredEntry<Command>` values.
 Each one carries `Command::Copy { expression, result }` in its
@@ -1454,7 +1510,7 @@ impl TasksGuest for CalculatorPlugin {
         match task_id.as_str() {
             "retention-cleanup" => {
                 let days = RETENTION_DAYS.with(|c| c.get());
-                let db = sql::connection();
+                let db = sql_storage::connection();
                 db.execute(
                     "DELETE FROM history WHERE created_at < datetime('now', ?)",
                     &[SqlValue::from(format!("-{days} days"))],

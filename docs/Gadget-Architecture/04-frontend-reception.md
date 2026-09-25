@@ -198,9 +198,13 @@ both highlighted by `highlightText`.
 ### Icons (ADR 0027)
 
 Icons travel as a tagged `EntryIcon` union from Rust:
-`heroIcon | dataUrl | assetIcon | emoji`. `ResultRow` flattens this
-into the prefix-string protocol consumed by the shared `Icon`
-component (`src/components/Icon.tsx`):
+`heroIcon | dataUrl | assetIcon | emoji`. The WIT variant also has an
+`app-icon` case (a platform application identifier), but the WASM
+response pass resolves it to `assetIcon` or drops it before entries
+reach the frontend, so the frontend's `EntryIcon` type
+(`src/types.ts`) never carries an `appIcon` case. `ResultRow` flattens
+the four remaining cases into the prefix-string protocol consumed by
+the shared `Icon` component (`src/components/Icon.tsx`):
 
 - `heroicons:<kebab-name>`: resolved by name lookup against
   `@heroicons/react/24/outline` (kebab-to-PascalCase + `Icon`
