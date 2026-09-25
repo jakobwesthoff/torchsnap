@@ -264,7 +264,12 @@ impl Search for TemplatePlugin {
     fn execute(command: Command) -> Result<PostAction, String> {
         match command {
             Command::Demo => {
-                logging::log(logging::LogLevel::Info, "Executed the demo entry", &[], None);
+                logging::log(
+                    logging::LogLevel::Info,
+                    "Executed the demo entry",
+                    &[],
+                    None,
+                );
             }
             Command::OpenUrl(url) => {
                 opener::open_url(&url).map_err(|e| format!("open URL: {e}"))?;

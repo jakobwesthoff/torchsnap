@@ -46,8 +46,8 @@
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::exports::torchsnap::gadget::search as wit;
-use crate::torchsnap::gadget::types as wit_types;
 use crate::logging::{LogLevel, log};
+use crate::torchsnap::gadget::types as wit_types;
 use crate::{EntryIcon, PostAction, SearchGuest, data};
 
 // =========================================================
@@ -271,8 +271,8 @@ impl<T: Search> SearchGuest for T {
     }
 
     fn execute(command: String) -> Result<PostAction, String> {
-        let command = data::decode::<T::Command>(&command)
-            .map_err(|e| format!("command decode: {e}"))?;
+        let command =
+            data::decode::<T::Command>(&command).map_err(|e| format!("command decode: {e}"))?;
         T::execute(command)
     }
 }
@@ -305,7 +305,9 @@ fn encode_action<C: Serialize>(action: Action<C>) -> Result<wit_types::Action, S
     })
 }
 
-fn encode_slot<C: Serialize>(action: Option<Action<C>>) -> Result<Option<wit_types::Action>, String> {
+fn encode_slot<C: Serialize>(
+    action: Option<Action<C>>,
+) -> Result<Option<wit_types::Action>, String> {
     action.map(encode_action).transpose()
 }
 
@@ -378,7 +380,9 @@ fn encode_view<C: Serialize>(view: ViewResponse<C>) -> (wit::ViewResponse, Vec<S
     )
 }
 
-fn encode_response<C: Serialize>(response: SearchResponse<C>) -> (wit::SearchResponse, Vec<String>) {
+fn encode_response<C: Serialize>(
+    response: SearchResponse<C>,
+) -> (wit::SearchResponse, Vec<String>) {
     match response {
         SearchResponse::Nothing => (wit::SearchResponse::Nothing, Vec::new()),
         SearchResponse::Results(results) => {
@@ -439,7 +443,10 @@ mod tests {
             .primary("Join", Command::Open("a".into()))
             .copy(Action::new(Command::Copy("a".into())));
 
-        assert_eq!(actions.primary, Some(Action::labeled("Join", Command::Open("a".into()))));
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled("Join", Command::Open("a".into())))
+        );
         assert_eq!(actions.copy, Some(Action::new(Command::Copy("a".into()))));
         assert_eq!(actions.secondary, None);
         assert_eq!(actions.reveal, None);
@@ -453,7 +460,10 @@ mod tests {
             .copy(Action::new(Command::Copy("first".into())))
             .copy(Action::new(Command::Copy("second".into())));
 
-        assert_eq!(actions.copy, Some(Action::new(Command::Copy("second".into()))));
+        assert_eq!(
+            actions.copy,
+            Some(Action::new(Command::Copy("second".into())))
+        );
     }
 
     #[test]
@@ -468,7 +478,13 @@ mod tests {
         let slots: Vec<Slot> = actions.iter().map(|(slot, _)| slot).collect();
         assert_eq!(
             slots,
-            [Slot::Primary, Slot::Secondary, Slot::Reveal, Slot::Delete, Slot::OpenSettings]
+            [
+                Slot::Primary,
+                Slot::Secondary,
+                Slot::Reveal,
+                Slot::Delete,
+                Slot::OpenSettings
+            ]
         );
     }
 
@@ -545,7 +561,10 @@ mod tests {
         let view = ViewResponse {
             view: "history".into(),
             data: Some("{}".into()),
-            results: vec![entry("h", Actions::new().copy(Action::new(Command::Copy("2".into()))))],
+            results: vec![entry(
+                "h",
+                Actions::new().copy(Action::new(Command::Copy("2".into()))),
+            )],
         };
         for (response, is_custom) in [
             (SearchResponse::CustomUi(view.clone()), true),

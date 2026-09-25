@@ -100,13 +100,29 @@ impl LifecycleGuest for BangsPlugin {
 // Search
 // =========================================================
 
-impl SearchGuest for BangsPlugin {
-    fn entries() -> Vec<CatalogEntry> {
-        // Query-only gadget — no catalog.
-        Vec::new()
-    }
+/// What a bang result's actions do. Both carry the resolved
+/// search URL.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum Command {
+    OpenUrl(String),
+    CopyUrl(String),
+}
 
-    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse {
+/// Enter opens the resolved URL, Cmd+C copies it.
+fn url_actions(url: &str) -> Actions<Command> {
+    Actions::new()
+        .primary("Open in Browser", Command::OpenUrl(url.to_string()))
+        .copy(Action::labeled(
+            "Copy URL",
+            Command::CopyUrl(url.to_string()),
+        ))
+}
+
+// Query-only gadget: `entries()` keeps the trait's empty default.
+impl Search for BangsPlugin {
+    type Command = Command;
+
+    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse<Command> {
         let Some((bang_trigger, bang_token_idx)) = find_bang_token(&query) else {
             return SearchResponse::Nothing;
         };
@@ -151,46 +167,30 @@ impl SearchGuest for BangsPlugin {
             EntryIcon::HeroIcon("arrow-top-right-on-square".to_string()),
         );
 
-        let entry_data = data::encode(&resolved_url).expect("URL is serializable");
-
         let entry = ScoredEntry {
             id: format!("!{bang_trigger}"),
             title,
+            actions: url_actions(&resolved_url),
             subtitle: Some(resolved_url),
             icon: Some(icon),
             score: BANG_SCORE,
             title_highlight_positions,
             subtitle_highlight_positions: Vec::new(),
-            actions: vec![
-                Action {
-                    id: ActionId::Open,
-                    label: "Open in Browser".to_string(),
-                },
-                Action {
-                    id: ActionId::Copy,
-                    label: "Copy URL".to_string(),
-                },
-            ],
-            data: Some(entry_data),
         };
 
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        let url: String = data::decode(entry.data.as_deref().ok_or("no data attached to entry")?)?;
-
-        match action_id {
-            ActionId::Open => {
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::OpenUrl(url) => {
                 opener::open_url(&url).map_err(|e| format!("open URL: {e}"))?;
-                Ok(PostAction::Dismiss)
             }
-            ActionId::Copy => {
+            Command::CopyUrl(url) => {
                 clipboard::write_text(&url).map_err(|e| format!("copy URL to clipboard: {e}"))?;
-                Ok(PostAction::Dismiss)
             }
-            other => Err(format!("unsupported action: {other:?}")),
         }
+        Ok(PostAction::Dismiss)
     }
 }
 
@@ -604,6 +604,26 @@ fn query_stats(db: &SqlHandle) -> Result<BangStats, String> {
 mod tests {
     use super::*;
     use torchsnap_gadget_sdk::messaging;
+
+    #[test]
+    fn url_actions_open_on_enter_and_copy_on_cmd_c() {
+        let actions = url_actions("https://duckduckgo.com/?q=rust");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Open in Browser",
+                Command::OpenUrl("https://duckduckgo.com/?q=rust".into())
+            ))
+        );
+        assert_eq!(
+            actions.copy,
+            Some(Action::labeled(
+                "Copy URL",
+                Command::CopyUrl("https://duckduckgo.com/?q=rust".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 2);
+    }
 
     #[test]
     fn settings_requests_decode_from_the_empty_payload_the_panel_sends() {

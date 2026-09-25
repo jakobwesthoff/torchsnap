@@ -25,6 +25,7 @@
 // URL kind once we have UX data to motivate it.
 // =========================================================
 
+use serde::{Deserialize, Serialize};
 use torchsnap_gadget_sdk::prelude::*;
 use torchsnap_gadget_sdk::website_metadata::Metadata;
 
@@ -141,12 +142,28 @@ impl LifecycleGuest for OpenUrlPlugin {
 // Search
 // =========================================================
 
-impl SearchGuest for OpenUrlPlugin {
-    fn entries() -> Vec<CatalogEntry> {
-        Vec::new()
-    }
+/// What a URL result's actions do. Both carry the full URL.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum Command {
+    OpenUrl(String),
+    CopyUrl(String),
+}
 
-    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse {
+/// Enter opens the URL, Cmd+C copies it.
+fn url_actions(url: &str) -> Actions<Command> {
+    Actions::new()
+        .primary("Open in Browser", Command::OpenUrl(url.to_string()))
+        .copy(Action::labeled(
+            "Copy URL",
+            Command::CopyUrl(url.to_string()),
+        ))
+}
+
+// Query-only gadget: `entries()` keeps the trait's empty default.
+impl Search for OpenUrlPlugin {
+    type Command = Command;
+
+    fn search(query: String, _matched_prefix: Option<String>) -> SearchResponse<Command> {
         let Some(detected) = detect_url(&query) else {
             return SearchResponse::Nothing;
         };
@@ -194,36 +211,22 @@ impl SearchGuest for OpenUrlPlugin {
             score: URL_SCORE,
             title_highlight_positions: Vec::new(),
             subtitle_highlight_positions: Vec::new(),
-            actions: vec![
-                Action {
-                    id: ActionId::Open,
-                    label: "Open in Browser".to_string(),
-                },
-                Action {
-                    id: ActionId::Copy,
-                    label: "Copy URL".to_string(),
-                },
-            ],
-            data: Some(data::encode(&detected.full_url).expect("URL is serializable")),
+            actions: url_actions(&detected.full_url),
         };
 
         SearchResponse::Results(vec![entry])
     }
 
-    fn execute(entry: ScoredEntry, action_id: ActionId) -> Result<PostAction, String> {
-        let url: String = data::decode(entry.data.as_deref().ok_or("no data attached to entry")?)?;
-
-        match action_id {
-            ActionId::Open => {
+    fn execute(command: Command) -> Result<PostAction, String> {
+        match command {
+            Command::OpenUrl(url) => {
                 opener::open_url(&url).map_err(|e| format!("open URL: {e:?}"))?;
-                Ok(PostAction::Dismiss)
             }
-            ActionId::Copy => {
+            Command::CopyUrl(url) => {
                 clipboard::write_text(&url).map_err(|e| format!("copy URL to clipboard: {e}"))?;
-                Ok(PostAction::Dismiss)
             }
-            other => Err(format!("unsupported action: {other:?}")),
         }
+        Ok(PostAction::Dismiss)
     }
 }
 
@@ -237,6 +240,26 @@ impl_noop_tasks!(OpenUrlPlugin);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn url_actions_open_on_enter_and_copy_on_cmd_c() {
+        let actions = url_actions("https://example.com/path");
+        assert_eq!(
+            actions.primary,
+            Some(Action::labeled(
+                "Open in Browser",
+                Command::OpenUrl("https://example.com/path".into())
+            ))
+        );
+        assert_eq!(
+            actions.copy,
+            Some(Action::labeled(
+                "Copy URL",
+                Command::CopyUrl("https://example.com/path".into())
+            ))
+        );
+        assert_eq!(actions.iter().count(), 2);
+    }
 
     #[test]
     fn explicit_https_url() {

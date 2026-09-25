@@ -127,8 +127,8 @@ pub mod prelude {
     //! directly.
     pub use super::messaging::Messaging;
     pub use super::{
-        Action, Actions, CatalogEntry, EntryIcon, PostAction, ScoredEntry, Search,
-        SearchResponse, Slot, ViewResponse,
+        Action, Actions, CatalogEntry, EntryIcon, PostAction, ScoredEntry, Search, SearchResponse,
+        Slot, ViewResponse,
     };
     pub use super::{LifecycleGuest, TasksGuest};
     pub use super::{

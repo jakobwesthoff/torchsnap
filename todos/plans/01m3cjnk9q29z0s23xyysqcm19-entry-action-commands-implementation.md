@@ -170,7 +170,7 @@ here. Commits in this phase may not build. Commit after each step.
 - [x] **5.2a Blanket impl check.** Convert template first and build it
   for `wasm32-wasip2`. If the blanket impl does not work with the
   `wit_bindgen` `export!`, stop and bring it to the maintainer.
-- [ ] **5.3 WASM gadgets.** The remaining seven, per the migration
+- [x] **5.3 WASM gadgets.** The remaining seven, per the migration
   table. hello-world gets `clipboard = true` and really copies. `just
   check-gadgets`, `just test-gadgets`.
 - [ ] **5.4 Test fixtures.** Update the six fixtures in
