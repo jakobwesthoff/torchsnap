@@ -88,16 +88,22 @@ export const LAYER = {
  * both map to `ctrlKey` — collisions are resolved by layer/order
  * precedence and warned about at registration time.
  *
- * Shift handling: only enforced as a strict modifier for single lowercase
- * letter keys (a-z). Characters like `?`, `!`, `+` naturally require Shift
- * to produce but don't list it in modifiers — the matcher permits Shift
- * for those cases.
+ * Letter keys (a-z) match case-insensitively, because `event.key` carries
+ * the produced character: Shift or CapsLock turn `k` into `K`. For letters
+ * the Shift modifier is strict, so Shift+K and K are different bindings
+ * and CapsLock does not affect either. Characters like `?`, `!`, `+`
+ * naturally require Shift to produce but don't list it in modifiers — the
+ * matcher permits Shift for those cases.
  */
 export function matchesCombo(event: KeyboardEvent, combo: KeyCombo, isMacOS: boolean): boolean {
   // -------------------------------------------------------
   // Key match
   // -------------------------------------------------------
-  if (event.key !== combo.key) {
+  const isLetter = /^[a-z]$/i.test(combo.key);
+  const keyMatches = isLetter
+    ? event.key.toLowerCase() === combo.key.toLowerCase()
+    : event.key === combo.key;
+  if (!keyMatches) {
     return false;
   }
 
@@ -147,11 +153,10 @@ export function matchesCombo(event: KeyboardEvent, combo: KeyCombo, isMacOS: boo
   // -------------------------------------------------------
   // Shift handling
   // -------------------------------------------------------
-  // For single lowercase letter keys, strictly enforce shift state.
-  // For everything else (punctuation, symbols), allow shift since it may
-  // be needed to produce the character.
-  const isSingleLetter = combo.key.length === 1 && combo.key >= "a" && combo.key <= "z";
-  if (isSingleLetter) {
+  // For letter keys, strictly enforce shift state. For everything else
+  // (punctuation, symbols), allow shift since it may be needed to produce
+  // the character.
+  if (isLetter) {
     if (wantsShift !== event.shiftKey) {
       return false;
     }

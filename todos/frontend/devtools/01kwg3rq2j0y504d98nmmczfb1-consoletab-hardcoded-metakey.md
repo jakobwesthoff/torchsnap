@@ -38,8 +38,9 @@ unconditionally (`ConsoleToolbar.tsx:312`: `title="Clear log (⌘K)"`).
 
 Additionally, no other modifiers are checked: Cmd+Shift+K,
 Cmd+Alt+K etc. also trigger clear, and the lowercase `e.key === "k"`
-comparison fails under CapsLock (same `event.key` case issue as
-`frontend/01kwg3rq2j0y504d98nmmczfb0-matchescombo-case-sensitivity.md`).
+comparison fails under CapsLock, since `event.key` carries the
+produced character (`matchesCombo` compares letters case-insensitively
+for this reason).
 
 ## Impact
 On Windows/Linux builds the devtools clear/search shortcuts do not
