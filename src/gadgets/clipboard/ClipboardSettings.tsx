@@ -71,13 +71,18 @@ export default function ClipboardSettings() {
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // A disabled gadget has released its database and answers no
+  // messages, so statistics and clearing wait until it is turned on.
   const refreshStats = useCallback(() => {
+    if (!enabled) {
+      return;
+    }
     sendMessage<unknown, ClipboardStats>("stats", {})
       .then(setStats)
       .catch((e) => logger.error(`fetch stats failed: ${String(e)}`));
-  }, [sendMessage, logger]);
+  }, [enabled, sendMessage, logger]);
 
-  // Fetch stats on mount.
+  // Fetch stats on mount and whenever the gadget is turned on.
   useEffect(() => {
     refreshStats();
   }, [refreshStats]);
@@ -152,12 +157,17 @@ export default function ClipboardSettings() {
           <h3 className="text-sm font-medium text-text-secondary">Statistics</h3>
           <button
             onClick={refreshStats}
-            className="rounded-lg px-2 py-0.5 text-xs text-text-tertiary transition-colors hover:text-text-secondary hover:bg-surface-hover"
+            disabled={!enabled}
+            className="rounded-lg px-2 py-0.5 text-xs text-text-tertiary transition-colors hover:text-text-secondary hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Refresh
           </button>
         </div>
-        {stats ? (
+        {!enabled ? (
+          <span className="text-sm text-text-muted">
+            Turn on the gadget to see statistics and clear the history.
+          </span>
+        ) : stats ? (
           <div className="flex flex-col gap-2">
             <StatRow label="Total entries" value={String(stats.totalEntries)} />
             {Object.entries(stats.entriesByFormat)
@@ -191,7 +201,7 @@ export default function ClipboardSettings() {
               </button>
               <button
                 onClick={handleClearHistory}
-                disabled={clearing}
+                disabled={clearing || !enabled}
                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-white bg-red-500 transition-colors hover:bg-red-600 disabled:opacity-50"
               >
                 {clearing ? "Clearing..." : "Confirm"}
@@ -200,7 +210,7 @@ export default function ClipboardSettings() {
           ) : (
             <button
               onClick={handleClearHistory}
-              disabled={!enabled && stats?.totalEntries === 0}
+              disabled={!enabled || (stats?.totalEntries ?? 0) === 0}
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Clear All
