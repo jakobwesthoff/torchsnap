@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstalledGadgetInfo } from "../../lib/command";
 import { emitTauriEvent, mockCommands } from "../../test/tauri";
 import { INSTALL_QUEUE_CHANGED, type InstallRequestView } from "./types";
@@ -40,6 +40,10 @@ function installed(gadgetId = "weather"): InstalledGadgetInfo {
 }
 
 describe("useInstallQueue", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("pulls the queue on mount", async () => {
     mockCommands({ install_queue_snapshot: () => [readyRequest("r1")] });
 
@@ -79,6 +83,11 @@ describe("useInstallQueue", () => {
   });
 
   it("records a failed confirm without throwing", async () => {
+    // `install_queue_confirm` deliberately fails, so `command()` logs
+    // the rejection. That logging is part of the contract under test,
+    // so the warning is captured and asserted on instead of left to
+    // print.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockCommands({
       install_queue_snapshot: () => [],
       install_queue_confirm: () => {
@@ -90,6 +99,10 @@ describe("useInstallQueue", () => {
     await act(() => result.current.confirm("r1"));
 
     expect(result.current.error).toContain("changed since this review");
+    expect(warn).toHaveBeenCalledWith(
+      'command("install_queue_confirm") failed:',
+      expect.anything(),
+    );
   });
 
   it("dismisses a request", async () => {

@@ -4,7 +4,7 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCommands } from "../test/tauri";
 import type { UpdatePhase } from "./types";
 import { UpdateApp } from "./UpdateApp";
@@ -30,6 +30,10 @@ describe("UpdateApp", () => {
   beforeEach(() => {
     openUrl.mockClear();
     closeWindow.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("sends Install, Skip and Check to the backend", async () => {
@@ -72,6 +76,10 @@ describe("UpdateApp", () => {
   });
 
   it("keeps the window usable when a command fails", async () => {
+    // `update_install` deliberately fails, so `command()` logs the
+    // rejection. That logging is part of the contract under test, so
+    // the warning is captured and asserted on instead of left to print.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockCommands({
       update_phase: () => AVAILABLE,
       update_install: () => {
@@ -81,5 +89,6 @@ describe("UpdateApp", () => {
     render(<UpdateApp />);
     await userEvent.click(await screen.findByRole("button", { name: "Install and Restart" }));
     expect(screen.getByRole("button", { name: "Later" })).toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith('command("update_install") failed:', expect.anything());
   });
 });

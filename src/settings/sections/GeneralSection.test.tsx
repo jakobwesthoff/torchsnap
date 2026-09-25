@@ -27,7 +27,10 @@ vi.mock("../../hooks/useSetting", () => ({
 
 describe("GeneralSection", () => {
   it("has the updates section between startup and advanced", async () => {
-    mockCommands({ build_info: () => ({ version: "0.12.0", gitHash: "abc1234" }) });
+    mockCommands({
+      build_info: () => ({ version: "0.12.0", gitHash: "abc1234" }),
+      shortcut_problems: () => ({}),
+    });
     render(<GeneralSection />);
 
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);

@@ -4,12 +4,20 @@
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mockCommands } from "../test/tauri";
 import { WelcomeWindow, type WelcomeProps } from "./WelcomeWindow";
 
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({ close: vi.fn(), minimize: vi.fn() }),
 }));
+
+// The shortcut page renders `ShortcutSection`, which asks the backend
+// for shortcut problems on mount. None of these tests care about that
+// note, so every test gets a clean answer for it up front.
+beforeEach(() => {
+  mockCommands({ shortcut_problems: () => ({}) });
+});
 
 function props(overrides: Partial<WelcomeProps> = {}): WelcomeProps {
   return {

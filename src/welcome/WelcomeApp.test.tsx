@@ -5,7 +5,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCommands } from "../test/tauri";
 import { WelcomeApp } from "./WelcomeApp";
 
@@ -38,6 +38,11 @@ vi.mock("../hooks/useSetting", () => ({
   },
 }));
 
+// The shortcut page renders `ShortcutSection`, which asks the backend
+// for shortcut problems on mount. None of these tests care about that
+// note, so every `mockCommands` call below answers it with none.
+const NO_SHORTCUT_PROBLEMS = { shortcut_problems: () => ({}) };
+
 const FORWARD = ["Choose your shortcut", "Next: Startup and updates", "Next: Try it"];
 
 async function goToPage(page: number) {
@@ -56,8 +61,12 @@ describe("WelcomeApp", () => {
     autostart.disable.mockClear();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("reads launch at login and turns it on", async () => {
-    mockCommands({});
+    mockCommands(NO_SHORTCUT_PROBLEMS);
     render(<WelcomeApp />);
     await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
@@ -69,7 +78,7 @@ describe("WelcomeApp", () => {
 
   it("turns launch at login off", async () => {
     autostart.isEnabled.mockResolvedValue(true);
-    mockCommands({});
+    mockCommands(NO_SHORTCUT_PROBLEMS);
     render(<WelcomeApp />);
     await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
@@ -80,7 +89,7 @@ describe("WelcomeApp", () => {
 
   it("treats an unreadable autostart state as off", async () => {
     autostart.isEnabled.mockRejectedValue(new Error("no launch agent"));
-    mockCommands({});
+    mockCommands(NO_SHORTCUT_PROBLEMS);
     render(<WelcomeApp />);
     await goToPage(3);
     const toggle = screen.getByRole("switch", { name: "Launch at login" });
@@ -90,7 +99,7 @@ describe("WelcomeApp", () => {
 
   it("prefills the stored update answer", async () => {
     settings.set("updates.automaticChecks", false);
-    mockCommands({});
+    mockCommands(NO_SHORTCUT_PROBLEMS);
     render(<WelcomeApp />);
     await goToPage(3);
     expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveAttribute(
@@ -102,6 +111,7 @@ describe("WelcomeApp", () => {
   it("tells the backend about the last step and finishes there", async () => {
     const calls: unknown[] = [];
     mockCommands({
+      ...NO_SHORTCUT_PROBLEMS,
       welcome_ready_to_finish: (params) => void calls.push(["ready", params]),
       welcome_not_ready: () => void calls.push(["notReady"]),
       welcome_finish: () => void calls.push(["finish"]),
@@ -123,7 +133,12 @@ describe("WelcomeApp", () => {
   });
 
   it("stays usable when the backend refuses to finish", async () => {
+    // `welcome_finish` deliberately fails, so `command()` logs the
+    // rejection. That logging is part of the contract under test, so
+    // the warning is captured and asserted on instead of left to print.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockCommands({
+      ...NO_SHORTCUT_PROBLEMS,
       welcome_ready_to_finish: () => {},
       welcome_finish: () => {
         throw new Error("The welcome is not on its last step.");
@@ -134,5 +149,6 @@ describe("WelcomeApp", () => {
     const main = within(screen.getByRole("main"));
     await userEvent.click(main.getByRole("button", { name: "Open the launcher" }));
     expect(main.getByRole("button", { name: "Open the launcher" })).toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith('command("welcome_finish") failed:', expect.anything());
   });
 });
