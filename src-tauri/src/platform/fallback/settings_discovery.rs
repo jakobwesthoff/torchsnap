@@ -23,8 +23,4 @@ impl SettingsDiscovery for FallbackSettingsDiscovery {
     fn icon(&self, _pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>> {
         Ok(None)
     }
-
-    fn open(&self, pane_id: &str, _app: &tauri::AppHandle) -> anyhow::Result<()> {
-        anyhow::bail!("opening settings pane {pane_id} is not supported on this platform")
-    }
 }

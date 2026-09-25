@@ -23,12 +23,4 @@ impl AppDiscovery for FallbackDiscovery {
     fn icon(&self, _app: &DiscoveredApp) -> anyhow::Result<Option<image::DynamicImage>> {
         Ok(None)
     }
-
-    fn open(&self, _entry_id: &str, _app: &tauri::AppHandle) -> anyhow::Result<()> {
-        anyhow::bail!("opening applications is not supported on this platform")
-    }
-
-    fn reveal(&self, _entry_id: &str, _app: &tauri::AppHandle) -> anyhow::Result<()> {
-        anyhow::bail!("revealing applications is not supported on this platform")
-    }
 }
