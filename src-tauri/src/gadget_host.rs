@@ -1042,7 +1042,7 @@ impl GadgetHost {
             Err(Unresolved::EmptySlot) => {
                 eprintln!(
                     "execute: entry '{entry_id}' from gadget '{source}' has no action in slot \
-                     {slot:?} (bug — the UI should only offer filled slots)"
+                     {slot:?} (bug: the UI should only offer filled slots)"
                 );
                 return Ok(PostAction::Nothing);
             }

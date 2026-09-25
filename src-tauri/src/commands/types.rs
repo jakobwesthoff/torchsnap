@@ -381,8 +381,8 @@ impl FrecencyTarget for SourcedEntry {
 // and translates them into `SearchMessage`s for the frontend.
 // =========================================================
 
-/// Return type of a gadget's `search()`. Not serialized — only
-/// used between gadget and host within the same process.
+/// Return type of a gadget's `search()`. Not serialized: it only
+/// passes between gadget and host within the same process.
 #[derive(Debug, Clone)]
 pub enum GadgetResponse<C = String> {
     /// Standard result list entries.
