@@ -7,6 +7,18 @@
   `[Unreleased]` (Keep a Changelog: `Added`, `Changed`, `Removed`,
   `Fixed`).
 
+## Tests and quality gates
+
+- Every piece of code you touch gets thorough test coverage, edited code
+  as much as new code. Cover the behavior of each changed path,
+  including its error and edge cases, not just the happy path.
+- Work test-first. For a bug, write a regression test that reproduces
+  it, run it and see it fail, then fix the code until it passes.
+- Keep every quality gate green at all times: `just fmt-check`,
+  `just lint`, `just check`, `just test`. Clippy runs with
+  `-D warnings`, so a clippy warning is a failure. Fix it rather than
+  silencing it with `#[allow]`.
+
 ## License headers
 
 Every source file starts with the MPL-2.0 header, after a shebang line if
