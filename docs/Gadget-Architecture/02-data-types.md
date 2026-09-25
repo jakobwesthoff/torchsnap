@@ -38,13 +38,19 @@ variant entry-icon {
   asset-icon(string),  // path relative to gadget archive root (gadget-produced),
                        // or absolute path (host-produced, e.g. website-metadata favicons)
   emoji(string),       // single Unicode emoji rendered as text
+  app-icon(string),    // platform application identifier, e.g. a macOS bundle id
 }
 ```
 
 The host mirrors this 1:1 in `EntryIcon`. `asset-icon` is what the
 website-metadata service returns for favicons (as absolute paths) and
 what gadgets use for bundled icon assets (as relative paths within
-their archive).
+their archive). `app-icon` requires the `icon-cache` permission in the
+manifest; the WASM response pass resolves it to an `asset-icon`
+pointing at the cached image, or drops the icon if the application
+cannot be found or the permission is missing (`resolve_entry_icon` in
+`src-tauri/src/wasm/bindings.rs`). `app-icon` never reaches the
+frontend as its own variant.
 
 ### `action`
 
