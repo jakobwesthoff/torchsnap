@@ -1,61 +1,41 @@
 ---
 kind: feature
 status: open
+area: [.github/workflows/ci.yml]
 ---
 
-# GitHub Actions CI pipeline
+# GitHub Actions CI: check Linux and Windows compilation
 
-Set up automated builds to catch cross-platform compilation
-breakage early. We develop on macOS but must ensure Linux and
-Windows continue to compile.
+`.github/workflows/ci.yml` runs `just fullcycle` (Rust check,
+clippy, frontend build, formatting) on every push to `main` and on
+pull requests, gated to `runs-on: macos-latest` since the host code
+is mostly macOS-only and releases build on Apple silicon. It skips
+private-repository runs entirely (`if: !github.event.repository.private`),
+so nothing has run yet.
 
-## Minimum viable pipeline
+Still missing: a check that the fallback (non-macOS) code paths
+compile on Linux and Windows, so a macOS-only dependency added by
+mistake is caught before it breaks those platforms.
 
-Trigger on push to `main` and on pull requests:
+## Remaining work
 
-1. **Rust check** (all platforms):
-   - `cargo check` on macOS, Linux, Windows
-   - macOS is the full check (includes tauri-nspanel, objc2-app-kit)
-   - Linux/Windows check the fallback path (no macOS-only deps)
-2. **Frontend build**:
-   - `bun install && bun run build` (typecheck + vite build)
-   - Only needs to run on one platform (output is the same)
-3. **Clippy**:
-   - `cargo clippy` on macOS (superset of all code paths)
-4. **Formatting**:
-   - `cargo fmt --check`
-   - Could add prettier check for frontend
+- Add a `cargo check` job (or matrix leg) for `ubuntu-latest` and
+  `windows-latest` against the fallback path, no macOS-only deps
+  (`tauri-nspanel`, `objc2-app-kit`).
+- Linux runner needs Tauri's Linux build dependencies if a full
+  `cargo check` on the workspace pulls in the Tauri crate:
+  `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`,
+  `patchelf`.
+- Windows runner needs WebView2 (pre-installed on GitHub's Windows
+  runners) if the same applies there.
 
 ## Stretch goals
 
-- **Full Tauri build** on all three platforms (produces actual
-  app bundles). Slower but catches linker errors that `check`
-  misses.
-- **Release builds** on tag push — produce macOS `.dmg`, Linux
-  `.AppImage`/`.deb`, Windows `.msi`/`.exe` and attach to GitHub
-  Release.
-- **Tauri's official GitHub Action** (`tauri-apps/tauri-action`)
-  handles cross-platform builds and artifact upload.
-
-## Caching
-
-- Cache `~/.cargo/registry` and `target/` between runs
-- Cache `node_modules/` (bun lockfile hash as key)
-- macOS runners are expensive — minimize macOS-only steps
-
-## Matrix
-
-```yaml
-strategy:
-  matrix:
-    os: [macos-latest, ubuntu-latest, windows-latest]
-```
-
-## Dependencies on runners
-
-- macOS: Xcode CLI tools (pre-installed on GitHub runners)
-- Linux: `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`,
-  `librsvg2-dev`, `patchelf` (Tauri Linux deps)
-- Windows: WebView2 (pre-installed on modern Windows runners)
-- All: Rust toolchain (via `dtolnay/rust-toolchain`), bun
-  (via `oven-sh/setup-bun`)
+- Full Tauri build (real app bundles) on all three platforms, or via
+  `tauri-apps/tauri-action`. Slower than `check` but catches linker
+  errors `check` misses.
+- Release builds on tag push producing platform bundles attached to
+  a GitHub Release. Currently releases are built, signed and
+  published from a developer machine on purpose (CLAUDE.md,
+  "Releases and signing"), so this would need to fit that model
+  rather than replace it.

@@ -13,13 +13,13 @@ Every place the host runs gadget code on the blocking pool
 unwraps the `JoinHandle` result with a panic-on-panic `expect`:
 
 - prefix search: `.expect("prefix search task not panicked")`
-  (`src-tauri/src/gadget_host.rs:681-685`)
+  (`src-tauri/src/gadget_host.rs:751`)
 - catalog search: `.expect("catalog search task not panicked")`
-  (`gadget_host.rs:743-749`)
+  (`gadget_host.rs:815`)
 - query fan-out: `result.expect("query search task not
-  panicked")` (`gadget_host.rs:783-784`)
+  panicked")` (`gadget_host.rs:850`)
 - execute: `.expect("search_execute task must not panic")`
-  (`src-tauri/src/commands/mod.rs:61`)
+  (`src-tauri/src/commands/mod.rs:62`)
 
 A panic inside any single gadget's `search()` / `entries()` /
 `execute()` — native gadget bug, or a WASM-bridge panic such as

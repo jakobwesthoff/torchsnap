@@ -220,7 +220,7 @@ here. Commits in this phase may not build. Commit after each step.
   where they describe actions, `execute()`, `data` or the version, the
   crate docs at the top of `gadgets/gadget-sdk/src/lib.rs`, and the
   feature list in `gadgets/template/src/lib.rs`.
-- [ ] In torchsnap-docs, following its `CLAUDE.md` and
+- [x] In torchsnap-docs, following its `CLAUDE.md` and
   `docs/documentation-writing-howto.md`: `development/search.mdx`,
   `development/interfaces/index.mdx` (version note),
   `development/interfaces/imports.mdx`,
@@ -232,13 +232,13 @@ here. Commits in this phase may not build. Commit after each step.
 
 ## Phase 7: landing
 
-- [ ] `just fullcycle` on the branch tip.
-- [ ] Delete todo `01kr2357mcz36g4gte0c0t1qz5` and its references;
+- [x] `just fullcycle` on the branch tip.
+- [x] Delete todo `01kr2357mcz36g4gte0c0t1qz5` and its references;
   ADR 55 and ADR 56 keep their facts.
 - [ ] Merge into `main` with `--no-ff`. Push `main` after the
   maintainer confirms.
 - [ ] Right after the code is on `main`: merge the torchsnap-docs
   branch into its `main` and push it.
-- [ ] Sweep all todos for work that is now done, with Sonnet or Haiku
+- [x] Sweep all todos for work that is now done, with Sonnet or Haiku
   agents (`CLAUDE.md`, "Todos").
 - [ ] Remove the worktree and delete this plan.

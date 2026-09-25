@@ -6,55 +6,46 @@ area: [gadgets/zerotier/src/lib.rs]
 tags: [unconfirmed]
 ---
 
-# ZeroTier: auth/daemon state is frozen at enable() — daemon starting or dying later is misreported
+# ZeroTier: daemon dying after enable() is misreported as empty state
 
 ## Problem
 
-`runtime.auth_state` is computed exactly once, in `initialize()`
-(`gadgets/zerotier/src/lib.rs:142-167`), from a single
-`GET /status` probe. It is never revisited afterwards (only a
-`manualToken` settings change re-runs `initialize`,
-`lib.rs:122-132`). Two stale-state directions follow:
+The "daemon starts after Torchsnap" direction of this bug is fixed:
+`should_retry_auth`/`auth_retry_due` (`gadgets/zerotier/src/lib.rs:105-126`)
+re-run `initialize()` from `search()` on a 5-second throttle while
+`auth_state` is not `Validated`, so a daemon that comes up after
+`enable()` is picked up without a restart.
 
-1. **Daemon starts after Torchsnap.** `enable()` ran while
-   `zerotier-one` was down → `auth_state =
-   DaemonUnreachable`. Every subsequent ZT query shows the
-   "ZeroTier daemon not running" failure entry
-   (`failure_entry`, `lib.rs:313-349`) — permanently, even
-   after the daemon is up and reachable, until the gadget is
-   disabled/re-enabled or the token setting is touched. Since
-   `failure_entry` returns before any live fetch, the gadget
-   never even attempts a request that would prove the daemon is
-   back. For a daemon commonly started on demand, this is the
-   normal sequence, not an edge case.
+The other direction remains. Once `auth_state` reaches `Validated`,
+`auth_retry_due` never re-checks it (`lib.rs:106-108`: `if state ==
+AuthState::Validated { return false; }`). If the daemon dies after
+that point, `current_live_state` (`lib.rs:529-555`) gets `Err` from
+`list_networks` and returns `unwrap_or_default()` (`lib.rs:554`):
+empty live state, no error surfaced. `failure_entry`
+(`lib.rs:393-406`) only inspects `runtime.auth_state`, which is
+still `Validated`, so it returns `None` and no warning entry is
+shown. All joined networks silently render as "Stored" (KnownOnly)
+with a "Connect" action; activating one issues a join against a dead
+daemon and surfaces a raw error string.
 
-2. **Daemon dies after enable().** `auth_state` stays
-   `Validated`, so no failure entry is shown; `current_live_state`
-   gets `Err` from `list_networks` and returns
-   `unwrap_or_default()` — empty live state (`lib.rs:462-488`).
-   All joined networks silently render as "Stored" (KnownOnly)
-   with a "Connect" action; activating one issues a join against
-   a dead daemon and surfaces a raw error string.
-
-Related comment drift: the `Runtime.network_cache` field doc says
-"The slot stores the full `Result` so cache hits don't lose error
-context" (`lib.rs:70-73`), but the only consumer immediately
-discards the error (`result.unwrap_or_default()`, `lib.rs:487`) —
+Related comment drift: the `Runtime.network_cache` field doc still
+says "The slot stores the full `Result` so cache hits don't lose
+error context" (`lib.rs:76-79`), but the only consumer immediately
+discards the error (`result.unwrap_or_default()`, `lib.rs:554`), so
 the preserved context is never used.
 
 ## Suggested fix
 
-Derive reachability from the *live fetch outcome* instead of the
-enable-time snapshot:
+Derive reachability from the *live fetch outcome*, not only from the
+enable-time/retry-time `auth_state`:
 
 - In `current_live_state`, keep the `Result` and let
-  `build_search_entries` distinguish "fresh error" (show the
-  daemon-unreachable failure entry, or a stale-data badge) from
-  "fresh data" (clear a previously-set `DaemonUnreachable`).
-- For direction 1, let a failed enable-time validation fall
-  through to normal search flow: attempt the (1 s rate-limited)
-  live fetch and upgrade `auth_state` to `Validated` when it
-  succeeds.
+  `build_search_entries` (`lib.rs:349-384`) distinguish "fresh
+  error" (show a daemon-unreachable failure entry, or a stale-data
+  badge) from "fresh data" (keep `auth_state` at `Validated`).
+- On a fresh error, downgrade `runtime.auth_state` to
+  `DaemonUnreachable` so `auth_retry_due` starts retrying again and
+  `failure_entry` fires on the next query.
 
 The 1-second `RateLimitCache` already bounds probe frequency, so
 this adds no daemon load.

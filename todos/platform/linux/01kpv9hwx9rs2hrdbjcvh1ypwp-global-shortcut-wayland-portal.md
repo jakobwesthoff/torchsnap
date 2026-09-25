@@ -151,9 +151,9 @@ Concretely:
 - `docs/Howto-build-on-fedora-43.md` — user-facing documentation
   of the current Control-API-socket workaround. Remove or rewrite
   when this todo lands.
-- `src-tauri/src/gadget_host.rs:322-405` — shortcut registration
-  fan-out, where the dispatch split lives.
-- `src-tauri/src/lib.rs:526` — the
+- `src-tauri/src/gadget_host.rs:622` (`register_all_shortcuts`):
+  shortcut registration fan-out, where the dispatch split lives.
+- `src-tauri/src/lib.rs:835`: the
   `.plugin(tauri_plugin_global_shortcut::...)` registration; keep
   it, just stop using it on Wayland-Linux.
 - `src-tauri/src/platform/fallback/` — rename to `linux/` when this

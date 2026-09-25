@@ -33,6 +33,10 @@ This would serialize through `SourcedEntry` to the frontend, where custom UI
 components can read it from each entry without parsing conventions out of
 display fields.
 
+This is separate from the execute-time `data` field that ADR 55 removed:
+that one never reached the frontend and carried what an action does, which
+per-slot commands now cover. This field would be display metadata for views.
+
 ## Concrete use case
 
 The calculator gadget's history entries need a `computed_at` timestamp for

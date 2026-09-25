@@ -7,7 +7,9 @@ area: [src-tauri/src]
 
 # Host-side errors go only to stderr (`eprintln!`) — invisible in a packaged app
 
-The pattern is codebase-wide (approximately 30 call sites).
+The pattern is codebase-wide: `rg -c "eprintln!" src-tauri/src` counts
+67 call sites across 19 files (up from ~30 when this todo was
+written).
 
 ## Problem
 
@@ -18,20 +20,20 @@ infrastructure is the gadget-log pipeline under
 `src-tauri/src/wasm/logging/`, which feeds devtools but is not
 used by host code.
 
-Representative call sites (from `grep -rn "eprintln!" src-tauri/src`):
+Representative call sites:
 
-- `src-tauri/src/lib.rs:232,248,350,368,407,435,463,471,495` —
-  window creation, chrome hiding, launcher frame/show/hide/warm-up
-  failures, event-emit failures.
-- `src-tauri/src/gadget_host.rs:564,604,612,633,804,974,980,1144,1214,1220,1232`
-  — shortcut registration failures, layout races, emit failures.
+- `src-tauri/src/lib.rs` (19 sites): window creation, chrome
+  hiding, launcher frame/show/hide/warm-up failures, event-emit
+  failures, gadget-uninstall cleanup.
+- `src-tauri/src/gadget_host.rs` (10 sites): shortcut registration
+  failures, layout races, emit failures.
 - `src-tauri/src/platform/macos/app_discovery.rs:127`,
   `.../settings_discovery.rs:65`,
-  `.../launcher_panel.rs:102,150` — discovery parse skips, panel
+  `.../launcher_panel.rs:142`: discovery parse skips, panel
   retrieval failures inside main-thread closures.
-- `src-tauri/src/network/website_metadata/favicon_store.rs:183`,
+- `src-tauri/src/network/website_metadata/favicon_store.rs:187`,
   `.../fetch.rs:197`, `src-tauri/src/icons/icon_cache.rs:94,105,112`,
-  `src-tauri/src/gadgets/system_preferences.rs:120`.
+  `src-tauri/src/gadgets/system_preferences.rs:119`.
 
 When Torchsnap runs as a bundled `.app` (not launched from a
 terminal), stderr is not attached to anything the user or

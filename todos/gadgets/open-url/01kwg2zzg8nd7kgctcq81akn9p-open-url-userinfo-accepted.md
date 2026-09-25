@@ -10,7 +10,7 @@ area: [gadgets/open-url/src/lib.rs]
 ## Problem
 
 The bare-domain path in `detect_url`
-(`gadgets/open-url/src/lib.rs:93-121`) prepends `https://` and
+(`gadgets/open-url/src/lib.rs:73-120`) prepends `https://` and
 validates only the parsed *host* against the PSL:
 
 ```rust
