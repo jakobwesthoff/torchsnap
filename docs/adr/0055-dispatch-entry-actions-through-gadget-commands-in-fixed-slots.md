@@ -52,7 +52,7 @@ In the gadgets of this repository:
   WASM gadgets get Cmd+Shift+R for `reveal`.
 - The calculator views call `onExecute` with the computed result as the
   entry id. The host finds no stored entry with that id, so nothing is
-  copied (`todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md`).
+  copied.
 
 The gadget API may change incompatibly before the 1.0.0 release, and no
 external gadgets exist yet.
@@ -184,8 +184,8 @@ Messaging gets a typed layer in the same refactor, with the same
 pattern: a `Messaging` trait with a `Request` enum and a blanket impl of
 `MessagingGuest`. The WIT `handle-message` and the frontend's
 `sendMessage` stay as they are, and launcher views and settings panels
-keep sharing one message channel
-(`todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md`).
+keep sharing one message channel. For methods without arguments, the
+frontend's `{}` payload is accepted by a unit variant.
 
 ### Host
 

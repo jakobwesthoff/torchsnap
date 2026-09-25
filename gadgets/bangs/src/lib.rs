@@ -198,34 +198,41 @@ impl SearchGuest for BangsPlugin {
 // Messaging (settings UI RPC)
 // =========================================================
 
-impl MessagingGuest for BangsPlugin {
-    fn handle_message(method: String, _payload: String) -> Result<String, String> {
-        match method.as_str() {
-            "stats" => {
-                let db = sql_storage::connection();
-                let stats = query_stats(&db)?;
-                serde_json::to_string(&stats).map_err(|e| format!("serialize stats: {e}"))
-            }
-            "refresh" => {
-                // Network-only refresh. On failure, return
-                // a JSON `{ "error": "..." }` payload so the
-                // settings UI can show the message without
-                // the existing data getting wiped.
-                let db = sql_storage::connection();
+/// Every method the bangs settings panel calls through
+/// `sendMessage`.
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(tag = "method", content = "payload", rename_all = "snake_case")]
+enum Request {
+    /// Current counts of the bang database.
+    Stats,
+    /// Re-import the bang database from the network.
+    Refresh,
+}
+
+impl Messaging for BangsPlugin {
+    type Request = Request;
+
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        let db = sql_storage::connection();
+        match request {
+            Request::Stats => stats_response(&db),
+            Request::Refresh => {
+                // Network-only refresh. On failure, return a
+                // `{ "error": "..." }` payload so the settings UI
+                // can show the message without the existing data
+                // getting wiped.
                 match try_import_from_network(&db) {
-                    Ok(()) => {
-                        let stats = query_stats(&db)?;
-                        serde_json::to_string(&stats).map_err(|e| format!("serialize stats: {e}"))
-                    }
-                    Err(e) => {
-                        let payload = json!({ "error": e });
-                        Ok(payload.to_string())
-                    }
+                    Ok(()) => stats_response(&db),
+                    Err(e) => Ok(json!({ "error": e })),
                 }
             }
-            other => Err(format!("unknown message method: {other}")),
         }
     }
+}
+
+fn stats_response(db: &SqlHandle) -> Result<serde_json::Value, String> {
+    let stats = query_stats(db)?;
+    serde_json::to_value(&stats).map_err(|e| format!("serialize stats: {e}"))
 }
 
 // =========================================================
@@ -596,6 +603,21 @@ fn query_stats(db: &SqlHandle) -> Result<BangStats, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use torchsnap_gadget_sdk::messaging;
+
+    #[test]
+    fn settings_requests_decode_from_the_empty_payload_the_panel_sends() {
+        assert_eq!(messaging::decode_request("stats", "{}"), Ok(Request::Stats));
+        assert_eq!(
+            messaging::decode_request("refresh", "{}"),
+            Ok(Request::Refresh)
+        );
+    }
+
+    #[test]
+    fn unknown_settings_request_is_rejected() {
+        messaging::decode_request::<Request>("reimport", "{}").expect_err("not a bangs method");
+    }
 
     // ---- find_bang_token ----------------------------------
 

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rust gadgets can implement `Messaging` from the gadget SDK instead of
+  `MessagingGuest`: one enum lists every method the frontend calls,
+  and the SDK decodes each call into it and rejects unknown methods
+  and mismatched payloads before gadget code runs. The JSON helpers
+  `parse_payload` and `to_response` are no longer in the prelude.
+  Import them from `torchsnap_gadget_sdk::messaging`.
+- Gadget views get `openSettings()` from `useLauncher()`. It opens the
+  Settings window on the gadget's own section and closes the launcher,
+  as returning `open-settings` from `execute()` does.
 - Settings explains a global shortcut that does not work below its
   row: no shortcut set, not a valid shortcut, already used by another
   Torchsnap shortcut, or refused by the system because another app
@@ -16,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enter on a calculator result, inline or after `=`, and a click on a
+  calculator history row copy the result and close the launcher.
+  Before, nothing was copied and the launcher stayed open.
+- The gadget SDK's test helpers `setupSdkGlobalsForTesting` and
+  `MockGadgetContextProvider` load. They imported the host sources from
+  a wrong path. `MockGadgetContextProvider` also provides the
+  keybinding context, so components that register key bindings render
+  in tests.
+- While typing fast, a slow gadget's results for an earlier keystroke
+  no longer replace the results of the current one in the host. Before,
+  an action could run with the older entry, or do nothing because the
+  entry was gone.
 - The gadget interface docs name the filesystem permission section
   `[permissions.filesystem]`, the name the manifest parser accepts.
   They said `[permissions.fs]`, which grants nothing.

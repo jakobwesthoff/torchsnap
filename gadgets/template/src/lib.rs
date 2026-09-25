@@ -20,10 +20,9 @@
 //   import and parsing the JSON-encoded values
 // - Reacting to user setting changes via the
 //   `on_setting_changed` lifecycle export
-// - Custom frontend ↔ gadget RPC via the
-//   `messaging::handle-message` guest export — your frontend
-//   calls `sendMessage(method, payload)` and this method
-//   dispatches by name
+// - Custom frontend ↔ gadget RPC via the SDK's `Messaging`
+//   trait — your frontend calls `sendMessage(method, payload)`
+//   and the SDK decodes each call into a `Request` variant
 // - Per-gadget SQLite storage via the `sql_storage::connection` host
 //   import and a `[storage.sql]` block in `manifest.toml`
 //   listing migration files. The host creates the database
@@ -115,24 +114,6 @@ impl LifecycleGuest for TemplatePlugin {
 }
 
 // =========================================================
-// Custom frontend ↔ gadget messaging
-//
-// Your React frontend calls `sendMessage(method, payload)`
-// (from `useGadgetRuntime()`); the host routes the call to
-// `handle_message` below. Dispatch by `method` and return a
-// JSON-encoded response on success or `Err(string)` on
-// failure — the frontend's promise will resolve / reject
-// accordingly.
-//
-// Both the incoming `payload` and the outgoing success arm
-// are JSON-encoded strings, so use `serde_json::from_str`
-// for parsing and `serde_json::to_string` for serializing.
-// Define dedicated request / response structs and derive
-// `Serialize` / `Deserialize` for them — that gives you
-// strong typing on both sides of the boundary.
-// =========================================================
-
-// =========================================================
 // Scheduled background tasks
 //
 // Each `[[tasks]]` entry in `manifest.toml` declares a
@@ -166,41 +147,60 @@ impl TasksGuest for TemplatePlugin {
     }
 }
 
-impl MessagingGuest for TemplatePlugin {
-    fn handle_message(method: String, payload: String) -> Result<String, String> {
-        match method.as_str() {
-            // `echo` round-trips the payload back unchanged.
-            // Use this as a smoke test from your frontend
-            // when you first wire up `sendMessage` — if the
-            // exact payload comes back, the bridge is
-            // working end to end.
-            "echo" => Ok(payload),
+// =========================================================
+// Custom frontend ↔ gadget messaging
+//
+// Your React frontend calls `sendMessage(method, payload)`
+// (from `useGadgetRuntime()`). The SDK decodes each call
+// into the `Request` enum below before `handle` runs, and
+// rejects an unknown method or a payload that does not fit
+// its variant. `handle` returns the JSON value the
+// frontend's promise resolves with, or `Err(string)` to
+// reject it.
+// =========================================================
 
-            // `current-greeting` reads the `greeting`
-            // setting and returns it as a JSON object so the
-            // frontend can render it without parsing the raw
-            // setting itself. Demonstrates composing the
-            // settings API with the messaging API.
-            "current-greeting" => {
+/// Every method the template frontend calls through
+/// `sendMessage`. The adjacent tagging maps the method name to
+/// the variant and the payload to its fields; kebab-case matches
+/// the method names the frontend uses.
+#[derive(Debug, serde::Deserialize, PartialEq)]
+#[serde(tag = "method", content = "payload", rename_all = "kebab-case")]
+enum Request {
+    /// Round-trips the payload back unchanged. Use this as a
+    /// smoke test from your frontend when you first wire up
+    /// `sendMessage` — if the exact payload comes back, the
+    /// bridge is working end to end.
+    Echo(serde_json::Value),
+    /// Reads the `greeting` setting and returns it as a JSON
+    /// object so the frontend can render it without parsing the
+    /// raw setting itself. Demonstrates composing the settings
+    /// API with the messaging API.
+    CurrentGreeting,
+    /// Returns the number of rows in `enable_log` — i.e. how
+    /// many times this gadget has been enabled. Demonstrates
+    /// composing the SQL API with the messaging API and
+    /// round-tripping a typed result row across the WIT
+    /// boundary.
+    EnableCount,
+}
+
+impl Messaging for TemplatePlugin {
+    type Request = Request;
+
+    fn handle(request: Request) -> Result<serde_json::Value, String> {
+        match request {
+            Request::Echo(payload) => Ok(payload),
+            Request::CurrentGreeting => {
                 let greeting: String = settings::get_or_else("greeting", || "(unset)".into());
-                messaging::to_response(&serde_json::json!({ "greeting": greeting }))
+                Ok(serde_json::json!({ "greeting": greeting }))
             }
-
-            // `enable-count` returns the number of rows in
-            // `enable_log` — i.e. how many times this gadget
-            // has been enabled. Demonstrates composing the
-            // SQL API with the messaging API and round-
-            // tripping a typed result row across the WIT
-            // boundary.
-            "enable-count" => {
+            Request::EnableCount => {
                 let db = sql_storage::connection();
                 let row = sql_storage::query_one(&db, "SELECT COUNT(*) FROM enable_log", &[])
                     .map_err(|e| format!("query: {e}"))?;
                 let count = row.and_then(|r| r.integer(0)).unwrap_or(0);
-                messaging::to_response(&serde_json::json!({ "enable_count": count }))
+                Ok(serde_json::json!({ "enable_count": count }))
             }
-
-            other => Err(format!("unknown method: {other}")),
         }
     }
 }
@@ -331,4 +331,36 @@ fn website_metadata_demo(domain: &str) -> Option<ScoredEntry> {
         }],
         data: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use torchsnap_gadget_sdk::messaging;
+
+    #[test]
+    fn echo_request_carries_any_json_payload() {
+        assert_eq!(
+            messaging::decode_request("echo", r#"{"ping":[1,2]}"#),
+            Ok(Request::Echo(serde_json::json!({ "ping": [1, 2] })))
+        );
+    }
+
+    #[test]
+    fn demo_view_requests_decode_from_an_empty_payload() {
+        assert_eq!(
+            messaging::decode_request("current-greeting", "{}"),
+            Ok(Request::CurrentGreeting)
+        );
+        assert_eq!(
+            messaging::decode_request("enable-count", "{}"),
+            Ok(Request::EnableCount)
+        );
+    }
+
+    #[test]
+    fn snake_case_method_names_are_rejected() {
+        messaging::decode_request::<Request>("current_greeting", "{}")
+            .expect_err("the template uses kebab-case method names");
+    }
 }

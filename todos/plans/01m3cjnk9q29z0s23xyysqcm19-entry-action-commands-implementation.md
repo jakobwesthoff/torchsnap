@@ -13,9 +13,6 @@ and coordinates these todos:
 
 | Todo | Phase |
 |---|---|
-| `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md` | 1 |
-| `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md` | 2 |
-| `todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md` | 4 |
 | `todos/gadget-host/api/01kr2357mcz36g4gte0c0t1qz5-entry-action-commands-and-slots.md` | 5 to 7 |
 
 The ADRs hold the design decisions. The todos hold the per-topic
@@ -50,97 +47,101 @@ checks. Tick the boxes as the work progresses.
 
 ## Phase 0: setup
 
-- [ ] `git worktree add ../torchsnap.worktrees/entry-action-commands -b entry-action-commands main`
-- [ ] Baseline `just fullcycle` in the worktree. If it fails, stop and
+- [x] `git worktree add ../torchsnap.worktrees/entry-action-commands -b entry-action-commands main`
+- [x] Baseline `just fullcycle` in the worktree. If it fails, stop and
   report what fails before changing anything.
 
 ## Phase 1: generation guard for the entry store
 
-Todo `01kwg1ph0qcdqtara5jcw7abym`. Must land before phase 5, because
-with commands a stale entry runs a stale command.
+Done: `EntryStore` drops results of an older search. Must land before
+phase 5, because with commands a stale entry runs a stale command.
 
-- [ ] Failing tests in `src-tauri/src/entry_store.rs`: a new generation
+- [x] Failing tests in `src-tauri/src/entry_store.rs`: a new generation
   clears the store; an insert for the current generation is stored; an
-  insert for an older generation is dropped; the S1/S2 interleaving
-  from the todo leaves only S2's entries.
-- [ ] Give `EntryStore` a generation: starting a search clears the map
+  insert for an older generation is dropped; two overlapping searches
+  leave only the newer one's entries.
+- [x] Give `EntryStore` a generation: starting a search clears the map
   and returns a new generation, and `insert` takes the generation it
   was produced for. Check and insert happen under the same write lock.
-- [ ] `GadgetHost::search` takes the generation at the top and passes
+- [x] `GadgetHost::search` takes the generation at the top and passes
   it to every `store_sourced_entries` call.
-- [ ] `CHANGELOG.md`, Fixed.
-- [ ] Delete the todo, remove its `depends-on` entry from
+- [x] `CHANGELOG.md`, Fixed.
+- [x] Delete the todo, remove its `depends-on` entry from
   `01kr2357mcz36g4gte0c0t1qz5` and its row in this plan's table, and
   update the other references.
-- [ ] `just fullcycle`, commit.
+- [x] `just fullcycle`, commit.
 
 ## Phase 2: calculator copy on Enter
 
-Todo `01m3cfkn09sjm61eemfe83vndq`. Uses the ADR 55 rule for views: a
-view acting on its own state calls `sendMessage`, then a launcher
-action.
+Done: the views copy through a `copy` message, then `dismiss()`. Uses
+the ADR 55 rule for views: a view acting on its own state calls
+`sendMessage`, then a launcher action.
 
-- [ ] Add gadget view tests to the vitest run: extend `include` in
+- [x] Add gadget view tests to the vitest run: extend `include` in
   `vitest.config.ts` with the gadget frontends, make the
   `@torchsnap/gadget-sdk/*` shims resolve, and call
   `setupSdkGlobalsForTesting()` from `packages/gadget-sdk/src/testing/`.
   Commit this on its own once a trivial gadget view test passes.
-- [ ] Failing tests with `MockGadgetContextProvider`: Enter in
+- [x] Failing tests with `MockGadgetContextProvider`: Enter in
   `CalculatorInline`, Enter in `CalculatorView` (current result and
   selected history row), and a click on a history row each call
   `sendMessage("copy", { expression, result, resultType })` and then
   `dismiss()`.
-- [ ] Calculator backend: a `copy` message that writes the result with
+- [x] Calculator backend: a `copy` message that writes the result with
   `clipboard::write_text` and saves the history entry. Unit-test its
   payload decoding (host imports cannot run in host-target tests).
   Remove `save_history` if nothing calls it anymore.
-- [ ] Views: `await sendMessage("copy", …)`, then `dismiss()`. No more
+- [x] Views: `await sendMessage("copy", …)`, then `dismiss()`. No more
   `onExecute` with a result string, no separate `save_history`.
 - [ ] Manual check in the app: `=2+2` and Enter, `2+2` inline and
   Enter, click on a history row. Each copies and closes the launcher.
-- [ ] `CHANGELOG.md`, Fixed.
-- [ ] Delete the todo. Its path is cited in ADR 55's Context and in
+  Left to the maintainer: the automated run cannot drive the app.
+- [x] `CHANGELOG.md`, Fixed.
+- [x] Delete the todo. Its path is cited in ADR 55's Context and in
   `01kr2357mcz36g4gte0c0t1qz5`: keep the facts, drop the path.
-- [ ] `just fullcycle`, commit.
+- [x] `just fullcycle`, commit.
 
 ## Phase 3: `openSettings()` for views
 
 Additive, from ADR 55: every launcher effect of a WIT post-action is
 also a `LauncherActions` function.
 
-- [ ] Tauri command, for example `gadget_open_settings(gadget_id)`,
+- [x] Tauri command, for example `gadget_open_settings(gadget_id)`,
   that hides the launcher and calls `show_settings_window_at(app,
   gadget_id)`, the same effect as the `open-settings` post-action
   (decided in ADR 55).
   Register it and type it in `src/lib/command.ts`.
-- [ ] `openSettings()` in `LauncherActions` in
+- [x] `openSettings()` in `LauncherActions` in
   `src/contexts/GadgetContext.tsx` and
   `packages/gadget-sdk/src/shims/hooks.ts`, wired in
   `src/launcher/Launcher.tsx` for custom views and inline views with
   the view's gadget id. Add it to `MockGadgetContextProvider`.
-- [ ] Tests with `mockIPC`: calling `openSettings()` invokes the
+- [x] Tests with `mockIPC`: calling `openSettings()` invokes the
   command with the view's gadget id. If rendering `Launcher` is too
   heavy for a test, extract the construction of the launcher actions
   into a function and test that.
-- [ ] `CHANGELOG.md`, Added (for gadget authors).
-- [ ] `just fullcycle`, commit.
+- [x] `CHANGELOG.md`, Added (for gadget authors).
+- [x] `just fullcycle`, commit.
 
 ## Phase 4: typed messaging
 
-Todo `01m3cg9f3dnqqvgf4pr1rwtt7j`. Independent of the WIT switch.
+Done: `Messaging` in `gadgets/gadget-sdk/src/messaging.rs`, used by
+bangs, calculator, template and zerotier. A `{}` payload is decoded as
+given first and without the payload only when that fails, so both unit
+variants and `Variant {}` accept it.
 
-- [ ] SDK: `Messaging` trait with `type Request` and a blanket
+- [x] SDK: `Messaging` trait with `type Request` and a blanket
   `MessagingGuest` impl in `gadgets/gadget-sdk/src/messaging.rs`. A
   `{}` payload is treated as no payload. Tests on the host target:
   known method, unknown method, payload mismatch, `{}` for a unit
   variant, response encoding.
-- [ ] Prelude exports the `Messaging` trait. `parse_payload` and
+- [x] Prelude exports the `Messaging` trait. `parse_payload` and
   `to_response` stay in the module but leave the prelude.
-- [ ] Convert bangs, calculator (including the new `copy`), template
+- [x] Convert bangs, calculator (including the new `copy`), template
   and zerotier. Adapt their tests.
-- [ ] Delete the todo; ADR 55 cites its path under "Rust gadget SDK":
+- [x] Delete the todo; ADR 55 cites its path under "Rust gadget SDK":
   keep the facts, drop the path.
-- [ ] `just fullcycle`, commit (SDK and gadgets may be two commits).
+- [x] `just fullcycle`, commit (SDK and gadgets may be two commits).
 
 ## Checkpoint: merge phases 1 to 4
 

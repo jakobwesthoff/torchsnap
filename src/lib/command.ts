@@ -66,6 +66,7 @@ export interface CommandMap {
     };
     result: unknown;
   };
+  gadget_open_settings: { params: { gadgetId: string }; result: void };
   frecency_stats: { params: void; result: FrecencyStats };
   frecency_clear: { params: void; result: void };
   website_metadata_stats: { params: void; result: { entryCount: number; faviconBytes: number } };

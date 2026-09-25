@@ -4,7 +4,6 @@ status: open
 area: [gadgets/gadget-sdk/wit/torchsnap-gadget.wit, gadgets/gadget-sdk/src/lib.rs, gadgets/gadget-sdk/src/data.rs, src-tauri/src/gadgets/mod.rs, src-tauri/src/commands/types.rs, src-tauri/src/commands/mod.rs, src-tauri/src/gadget_host.rs, src-tauri/src/entry_store.rs, src-tauri/src/wasm/bindings.rs, src-tauri/src/wasm/bridge.rs, src/types.ts, src/launcher/Launcher.tsx, src/launcher/ResultRow.tsx, src/launcher/hooks/useKeyboardNavigation.ts, packages/gadget-sdk/src/types/data.ts, packages/gadget-sdk/src/shims/hooks.ts]
 tags: [api-design, wasm, sdk]
 plan: todos/plans/01m3cjnk9q29z0s23xyysqcm19-entry-action-commands-implementation.md
-depends-on: [todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md]
 ---
 
 # Entry action commands and fixed slots
@@ -16,8 +15,8 @@ The ADR holds the decisions: commands instead of `ActionId` and
 default labels, the typed `Search` traits in SDK and host, and the
 rule for views. This todo holds the migration work.
 
-Implement typed messaging in the same refactor:
-`todos/gadget-host/sdk/01m3cg9f3dnqqvgf4pr1rwtt7j-typed-messaging-request-enum.md`.
+Typed messaging (`Messaging` trait with a blanket `MessagingGuest`
+impl) has landed already; `Search` follows the same pattern.
 
 ## Work
 
@@ -94,7 +93,7 @@ Implement typed messaging in the same refactor:
 | bangs | `primary`: open URL. `copy`: copy URL. |
 | open-url | `primary`: open URL. `copy`: copy URL. |
 | zerotier | `primary`: toggle(id), join or leave decided from live state at execute time. `copy`: copy id. `delete`: forget(id). Failure entries: `primary` labeled "Open settings" with a command that returns the `open-settings` post-action, so Enter keeps working. They do not fill the `open-settings` slot. `parse_entry_id` goes away. |
-| calculator | History rows: `primary` and `copy` with a copy command carrying expression and result. The current result goes through a message plus `dismiss()` (see the calculator bug todo below). |
+| calculator | History rows: `primary` and `copy` with a copy command carrying expression and result. The views copy through the `copy` message plus `dismiss()` already; history rows switch to `onExecute(entry.id, "copy")`. |
 | emoji-picker | `copy`: copy emoji. The grid calls `onExecute(entry.id, "copy")`. |
 | hello-world | Petnames: `primary` labeled "Copy" and `copy`, same command, since Enter copies today. `execute()` writes the name to the clipboard (today it only logs), which needs `clipboard = true` under `[permissions]` in its manifest. |
 | template | demo command in `primary`. |
@@ -146,12 +145,5 @@ actions" section at line 381), `development/interfaces/imports.mdx:45`,
 
 ## Related
 
-- `todos/gadgets/calculator/01m3cfkn09sjm61eemfe83vndq-calculator-copy-on-enter-does-nothing.md`:
-  fix it before this refactor. Its fix already follows the ADR's rule
-  for views.
-- `todos/backend/search/01kwg1ph0qcdqtara5jcw7abym-concurrent-searches-corrupt-entry-store.md`
-  (in `depends-on`): overlapping searches can leave stale entries in
-  the store. With commands, a stale entry runs a stale command. Land
-  that fix first.
 - `todos/product/features/01kmh12n6r0mq94rwav32eczdn-keybind-system.md`:
   gadget-defined bindings, deferred by the ADR.

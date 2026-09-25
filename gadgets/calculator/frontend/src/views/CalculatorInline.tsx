@@ -14,9 +14,10 @@
 
 import { memo, useEffect } from "react";
 import type { InlineViewProps } from "@torchsnap/gadget-sdk";
-import { useLauncher, useGadgetRuntime } from "@torchsnap/gadget-sdk/hooks";
+import { useLauncher } from "@torchsnap/gadget-sdk/hooks";
 import { LAYER, useKeyBindings } from "@torchsnap/gadget-sdk/keybindings";
 import { CalculatorResult } from "./CalculatorResult";
+import { useCopyResult } from "./useCopyResult";
 
 interface CalcData {
   expression: string;
@@ -28,8 +29,8 @@ export const CalculatorInline = memo(function CalculatorInline({
   data,
   selected,
 }: InlineViewProps) {
-  const { onExecute, onFooterChange } = useLauncher();
-  const { sendMessage } = useGadgetRuntime();
+  const { onFooterChange } = useLauncher();
+  const copyResult = useCopyResult();
   const calcData = data as CalcData | undefined;
 
   // Report our footer to the host on mount.
@@ -49,13 +50,11 @@ export const CalculatorInline = memo(function CalculatorInline({
       keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       handler: () => {
         if (!calcData) return;
-        // Save to history, then copy to clipboard and dismiss.
-        sendMessage("save_history", {
+        void copyResult({
           expression: calcData.expression,
           result: calcData.result,
           resultType: calcData.resultType,
-        }).catch(() => {});
-        onExecute(calcData.result, { type: "copy" });
+        });
       },
     },
   ]);

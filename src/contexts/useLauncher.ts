@@ -6,9 +6,9 @@
 // useLauncher
 //
 // Returns the launcher-only action slice: navigation
-// (`goBack`, `dismiss`), execution delegation (`onExecute`),
-// footer reporting (`onFooterChange`), display query updates
-// (`setDisplayQuery`), and mouse-active tracking
+// (`goBack`, `dismiss`, `openSettings`), execution delegation
+// (`onExecute`), footer reporting (`onFooterChange`), display
+// query updates (`setDisplayQuery`), and mouse-active tracking
 // (`mouseActiveRef`).
 //
 // Calling this hook from a settings panel context (where the
