@@ -148,3 +148,58 @@ describe("matchesCombo", () => {
     );
   });
 });
+
+// Every binding with a letter key against every modifier state of the
+// event, with and without CapsLock. A binding fires only on its own
+// modifiers: on macOS Meta is Cmd and Ctrl is Ctrl; elsewhere both mean
+// the Ctrl key, and a held Windows key never matches.
+describe("matchesCombo over every modifier combination", () => {
+  const MODIFIERS = ["Meta", "Ctrl", "Alt", "Shift"] as const;
+  const FLAGS = ["meta", "ctrl", "alt", "shift"] as const;
+  const bindings = Array.from({ length: 16 }, (_, mask) =>
+    MODIFIERS.filter((_, bit) => (mask & (1 << bit)) !== 0),
+  );
+  const states = Array.from(
+    { length: 16 },
+    (_, mask) =>
+      Object.fromEntries(FLAGS.map((f, bit) => [f, (mask & (1 << bit)) !== 0])) as Required<Held>,
+  );
+
+  function expectedOn(isMac: boolean, wants: readonly ModifierKey[], held: Required<Held>) {
+    const same = (want: boolean, have: boolean) => want === have;
+    if (isMac) {
+      return (
+        same(wants.includes("Meta"), held.meta) &&
+        same(wants.includes("Ctrl"), held.ctrl) &&
+        same(wants.includes("Alt"), held.alt) &&
+        same(wants.includes("Shift"), held.shift)
+      );
+    }
+    return (
+      !held.meta &&
+      same(wants.includes("Meta") || wants.includes("Ctrl"), held.ctrl) &&
+      same(wants.includes("Alt"), held.alt) &&
+      same(wants.includes("Shift"), held.shift)
+    );
+  }
+
+  for (const [label, isMac] of [
+    ["macOS", MAC],
+    ["other platforms", OTHER],
+  ] as const) {
+    for (const capsLock of [false, true]) {
+      it(`matches exactly on ${label}${capsLock ? " with CapsLock on" : ""}`, () => {
+        for (const wants of bindings) {
+          for (const held of states) {
+            // Shift or CapsLock makes the event carry the uppercase letter.
+            const key = held.shift !== capsLock ? "K" : "k";
+            const actual = matchesCombo(keydown(key, held), combo("k", ...wants), isMac);
+            expect(actual, `${wants.join("+") || "none"} vs ${JSON.stringify(held)}`).toBe(
+              expectedOn(isMac, wants, held),
+            );
+          }
+        }
+      });
+    }
+  }
+});
