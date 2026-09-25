@@ -198,12 +198,17 @@ here. Commits in this phase may not build. Commit after each step.
   Tests for the slot table, the footer derivation and the key
   bindings.
 - [x] **5.8 Green.** `just fullcycle` passes on the branch.
-- [ ] **5.9 Checks,** report the results to the maintainer:
+- [x] **5.9 Checks,** report the results to the maintainer:
   - What a gadget built against `0.1.0` reports when loaded, for
-    example a fixture `.wasm` from `main`.
+    example a fixture `.wasm` from `main`. Result: loading succeeds,
+    `enable()` fails with "no exported instance named
+    `torchsnap:gadget/lifecycle@0.2.0`", and the host disables the
+    gadget.
   - The cost of encoding commands in `entries()`, which runs on every
     search without a prefix, for app_launcher with its installed apps.
-    No caching unless the maintainer decides so.
+    No caching unless the maintainer decides so. Result (release build,
+    per call): about 15 µs for 200 apps, 48 µs for 500, 147 µs for
+    1000.
 - [x] `CHANGELOG.md`: Changed (gadget API `0.2.0`: slots, commands,
   `execute(command)`), Removed (`custom`, `open-with`, `data`), Added
   (`secondary` slot on Cmd+Enter), plus anything else user-visible.
