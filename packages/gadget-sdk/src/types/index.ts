@@ -10,7 +10,7 @@
 //
 // Usage:
 //   import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
-//   import type { ActionId, SourcedEntry } from "@torchsnap/gadget-sdk";
+//   import type { ActionSlot, SourcedEntry } from "@torchsnap/gadget-sdk";
 // =========================================================
 
 export type {
@@ -20,8 +20,7 @@ export type {
 } from "./gadget";
 
 export type {
-  ActionId,
-  ActionKeybinding,
+  ActionSlot,
   Action,
   EntryIcon,
   SourcedEntry,

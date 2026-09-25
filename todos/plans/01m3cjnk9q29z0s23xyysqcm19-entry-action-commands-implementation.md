@@ -188,7 +188,7 @@ here. Commits in this phase may not build. Commit after each step.
 - [x] **5.6 Native gadgets.** app_launcher, clipboard, commands,
   system_preferences, system_commands on `Search`. App launcher's
   Reveal goes to `secondary`. Adapt their tests.
-- [ ] **5.7 Frontend.** One slot table (keys, default labels, title
+- [x] **5.7 Frontend.** One slot table (keys, default labels, title
   fallback for `primary` and `secondary`). Slot types in `src/types.ts`
   and `packages/gadget-sdk/src/types/data.ts`. Footer, `executeEntry`,
   row click and keyboard navigation use the slot table and the
@@ -197,14 +197,14 @@ here. Commits in this phase may not build. Commit after each step.
   and calculator history rows call `onExecute(entry.id, "copy")`.
   Tests for the slot table, the footer derivation and the key
   bindings.
-- [ ] **5.8 Green.** `just fullcycle` passes on the branch.
+- [x] **5.8 Green.** `just fullcycle` passes on the branch.
 - [ ] **5.9 Checks,** report the results to the maintainer:
   - What a gadget built against `0.1.0` reports when loaded, for
     example a fixture `.wasm` from `main`.
   - The cost of encoding commands in `entries()`, which runs on every
     search without a prefix, for app_launcher with its installed apps.
     No caching unless the maintainer decides so.
-- [ ] `CHANGELOG.md`: Changed (gadget API `0.2.0`: slots, commands,
+- [x] `CHANGELOG.md`: Changed (gadget API `0.2.0`: slots, commands,
   `execute(command)`), Removed (`custom`, `open-with`, `data`), Added
   (`secondary` slot on Cmd+Enter), plus anything else user-visible.
 

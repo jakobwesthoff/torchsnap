@@ -21,7 +21,13 @@
  */
 
 import { invoke, type Channel } from "@tauri-apps/api/core";
-import type { ActionId, ControlCommand, FrecencyStats, PostAction, SearchMessage } from "../types";
+import type {
+  ActionSlot,
+  ControlCommand,
+  FrecencyStats,
+  PostAction,
+  SearchMessage,
+} from "../types";
 import type { DevToolsMessage, LogItem, LogLevel, LogStats } from "../devtools/types";
 import type {
   InstallOrigin,
@@ -50,7 +56,7 @@ export interface CommandMap {
     result: void;
   };
   search_execute: {
-    params: { source: string; entryId: string; actionId: ActionId };
+    params: { source: string; entryId: string; slot: ActionSlot };
     result: PostAction;
   };
   control_subscribe: {

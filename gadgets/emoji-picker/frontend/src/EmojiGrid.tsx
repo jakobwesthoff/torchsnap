@@ -153,7 +153,7 @@ export function EmojiGrid({ results }: GadgetViewProps) {
   const handleEnter = useCallback(() => {
     const entry = results[selectedIndex];
     if (entry) {
-      onExecute(entry.id, { type: "copy" });
+      onExecute(entry.id, "copy");
     }
   }, [results, selectedIndex, onExecute]);
 
@@ -241,7 +241,7 @@ export function EmojiGrid({ results }: GadgetViewProps) {
             entry={entry}
             selected={absIdx === selectedIndex}
             onSelect={() => setSelectedIndex(absIdx)}
-            onExecute={() => onExecute(entry.id, { type: "copy" })}
+            onExecute={() => onExecute(entry.id, "copy")}
             mouseActiveRef={mouseActiveRef}
           />
         );

@@ -16,9 +16,9 @@
  *    Disabled when a gadget custom UI is active (`enabled=false`),
  *    since the gadget handles its own navigation.
  *
- * 3. **Dynamic action bindings** — derived from the currently
- *    selected entry's secondary actions. Also disabled when a
- *    gadget is active.
+ * 3. **Dynamic action bindings** — the keys of the selected
+ *    entry's filled slots other than `primary` (see
+ *    `actionSlots.ts`). Also disabled when a gadget is active.
  *
  * All handler state is read from a ref that is updated after each
  * commit via `useEffect`. This keeps the `useMemo` arrays stable
@@ -29,13 +29,9 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import {
-  useKeyBindings,
-  LAYER,
-  type KeyBindingDefinition,
-  type ModifierKey,
-} from "../../keybindings";
-import type { Action } from "../../types";
+import { useKeyBindings, LAYER, type KeyBindingDefinition } from "../../keybindings";
+import type { Action, ActionSlot } from "../../types";
+import { slotBindings } from "../actionSlots";
 import { PAGE_SIZE } from "../constants";
 
 interface UseKeyboardNavigationParams {
@@ -45,7 +41,8 @@ interface UseKeyboardNavigationParams {
   resultCount: number;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
-  onExecute: (actionIndex?: number) => void;
+  /** Run the action in `slot` of the selected entry. */
+  onExecute: (slot: ActionSlot) => void;
   selectedActions: Action[];
   mouseActiveRef: React.RefObject<boolean>;
   /** When false, navigation and action bindings are deregistered.
@@ -113,7 +110,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   // =========================================================
   // Navigation Bindings (disabled when gadget UI is active)
   //
-  // Arrow keys, page up/down, and Enter for primary action.
+  // Arrow keys, page up/down, and Enter for the primary slot.
   // =========================================================
 
   const navigationBindings: KeyBindingDefinition[] = useMemo(() => {
@@ -158,7 +155,7 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
         id: "launcher-enter",
         layer: LAUNCHER_LAYER,
         order: 4,
-        handler: () => stateRef.current.onExecute(),
+        handler: () => stateRef.current.onExecute("primary"),
         keybindings: [{ combo: { modifiers: [], key: "Enter" }, allowInInput: true }],
       },
     ];
@@ -169,45 +166,27 @@ export function useKeyboardNavigation(params: UseKeyboardNavigationParams) {
   // =========================================================
   // Dynamic Action Bindings (disabled when gadget UI is active)
   //
-  // Derived from the currently selected entry's secondary
-  // actions. When the selection changes, the definitions change
+  // Derived from the currently selected entry's filled slots.
+  // When the selection changes, the definitions change
   // structurally and `useKeyBindings` re-registers them.
   // =========================================================
 
   const actionBindings: KeyBindingDefinition[] = useMemo(() => {
     if (!enabled) return [];
 
-    const bindings: KeyBindingDefinition[] = [];
-
-    for (let i = 1; i < selectedActions.length; i++) {
-      const action = selectedActions[i];
-      if (!action.keybinding) continue;
-
-      const actionIndex = i;
-      // ESLINT: The linter flags `stateRef` because `push()` receives
-      // a closure that captures it — but `push()` stores the closure,
-      // it does not invoke it. The handler only runs from a DOM
-      // `keydown` event, which React guarantees flushes pending
-      // effects (including our stateRef update) before dispatching.
-      // eslint-disable-next-line react-hooks/refs
-      bindings.push({
-        id: `launcher-action-${i}`,
-        layer: LAUNCHER_LAYER,
-        order: 5 + i,
-        handler: () => stateRef.current.onExecute(actionIndex),
-        keybindings: [
-          {
-            combo: {
-              modifiers: (action.keybinding.modifiers ?? []) as ModifierKey[],
-              key: action.keybinding.key,
-            },
-            allowInInput: true,
-          },
-        ],
-      });
-    }
-
-    return bindings;
+    // ESLINT: The linter flags `stateRef` because the returned
+    // definitions hold closures that capture it — but they are only
+    // stored, not invoked. A handler only runs from a DOM `keydown`
+    // event, which React guarantees flushes pending effects
+    // (including our stateRef update) before dispatching.
+    // eslint-disable-next-line react-hooks/refs
+    return slotBindings(selectedActions).map(({ slot, combo }, i) => ({
+      id: `launcher-action-${slot}`,
+      layer: LAUNCHER_LAYER,
+      order: 5 + i,
+      handler: () => stateRef.current.onExecute(slot),
+      keybindings: [{ combo, allowInInput: true }],
+    }));
   }, [enabled, selectedActions]);
 
   useKeyBindings(actionBindings);
