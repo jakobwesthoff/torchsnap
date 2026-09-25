@@ -157,7 +157,7 @@ function ShortcutStep({
     <div className="w-full max-w-lg">
       <StepTitle>Your shortcut</StepTitle>
       <p className="mt-2 mb-4 text-sm text-text-secondary">
-        Torchsnap opens with this shortcut. Click it to record a different one, for example when
+        Torchsnap opens with this shortcut. Click Change to record a different one, for example when
         another app already uses it.
       </p>
       <div className="text-left">

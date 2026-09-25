@@ -1717,4 +1717,70 @@ mod tests {
         assert_eq!(map["user-y"], GadgetSourceKind::User);
         assert_eq!(map["dev-z"], GadgetSourceKind::Dev);
     }
+
+    // -------------------------------------------------------
+    // Recorder accelerators
+    //
+    // `ShortcutRecorder.tsx` writes these accelerator strings to
+    // the settings store and `register_all_shortcuts` parses
+    // them into `Shortcut`s. Dispatch compares parsed shortcuts
+    // with `==`, so every combo the recorder can produce must
+    // parse, and combos that differ only in a modifier must
+    // stay distinct.
+    // -------------------------------------------------------
+
+    #[test]
+    fn recorder_accelerators_parse_into_distinct_shortcuts() {
+        use tauri_plugin_global_shortcut::Modifiers;
+
+        let accelerators = [
+            "CommandOrControl+K",
+            "CommandOrControl+Shift+K",
+            "CommandOrControl+Alt+K",
+            "CommandOrControl+Alt+Shift+K",
+            "Alt+K",
+            "Alt+Shift+K",
+            "Alt+Space",
+            "CommandOrControl+1",
+            "F5",
+            "Shift+F5",
+            "CommandOrControl+Alt+F12",
+        ];
+        let shortcuts: Vec<Shortcut> = accelerators
+            .iter()
+            .map(|a| {
+                a.parse::<Shortcut>()
+                    .unwrap_or_else(|e| panic!("{a} should parse: {e}"))
+            })
+            .collect();
+
+        for (i, a) in shortcuts.iter().enumerate() {
+            for (j, b) in shortcuts.iter().enumerate().skip(i + 1) {
+                assert_ne!(
+                    a, b,
+                    "{} and {} must be different shortcuts",
+                    accelerators[i], accelerators[j]
+                );
+            }
+        }
+
+        let all_three = shortcuts[3];
+        assert!(all_three.mods.contains(Modifiers::ALT | Modifiers::SHIFT));
+        assert!(
+            all_three
+                .mods
+                .intersects(Modifiers::SUPER | Modifiers::CONTROL)
+        );
+    }
+
+    #[test]
+    fn every_function_key_the_recorder_accepts_parses() {
+        for n in 1..=24 {
+            let accelerator = format!("F{n}");
+            assert!(
+                accelerator.parse::<Shortcut>().is_ok(),
+                "{accelerator} should parse"
+            );
+        }
+    }
 }
