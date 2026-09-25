@@ -9,6 +9,10 @@
 
 ## Tests and quality gates
 
+- At the start of a session, before the first change that can affect
+  the gates' outcome, run `just fullcycle` once to get a baseline. If
+  the baseline already fails, tell the user what fails and propose
+  fixing it before starting the other work.
 - Every piece of code you touch gets thorough test coverage, edited code
   as much as new code. Cover the behavior of each changed path,
   including its error and edge cases, not just the happy path.
