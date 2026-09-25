@@ -82,6 +82,7 @@ import(/* @vite-ignore */ bundleUrl).then((mod) => {
 ```
 
 That routes the case into `gadgetComponent`'s existing `error`
-path, which throws to the nearest error boundary (verify one exists
-above the Suspense boundary in the launcher; add one if not, since
-a throwing gadget view must not take down the whole launcher).
+path, which throws to the nearest error boundary. Every gadget mount
+point sits inside a `GadgetErrorBoundary`
+(`src/components/GadgetErrorBoundary.tsx`), which shows an error card
+naming the gadget.

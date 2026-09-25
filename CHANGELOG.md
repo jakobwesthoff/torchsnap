@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open settings" on a gadget's result, such as ZeroTier's "token not
   configured" entry, opens the Settings window on that gadget's page.
   Before, it only closed the launcher.
+- A gadget whose launcher view, inline result or settings panel fails
+  to render shows an error card naming the gadget instead of blanking
+  the whole window. The launcher card offers "Go back".
 
 ### Changed
 

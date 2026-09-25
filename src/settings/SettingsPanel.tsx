@@ -11,6 +11,7 @@ import { GadgetContextProvider } from "../contexts/GadgetContextProvider";
 import type { GadgetInfo, GadgetRuntime } from "../contexts/GadgetContext";
 import { sendGadgetMessage } from "../lib/gadgetMessage";
 import { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
+import { GadgetErrorBoundary } from "../components/GadgetErrorBoundary";
 import { TitleBar } from "../components/TitleBar";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
@@ -199,9 +200,11 @@ function GadgetSectionContent({
       description={gadget.description ?? ""}
     >
       {CustomSettings && (
-        <GadgetContextProvider info={info} runtime={runtime}>
-          <CustomSettings />
-        </GadgetContextProvider>
+        <GadgetErrorBoundary key={gadget.id} gadgetId={gadget.id}>
+          <GadgetContextProvider info={info} runtime={runtime}>
+            <CustomSettings />
+          </GadgetContextProvider>
+        </GadgetErrorBoundary>
       )}
     </GadgetSettingsWrapper>
   );

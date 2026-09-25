@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { emitTauriEvent, mockCommands } from "../test/tauri";
 import { SettingsPanel } from "./SettingsPanel";
@@ -11,13 +12,25 @@ import { SETTINGS_START_SECTION } from "./useStartSection";
 // The panel's own job here is routing; each section is replaced by a
 // marker so the test sees which one is active.
 vi.mock("../components/TitleBar", () => ({ TitleBar: () => null }));
+function BrokenSettings(): never {
+  throw new Error("settings form crashed");
+}
 vi.mock("../gadgets/registry", () => ({
-  getGadgetsWithSettings: () => [{ id: "zerotier", label: "ZeroTier" }],
-  getGadgetSettingsComponent: () => undefined,
+  getGadgetsWithSettings: () => [
+    { id: "zerotier", label: "ZeroTier" },
+    { id: "broken", label: "Broken" },
+  ],
+  getGadgetSettingsComponent: (id: string) => (id === "broken" ? BrokenSettings : undefined),
 }));
 vi.mock("../hooks/useSetting", () => ({ useSetting: () => [true] }));
+vi.mock("../lib/logger", () => ({ createLogger: () => ({ error: () => {} }) }));
 vi.mock("./GadgetSettingsWrapper", () => ({
-  GadgetSettingsWrapper: ({ name }: { name: string }) => <div>{name} settings</div>,
+  GadgetSettingsWrapper: ({ name, children }: { name: string; children?: ReactNode }) => (
+    <div>
+      {name} settings
+      {children}
+    </div>
+  ),
 }));
 vi.mock("./sections/GeneralSection", () => ({ GeneralSection: () => <div>general section</div> }));
 vi.mock("./sections/GadgetsManagementPanel", () => ({
@@ -111,5 +124,16 @@ describe("SettingsPanel", () => {
     await emitTauriEvent(SETTINGS_START_SECTION);
 
     expect(screen.getByText("general section")).toBeInTheDocument();
+  });
+
+  it("keeps a gadget's header when its settings component throws", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockCommands({ install_queue_snapshot: () => [], take_settings_start_section: () => "broken" });
+
+    render(<SettingsPanel />);
+
+    expect(await screen.findByText("Broken settings")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("settings form crashed");
+    vi.restoreAllMocks();
   });
 });
