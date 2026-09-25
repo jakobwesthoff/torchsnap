@@ -16,7 +16,10 @@
 // along that chain cannot be used to escape, and the
 // remaining lexical tail is appended to the canonical
 // ancestor. The lexical pre-pass strips `.` and `..`
-// components so the tail can never escape upward.
+// components so the tail can never escape upward. A symlink
+// counts as existing even when its target does not, so a
+// dangling link is never skipped as part of the tail; it is
+// rejected instead.
 //
 // Distinct from the lexical-only `validate_gadget_path`
 // helper in `source.rs`, which solves a different problem
@@ -58,6 +61,14 @@ pub enum PathError {
     #[error("candidate path canonicalization failed: {0}")]
     CandidateCanonicalize(std::io::Error),
 
+    /// A symlink on the candidate path points at something that
+    /// does not exist. Its target cannot be canonicalized and
+    /// checked against the root, and writing to the path would
+    /// create the target wherever the link points, so the path is
+    /// rejected whatever the target. Carries the link's path.
+    #[error("path `{0}` goes through a symlink whose target does not exist")]
+    DanglingSymlink(PathBuf),
+
     /// The canonicalized candidate does not lie under the
     /// canonicalized root. The actual resolved path is
     /// included to make manifest-time errors actionable.
@@ -82,9 +93,11 @@ pub enum PathError {
 /// 3. Canonicalize the root. The root is required to exist
 ///    — the check is meaningless if it does not.
 /// 4. Walk up the candidate to find the deepest existing
-///    ancestor. Canonicalize that. Re-attach the still-
-///    unresolved tail (which after step 2 contains only
-///    plain `Normal` components, so it cannot escape).
+///    ancestor, where a symlink exists even if its target
+///    does not. Canonicalize that; a dangling symlink fails
+///    here and is reported as `DanglingSymlink`. Re-attach
+///    the still-unresolved tail (which after step 2 contains
+///    only plain `Normal` components, so it cannot escape).
 /// 5. Compare the canonical resolved path against the
 ///    canonical root via `starts_with`.
 ///
@@ -113,9 +126,16 @@ pub fn canonical_under_root(candidate: &Path, root: &Path) -> Result<PathBuf, Pa
     let lexical = lexically_normalize(candidate);
     let (existing_ancestor, tail) = split_at_existing_ancestor(&lexical);
 
-    let canonical_existing = existing_ancestor
-        .canonicalize()
-        .map_err(PathError::CandidateCanonicalize)?;
+    let canonical_existing = existing_ancestor.canonicalize().map_err(|source| {
+        let is_symlink = existing_ancestor
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink());
+        if is_symlink && source.kind() == std::io::ErrorKind::NotFound {
+            PathError::DanglingSymlink(existing_ancestor.clone())
+        } else {
+            PathError::CandidateCanonicalize(source)
+        }
+    })?;
 
     let resolved = if tail.as_os_str().is_empty() {
         canonical_existing
@@ -161,6 +181,10 @@ fn lexically_normalize(path: &Path) -> PathBuf {
 /// `existing_ancestor.join(&tail)` reproduces `path`. If
 /// the full path exists, `tail` is empty.
 ///
+/// Existence is checked without following symlinks: a
+/// dangling symlink is an existing entry, so it ends the walk
+/// and reaches canonicalization instead of hiding in the tail.
+///
 /// For absolute paths the loop is guaranteed to terminate
 /// at the root component (which always exists on every
 /// supported platform).
@@ -168,7 +192,7 @@ fn split_at_existing_ancestor(path: &Path) -> (PathBuf, PathBuf) {
     let mut existing = path.to_path_buf();
     let mut tail = PathBuf::new();
 
-    while !existing.exists() {
+    while existing.symlink_metadata().is_err() {
         let Some(name) = existing.file_name().map(|n| n.to_owned()) else {
             // Reached root or a path that has no file name
             // (e.g. `/` itself). Stop walking; tail carries
@@ -313,6 +337,67 @@ mod tests {
 
         let resolved = canonical_under_root(&link, root.path()).expect("inside root");
         assert!(resolved.starts_with(root.path().canonicalize().expect("canonical root")));
+    }
+
+    // A symlink whose target does not exist cannot be canonicalized,
+    // so its target is never checked against the root. Writing to the
+    // path would create the target wherever the link points.
+    #[cfg(unix)]
+    #[test]
+    fn rejects_dangling_symlink_pointing_outside_the_root() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        let link = root.path().join("trapdoor");
+        symlink(outside.path().join("not-yet-there"), &link).expect("symlink");
+
+        let err = canonical_under_root(&link, root.path()).unwrap_err();
+        assert!(matches!(err, PathError::DanglingSymlink(ref p) if p == &link));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_dangling_symlink_pointing_inside_the_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = td();
+        let link = root.path().join("alias");
+        symlink(root.path().join("not-yet-there"), &link).expect("symlink");
+
+        let err = canonical_under_root(&link, root.path()).unwrap_err();
+        assert!(matches!(err, PathError::DanglingSymlink(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_path_below_a_dangling_symlinked_directory() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        let link = root.path().join("trapdoor");
+        symlink(outside.path().join("missing-dir"), &link).expect("symlink");
+
+        let below = link.join("sub").join("file.txt");
+        let err = canonical_under_root(&below, root.path()).unwrap_err();
+        assert!(matches!(err, PathError::DanglingSymlink(ref p) if p == &link));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlink_chain_that_ends_dangling() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        let last = root.path().join("last");
+        symlink(outside.path().join("not-yet-there"), &last).expect("symlink");
+        let first = root.path().join("first");
+        symlink(&last, &first).expect("symlink");
+
+        let err = canonical_under_root(&first, root.path()).unwrap_err();
+        assert!(matches!(err, PathError::DanglingSymlink(_)));
     }
 
     #[test]
