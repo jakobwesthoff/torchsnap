@@ -25,6 +25,30 @@ staying with the full app bundle as it is today is one of them.
 - `tauri-plugin-updater` downloads the whole `.app.tar.gz` and
   replaces the app (ADR 0053), so every update carries every mascot.
 
+## Build time and binary size
+
+Measured on 2026-09-27 on an Apple M1 (8 cores) with `hyperfine`,
+release profile, `tauri build --no-bundle` with `beforeBuildCommand`
+emptied. The 500 extra mascots were copies of existing WebPs with 32
+random bytes appended, so each has its own content hash.
+
+| Step | 189 mascots | 689 mascots |
+|---|---|---|
+| `vite build` | 1.02 s | 1.45 s |
+| App crate compile, codegen asset cache warm | 53.0 s ± 1.4 | 57.2 s ± 1.8 |
+| App crate compile, codegen asset cache cold | 55.7 s ± 2.8 | 62.4 s ± 0.0 |
+| `target/release/torchsnap` | 46.3 MB | 74.9 MB |
+
+- `tauri-codegen` 2.6.3 brotli-compresses every `dist/` file at quality
+  9 in release and caches the result in the app crate's `OUT_DIR` under
+  the content hash (`embedded_assets.rs`). "Cold" deletes that cache
+  before the build, as in a clean target directory. "Warm" only touches
+  `src-tauri/src/lib.rs`.
+- About 50 s of each compile is `torchsnap_lib` itself. The 500 extra
+  mascots add 4.2 s warm and 6.8 s cold.
+- The binary grows by 28.6 MB, about the size of the added WebPs.
+- Not measured: the bundle step (`.app`, DMG, `.app.tar.gz`).
+
 ## Where each size is shown
 
 `Mascot` (`src/components/Mascot.tsx`) loads `size` at 1x and
