@@ -1,61 +1,34 @@
 ---
 kind: chore
 severity: medium
-status: needs-discussion
-area: [assets/mascot, just/assets.just, tools, .github/workflows/ci.yml]
-tags: [tooling, ci]
+status: open
+area: [git history, assets/mascot]
+tags: [tooling]
 ---
 
-# Move the mascot source PNGs to an external repository
+# Remove the old mascot source PNGs from the history
 
 Decided: the base mascot assets move to a separate repository and are
-removed from this repository's history. The open questions below need
-answers before the move.
+removed from this repository's history. The move itself is done (ADR
+57): the mascot set is made in torchsnap-mascot, whose export writes the
+WebPs and `src/derived/mascots.json` here, and the source PNGs, their
+data, docs and tools are gone from the tree. What is left is the
+history.
 
-## Numbers
+## Numbers (2026-09-27, before the move)
 
 - `git count-objects`: the pack is 219 MiB.
 - Source PNG blobs under `assets/mascot/` across all history: 220
   blobs, 195.7 MiB. The PNGs are already compressed, so git stores
   every version in full.
-- Current sources: 189 `snappy-*-1024.png` files, 165.3 MiB, plus
-  `snappy-original-2048.png` (1.4 MiB), which no recipe reads.
-- The bundled WebPs in `public/images/mascot/` stay here: 567 files,
-  10.2 MiB, 11.9 MiB across history.
-- 500 more mascots at the current average of 895 KiB per source would
-  add about 437 MiB.
+- The bundled WebPs in `public/images/mascot/` stay: they are what the
+  app ships.
 
-## What reads the sources today
+## What stays in the tree
 
-- `asset-mascots` (`just/assets.just:18`) renders the 96/192/384 WebPs.
-- `asset-mascot-data` (`just/assets.just:63`) measures trim values from
-  the source alpha channel into the gitignored
-  `src/derived/mascots.json`. `build`, `build-frontend`, `start`,
-  `check-types` and `test-frontend` depend on it, and CI runs it
-  through `just install`.
-- `asset-app-icons` (`just/assets.just:137`) composes the app icon from
-  `assets/mascot/snappy-original-1024.png`. The generated icons,
-  `app-icon-source.png` included, are gitignored.
-- `tools/normalize-mascot-size`, `tools/mascot-size-sheet`,
-  `tools/detect-mascot-borders`, `tools/detect-mascot-strays`,
-  `tools/refine-mascot-alpha`.
-- Docs that describe the source paths: `assets/mascot/docs/Adding-a-Mascot.md`,
-  `CLAUDE.md` ("Mascots"), `src/derived/README.md`, and the missing-trim
-  warning in `src/mascotVariants.ts`.
-
-## Open questions
-
-- Trim data without sources: commit `src/derived/mascots.json` (or the
-  trim values) and regenerate it from the asset repository, or measure
-  trim from the 384 px WebPs here.
-- App icon: keep `snappy-original-1024.png` here, commit the composed
-  `app-icon-source.png`, or read it from the asset repository.
-- What moves with the PNGs: the `tools/` scripts, `assets/mascot/docs/`,
-  the hand-authored `assets/mascot/mascots.json`.
-- How this repository finds the asset repository when regenerating
-  WebPs: a sibling checkout like `../torchsnap-docs`, a submodule, or
-  an explicit path argument.
-- How WebPs get from the asset repository into `public/images/mascot/`.
+`assets/mascot/snappy-original-1024.png`, the app icon source (a copy
+of torchsnap-mascot's `masters/original.png`). A history filter must
+keep it, or the app icon recipe loses its input.
 
 ## History rewrite
 
@@ -70,6 +43,4 @@ answers before the move.
 
 ## Related
 
-- `todos/build/01m3hr33w2v237ba8xhsyceaq4-cache-mascot-trim-values.md`
-- `todos/build/01m3hr33w2v237ba8xhsyceaq6-mascot-asset-regeneration-scope.md`
 - `todos/build/01m3hrcngf3qpw1pf3jf3k1ypj-mascot-download-cost-in-updates.md`

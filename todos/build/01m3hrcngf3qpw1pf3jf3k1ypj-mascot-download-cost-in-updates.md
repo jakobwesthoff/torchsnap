@@ -2,7 +2,7 @@
 kind: decision
 severity: low
 status: needs-discussion
-area: [just/assets.just, src/mascotVariants.ts, src-tauri/tauri.conf.json]
+area: [public/images/mascot, src/mascotVariants.ts, src-tauri/tauri.conf.json, torchsnap-mascot tools/webp.sh]
 tags: [performance]
 ---
 
@@ -12,6 +12,12 @@ Nothing is decided. The options below are candidates for discussion;
 staying with the full app bundle as it is today is one of them.
 
 ## Numbers
+
+Since ADR 57 the app ships 662 mascots: 1986 WebPs,
+40.4 MiB in `public/images/mascot/`. Per mascot mean 62.5 KiB, median
+61.0 KiB, range 33.4 to 100.1 KiB; the 384 px file is 41.0 KiB of that,
+the 96 px file 6.0 KiB. The numbers below were measured with the 189
+mascots before it.
 
 - Bundled cost per mascot (96 + 192 + 384 px WebP): mean 55.2 KiB,
   median 54.8 KiB, range 33.2 to 81.1 KiB. The 384 px file is 37.1 KiB
@@ -65,11 +71,11 @@ No change. Size grows linearly with the roster.
 
 ### Keep bundling, shrink the files
 
-- Drop the 96 px size: saves 0.93 MiB today. 1x displays would
-  downscale the 192 px file in sidekick mode.
+- Drop the 96 px size: saves about 3.9 MiB with 662 mascots. 1x
+  displays would downscale the 192 px file in sidekick mode.
 - Quality sweep on the 384 px files (`cwebp -q 90 -alpha_q 100` in
-  `asset-mascots`). Not yet measured which settings stay visually
-  clean.
+  torchsnap-mascot's `tools/webp.sh`). Not yet measured which settings
+  stay visually clean.
 - AVIF instead of WebP. Not yet measured. WebKit supports AVIF from
   macOS 13; `tauri.conf.json` sets no `minimumSystemVersion`, so this
   needs a raised minimum.
@@ -82,13 +88,11 @@ No change. Size grows linearly with the roster.
   `register_favicon_protocol`).
 - Packs are versioned apart from the app: a new mascot needs no app
   release, and an app update carries no mascots.
-- `Variants` and `SnappyHeroSets` in `src/mascotVariants.ts` are
-  hard-coded. Groups, holiday sets, alt text, NSFW flags and trim
-  would have to ship as pack data.
+- The selection is built from the data (`src/mascotVariants.ts`), so a
+  pack would carry the entries of `src/derived/mascots.json` for its
+  mascots (alt, nsfw, group, groundAnchor, boxLeft).
 - Needs signing and verification, hosting, and a defined first run
   without network.
-- Would supply trim values as pack metadata, which touches
-  `todos/build/01m3hr33w2v237ba8xhsyceaq5-move-mascot-sources-to-external-repo.md`.
 
 ### Delta updates
 
@@ -97,7 +101,7 @@ would mean replacing the updater.
 
 ## Questions for the discussion
 
-- Are 500 more mascots a plan, or a ceiling being checked?
+- The roster grew by 473 to 662. Is more growth planned?
 - With packs: which mascots belong to the core set, whether the app
   must work fully offline with only that set, and whether the rest
   downloads automatically or on opt-in.
@@ -105,5 +109,4 @@ would mean replacing the updater.
 
 ## Related
 
-- `todos/build/01m3hr33w2v237ba8xhsyceaq4-cache-mascot-trim-values.md`
-- `todos/build/01m3hr33w2v237ba8xhsyceaq6-mascot-asset-regeneration-scope.md`
+- `todos/build/01m3hr33w2v237ba8xhsyceaq5-move-mascot-sources-to-external-repo.md`
