@@ -106,7 +106,3 @@ would mean replacing the updater.
   must work fully offline with only that set, and whether the rest
   downloads automatically or on opt-in.
 - Is raising the minimum macOS version to 13 acceptable for AVIF?
-
-## Related
-
-- `todos/build/01m3hr33w2v237ba8xhsyceaq5-move-mascot-sources-to-external-repo.md`
