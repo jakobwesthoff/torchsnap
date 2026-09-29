@@ -8,7 +8,7 @@ status: open
 ## What it is
 
 A Docker environment for running Claude Code on the repository in
-isolation, added 2026-04-20 in `31a1106` ("Add devcontainer setup to run
+isolation, added 2026-04-20 in `8d2e047` ("Add devcontainer setup to run
 more isolated claude"). It is adapted from Anthropic's reference Claude
 Code devcontainer.
 
@@ -36,7 +36,7 @@ in CI uses it.
   the Rust base image, which must match `rust-toolchain.toml`) in two
   places each, Dockerfile `ARG` defaults and `devcontainer.json` build
   args. The 2026-09-21 dependency update had to bump them by hand
-  (`8e6c588`), and the git-delta bump needed care: 0.19.0/0.19.1 `.deb`s
+  (`31025f3`), and the git-delta bump needed care: 0.19.0/0.19.1 `.deb`s
   require glibc 2.39, which bookworm lacks.
 - **Licensing.** It is the only part of the repository under someone
   else's all-rights-reserved terms, held by an implied license.

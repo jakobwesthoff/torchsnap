@@ -28,6 +28,6 @@ not just for direct image copies.
   or one entry with multiple images? Probably one entry per file to
   match the "one clipboard change = one entry" model.
 - Non-image files: continue to skip image capture for those (current
-  behavior after the fix in d42c579).
+  behavior after the fix in f578c79).
 - File size limits: large images (e.g., raw photos) could bloat
   FileStorage. May want a size cap.

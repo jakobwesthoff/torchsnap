@@ -279,7 +279,7 @@ schemas — call this out in a comment.
 ## #31 — Friendlier rejection of Quartz `@daily` / `@hourly` macros
 
 **Where:** `src-tauri/src/wasm/manifest.rs parse_cron_schedule`
-(after the existing 5-field token-count check landed in 4eae7b4).
+(after the existing 5-field token-count check landed in 3ecc17c).
 
 **The thing:** gadget authors who try to write `@daily` or
 `@hourly` (Quartz aliases for common schedules) get a generic

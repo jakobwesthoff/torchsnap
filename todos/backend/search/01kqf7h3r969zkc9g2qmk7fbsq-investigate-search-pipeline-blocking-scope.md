@@ -7,7 +7,7 @@ status: open
 
 ## Context
 
-The open-url WASM port (commits `4ba8e65`, `a82c9cf`) introduced
+The open-url WASM port (commits `72615b6`, `286f724`) introduced
 the first WASM gadget that uses `LookupMode::Blocking` on a
 host import that can take 2+ seconds (network round-trip on
 cold cache). The user reports that during the wait, **the
@@ -93,4 +93,4 @@ patch.
 - `src-tauri/src/wasm/runtime/instance.rs:232` — WASM mutex
 - `src-tauri/src/wasm/runtime/host/website_metadata.rs:72` — block_in_place
 - `src/launcher/hooks/useSearch.ts:95-102` — frontend generation
-- Conversation: open-url WASM port commits `4ba8e65`, `a82c9cf`
+- Conversation: open-url WASM port commits `72615b6`, `286f724`

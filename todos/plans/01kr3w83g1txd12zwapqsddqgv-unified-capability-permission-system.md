@@ -562,7 +562,7 @@ Gadgets that use `paths::resolve` at runtime (e.g., zerotier) must declare
 ## Decided: Setup ordering (done)
 
 All services are created before gadget host construction and registration.
-Commit `cecb74a` reordered `lib.rs` setup to establish this. Gadgets are
+Commit `bcbba02` reordered `lib.rs` setup to establish this. Gadgets are
 constructed in a fully initialized environment.
 
 ## Decided: Deferred items

@@ -6,7 +6,7 @@ tags: [testing]
 
 # Add an in-memory constructor to SqlStorage for tests
 
-Investigated during the interface-gate flake fix (commit `db910a8`), design sketched below, not yet decided.
+Investigated during the interface-gate flake fix (commit `db485ed`), design sketched below, not yet decided.
 
 Scope: `src-tauri/src/storage/sql_storage.rs`, plus optional migration
 of test helpers across the crate. This is a test-ergonomics and
@@ -31,7 +31,7 @@ This surfaced while fixing a flaky test. `wasm/interface_gate.rs`
 `full_caps()` skipped the tempdir pattern and hardcoded one shared path
 in the system temp dir, so five parallel tests raced to create the same
 file and intermittently failed with "database is locked". Fixed in
-`db910a8` by returning a `TempDir` from `full_caps()`.
+`db485ed` by returning a `TempDir` from `full_caps()`.
 
 The flake is resolved, so this todo is not a bug fix. The point is that
 the API made the wrong thing the easy thing: a caller who wants a

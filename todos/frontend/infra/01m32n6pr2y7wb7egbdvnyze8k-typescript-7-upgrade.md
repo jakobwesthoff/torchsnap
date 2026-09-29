@@ -26,7 +26,7 @@ The project stays on TypeScript 6.0.3, the newest 6.x.
 
 The tsconfig files use none of the options TS 7 removes (`baseUrl`,
 `moduleResolution: node`, `target: es5`, ...): the TS 6 migration
-(`d9c1ac7`) already removed `baseUrl` and made `types` explicit. The
+(`371c083`) already removed `baseUrl` and made `types` explicit. The
 upgrade should need no tsconfig changes, but verify.
 
 ## When unblocked

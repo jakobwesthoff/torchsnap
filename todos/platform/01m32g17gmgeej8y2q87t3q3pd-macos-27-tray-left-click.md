@@ -15,7 +15,7 @@ On macOS 27 (Golden Gate), every click on the menu bar icon opens the
 context menu. Left-click no longer toggles the launcher, and
 `show_menu_on_left_click(false)` has no effect. The launcher is still
 reachable through the global hotkey and the "Open Launcher" menu entry
-(e5c8e87).
+(eb671cc).
 
 Windows and Linux use `FallbackTray` and are not affected. Only
 `src-tauri/src/platform/macos/tray.rs` is involved.

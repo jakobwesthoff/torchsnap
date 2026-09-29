@@ -12,7 +12,7 @@ gadget-relative paths (`assets/icon.svg`) — the host bridge
 rewrites them to `torchsnap-gadget://localhost/<gadget-id>/<path>`
 URLs that the existing protocol scheme already serves
 (`src-tauri/src/wasm/protocol.rs`, `src-tauri/src/wasm/bindings.rs`
-post-`e7d9ef3`). Gadget Rust code now writes
+post-`8352429`). Gadget Rust code now writes
 `EntryIcon::AssetIcon("assets/icon.svg".into())` and the icon
 shows up.
 
@@ -70,7 +70,7 @@ running app instance.
 - A gadget frontend that uses an absolute path or fully-
   qualified URL through the helper is rejected at
   build/compile time, mirroring the Rust-side rule
-  (`bindings.rs::resolve_entry_icon` post-`e7d9ef3`).
+  (`bindings.rs::resolve_entry_icon` post-`8352429`).
 
 ## Out of scope
 
