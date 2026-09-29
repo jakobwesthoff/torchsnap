@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Snappy comes in 662 costumes instead of 189. Every mascot has a
+  reviewed alt text, and the owls inside the costumes are drawn at
+  about the same size.
+- Each mascot stands on the launcher card at a point chosen for it,
+  centred on the card in centre mode. As sidekick it keeps a fixed
+  distance from the card's right edge without reaching past it, and the
+  Escape hint sits centred below it.
+- Mascots of the new Anime, DevCulture and Kids groups show all year.
+
 ## [0.13.0] - 2026-09-25
 
 ### Added

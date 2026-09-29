@@ -98,18 +98,18 @@ On any non-GNOME desktop you can skip this section entirely.
 
 ### 1.3 Build and asset pipeline tools
 
-The `just assets` recipe regenerates icons, mascots, and tray bitmaps;
+The `just assets` recipe regenerates icons and tray bitmaps;
 the WASM gadget pipeline uses `zip` to pack `.torchsnap` archives; and
 `shellcheck` gates the shell recipes during quality checks. On a
 default Fedora 43 Workstation install, `zip`, `ImageMagick`, and `jq`
 are usually already present — install anything missing.
 
 ```sh
-sudo dnf install zip ImageMagick jq libwebp-tools shellcheck
+sudo dnf install zip ImageMagick jq shellcheck
 ```
 
 `just doctor` treats `cargo`, `bun`, `zip`, `wasm-tools`, the
-`wasm32-wasip2` Rust target, `magick`, `oxipng`, and `cwebp` as
+`wasm32-wasip2` Rust target, `magick` and `oxipng` as
 required and exits non-zero if any are absent. `shellcheck` is listed
 as optional — it is only invoked by the quality recipes — but install
 it anyway if you intend to run the linters.

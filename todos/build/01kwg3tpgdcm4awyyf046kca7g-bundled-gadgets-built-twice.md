@@ -9,10 +9,10 @@ area: [just/build.just, just/gadgets.just]
 
 ## Problem
 
-The top-level build recipe (`just/build.just:37-40`) runs:
+The top-level build recipe (`just/build.just:31-34`) runs:
 
 ```
-build profile="debug" sign="" config="": asset-mascot-data
+build profile="debug" sign="" config="":
     just stage-bundled-gadgets
     just build-gadgets
     bun run tauri build ...

@@ -44,6 +44,7 @@ doctor:
     check rustup      "installs the Rust release pinned in rust-toolchain.toml" "https://rustup.rs"
     check cargo       "Rust toolchain"              "https://rustup.rs"
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
+    check jq          "read the app name and version in the build and release recipes" "brew install jq"
 
     # The lockfiles are maintained with Bun 1.4, whose `bun update`
     # also refreshes transitive packages. Bun has no per-project
@@ -74,19 +75,14 @@ doctor:
     fi
 
     echo ""
-    # `just install` runs the whole asset pipeline, and
-    # `asset-mascot-data` (jq) also runs before `build`, `start` and
-    # `check-types`.
+    # `just install` runs the whole asset pipeline.
     echo "Asset pipeline:"
-    check magick      "image resizing (ImageMagick 7)" "brew install imagemagick"
-    check cwebp       "WebP conversion"                "brew install webp"
-    check jq          "merge mascot trim data into mascots.json" "brew install jq"
+    check magick      "app and tray icons (ImageMagick 7)" "brew install imagemagick"
     check curl        "download the DuckDuckGo bang database"    "brew install curl"
 
     echo ""
     echo "Optional:"
     check shellcheck  "shell script linting"        "brew install shellcheck"
-    check uv          "run the tools/detect-mascot-* scripts" "brew install uv"
     check cargo-audit "check Cargo lockfiles in \`just audit\`" "cargo install cargo-audit --locked"
 
     echo ""

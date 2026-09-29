@@ -3,135 +3,17 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # This file generates all visual and binary assets from their source
-# files. It covers mascot image resizing and WebP conversion, app icon
-# generation via Tauri's icon generator, and tray icon alpha-mask
-# creation. All recipes are incremental — they skip outputs that are
-# already up to date relative to their sources.
+# files. It covers app icon generation via Tauri's icon generator, the
+# document icon, tray icon alpha-mask creation, and the timezone data.
+# All recipes are incremental — they skip outputs that are already up
+# to date relative to their sources.
+#
+# The mascot images in public/images/mascot/ and their data in
+# src/derived/mascots.json come from the torchsnap-mascot repository
+# (`just export <torchsnap checkout>` there) and are tracked as they are.
 
-# Generate all assets (mascots, mascot data, timezone data, app icons, tray icon)
-assets: asset-mascots asset-mascot-data asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
-
-# All Tauri targets (WebKit, WebView2) support WebP natively — no PNG
-# output needed.
-
-# Resize mascot source PNGs to WebP at the sizes the frontend needs (incremental)
-asset-mascots:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    dst="public/images/mascot"
-    mkdir -p "$dst"
-    processed=0
-    skipped=0
-    for file in assets/mascot/*-1024.png; do
-        [ -e "$file" ] || continue
-        name=$(basename "$file" -1024.png)
-        needed=false
-        # Currently used sizes: 96 (sidekick 1x), 192 (center 1x /
-        # sidekick 2x), 384 (center 2x). Re-enable 128, 256, 512 here
-        # if new components need them.
-        for size in 384 192 96; do
-            webp="$dst/${name}-${size}.webp"
-            if [ ! -f "$webp" ] || [ "$file" -nt "$webp" ]; then
-                needed=true
-                # The launcher draws every variant in a square box, so a
-                # non-square source would come out distorted or offset.
-                dims=$(magick identify -format "%wx%h" "$file")
-                if [ "$dims" != "1024x1024" ]; then
-                    echo "error: $file is $dims, mascot sources must be 1024x1024" >&2
-                    exit 1
-                fi
-                tmp=$(mktemp /tmp/mascot-XXXXXX.png)
-                magick "$file" -filter Lanczos -resize ${size}x${size} "$tmp"
-                cwebp -q 90 -m 6 -alpha_q 100 -sharp_yuv -metadata none "$tmp" -o "$webp"
-                rm -f "$tmp"
-            fi
-        done
-        if [ "$needed" = true ]; then
-            echo "Processed $name"
-            processed=$((processed + 1))
-        else
-            skipped=$((skipped + 1))
-        fi
-    done
-    echo "Mascots: ${processed} processed, ${skipped} up to date."
-
-# Trim values are the percentage of transparent space on each edge of
-# the 1024×1024 source image — used at runtime to align mascot variants
-# so their feet land at the same position regardless of pose.
-
-# Enrich mascots.json with per-variant trim data and write to src/derived/ (incremental)
-asset-mascot-data:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    src="assets/mascot/mascots.json"
-    dst="src/derived/mascots.json"
-
-    # Regenerate when the source JSON or any source PNG is newer than
-    # the output.
-    needs_update=false
-    if [ ! -f "$dst" ] || [ "$src" -nt "$dst" ]; then
-        needs_update=true
-    fi
-    if [ "$needs_update" = false ]; then
-        for png in assets/mascot/*-1024.png; do
-            [ -e "$png" ] || continue
-            if [ "$png" -nt "$dst" ]; then
-                needs_update=true
-                break
-            fi
-        done
-    fi
-    if [ "$needs_update" = false ]; then
-        echo "Mascot data: up to date."
-        exit 0
-    fi
-
-    echo "Enriching mascots.json with trim data..."
-
-    # Step 1: Build a JSON object mapping variant name → trim percentages.
-    # Uses magick identify to find the bounding box of non-transparent
-    # pixels in each source PNG.
-    trim_json="{"
-    first=true
-    for png in assets/mascot/*-1024.png; do
-        [ -e "$png" ] || continue
-        variant=$(basename "$png" -1024.png)
-        variant="${variant#snappy-}"
-
-        # The trim percentages below are relative to a 1024x1024 canvas.
-        dims=$(magick identify -format "%wx%h" "$png")
-        if [ "$dims" != "1024x1024" ]; then
-            echo "error: $png is $dims, mascot sources must be 1024x1024" >&2
-            exit 1
-        fi
-
-        # Threshold alpha at 75% before computing the bounding box. This
-        # discards faint glows, sparkles, and soft shadows that ImageMagick
-        # would otherwise include — they're invisible after downscaling to
-        # 96/192px but would skew the trim values significantly.
-        geom=$(magick identify -format "%@" <(magick "$png" -channel A -threshold 75% +channel PNG:-) 2>/dev/null || echo "1024x1024+0+0")
-        IFS='x+' read -r w h x y <<< "$geom"
-
-        top=$(awk "BEGIN { printf \"%.1f\", ($y / 1024) * 100 }")
-        right=$(awk "BEGIN { printf \"%.1f\", ((1024 - ($x + $w)) / 1024) * 100 }")
-        bottom=$(awk "BEGIN { printf \"%.1f\", ((1024 - ($y + $h)) / 1024) * 100 }")
-        left=$(awk "BEGIN { printf \"%.1f\", ($x / 1024) * 100 }")
-
-        [ "$first" = true ] && first=false || trim_json+=","
-        trim_json+="\"${variant}\":{\"top\":${top},\"right\":${right},\"bottom\":${bottom},\"left\":${left}}"
-    done
-    trim_json+="}"
-
-    # Step 2: Merge trim data into the hand-authored JSON. Only entries
-    # present in both the source JSON and the trim map receive a trim
-    # object — variants without a source PNG are left untouched.
-    jq --argjson trims "$trim_json" '
-        reduce keys[] as $k (.;
-            if $trims[$k] then .[$k].trim = $trims[$k] else . end
-        )
-    ' "$src" > "$dst"
-
-    echo "Mascot data: done."
+# Generate all assets (timezone data, app icons, tray icon, bang data)
+assets: asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
 
 # Composite mascot onto brand gradient and generate all app icon formats via `tauri icon` (incremental)
 asset-app-icons:

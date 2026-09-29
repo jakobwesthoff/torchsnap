@@ -48,10 +48,6 @@ gadgets/*.torchsnap
 # the canonical test input, rebuilt via `just build-test-fixtures`.
 src-tauri/tests/fixtures/*/target/
 
-# Generated asset data — derived at build time, not checked in.
-# Regenerate with `just asset-mascot-data`.
-src/derived/mascots.json
-
 # DuckDuckGo bang database — downloaded at build time by `just asset-bang-data`,
 # ships inside the .torchsnap archive. Not checked in.
 gadgets/bangs/assets/bang.json

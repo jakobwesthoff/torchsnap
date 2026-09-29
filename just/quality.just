@@ -36,12 +36,8 @@ test-crates:
 test-gadgets:
     cd gadgets && cargo test --target "$(rustc -vV | sed -n 's|host: ||p')"
 
-# Tests import application modules, and some of those import the
-# generated `src/derived/mascots.json`, so it has to exist first (the
-# same reason `check-types` depends on it).
-
 # Run the frontend test suite (Vitest)
-test-frontend: asset-mascot-data
+test-frontend:
     bun run test
 
 # Check compilation (Rust + WIT + WASM gadgets) and types (TypeScript)
@@ -51,9 +47,8 @@ check: check-crates check-wit check-gadgets check-types
 check-crates:
     cargo check --manifest-path src-tauri/Cargo.toml
 
-# Type-check the frontend. `src/derived/mascots.json` is a generated
-# import, so `asset-mascot-data` has to run before tsc can resolve it.
-check-types: asset-mascot-data
+# Type-check the frontend
+check-types:
     bun run tsc --noEmit
 
 # Lint everything (Rust + WASM gadgets + frontend)

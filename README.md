@@ -57,10 +57,10 @@ Design rationale for individual subsystems lives in
 
 1. Install [`just`](https://github.com/casey/just), then run
    `just doctor`. It lists every external tool the recipes need
-   (rustup, bun, zip, wasm-tools, ImageMagick, cwebp, jq, curl) and
+   (rustup, bun, jq, zip, wasm-tools, ImageMagick, curl) and
    how to install the missing ones.
 2. Run `just install`. It generates the gitignored assets the build
-   reads (app and tray icons, mascot data, timezone data, and the
+   reads (app and tray icons, timezone data, and the
    DuckDuckGo bang database, which it downloads), runs `bun install`
    for the host and every gadget frontend, and fetches the crates of
    `src-tauri/` and `gadgets/`.

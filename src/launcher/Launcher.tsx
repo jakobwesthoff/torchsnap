@@ -781,6 +781,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             mode={mascotMode as "center" | "sidekick"}
             variant={mascotVariant}
             top={mascotPlacement.top}
+            left={mascotPlacement.left}
             right={mascotPlacement.right}
             onInfoClick={mascotInfo.show}
           />
@@ -819,16 +820,16 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
               // reach the input while the launcher is visible.
               onBlur={() => inputRef.current?.focus()}
             />
-            {/* In sidekick mode, align the pill's center with the mascot's
-                horizontal center. The offset accounts for half the pill's
+            {/* In sidekick mode, centre the pill under the mascot's ground
+                anchor. The offset accounts for half the pill's
                 rendered width (~15.2px) plus the search bar's horizontal
                 padding (px-5 = 20px). */}
             <KeyBindingPill
               modifiers={[]}
               keyName="Escape"
               style={
-                mascotPlacement?.centerX != null
-                  ? { marginRight: mascotPlacement.centerX - 35.2 }
+                mascotPlacement?.anchorFromRight != null
+                  ? { marginRight: mascotPlacement.anchorFromRight - 35.2 }
                   : undefined
               }
             />

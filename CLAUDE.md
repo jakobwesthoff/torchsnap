@@ -95,14 +95,14 @@ config.
 
 ## Mascots
 
-- New or changed Snappy images follow
-  `assets/mascot/docs/Adding-a-Mascot.md`: 1024×1024 source, body size
-  proposed with `tools/normalize-mascot-size --output-dir` (never
-  enlarged), `oxipng -o max --strip safe`, and only images whose pixels
-  changed committed.
-- Before any mascot source is resized, show the maintainer a sheet from
-  `tools/mascot-size-sheet` with references, the current and the
-  proposed version, and apply only what they approve.
+- The mascot set is made in the torchsnap-mascot repository. Its export
+  writes `public/images/mascot/*.webp` and `src/derived/mascots.json`
+  here; never edit either by hand. New or changed mascots, sizes, alt
+  texts and ground anchors are changed there and exported again.
+- `src/mascotVariants.ts` builds the selection from each mascot's
+  `group`; `src/launcher/placement.ts` places it by its `groundAnchor`.
+  The app icon source `assets/mascot/snappy-original-1024.png` is a copy
+  of that repository's `masters/original.png`.
 
 ## ADRs
 

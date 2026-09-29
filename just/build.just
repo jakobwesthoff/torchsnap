@@ -11,12 +11,6 @@
 # under `gadgets/` — bundled or not — has an up-to-date committed
 # `.torchsnap` for the dev-directory loader.
 
-# `asset-mascot-data` produces `src/derived/mascots.json`, which the
-# frontend imports directly. It is generated rather than tracked, so
-# every recipe that compiles the frontend depends on it — that also
-# keeps the mascot trim values in step with the source PNGs whenever a
-# new mascot is added.
-
 # Tauri code signs the macOS bundle whenever `APPLE_SIGNING_IDENTITY`
 # is set, and then enables the hardened runtime with the entitlements
 # from `src-tauri/Entitlements.plist` (ADR 0046). `--sign` defaults the
@@ -34,7 +28,7 @@
 [arg('profile', long='release', value='release')]
 [arg('sign', long='sign', value='sign')]
 [arg('config', long='config')]
-build profile="debug" sign="" config="": asset-mascot-data
+build profile="debug" sign="" config="":
     just stage-bundled-gadgets
     just build-gadgets
     {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }} {{ if config != "" { "--config " + quote(config) } else { "" } }}
@@ -103,7 +97,7 @@ notarize-dmg profile="release":
     done
 
 # Build only the frontend (Vite + TypeScript)
-build-frontend: asset-mascot-data
+build-frontend:
     bun run build
 
 # Check the Rust crate compiles

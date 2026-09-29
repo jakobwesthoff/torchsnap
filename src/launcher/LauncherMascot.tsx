@@ -14,17 +14,28 @@
  */
 
 import { Mascot } from "../components/Mascot";
+import { MASCOT_SIZE } from "./layout";
 
 interface LauncherMascotProps {
   mode: "center" | "sidekick";
   variant: string;
   top: number;
+  /** Centre mode: offset of the image's left edge from the card's. */
+  left?: number;
+  /** Sidekick mode: offset of the image's right edge from the card's. */
   right?: number;
   onInfoClick: () => void;
 }
 
-export function LauncherMascot({ mode, variant, top, right, onInfoClick }: LauncherMascotProps) {
-  const size = mode === "sidekick" ? 96 : 192;
+export function LauncherMascot({
+  mode,
+  variant,
+  top,
+  left,
+  right,
+  onInfoClick,
+}: LauncherMascotProps) {
+  const size = MASCOT_SIZE[mode];
 
   if (mode === "sidekick") {
     return (
@@ -43,8 +54,8 @@ export function LauncherMascot({ mode, variant, top, right, onInfoClick }: Launc
     <button
       type="button"
       onDoubleClick={onInfoClick}
-      style={{ top }}
-      className="absolute left-1/2 -translate-x-1/2 z-10 cursor-default bg-transparent border-none p-0 outline-none focus:outline-none"
+      style={{ top, left }}
+      className="absolute z-10 cursor-default bg-transparent border-none p-0 outline-none focus:outline-none"
     >
       <Mascot variant={variant} size={size} />
     </button>
