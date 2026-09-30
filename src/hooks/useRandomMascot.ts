@@ -10,14 +10,7 @@
  * shuffle (Efraimidis–Spirakis) at each level and walks the ordering
  * with fallthrough — if a group's children all resolve to zero weight,
  * the next entry in the shuffle is tried instead.
- *
- * When a `key` is provided, selections are cached at module scope so they
- * remain stable across component remounts within the same SPA session.
- * Omit the key to re-roll on every mount instead.
  */
-
-import { useState } from "react";
-import { preloadMascotVariant } from "../lib/preloadMascot";
 
 // =========================================================
 // Types
@@ -46,15 +39,7 @@ type MascotGroup = UnconditionalGroup | ConditionalGroup;
 export type MascotEntry = MascotLeaf | MascotGroup;
 
 // =========================================================
-// Module-level session cache
-// =========================================================
-
-// Keyed by the caller-supplied identifier so independent call sites
-// each get their own stable selection.
-const sessionCache = new Map<string, string>();
-
-// =========================================================
-// Selection logic (pure, no React dependency)
+// Selection logic
 // =========================================================
 
 function effectiveWeight(entry: MascotEntry): number {
@@ -127,14 +112,13 @@ function selectFromEntries(
 }
 
 // =========================================================
-// Pure selection function (usable outside React)
+// Entry point
 // =========================================================
 
 /**
- * Imperatively select a random mascot variant from a recursive weighted
- * entry tree. Equivalent to the hook's logic but usable outside of React
- * — for example, in event handlers that re-roll the mascot on each
- * launcher show.
+ * Selects a random mascot variant from a recursive weighted entry tree.
+ * `useMascotVariant` calls it on every roll, including from the window
+ * blur handler that re-rolls the mascot after each launcher show.
  *
  * An optional `filter` predicate can exclude specific variants (e.g. NSFW
  * mascots). Filtered-out variants are skipped at the leaf level; if every
@@ -152,56 +136,4 @@ export function selectMascotVariant(
     throw new Error("selectMascotVariant: no mascot entries have a positive effective weight");
   }
   return variant;
-}
-
-// =========================================================
-// Hook
-// =========================================================
-
-/**
- * Selects a random mascot variant from a recursive weighted entry tree,
- * optionally influenced by runtime conditions.
- *
- * When `key` is provided the result is session-stable: every call site
- * sharing that key shows the same variant until a full page reload.
- * Omit `key` to re-roll on every component mount.
- *
- * When `preloadSizes` is provided alongside a `key`, the selected variant
- * is preloaded at those logical sizes (and their 2x retina counterparts)
- * the first time the key is resolved. This warms the browser cache before
- * the images appear across different views.
- *
- * @param sets         - Root-level mascot entries with weights and optional conditions.
- * @param key          - Optional session-cache key (e.g. `"hero"`).
- * @param preloadSizes - Logical pixel sizes to preload when the variant is first selected.
- * @returns The selected variant name.
- */
-export function useRandomMascot(
-  sets: MascotEntry[],
-  key?: string,
-  preloadSizes?: number[],
-): string {
-  // Always call useState to satisfy the rules of hooks (consistent call
-  // order). The initializer only runs on mount, giving us a per-mount
-  // roll for the keyless path.
-  const [initialRoll] = useState(() => selectMascotVariant(sets));
-
-  if (key !== undefined) {
-    const cached = sessionCache.get(key);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    // No cache entry yet — reuse the per-mount roll instead of
-    // computing a second random selection.
-    sessionCache.set(key, initialRoll);
-
-    // First resolution for this key — warm the image cache at all requested
-    // sizes so the variant is ready before it appears in other views.
-    if (preloadSizes !== undefined && preloadSizes.length > 0) {
-      preloadMascotVariant(initialRoll, preloadSizes);
-    }
-  }
-
-  return initialRoll;
 }
