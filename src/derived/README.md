@@ -8,17 +8,20 @@ hand — changes are overwritten on the next regeneration.
 | File | Source | Recipe | Tracked |
 |---|---|---|---|
 | `mascots.json` | the torchsnap-mascot repository | `just export <torchsnap checkout>` there | yes |
+| `mascot-groups.json` | the torchsnap-mascot repository | `just export <torchsnap checkout>` there | yes |
 | `timezone-coordinates.json` | System `/usr/share/zoneinfo/zone.tab` | `just asset-timezone-data` | yes |
 
-## `mascots.json` comes from torchsnap-mascot
+## The mascot data comes from torchsnap-mascot
 
-The mascot set (the images in `public/images/mascot/` and this file) is
-made and reviewed in the torchsnap-mascot repository, whose export writes
-both into a torchsnap checkout. Per mascot the file holds `alt`, `nsfw`,
-`group`, `groundAnchor` and `boxLeft`; that repository's
+The mascot set (the images in `public/images/mascot/`, `mascots.json`
+and `mascot-groups.json`) is made and reviewed in the torchsnap-mascot
+repository, whose export writes them into a torchsnap checkout. Per
+mascot `mascots.json` holds `alt`, `nsfw`, `group`, `occasions`,
+`groundAnchor` and `boxLeft`; per group `mascot-groups.json` holds
+`label`, `description` and `seasonal`. That repository's
 `docs/metadata.md` and the export section of its `docs/pipeline.md`
-explain them. Both are tracked here, so a fresh
-checkout builds without that repository.
+explain them. All are tracked here, so a fresh checkout builds without
+that repository.
 
 `timezone-coordinates.json` is tracked because its source is a system file
 that is not part of the repository.

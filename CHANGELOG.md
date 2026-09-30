@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Snappy comes in 662 costumes instead of 189. A newer image model
+- Snappy comes in 663 costumes instead of 189. A newer image model
   redrew 170 of the 189 earlier ones close to their old look; the other
   19, the plain Snappy among them, keep their drawings. Every mascot has
   a reviewed alt text, and the owls inside the costumes are drawn at
@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   centred on the card in centre mode. As sidekick it keeps a fixed
   distance from the card's right edge without reaching past it, and the
   Escape hint sits centred below it.
-- Mascots of the new Anime, DevCulture and Kids groups show all year.
+- The costumes are sorted into new themed groups. Mascots that only
+  relate to a holiday, such as the cartoon rabbits at Easter, now show
+  all year and also turn up more often on the holiday. The mascots that
+  are the holiday itself, such as pumpkins, Santa and Easter bunnies,
+  still show only then.
 
 ## [0.13.0] - 2026-09-25
 

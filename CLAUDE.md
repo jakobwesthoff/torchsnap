@@ -96,11 +96,14 @@ config.
 ## Mascots
 
 - The mascot set is made in the torchsnap-mascot repository. Its export
-  writes `public/images/mascot/*.webp` and `src/derived/mascots.json`
-  here; never edit either by hand. New or changed mascots, sizes, alt
-  texts and ground anchors are changed there and exported again.
+  writes `public/images/mascot/*.webp`, `src/derived/mascots.json` and
+  `src/derived/mascot-groups.json` here; never edit them by hand. New or
+  changed mascots, groups, occasions, sizes, alt texts and ground anchors
+  are changed there and exported again.
 - `src/mascot/variants.ts` builds the selection from each mascot's
-  `group`; `src/launcher/placement.ts` places it by its `groundAnchor`.
+  `group` and `occasions` and the groups' `seasonal` flag (ADR 58); a
+  new seasonal group needs its condition in `OCCASIONS` there.
+  `src/launcher/placement.ts` places a mascot by its `groundAnchor`.
   The app icon source `assets/mascot/snappy-original-1024.png` is a copy
   of that repository's `masters/original.png`.
 

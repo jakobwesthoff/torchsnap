@@ -4,24 +4,28 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import mascotData from "../derived/mascots.json";
+import groupData from "../derived/mascot-groups.json";
 import {
-  SEASONAL_GROUPS,
+  OCCASION_GROUPS,
   buildMascotSelection,
   mascotSelection,
   getMascotAlt,
   getMascotAnchor,
   isNsfwVariant,
+  type MascotGroupInfo,
   type MascotInfo,
 } from "./variants";
 import type { MascotEntry } from "./selection";
 
 const data = mascotData as Record<string, MascotInfo>;
+const groups = groupData as Record<string, MascotGroupInfo>;
 
 function entry(overrides: Partial<MascotInfo>): MascotInfo {
   return {
     alt: "Snappy -- test.",
     nsfw: false,
     group: "SciFi",
+    occasions: [],
     groundAnchor: { x: 0.5, y: 0.9 },
     boxLeft: 0.2,
     ...overrides,
@@ -86,51 +90,93 @@ describe("getMascotAnchor", () => {
 // =========================================================
 
 describe("buildMascotSelection", () => {
+  function group(seasonal: boolean): MascotGroupInfo {
+    return { label: "Test", description: "Snappy tests.", seasonal };
+  }
+  const fixtureGroups: Record<string, MascotGroupInfo> = {
+    OffDuty: group(false),
+    SciFi: group(false),
+    Horror: group(false),
+    Cartoons: group(false),
+    Halloween: group(true),
+    Christmas: group(true),
+    Easter: group(true),
+    NewYear: group(true),
+    FullMoon: group(true),
+  };
   const fixture: Record<string, MascotInfo> = {
-    original: entry({ group: "Original" }),
+    original: entry({ group: "OffDuty" }),
     robot: entry({ group: "SciFi" }),
     "brand-new-group": entry({ group: "SomethingNew" }),
-    ghost: entry({ group: "Halloween" }),
-    slasher: entry({ group: "Horror" }),
+    pumpkin: entry({ group: "Halloween" }),
+    slasher: entry({ group: "Horror", occasions: ["Halloween"] }),
+    rabbit: entry({ group: "Cartoons", occasions: ["Easter"] }),
+    skeleton: entry({ group: "Halloween", occasions: ["Christmas"] }),
     santa: entry({ group: "Christmas" }),
     bunny: entry({ group: "Easter" }),
     party: entry({ group: "NewYear" }),
     werewolf: entry({ group: "FullMoon" }),
   };
-  const [regular, halloween, christmas, easter, newYear, fullMoon] = buildMascotSelection(fixture);
+  const [regular, halloween, christmas, easter, newYear, fullMoon] = buildMascotSelection(
+    fixture,
+    fixtureGroups,
+  );
 
-  it("puts every non-seasonal group into the regular pool, new groups included", () => {
-    expect(variantsOf(regular)).toEqual(["brand-new-group", "original", "robot", "slasher"]);
+  it("puts every group that shows all year into the regular pool, unknown groups included", () => {
+    expect(variantsOf(regular)).toEqual([
+      "brand-new-group",
+      "original",
+      "rabbit",
+      "robot",
+      "slasher",
+    ]);
     expect(regular.weight).toBe(100);
     expect("condition" in regular).toBe(false);
   });
 
   it("keeps the seasonal groups out of the regular pool", () => {
-    for (const key of ["ghost", "santa", "bunny", "party", "werewolf"]) {
+    for (const key of ["pumpkin", "skeleton", "santa", "bunny", "party", "werewolf"]) {
       expect(variantsOf(regular)).not.toContain(key);
     }
   });
 
-  it("boosts Horror together with Halloween", () => {
-    expect(variantsOf(halloween)).toEqual(["ghost", "slasher"]);
+  it("adds a mascot to every occasion it names and keeps it in its own group", () => {
+    expect(variantsOf(halloween)).toContain("slasher");
+    expect(variantsOf(easter)).toContain("rabbit");
+    expect(variantsOf(regular)).toEqual(expect.arrayContaining(["slasher", "rabbit"]));
   });
 
-  it("gives each season its own dormant entry with its boost", () => {
-    const seasons = [halloween, christmas, easter, newYear, fullMoon];
-    expect(seasons.map(variantsOf)).toEqual([
-      ["ghost", "slasher"],
-      ["santa"],
-      ["bunny"],
+  it("lets a seasonal mascot join another occasion", () => {
+    expect(variantsOf(christmas)).toEqual(["santa", "skeleton"]);
+    expect(variantsOf(halloween)).toContain("skeleton");
+  });
+
+  it("gives each occasion a dormant entry with its condition and boost", () => {
+    const occasions = [halloween, christmas, easter, newYear, fullMoon];
+    expect(occasions.map(variantsOf)).toEqual([
+      ["pumpkin", "skeleton", "slasher"],
+      ["santa", "skeleton"],
+      ["bunny", "rabbit"],
       ["party"],
       ["werewolf"],
     ]);
-    for (const season of seasons) {
-      expect(season.weight).toBe(0);
-      expect("condition" in season).toBe(true);
+    for (const occasion of occasions) {
+      expect(occasion.weight).toBe(0);
+      expect("condition" in occasion).toBe(true);
     }
-    expect(seasons.map((s) => ("conditionalWeight" in s ? s.conditionalWeight : null))).toEqual([
+    expect(occasions.map((o) => ("conditionalWeight" in o ? o.conditionalWeight : null))).toEqual([
       35, 70, 35, 1000, 1000,
     ]);
+  });
+
+  it("leaves out a seasonal group without a condition and warns", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sets = buildMascotSelection(
+      { comet: entry({ group: "Comet" }), robot: entry({ group: "SciFi" }) },
+      { SciFi: group(false), Comet: group(true) },
+    );
+    expect(sets.flatMap(variantsOf)).toEqual(["robot"]);
+    expect(warn).toHaveBeenCalledOnce();
   });
 });
 
@@ -154,10 +200,17 @@ describe("mascotSelection", () => {
     expect(safe.length).toBeGreaterThan(0);
   });
 
-  it("has a seasonal entry for every seasonal group in the data", () => {
-    const groups = new Set(Object.values(data).map((m) => m.group));
-    for (const group of SEASONAL_GROUPS) {
-      expect(groups.has(group)).toBe(true);
+  it("has a condition for every seasonal group of the data, and a seasonal group for every condition", () => {
+    const seasonal = Object.keys(groups).filter((key) => groups[key].seasonal);
+    expect([...OCCASION_GROUPS].sort()).toEqual(seasonal.sort());
+  });
+
+  it("names only groups the group data knows", () => {
+    for (const mascot of Object.values(data)) {
+      expect(groups[mascot.group]).toBeDefined();
+      for (const occasion of mascot.occasions) {
+        expect(groups[occasion]?.seasonal).toBe(true);
+      }
     }
   });
 });

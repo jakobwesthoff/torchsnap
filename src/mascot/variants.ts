@@ -5,17 +5,19 @@
 /**
  * Snappy mascot data and weighted selection configuration.
  *
- * The mascots come from `src/derived/mascots.json`, which the
- * torchsnap-mascot repository writes with its export (`just export
- * <torchsnap checkout>`) together with the images in
- * `public/images/mascot/`. That repository is the place to add or change
- * a mascot; this file only reads what it delivers.
+ * The mascots come from `src/derived/mascots.json` and their groups from
+ * `src/derived/mascot-groups.json`, which the torchsnap-mascot repository
+ * writes with its export (`just export <torchsnap checkout>`) together
+ * with the images in `public/images/mascot/`. That repository is the
+ * place to add or change a mascot or a group; this file only reads what
+ * it delivers (ADR 57, 58).
  *
- * The selection is built from each mascot's `group`: the seasonal
- * groups stay dormant until their occasion, every other group joins one
- * flat pool. NSFW mascots sit in their groups like the others; the NSFW
- * filter in `useMascotVariant` excludes them at selection time when the
- * user has disabled non-family-friendly mascots.
+ * The selection is built from each mascot's `group` and `occasions`: the
+ * seasonal groups stay dormant until their occasion, every other group
+ * joins one flat pool, and a mascot that names an occasion joins that
+ * occasion as well. NSFW mascots sit in their groups like the others; the
+ * NSFW filter in `useMascotVariant` excludes them at selection time when
+ * the user has disabled non-family-friendly mascots.
  *
  * See `selection.ts` for the selection algorithm.
  */
@@ -26,6 +28,7 @@ import { getFullMoonDistance } from "./fullMoon";
 import { isHalloween, isChristmas, isEaster, isNewYear } from "./holidays";
 import { isNighttime, isTwilight } from "./nighttime";
 import mascotData from "../derived/mascots.json";
+import groupData from "../derived/mascot-groups.json";
 
 // =========================================================
 // Mascot Data
@@ -39,6 +42,9 @@ export interface MascotInfo {
   nsfw: boolean;
   /** Theme group, e.g. `SciFi` or `Halloween`; drives the selection. */
   group: string;
+  /** Seasonal groups whose occasion the mascot joins as well, besides
+   *  its own group; empty for most mascots. */
+  occasions: string[];
   /** The point placed on the card, as fractions of the image (see
    *  `launcher/placement.ts`). */
   groundAnchor: MascotAnchor;
@@ -96,56 +102,84 @@ export function getMascotAnchor(variant: string): { groundAnchor: MascotAnchor; 
 }
 
 // =========================================================
+// Group Data
+// =========================================================
+
+export interface MascotGroupInfo {
+  /** The group's display name. */
+  label: string;
+  /** Where Snappy got the ideas for the group's costumes. */
+  description: string;
+  /** When true, the group's mascots show only on its occasion. */
+  seasonal: boolean;
+}
+
+// The labels and descriptions are delivered for the group settings of
+// the weighting todo; until those exist, only `seasonal` is read here.
+const groups = groupData as Record<string, MascotGroupInfo>;
+
+// =========================================================
 // Selection
 // =========================================================
 
 /**
- * The groups that only show on their occasion. Each gets a dormant entry
- * (weight 0) that injects itself with a high weight while its condition
- * holds, so the user consistently sees seasonal mascots when the occasion
- * calls for it.
+ * When each seasonal group's occasion is on, and how strongly its entry
+ * is boosted then. The data says which groups are seasonal; the timing
+ * lives here because it is logic, not data. A test checks this table
+ * against the seasonal groups of the data in both directions.
  */
-const SEASONS: { group: string; condition: () => boolean; conditionalWeight: number }[] = [
-  { group: "Halloween", condition: isHalloween, conditionalWeight: 35 },
-  { group: "Christmas", condition: isChristmas, conditionalWeight: 70 },
-  { group: "Easter", condition: isEaster, conditionalWeight: 35 },
-  { group: "NewYear", condition: isNewYear, conditionalWeight: 1000 },
+const OCCASIONS: Record<string, { condition: () => boolean; conditionalWeight: number }> = {
+  Halloween: { condition: isHalloween, conditionalWeight: 35 },
+  Christmas: { condition: isChristmas, conditionalWeight: 70 },
+  Easter: { condition: isEaster, conditionalWeight: 35 },
+  NewYear: { condition: isNewYear, conditionalWeight: 1000 },
   // Within one day of a full moon, but only after dark so the werewolf
   // doesn't show up at noon.
-  {
-    group: "FullMoon",
+  FullMoon: {
     condition: () => getFullMoonDistance() <= 1 && (isNighttime() || isTwilight()),
     conditionalWeight: 1000,
   },
-];
+};
 
-export const SEASONAL_GROUPS = SEASONS.map((season) => season.group);
-
-/**
- * Horror is a regular group that joins the Halloween boost as well, so
- * the season also brings the year-round horror mascots forward.
- */
-const EXTRA_GROUPS_IN_SEASON: Record<string, string[]> = { Halloween: ["Horror"] };
+export const OCCASION_GROUPS = Object.keys(OCCASIONS);
 
 /**
- * Builds the weighted selection entries for the launcher mascot from
- * the mascot data: one flat pool of every non-seasonal group with equal
- * probability per mascot (a group the code does not know yet joins it
- * too), then one dormant entry per season.
+ * Builds the weighted selection entries for the launcher mascot: one flat
+ * pool of every group that shows all year, with equal probability per
+ * mascot (a group the group data does not know joins it too), then one
+ * dormant entry per occasion holding the occasion's own group and every
+ * mascot that names the occasion.
+ *
+ * A seasonal group without a condition in `OCCASIONS` gets no entry, so
+ * its own mascots never show; the dev build warns about it.
  */
-export function buildMascotSelection(data: Record<string, MascotInfo>): MascotEntry[] {
+export function buildMascotSelection(
+  data: Record<string, MascotInfo>,
+  groupInfo: Record<string, MascotGroupInfo>,
+): MascotEntry[] {
   const keys = Object.keys(data).sort();
-  const inGroups = (groups: string[]) => keys.filter((key) => groups.includes(data[key].group));
+  const isSeasonal = (group: string) => groupInfo[group]?.seasonal === true;
 
+  for (const group of Object.keys(groupInfo)) {
+    if (isSeasonal(group) && !(group in OCCASIONS) && import.meta.env.DEV) {
+      console.warn(
+        `Mascot group "${group}" is seasonal but has no occasion condition; its mascots never show.`,
+      );
+    }
+  }
+
+  // Occasions in the table's order, so the entries keep a stable order.
+  const occasions = OCCASION_GROUPS.filter(isSeasonal);
   return [
-    { variants: keys.filter((key) => !SEASONAL_GROUPS.includes(data[key].group)), weight: 100 },
-    ...SEASONS.map(({ group, condition, conditionalWeight }) => ({
-      variants: inGroups([group, ...(EXTRA_GROUPS_IN_SEASON[group] ?? [])]),
+    { variants: keys.filter((key) => !isSeasonal(data[key].group)), weight: 100 },
+    ...occasions.map((occasion) => ({
+      variants: keys.filter(
+        (key) => data[key].group === occasion || data[key].occasions.includes(occasion),
+      ),
       weight: 0,
-      condition,
-      conditionalWeight,
+      ...OCCASIONS[occasion],
     })),
   ];
 }
 
-export const mascotSelection: MascotEntry[] = buildMascotSelection(mascots);
+export const mascotSelection: MascotEntry[] = buildMascotSelection(mascots, groups);

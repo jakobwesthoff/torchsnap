@@ -1,0 +1,117 @@
+{
+  "Adventure": {
+    "label": "Adventure",
+    "description": "Snappy dreamed of treasure maps and faraway shores as a fledgling. Whip-cracking archaeologists, pirates, explorers and gentlemen racing around the globe against the clock became its travel companions.",
+    "seasonal": false
+  },
+  "AnimatedComedy": {
+    "label": "Animated Comedy",
+    "description": "Snappy stays up for grown-up cartoons long after the little ones are in bed. Mad scientists, delivery crews of the far future, a yellow family and space refugees hiding in the suburbs kept it laughing until sunrise.",
+    "seasonal": false
+  },
+  "Anime": {
+    "label": "Anime",
+    "description": "Snappy discovered anime late one night and has not been to bed on time since. Samurai cats who run a pizzeria, sweet-toothed geniuses and a boy in a straw hat set these costumes in motion.",
+    "seasonal": false
+  },
+  "Cartoons": {
+    "label": "Cartoons",
+    "description": "Snappy laughed its feathers off at cartoon slapstick. Cats chasing mice, coyotes strapped to rockets, lasagna-loving house cats and a slinky pink cat on tiptoe still make it giggle.",
+    "seasonal": false
+  },
+  "Christmas": {
+    "label": "Christmas",
+    "description": "Snappy has always been the first to put up the tree. Santa suits, glowing reindeer noses, gingerbread and one very green fellow who hates the whole affair all have a place under its tree.",
+    "seasonal": true
+  },
+  "Detectives": {
+    "label": "Detectives",
+    "description": "Snappy has read every whodunnit on the shelf and still guesses the culprit too late. Deerstalkers, rumpled raincoats, magnifying glasses and a talking dog with a snack habit are all on its list of suspects.",
+    "seasonal": false
+  },
+  "DevCulture": {
+    "label": "Dev Culture",
+    "description": "Snappy has spent many nights perched next to developers. The mascots of their tools, their favourite memes and the rubber duck on the desk all rubbed off on it.",
+    "seasonal": false
+  },
+  "Easter": {
+    "label": "Easter",
+    "description": "Snappy has joined every egg hunt it could find, mostly for the chocolate. Bunny ears, painted eggs and freshly hatched chicks fill its basket to the brim.",
+    "seasonal": true
+  },
+  "Fantasy": {
+    "label": "Fantasy",
+    "description": "Snappy was read a fairy tale every night and always asked for one more. Wizards, dark lords, tea-party hatters, ogres from the swamp and the occasional dragon never quite left its imagination.",
+    "seasonal": false
+  },
+  "Fighters": {
+    "label": "Fighters",
+    "description": "Snappy lost a lot of pocket money in smoky arcades, button-mashing its way through tournament after tournament. Fireball throwers, masked ninjas and four-armed champions all made the cut.",
+    "seasonal": false
+  },
+  "FullMoon": {
+    "label": "Full Moon",
+    "description": "Snappy is a night owl and has watched the full moon rise more often than it can count. Whatever howls, grins or shines under it has its full attention.",
+    "seasonal": true
+  },
+  "Gaming": {
+    "label": "Gaming",
+    "description": "Snappy has spent more nights with a controller than it would ever admit. Blue speed demons, pixel heroes, mighty pirates and crowbar-swinging physicists jumped from the screen into its wardrobe.",
+    "seasonal": false
+  },
+  "Halloween": {
+    "label": "Halloween",
+    "description": "Snappy has never missed a trick-or-treat night. Pumpkins, pointy hats and bedsheet ghosts are always the first things out of its costume box.",
+    "seasonal": true
+  },
+  "Horror": {
+    "label": "Horror",
+    "description": "Snappy watched every late-night creature feature from behind its wing feathers. Masked slashers, stitched-together creatures, killer dolls and things from the dark still haunt its closet, only a lot friendlier now.",
+    "seasonal": false
+  },
+  "KidsTV": {
+    "label": "Kids' TV",
+    "description": "Snappy learned its letters and numbers from the puppets on children's television. A blue fuzzball who lives for cookies, a grumpy loaf of bread and a talking orange mouse taught it far more than the alphabet.",
+    "seasonal": false
+  },
+  "Movies": {
+    "label": "Movies",
+    "description": "Snappy has sat through countless film nights and series marathons, popcorn in its wings. Secret agents, ghost-catching exterminators, bathrobe-wearing slackers and everything else that stuck ended up here.",
+    "seasonal": false
+  },
+  "NewYear": {
+    "label": "New Year",
+    "description": "Snappy has seen in every new year with a glass of fizz and far too many party poppers. Tuxedos, lucky charms and the same procedure as every year are its idea of a proper party.",
+    "seasonal": true
+  },
+  "OffDuty": {
+    "label": "Off Duty",
+    "description": "Even a master of disguise needs a day off. Between two costumes Snappy goes back to its roots: plain feathers, a warm cloak and the torch that started it all.",
+    "seasonal": false
+  },
+  "SaturdayMorning": {
+    "label": "Saturday Morning",
+    "description": "Snappy spent the 80s and 90s in front of weekend-morning cartoons, a cereal bowl on its lap. Colour-coded hero teams, pizza-loving martial artists and masked heroes of the night were its best friends until lunchtime.",
+    "seasonal": false
+  },
+  "SciFi": {
+    "label": "Sci-Fi",
+    "description": "Snappy grew up on sci-fi double features and never quite recovered. Chosen ones in long black coats, cyborgs from the future, acid-blooded stowaways from deep space and tin-can robots still visit it in its dreams.",
+    "seasonal": false
+  },
+  "SpaceOpera": {
+    "label": "Space Opera",
+    "description": "Snappy has picked a side in the great starship debate more than once and switched back every time. Laser swords, pointed ears and whole bridge crews share one wardrobe here.",
+    "seasonal": false
+  },
+  "Superheroes": {
+    "label": "Superheroes",
+    "description": "Snappy read comic books under the blanket by torchlight, long after lights-out. Capes, masks, magic hammers and green giants with anger issues have filled its wardrobe ever since.",
+    "seasonal": false
+  },
+  "TimeTravel": {
+    "label": "Time Travel",
+    "description": "Snappy has always wanted to travel through time and watched every story that promised a way. Police boxes that are bigger on the inside, souped-up sports cars and very long scarves: it was only a matter of time.",
+    "seasonal": false
+  }
+}
