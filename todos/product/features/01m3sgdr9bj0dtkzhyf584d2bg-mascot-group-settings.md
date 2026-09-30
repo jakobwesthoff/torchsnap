@@ -40,12 +40,13 @@ labels and descriptions were written for this page.
   `src-tauri/src/lib.rs`), so a group added by a later export is on by
   default and a removed group's id is ignored. Settings values are JSON
   values (`SettingsInit::ensure`), so a list works.
-- The last switch. Decided for the selection: with every all-year group
-  off, an active occasion takes the whole draw (the taking-part
-  occasions are scaled up in proportion); with no occasion active either,
-  nothing is eligible and the selection shows `original`. `original` is
-  in OffDuty, so it then shows even with OffDuty off. Open here: accept
-  that, or refuse to switch off the last all-year group.
+- The last switch needs no special handling. Decided for the selection
+  (user, 2026-09-30): `original`, the plain Snappy, is never hidden and
+  always in the all-year pool, whatever the switches say. With every
+  group off, the launcher shows `original` outside the occasions. It
+  keeps `group: OffDuty` in the data, so the page should say that the
+  OffDuty switch does not hide it (or leave it out of that group's
+  description).
 - Thin pools: switching groups off can shrink an occasion's pool
   (Superheroes off leaves FullMoon with 2 characters). The recent list
   excludes fewer than half of a pool's characters, so a pool of 2 stays

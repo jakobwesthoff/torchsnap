@@ -30,11 +30,12 @@ In short:
   the file names a condition registered in `src/mascot/conditions.ts`
   (logic in code, a description for debugging, no parameters in the
   file).
-- The draw is pure; the hook keeps draw and recent list in one state,
-  corrects an NSFW pick during render, and re-draws while hidden when
-  the set of active conditions changes.
-- With an empty all-year pool the active occasions share the draw;
-  nothing eligible at all falls back to `original`.
+- The draw is pure; the hook keeps draw and recent list in one state
+  and corrects an NSFW pick during render. Draws stay at dismiss; a
+  re-check while hidden is deferred to
+  `todos/product/features/01m3sj9erdbc3xqpmvpa946v7t-mascot-occasion-recheck-while-hidden.md`.
+- `original` is never hidden and always in the all-year pool, so that
+  pool is never empty and no fallback rule is needed.
 - A debug panel below the launcher card, under `tauri dev` only, shows
   the draw.
 - ADR 59 amends ADRs 57 and 58.
