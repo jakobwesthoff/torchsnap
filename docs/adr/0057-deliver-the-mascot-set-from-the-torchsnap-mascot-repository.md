@@ -6,6 +6,8 @@ Date: 2026-09-29
 
 Accepted
 
+Amended by [58. Describe mascot groups and occasions in the mascot data](0058-describe-mascot-groups-and-occasions-in-the-mascot-data.md)
+
 Since 2026-09-30 `src/mascotVariants.ts` is `src/mascot/variants.ts`.
 
 ## Context
