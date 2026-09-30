@@ -6,6 +6,8 @@ Date: 2026-09-29
 
 Accepted
 
+Since 2026-09-30 `src/mascotVariants.ts` is `src/mascot/variants.ts`.
+
 ## Context
 
 The Snappy mascots were made in this repository: 1024 px source PNGs in
