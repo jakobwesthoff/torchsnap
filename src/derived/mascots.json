@@ -9,7 +9,7 @@
       "x": 0.5183,
       "y": 0.928
     },
-    "boxLeft": 0.0742
+    "boxLeft": 0.0703
   },
   "adamantium-claw-berserker-nsfw": {
     "alt": "Snappy, claws out -- two hundred years old, heals from anything, and still never found a faster launcher.",
@@ -21,7 +21,7 @@
       "x": 0.5167,
       "y": 0.9205
     },
-    "boxLeft": 0.0322
+    "boxLeft": 0.0371
   },
   "aftershave-scream-face": {
     "alt": "Snappy alone with the aftershave -- it made its family disappear, and the mouse right after. Only the hotkey stays.",
@@ -403,7 +403,7 @@
       "x": 0.5667,
       "y": 0.8916
     },
-    "boxLeft": 0.1445
+    "boxLeft": 0.1436
   },
   "big-glasses-red-bowtie-kid": {
     "alt": "Snappy, big glasses, small body -- one pill shrank it back to first grade. One hotkey launches the app all the same.",
@@ -863,7 +863,7 @@
       "x": 0.5017,
       "y": 0.8904
     },
-    "boxLeft": 0.1416
+    "boxLeft": 0.1348
   },
   "boldly-go-gold-2-nsfw": {
     "alt": "Snappy flipping open the communicator -- beam me up. There is... an app... to launch.",
@@ -875,7 +875,7 @@
       "x": 0.5002,
       "y": 0.8906
     },
-    "boxLeft": 0.1455
+    "boxLeft": 0.1406
   },
   "boldly-go-gold-nsfw": {
     "alt": "Snappy on the bridge -- set phasers to launch.",
@@ -887,7 +887,7 @@
       "x": 0.498,
       "y": 0.9038
     },
-    "boxLeft": 0.0742
+    "boxLeft": 0.1006
   },
   "bolted-neck-monster": {
     "alt": "Snappy freshly stitched and bolted -- it's alive! Mouse bad. Hotkey good.",
@@ -1433,7 +1433,7 @@
       "x": 0.576,
       "y": 0.9004
     },
-    "boxLeft": 0.1455
+    "boxLeft": 0.1436
   },
   "crushed-velvet-frilly-cravat-spy": {
     "alt": "Snappy, peace sign up -- somebody stole its mojo, but nobody touches its hotkey. Groovy, baby, yeah!",
@@ -1697,7 +1697,7 @@
       "x": 0.4779,
       "y": 0.915
     },
-    "boxLeft": 0.1162
+    "boxLeft": 0.1152
   },
   "dragon-trousers-wok-shout": {
     "alt": "Snappy, thumb across the beak -- don't think, feel! Eight fist tournaments in, and the app still opens on one key.",
@@ -1853,7 +1853,7 @@
       "x": 0.5447,
       "y": 0.8992
     },
-    "boxLeft": 0.1182
+    "boxLeft": 0.1152
   },
   "engage-crimson": {
     "alt": "Snappy ordering tea, earl grey, hot -- make it so.",
@@ -1865,7 +1865,7 @@
       "x": 0.5235,
       "y": 0.8811
     },
-    "boxLeft": 0.1807
+    "boxLeft": 0.1787
   },
   "engage-crimson-nsfw": {
     "alt": "Snappy on an away mission -- the app will be on screen. Engage.",
@@ -1877,7 +1877,7 @@
       "x": 0.4776,
       "y": 0.8894
     },
-    "boxLeft": 0.1064
+    "boxLeft": 0.1211
   },
   "everything-is-fine-coffee-flames": {
     "alt": "Snappy with a coffee -- this is fine. Everything launches fine.",
@@ -2045,7 +2045,7 @@
       "x": 0.5303,
       "y": 0.9014
     },
-    "boxLeft": 0.0781
+    "boxLeft": 0.085
   },
   "fire-fist-champion-nsfw": {
     "alt": "Snappy chosen to defend the realm -- TEST YOUR MIGHT against this launch.",
@@ -2333,7 +2333,7 @@
       "x": 0.4951,
       "y": 0.9004
     },
-    "boxLeft": 0.0254
+    "boxLeft": 0.04
   },
   "forest-tunic-hero-nsfw": {
     "alt": "Snappy raising the blade from the pedestal -- hyaah! Seven years asleep, and the first thing it does is hit the hotkey.",
@@ -3691,29 +3691,17 @@
     },
     "boxLeft": 0.082
   },
-  "lightning-bolt-scarlet": {
-    "alt": "Snappy trailing sparks -- it can outrun time itself, and it still shows up late to everything. Except the app.",
-    "nsfw": false,
-    "character": "lightning-bolt-scarlet",
-    "group": "Superheroes",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.4321,
-      "y": 0.9132
-    },
-    "boxLeft": 0.0654
-  },
   "lightning-bolt-scarlet-2": {
     "alt": "Snappy mid-stride -- to the outside world, an ordinary forensic scientist. Secretly, it launches apps faster than you can blink.",
     "nsfw": false,
-    "character": "lightning-bolt-scarlet",
+    "character": "lightning-bolt-scarlet-2",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
       "x": 0.4473,
       "y": 0.9011
     },
-    "boxLeft": 0.126
+    "boxLeft": 0.1201
   },
   "lightning-streak-beehive-bride": {
     "alt": "Snappy with the lightning-streaked beehive -- she's alive, and she wants a faster launcher.",
@@ -4765,7 +4753,7 @@
       "x": 0.5615,
       "y": 0.9023
     },
-    "boxLeft": 0.1465
+    "boxLeft": 0.1475
   },
   "pompom-topknot-woven-blanket": {
     "alt": "Snappy in fluffy alpaca wool -- calm, content, and ready to launch.",
@@ -4853,7 +4841,7 @@
       "x": 0.5671,
       "y": 0.8691
     },
-    "boxLeft": 0.1592
+    "boxLeft": 0.1602
   },
   "proton-pack-buster-2": {
     "alt": "Snappy with the meter beeping wildly -- something strange in the neighbourhood? It ain't afraid of no mouse click.",
@@ -4895,7 +4883,7 @@
       "x": 0.5823,
       "y": 0.8945
     },
-    "boxLeft": 0.1357
+    "boxLeft": 0.1338
   },
   "proton-pack-buster-3-nsfw": {
     "alt": "Snappy crossing the streams -- total protonic reversal never stopped a good launch.",
@@ -4909,7 +4897,7 @@
       "x": 0.5315,
       "y": 0.8926
     },
-    "boxLeft": 0.0742
+    "boxLeft": 0.1006
   },
   "proton-pack-buster-4": {
     "alt": "Snappy warning of a disaster of biblical proportions -- dogs and cats living together, mass hysteria! Or one hotkey.",
@@ -5863,7 +5851,7 @@
       "x": 0.73,
       "y": 0.9981
     },
-    "boxLeft": 0.2119
+    "boxLeft": 0.21
   },
   "scarlet-merc-nsfw": {
     "alt": "Snappy, katanas strapped on -- it wears red so nobody sees it bleed, and hotkeys so nobody sees it launch.",
@@ -5872,10 +5860,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.6949,
-      "y": 0.9971
+      "x": 0.5597,
+      "y": 0.8818
     },
-    "boxLeft": 0.1768
+    "boxLeft": 0.1631
   },
   "scat-singing-crowned-emperor": {
     "alt": "Snappy in the gold crown, arms flung wide -- skoo-be-doo-bee! The emperor sings, the app launches.",
