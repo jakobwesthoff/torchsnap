@@ -8,7 +8,7 @@ status: open
 The macOS tray icon is a template image: `platform/macos/tray.rs` loads
 `src-tauri/icons/tray-icon-template.png` with `icon_as_template(true)`,
 and `just asset-tray-icon` builds that file from
-`assets/snappy-tray-template-2-44px.png`. macOS draws a template from
+`assets/snappy-tray-template-3-44px.png`. macOS draws a template from
 its opacity only, dark on a light menubar and light on a dark one.
 
 `assets/snappy-tray-template-3.svg` (with 44 and 128 px renders) is the
@@ -33,9 +33,7 @@ tone, so no semi-transparent shapes overlap.
 
 2026-09-30: the user likes the two-variant look best (the template-3
 art on a light menubar, the dark variant on a dark one) but does not
-want to build it now. Template 3 is meant as the template for the time
-being; switching the build from template 2 to template 3 is a separate
-step.
+want to build it now. Template 3 is the tray icon for the time being.
 
 ## What the change involves
 
