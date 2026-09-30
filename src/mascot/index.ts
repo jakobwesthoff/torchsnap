@@ -6,6 +6,7 @@
 export type { MascotProps } from "./Mascot";
 export { Mascot } from "./Mascot";
 export { MascotInfoOverlay } from "./MascotInfoOverlay";
+export { MascotDebugPanel } from "./MascotDebugPanel";
 
 // The mascot the launcher shows, and where it stands
 export { useMascotVariant } from "./useMascotVariant";
