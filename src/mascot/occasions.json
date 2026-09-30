@@ -1,0 +1,9 @@
+{
+  "occasions": [
+    { "group": "FullMoon", "condition": "fullMoonNight", "share": 90 },
+    { "group": "NewYear", "condition": "newYear", "share": 90 },
+    { "group": "Christmas", "condition": "christmas", "share": 40 },
+    { "group": "Halloween", "condition": "halloween", "share": 40 },
+    { "group": "Easter", "condition": "easter", "share": 40 }
+  ]
+}

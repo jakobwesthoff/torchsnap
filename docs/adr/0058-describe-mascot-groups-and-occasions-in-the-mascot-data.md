@@ -8,6 +8,8 @@ Accepted
 
 Amends [57. Deliver the mascot set from the torchsnap-mascot repository](0057-deliver-the-mascot-set-from-the-torchsnap-mascot-repository.md)
 
+Amended by [59. Pick the mascot by character in two layers](0059-pick-the-mascot-by-character-in-two-layers.md)
+
 ## Context
 
 ADR 57 builds the selection from each mascot's `group`. The names of

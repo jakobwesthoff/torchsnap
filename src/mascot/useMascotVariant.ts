@@ -3,77 +3,105 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Manages the active Snappy mascot variant across launcher shows.
+ * Manages the Snappy mascot the launcher shows across launcher shows.
  *
- * Integrates the weighted random selection system with the Tauri window
- * lifecycle and user settings. The variant is re-rolled on every window
- * blur (launcher dismiss) so the next variant's image is pre-rendered
- * and cached by the browser before the launcher appears again.
+ * The next mascot is drawn on every window blur (launcher dismiss), so
+ * its image is rendered and cached by the browser before the launcher
+ * appears again. The launcher stays mounted between shows, so React
+ * renders the new <Mascot> into the hidden DOM. The draw evaluates the
+ * occasions at that moment: a launcher that stays hidden across an
+ * occasion's edge shows a draw from the other side of it first (ADR 59).
  *
- * Respects two settings:
- *   - `randomMascots` — when false, always returns `"original"`.
- *   - `showNsfwMascots` — when false, NSFW-tagged variants are excluded
- *     from the selection pool.
+ * The characters that were on screen go into a recent list, which the
+ * draw uses to avoid repeats. It lives in memory only; a restart clears
+ * it.
+ *
+ * Settings:
+ *   - `randomMascots` off: shows `"original"`, and blurs draw nothing.
+ *     The draw from before stays and shows again once it is turned on.
+ *   - `showNsfwMascots` off: the draw leaves NSFW variants out. An NSFW
+ *     variant on screen when it is turned off is replaced at once by an
+ *     SFW variant of the same character, or by a new draw.
+ *   - `mascotMode` off: nothing is on screen, so nothing is remembered.
  */
 
 import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useSetting } from "../hooks/useSetting";
-import { selectMascotVariant } from "./selection";
-import { isNsfwVariant, mascotSelection } from "./variants";
+import { getSettingSync } from "../settingsStore";
+import { CONDITIONS } from "./conditions";
+import { drawMascot, rememberShown, safeVariantInPool, type MascotDraw } from "./selection";
+import { ORIGINAL_MASCOT, isNsfwVariant, mascotFacts, mascotPools } from "./variants";
 
-/** A single roll of the mascot dice. Both pools are drawn at once so a
- *  settings change can be answered by picking the matching field rather
- *  than by re-rolling, which keeps the displayed variant a pure function
- *  of the roll and the current settings. */
-interface MascotRoll {
-  fromFullPool: string;
-  fromSfwPool: string;
+/** The draw on hand and the recently shown characters. Both change only
+ *  through pure functional updates, so StrictMode's double calls in dev
+ *  change nothing. */
+interface MascotState {
+  draw: MascotDraw;
+  recent: string[];
 }
 
-// Both draws happen on every roll, including the SFW one while NSFW is
-// allowed. `selectMascotVariant` throws on a pool with no positive
-// weight, so this assumes `mascotSelection` always contains at least one
-// weighted SFW variant (checked in `variants.test.ts`).
-function rollMascot(): MascotRoll {
-  return {
-    fromFullPool: selectMascotVariant(mascotSelection),
-    fromSfwPool: selectMascotVariant(mascotSelection, (v) => !isNsfwVariant(v)),
-  };
+/** Draws with the settings of this moment, read from the store rather
+ *  than a render, so the blur listener registered once sees current
+ *  values. */
+function draw(
+  recent: string[],
+  allowNsfw = getSettingSync<boolean>("showNsfwMascots"),
+): MascotDraw {
+  return drawMascot({
+    pools: mascotPools,
+    mascots: mascotFacts,
+    conditions: CONDITIONS,
+    now: new Date(),
+    allowNsfw,
+    recent,
+    random: Math.random,
+  });
 }
 
-export function useMascotVariant(): { variant: string } {
+export function useMascotVariant(): { variant: string; draw: MascotDraw | null } {
   const [randomMascots] = useSetting<boolean>("randomMascots");
   const [showNsfwMascots] = useSetting<boolean>("showNsfwMascots");
 
-  const [roll, setRoll] = useState(rollMascot);
+  const [state, setState] = useState<MascotState>(() => ({ draw: draw([]), recent: [] }));
 
-  // Re-roll the mascot on every launcher dismiss so the next variant is
-  // already rendered (and its image cached by the browser) before the
-  // launcher appears again. The launcher stays mounted between shows, so
-  // React renders the new <Mascot> into the hidden DOM and the browser
-  // fetches the image while the window is invisible.
-  //
   // The window is looked up here rather than at import, so modules that
   // import the mascot package without rendering the launcher (the welcome
   // window, tests) never touch the Tauri window API.
   useEffect(() => {
-    const unlisten = getCurrentWebviewWindow().listen("tauri://blur", () => setRoll(rollMascot()));
+    const unlisten = getCurrentWebviewWindow().listen("tauri://blur", () => {
+      if (!getSettingSync<boolean>("randomMascots")) return;
+      setState((previous) => {
+        // A blur without a dismiss (the launcher was never shown in
+        // between) moves the same character to the front again, which
+        // changes nothing.
+        const wasShown = getSettingSync<string>("mascotMode") !== "off";
+        const recent = wasShown
+          ? rememberShown(previous.recent, previous.draw.character)
+          : previous.recent;
+        return { draw: draw(recent), recent };
+      });
+    });
     return () => {
       unlisten.then((f) => f());
     };
   }, []);
 
-  // Settings can change while the launcher is visible (the user toggles
-  // one in the settings window), so the variant is derived on every
-  // render instead of being corrected after the fact. An NSFW pick is
-  // swapped for the roll's SFW draw the moment NSFW is disallowed;
-  // a pick that is already safe stays put.
-  const variant = !randomMascots
-    ? "original"
-    : showNsfwMascots || !isNsfwVariant(roll.fromFullPool)
-      ? roll.fromFullPool
-      : roll.fromSfwPool;
+  // NSFW turned off while an NSFW variant is drawn: the state is fixed
+  // during this render, and React renders again right away with it. The
+  // SFW variant of the same character in the same pool needs no draw; a
+  // character without one gets a new draw. The fixed state is kept, so
+  // turning NSFW back on does not bring the NSFW variant back.
+  let current = state;
+  if (!showNsfwMascots && isNsfwVariant(state.draw.variant)) {
+    const safe = safeVariantInPool(state.draw, mascotPools, mascotFacts);
+    current = {
+      draw: safe ? { ...state.draw, variant: safe } : draw(state.recent, false),
+      recent: state.recent,
+    };
+    setState(current);
+  }
 
-  return { variant };
+  if (!randomMascots) return { variant: ORIGINAL_MASCOT, draw: null };
+  return { variant: current.draw.variant, draw: current.draw };
 }

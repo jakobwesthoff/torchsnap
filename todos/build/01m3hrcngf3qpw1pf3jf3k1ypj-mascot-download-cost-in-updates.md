@@ -88,9 +88,12 @@ No change. Size grows linearly with the roster.
   `register_favicon_protocol`).
 - Packs are versioned apart from the app: a new mascot needs no app
   release, and an app update carries no mascots.
-- The selection is built from the data (`src/mascot/variants.ts`), so a
-  pack would carry the entries of `src/derived/mascots.json` for its
-  mascots (alt, nsfw, group, groundAnchor, boxLeft).
+- The draw's pools are built from the data (`buildMascotPools` in
+  `src/mascot/variants.ts`, ADR 59): `src/derived/mascots.json`, the
+  groups' `seasonal` flag from `src/derived/mascot-groups.json`, and
+  `src/mascot/occasions.json`. A pack would carry the entries of
+  `mascots.json` for its mascots (alt, nsfw, character, group,
+  occasions, groundAnchor, boxLeft) and the groups they name.
 - Needs signing and verification, hosting, and a defined first run
   without network.
 

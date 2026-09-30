@@ -8,6 +8,8 @@ Accepted
 
 Amended by [58. Describe mascot groups and occasions in the mascot data](0058-describe-mascot-groups-and-occasions-in-the-mascot-data.md)
 
+Amended by [59. Pick the mascot by character in two layers](0059-pick-the-mascot-by-character-in-two-layers.md)
+
 Since 2026-09-30 `src/mascotVariants.ts` is `src/mascot/variants.ts`.
 
 ## Context

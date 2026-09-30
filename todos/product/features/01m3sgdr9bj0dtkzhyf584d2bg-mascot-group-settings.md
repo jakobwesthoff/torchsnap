@@ -1,16 +1,18 @@
 ---
 kind: feature
-status: blocked
+status: open
 area: [src/settings/sections/AppearanceSection.tsx, src/mascot/variants.ts, src/mascot/selection.ts, src-tauri/src/lib.rs]
-depends-on: [todos/product/features/01m3q3gymfpn2ehbpq9nt7dg6d-mascot-selection-by-character.md]
 tags: [ux]
 ---
 
 # Let users switch mascot groups on and off
 
-Blocked on the per-character selection (the todo in `depends-on`, plan
-`docs/plan/mascot-selection-weighting.md`); split out of it on
-2026-09-30 because the user left the settings page out of that work.
+Split out of the per-character selection (ADR 59) on 2026-09-30,
+because the user left the settings page out of that work. The pools are
+built by `buildMascotPools` in `src/mascot/variants.ts`; leaving a
+switched-off group's mascots out of its `data` argument is enough for
+the draw, and it adds `original` to the all-year pool whatever the data
+holds.
 
 ## What is wanted
 

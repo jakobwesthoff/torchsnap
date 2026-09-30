@@ -15,7 +15,7 @@ import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { GadgetErrorBoundary } from "../components/GadgetErrorBoundary";
 import { KeyBindingPill } from "../components/KeyBindingPill";
 import { useEmacsBindings } from "../hooks/useEmacsBindings";
-import { MascotInfoOverlay, useMascotVariant } from "../mascot";
+import { MascotDebugPanel, MascotInfoOverlay, useMascotVariant } from "../mascot";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
 import { getGadgetView, getGadgetInlineView } from "../gadgets/registry";
@@ -24,6 +24,7 @@ import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useControlChannel } from "./hooks/useControlChannel";
 import { useLauncherMascotPlacement } from "./hooks/useLauncherMascotPlacement";
+import { useMascotDebugPanel } from "./hooks/useMascotDebugPanel";
 import { useMascotInfo } from "./hooks/useMascotInfo";
 import { useSearch } from "./hooks/useSearch";
 import { LauncherMascot } from "./LauncherMascot";
@@ -200,12 +201,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // an explicit view name and optional data.
   const [executeGadgetView, setExecuteGadgetView] = useState<GadgetViewRef | null>(null);
 
+  // The mascot debug panel (dev builds) closes with the launcher's reset
+  // on dismiss, since the next mascot is drawn then.
+  const mascotDebug = useMascotDebugPanel();
+  const closeMascotDebug = mascotDebug.close;
+
   const resetState = useCallback(() => {
     setDisplayQueryState("");
     setSearchQuery("");
     setSelectedIndex(0);
     setExecuteGadgetView(null);
-  }, []);
+    closeMascotDebug();
+  }, [closeMascotDebug]);
 
   const { dismiss } = useWindowLifecycle({
     inputRef,
@@ -664,8 +671,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const emacsBindings = useEmacsBindings(inputRef, setQuery);
 
   const [mascotMode] = useSetting<string>("mascotMode");
-  const { variant: mascotVariant } = useMascotVariant();
+  const { variant: mascotVariant, draw: mascotDraw } = useMascotVariant();
   const mascotInfo = useMascotInfo();
+  const showMascotInfo = mascotInfo.show;
+  const showMascotDebug = mascotDebug.show;
+  const handleMascotInfoClick = useCallback(() => {
+    showMascotInfo();
+    if (import.meta.env.DEV) showMascotDebug();
+  }, [showMascotInfo, showMascotDebug]);
   const mascotPlacement = useLauncherMascotPlacement(
     mascotVariant,
     mascotMode as "center" | "sidekick" | "off",
@@ -782,8 +795,14 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
             top={mascotPlacement.top}
             left={mascotPlacement.left}
             right={mascotPlacement.right}
-            onInfoClick={mascotInfo.show}
+            onInfoClick={handleMascotInfoClick}
           />
+        )}
+        {/* Below the card, outside `cardRef`, whose size drives the
+            window's; the window is as tall as the card can get, so with
+            an empty search the space below is inside it. */}
+        {import.meta.env.DEV && mascotDebug.open && mascotMode !== "off" && (
+          <MascotDebugPanel draw={mascotDraw} onClose={mascotDebug.close} />
         )}
         {/* Launcher card */}
         <div
