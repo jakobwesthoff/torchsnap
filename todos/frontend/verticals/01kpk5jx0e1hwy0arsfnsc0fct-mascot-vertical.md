@@ -30,7 +30,6 @@ to scatter it.
 | `src/components/Mascot.tsx` | `src/mascot/Mascot.tsx` |
 | `src/components/MascotInfoOverlay.tsx` | `src/mascot/MascotInfoOverlay.tsx` |
 | `src/lib/astronomy.ts` | `src/mascot/astronomy.ts` |
-| `src/lib/preloadMascot.ts` | `src/mascot/preloadMascot.ts` |
 | `src/derived/mascots.json` | `src/mascot/mascots.json` |
 | `src/mascotVariants.ts` (root) | `src/mascot/variants.ts` |
 | `src/launcher/hooks/useMascotInfo.ts` | `src/mascot/useMascotInfo.ts` |
@@ -45,7 +44,6 @@ their call site is preferred — judgment call at implementation time.
 Add `src/mascot/index.ts` exporting the public surface:
 - `Mascot`, `MascotInfoOverlay` (components)
 - `useMascotVariant`, `useMascotInfo`, `useLauncherMascotPlacement` (hooks used by launcher)
-- `preloadMascot` (called in launcher entry)
 
 Internal helpers (`astronomy.ts`, `useHemisphere.ts`, etc.) can be
 non-exported — only the launcher imports them transitively.
