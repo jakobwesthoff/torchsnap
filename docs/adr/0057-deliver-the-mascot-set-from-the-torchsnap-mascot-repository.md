@@ -10,6 +10,8 @@ Amended by [58. Describe mascot groups and occasions in the mascot data](0058-de
 
 Amended by [59. Pick the mascot by character in two layers](0059-pick-the-mascot-by-character-in-two-layers.md)
 
+Amended by [60. Ship the app icon as an Icon Composer asset catalog](0060-ship-the-app-icon-as-an-icon-composer-asset-catalog.md)
+
 Since 2026-09-30 `src/mascotVariants.ts` is `src/mascot/variants.ts`.
 
 ## Context

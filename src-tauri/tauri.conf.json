@@ -33,7 +33,8 @@
     ],
     "resources": {
       "../target/bundled-gadgets/": "gadgets/",
-      "icons/gadget-document.icns": "gadget-document.icns"
+      "icons/gadget-document.icns": "gadget-document.icns",
+      "icons/Assets.car": "Assets.car"
     },
     "fileAssociations": [
       {

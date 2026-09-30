@@ -6,12 +6,15 @@
 #
 # Check that a built Torchsnap.app registers `.torchsnap` files the way
 # ADR 52 decides: the exported type, its conformance and tags, the
-# document type with role and rank, and the document icon.
+# document type with role and rank, and the document icon. And that it
+# carries its app icon the way ADR 60 decides: the asset catalog named
+# by `CFBundleIconName` and the `.icns` fallback.
 #
 # The registration lives in `src-tauri/Info.plist`, which the bundler
-# merges into the generated plist, and `bundle.fileAssociations` in
-# `tauri.conf.json`. Neither is exercised by `just fullcycle`, which
-# never builds a bundle, so this check runs against a real one.
+# merges into the generated plist, `bundle.fileAssociations` and
+# `bundle.resources` in `tauri.conf.json`. None of them is exercised by
+# `just fullcycle`, which never builds a bundle, so this check runs
+# against a real one.
 #
 # Usage:
 #   tools/verify-bundle-plist <path/to/Torchsnap.app>
@@ -64,16 +67,23 @@ expect "$document:LSHandlerRank" "Owner"
 expect "$document:LSItemContentTypes:0" "app.torchsnap.gadget"
 expect "$document:CFBundleTypeIconFile" "gadget-document.icns"
 
-icon="$app/Contents/Resources/gadget-document.icns"
-if [ -f "$icon" ]; then
-    echo "ok        $icon exists"
-else
-    echo "missing   $icon"
-    failures=$((failures + 1))
-fi
+# The app icon: macOS 26 reads `CFBundleIconName` from `Assets.car`,
+# older systems the `.icns` named by `CFBundleIconFile`.
+expect "CFBundleIconName" "AppIcon"
+expect "CFBundleIconFile" "icon.icns"
+
+for resource in gadget-document.icns Assets.car icon.icns; do
+    file="$app/Contents/Resources/$resource"
+    if [ -f "$file" ]; then
+        echo "ok        $file exists"
+    else
+        echo "missing   $file"
+        failures=$((failures + 1))
+    fi
+done
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures check(s) failed for $app" >&2
     exit 1
 fi
-echo "$app registers .torchsnap files as decided"
+echo "$app registers .torchsnap files and its app icon as decided"

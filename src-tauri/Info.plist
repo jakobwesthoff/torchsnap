@@ -11,9 +11,17 @@
   whole. Both definitions must carry the same values; the
   `fileAssociations` entry is what the Linux `.desktop` file is built
   from. `just verify-bundle` checks the result in a built bundle.
+
+  `CFBundleIconName` names the app icon in `Assets.car`, the asset
+  catalog `just app-icon-compile` makes from the Icon Composer document
+  (`assets/app-icon/README.md`). macOS 26 draws the icon from it in every
+  appearance; `CFBundleIconFile` (`icon.icns`, set by the bundler) is
+  its fallback.
 -->
 <plist version="1.0">
 <dict>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>

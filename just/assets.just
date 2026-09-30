@@ -15,32 +15,31 @@
 # Generate all assets (timezone data, app icons, tray icon, bang data)
 assets: asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
 
-# Composite mascot onto brand gradient and generate all app icon formats via `tauri icon` (incremental)
+# The app icon is the candidate `app_icon` of `assets/app-icon/` (see
+# its README). Xcode's tools compile it into tracked files in
+# `assets/app-icon/compiled/` (`app-icon-compile`); this recipe only
+# copies and converts those, so it runs without Xcode, as on CI.
+
+# Generate all app icon formats from the compiled app icon via `tauri icon` (incremental)
 asset-app-icons:
     #!/usr/bin/env bash
     set -euo pipefail
-    src="assets/mascot/snappy-original-1024.png"
+    compiled="assets/app-icon/compiled"
     icons="src-tauri/icons"
     source_icon="$icons/app-icon-source.png"
 
-    # The recipe runs in two stages: first compose the 1024x1024
-    # source icon from the mascot and the brand gradient, then invoke
-    # `tauri icon` to fan it out into every platform-specific format.
-    # Each stage is checked independently so a partial failure in
-    # stage 2 re-runs only stage 2 on the next invocation, rather than
-    # locking in a half-populated icons/ directory.
+    # The recipe runs in three stages: take the 1024 px Default render
+    # of the app icon as the source, invoke `tauri icon` to fan it out
+    # into every platform-specific format, then put the macOS files
+    # `actool` made in place of Tauri's. Each stage is checked
+    # independently so a partial failure re-runs only what is missing,
+    # rather than locking in a half-populated icons/ directory.
 
-    # Stage 1: (re)build the composite source icon when missing or
-    # older than the mascot source.
-    if [ ! -f "$source_icon" ] || [ "$src" -nt "$source_icon" ]; then
-        echo "Composing app icon source..."
-        # The mascot sits at ~78% of the 1024px canvas for padding on
-        # top of a warm orange-to-amber torch-theme gradient. 8-bit
-        # depth is forced because Tauri rejects 16-bit PNGs.
-        magick -size 1024x1024 gradient:'#f97316'-'#d97706' \
-            \( "$src" -filter Lanczos -resize 799x799 \) \
-            -gravity center -composite \
-            -depth 8 -define png:color-type=6 "$source_icon"
+    # Stage 1: (re)build the source icon when missing or older than the
+    # render. 8-bit RGBA is forced because Tauri rejects 16-bit PNGs.
+    if [ ! -f "$source_icon" ] || [ "$compiled/app-icon-1024.png" -nt "$source_icon" ]; then
+        echo "Converting app icon source..."
+        magick "$compiled/app-icon-1024.png" -depth 8 -define png:color-type=6 "$source_icon"
     fi
 
     # Stage 2: regenerate platform-specific icons when any output
@@ -64,8 +63,6 @@ asset-app-icons:
 
     if [ "$needs_regen" = true ]; then
         echo "Generating app icons..."
-        # Let Tauri's icon generator handle all platform-specific
-        # formats (icns, correct sizes, squircle treatment, etc.).
         # `bun run` uses the project's `@tauri-apps/cli` through the
         # `tauri` script in package.json. `bunx tauri` would fetch Tauri's
         # legacy pre-1.0 `tauri` package from npm when node_modules
@@ -74,6 +71,19 @@ asset-app-icons:
     else
         echo "App icons: up to date."
     fi
+
+    # Stage 3: macOS takes the icon from `Assets.car`, named by
+    # `CFBundleIconName` in src-tauri/Info.plist, with all macOS 26
+    # appearances; `icon.icns`, `CFBundleIconFile`, is the one `actool`
+    # made alongside it instead of Tauri's. tauri.conf.json copies
+    # `Assets.car` into the bundle's Resources.
+    for file in Assets.car:Assets.car AppIcon.icns:icon.icns; do
+        from="$compiled/${file%%:*}"
+        to="$icons/${file##*:}"
+        if ! cmp -s "$from" "$to"; then
+            cp "$from" "$to"
+        fi
+    done
 
 # The document icon Finder shows for `.torchsnap` files: a white page
 # with a folded corner carrying the app icon. `iconutil` only exists on
@@ -141,6 +151,43 @@ asset-tray-icon:
 app-icon-candidates:
     tools/flatten-emblem assets/snappy-emblem-feathered.svg assets/app-icon/snappy-emblem-flat.svg
     tools/build-app-icons
+
+# The candidate that is the app icon. Changing it needs
+# `app-icon-compile` and a commit of `assets/app-icon/compiled/`.
+app_icon := "aurora-rise"
+
+# `actool` compiles the Icon Composer document into the asset catalog
+# macOS 26 reads (all appearances) and an `.icns` for the bundle's
+# `CFBundleIconFile`; its deployment target is the bundle's minimum
+# system version. `ictool` renders the Default appearance that
+# `asset-app-icons` turns into the icons of the other platforms.
+
+# Compile the app icon candidate into assets/app-icon/compiled/ (needs Xcode with Icon Composer)
+app-icon-compile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ictool="${ICTOOL:-/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool}"
+    document="assets/app-icon/{{ app_icon }}/{{ app_icon }}.icon"
+    out="assets/app-icon/compiled"
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+
+    # `--app-icon` names the icon inside the catalog; the document is
+    # copied under that name so the two agree.
+    cp -R "$document" "$work/AppIcon.icon"
+    xcrun actool "$work/AppIcon.icon" --compile "$work" --app-icon AppIcon --include-all-app-icons \
+        --enable-on-demand-resources NO --development-region en --target-device mac \
+        --minimum-deployment-target 10.13 --platform macosx \
+        --output-partial-info-plist "$work/partial.plist" --errors --output-format human-readable-text
+    mkdir -p "$out"
+    cp "$work/Assets.car" "$work/AppIcon.icns" "$out/"
+    # ictool writes 16 bits per channel; the 8-bit copy is a third of
+    # the size and all the platform icons need.
+    "$ictool" "$document" --export-image --output-file "$work/render.png" --platform macOS \
+        --rendition Default --width 1024 --height 1024 --scale 1
+    magick "$work/render.png" -depth 8 -define png:color-type=6 "$out/app-icon-1024.png"
+    oxipng -o max --strip safe --quiet "$out/app-icon-1024.png"
+    echo "Compiled {{ app_icon }} into $out."
 
 # Used by the nighttime detection code to compute sunset/sunrise times
 # for the user's timezone.

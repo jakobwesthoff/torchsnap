@@ -116,7 +116,7 @@ release-build version:
     [ "$(lipo -archs "$app/Contents/MacOS/$executable")" = arm64 ] || fail "$app is not an arm64-only build"
     bundle_version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")
     [ "$bundle_version" = "$version" ] || fail "$app reports version $bundle_version"
-    tools/verify-bundle-plist "$app" >/dev/null || fail "$app does not register .torchsnap files as decided"
+    tools/verify-bundle-plist "$app" >/dev/null || fail "$app does not register .torchsnap files or its app icon as decided"
 
     # Installed apps replace themselves with the app inside the update
     # archive, so that copy has to pass the same Gatekeeper checks.

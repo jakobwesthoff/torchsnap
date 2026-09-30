@@ -1,19 +1,25 @@
 # App icon candidates
 
-Three candidates for Torchsnap's app icon, made from the Snappy emblem
-(`assets/snappy-emblem-feathered.svg`). None of them is the app icon
-yet. The bundle still uses `src-tauri/icons/`, which
-`just asset-app-icons` builds from `assets/mascot/snappy-original-1024.png`.
+Candidates for Torchsnap's app icon, made from the Snappy emblem
+(`assets/snappy-emblem-feathered.svg`). `aurora-rise` is the app icon
+(ADR 60), named by `app_icon` in `just/assets.just`; the others are
+kept as options.
 
 | Candidate | Default · ClearLight · TintedLight (top), Dark · ClearDark · TintedDark (bottom) |
 |---|---|
 | `aurora`: the colour owl under teal and violet aurora ribbons on a night sky with stars | ![aurora](previews/aurora.webp) |
 | `ink`: the owl in one navy ink on white; in dark appearance its negative, pale ink on navy | ![ink](previews/ink.webp) |
-| `aurora-rise`: the colour owl rising over the bottom edge under the aurora | ![aurora-rise](previews/aurora-rise.webp) |
+| `aurora-rise`, **the app icon**: the colour owl rising over the bottom edge under the aurora | ![aurora-rise](previews/aurora-rise.webp) |
+| `aurora-ember`: `aurora` on a warm night, deep brown to rust, with orange and gold ribbons | ![aurora-ember](previews/aurora-ember.webp) |
+| `aurora-rise-ember`: `aurora-rise` on that warm night | ![aurora-rise-ember](previews/aurora-rise-ember.webp) |
+| `aurora-rise-dusk`: `aurora-rise` from indigo to the accent orange at the horizon, with gold and orange ribbons | ![aurora-rise-dusk](previews/aurora-rise-dusk.webp) |
+
+The warm skies use Torchsnap's accent oranges (`#f97316`, `#fb923c`,
+`#ea580c`) and the emblem's gold (`#fdcc33`).
 
 In clear and tinted appearance every candidate shows the negative owl.
-There `aurora` dims its sky to 35 %; `aurora-rise` keeps its sky as in
-the other appearances.
+There the `aurora` layouts dim their sky to 35 %; the `aurora-rise`
+layouts keep their sky as in the other appearances.
 
 The previews are Apple's own renders: `ictool`, the renderer inside
 Xcode's Icon Composer, draws every macOS 26 appearance of each
@@ -28,6 +34,7 @@ candidate.
 | `<candidate>/sky.svg` | The sky (stars and aurora ribbons) of the aurora candidates, the source of their sky layer. |
 | `<candidate>/<candidate>.icon/` | The Icon Composer document: `icon.json` (background fill, layer groups, per-appearance overrides) and `Assets/` with the owl layer SVGs and the sky layer PNG. |
 | `previews/<candidate>.webp` | The six `ictool` renders shown above. |
+| `compiled/` | The app icon compiled for the bundle (`just app-icon-compile`): `Assets.car` and `AppIcon.icns` from `actool`, `app-icon-1024.png` the Default render. |
 
 Everything here is generated. Change the tools, not the files: a
 rebuild overwrites them, and edits made in Icon Composer as well.
@@ -54,6 +61,17 @@ and then `tools/build-app-icons` (all other files). Requirements:
 
 `tools/build-app-icons --no-raster` writes only the vector files and
 `icon.json`, without the last three.
+
+After a change to the app icon's candidate, or to `app_icon`:
+
+```
+just app-icon-compile
+```
+
+It needs `xcrun actool` (Xcode), Icon Composer's `ictool`, ImageMagick
+and `oxipng`, and rewrites `compiled/`; commit it. `just
+asset-app-icons` then builds `src-tauri/icons/` from `compiled/` without
+Xcode, as on CI.
 
 Tests: `just test-tools` covers `tools/build-app-icons` with the
 standard library alone and skips the flattening tests;
@@ -101,38 +119,41 @@ building these:
 
 From the maintainer, 2026-10-01:
 
-- All three candidates are kept here with their sources until one is
-  chosen.
-- Clear and tinted: the negative owl in all three; the `aurora` sky
-  faint, the `aurora-rise` sky shown.
+- `aurora-rise` is the app icon for now; the other candidates stay as
+  options (`aurora-ember`, `aurora-rise-ember` and `aurora-rise-dusk`
+  from the round in Torchsnap's own oranges).
+- Clear and tinted: the negative owl in every candidate; the `aurora`
+  sky faint, the `aurora-rise` sky shown.
 - The owl layer stays flat (no Liquid Glass).
 - The same art at every size; no simplified small sizes.
-- The DMG's volume icon will be the app icon.
-- The chosen icon ships through `actool` (next section).
+- The DMG's volume icon is the app icon.
+- The app icon ships through `actool` (next section).
 
 ## Shipping a `.icon` with Tauri
 
 Tauri 2 has no support for `.icon` documents yet (feature request
 [tauri#14207](https://github.com/tauri-apps/tauri/issues/14207)); with
 one in `bundle.icon`, bundling fails in `actool`
-([tauri#15315](https://github.com/tauri-apps/tauri/issues/15315)). The
-way around it is to compile the document with Apple's `actool` and add
-the result to the bundle:
+([tauri#15315](https://github.com/tauri-apps/tauri/issues/15315)).
+Torchsnap compiles the document itself (ADR 60):
 
-```
-xcrun actool <candidate>.icon --compile <out> --app-icon AppIcon \
-    --include-all-app-icons --enable-on-demand-resources NO \
-    --development-region en --target-device mac \
-    --minimum-deployment-target 11.0 --platform macosx \
-    --output-partial-info-plist <out>/partial.plist
-```
+1. `just app-icon-compile` runs `actool` on the `app_icon` candidate
+   (as `AppIcon.icon`, with `--app-icon AppIcon`, target `mac`, the
+   bundle's minimum system version 10.13) and writes `Assets.car` and
+   `AppIcon.icns` to `compiled/`, plus the Default render.
+2. `just asset-app-icons` feeds the render to `tauri icon` for every
+   platform, then puts `AppIcon.icns` in place of Tauri's
+   `src-tauri/icons/icon.icns` and copies `Assets.car` next to it.
+3. `bundle.resources` in `tauri.conf.json` copies `Assets.car` into
+   `Contents/Resources/`; `src-tauri/Info.plist` adds
+   `CFBundleIconName` = `AppIcon`. The bundler sets `CFBundleIconFile`
+   to `icon.icns` itself.
 
-For `aurora` this writes `Assets.car` (2.2 MB), `AppIcon.icns` and a
-partial plist with `CFBundleIconFile` and `CFBundleIconName`, both
-`AppIcon`. The app then needs `Assets.car` and `AppIcon.icns` in
-`Contents/Resources/` and both keys in its `Info.plist`.
-
-Checked on a stub app bundle: with `CFBundleIconName` set, macOS draws
-the icon from `Assets.car`. A bundle whose `Assets.car` held `ink` and
-whose `.icns` held `aurora` showed `ink`. Not checked yet: a real
-Torchsnap bundle built this way.
+Checked on a debug bundle built this way (2026-10-01):
+`just verify-bundle` finds both keys, `Assets.car` and `icon.icns`;
+macOS draws the bundle's icon as the `aurora-rise` render; and the DMG's
+`.VolumeIcon.icns` is the same file as `icon.icns`. Earlier, on a stub
+bundle whose `Assets.car` held `ink` and whose `.icns` held `aurora`,
+macOS showed `ink`: with `CFBundleIconName` set, it takes `Assets.car`.
+Not checked: the dark, clear and tinted icon styles on a real system,
+which follow a system-wide setting.

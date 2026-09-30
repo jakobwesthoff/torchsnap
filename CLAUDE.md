@@ -108,8 +108,14 @@ config.
   seasonal group needs an entry in `occasions.json`, a new kind of
   timing a condition in the registry `src/mascot/conditions.ts`.
   `src/launcher/placement.ts` places a mascot by its `groundAnchor`.
-  The app icon source `assets/mascot/snappy-original-1024.png` is a copy
-  of that repository's `masters/original.png`.
+
+## App icon
+
+- The app icon is a candidate of `assets/app-icon/` (README there),
+  named by `app_icon` in `just/assets.just` (ADR 60). After changing the
+  candidate or its document, run `just app-icon-compile` (needs Xcode
+  with Icon Composer) and commit `assets/app-icon/compiled/`; never edit
+  those files or the candidates' generated files by hand.
 
 ## ADRs
 

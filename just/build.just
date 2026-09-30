@@ -35,10 +35,11 @@ build profile="debug" sign="" config="":
     {{ if sign == "sign" { "just notarize-dmg " + profile } else { "" } }}
 
 # `fullcycle` never builds a bundle, so the `.torchsnap` registration
-# in `src-tauri/Info.plist` and `bundle.fileAssociations` (ADR 52) is
-# checked against a built one here. `release-build` runs the same check.
+# in `src-tauri/Info.plist` and `bundle.fileAssociations` (ADR 52) and
+# the app icon's asset catalog (ADR 60) are checked against a built one
+# here. `release-build` runs the same check.
 
-# Check that a built bundle registers `.torchsnap` files (macOS)
+# Check that a built bundle registers `.torchsnap` files and carries its app icon (macOS)
 [macos]
 verify-bundle profile="debug":
     tools/verify-bundle-plist "src-tauri/target/{{ profile }}/bundle/macos/$(jq -r .productName src-tauri/tauri.conf.json).app"
