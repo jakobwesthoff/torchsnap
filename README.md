@@ -263,3 +263,6 @@ If the build must change, fix it on `main` and run `release-build` again.
 Mozilla Public License Version 2.0 (MPL-2.0). Every source file
 carries the standard MPL header — see `CLAUDE.md` for the per-
 language header formats.
+
+The Snappy mascot illustrations were created with the help of AI image
+generation.
