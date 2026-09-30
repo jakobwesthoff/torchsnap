@@ -35,6 +35,17 @@ export default defineConfig(async () => ({
       },
       output: {
         manualChunks(id: string) {
+          // The mascot code and the data it draws from (the mascot set,
+          // its groups, the time zone coordinates for night time) form
+          // their own chunk. Every window still loads it: the launcher
+          // and welcome code that uses it sits in the shared chunk,
+          // which imports it (see the todo on untangling src/launcher).
+          if (
+            id.includes("/src/mascot/") ||
+            (id.includes("/src/derived/") && id.endsWith(".json"))
+          ) {
+            return "mascot";
+          }
           // Keep entry chunks free of shared exports. Rolldown may
           // otherwise inline shared modules into an entry chunk and
           // re-export them. When the other entry's lazy chunks import
