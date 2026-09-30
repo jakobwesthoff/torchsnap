@@ -146,6 +146,14 @@ describe("SnappyHeroSets", () => {
     }
   });
 
+  // `useMascotVariant` draws from the SFW pool on every roll, and the
+  // selection throws when nothing is left.
+  it("has a safe mascot in an entry that always has weight", () => {
+    const alwaysWeighted = SnappyHeroSets.filter((set) => !("condition" in set) && set.weight > 0);
+    const safe = alwaysWeighted.flatMap(variantsOf).filter((key) => !data[key].nsfw);
+    expect(safe.length).toBeGreaterThan(0);
+  });
+
   it("has a seasonal entry for every seasonal group in the data", () => {
     const groups = new Set(Object.values(data).map((m) => m.group));
     for (const group of SEASONAL_GROUPS) {
