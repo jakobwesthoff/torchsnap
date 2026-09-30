@@ -1,7 +1,7 @@
 ---
 kind: investigation
 status: open
-area: [src/mascotVariants.ts, src/hooks/useRandomMascot.ts, src/hooks/useMascotVariant.ts, src/settings/sections/AppearanceSection.tsx]
+area: [src/mascot/variants.ts, src/mascot/selection.ts, src/mascot/useMascotVariant.ts, src/settings/sections/AppearanceSection.tsx]
 ---
 
 # Revisit mascot selection weighting and group settings
@@ -12,7 +12,7 @@ mascot data). The selection rules were written for the small set. Check
 whether they still give a good mix, and decide on the ideas below.
 
 Order agreed on 2026-09-29: first the variant lists move out of
-`mascotVariants.ts` into the data (done: `buildHeroSets` builds the sets
+`src/mascotVariants.ts` (now `src/mascot/variants.ts`) into the data (done: `buildHeroSets` builds the sets
 from each mascot's `group`), then the selection code gets a cleanup
 pass, then this.
 

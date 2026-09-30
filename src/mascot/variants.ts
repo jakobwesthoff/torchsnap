@@ -17,15 +17,15 @@
  * filter in `useMascotVariant` excludes them at selection time when the
  * user has disabled non-family-friendly mascots.
  *
- * See `useRandomMascot.ts` for the selection algorithm.
+ * See `selection.ts` for the selection algorithm.
  */
 
-import type { MascotEntry } from "./hooks/useRandomMascot";
-import type { MascotAnchor } from "./launcher/placement";
-import { getFullMoonDistance } from "./hooks/useFullMoonDistance";
-import { isHalloween, isChristmas, isEaster, isNewYear } from "./hooks/useHolidays";
-import { isNighttime, isTwilight } from "./hooks/useNighttime";
-import mascotData from "./derived/mascots.json";
+import type { MascotEntry } from "./selection";
+import type { MascotAnchor } from "../launcher/placement";
+import { getFullMoonDistance } from "./fullMoon";
+import { isHalloween, isChristmas, isEaster, isNewYear } from "./holidays";
+import { isNighttime, isTwilight } from "./nighttime";
+import mascotData from "../derived/mascots.json";
 
 // =========================================================
 // Mascot Data

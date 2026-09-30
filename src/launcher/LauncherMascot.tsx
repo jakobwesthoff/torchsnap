@@ -13,7 +13,7 @@
  * keeping the easter egg hidden from casual interaction.
  */
 
-import { Mascot } from "../components/Mascot";
+import { Mascot } from "../mascot";
 import { MASCOT_SIZE } from "./layout";
 
 interface LauncherMascotProps {

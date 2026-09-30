@@ -25,7 +25,7 @@ import {
   SUNSET_ALTITUDE,
   isSunAlwaysAbove,
   sunAltitudeHourAngle,
-} from "../lib/astronomy";
+} from "./astronomy";
 import timezoneCoords from "../derived/timezone-coordinates.json";
 
 // =========================================================

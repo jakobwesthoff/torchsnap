@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   nextSfw: [] as string[],
 }));
 
-vi.mock("./useSetting", () => ({
+vi.mock("../hooks/useSetting", () => ({
   useSetting: (key: string) => [state.settings.get(key), vi.fn()],
 }));
 
@@ -29,12 +29,12 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   }),
 }));
 
-vi.mock("./useRandomMascot", () => ({
+vi.mock("./selection", () => ({
   selectMascotVariant: (_sets: unknown, filter?: (variant: string) => boolean) =>
     filter ? state.nextSfw.shift() : state.nextFull.shift(),
 }));
 
-vi.mock("../mascotVariants", () => ({
+vi.mock("./variants", () => ({
   SnappyHeroSets: [],
   isNsfwVariant: (variant: string) => variant.endsWith("-nsfw"),
 }));

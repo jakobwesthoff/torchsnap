@@ -99,7 +99,7 @@ config.
   writes `public/images/mascot/*.webp` and `src/derived/mascots.json`
   here; never edit either by hand. New or changed mascots, sizes, alt
   texts and ground anchors are changed there and exported again.
-- `src/mascotVariants.ts` builds the selection from each mascot's
+- `src/mascot/variants.ts` builds the selection from each mascot's
   `group`; `src/launcher/placement.ts` places it by its `groundAnchor`.
   The app icon source `assets/mascot/snappy-original-1024.png` is a copy
   of that repository's `masters/original.png`.

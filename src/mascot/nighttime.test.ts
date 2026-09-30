@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isNighttime, isTwilight } from "./useNighttime";
+import { isNighttime, isTwilight } from "./nighttime";
 
 // The location comes from the system time zone, and the clock hours
 // from the same zone, so each test runs in the zone it describes. Node

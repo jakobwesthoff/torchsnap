@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 import { cn } from "../lib/cn";
-import { getMascotAlt } from "../mascotVariants";
+import { getMascotAlt } from "./variants";
 
 interface MascotInfoOverlayProps {
   variant: string;

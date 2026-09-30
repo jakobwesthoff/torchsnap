@@ -10,7 +10,7 @@ import {
   isEaster,
   isHalloween,
   isNewYear,
-} from "./useHolidays";
+} from "./holidays";
 
 // Every date here is built from local fields, as the checks read local
 // fields, so the tests hold in any time zone.

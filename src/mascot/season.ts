@@ -9,7 +9,7 @@
  * timezone. Southern hemisphere seasons are automatically inverted.
  */
 
-import { getHemisphere } from "./useHemisphere";
+import { getHemisphere } from "./hemisphere";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
 

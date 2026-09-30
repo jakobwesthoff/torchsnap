@@ -10,7 +10,7 @@
  */
 
 import { useMemo } from "react";
-import { getMascotAnchor } from "../../mascotVariants";
+import { getMascotAnchor } from "../../mascot";
 import { placeMascot, type MascotPlacement } from "../placement";
 
 export function useLauncherMascotPlacement(

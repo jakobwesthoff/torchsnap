@@ -2,7 +2,7 @@
 kind: decision
 severity: low
 status: needs-discussion
-area: [public/images/mascot, src/mascotVariants.ts, src-tauri/tauri.conf.json, torchsnap-mascot tools/webp.sh]
+area: [public/images/mascot, src/mascot/variants.ts, src-tauri/tauri.conf.json, torchsnap-mascot tools/webp.sh]
 tags: [performance]
 ---
 
@@ -57,7 +57,7 @@ random bytes appended, so each has its own content hash.
 
 ## Where each size is shown
 
-`Mascot` (`src/components/Mascot.tsx`) loads `size` at 1x and
+`Mascot` (`src/mascot/Mascot.tsx`) loads `size` at 1x and
 `size * 2` at 2x. The largest logical size is 192 px (launcher center
 mode, welcome launcher preview), so 384 px is the Retina file for it.
 96 px is loaded only for sidekick mode and the welcome "You're set"
@@ -88,7 +88,7 @@ No change. Size grows linearly with the roster.
   `register_favicon_protocol`).
 - Packs are versioned apart from the app: a new mascot needs no app
   release, and an app update carries no mascots.
-- The selection is built from the data (`src/mascotVariants.ts`), so a
+- The selection is built from the data (`src/mascot/variants.ts`), so a
   pack would carry the entries of `src/derived/mascots.json` for its
   mascots (alt, nsfw, group, groundAnchor, boxLeft).
 - Needs signing and verification, hosting, and a defined first run

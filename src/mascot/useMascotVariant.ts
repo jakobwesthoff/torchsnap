@@ -18,11 +18,9 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useSetting } from "./useSetting";
-import { selectMascotVariant } from "./useRandomMascot";
-import { SnappyHeroSets, isNsfwVariant } from "../mascotVariants";
-
-const appWindow = getCurrentWebviewWindow();
+import { useSetting } from "../hooks/useSetting";
+import { selectMascotVariant } from "./selection";
+import { SnappyHeroSets, isNsfwVariant } from "./variants";
 
 /** A single roll of the mascot dice. Both pools are drawn at once so a
  *  settings change can be answered by picking the matching field rather
@@ -55,8 +53,12 @@ export function useMascotVariant(): { variant: string } {
   // launcher appears again. The launcher stays mounted between shows, so
   // React renders the new <Mascot> into the hidden DOM and the browser
   // fetches the image while the window is invisible.
+  //
+  // The window is looked up here rather than at import, so modules that
+  // import the mascot package without rendering the launcher (the welcome
+  // window, tests) never touch the Tauri window API.
   useEffect(() => {
-    const unlisten = appWindow.listen("tauri://blur", () => setRoll(rollMascot()));
+    const unlisten = getCurrentWebviewWindow().listen("tauri://blur", () => setRoll(rollMascot()));
     return () => {
       unlisten.then((f) => f());
     };

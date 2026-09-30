@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import mascotData from "./derived/mascots.json";
+import mascotData from "../derived/mascots.json";
 import {
   SEASONAL_GROUPS,
   SnappyHeroSets,
@@ -12,8 +12,8 @@ import {
   getMascotAnchor,
   isNsfwVariant,
   type MascotInfo,
-} from "./mascotVariants";
-import type { MascotEntry } from "./hooks/useRandomMascot";
+} from "./variants";
+import type { MascotEntry } from "./selection";
 
 const data = mascotData as Record<string, MascotInfo>;
 

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { describe, expect, it } from "vitest";
-import { getFullMoonDistance, getLunarPhase } from "./useFullMoonDistance";
+import { getFullMoonDistance, getLunarPhase } from "./fullMoon";
 
 // Reference instants in UTC: the full moon of the total lunar eclipse
 // on 2026-03-03 (11:33 UTC) and the new moon of the total solar eclipse

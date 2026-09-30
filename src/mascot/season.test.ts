@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getHemisphere } from "./useHemisphere";
-import { getSeason } from "./useSeason";
+import { getHemisphere } from "./hemisphere";
+import { getSeason } from "./season";
 
 // Both read the system time zone; Node applies a changed `TZ` at once.
 afterEach(() => {

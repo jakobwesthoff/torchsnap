@@ -2,7 +2,7 @@
 kind: improvement
 severity: low
 status: deferred
-area: [src/hooks/useHolidays.ts, src/hooks/useNighttime.ts, src/hooks/useFullMoonDistance.ts, src/hooks/useSeason.ts, src/hooks/useHemisphere.ts]
+area: [src/mascot/holidays.ts, src/mascot/nighttime.ts, src/mascot/fullMoon.ts, src/mascot/season.ts, src/mascot/hemisphere.ts]
 ---
 
 # Let the time hooks re-render when their value changes

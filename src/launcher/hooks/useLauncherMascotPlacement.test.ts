@@ -4,7 +4,7 @@
 
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { getMascotAnchor } from "../../mascotVariants";
+import { getMascotAnchor } from "../../mascot";
 import { placeMascot } from "../placement";
 import { useLauncherMascotPlacement } from "./useLauncherMascotPlacement";
 

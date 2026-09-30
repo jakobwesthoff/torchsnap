@@ -18,7 +18,7 @@
 
 import { Icon } from "../components/Icon";
 import { KeyCap } from "../components/KeyCap";
-import { Mascot } from "../components/Mascot";
+import { Mascot } from "../mascot";
 import { cn } from "../lib/cn";
 
 /** `m: true` marks a fuzzy-match hit. */

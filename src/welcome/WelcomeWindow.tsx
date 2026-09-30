@@ -24,7 +24,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
-import { Mascot } from "../components/Mascot";
+import { Mascot } from "../mascot";
 import { ShortcutKeys } from "../components/ShortcutKeys";
 import { Switch } from "../components/Switch";
 import { TitleBar } from "../components/TitleBar";
