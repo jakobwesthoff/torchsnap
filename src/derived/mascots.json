@@ -2397,20 +2397,6 @@
     },
     "boxLeft": 0.1221
   },
-  "frilly-clown-balloon-nsfw": {
-    "alt": "Snappy, balloon up, knife low -- the eater of worlds, and of children. Tonight, of mouse clicks.",
-    "nsfw": true,
-    "character": "frilly-clown-balloon",
-    "group": "Horror",
-    "occasions": [
-      "Halloween"
-    ],
-    "groundAnchor": {
-      "x": 0.5129,
-      "y": 0.9469
-    },
-    "boxLeft": 0.0547
-  },
   "frozen-veil-ninja": {
     "alt": "Snappy with frost in its feathers -- flawless victory, one frozen launch at a time.",
     "nsfw": false,
@@ -7847,18 +7833,6 @@
       "y": 0.9824
     },
     "boxLeft": 0.0176
-  },
-  "wolf-pelt-mask-forest-princess-nsfw": {
-    "alt": "Snappy, spitting out the blood from its wolf mother's wound -- one glare across the river, and the app is launched.",
-    "nsfw": true,
-    "character": "wolf-pelt-mask-forest-princess",
-    "group": "Anime",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5401,
-      "y": 0.9463
-    },
-    "boxLeft": 0.0166
   },
   "wolf-pelt-mask-forest-princess-wolf-pup": {
     "alt": "Snappy and the littlest wolf -- raised by the wolf goddess, it swears it's no human. And no mouse user either.",
