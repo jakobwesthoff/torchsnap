@@ -1,18 +1,17 @@
 ---
 kind: improvement
 severity: low
-status: blocked
+status: open
 area: [src/mascot/useMascotVariant.ts, src/mascot/conditions.ts, src-tauri/src/lib.rs]
 tags: [macos]
-depends-on: [todos/product/features/01m3q3gymfpn2ehbpq9nt7dg6d-mascot-selection-by-character.md]
 ---
 
 # Re-check the mascot's occasions while the launcher is hidden
 
-Blocked on the per-character selection (the todo in `depends-on`, plan
-`docs/plan/mascot-selection-weighting.md`). Designed during that plan's
-review on 2026-09-30 and deferred by the user: the approach first needs
-validating on macOS. Until then the current behaviour stays.
+Designed during the review of the per-character selection (ADR 59) on
+2026-09-30 and deferred by the user: the approach first needs
+validating on macOS. Until then the current behaviour stays, as ADR 59
+records.
 
 ## Problem
 
@@ -22,8 +21,8 @@ the launcher shows again. The occasion conditions (full moon at night,
 New Year's Eve, Christmas, Halloween, Easter) are evaluated at that
 moment. If the launcher stays hidden across an occasion's edge (dusk on
 a full-moon day, Dec 31 20:00, midnight into Dec 20), the first launch
-after the edge shows a draw from the other side. With the planned shares
-(FullMoon and NewYear 90%) that is visible: the first launch of a
+after the edge shows a draw from the other side. With the shares of
+ADR 59 (FullMoon and NewYear 90%) that is visible: the first launch of a
 full-moon evening usually shows no full-moon costume.
 
 ## Designed fix (not validated)
@@ -31,7 +30,7 @@ full-moon evening usually shows no full-moon costume.
 - The hook tracks hidden and visible itself (hidden on `tauri://blur`,
   visible on `tauri://focus`).
 - While hidden, a 60 s interval evaluates the set of condition names that
-  hold now and compares it with the set stored in the current draw
+  hold now and compares it with `conditionsHeld` of the current draw
   record. Only when they differ does it draw again, from the same recent
   list and without recording anything in it, through the same pure state
   updater as the blur draw. Settings are read with `getSettingSync`.
