@@ -201,7 +201,7 @@ describe("useMascotVariant: NSFW", () => {
     expect(result.current.variant).toBe("claw-nsfw");
   });
 
-  it("swaps an NSFW variant for its SFW twin without a new draw when NSFW is turned off", () => {
+  it("draws again when NSFW is turned off, also for a character with an SFW twin", () => {
     randomAlways(0.99);
     const rendered: string[] = [];
     const { result, rerender } = renderHook(() => {
@@ -212,12 +212,15 @@ describe("useMascotVariant: NSFW", () => {
     expect(result.current.variant).toBe("robot-nsfw");
     const drawsBefore = state.draws.length;
 
+    // The new draw picks the first allowed character, ghost; the robot's
+    // SFW twin would be robot.
+    randomAlways(0);
     rendered.length = 0;
     state.settings.set("showNsfwMascots", false);
     rerender();
-    expect(result.current.variant).toBe("robot");
-    expect(result.current.draw).toMatchObject({ variant: "robot", character: "robot" });
-    expect(state.draws).toHaveLength(drawsBefore);
+    expect(result.current.variant).toBe("ghost");
+    expect(state.draws).toHaveLength(drawsBefore + 1);
+    expect(lastDraw().allowNsfw).toBe(false);
     expect(rendered).not.toContain("robot-nsfw");
   });
 
@@ -240,14 +243,16 @@ describe("useMascotVariant: NSFW", () => {
     expect(rendered.every((variant) => variant === "ghost")).toBe(true);
   });
 
-  it("does not bring the NSFW variant back when NSFW is turned on again", () => {
+  it("keeps the new draw when NSFW is turned on again", () => {
     randomAlways(0.99);
     const { result, rerender } = renderHook(() => useMascotVariant());
     state.settings.set("showNsfwMascots", false);
     rerender();
+    const drawsBefore = state.draws.length;
     state.settings.set("showNsfwMascots", true);
     rerender();
     expect(result.current.variant).toBe("robot");
+    expect(state.draws).toHaveLength(drawsBefore);
   });
 
   it("keeps an SFW variant on screen when NSFW is turned off", () => {

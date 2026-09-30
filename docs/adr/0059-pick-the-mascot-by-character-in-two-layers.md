@@ -79,10 +79,9 @@ edge, the first launch after it shows a draw from the other side.
 Re-checking while the launcher is hidden is left to the todo
 `todos/product/features/01m3sj9erdbc3xqpmvpa946v7t-mascot-occasion-recheck-while-hidden.md`.
 
-**NSFW turned off** while an NSFW variant is drawn: the launcher
-switches to an SFW variant of the same character in the draw's pool, or
-draws again when the character has none there. Turning NSFW back on does
-not bring the NSFW variant back.
+**NSFW turned off** while an NSFW variant is drawn: the launcher draws
+again at once, without NSFW variants. Turning NSFW back on does not
+bring the NSFW variant back; the next dismiss draws as usual.
 
 **Debug panel.** In `tauri dev` builds, the double-click on the mascot
 also opens a panel below the card with the draw: pool, character and

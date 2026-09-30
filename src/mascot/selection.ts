@@ -191,21 +191,3 @@ export function drawMascot(input: DrawInput): MascotDraw {
 export function rememberShown(recent: readonly string[], character: string): string[] {
   return [character, ...recent.filter((entry) => entry !== character)].slice(0, RECENT_LIMIT);
 }
-
-/**
- * The first SFW variant of the drawn character in the draw's pool, or
- * `null` when it has none there. The launcher shows it instead of an NSFW
- * draw once NSFW mascots are turned off, without a new draw.
- */
-export function safeVariantInPool(
-  draw: MascotDraw,
-  pools: MascotPools,
-  mascots: Record<string, MascotFacts>,
-): string | null {
-  const variants =
-    draw.pool === ALL_YEAR
-      ? pools.allYear
-      : pools.occasions.find((pool) => pool.group === draw.pool)?.variants;
-  const safe = charactersIn(variants ?? [], mascots, false).get(draw.character);
-  return safe?.[0] ?? null;
-}

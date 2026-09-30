@@ -20,8 +20,8 @@
  *   - `randomMascots` off: shows `"original"`, and blurs draw nothing.
  *     The draw from before stays and shows again once it is turned on.
  *   - `showNsfwMascots` off: the draw leaves NSFW variants out. An NSFW
- *     variant on screen when it is turned off is replaced at once by an
- *     SFW variant of the same character, or by a new draw.
+ *     variant on screen when it is turned off is replaced at once by a
+ *     new draw.
  *   - `mascotMode` off: nothing is on screen, so nothing is remembered.
  */
 
@@ -30,7 +30,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useSetting } from "../hooks/useSetting";
 import { getSettingSync } from "../settingsStore";
 import { CONDITIONS } from "./conditions";
-import { drawMascot, rememberShown, safeVariantInPool, type MascotDraw } from "./selection";
+import { drawMascot, rememberShown, type MascotDraw } from "./selection";
 import { ORIGINAL_MASCOT, isNsfwVariant, mascotFacts, mascotPools } from "./variants";
 
 /** The draw on hand and the recently shown characters. Both change only
@@ -57,6 +57,11 @@ function draw(
     recent,
     random: Math.random,
   });
+}
+
+/** Whether the settings allow a drawn variant to stay on screen. */
+function isAllowed(variant: string, allowNsfw: boolean): boolean {
+  return allowNsfw || !isNsfwVariant(variant);
 }
 
 export function useMascotVariant(): { variant: string; draw: MascotDraw | null } {
@@ -87,18 +92,14 @@ export function useMascotVariant(): { variant: string; draw: MascotDraw | null }
     };
   }, []);
 
-  // NSFW turned off while an NSFW variant is drawn: the state is fixed
-  // during this render, and React renders again right away with it. The
-  // SFW variant of the same character in the same pool needs no draw; a
-  // character without one gets a new draw. The fixed state is kept, so
-  // turning NSFW back on does not bring the NSFW variant back.
+  // A drawn variant the settings no longer allow (NSFW turned off while
+  // an NSFW variant is drawn) is replaced by a new draw during this
+  // render, and React renders again right away with it. The new draw is
+  // kept, so allowing the old variant again changes nothing until the
+  // next dismiss.
   let current = state;
-  if (!showNsfwMascots && isNsfwVariant(state.draw.variant)) {
-    const safe = safeVariantInPool(state.draw, mascotPools, mascotFacts);
-    current = {
-      draw: safe ? { ...state.draw, variant: safe } : draw(state.recent, false),
-      recent: state.recent,
-    };
+  if (!isAllowed(state.draw.variant, showNsfwMascots)) {
+    current = { draw: draw(state.recent, showNsfwMascots), recent: state.recent };
     setState(current);
   }
 

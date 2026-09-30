@@ -9,7 +9,6 @@ import {
   RECENT_LIMIT,
   drawMascot,
   rememberShown,
-  safeVariantInPool,
   type DrawInput,
   type MascotDraw,
   type MascotFacts,
@@ -465,36 +464,5 @@ describe("rememberShown", () => {
     const recent = Object.freeze(["b", "c"]);
     rememberShown(recent, "a");
     expect(recent).toEqual(["b", "c"]);
-  });
-});
-
-// =========================================================
-// The SFW variant of a drawn character
-// =========================================================
-
-describe("safeVariantInPool", () => {
-  it("returns the first SFW variant of the character in the draw's pool", () => {
-    const draw = drawMascot(input({ random: sequence(0.9, 0.99) }));
-    expect(draw.variant).toBe("robot-nsfw");
-    expect(safeVariantInPool(draw, pools, mascots)).toBe("robot");
-  });
-
-  it("looks in the draw's occasion pool", () => {
-    const draw = drawMascot(
-      input({ conditions: conditions(["fullMoonNight"]), random: sequence(0, 0, 0.99) }),
-    );
-    expect(draw).toMatchObject({ pool: "FullMoon", variant: "wolf-nsfw" });
-    expect(safeVariantInPool(draw, pools, mascots)).toBe("wolf");
-  });
-
-  it("returns null for a character without an SFW variant in the pool", () => {
-    const nsfwOnly = { allYear: ["robot-nsfw"], occasions: [] };
-    const draw = drawMascot(input({ pools: nsfwOnly }));
-    expect(safeVariantInPool(draw, nsfwOnly, mascots)).toBeNull();
-  });
-
-  it("returns null for a pool the pools do not have", () => {
-    const draw = { ...drawMascot(input()), pool: "Gone" };
-    expect(safeVariantInPool(draw, pools, mascots)).toBeNull();
   });
 });
