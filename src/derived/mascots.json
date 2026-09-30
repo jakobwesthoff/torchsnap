@@ -602,7 +602,7 @@
     "boxLeft": 0.0547
   },
   "bladed-helmet-armor-master": {
-    "alt": "Snappy in the bladed helmet -- tonight I dine on shell soup! And a very fast launch for dessert.",
+    "alt": "Snappy in a horned samurai helmet -- its clan lost to four green brothers again, but its launches win every time.",
     "nsfw": false,
     "character": "bladed-helmet-armor-master",
     "group": "SaturdayMorning",
@@ -611,10 +611,10 @@
       "x": 0.534,
       "y": 0.9551
     },
-    "boxLeft": 0.0566
+    "boxLeft": 0.0547
   },
   "bladed-helmet-armor-master-nsfw": {
-    "alt": "Snappy crosses the long silver blades at the chest -- the shell soup is served, and so is the launch.",
+    "alt": "Snappy crossing its arm blades -- its plans fail every single week, but the hotkey cuts through anyway.",
     "nsfw": true,
     "character": "bladed-helmet-armor-master",
     "group": "SaturdayMorning",
@@ -686,7 +686,7 @@
     "boxLeft": 0.0576
   },
   "blue-bandana-leader-shell-hero": {
-    "alt": "Snappy in the blue bandana, pointing the way -- the leader says: heroes in a half shell, hotkeys at the ready!",
+    "alt": "Snappy pointing the way -- someone has to lead the four brothers, and it leads with the hotkey.",
     "nsfw": false,
     "character": "blue-bandana-leader-shell-hero",
     "group": "SaturdayMorning",
@@ -916,7 +916,7 @@
     "boxLeft": 0.0889
   },
   "brain-in-belly-android": {
-    "alt": "Snappy with a brain in its belly -- the pink little overlord steers, the launcher obeys.",
+    "alt": "Snappy in a homemade cardboard robot -- the felt brain in the belly gives the orders, the body just presses the hotkey.",
     "nsfw": false,
     "character": "brain-in-belly-android",
     "group": "SaturdayMorning",
@@ -925,7 +925,7 @@
       "x": 0.5197,
       "y": 0.9395
     },
-    "boxLeft": 0.0449
+    "boxLeft": 0.0459
   },
   "brass-porthole-diving-guardian-nsfw": {
     "alt": "Snappy, drill spinning, portholes red -- would you kindly press the hotkey? An owl chooses, a mouse obeys.",
@@ -4206,7 +4206,7 @@
     "boxLeft": 0.0576
   },
   "orange-bandana-cowabunga-shell-hero": {
-    "alt": "Snappy with an open pizza box -- cowabunga, dude! Pizza's here, and so is the app.",
+    "alt": "Snappy with an open pizza box -- pizza first, training second, and the app launches somewhere in between.",
     "nsfw": false,
     "character": "orange-bandana-cowabunga-shell-hero",
     "group": "SaturdayMorning",
@@ -5000,7 +5000,7 @@
     "boxLeft": 0.0166
   },
   "purple-bandana-gadget-shell-hero": {
-    "alt": "Snappy shows off its homemade gadget -- it does machines. Especially the launcher kind.",
+    "alt": "Snappy shows off its homemade gadget -- built from sewer junk, and it still launches faster than the brothers' van.",
     "nsfw": false,
     "character": "purple-bandana-gadget-shell-hero",
     "group": "SaturdayMorning",
@@ -5228,7 +5228,7 @@
     "boxLeft": 0.1045
   },
   "red-bandana-hothead-shell-hero": {
-    "alt": "Snappy with the red bandana and crossed wings -- cool but rude. And very fast at launching.",
+    "alt": "Snappy with crossed wings -- it never waits for the plan, hits the hotkey alone and sulks on the rooftop.",
     "nsfw": false,
     "character": "red-bandana-hothead-shell-hero",
     "group": "SaturdayMorning",
@@ -6010,7 +6010,7 @@
     "boxLeft": 0.0264
   },
   "shell-bandana-pizza": {
-    "alt": "Snappy with an orange bandana and a hot slice -- a hero in a half shell. Cowabunga, app launched!",
+    "alt": "Snappy with a hot slice -- extra cheese, delivered down the manhole, and the app is out before it cools.",
     "nsfw": false,
     "character": "shell-bandana-pizza",
     "group": "SaturdayMorning",
@@ -6022,7 +6022,7 @@
     "boxLeft": 0.082
   },
   "shell-bandana-pizza-nsfw": {
-    "alt": "Snappy with a blade in each wing -- a hero in a half shell, and every launch is a finishing move.",
+    "alt": "Snappy with a blade in each wing -- slice the pizza, slice the foes, and every launch is a clean cut.",
     "nsfw": true,
     "character": "shell-bandana-pizza",
     "group": "SaturdayMorning",
