@@ -100,9 +100,13 @@ config.
   `src/derived/mascot-groups.json` here; never edit them by hand. New or
   changed mascots, groups, occasions, sizes, alt texts and ground anchors
   are changed there and exported again.
-- `src/mascot/variants.ts` builds the selection from each mascot's
-  `group` and `occasions` and the groups' `seasonal` flag (ADR 58); a
-  new seasonal group needs its condition in `OCCASIONS` there.
+- `src/mascot/variants.ts` builds the pools from each mascot's `group`
+  and `occasions`, the groups' `seasonal` flag and
+  `src/mascot/occasions.json` (order, condition name and share per
+  occasion); `src/mascot/selection.ts` draws a character, then one of
+  its variants, by each mascot's `character` (ADR 58, 59). A new
+  seasonal group needs an entry in `occasions.json`, a new kind of
+  timing a condition in the registry `src/mascot/conditions.ts`.
   `src/launcher/placement.ts` places a mascot by its `groundAnchor`.
   The app icon source `assets/mascot/snappy-original-1024.png` is a copy
   of that repository's `masters/original.png`.

@@ -6,16 +6,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import mascotData from "../derived/mascots.json";
 import groupData from "../derived/mascot-groups.json";
 import {
-  OCCASION_GROUPS,
-  buildMascotSelection,
-  mascotSelection,
+  OCCASIONS,
+  ORIGINAL_MASCOT,
+  buildMascotPools,
+  mascotFacts,
+  mascotPools,
   getMascotAlt,
   getMascotAnchor,
   isNsfwVariant,
   type MascotGroupInfo,
   type MascotInfo,
+  type Occasion,
 } from "./variants";
-import type { MascotEntry } from "./selection";
 
 const data = mascotData as Record<string, MascotInfo>;
 const groups = groupData as Record<string, MascotGroupInfo>;
@@ -24,16 +26,13 @@ function entry(overrides: Partial<MascotInfo>): MascotInfo {
   return {
     alt: "Snappy -- test.",
     nsfw: false,
+    character: "test",
     group: "SciFi",
     occasions: [],
     groundAnchor: { x: 0.5, y: 0.9 },
     boxLeft: 0.2,
     ...overrides,
   };
-}
-
-function variantsOf(set: MascotEntry): string[] {
-  return "variants" in set ? set.variants : [];
 }
 
 // =========================================================
@@ -86,10 +85,10 @@ describe("getMascotAnchor", () => {
 });
 
 // =========================================================
-// Selection
+// Pools
 // =========================================================
 
-describe("buildMascotSelection", () => {
+describe("buildMascotPools", () => {
   function group(seasonal: boolean): MascotGroupInfo {
     return { label: "Test", description: "Snappy tests.", seasonal };
   }
@@ -101,9 +100,12 @@ describe("buildMascotSelection", () => {
     Halloween: group(true),
     Christmas: group(true),
     Easter: group(true),
-    NewYear: group(true),
-    FullMoon: group(true),
   };
+  const fixtureOccasions: Occasion[] = [
+    { group: "Christmas", condition: "christmas", share: 40 },
+    { group: "Halloween", condition: "halloween", share: 30 },
+    { group: "Easter", condition: "easter", share: 20 },
+  ];
   const fixture: Record<string, MascotInfo> = {
     original: entry({ group: "OffDuty" }),
     robot: entry({ group: "SciFi" }),
@@ -114,95 +116,86 @@ describe("buildMascotSelection", () => {
     skeleton: entry({ group: "Halloween", occasions: ["Christmas"] }),
     santa: entry({ group: "Christmas" }),
     bunny: entry({ group: "Easter" }),
-    party: entry({ group: "NewYear" }),
-    werewolf: entry({ group: "FullMoon" }),
   };
-  const [regular, halloween, christmas, easter, newYear, fullMoon] = buildMascotSelection(
-    fixture,
-    fixtureGroups,
-  );
+  const pools = buildMascotPools(fixture, fixtureGroups, fixtureOccasions);
 
-  it("puts every group that shows all year into the regular pool, unknown groups included", () => {
-    expect(variantsOf(regular)).toEqual([
-      "brand-new-group",
-      "original",
-      "rabbit",
-      "robot",
-      "slasher",
-    ]);
-    expect(regular.weight).toBe(100);
-    expect("condition" in regular).toBe(false);
+  it("puts every group that shows all year into the all-year pool, unknown groups included", () => {
+    expect(pools.allYear).toEqual(["brand-new-group", "original", "rabbit", "robot", "slasher"]);
   });
 
-  it("keeps the seasonal groups out of the regular pool", () => {
-    for (const key of ["pumpkin", "skeleton", "santa", "bunny", "party", "werewolf"]) {
-      expect(variantsOf(regular)).not.toContain(key);
+  it("keeps the seasonal groups out of the all-year pool", () => {
+    for (const key of ["pumpkin", "skeleton", "santa", "bunny"]) {
+      expect(pools.allYear).not.toContain(key);
     }
   });
 
-  it("adds a mascot to every occasion it names and keeps it in its own group", () => {
-    expect(variantsOf(halloween)).toContain("slasher");
-    expect(variantsOf(easter)).toContain("rabbit");
-    expect(variantsOf(regular)).toEqual(expect.arrayContaining(["slasher", "rabbit"]));
+  it("adds a mascot to every occasion it names and keeps it in the all-year pool", () => {
+    const [, halloween, easter] = pools.occasions;
+    expect(halloween.variants).toContain("slasher");
+    expect(easter.variants).toContain("rabbit");
+    expect(pools.allYear).toEqual(expect.arrayContaining(["slasher", "rabbit"]));
   });
 
   it("lets a seasonal mascot join another occasion", () => {
-    expect(variantsOf(christmas)).toEqual(["santa", "skeleton"]);
-    expect(variantsOf(halloween)).toContain("skeleton");
+    const [christmas, halloween] = pools.occasions;
+    expect(christmas.variants).toEqual(["santa", "skeleton"]);
+    expect(halloween.variants).toContain("skeleton");
   });
 
-  it("gives each occasion a dormant entry with its condition and boost", () => {
-    const occasions = [halloween, christmas, easter, newYear, fullMoon];
-    expect(occasions.map(variantsOf)).toEqual([
-      ["pumpkin", "skeleton", "slasher"],
-      ["santa", "skeleton"],
-      ["bunny", "rabbit"],
-      ["party"],
-      ["werewolf"],
-    ]);
-    for (const occasion of occasions) {
-      expect(occasion.weight).toBe(0);
-      expect("condition" in occasion).toBe(true);
-    }
-    expect(occasions.map((o) => ("conditionalWeight" in o ? o.conditionalWeight : null))).toEqual([
-      35, 70, 35, 1000, 1000,
+  it("builds one pool per occasion in the file's order, with its condition and share", () => {
+    expect(pools.occasions).toEqual([
+      { group: "Christmas", condition: "christmas", share: 40, variants: ["santa", "skeleton"] },
+      {
+        group: "Halloween",
+        condition: "halloween",
+        share: 30,
+        variants: ["pumpkin", "skeleton", "slasher"],
+      },
+      { group: "Easter", condition: "easter", share: 20, variants: ["bunny", "rabbit"] },
     ]);
   });
 
-  it("leaves out a seasonal group without a condition and warns", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const sets = buildMascotSelection(
-      { comet: entry({ group: "Comet" }), robot: entry({ group: "SciFi" }) },
-      { SciFi: group(false), Comet: group(true) },
-    );
-    expect(sets.flatMap(variantsOf)).toEqual(["robot"]);
-    expect(warn).toHaveBeenCalledOnce();
+  it("always puts the plain Snappy into the all-year pool", () => {
+    // As a group switch would: the data arrives without OffDuty.
+    const withoutOffDuty = { robot: entry({ group: "SciFi" }) };
+    expect(buildMascotPools(withoutOffDuty, fixtureGroups, []).allYear).toEqual([
+      ORIGINAL_MASCOT,
+      "robot",
+    ]);
+    // With nothing else left, it is the whole pool.
+    expect(buildMascotPools({}, fixtureGroups, []).allYear).toEqual([ORIGINAL_MASCOT]);
+  });
+
+  it("keeps the plain Snappy in the all-year pool whatever its group", () => {
+    const seasonalOriginal = { original: entry({ group: "Halloween" }) };
+    const built = buildMascotPools(seasonalOriginal, fixtureGroups, fixtureOccasions);
+    expect(built.allYear).toEqual([ORIGINAL_MASCOT]);
+    expect(built.occasions[1].variants).toEqual([ORIGINAL_MASCOT]);
   });
 });
 
-describe("mascotSelection", () => {
+describe("mascotPools", () => {
+  const offered = new Set([
+    ...mascotPools.allYear,
+    ...mascotPools.occasions.flatMap((pool) => pool.variants),
+  ]);
+
   it("offers every mascot of the data", () => {
-    const offered = new Set(mascotSelection.flatMap(variantsOf));
     expect([...offered].sort()).toEqual(Object.keys(data).sort());
   });
 
   it("only offers mascots the data knows", () => {
-    for (const key of mascotSelection.flatMap(variantsOf)) {
-      expect(data[key]).toBeDefined();
-    }
+    for (const key of offered) expect(data[key]).toBeDefined();
   });
 
-  // `useMascotVariant` draws from the SFW pool on every roll, and the
-  // selection throws when nothing is left.
-  it("has a safe mascot in an entry that always has weight", () => {
-    const alwaysWeighted = mascotSelection.filter((set) => !("condition" in set) && set.weight > 0);
-    const safe = alwaysWeighted.flatMap(variantsOf).filter((key) => !data[key].nsfw);
-    expect(safe.length).toBeGreaterThan(0);
+  it("has one pool per entry of occasions.json, in its order", () => {
+    expect(mascotPools.occasions.map((pool) => pool.group)).toEqual(OCCASIONS.map((o) => o.group));
   });
 
-  it("has a condition for every seasonal group of the data, and a seasonal group for every condition", () => {
-    const seasonal = Object.keys(groups).filter((key) => groups[key].seasonal);
-    expect([...OCCASION_GROUPS].sort()).toEqual(seasonal.sort());
+  it("has the plain Snappy in the data, SFW and in the all-year pool", () => {
+    expect(data[ORIGINAL_MASCOT]).toBeDefined();
+    expect(data[ORIGINAL_MASCOT].nsfw).toBe(false);
+    expect(mascotPools.allYear).toContain(ORIGINAL_MASCOT);
   });
 
   it("names only groups the group data knows", () => {
@@ -211,6 +204,12 @@ describe("mascotSelection", () => {
       for (const occasion of mascot.occasions) {
         expect(groups[occasion]?.seasonal).toBe(true);
       }
+    }
+  });
+
+  it("gives every mascot a character whose id is one of that character's variants", () => {
+    for (const mascot of Object.values(mascotFacts)) {
+      expect(mascotFacts[mascot.character]?.character).toBe(mascot.character);
     }
   });
 });

@@ -16,7 +16,7 @@ hand — changes are overwritten on the next regeneration.
 The mascot set (the images in `public/images/mascot/`, `mascots.json`
 and `mascot-groups.json`) is made and reviewed in the torchsnap-mascot
 repository, whose export writes them into a torchsnap checkout. Per
-mascot `mascots.json` holds `alt`, `nsfw`, `group`, `occasions`,
+mascot `mascots.json` holds `alt`, `nsfw`, `character`, `group`, `occasions`,
 `groundAnchor` and `boxLeft`; per group `mascot-groups.json` holds
 `label`, `description` and `seasonal`. That repository's
 `docs/metadata.md` and the export section of its `docs/pipeline.md`

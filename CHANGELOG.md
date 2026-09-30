@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all year and also turn up more often on the holiday. The mascots that
   are the holiday itself, such as pumpkins, Santa and Easter bunnies,
   still show only then.
+- Snappy's costume is picked per character: a character with several
+  versions, such as an SFW and an NSFW one, shows as often as one with a
+  single version. The launcher holds back the characters it showed
+  recently, so a costume seldom comes twice in a row. While a holiday or
+  a full-moon night lasts, its costumes take a fixed share of the
+  launches: 40% at Christmas, Halloween and Easter, 90% on New Year's
+  Eve and on full-moon nights.
 
 ## [0.13.0] - 2026-09-25
 
