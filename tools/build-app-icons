@@ -7,15 +7,23 @@
 # Build the app icon candidates in `assets/app-icon/` from the flattened
 # Snappy emblem (`tools/flatten-emblem` writes it).
 #
-# Three candidates, all built from vectors:
+# The candidates, all built from vectors:
 #
-#   aurora       the colour owl under soft teal and violet aurora
-#                ribbons on a night sky with stars; in clear and tinted
-#                appearance the sky is faint
-#   ink          the owl in one navy ink on white; in dark appearance
-#                its negative, pale ink on navy
-#   aurora-rise  the colour owl rising over the bottom edge under the
-#                aurora
+#   aurora             the colour owl under soft teal and violet aurora
+#                      ribbons on a night sky with stars; in clear and
+#                      tinted appearance the sky is faint
+#   ink                the owl in one navy ink on white; in dark
+#                      appearance its negative, pale ink on navy
+#   aurora-rise        the colour owl rising over the bottom edge under
+#                      the aurora (the app icon)
+#   aurora-ember       `aurora` on a warm night, deep brown to rust, with
+#                      orange and gold ribbons
+#   aurora-rise-ember  `aurora-rise` on that warm night
+#   aurora-rise-dusk   `aurora-rise` from indigo to the accent orange at
+#                      the horizon, with gold and orange ribbons
+#
+# The warm skies use torchsnap's accent oranges (#f97316, #fb923c,
+# #ea580c) and the emblem's gold (#fdcc33).
 #
 # In clear and tinted appearance every candidate shows the negative owl.
 #
@@ -189,6 +197,13 @@ def srgb(fill):
 
 AURORA_BANDS = (("#2ec4b6", 0.0, 250, 70), ("#8a6cff", 1.7, 330, 60), ("#4fd1c5", 3.1, 190, 50))
 RISE_BANDS = (("#2ec4b6", 0.0, 150, 60), ("#8a6cff", 1.7, 220, 50), ("#4fd1c5", 3.1, 100, 40))
+EMBER_COLOURS = ("#f97316", "#fdcc33", "#fb923c")
+DUSK_COLOURS = ("#fdcc33", "#fb923c", "#f97316")
+
+
+def recoloured(bands, colours):
+    """The bands' waves with other colours."""
+    return tuple((colour, phase, base, amp) for colour, (_, phase, base, amp) in zip(colours, bands))
 RISE_OWL_WIDTH = 780
 # The bottom edge cuts the rising owl at 74 % of its height, below the beak.
 RISE_CENTRE_Y = SKETCH_TILE - (0.74 - 0.5) * RISE_OWL_WIDTH * BOX_H / BOX_W
@@ -209,12 +224,14 @@ def candidates(owl):
     owl, whose light face and dark eyes read, where the colour owl's
     dark head turns into a grey shadow (the maintainer's choice).
     """
+    aurora_owl = {"any": owl_group(owl, "colour", 520, (412, 470)),
+                  "tinted": owl_group(owl, "negative", 520, (412, 470))}
+    rise_owl = {"any": owl_group(owl, "colour", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y)),
+                "tinted": owl_group(owl, "negative", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y))}
     return {
         "aurora": {
             "background": ("#081027", "#17204a"), "dark_background": None,
-            "sky": stars(50, 800, 5) + ribbons(AURORA_BANDS), "sky_tinted": "faint",
-            "owl": {"any": owl_group(owl, "colour", 520, (412, 470)),
-                    "tinted": owl_group(owl, "negative", 520, (412, 470))},
+            "sky": stars(50, 800, 5) + ribbons(AURORA_BANDS), "sky_tinted": "faint", "owl": aurora_owl,
         },
         "ink": {
             "background": ("#ffffff", "#e9ecf1"), "dark_background": (NAVY, NAVY),
@@ -225,9 +242,22 @@ def candidates(owl):
         },
         "aurora-rise": {
             "background": ("#081027", "#3a2f6e"), "dark_background": None,
-            "sky": stars(50, 420, 9) + ribbons(RISE_BANDS), "sky_tinted": "shown",
-            "owl": {"any": owl_group(owl, "colour", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y)),
-                    "tinted": owl_group(owl, "negative", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y))},
+            "sky": stars(50, 420, 9) + ribbons(RISE_BANDS), "sky_tinted": "shown", "owl": rise_owl,
+        },
+        "aurora-ember": {
+            "background": ("#1c0a03", "#7c2d12"), "dark_background": None,
+            "sky": stars(50, 800, 5) + ribbons(recoloured(AURORA_BANDS, EMBER_COLOURS), opacity=0.45),
+            "sky_tinted": "faint", "owl": aurora_owl,
+        },
+        "aurora-rise-ember": {
+            "background": ("#1c0a03", "#7c2d12"), "dark_background": None,
+            "sky": stars(50, 420, 9) + ribbons(recoloured(RISE_BANDS, EMBER_COLOURS), opacity=0.45),
+            "sky_tinted": "shown", "owl": rise_owl,
+        },
+        "aurora-rise-dusk": {
+            "background": ("#1e1b4b", "#ea580c"), "dark_background": None,
+            "sky": stars(50, 420, 9) + ribbons(recoloured(RISE_BANDS, DUSK_COLOURS), opacity=0.28),
+            "sky_tinted": "shown", "owl": rise_owl,
         },
     }
 

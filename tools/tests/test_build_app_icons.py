@@ -150,6 +150,23 @@ class Manifest(unittest.TestCase):
                 layer = self.owl_layer(icons.manifest(self.candidates[key]))
                 self.assertEqual([s.get("appearance") for s in layer["image-name-specializations"]], [None, "tinted"])
 
+    def test_candidates_are_the_kept_set(self):
+        self.assertEqual(set(self.candidates), {"aurora", "ink", "aurora-rise", "aurora-ember", "aurora-rise-ember",
+                                                "aurora-rise-dusk"})
+
+    def test_warm_candidates_keep_the_layout_of_their_blue_original(self):
+        for warm, blue in (("aurora-ember", "aurora"), ("aurora-rise-ember", "aurora-rise"),
+                           ("aurora-rise-dusk", "aurora-rise")):
+            with self.subTest(warm=warm):
+                self.assertEqual(self.candidates[warm]["owl"], self.candidates[blue]["owl"])
+                self.assertEqual(self.candidates[warm]["sky_tinted"], self.candidates[blue]["sky_tinted"])
+                self.assertNotEqual(self.candidates[warm]["sky"], self.candidates[blue]["sky"])
+
+    def test_recoloured_keeps_the_waves(self):
+        bands = icons.recoloured(icons.RISE_BANDS, icons.DUSK_COLOURS)
+        self.assertEqual([b[0] for b in bands], list(icons.DUSK_COLOURS))
+        self.assertEqual([b[1:] for b in bands], [b[1:] for b in icons.RISE_BANDS])
+
     def sky_layer(self, sky_tinted):
         candidate = dict(self.candidates["aurora"], sky_tinted=sky_tinted)
         return icons.manifest(candidate)["groups"][1]["layers"][0]
@@ -203,7 +220,7 @@ class Build(unittest.TestCase):
             out = work / "app-icon"
             self.assertEqual(build("--flat", str(flat), "--out", str(out), "--no-raster"), 0)
 
-            for key in ("aurora", "ink", "aurora-rise"):
+            for key in icons.candidates(OWL):
                 svg_root((out / key / f"{key}.svg").read_text())
                 manifest = json.loads((out / key / f"{key}.icon" / "icon.json").read_text())
                 self.assertIn("groups", manifest)
