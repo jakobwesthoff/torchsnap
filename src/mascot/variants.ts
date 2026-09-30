@@ -11,7 +11,7 @@
  * `public/images/mascot/`. That repository is the place to add or change
  * a mascot; this file only reads what it delivers.
  *
- * The selection sets are built from each mascot's `group`: the seasonal
+ * The selection is built from each mascot's `group`: the seasonal
  * groups stay dormant until their occasion, every other group joins one
  * flat pool. NSFW mascots sit in their groups like the others; the NSFW
  * filter in `useMascotVariant` excludes them at selection time when the
@@ -37,7 +37,7 @@ export interface MascotInfo {
   /** When true, the mascot depicts content some users may find inappropriate
    *  (e.g. a visible weapon). Controlled by the `showNsfwMascots` setting. */
   nsfw: boolean;
-  /** Theme group, e.g. `SciFi` or `Halloween`; drives the selection sets. */
+  /** Theme group, e.g. `SciFi` or `Halloween`; drives the selection. */
   group: string;
   /** The point placed on the card, as fractions of the image (see
    *  `launcher/placement.ts`). */
@@ -96,7 +96,7 @@ export function getMascotAnchor(variant: string): { groundAnchor: MascotAnchor; 
 }
 
 // =========================================================
-// Hero Selection Sets
+// Selection
 // =========================================================
 
 /**
@@ -128,12 +128,12 @@ export const SEASONAL_GROUPS = SEASONS.map((season) => season.group);
 const EXTRA_GROUPS_IN_SEASON: Record<string, string[]> = { Halloween: ["Horror"] };
 
 /**
- * Builds the weighted selection entries for the launcher hero slot from
+ * Builds the weighted selection entries for the launcher mascot from
  * the mascot data: one flat pool of every non-seasonal group with equal
  * probability per mascot (a group the code does not know yet joins it
  * too), then one dormant entry per season.
  */
-export function buildHeroSets(data: Record<string, MascotInfo>): MascotEntry[] {
+export function buildMascotSelection(data: Record<string, MascotInfo>): MascotEntry[] {
   const keys = Object.keys(data).sort();
   const inGroups = (groups: string[]) => keys.filter((key) => groups.includes(data[key].group));
 
@@ -148,4 +148,4 @@ export function buildHeroSets(data: Record<string, MascotInfo>): MascotEntry[] {
   ];
 }
 
-export const SnappyHeroSets: MascotEntry[] = buildHeroSets(mascots);
+export const mascotSelection: MascotEntry[] = buildMascotSelection(mascots);

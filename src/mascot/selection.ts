@@ -5,10 +5,10 @@
 /**
  * Recursive weighted random mascot selection with condition-based boosting.
  *
- * Entries form a tree: a leaf holds `variants` (pick uniformly), a group
+ * Entries form a tree: a leaf holds `variants` (pick uniformly), a branch
  * holds `children` (recurse). The selection algorithm produces a weighted
  * shuffle (Efraimidis–Spirakis) at each level and walks the ordering
- * with fallthrough — if a group's children all resolve to zero weight,
+ * with fallthrough: if a branch's children all resolve to zero weight,
  * the next entry in the shuffle is tried instead.
  */
 
@@ -26,17 +26,17 @@ type ConditionalLeaf = {
 };
 type MascotLeaf = UnconditionalLeaf | ConditionalLeaf;
 
-/** A group entry — recurse into `children`. */
-type UnconditionalGroup = { children: MascotEntry[]; weight: number };
-type ConditionalGroup = {
+/** A branch entry: recurse into `children`. */
+type UnconditionalBranch = { children: MascotEntry[]; weight: number };
+type ConditionalBranch = {
   children: MascotEntry[];
   weight: number;
   condition: () => boolean;
   conditionalWeight: number;
 };
-type MascotGroup = UnconditionalGroup | ConditionalGroup;
+type MascotBranch = UnconditionalBranch | ConditionalBranch;
 
-export type MascotEntry = MascotLeaf | MascotGroup;
+export type MascotEntry = MascotLeaf | MascotBranch;
 
 // =========================================================
 // Selection logic
@@ -49,7 +49,7 @@ function effectiveWeight(entry: MascotEntry): number {
   return entry.weight;
 }
 
-function isGroup(entry: MascotEntry): entry is MascotGroup {
+function isBranch(entry: MascotEntry): entry is MascotBranch {
   return "children" in entry;
 }
 
@@ -77,12 +77,12 @@ function weightedShuffle(entries: MascotEntry[]): MascotEntry[] {
  * Recursively select a variant from a list of entries.
  *
  * Walks a weighted shuffle of the entries. For leaves, picks a uniform
- * random variant. For groups, recurses into children. If a group yields
+ * random variant. For branches, recurses into children. If a branch yields
  * no result (all children had zero effective weight), the next entry in
  * the shuffle is tried — this is the "fallthrough" behaviour.
  *
  * Returns `null` when the entire level is exhausted without finding a
- * variant (propagates up to the parent group so it can fall through too).
+ * variant (propagates up to the parent branch so it can fall through too).
  */
 function selectFromEntries(
   entries: MascotEntry[],
@@ -91,12 +91,12 @@ function selectFromEntries(
   const shuffled = weightedShuffle(entries);
 
   for (const entry of shuffled) {
-    if (isGroup(entry)) {
+    if (isBranch(entry)) {
       const result = selectFromEntries(entry.children, filter);
       if (result !== null) {
         return result;
       }
-      // Group produced nothing — fall through to the next entry.
+      // The branch produced nothing, so fall through to the next entry.
     } else {
       // Leaf — apply filter then pick uniformly among eligible variants.
       // If the filter removes all candidates, fall through to the next
@@ -128,10 +128,10 @@ function selectFromEntries(
  * @throws When no entries produce an eligible variant after filtering.
  */
 export function selectMascotVariant(
-  sets: MascotEntry[],
+  entries: MascotEntry[],
   filter?: (variant: string) => boolean,
 ): string {
-  const variant = selectFromEntries(sets, filter);
+  const variant = selectFromEntries(entries, filter);
   if (variant === null) {
     throw new Error("selectMascotVariant: no mascot entries have a positive effective weight");
   }

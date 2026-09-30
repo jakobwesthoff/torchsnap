@@ -35,7 +35,7 @@ vi.mock("./selection", () => ({
 }));
 
 vi.mock("./variants", () => ({
-  SnappyHeroSets: [],
+  mascotSelection: [],
   isNsfwVariant: (variant: string) => variant.endsWith("-nsfw"),
 }));
 

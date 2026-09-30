@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useSetting } from "../hooks/useSetting";
 import { selectMascotVariant } from "./selection";
-import { SnappyHeroSets, isNsfwVariant } from "./variants";
+import { isNsfwVariant, mascotSelection } from "./variants";
 
 /** A single roll of the mascot dice. Both pools are drawn at once so a
  *  settings change can be answered by picking the matching field rather
@@ -33,12 +33,12 @@ interface MascotRoll {
 
 // Both draws happen on every roll, including the SFW one while NSFW is
 // allowed. `selectMascotVariant` throws on a pool with no positive
-// weight, so this assumes `SnappyHeroSets` always contains at least one
-// weighted SFW variant.
+// weight, so this assumes `mascotSelection` always contains at least one
+// weighted SFW variant (checked in `variants.test.ts`).
 function rollMascot(): MascotRoll {
   return {
-    fromFullPool: selectMascotVariant(SnappyHeroSets),
-    fromSfwPool: selectMascotVariant(SnappyHeroSets, (v) => !isNsfwVariant(v)),
+    fromFullPool: selectMascotVariant(mascotSelection),
+    fromSfwPool: selectMascotVariant(mascotSelection, (v) => !isNsfwVariant(v)),
   };
 }
 

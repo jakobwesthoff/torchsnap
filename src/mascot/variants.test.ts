@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import mascotData from "../derived/mascots.json";
 import {
   SEASONAL_GROUPS,
-  SnappyHeroSets,
-  buildHeroSets,
+  buildMascotSelection,
+  mascotSelection,
   getMascotAlt,
   getMascotAnchor,
   isNsfwVariant,
@@ -82,10 +82,10 @@ describe("getMascotAnchor", () => {
 });
 
 // =========================================================
-// Selection sets
+// Selection
 // =========================================================
 
-describe("buildHeroSets", () => {
+describe("buildMascotSelection", () => {
   const fixture: Record<string, MascotInfo> = {
     original: entry({ group: "Original" }),
     robot: entry({ group: "SciFi" }),
@@ -97,7 +97,7 @@ describe("buildHeroSets", () => {
     party: entry({ group: "NewYear" }),
     werewolf: entry({ group: "FullMoon" }),
   };
-  const [regular, halloween, christmas, easter, newYear, fullMoon] = buildHeroSets(fixture);
+  const [regular, halloween, christmas, easter, newYear, fullMoon] = buildMascotSelection(fixture);
 
   it("puts every non-seasonal group into the regular pool, new groups included", () => {
     expect(variantsOf(regular)).toEqual(["brand-new-group", "original", "robot", "slasher"]);
@@ -134,14 +134,14 @@ describe("buildHeroSets", () => {
   });
 });
 
-describe("SnappyHeroSets", () => {
+describe("mascotSelection", () => {
   it("offers every mascot of the data", () => {
-    const offered = new Set(SnappyHeroSets.flatMap(variantsOf));
+    const offered = new Set(mascotSelection.flatMap(variantsOf));
     expect([...offered].sort()).toEqual(Object.keys(data).sort());
   });
 
   it("only offers mascots the data knows", () => {
-    for (const key of SnappyHeroSets.flatMap(variantsOf)) {
+    for (const key of mascotSelection.flatMap(variantsOf)) {
       expect(data[key]).toBeDefined();
     }
   });
@@ -149,7 +149,7 @@ describe("SnappyHeroSets", () => {
   // `useMascotVariant` draws from the SFW pool on every roll, and the
   // selection throws when nothing is left.
   it("has a safe mascot in an entry that always has weight", () => {
-    const alwaysWeighted = SnappyHeroSets.filter((set) => !("condition" in set) && set.weight > 0);
+    const alwaysWeighted = mascotSelection.filter((set) => !("condition" in set) && set.weight > 0);
     const safe = alwaysWeighted.flatMap(variantsOf).filter((key) => !data[key].nsfw);
     expect(safe.length).toBeGreaterThan(0);
   });

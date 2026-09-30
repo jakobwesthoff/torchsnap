@@ -17,10 +17,10 @@ function randomSequence(...values: number[]) {
 }
 
 /** Share of `draws` selections that return `variant`. */
-function shareOf(variant: string, sets: MascotEntry[], draws = 20_000): number {
+function shareOf(variant: string, entries: MascotEntry[], draws = 20_000): number {
   let hits = 0;
   for (let i = 0; i < draws; i++) {
-    if (selectMascotVariant(sets) === variant) hits++;
+    if (selectMascotVariant(entries) === variant) hits++;
   }
   return hits / draws;
 }
@@ -31,58 +31,58 @@ function shareOf(variant: string, sets: MascotEntry[], draws = 20_000): number {
 
 describe("selectMascotVariant", () => {
   it("picks among the variants of a leaf uniformly", () => {
-    const sets = [{ variants: ["a", "b", "c", "d"], weight: 1 }];
+    const entries = [{ variants: ["a", "b", "c", "d"], weight: 1 }];
     // One draw orders the single leaf, the next picks the variant.
     randomSequence(0.5, 0);
-    expect(selectMascotVariant(sets)).toBe("a");
+    expect(selectMascotVariant(entries)).toBe("a");
     randomSequence(0.5, 0.99);
-    expect(selectMascotVariant(sets)).toBe("d");
+    expect(selectMascotVariant(entries)).toBe("d");
   });
 
   it("never picks from an entry with weight 0", () => {
-    const sets = [
+    const entries = [
       { variants: ["dormant"], weight: 0 },
       { variants: ["active"], weight: 1 },
     ];
-    for (let i = 0; i < 100; i++) expect(selectMascotVariant(sets)).toBe("active");
+    for (let i = 0; i < 100; i++) expect(selectMascotVariant(entries)).toBe("active");
   });
 
   it("chooses entries in proportion to their weights", () => {
-    const sets = [
+    const entries = [
       { variants: ["heavy"], weight: 3 },
       { variants: ["light"], weight: 1 },
     ];
-    expect(shareOf("heavy", sets)).toBeCloseTo(0.75, 1);
+    expect(shareOf("heavy", entries)).toBeCloseTo(0.75, 1);
   });
 
   it("uses the conditional weight while the condition holds", () => {
     let holds = false;
-    const sets = [
+    const entries = [
       { variants: ["regular"], weight: 100 },
       { variants: ["seasonal"], weight: 0, condition: () => holds, conditionalWeight: 300 },
     ];
-    expect(shareOf("seasonal", sets, 1000)).toBe(0);
+    expect(shareOf("seasonal", entries, 1000)).toBe(0);
     holds = true;
-    expect(shareOf("seasonal", sets)).toBeCloseTo(0.75, 1);
+    expect(shareOf("seasonal", entries)).toBeCloseTo(0.75, 1);
   });
 
   it("falls through to the next entry when the filter empties a leaf", () => {
-    const sets = [
+    const entries = [
       { variants: ["nsfw-a", "nsfw-b"], weight: 1_000_000 },
       { variants: ["safe"], weight: 1 },
     ];
     const safe = (variant: string) => !variant.startsWith("nsfw");
-    for (let i = 0; i < 100; i++) expect(selectMascotVariant(sets, safe)).toBe("safe");
+    for (let i = 0; i < 100; i++) expect(selectMascotVariant(entries, safe)).toBe("safe");
   });
 
   it("only returns variants the filter accepts from a mixed leaf", () => {
-    const sets = [{ variants: ["nsfw-a", "safe-a", "safe-b"], weight: 1 }];
+    const entries = [{ variants: ["nsfw-a", "safe-a", "safe-b"], weight: 1 }];
     const safe = (variant: string) => !variant.startsWith("nsfw");
-    for (let i = 0; i < 100; i++) expect(selectMascotVariant(sets, safe)).not.toBe("nsfw-a");
+    for (let i = 0; i < 100; i++) expect(selectMascotVariant(entries, safe)).not.toBe("nsfw-a");
   });
 
-  it("recurses into groups", () => {
-    const sets: MascotEntry[] = [
+  it("recurses into branches", () => {
+    const entries: MascotEntry[] = [
       {
         children: [
           { variants: ["inner"], weight: 1 },
@@ -91,15 +91,15 @@ describe("selectMascotVariant", () => {
         weight: 1,
       },
     ];
-    expect(selectMascotVariant(sets)).toBe("inner");
+    expect(selectMascotVariant(entries)).toBe("inner");
   });
 
-  it("falls through past a group whose children all have weight 0", () => {
-    const sets: MascotEntry[] = [
+  it("falls through past a branch whose children all have weight 0", () => {
+    const entries: MascotEntry[] = [
       { children: [{ variants: ["dormant"], weight: 0 }], weight: 1_000_000 },
       { variants: ["fallback"], weight: 1 },
     ];
-    for (let i = 0; i < 100; i++) expect(selectMascotVariant(sets)).toBe("fallback");
+    for (let i = 0; i < 100; i++) expect(selectMascotVariant(entries)).toBe("fallback");
   });
 
   it("throws when no entry yields a variant", () => {

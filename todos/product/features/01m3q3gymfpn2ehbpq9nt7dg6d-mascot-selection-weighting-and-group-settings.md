@@ -12,9 +12,9 @@ mascot data). The selection rules were written for the small set. Check
 whether they still give a good mix, and decide on the ideas below.
 
 Order agreed on 2026-09-29: first the variant lists move out of
-`src/mascotVariants.ts` (now `src/mascot/variants.ts`) into the data (done: `buildHeroSets` builds the sets
-from each mascot's `group`), then the selection code gets a cleanup
-pass, then this.
+`src/mascotVariants.ts` (now `src/mascot/variants.ts`) into the data
+(done: `buildMascotSelection` builds the sets from each mascot's
+`group`), then the selection code gets a cleanup pass, then this.
 
 ## Selection as of 2026-09-29
 
