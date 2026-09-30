@@ -1,0 +1,154 @@
+#!/usr/bin/env -S uv run --quiet --script
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["skia-pathops", "fonttools"]
+# ///
+
+#
+# Flatten the Snappy emblem into one path per colour, none overlapping.
+#
+# `assets/snappy-emblem-feathered.svg` paints its shapes back to front:
+# every shape covers its whole area and the details lie on top. Artwork
+# that recolours the emblem per colour with an opacity (the one-ink app
+# icon) cannot use that stack, because overlapping shapes would add
+# their opacities up. This tool keeps of every shape only the part no
+# later shape covers and unites the parts of equal fill into one path.
+# The colours and the look stay the same.
+#
+# Group transforms (`translate(...) scale(...)`) and clip paths are
+# applied, so the output paths are in the emblem's own viewBox.
+#
+# Usage:
+#   tools/flatten-emblem assets/snappy-emblem-feathered.svg assets/app-icon/snappy-emblem-flat.svg
+
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+import pathops
+from fontTools.pens.svgPathPen import SVGPathPen
+from fontTools.svgLib.path import parse_path
+
+NS = "{http://www.w3.org/2000/svg}"
+
+# =========================================================
+# Reading the emblem as a stack of shapes
+# =========================================================
+
+
+def transform_of(text):
+    """(sx, sy, tx, ty) of a `translate(...) scale(...)` attribute."""
+    if not text:
+        return (1.0, 1.0, 0.0, 0.0)
+    tx = ty = 0.0
+    sx = sy = 1.0
+    if m := re.search(r"translate\(\s*([-\d.]+)[\s,]+([-\d.]+)\s*\)", text):
+        tx, ty = float(m.group(1)), float(m.group(2))
+    if m := re.search(r"scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\s*\)", text):
+        sx = float(m.group(1))
+        sy = float(m.group(2)) if m.group(2) else sx
+    return (sx, sy, tx, ty)
+
+
+def compose(outer, inner):
+    """The transform `outer` applied after `inner`."""
+    osx, osy, otx, oty = outer
+    isx, isy, itx, ity = inner
+    return (osx * isx, osy * isy, osx * itx + otx, osy * ity + oty)
+
+
+def shape(d, transform):
+    path = pathops.Path()
+    parse_path(d, path.getPen())
+    sx, sy, tx, ty = transform
+    return path.transform(sx, 0, 0, sy, tx, ty)
+
+
+def stack(svg_text):
+    """The painted shapes as (fill, path), back to front, clips applied."""
+    root = ET.fromstring(svg_text)
+    clips = {}
+    for clip in root.iter(f"{NS}clipPath"):
+        path = pathops.Path()
+        for p in clip.iter(f"{NS}path"):
+            path = pathops.op(path, shape(p.get("d"), transform_of(p.get("transform"))), pathops.PathOp.UNION)
+        clips[clip.get("id")] = path
+    shapes = []
+
+    def walk(node, transform, fill, clip):
+        for child in node:
+            tag = child.tag.replace(NS, "")
+            if tag in ("defs", "clipPath"):
+                continue
+            t = compose(transform, transform_of(child.get("transform")))
+            f = (child.get("fill") or fill or "").lower()
+            c = clip
+            if ref := child.get("clip-path"):
+                c = clips[re.search(r"#([^)]+)", ref).group(1)]
+            if tag == "path":
+                piece = shape(child.get("d"), t)
+                if c is not None:
+                    piece = pathops.op(piece, c, pathops.PathOp.INTERSECTION)
+                shapes.append((f, piece))
+            elif tag == "g":
+                walk(child, t, f, c)
+
+    walk(root, (1.0, 1.0, 0.0, 0.0), None, None)
+    return shapes
+
+
+# =========================================================
+# Flattening
+# =========================================================
+
+
+def flatten(shapes):
+    """Each shape reduced to the part no later shape covers, in paint order."""
+    covered = pathops.Path()
+    visible = []
+    for fill, piece in reversed(shapes):
+        visible.append((fill, pathops.op(piece, covered, pathops.PathOp.DIFFERENCE)))
+        covered = pathops.op(covered, piece, pathops.PathOp.UNION)
+    return list(reversed(visible))
+
+
+def by_fill(visible):
+    """The visible parts united per fill, in the order each fill first appears."""
+    groups = {}
+    for fill, piece in visible:
+        groups[fill] = pathops.op(groups.get(fill, pathops.Path()), piece, pathops.PathOp.UNION)
+    return groups
+
+
+def d(path):
+    pen = SVGPathPen(None, ntos=lambda v: f"{v:.2f}".rstrip("0").rstrip("."))
+    path.draw(pen)
+    return pen.getCommands()
+
+
+def flattened_svg(svg_text):
+    root = ET.fromstring(svg_text)
+    view_box = root.get("viewBox")
+    paths = "".join(f'<path fill="{fill}" d="{d(path)}"/>' for fill, path in by_fill(flatten(stack(svg_text))).items())
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box}">{paths}</svg>\n'
+
+
+def main(argv):
+    if len(argv) != 2:
+        print("Usage: flatten-emblem <emblem.svg> <flat.svg>", file=sys.stderr)
+        return 1
+    source, target = argv
+    with open(source, encoding="utf-8") as f:
+        text = flattened_svg(f.read())
+    with open(target, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"{target}: {text.count('<path')} paths, {len(text) // 1024} KiB")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

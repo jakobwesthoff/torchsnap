@@ -133,6 +133,15 @@ asset-tray-icon:
     tools/png-to-alpha-mask "$tmp" "$tray"
     rm -f "$tmp"
 
+# The app icon candidates in `assets/app-icon/` (see its README) are
+# tracked and not part of `assets`: rebuilding them needs uv, librsvg
+# (`rsvg-convert`) and Xcode's Icon Composer.
+
+# Rebuild the app icon candidates in assets/app-icon/ from the Snappy emblem
+app-icon-candidates:
+    tools/flatten-emblem assets/snappy-emblem-feathered.svg assets/app-icon/snappy-emblem-flat.svg
+    tools/build-app-icons
+
 # Used by the nighttime detection code to compute sunset/sunrise times
 # for the user's timezone.
 

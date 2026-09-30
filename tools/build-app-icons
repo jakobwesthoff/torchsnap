@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Build the app icon candidates in `assets/app-icon/` from the flattened
+# Snappy emblem (`tools/flatten-emblem` writes it).
+#
+# Three candidates, all built from vectors:
+#
+#   aurora       the colour owl under soft teal and violet aurora
+#                ribbons on a night sky with stars; in clear and tinted
+#                appearance the sky is faint
+#   ink          the owl in one navy ink on white; in dark appearance
+#                its negative, pale ink on navy
+#   aurora-rise  the colour owl rising over the bottom edge under the
+#                aurora
+#
+# In clear and tinted appearance every candidate shows the negative owl.
+#
+# Per candidate it writes:
+#
+#   <key>/<key>.svg   the whole icon as one square SVG, full bleed
+#   <key>/sky.svg     the sky layer's source (aurora candidates)
+#   <key>/<key>.icon/ the Icon Composer document: `icon.json` with the
+#                     background fill, the owl as a layer SVG on top
+#                     (per appearance where it differs), the sky as a
+#                     PNG layer below
+#   previews/<key>.webp  Apple's own renders of the six macOS 26
+#                     appearances: Default, ClearLight, TintedLight on
+#                     top, Dark, ClearDark, TintedDark below
+#
+# The sky layer is a PNG because Icon Composer ignores SVG filters and
+# the aurora ribbons are blurred with one; librsvg (`rsvg-convert`)
+# applies it. The previews come from `ictool`, the renderer inside Xcode's
+# Icon Composer (set ICTOOL to use another one), and ImageMagick.
+# `--no-raster` skips both and writes only the vector files and
+# `icon.json`.
+#
+# The designs were sketched on Apple's 824 px icon tile inside a 1024
+# canvas; Icon Composer's canvas is the tile itself at 1024 px, so all
+# sketch coordinates are scaled by 1024 / 824.
+#
+# Usage:
+#   tools/build-app-icons [--flat assets/app-icon/snappy-emblem-flat.svg]
+#                         [--out assets/app-icon] [--no-raster]
+
+import argparse
+import json
+import math
+import os
+import random
+import shutil
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ICTOOL = os.environ.get(
+    "ICTOOL", "/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool")
+RENDITIONS = ("Default", "ClearLight", "TintedLight", "Dark", "ClearDark", "TintedDark")
+
+SKETCH_TILE = 824
+CANVAS = 1024
+K = CANVAS / SKETCH_TILE
+
+# The emblem drawing's box in its own 1024 viewBox: the sketches size the
+# owl by this box's width and centre it by its middle.
+BOX_X, BOX_Y, BOX_W, BOX_H = 18, 55, 988, 892
+
+NAVY = "#17223b"
+PALE = "#f3efe2"
+
+# =========================================================
+# The owl
+# =========================================================
+
+
+def read_owl(path):
+    """The flattened emblem as (fill, d) pairs, one per colour."""
+    root = ET.parse(path).getroot()
+    return [(p.get("fill"), p.get("d")) for p in root.iter("{http://www.w3.org/2000/svg}path")]
+
+
+def luminance(fill):
+    r, g, b = (int(fill[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def clamp(value):
+    return min(max(value, 0.0), 1.0)
+
+
+def ink_opacity(fill):
+    """One-ink density: dark tones print solid, the cream face prints as paper."""
+    return clamp((1 - luminance(fill) - 0.06) / 0.7)
+
+
+def negative_opacity(fill):
+    """The negative: the light tones in pale ink, the dark ones left out."""
+    return clamp((luminance(fill) - 0.2) / 0.65)
+
+
+def owl_paths(owl, style):
+    if style == "colour":
+        return "".join(f'<path fill="{fill}" d="{d}"/>' for fill, d in owl)
+    colour, opacity = (NAVY, ink_opacity) if style == "ink" else (PALE, negative_opacity)
+    paths = []
+    for fill, d in owl:
+        value = opacity(fill)
+        # A tone at (almost) zero opacity would only add bytes.
+        if value > 0.005:
+            paths.append(f'<path fill="{colour}" fill-opacity="{value:.3f}" d="{d}"/>')
+    return "".join(paths)
+
+
+def owl_transform(width, centre):
+    """translate and scale that draw the owl `width` sketch px wide, box centred at `centre`."""
+    s = width * K / BOX_W
+    tx = centre[0] * K - s * (BOX_X + BOX_W / 2)
+    ty = centre[1] * K - s * (BOX_Y + BOX_H / 2)
+    return tx, ty, s
+
+
+def owl_group(owl, style, width, centre):
+    tx, ty, s = owl_transform(width, centre)
+    return f'<g transform="translate({tx:.2f} {ty:.2f}) scale({s:.5f})">{owl_paths(owl, style)}</g>'
+
+
+# =========================================================
+# The sky: stars and aurora ribbons
+# =========================================================
+
+
+def stars(count, top, seed):
+    """Small pale stars spread over the tile above `top`, the same for a seed."""
+    rng = random.Random(seed)
+    circles = []
+    for _ in range(count):
+        x = rng.uniform(20, SKETCH_TILE - 20)
+        y = rng.uniform(20, top)
+        r = rng.choice((1.6, 2.2, 3.2))
+        alpha = rng.randint(120, 230) / 255
+        circles.append(f'<circle cx="{x * K:.1f}" cy="{y * K:.1f}" r="{r * K:.2f}" fill="#fff6d6" '
+                       f'fill-opacity="{alpha:.2f}"/>')
+    return "".join(circles)
+
+
+def ribbons(bands, blur=26, opacity=90 / 255):
+    """Aurora ribbons: per (colour, phase, base, amp) a wavy band, all blurred into light.
+
+    A band spans 40 px above to 140 px below the wave
+    `base + amp * sin(x / 140 + phase)` and runs past both tile edges, so
+    the blur does not fade it out at the sides.
+    """
+    parts = [f'<filter id="soft" filterUnits="userSpaceOnUse" x="-300" y="-300" width="{CANVAS + 600}" '
+             f'height="{CANVAS + 600}"><feGaussianBlur stdDeviation="{blur * K:.1f}"/></filter>',
+             '<g filter="url(#soft)">']
+    for colour, phase, base, amp in bands:
+        wave = [(x, base + amp * math.sin(x / 140 + phase)) for x in range(-40, SKETCH_TILE + 44, 4)]
+        top = [f"{x * K:.1f},{(y - 40) * K:.1f}" for x, y in wave]
+        bottom = [f"{x * K:.1f},{(y + 140) * K:.1f}" for x, y in reversed(wave)]
+        parts.append(f'<polygon fill="{colour}" fill-opacity="{opacity:.3f}" points="{" ".join(top + bottom)}"/>')
+    parts.append("</g>")
+    return "".join(parts)
+
+
+def svg(body, defs=""):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {CANVAS} {CANVAS}" width="{CANVAS}" '
+            f'height="{CANVAS}">{"<defs>" + defs + "</defs>" if defs else ""}{body}</svg>\n')
+
+
+def gradient(top, bottom):
+    return (f'<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/>'
+            f'<stop offset="1" stop-color="{bottom}"/></linearGradient>')
+
+
+def srgb(fill):
+    r, g, b = (int(fill[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return f"srgb:{r:.5f},{g:.5f},{b:.5f},1.00000"
+
+
+# =========================================================
+# The candidates
+# =========================================================
+
+AURORA_BANDS = (("#2ec4b6", 0.0, 250, 70), ("#8a6cff", 1.7, 330, 60), ("#4fd1c5", 3.1, 190, 50))
+RISE_BANDS = (("#2ec4b6", 0.0, 150, 60), ("#8a6cff", 1.7, 220, 50), ("#4fd1c5", 3.1, 100, 40))
+RISE_OWL_WIDTH = 780
+# The bottom edge cuts the rising owl at 74 % of its height, below the beak.
+RISE_CENTRE_Y = SKETCH_TILE - (0.74 - 0.5) * RISE_OWL_WIDTH * BOX_H / BOX_W
+
+
+# How a sky shows in clear and tinted appearance: as in the others
+# ("shown"), at `SKY_FAINT` opacity ("faint"), or not at all ("hidden").
+# Chosen per candidate by the maintainer.
+SKY_FAINT = 0.35
+
+
+def candidates(owl):
+    """Per key: background gradient, its dark override, the sky, and the owl per appearance.
+
+    Appearance keys follow Icon Composer: `any`, `dark`, and `tinted`
+    (which also covers the clear renditions). Clear and tinted draw the
+    picture from brightness; there every candidate shows the negative
+    owl, whose light face and dark eyes read, where the colour owl's
+    dark head turns into a grey shadow (the maintainer's choice).
+    """
+    return {
+        "aurora": {
+            "background": ("#081027", "#17204a"), "dark_background": None,
+            "sky": stars(50, 800, 5) + ribbons(AURORA_BANDS), "sky_tinted": "faint",
+            "owl": {"any": owl_group(owl, "colour", 520, (412, 470)),
+                    "tinted": owl_group(owl, "negative", 520, (412, 470))},
+        },
+        "ink": {
+            "background": ("#ffffff", "#e9ecf1"), "dark_background": (NAVY, NAVY),
+            "sky": None, "sky_tinted": None,
+            "owl": {"any": owl_group(owl, "ink", 600, (412, 420)),
+                    "dark": owl_group(owl, "negative", 600, (412, 420)),
+                    "tinted": owl_group(owl, "negative", 600, (412, 420))},
+        },
+        "aurora-rise": {
+            "background": ("#081027", "#3a2f6e"), "dark_background": None,
+            "sky": stars(50, 420, 9) + ribbons(RISE_BANDS), "sky_tinted": "shown",
+            "owl": {"any": owl_group(owl, "colour", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y)),
+                    "tinted": owl_group(owl, "negative", RISE_OWL_WIDTH, (412, RISE_CENTRE_Y))},
+        },
+    }
+
+
+def owl_files(candidate):
+    """Layer file name per appearance key."""
+    return {appearance: "owl.svg" if appearance == "any" else f"owl-{appearance}.svg" for appearance in candidate["owl"]}
+
+
+def manifest(candidate):
+    """The Icon Composer `icon.json` of a candidate.
+
+    A layer names its image either once (`image-name`) or per appearance
+    (`image-name-specializations`); with both, Icon Composer uses the
+    plain name. The background fill likewise is either `fill` or
+    `fill-specializations`.
+    """
+    files = owl_files(candidate)
+    owl_layer = {"name": "Owl", "glass": False}
+    if len(files) == 1:
+        owl_layer["image-name"] = files["any"]
+    else:
+        owl_layer["image-name-specializations"] = [{"value": files["any"]}] + [
+            {"appearance": appearance, "value": name} for appearance, name in files.items() if appearance != "any"]
+    groups = [{"name": "Owl", "layers": [owl_layer], "shadow": {"kind": "neutral", "opacity": 0.5},
+               "translucency": {"enabled": False, "value": 0.5}}]
+    if candidate["sky"]:
+        sky_layer = {"name": "Sky", "image-name": "sky.png", "glass": False}
+        if candidate["sky_tinted"] == "faint":
+            sky_layer["opacity-specializations"] = [{"value": 1.0}, {"appearance": "tinted", "value": SKY_FAINT}]
+        elif candidate["sky_tinted"] == "hidden":
+            sky_layer["hidden-specializations"] = [{"value": False}, {"appearance": "tinted", "value": True}]
+        groups.append({"name": "Sky", "layers": [sky_layer],
+                       "shadow": {"kind": "none", "opacity": 0.0}, "translucency": {"enabled": False, "value": 0.5}})
+
+    top, bottom = candidate["background"]
+    fill = {"linear-gradient": [srgb(top), srgb(bottom)]}
+    result = {"groups": groups, "supported-platforms": {"squares": ["macOS"]}}
+    if candidate["dark_background"]:
+        dark_top, dark_bottom = candidate["dark_background"]
+        result["fill-specializations"] = [
+            {"value": fill}, {"appearance": "dark", "value": {"linear-gradient": [srgb(dark_top), srgb(dark_bottom)]}}]
+    else:
+        result["fill"] = fill
+    return result
+
+
+def write_candidate(key, candidate, out):
+    """Writes the vector files and the Icon Composer document; returns the document path."""
+    folder = out / key
+    document = folder / f"{key}.icon"
+    if document.exists():
+        shutil.rmtree(document)
+    (document / "Assets").mkdir(parents=True)
+
+    top, bottom = candidate["background"]
+    sky = candidate["sky"] or ""
+    whole = f'<rect width="{CANVAS}" height="{CANVAS}" fill="url(#sky)"/>{sky}{candidate["owl"]["any"]}'
+    (folder / f"{key}.svg").write_text(svg(whole, gradient(top, bottom)))
+    if candidate["sky"]:
+        (folder / "sky.svg").write_text(svg(sky))
+    for appearance, name in owl_files(candidate).items():
+        (document / "Assets" / name).write_text(svg(candidate["owl"][appearance]))
+    (document / "icon.json").write_text(json.dumps(manifest(candidate), indent=2) + "\n")
+    return document
+
+
+# =========================================================
+# Raster files: the sky layer and the previews
+# =========================================================
+
+
+def write_sky_png(key, out):
+    folder = out / key
+    subprocess.run(["rsvg-convert", "-w", str(CANVAS), "-h", str(CANVAS), str(folder / "sky.svg"),
+                    "-o", str(folder / f"{key}.icon" / "Assets" / "sky.png")], check=True)
+
+
+def write_preview(key, document, out):
+    previews = out / "previews"
+    previews.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory() as work:
+        renders = []
+        for rendition in RENDITIONS:
+            png = Path(work) / f"{rendition}.png"
+            subprocess.run([ICTOOL, str(document), "--export-image", "--output-file", str(png), "--platform", "macOS",
+                            "--rendition", rendition, "--width", "512", "--height", "512", "--scale", "1"],
+                           check=True, capture_output=True)
+            renders.append(str(png))
+        # Light appearances on a light desktop above, dark ones on a dark
+        # desktop below.
+        subprocess.run(["magick",
+                        "(", *renders[:3], "-background", "#e2e4ec", "-splice", "24x24", "+append", "-alpha", "remove", ")",
+                        "(", *renders[3:], "-background", "#1c1c20", "-splice", "24x24", "+append", "-alpha", "remove", ")",
+                        "-append", "-quality", "86", str(previews / f"{key}.webp")], check=True)
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Build the app icon candidates from the flattened emblem.")
+    parser.add_argument("--flat", type=Path, default=ROOT / "assets/app-icon/snappy-emblem-flat.svg")
+    parser.add_argument("--out", type=Path, default=ROOT / "assets/app-icon")
+    parser.add_argument("--no-raster", action="store_true", help="skip the sky PNGs and the previews")
+    args = parser.parse_args(argv)
+
+    owl = read_owl(args.flat)
+    for key, candidate in candidates(owl).items():
+        document = write_candidate(key, candidate, args.out)
+        if not args.no_raster:
+            if candidate["sky"]:
+                write_sky_png(key, args.out)
+            write_preview(key, document, args.out)
+        print(f"{key}: {document.relative_to(args.out)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

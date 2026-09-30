@@ -17,6 +17,14 @@ test: test-crates test-gadgets test-frontend test-tools
 test-tools:
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 
+# `tools/flatten-emblem` needs skia-pathops and fonttools, so
+# `test-tools` skips its tests; this runs the same suite with both,
+# installed on the fly by uv.
+
+# Run the tool tests including those that need skia-pathops and fonttools
+test-tools-all:
+    PYTHONDONTWRITEBYTECODE=1 uv run --quiet --with skia-pathops --with fonttools python -m unittest discover -s tools/tests -p 'test_*.py'
+
 # Unit tests plus integration tests under `src-tauri/tests/` — the
 # latter load the committed `.wasm` fixtures from `tests/fixtures/`,
 # so run `just build-test-fixtures` first if you've edited any
