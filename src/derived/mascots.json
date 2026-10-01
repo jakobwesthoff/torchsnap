@@ -584,10 +584,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5767,
-      "y": 0.9029
+      "x": 0.5637,
+      "y": 0.9228
     },
-    "boxLeft": 0.1455
+    "boxLeft": 0.1299
   },
   "black-suit-earpiece-agent": {
     "alt": "Snappy, earpiece pressed -- it's the smell of the mouse. It can't stand it. The hotkey is cleaner.",
@@ -632,10 +632,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5067,
-      "y": 0.8945
+      "x": 0.4683,
+      "y": 0.9147
     },
-    "boxLeft": 0.0908
+    "boxLeft": 0.0684
   },
   "blond-bowl-cut-harness-nsfw": {
     "alt": "Snappy thrusts the sword skyward -- I have the power! Lightning for the transformation, one hotkey for the launch.",
@@ -644,10 +644,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4611,
+      "x": 0.432,
       "y": 0.9834
     },
-    "boxLeft": 0.0713
+    "boxLeft": 0.0703
   },
   "blue-alien-cloak-hates-earth": {
     "alt": "Snappy checking the mission list -- protect the baby, fix the ship, leave this idiot planet. Step four: the hotkey.",
@@ -722,7 +722,7 @@
     "boxLeft": 0.0742
   },
   "blue-fur-cookie-jar": {
-    "alt": "Snappy hugging a cookie jar -- C is for cookie, L is for launch, that's good enough for me!",
+    "alt": "Snappy hugging a cookie jar -- today's launch is brought to you by the letter C and the number one hotkey.",
     "nsfw": false,
     "character": "blue-fur-cookie-baker",
     "group": "KidsTV",
@@ -824,10 +824,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4999,
+      "x": 0.4931,
       "y": 0.9092
     },
-    "boxLeft": 0.2246
+    "boxLeft": 0.2168
   },
   "blue-spiky-hair-lab-coat-green-gun-scientist-nsfw": {
     "alt": "Snappy with the green-fluid gun and a hip flask -- wubba lubba dub dub! One shot, and the app opens in another dimension.",
@@ -860,10 +860,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5017,
+      "x": 0.4692,
       "y": 0.8904
     },
-    "boxLeft": 0.1348
+    "boxLeft": 0.1201
   },
   "boldly-go-gold-2-nsfw": {
     "alt": "Snappy flipping open the communicator -- beam me up. There is... an app... to launch.",
@@ -872,10 +872,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5002,
+      "x": 0.4534,
       "y": 0.8906
     },
-    "boxLeft": 0.1406
+    "boxLeft": 0.1152
   },
   "boldly-go-gold-nsfw": {
     "alt": "Snappy on the bridge -- set phasers to launch.",
@@ -884,10 +884,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.498,
+      "x": 0.5165,
       "y": 0.9038
     },
-    "boxLeft": 0.1006
+    "boxLeft": 0.0967
   },
   "bolted-neck-monster": {
     "alt": "Snappy freshly stitched and bolted -- it's alive! Mouse bad. Hotkey good.",
@@ -1850,10 +1850,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5235,
-      "y": 0.8811
+      "x": 0.5055,
+      "y": 0.9009
     },
-    "boxLeft": 0.1787
+    "boxLeft": 0.1611
   },
   "engage-crimson-nsfw": {
     "alt": "Snappy on an away mission -- the app will be on screen. Engage.",
@@ -1862,10 +1862,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4776,
+      "x": 0.4676,
       "y": 0.8894
     },
-    "boxLeft": 0.1211
+    "boxLeft": 0.1133
   },
   "everything-is-fine-coffee-flames": {
     "alt": "Snappy with a coffee -- this is fine. Everything launches fine.",
@@ -2030,10 +2030,10 @@
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5303,
+      "x": 0.5,
       "y": 0.9014
     },
-    "boxLeft": 0.085
+    "boxLeft": 0.0859
   },
   "fire-fist-champion-nsfw": {
     "alt": "Snappy chosen to defend the realm -- TEST YOUR MIGHT against this launch.",
@@ -2848,10 +2848,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5387,
-      "y": 0.9447
+      "x": 0.5047,
+      "y": 0.9326
     },
-    "boxLeft": 0.1123
+    "boxLeft": 0.1855
   },
   "green-suction-arm-friendly-pet": {
     "alt": "Snappy, the nice one of the two brothers -- it doesn't want to rule the world, just a record deal and a faster launch.",
@@ -2946,10 +2946,10 @@
     "group": "KidsTV",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4998,
-      "y": 0.9435
+      "x": 0.5415,
+      "y": 0.9665
     },
-    "boxLeft": 0.0703
+    "boxLeft": 0.0479
   },
   "half-and-half-merge-conflict": {
     "alt": "Snappy split right down the middle -- automatic merge failed; fix the conflicts, then launch the result.",
@@ -4542,10 +4542,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5594,
+      "x": 0.5566,
       "y": 0.918
     },
-    "boxLeft": 0.1309
+    "boxLeft": 0.126
   },
   "pink-tracksuit-intern": {
     "alt": "Snappy in the pink tracksuit -- the richest intern in the universe, and its favourite tool is a free hotkey.",
@@ -5246,10 +5246,10 @@
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5715,
-      "y": 0.9531
+      "x": 0.5187,
+      "y": 0.975
     },
-    "boxLeft": 0.0469
+    "boxLeft": 0.0254
   },
   "red-eye-enforcer": {
     "alt": "Snappy playing every side at once -- the launcher always wins, mate.",
@@ -5282,10 +5282,10 @@
     "group": "KidsTV",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5272,
+      "x": 0.5134,
       "y": 0.959
     },
-    "boxLeft": 0.1494
+    "boxLeft": 0.1289
   },
   "red-gi-flaming-uppercut": {
     "alt": "Snappy rises in a flaming uppercut -- shoryuken straight into the launcher.",
@@ -5464,10 +5464,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5723,
-      "y": 0.8789
+      "x": 0.5404,
+      "y": 0.8984
     },
-    "boxLeft": 0.1738
+    "boxLeft": 0.1572
   },
   "red-spiky-hair-blue-spots": {
     "alt": "Snappy with its blue wish spots -- one spot, one wish: a launcher that opens every app at once!",
@@ -6104,10 +6104,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5389,
-      "y": 0.8893
+      "x": 0.5133,
+      "y": 0.9088
     },
-    "boxLeft": 0.0596
+    "boxLeft": 0.0576
   },
   "skull-face-purple-hood-staff-nsfw": {
     "alt": "Snappy, cackling under the hood -- the secrets of the launcher shall be mine! Nyeh-heh-heh!",
@@ -6116,10 +6116,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5069,
-      "y": 0.9164
+      "x": 0.4995,
+      "y": 0.9371
     },
-    "boxLeft": 0.0049
+    "boxLeft": 0.0391
   },
   "skull-mask-santa-coat": {
     "alt": "Snappy on its first delivery round -- the presents bite back, but every launch still arrives gift-wrapped.",
@@ -7439,10 +7439,10 @@
     "group": "KidsTV",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4312,
+      "x": 0.4404,
       "y": 0.9834
     },
-    "boxLeft": 0.0859
+    "boxLeft": 0.0684
   },
   "vegetarian-vampire-green-bill": {
     "alt": "Snappy the vegetarian vampire -- no blood, just ketchup and carrots, and a castle that launches anywhere in the world.",
@@ -7939,10 +7939,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4815,
+      "x": 0.4803,
       "y": 0.9329
     },
-    "boxLeft": 0.1982
+    "boxLeft": 0.1992
   },
   "yellow-tracksuit-black-stripe": {
     "alt": "Snappy in the yellow tracksuit -- those of you lucky enough to still have your apps, launch them. The mouse clicks you've lost belong to it now.",
