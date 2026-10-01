@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSetting } from "../../hooks/useSetting";
 import { command } from "../../lib/command";
 import { SectionHeader } from "../SectionHeader";
@@ -13,6 +14,8 @@ import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
 import { UpdatesSection } from "../UpdatesSection";
 import { AppIcon } from "../../components/AppIcon";
+
+const WEBSITE = "https://torchsnap.app/";
 
 export function GeneralSection() {
   const [globalShortcut, setGlobalShortcut] = useSetting<string>("globalShortcut");
@@ -72,7 +75,19 @@ export function GeneralSection() {
       </Section>
 
       <div className="mt-auto pt-4 self-end flex flex-col items-center gap-1">
-        <AppIcon size={48} alt="Torchsnap app icon" />
+        {/* The settings window has no navigation guard, so the click opens
+            the site in the browser and must not follow the link itself. */}
+        <a
+          href={WEBSITE}
+          title="torchsnap.app"
+          className="cursor-pointer"
+          onClick={(event) => {
+            event.preventDefault();
+            void openUrl(WEBSITE).catch(() => {});
+          }}
+        >
+          <AppIcon size={96} alt="Open torchsnap.app" />
+        </a>
         {buildInfo && (
           <p className="text-[11px] text-text-muted/90">
             Build: v{buildInfo.version} ({buildInfo.gitHash})
