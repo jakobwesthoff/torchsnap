@@ -212,10 +212,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.6027,
-      "y": 0.9717
+      "x": 0.5966,
+      "y": 0.9479
     },
-    "boxLeft": 0.0273
+    "boxLeft": 0.0498
   },
   "bald-lollipop-sunglasses": {
     "alt": "Snappy taps the lollipop against its beak -- who loves ya, launcher? This owl does, every single time.",
@@ -400,10 +400,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5667,
-      "y": 0.8916
+      "x": 0.5532,
+      "y": 0.9115
     },
-    "boxLeft": 0.1436
+    "boxLeft": 0.125
   },
   "big-glasses-red-bowtie-kid": {
     "alt": "Snappy, big glasses, small body -- one pill shrank it back to first grade. One hotkey launches the app all the same.",
@@ -680,10 +680,10 @@
     "group": "Fantasy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4673,
+      "x": 0.4825,
       "y": 0.9156
     },
-    "boxLeft": 0.0576
+    "boxLeft": 0.0723
   },
   "blue-bandana-leader-shell-hero": {
     "alt": "Snappy pointing the way -- someone has to lead the four brothers, and it leads with the hotkey.",
@@ -1832,13 +1832,13 @@
     "boxLeft": 0.1143
   },
   "emerald-ring-oath-pilot": {
-    "alt": "Snappy, ring raised -- in brightest day, in blackest night, let those who worship the mouse beware its hotkey!",
+    "alt": "Snappy, ring raised -- the ring chose it for its will, and that will is set on one hotkey.",
     "nsfw": false,
     "character": "emerald-ring-oath-pilot",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5447,
+      "x": 0.5129,
       "y": 0.8992
     },
     "boxLeft": 0.1152
@@ -3282,10 +3282,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4782,
-      "y": 0.9355
+      "x": 0.4873,
+      "y": 0.9834
     },
-    "boxLeft": 0.0527
+    "boxLeft": 0.0703
   },
   "horned-trickster-2": {
     "alt": "Snappy with the cube in both wings -- it never wanted the throne. It only ever wanted to be your equal. And your hotkey.",
@@ -3294,10 +3294,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5308,
+      "x": 0.5352,
       "y": 0.9463
     },
-    "boxLeft": 0.0322
+    "boxLeft": 0.0391
   },
   "horned-trickster-2-nsfw": {
     "alt": "Snappy, scepter glowing over the crowd -- kneel! Is this not simpler? You were made to be ruled. By hotkeys.",
@@ -3306,10 +3306,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5311,
+      "x": 0.4746,
       "y": 0.9551
     },
-    "boxLeft": 0.0332
+    "boxLeft": 0.0527
   },
   "huggable-inflatable-nurse": {
     "alt": "Snappy fully inflated and ready to hug -- hello, I am your personal launch companion.",
@@ -3416,10 +3416,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.551,
-      "y": 0.9453
+      "x": 0.4995,
+      "y": 0.9675
     },
-    "boxLeft": 0.1436
+    "boxLeft": 0.1162
   },
   "iron-fist-brawler": {
     "alt": "Snappy, metal fists up -- it catches the mouse mid-jump and drops it across one knee. Backbreaker, then launch.",
@@ -4104,10 +4104,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5204,
+      "x": 0.5237,
       "y": 0.9057
     },
-    "boxLeft": 0.0488
+    "boxLeft": 0.0459
   },
   "offline-pixel-dino-cactus": {
     "alt": "Snappy, pixelated next to a cactus -- no internet? Press space to jump. The launcher works offline anyway.",
@@ -4324,6 +4324,18 @@
       "y": 0.9068
     },
     "boxLeft": 0.1113
+  },
+  "padded-muscle-suit-flex": {
+    "alt": "Snappy, foam muscles pumped -- that's its secret: it's always angry. And always one hotkey away.",
+    "nsfw": false,
+    "character": "jade-giant-rage",
+    "group": "Superheroes",
+    "occasions": [],
+    "groundAnchor": {
+      "x": 0.4952,
+      "y": 0.9027
+    },
+    "boxLeft": 0.0615
   },
   "pale-black-mane-sand-pouch-helm": {
     "alt": "Snappy, after a century in a glass cage -- first it takes back its pouch, its helm and its ruby. Then its hotkey.",
@@ -4572,7 +4584,7 @@
     "boxLeft": 0.0254
   },
   "pinstripe-skeleton-bat-bowtie": {
-    "alt": "Snappy in pinstripes with a jack-o'-lantern -- what's this? What's this? A launcher everywhere!",
+    "alt": "Snappy in pinstripes with a jack-o'-lantern -- tired of the same old scares, it went looking for something new and found a hotkey.",
     "nsfw": false,
     "character": "pinstripe-skeleton-bat-bowtie",
     "group": "Cartoons",
@@ -4580,10 +4592,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5206,
-      "y": 0.9121
+      "x": 0.4805,
+      "y": 0.9287
     },
-    "boxLeft": 0.0762
+    "boxLeft": 0.0645
   },
   "pinstripe-zf1": {
     "alt": "Snappy with a dish of cherries -- mind the pits, it nearly choked on one mid-speech. The hotkey never chokes.",
@@ -5786,10 +5798,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5257,
-      "y": 0.9127
+      "x": 0.5336,
+      "y": 0.9141
     },
-    "boxLeft": 0.1436
+    "boxLeft": 0.1504
   },
   "scale-king-trident-nsfw": {
     "alt": "Snappy ruler of the deep -- the seven seas launch on command.",
@@ -5801,7 +5813,7 @@
       "x": 0.5894,
       "y": 0.9454
     },
-    "boxLeft": 0.0977
+    "boxLeft": 0.0957
   },
   "scarlet-merc": {
     "alt": "Snappy breaking the fourth wall -- maximum effort, maximum launches.",
@@ -6130,10 +6142,10 @@
       "Christmas"
     ],
     "groundAnchor": {
-      "x": 0.4864,
+      "x": 0.4378,
       "y": 0.9414
     },
-    "boxLeft": 0.0459
+    "boxLeft": 0.0498
   },
   "skyscraper-blond-flat-top-gi": {
     "alt": "Snappy, hair straight up -- broke again, so it drags a chef and a boxer into the iron fist tournament as a team. The app it launches solo.",
@@ -6416,7 +6428,7 @@
     "boxLeft": 0.1846
   },
   "stitched-rag-doll-patchwork": {
-    "alt": "Snappy, stitched together and smitten -- it senses there's something in the wind. Probably a launch.",
+    "alt": "Snappy, stitched together and smitten -- one loose seam, one quick stitch, and the launch holds together again.",
     "nsfw": false,
     "character": "stitched-rag-doll-patchwork",
     "group": "Cartoons",
@@ -6425,10 +6437,10 @@
       "Christmas"
     ],
     "groundAnchor": {
-      "x": 0.5348,
+      "x": 0.5016,
       "y": 0.9316
     },
-    "boxLeft": 0.0693
+    "boxLeft": 0.0684
   },
   "stone-angel-hands-over-face": {
     "alt": "Snappy freezes on its plinth -- don't blink, the app is open before you do.",
@@ -7657,10 +7669,10 @@
       "FullMoon"
     ],
     "groundAnchor": {
-      "x": 0.6396,
+      "x": 0.6353,
       "y": 0.9805
     },
-    "boxLeft": 0.0166
+    "boxLeft": 0.0205
   },
   "white-hooded-crescent-avenger-nsfw": {
     "alt": "Snappy, crescent darts flying -- summon the suit, summon the hotkey, and sort out whose turn it is later.",
@@ -7671,10 +7683,10 @@
       "FullMoon"
     ],
     "groundAnchor": {
-      "x": 0.6411,
+      "x": 0.677,
       "y": 0.9844
     },
-    "boxLeft": 0.0205
+    "boxLeft": 0.0352
   },
   "white-mask-snake-braid-matador": {
     "alt": "Snappy, mask firmly on -- nobody touches this face. Not the mouse, not a click. Only the hotkey is allowed near.",
@@ -7805,10 +7817,10 @@
     "group": "Anime",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5005,
+      "x": 0.5691,
       "y": 0.9824
     },
-    "boxLeft": 0.0176
+    "boxLeft": 0.0166
   },
   "wolf-pelt-mask-forest-princess-wolf-pup": {
     "alt": "Snappy and the littlest wolf -- raised by the wolf goddess, it swears it's no human. And no mouse user either.",
@@ -7817,10 +7829,10 @@
     "group": "Anime",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.523,
+      "x": 0.5214,
       "y": 0.9609
     },
-    "boxLeft": 0.0664
+    "boxLeft": 0.0635
   },
   "wormhole-gun-spring-boots": {
     "alt": "Snappy fresh out of the test chamber -- the cake is a lie, but the launch is real.",
