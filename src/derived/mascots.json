@@ -536,8 +536,8 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5403,
-      "y": 0.9346
+      "x": 0.5,
+      "y": 0.9033
     },
     "boxLeft": 0.0205
   },
@@ -548,10 +548,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.495,
-      "y": 0.9023
+      "x": 0.5071,
+      "y": 0.916
     },
-    "boxLeft": 0.0908
+    "boxLeft": 0.0742
   },
   "black-mask-cape-swordsman-of-california": {
     "alt": "Snappy tipping its flat black hat -- three quick slashes, and the mark on the post says the launch was here.",
@@ -608,10 +608,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.534,
-      "y": 0.9551
+      "x": 0.484,
+      "y": 0.9782
     },
-    "boxLeft": 0.0547
+    "boxLeft": 0.0332
   },
   "bladed-helmet-armor-master-nsfw": {
     "alt": "Snappy crossing its arm blades -- its plans fail every single week, but the hotkey cuts through anyway.",
@@ -620,10 +620,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5133,
-      "y": 0.9528
+      "x": 0.5132,
+      "y": 0.9748
     },
-    "boxLeft": 0.043
+    "boxLeft": 0.0195
   },
   "blond-bowl-cut-harness": {
     "alt": "Snappy raises its fist -- by the power of the hotkey, I have the launcher.",
@@ -922,10 +922,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5197,
-      "y": 0.9395
+      "x": 0.5088,
+      "y": 0.961
     },
-    "boxLeft": 0.0459
+    "boxLeft": 0.0225
   },
   "brass-porthole-diving-guardian-nsfw": {
     "alt": "Snappy, drill spinning, portholes red -- would you kindly press the hotkey? An owl chooses, a mouse obeys.",
@@ -946,10 +946,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5126,
-      "y": 0.926
+      "x": 0.5158,
+      "y": 0.9668
     },
-    "boxLeft": 0.0615
+    "boxLeft": 0.0244
   },
   "brown-mouse-cheese-wedge": {
     "alt": "Snappy, dragging cheese to the hole in the wall -- the one mouse that always wins. The cat should have used a hotkey.",
@@ -2090,10 +2090,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4969,
+      "x": 0.4778,
       "y": 0.9478
     },
-    "boxLeft": 0.0078
+    "boxLeft": 0.0088
   },
   "five-dino-robot-combined": {
     "alt": "Snappy in the giant robot suit -- dino-mech activated. Launch sequence complete.",
@@ -2192,18 +2192,6 @@
       "y": 0.9248
     },
     "boxLeft": 0.0674
-  },
-  "floating-pram-green-ears": {
-    "alt": "Snappy peeking out of the hover pram -- it keeps grabbing the shiny knob off the lever, and the launch hotkey too.",
-    "nsfw": false,
-    "character": "floating-pram-green-ears",
-    "group": "SpaceOpera",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5049,
-      "y": 0.9385
-    },
-    "boxLeft": 0.0166
   },
   "floor-length-hair-bowler": {
     "alt": "Snappy under a floor of hair -- 'mnmnmnmnm' means the app is open. The family understood every word.",
@@ -2612,10 +2600,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5155,
+      "x": 0.5151,
       "y": 0.9318
     },
-    "boxLeft": 0.1035
+    "boxLeft": 0.0869
   },
   "good-guy-doll-overalls": {
     "alt": "Snappy as a good guy through and through -- hi, I'm your launcher, and I'll be your friend till the end.",
@@ -7745,10 +7733,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5434,
-      "y": 0.8906
+      "x": 0.5435,
+      "y": 0.9104
     },
-    "boxLeft": 0.1719
+    "boxLeft": 0.1543
   },
   "white-plastoid-trooper-nsfw": {
     "alt": "Snappy, blaster aimed a little wide -- no need to see its identification. Move along, move along, the app is open.",
@@ -7757,10 +7745,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4783,
-      "y": 0.8896
+      "x": 0.4902,
+      "y": 0.9092
     },
-    "boxLeft": 0.1064
+    "boxLeft": 0.1025
   },
   "wide-hat-monk": {
     "alt": "Snappy tired of being second best -- the hat trick lands before the app does.",
