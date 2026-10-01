@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New app icon: Snappy's face rising under a night sky with an aurora.
   On macOS 26 it follows the dark, clear and tinted icon styles.
+- The General page of the settings shows the app icon above the build
+  version.
 - Snappy comes in 658 costumes instead of 189. A newer image model
   redrew 170 of the 189 earlier ones close to their old look; the other
   19, the plain Snappy among them, keep their drawings. Every mascot has

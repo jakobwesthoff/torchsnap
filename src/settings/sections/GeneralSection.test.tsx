@@ -37,4 +37,28 @@ describe("GeneralSection", () => {
     expect(titles).toEqual(["Startup", "Updates", "Advanced"]);
     expect(await screen.findByText("Build: v0.12.0 (abc1234)")).toBeInTheDocument();
   });
+
+  it("shows the app icon above the build info", async () => {
+    mockCommands({
+      build_info: () => ({ version: "0.12.0", gitHash: "abc1234" }),
+      shortcut_problems: () => ({}),
+    });
+    render(<GeneralSection />);
+
+    const buildInfo = await screen.findByText("Build: v0.12.0 (abc1234)");
+    const icon = screen.getByRole("img", { name: "Torchsnap app icon" });
+    expect(icon).toHaveAttribute("sizes", "48px");
+    expect(icon.compareDocumentPosition(buildInfo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the app icon while the build info is still loading", () => {
+    mockCommands({
+      build_info: () => new Promise(() => {}),
+      shortcut_problems: () => ({}),
+    });
+    render(<GeneralSection />);
+
+    expect(screen.getByRole("img", { name: "Torchsnap app icon" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Build:/)).not.toBeInTheDocument();
+  });
 });

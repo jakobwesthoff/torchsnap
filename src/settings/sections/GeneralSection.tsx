@@ -12,6 +12,7 @@ import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
 import { UpdatesSection } from "../UpdatesSection";
+import { AppIcon } from "../../components/AppIcon";
 
 export function GeneralSection() {
   const [globalShortcut, setGlobalShortcut] = useSetting<string>("globalShortcut");
@@ -70,11 +71,14 @@ export function GeneralSection() {
         </Entry>
       </Section>
 
-      {buildInfo && (
-        <p className="mt-auto pt-4 text-right text-[11px] text-text-muted/90">
-          Build: v{buildInfo.version} ({buildInfo.gitHash})
-        </p>
-      )}
+      <div className="mt-auto pt-4 self-end flex flex-col items-center gap-1">
+        <AppIcon size={48} alt="Torchsnap app icon" />
+        {buildInfo && (
+          <p className="text-[11px] text-text-muted/90">
+            Build: v{buildInfo.version} ({buildInfo.gitHash})
+          </p>
+        )}
+      </div>
     </div>
   );
 }
