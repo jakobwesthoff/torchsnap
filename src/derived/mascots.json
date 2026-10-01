@@ -102,10 +102,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.3778,
-      "y": 0.9362
+      "x": 0.327,
+      "y": 0.9854
     },
-    "boxLeft": 0.043
+    "boxLeft": 0.0195
   },
   "astronaut": {
     "alt": "Snappy floating past the porthole -- Houston, this app has a green light to launch.",
@@ -392,7 +392,7 @@
     "boxLeft": 0.0195
   },
   "beige-jumpsuit-ghost-trap": {
-    "alt": "Snappy with a ghost trap -- who you gonna call? The launcher.",
+    "alt": "Snappy with a ghost trap -- back off, man, this owl is a scientist. Of launching.",
     "nsfw": false,
     "character": "beige-jumpsuit-ghost-trap",
     "group": "Movies",
@@ -1370,22 +1370,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.501,
-      "y": 0.9238
+      "x": 0.6106,
+      "y": 0.9483
     },
-    "boxLeft": 0.0186
-  },
-  "cosmic-surfer-silver-2": {
-    "alt": "Snappy stands motionless before the world below -- it heralds nothing but the next launch.",
-    "nsfw": false,
-    "character": "cosmic-surfer-silver",
-    "group": "Superheroes",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5,
-      "y": 0.9189
-    },
-    "boxLeft": 0.0166
+    "boxLeft": 0.0283
   },
   "crash-pilot-goggles-duck": {
     "alt": "Snappy, goggles up, plane in the tree -- crashed every vehicle ever built, never crashed a launch. Ready when you are!",
@@ -1778,10 +1766,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4996,
-      "y": 0.9004
+      "x": 0.4958,
+      "y": 0.9395
     },
-    "boxLeft": 0.167
+    "boxLeft": 0.1572
   },
   "eagle-pad-street-judge-nsfw": {
     "alt": "Snappy serves as judge, jury, and one very quick launcher -- sentencing begins immediately.",
@@ -1790,10 +1778,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5602,
-      "y": 0.9023
+      "x": 0.5532,
+      "y": 0.9414
     },
-    "boxLeft": 0.1045
+    "boxLeft": 0.0986
   },
   "easter-bunny-flowers": {
     "alt": "Snappy hugging the prize egg -- it hid a hundred apps across the lawn, and the launcher found them all by breakfast.",
@@ -2102,7 +2090,7 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.498,
+      "x": 0.4715,
       "y": 0.9834
     },
     "boxLeft": 0.0166
@@ -2144,16 +2132,16 @@
     "boxLeft": 0.1094
   },
   "flaming-skull-chain-nsfw": {
-    "alt": "Snappy, skull aflame -- look into its eyes and feel every crash you ever caused. Then launch.",
+    "alt": "Snappy in front of its cardboard flames -- look into its eyes and feel every crash you ever caused. Then launch.",
     "nsfw": true,
     "character": "flaming-skull-chain-nsfw",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5333,
-      "y": 0.9463
+      "x": 0.4995,
+      "y": 0.9595
     },
-    "boxLeft": 0.0498
+    "boxLeft": 0.0371
   },
   "flash-pen-black-suit": {
     "alt": "Snappy holding up the silver pen -- look right here. There was no mouse, only swamp gas from a weather balloon.",
@@ -2588,10 +2576,10 @@
     "group": "TimeTravel",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4884,
-      "y": 0.9463
+      "x": 0.4485,
+      "y": 0.9648
     },
-    "boxLeft": 0.0928
+    "boxLeft": 0.085
   },
   "golden-fretful-protocol-droid": {
     "alt": "Snappy frets in gold plating -- the odds of a clean launch are approximately three thousand seven hundred twenty to one.",
@@ -3330,7 +3318,7 @@
     "group": "Cartoons",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5118,
+      "x": 0.5117,
       "y": 0.9629
     },
     "boxLeft": 0.0166
@@ -4804,7 +4792,7 @@
     "boxLeft": 0.0977
   },
   "proton-pack-buster": {
-    "alt": "Snappy ready for spectral containment -- who you gonna call for a quick launch?",
+    "alt": "Snappy ready for spectral containment -- it has the tools, it has the talent, and it has a hotkey.",
     "nsfw": false,
     "character": "beige-jumpsuit-ghost-trap",
     "group": "Movies",
@@ -4818,7 +4806,7 @@
     "boxLeft": 0.1602
   },
   "proton-pack-buster-2": {
-    "alt": "Snappy with the meter beeping wildly -- something strange in the neighbourhood? It ain't afraid of no mouse click.",
+    "alt": "Snappy with the meter beeping wildly -- listen, do you smell something? A launch, already done.",
     "nsfw": false,
     "character": "beige-jumpsuit-ghost-trap",
     "group": "Movies",
@@ -4902,7 +4890,7 @@
     "boxLeft": 0.0723
   },
   "proton-pack-buster-nsfw": {
-    "alt": "Snappy with a proton pack -- who you gonna call when the app won't launch?",
+    "alt": "Snappy with a proton pack -- it got slimed on the way in, and it still launched first.",
     "nsfw": true,
     "character": "beige-jumpsuit-ghost-trap",
     "group": "Movies",
@@ -5354,7 +5342,7 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5427,
+      "x": 0.545,
       "y": 0.8945
     },
     "boxLeft": 0.0166
@@ -6042,10 +6030,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5712,
-      "y": 0.961
+      "x": 0.5063,
+      "y": 0.9722
     },
-    "boxLeft": 0.1602
+    "boxLeft": 0.1592
   },
   "silver-handlebar-cyber-soldier": {
     "alt": "Snappy with the handlebar helmet -- upgrade in progress: emotions removed, hotkeys installed.",
@@ -6262,10 +6250,10 @@
     "group": "Fantasy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5703,
+      "x": 0.5238,
       "y": 0.9834
     },
-    "boxLeft": 0.0596
+    "boxLeft": 0.0293
   },
   "spiked-dark-lord-ring-nsfw": {
     "alt": "Snappy, mace in wing -- the ring wants to be found. It answers to one master, and the launcher answers to one hotkey.",
@@ -6274,7 +6262,7 @@
     "group": "Fantasy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5036,
+      "x": 0.5005,
       "y": 0.9736
     },
     "boxLeft": 0.0166
@@ -7793,7 +7781,7 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5629,
+      "x": 0.563,
       "y": 0.9512
     },
     "boxLeft": 0.0166
@@ -7805,10 +7793,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5679,
+      "x": 0.5538,
       "y": 0.9473
     },
-    "boxLeft": 0.0176
+    "boxLeft": 0.0166
   },
   "wolf-pelt-mask-forest-princess": {
     "alt": "Snappy riding with the wolves of the forest -- it sees with eyes unclouded by hate, and launches the same way.",
