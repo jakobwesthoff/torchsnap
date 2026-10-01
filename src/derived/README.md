@@ -10,7 +10,6 @@ hand — changes are overwritten on the next regeneration.
 | `mascots.json` | the torchsnap-mascot repository | `just export <torchsnap checkout>` there | yes |
 | `mascot-groups.json` | the torchsnap-mascot repository | `just export <torchsnap checkout>` there | yes |
 | `timezone-coordinates.json` | System `/usr/share/zoneinfo/zone.tab` | `just asset-timezone-data` | yes |
-| `app-icon/app-icon-<width>.webp` | `assets/app-icon/compiled/app-icon-1024.png` | `just asset-app-icons` | no |
 
 ## The mascot data comes from torchsnap-mascot
 

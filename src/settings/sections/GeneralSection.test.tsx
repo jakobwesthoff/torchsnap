@@ -53,8 +53,8 @@ describe("GeneralSection", () => {
 
     const buildInfo = await screen.findByText("Build: v0.12.0 (abc1234)");
     const link = screen.getByRole("link", { name: "Open torchsnap.app" });
-    expect(link.querySelector("img")).toHaveAttribute("sizes", "96px");
-    expect(link.querySelector("img")).toHaveAttribute("alt", "Open torchsnap.app");
+    expect(link.querySelector("svg")).toHaveAttribute("width", "96");
+    expect(link.querySelector("svg")).toHaveAttribute("aria-label", "Open torchsnap.app");
     expect(link).toHaveClass("cursor-pointer");
     expect(link.compareDocumentPosition(buildInfo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

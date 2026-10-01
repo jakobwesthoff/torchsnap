@@ -13,7 +13,7 @@ import { Entry } from "../Entry";
 import { Switch } from "../../components/Switch";
 import { ShortcutSection } from "../ShortcutSection";
 import { UpdatesSection } from "../UpdatesSection";
-import { AppIcon } from "../../components/AppIcon";
+import { SnappyEmblem } from "../../components/SnappyEmblem";
 
 const WEBSITE = "https://torchsnap.app/";
 
@@ -86,7 +86,7 @@ export function GeneralSection() {
             void openUrl(WEBSITE).catch(() => {});
           }}
         >
-          <AppIcon size={96} alt="Open torchsnap.app" />
+          <SnappyEmblem width={96} alt="Open torchsnap.app" />
         </a>
         {buildInfo && (
           <p className="text-[11px] text-text-muted/90">
