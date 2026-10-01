@@ -80,13 +80,13 @@ export function GeneralSection() {
         <a
           href={WEBSITE}
           title="torchsnap.app"
-          className="cursor-pointer"
+          className="group/emblem cursor-pointer"
           onClick={(event) => {
             event.preventDefault();
             void openUrl(WEBSITE).catch(() => {});
           }}
         >
-          <SnappyEmblem width={96} alt="Open torchsnap.app" />
+          <SnappyEmblem width={96} lift alt="Open torchsnap.app" />
         </a>
         {buildInfo && (
           <p className="text-[11px] text-text-muted/90">

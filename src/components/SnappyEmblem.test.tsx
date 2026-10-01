@@ -96,7 +96,7 @@ describe("SnappyEmblem", () => {
     it("gets a light rim in dark mode", () => {
       render(<SnappyEmblem width={96} tone="colour" />);
       expect(screen.getByRole("img")).toHaveClass(
-        "dark:drop-shadow-[0_0_3px_rgb(255_255_255/0.5)]",
+        "dark:drop-shadow-[0_0_1.5px_rgb(243_239_226/0.75)]",
       );
     });
 
@@ -181,6 +181,82 @@ describe("SnappyEmblem", () => {
     );
     const ids = [...container.querySelectorAll("filter")].map((filter) => filter.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  describe("lift", () => {
+    const TRIGGERS = [
+      "motion-safe:group-hover/emblem:translate-y-(--emblem-lift)",
+      "motion-safe:group-focus-visible/emblem:translate-y-(--emblem-lift)",
+    ];
+    const liftOf = (svg: Element) =>
+      parseFloat((svg as SVGElement).style.getPropertyValue("--emblem-lift"));
+
+    it("is off by default", () => {
+      const { container } = render(<SnappyEmblem width={96} />);
+      for (const element of container.querySelectorAll("svg, image")) {
+        expect(element.getAttribute("class") ?? "").not.toContain("translate");
+      }
+      expect(container.querySelector("svg")!.style.getPropertyValue("--emblem-lift")).toBe("");
+    });
+
+    it("makes the emblem a hover group that a parent may widen", () => {
+      render(<SnappyEmblem width={96} lift />);
+      expect(screen.getByRole("img")).toHaveClass("group/emblem");
+    });
+
+    it("raises the owl inside the rising frame, keeping the cut in place", () => {
+      const { container } = render(<SnappyEmblem width={96} lift />);
+      const svg = screen.getByRole("img");
+      expect(svg.getAttribute("class")).not.toContain("translate");
+      expect(container.querySelector("image")).toHaveClass(...TRIGGERS);
+      expect(liftOf(svg)).toBeCloseTo(-0.05 * BOX.height, 5);
+    });
+
+    it("keeps the raised ears inside the rising frame's headroom", () => {
+      render(<SnappyEmblem width={96} lift />);
+      const svg = screen.getByRole("img");
+      // The overshoot of the easing carries the owl about 10 % past the lift.
+      expect(Math.abs(liftOf(svg)) * 1.1).toBeLessThan(BOX.y - frameOf(svg).y);
+    });
+
+    it("raises both ink images", () => {
+      const { container } = render(<SnappyEmblem width={96} tone="ink" lift />);
+      for (const image of container.querySelectorAll("image")) {
+        expect(image).toHaveClass(...TRIGGERS);
+      }
+    });
+
+    it("lifts the whole full-framed emblem by a share of its height", () => {
+      const { container } = render(<SnappyEmblem width={96} framing="full" lift />);
+      const svg = screen.getByRole("img");
+      expect(svg).toHaveClass(...TRIGGERS, "motion-safe:hover:translate-y-(--emblem-lift)");
+      expect(container.querySelector("image")!.getAttribute("class") ?? "").not.toContain(
+        "translate",
+      );
+      expect(liftOf(svg)).toBeCloseTo(-0.05 * Number(svg.getAttribute("height")), 5);
+    });
+
+    it("rises quickly with an overshoot and settles back more slowly", () => {
+      const { container } = render(<SnappyEmblem width={96} lift />);
+      expect(container.querySelector("image")).toHaveClass(
+        "motion-safe:transition-[translate]",
+        "motion-safe:duration-[260ms]",
+        "motion-safe:ease-out",
+        "motion-safe:group-hover/emblem:duration-[180ms]",
+        "motion-safe:group-hover/emblem:ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "motion-safe:group-focus-visible/emblem:duration-[180ms]",
+        "motion-safe:group-focus-visible/emblem:ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+      );
+    });
+
+    it("stays still when the system asks for reduced motion", () => {
+      const { container } = render(<SnappyEmblem width={96} framing="full" lift />);
+      const classes = [container.querySelector("svg")!, container.querySelector("image")!]
+        .flatMap((element) => (element.getAttribute("class") ?? "").split(" "))
+        .filter((name) => /translate|duration|ease-/.test(name));
+      expect(classes.length).toBeGreaterThan(0);
+      expect(classes.every((name) => name.startsWith("motion-safe:"))).toBe(true);
+    });
   });
 
   it("is named by its alt text", () => {

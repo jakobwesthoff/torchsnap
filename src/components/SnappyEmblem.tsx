@@ -13,12 +13,15 @@
  * ink, and in dark mode its negative; `negative` is that pale negative
  * alone. These are the one-ink styles of `tools/build-app-icons`.
  *
+ * Lift: on hover or keyboard focus the rising owl peeks further over
+ * its edge and the full owl hops up a little.
+ *
  * The emblem file stays as drawn; an outer `<svg>` frames it and SVG
  * filters give the one-ink tones. The emblem is a vector, so it stays
  * sharp at any display density.
  */
 
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 import emblemUrl from "../../assets/snappy-emblem-feathered.svg?url";
 import { cn } from "../lib/cn";
 
@@ -120,6 +123,45 @@ function inkMatrix({ rgb, scale, offset }: Ink) {
 export type SnappyEmblemTone = "colour" | "ink" | "negative";
 
 // =========================================================
+// Lift
+// =========================================================
+
+// How far the owl rises, as a share of the owl's height in the rising
+// framing and of the emblem's height in the full one. The rising owl
+// moves inside its frame, so the cut stays on the bottom edge and more
+// of the plumage comes up from below; its ears must stay inside
+// `HEADROOM`, overshoot included. The full owl has no edge to rise from
+// and moves as a whole.
+const LIFT = 0.05;
+
+// The trigger is the `group/emblem` hover group: the emblem itself, or a
+// wider parent such as a link that adds the class, whose keyboard focus
+// then lifts the owl as well. The owl rises in 180 ms with an overshoot
+// and settles back in 260 ms. Everything sits behind `motion-safe:`, so
+// with "Reduce motion" the owl stays still. Tailwind only finds whole
+// class names in the source, hence the spelled-out lists.
+const LIFT_TRANSITION = [
+  "motion-safe:transition-[translate]",
+  "motion-safe:duration-[260ms]",
+  "motion-safe:ease-out",
+  "motion-safe:group-hover/emblem:duration-[180ms]",
+  "motion-safe:group-hover/emblem:ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+  "motion-safe:group-focus-visible/emblem:duration-[180ms]",
+  "motion-safe:group-focus-visible/emblem:ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+];
+const LIFT_TRIGGER = [
+  "motion-safe:group-hover/emblem:translate-y-(--emblem-lift)",
+  "motion-safe:group-focus-visible/emblem:translate-y-(--emblem-lift)",
+];
+// The full framing moves the `<svg>`, which is the group itself and not
+// inside it, so it reacts to its own hover too.
+const LIFT_SELF = [
+  "motion-safe:hover:duration-[180ms]",
+  "motion-safe:hover:ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+  "motion-safe:hover:translate-y-(--emblem-lift)",
+];
+
+// =========================================================
 // The component
 // =========================================================
 
@@ -128,6 +170,8 @@ export interface SnappyEmblemProps {
   width: number;
   framing?: SnappyEmblemFraming;
   tone?: SnappyEmblemTone;
+  /** Raise the owl a little on hover and keyboard focus. */
+  lift?: boolean;
   /** Pass `""` where the emblem is decorative. */
   alt?: string;
   className?: string;
@@ -137,6 +181,7 @@ export function SnappyEmblem({
   width,
   framing = "rising",
   tone = "colour",
+  lift = false,
   alt = "Snappy",
   className,
 }: SnappyEmblemProps) {
@@ -144,7 +189,14 @@ export function SnappyEmblem({
   // ids carry characters that `url(#…)` references do not take.
   const id = `snappy-emblem-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
   const frame = FRAMES[framing];
+  const height = (width * frame.height) / frame.width;
   const label = alt ? { role: "img", "aria-label": alt } : { "aria-hidden": true };
+
+  // The rising owl's lift is in the frame's units, as it moves an element
+  // inside the `<svg>`; the full owl's is in CSS pixels.
+  const liftsImage = lift && framing === "rising";
+  const liftsSvg = lift && framing === "full";
+  const liftBy = liftsImage ? LIFT * OWL.height : LIFT * height;
 
   const inkFilter = (filterId: string, ink: Ink) => (
     <filter id={filterId} colorInterpolationFilters="sRGB">
@@ -154,20 +206,30 @@ export function SnappyEmblem({
       <feComposite in2="SourceGraphic" operator="in" />
     </filter>
   );
-  const image = (props: { filter?: string; className?: string }) => (
-    <image href={emblemUrl} width="1024" height="1024" {...props} />
+  const image = ({ className: imageClass, ...props }: { filter?: string; className?: string }) => (
+    <image
+      href={emblemUrl}
+      width="1024"
+      height="1024"
+      {...props}
+      className={cn(liftsImage && [...LIFT_TRANSITION, ...LIFT_TRIGGER], imageClass) || undefined}
+    />
   );
 
   return (
     <svg
       viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`}
       width={width}
-      height={(width * frame.height) / frame.width}
+      height={height}
       {...label}
+      style={lift ? ({ "--emblem-lift": `${-liftBy}px` } as CSSProperties) : undefined}
       className={cn(
+        lift && "group/emblem",
+        liftsSvg && [...LIFT_TRANSITION, ...LIFT_TRIGGER, ...LIFT_SELF],
         // The colour emblem's outline is near black and vanishes on the
-        // dark surface; a faint light rim keeps the ears and head readable.
-        tone === "colour" && "dark:drop-shadow-[0_0_3px_rgb(255_255_255/0.5)]",
+        // dark surface; a rim in the pale ink keeps the ears and head
+        // readable.
+        tone === "colour" && "dark:drop-shadow-[0_0_1.5px_rgb(243_239_226/0.75)]",
         className,
       )}
     >

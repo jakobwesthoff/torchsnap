@@ -55,7 +55,10 @@ describe("GeneralSection", () => {
     const link = screen.getByRole("link", { name: "Open torchsnap.app" });
     expect(link.querySelector("svg")).toHaveAttribute("width", "96");
     expect(link.querySelector("svg")).toHaveAttribute("aria-label", "Open torchsnap.app");
-    expect(link).toHaveClass("cursor-pointer");
+    expect(link).toHaveClass("cursor-pointer", "group/emblem");
+    expect(link.querySelector("image")).toHaveClass(
+      "motion-safe:group-hover/emblem:translate-y-(--emblem-lift)",
+    );
     expect(link.compareDocumentPosition(buildInfo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
