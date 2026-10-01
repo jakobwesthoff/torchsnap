@@ -74,7 +74,6 @@ describe("CONDITIONS", () => {
     ["easter", new Date(2027, 2, 25, 23, 59), false],
     ["easter", new Date(2027, 2, 30, 0, 0), false],
   ])("%s on %s is %s", (name, now, expected) => {
-    vi.stubEnv("TZ", "Europe/Berlin");
     expect(CONDITIONS[name].isActive(now)).toBe(expected);
   });
 
@@ -83,15 +82,20 @@ describe("CONDITIONS", () => {
   describe("fullMoonNight", () => {
     const fullMoonNight = CONDITIONS.fullMoonNight;
 
+    // Dusk and dawn come from the coordinates of the system timezone, so
+    // the cases run in Berlin. The table holds date parts rather than
+    // dates: `it.each` evaluates it before the stub, and a `Date` built
+    // there would carry the machine's zone instead of Berlin's.
     it.each([
-      ["the night after the full moon", new Date(2026, 2, 3, 23, 0), true],
-      ["the night before it", new Date(2026, 2, 2, 23, 0), true],
-      ["dusk on the full-moon day", new Date(2026, 2, 3, 18, 30), true],
-      ["noon on the full-moon day", new Date(2026, 2, 3, 12, 0), false],
-      ["a night three days later", new Date(2026, 2, 6, 23, 0), false],
-      ["a night three days before", new Date(2026, 1, 28, 23, 0), false],
-    ])("holds on %s: %s", (_label, now, expected) => {
+      ["the night after the full moon", [2026, 2, 3, 23, 0], true],
+      ["the night before it", [2026, 2, 2, 23, 0], true],
+      ["dusk on the full-moon day", [2026, 2, 3, 18, 30], true],
+      ["noon on the full-moon day", [2026, 2, 3, 12, 0], false],
+      ["a night three days later", [2026, 2, 6, 23, 0], false],
+      ["a night three days before", [2026, 1, 28, 23, 0], false],
+    ] as const)("holds on %s: %j", (_label, [year, month, day, hour, minute], expected) => {
       vi.stubEnv("TZ", "Europe/Berlin");
+      const now = new Date(year, month, day, hour, minute);
       expect(fullMoonNight.isActive(now)).toBe(expected);
     });
 
