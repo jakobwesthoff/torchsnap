@@ -20,7 +20,7 @@ assets: asset-timezone-data asset-app-icons asset-tray-icon asset-bang-data
 # `assets/app-icon/compiled/` (`app-icon-compile`); this recipe only
 # copies and converts those, so it runs without Xcode, as on CI.
 
-# Generate all app icon formats from the compiled app icon via `tauri icon` (incremental)
+# Generate all app icon formats from the compiled app icon via `tauri icon`, plus the frontend's (incremental)
 asset-app-icons:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -82,6 +82,19 @@ asset-app-icons:
         to="$icons/${file##*:}"
         if ! cmp -s "$from" "$to"; then
             cp "$from" "$to"
+        fi
+    done
+
+    # Stage 4: the width ladder `src/components/AppIcon.tsx` offers the
+    # webview, which picks one per display density. The component finds
+    # the files by name, so a width added here needs no change there.
+    web="src/derived/app-icon"
+    mkdir -p "$web"
+    for width in 16 32 48 64 96 128 192 256 384 512 1024; do
+        out="$web/app-icon-$width.webp"
+        if [ ! -f "$out" ] || [ "$compiled/app-icon-1024.png" -nt "$out" ]; then
+            magick "$compiled/app-icon-1024.png" -filter Lanczos -resize "${width}x${width}" \
+                -quality 90 -define webp:alpha-quality=100 "$out"
         fi
     done
 
