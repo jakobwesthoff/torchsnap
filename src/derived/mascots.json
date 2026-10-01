@@ -4542,10 +4542,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5554,
-      "y": 0.8975
+      "x": 0.5474,
+      "y": 0.9173
     },
-    "boxLeft": 0.1465
+    "boxLeft": 0.127
   },
   "pink-spandex-dino-wave": {
     "alt": "Snappy in pink with a wave -- pterodactyl power! And a hotkey on the side.",
@@ -6219,18 +6219,6 @@
     },
     "boxLeft": 0.0811
   },
-  "space-hero-toy-wings": {
-    "alt": "Snappy with the wings popped out -- that's not flying, that's launching with style. To infinity and beyond!",
-    "nsfw": false,
-    "character": "space-hero-toy-wings",
-    "group": "Cartoons",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5223,
-      "y": 0.9334
-    },
-    "boxLeft": 0.0361
-  },
   "spec-ops-commander": {
     "alt": "Snappy, gauntlet lit -- the movie star keeps flirting, the special forces keep working, and the app opens on one hotkey.",
     "nsfw": false,
@@ -6723,10 +6711,10 @@
     "group": "TimeTravel",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5229,
+      "x": 0.522,
       "y": 0.8848
     },
-    "boxLeft": 0.1748
+    "boxLeft": 0.1709
   },
   "temporal-bureau-torch-nsfw": {
     "alt": "Snappy with the baton raised -- you have been charged with crimes against the sacred timeline: clicking through menus.",
@@ -6735,10 +6723,10 @@
     "group": "TimeTravel",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4879,
+      "x": 0.4897,
       "y": 0.9047
     },
-    "boxLeft": 0.1133
+    "boxLeft": 0.1123
   },
   "tentacle-beard-elder-sleeper": {
     "alt": "Snappy yawns on its stone block -- that is not dead which can eternal idle, until the hotkey.",
@@ -7379,10 +7367,10 @@
     "group": "Movies",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5197,
-      "y": 0.9404
+      "x": 0.4922,
+      "y": 0.9746
     },
-    "boxLeft": 0.0312
+    "boxLeft": 0.0166
   },
   "tuxedo-martini-secret-agent-nsfw": {
     "alt": "Snappy raises the pistol in the gun-barrel spiral -- the name is Snappy, launched, not stirred.",
@@ -7391,10 +7379,10 @@
     "group": "Movies",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5544,
-      "y": 0.9297
+      "x": 0.4975,
+      "y": 0.9639
     },
-    "boxLeft": 0.0586
+    "boxLeft": 0.0312
   },
   "tuxedo-mouse-bow-tie": {
     "alt": "Snappy, in tails for the piano concerto -- the cat plays the keys, the mouse inside plays the cat, and it plays hotkeys.",
