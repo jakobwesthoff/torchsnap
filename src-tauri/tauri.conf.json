@@ -51,7 +51,13 @@
       }
     ],
     "macOS": {
-      "entitlements": "Entitlements.plist"
+      "entitlements": "Entitlements.plist",
+      "dmg": {
+        "background": "../assets/dmg-background/dmg-background.tiff",
+        "windowSize": { "width": 640, "height": 500 },
+        "appPosition": { "x": 170, "y": 260 },
+        "applicationFolderPosition": { "x": 470, "y": 260 }
+      }
     }
   },
   "plugins": {

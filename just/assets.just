@@ -189,6 +189,16 @@ app-icon-compile:
     oxipng -o max --strip safe --quiet "$out/app-icon-1024.png"
     echo "Compiled {{ app_icon }} into $out."
 
+# The DMG background in `assets/dmg-background/` (see its README, ADR
+# 61) is tracked and not part of `assets`: its picture comes from an
+# image model, and `sips` and `tiffutil`, which make the TIFF from it,
+# come with macOS in whatever version it has.
+
+# Rebuild the DMG background's scene and TIFF in assets/dmg-background/ (macOS)
+dmg-background:
+    tools/build-dmg-background scene
+    tools/build-dmg-background tiff
+
 # Used by the nighttime detection code to compute sunset/sunrise times
 # for the user's timezone.
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The DMG window shows a winter night with an aurora over a snowfield,
+  with Torchsnap and the Applications folder on the snow and a campfire
+  between them. The window is a little larger.
+
 ### Changed
 
 - New app icon: Snappy's face rising under a night sky with an aurora.

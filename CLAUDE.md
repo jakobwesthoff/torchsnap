@@ -117,6 +117,18 @@ config.
   with Icon Composer) and commit `assets/app-icon/compiled/`; never edit
   those files or the candidates' generated files by hand.
 
+## Asset files
+
+- Outputs of tools whose version the repository pins (`bun.lock`,
+  `Cargo.lock`) are built, not tracked; outputs of unpinned tools (macOS
+  built-ins, Xcode, Homebrew tools, image models) are tracked with their
+  sources (ADR 61). A guideline, decided per case.
+- The DMG background is `assets/dmg-background/` (README there). After
+  changing its picture or scene, run `just dmg-background` and commit
+  the files it writes. The repository has no script that calls an image
+  model.
+- Provenance in tracked files carries dates only, no times of day.
+
 ## ADRs
 
 Record decisions in `docs/adr/`:

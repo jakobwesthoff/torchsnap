@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Build the DMG window's background in `assets/dmg-background/` (README
+# there, ADR 61).
+#
+# The picture is an image model's drawing; this tool makes the two files
+# around it that are reproducible:
+#
+#   scene   `inputs/scene.svg`, the vector night sky, aurora and
+#           snowfield the model was given to draw into
+#   tiff    `dmg-background.tiff` from the model's image
+#           `model-output.png`: a 1x and a 2x image of the window's
+#           content, which Finder draws at one pixel per point
+#
+# The window is 640 × 500 points; Finder's title bar takes the top 32, so
+# the content, and the picture, is 640 × 468. The icons stand at
+# x 170 and 470, centred at y 260; Finder writes their labels in black
+# 84 points below that, on the snow.
+#
+# The model draws on a 3:2 canvas (1536 × 1024). The scene was widened
+# to 3:2 by 62 px on each side at 2x (1404 × 936) and scaled up; `tiff`
+# undoes that: it scales the model's image to 1404 × 936 and keeps the
+# middle 1280 × 936.
+#
+# `tiff` needs `sips` and `tiffutil`, which come with macOS.
+#
+# Usage:
+#   tools/build-dmg-background scene|tiff [--dir assets/dmg-background]
+
+import argparse
+import math
+import random
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+# The window's content in points, and the room past each edge the scene
+# reaches: librsvg blurs only what lies on its canvas, so a blur near an
+# edge would darken it if the canvas ended there.
+W, H = 640, 468
+PAD = 100
+
+ICON_Y = 260
+LABEL_Y = ICON_Y + 84
+
+# =========================================================
+# The scene: sky, stars, aurora, glow and snow
+# =========================================================
+
+# The aurora is the app icon's (`tools/build-app-icons`, `RISE_BANDS`):
+# per band its colour, and the phase, base line and amplitude of its wave
+# in the icon's 824 px sketch units, stretched across the window's width.
+RISE_BANDS = (("#2ec4b6", 0.0, 150, 60), ("#8a6cff", 1.7, 220, 50), ("#4fd1c5", 3.1, 100, 40))
+SKETCH = W / 824
+
+# The maintainer's picks for the sky (asqr rounds of 2026-10-02).
+SKY_TOP, SKY_BOTTOM = "#050a1a", "#1c1840"
+RIBBON_OPACITY = 60 / 255
+GLOW_COLOUR, GLOW_OPACITY = "#f97316", 0.35
+
+
+def stars(count=70, below=300, seed=9):
+    """Small pale stars above `below`, the same ones for a seed."""
+    rng = random.Random(seed)
+    circles = []
+    for _ in range(count):
+        x, y = rng.uniform(10, W - 10), rng.uniform(8, below)
+        r = rng.choice((0.9, 1.3, 1.9))
+        alpha = rng.randint(120, 230) / 255
+        circles.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.2f}" fill="#fff6d6" fill-opacity="{alpha:.2f}"/>')
+    return "".join(circles)
+
+
+def ribbons():
+    """The aurora: each band from 40 above to 140 below its wave, blurred.
+
+    The bands run far past both edges so the blur keeps their full light
+    at the sides.
+    """
+    parts = [f'<filter id="soft" filterUnits="userSpaceOnUse" x="-300" y="-300" width="{W + 600}" '
+             f'height="{H + 600}"><feGaussianBlur stdDeviation="{26 * SKETCH:.1f}"/></filter><g filter="url(#soft)">']
+    for colour, phase, base, amp in RISE_BANDS:
+        wave = [(x, base + amp * math.sin(x / 140 + phase)) for x in range(-300, 824 + 304, 4)]
+        top = [f"{x * SKETCH:.1f},{(y - 40) * SKETCH:.1f}" for x, y in wave]
+        bottom = [f"{x * SKETCH:.1f},{(y + 140) * SKETCH:.1f}" for x, y in reversed(wave)]
+        parts.append(f'<polygon fill="{colour}" fill-opacity="{RIBBON_OPACITY:.3f}" '
+                     f'points="{" ".join(top + bottom)}"/>')
+    return "".join(parts) + "</g>"
+
+
+def glow():
+    """Torchsnap's accent orange rising from below the bottom edge, fading out."""
+    return (f'<radialGradient id="glow"><stop offset="0.00" stop-color="{GLOW_COLOUR}" '
+            f'stop-opacity="{GLOW_OPACITY}"/><stop offset="1" stop-color="{GLOW_COLOUR}" stop-opacity="0"/>'
+            f'</radialGradient><ellipse cx="{W / 2}" cy="{H + 90}" rx="{W * 0.8}" ry="{H * 0.55}" '
+            f'fill="url(#glow)"/>')
+
+
+def snowfield():
+    """A snowy ridge the icons stand on, down to the bottom edge.
+
+    Its crest runs 26 points above the label line, so the labels sit on
+    lit snow; the snow darkens towards the bottom.
+    """
+    crest = LABEL_Y - 26
+    ridge = [(x, crest + 7 * math.sin(x / 95 + 0.6) + 4 * math.sin(x / 37)) for x in range(-PAD, W + PAD + 4, 4)]
+    points = " ".join(f"{x},{y:.1f}" for x, y in ridge) + f" {W + PAD},{H + PAD} {-PAD},{H + PAD}"
+    return (f'<linearGradient id="snow" gradientUnits="userSpaceOnUse" x1="0" y1="{crest - 8}" x2="0" '
+            f'y2="{H}"><stop offset="0" stop-color="#f4f7ff"/><stop offset="0.45" stop-color="#dfe6f6"/>'
+            f'<stop offset="1" stop-color="#8f9cc4"/></linearGradient>'
+            f'<filter id="snow-soft" filterUnits="userSpaceOnUse" x="-300" y="-300" width="{W + 600}" '
+            f'height="{H + 600}"><feGaussianBlur stdDeviation="1.2"/></filter>'
+            f'<polygon points="{points}" fill="url(#snow)" filter="url(#snow-soft)"/>')
+
+
+def scene_svg():
+    """The whole scene on a canvas reaching PAD past the window on each side."""
+    size = f'width="{W + 2 * PAD}" height="{H + 2 * PAD}"'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-PAD} {-PAD} {W + 2 * PAD} {H + 2 * PAD}" {size}>'
+            f'<defs><linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="{H}">'
+            f'<stop offset="0" stop-color="{SKY_TOP}"/><stop offset="1" stop-color="{SKY_BOTTOM}"/>'
+            f'</linearGradient></defs><rect x="{-PAD}" y="{-PAD}" {size} fill="url(#bg)"/>'
+            f'{stars()}{ribbons()}{glow()}{snowfield()}</svg>\n')
+
+
+# =========================================================
+# The TIFF: the model's image back to the window's size
+# =========================================================
+
+MODEL_SIZE = (1536, 1024)
+WIDE = (1404, 936)  # the scene at 2x, widened to 3:2
+
+
+def sips(*args):
+    subprocess.run(["sips", *map(str, args)], check=True, capture_output=True)
+
+
+def build_tiff(model_image, out):
+    """Writes the 1x + 2x TIFF of the content area from the model's image."""
+    with tempfile.TemporaryDirectory() as work:
+        work = Path(work)
+        # `tiffutil` stores its input file names in the TIFF, so fixed
+        # names keep the output the same from run to run.
+        wide, retina, plain = work / "wide.png", work / "background@2x.png", work / "background.png"
+        sips("--resampleHeightWidth", WIDE[1], WIDE[0], model_image, "--out", wide)
+        # `--cropToHeightWidth` keeps the middle, dropping 62 px per side.
+        sips("--cropToHeightWidth", H * 2, W * 2, wide, "--out", retina)
+        sips("--resampleHeightWidth", H, W, retina, "--out", plain)
+        # `-cathidpicheck` checks that the second image has twice the
+        # pixels of the first and stores them as one picture in two
+        # resolutions; Finder picks the one that fits the display.
+        subprocess.run(["tiffutil", "-cathidpicheck", "background.png", "background@2x.png", "-out", str(out.resolve())],
+                       check=True, capture_output=True, cwd=work)
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Build the DMG background's scene or TIFF.")
+    parser.add_argument("step", choices=("scene", "tiff"))
+    parser.add_argument("--dir", type=Path, default=ROOT / "assets/dmg-background")
+    args = parser.parse_args(argv)
+
+    if args.step == "scene":
+        out = args.dir / "inputs/scene.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(scene_svg())
+    else:
+        out = args.dir / "dmg-background.tiff"
+        build_tiff(args.dir / "model-output.png", out)
+    print(f"wrote {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
