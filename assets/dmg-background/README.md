@@ -22,7 +22,7 @@ title bar takes the top 32 points; the content below it, 640 × 468, is
 where the background is drawn, from its top left corner at one image
 pixel per point. On a Retina display Finder draws the TIFF's 2x image.
 
-The icons are centred at (170, 260) and (470, 260) in the content's
+The icons are centred at (150, 250) and (490, 250) in the content's
 coordinates. Finder writes their labels in black 84 points below the
 icon centres, so the picture is light there: the labels sit on the
 snow. A user who has switched on Finder's path bar sees its 28 points
@@ -49,6 +49,11 @@ quality `high` and PNG output.
 3. The picture: an edit with that scene and the campfire draft as the
    two input images and `inputs/prompt-picture.txt` as the prompt, size
    1536 × 1024, background `opaque`. Its result is `model-output.png`.
+
+The scene and the prompt were made for icons at (170, 260) and
+(470, 260); the prompt names those places in the model's 1536 × 1024
+frame. After the picture was rendered, the icons were moved to (150,
+250) and (490, 250). The inputs stay as they were used.
 
 The repository has no script that calls the model (ADR 61); the steps
 above repeat it by hand, though the same picture is not guaranteed.

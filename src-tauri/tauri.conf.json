@@ -55,8 +55,8 @@
       "dmg": {
         "background": "../assets/dmg-background/dmg-background.tiff",
         "windowSize": { "width": 640, "height": 500 },
-        "appPosition": { "x": 170, "y": 260 },
-        "applicationFolderPosition": { "x": 470, "y": 260 }
+        "appPosition": { "x": 150, "y": 250 },
+        "applicationFolderPosition": { "x": 490, "y": 250 }
       }
     }
   },

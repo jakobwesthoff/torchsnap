@@ -18,7 +18,8 @@
 #
 # The window is 640 × 500 points; Finder's title bar takes the top 32, so
 # the content, and the picture, is 640 × 468. The icons stand at
-# x 170 and 470, centred at y 260; Finder writes their labels in black
+# x 150 and 490, centred at y 250 (`bundle.macOS.dmg` in
+# `src-tauri/tauri.conf.json`); Finder writes their labels in black
 # 84 points below that, on the snow.
 #
 # The model draws on a 3:2 canvas (1536 × 1024). The scene was widened
@@ -47,8 +48,10 @@ ROOT = Path(__file__).resolve().parent.parent
 W, H = 640, 468
 PAD = 100
 
-ICON_Y = 260
-LABEL_Y = ICON_Y + 84
+# The label line the scene's snowfield was laid out for: icons centred at
+# y 260, labels 84 points below. The scene must stay the one the model
+# was given, so this does not follow later moves of the icons.
+LABEL_Y = 260 + 84
 
 # =========================================================
 # The scene: sky, stars, aurora, glow and snow

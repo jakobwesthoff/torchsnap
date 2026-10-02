@@ -66,8 +66,8 @@ The repository has no script that calls the image model: none that
 reads an OpenAI key or spends money. The README documents the model,
 the prompts and the inputs instead.
 
-The DMG window is 640 × 500 points, with the app at (170, 260) and the
-Applications folder at (470, 260); `bundle.macOS.dmg.background` names
+The DMG window is 640 × 500 points, with the app at (150, 250) and the
+Applications folder at (490, 250); `bundle.macOS.dmg.background` names
 the committed TIFF. The other picture candidates are not kept in the
 repository.
 
