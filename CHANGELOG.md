@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the tool behind them exits with an error, and log the tool's
   error message. Before, the launcher
   closed as if the command had worked.
+- Running an entry or sending a message to a gadget that was turned off
+  in the meantime fails with "gadget is disabled". Before, the call
+  reached the turned-off gadget and failed with whatever error its
+  torn-down state produced.
 
 ## [0.13.0] - 2026-09-25
 

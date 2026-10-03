@@ -1048,19 +1048,17 @@ impl GadgetHost {
             }
         };
 
-        if let Some(gadget_slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            let (effect, forwarded) = split_post_action(gadget_slot.gadget.execute(&command)?);
-            match effect {
-                Some(HostEffect::Quit) => app.exit(0),
-                Some(HostEffect::ShowSettings) => crate::show_settings_window(app),
-                // Settings sections are keyed by gadget id.
-                Some(HostEffect::OpenGadgetSettings) => crate::show_settings_window_at(app, source),
-                Some(HostEffect::ShowDevtools) => crate::show_devtools_window(app),
-                None => {}
-            }
-            return Ok(forwarded);
+        let gadget_slot = find_dispatch_target(&self.slots, source)?;
+        let (effect, forwarded) = split_post_action(gadget_slot.gadget.execute(&command)?);
+        match effect {
+            Some(HostEffect::Quit) => app.exit(0),
+            Some(HostEffect::ShowSettings) => crate::show_settings_window(app),
+            // Settings sections are keyed by gadget id.
+            Some(HostEffect::OpenGadgetSettings) => crate::show_settings_window_at(app, source),
+            Some(HostEffect::ShowDevtools) => crate::show_devtools_window(app),
+            None => {}
         }
-        anyhow::bail!("unknown gadget source: {source}");
+        Ok(forwarded)
     }
 
     pub fn handle_message(
@@ -1070,10 +1068,9 @@ impl GadgetHost {
         payload: serde_json::Value,
         channel: tauri::ipc::Channel<serde_json::Value>,
     ) -> anyhow::Result<serde_json::Value> {
-        if let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == source) {
-            return slot.gadget.handle_message(method, payload, channel);
-        }
-        anyhow::bail!("unknown gadget source: {source}");
+        find_dispatch_target(&self.slots, source)?
+            .gadget
+            .handle_message(method, payload, channel)
     }
 
     // =========================================================
@@ -1278,6 +1275,23 @@ fn find_prefix_match<'a>(
     }
 
     best
+}
+
+/// Find the slot that `execute` and `handle_message` dispatch to.
+/// A disabled gadget is refused here, so a call that races a disable
+/// never reaches a gadget whose runtime state is torn down.
+fn find_dispatch_target<'a>(
+    slots: &'a [GadgetSlot],
+    source: &str,
+) -> anyhow::Result<&'a GadgetSlot> {
+    let slot = slots
+        .iter()
+        .find(|s| s.gadget.id() == source)
+        .ok_or_else(|| anyhow::anyhow!("unknown gadget source: {source}"))?;
+    if !slot.is_active() {
+        anyhow::bail!("gadget `{source}` is disabled");
+    }
+    Ok(slot)
 }
 
 // =========================================================
@@ -1636,6 +1650,39 @@ mod tests {
         let (gadget, prefix) = find_prefix_match(&gadgets, "!google").unwrap();
         assert_eq!(gadget.id(), "enabled-short");
         assert_eq!(prefix, "!");
+    }
+
+    // =======================================================
+    // Dispatch target (execute / handle_message)
+    // =======================================================
+
+    #[test]
+    fn dispatch_target_is_the_enabled_gadget_with_that_id() {
+        let slots = gadget_slots(vec![MockGadget::new("calc"), MockGadget::new("emoji")]);
+        let slot = find_dispatch_target(&slots, "emoji").expect("emoji is enabled");
+        assert_eq!(slot.gadget.id(), "emoji");
+    }
+
+    #[test]
+    fn dispatch_target_rejects_an_unknown_gadget() {
+        let slots = gadget_slots(vec![MockGadget::new("calc")]);
+        let err = find_dispatch_target(&slots, "emoji")
+            .err()
+            .expect("no such gadget");
+        assert!(err.to_string().contains("unknown gadget source: emoji"));
+    }
+
+    // A gadget can be disabled between the search that listed its entry
+    // and the user pressing Enter, or while its custom view is mounted.
+    // Disabling tears down a WASM gadget's runtime state, so the host
+    // refuses the call instead of reaching into it.
+    #[test]
+    fn dispatch_target_rejects_a_disabled_gadget() {
+        let slots = gadget_slots(vec![MockGadget::new("calc").with_enabled(false)]);
+        let err = find_dispatch_target(&slots, "calc")
+            .err()
+            .expect("calc is disabled");
+        assert!(err.to_string().contains("gadget `calc` is disabled"));
     }
 
     #[test]
