@@ -38,33 +38,37 @@ impl GraphemePositions {
     /// Convert grapheme-cluster indices to UTF-16 code unit offsets
     /// for correct highlighting on the JavaScript side.
     ///
+    /// Each matched grapheme expands to every code unit it spans, so
+    /// the frontend never splits a surrogate pair or detaches a
+    /// combining mark. Indices past the last grapheme are dropped.
+    ///
     /// For ASCII-only text the indices are identical so we skip the
     /// conversion entirely.
     pub fn into_utf16(self, text: &str) -> Utf16Positions {
-        let mut indices = self.0;
+        let indices = self.0;
         if indices.is_empty() || text.is_ascii() {
             return Utf16Positions(indices);
         }
 
-        // Build a lookup table: grapheme cluster index → starting
-        // UTF-16 code unit offset. We walk the string's grapheme
-        // clusters and accumulate the UTF-16 length of each one.
-        let cluster_offsets: Vec<u32> = text
+        // Build a lookup table: grapheme cluster index → UTF-16 code
+        // unit range. We walk the string's grapheme clusters and
+        // accumulate the UTF-16 length of each one.
+        let cluster_ranges: Vec<std::ops::Range<u32>> = text
             .graphemes(true)
             .scan(0u32, |offset, grapheme| {
                 let start = *offset;
                 *offset += grapheme.encode_utf16().count() as u32;
-                Some(start)
+                Some(start..*offset)
             })
             .collect();
 
-        for pos in indices.iter_mut() {
-            if let Some(&utf16_offset) = cluster_offsets.get(*pos as usize) {
-                *pos = utf16_offset;
-            }
-        }
+        let utf16_positions = indices
+            .iter()
+            .filter_map(|&pos| cluster_ranges.get(pos as usize).cloned())
+            .flatten()
+            .collect();
 
-        Utf16Positions(indices)
+        Utf16Positions(utf16_positions)
     }
 }
 
@@ -242,5 +246,44 @@ mod tests {
         let result = positions.into_utf16(text);
         // UTF-16: a=0, 🎨=1,2, b=3
         assert_eq!(result.0, vec![0, 3]);
+    }
+
+    // `highlightText` walks the title one UTF-16 code unit at a time, so
+    // a matched grapheme must cover all its units. Otherwise the span
+    // boundary falls between the halves of a surrogate pair and each half
+    // renders as U+FFFD.
+
+    #[test]
+    fn matched_emoji_covers_both_surrogates() {
+        let text = "a🎨b";
+        let positions = GraphemePositions(vec![1]);
+        let result = positions.into_utf16(text);
+        assert_eq!(result.0, vec![1, 2]);
+    }
+
+    #[test]
+    fn matched_flag_covers_all_four_code_units() {
+        let text = "🇺🇸 US";
+        let positions = GraphemePositions(vec![0, 2]);
+        let result = positions.into_utf16(text);
+        assert_eq!(result.0, vec![0, 1, 2, 3, 5]);
+    }
+
+    #[test]
+    fn matched_combining_sequence_covers_the_mark() {
+        // "e" followed by U+0301 COMBINING ACUTE ACCENT is one grapheme of
+        // two BMP code points.
+        let text = "cafe\u{0301}!";
+        let positions = GraphemePositions(vec![3]);
+        let result = positions.into_utf16(text);
+        assert_eq!(result.0, vec![3, 4]);
+    }
+
+    #[test]
+    fn out_of_range_grapheme_index_is_dropped() {
+        let text = "a🎨b";
+        let positions = GraphemePositions(vec![0, 3, 42]);
+        let result = positions.into_utf16(text);
+        assert_eq!(result.0, vec![0]);
     }
 }

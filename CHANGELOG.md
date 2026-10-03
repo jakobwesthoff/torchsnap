@@ -44,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launches: 40% at Christmas, Halloween and Easter, 90% on New Year's
   Eve and on full-moon nights.
 
+### Fixed
+
+- A search match on an emoji, a flag or an accented letter built from a
+  combining mark highlights the whole character. Before, the launcher
+  showed `�` in its place.
+
 ## [0.13.0] - 2026-09-25
 
 ### Added
