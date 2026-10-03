@@ -102,8 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an error naming it. Before, the first became the meaningless origin
   `null` and the second silently granted the whole host.
 - A gadget manifest with `permissions.sql-storage = true` but no
-  `[storage.sql]` table fails to load with an error naming both.
-  Before, it loaded without a database.
+  `[storage.sql]` table, or with the table but not the permission,
+  fails to load with an error naming both. Before, it loaded without a
+  database.
 - A gadget directory whose `manifest.toml` is a symlink to a file
   outside the directory fails to load. Before, the host read the
   outside file as the gadget's manifest.

@@ -307,15 +307,22 @@ impl Manifest {
         // comment in `source.rs` for the rationale.
         paths::validate_manifest_paths(&manifest)?;
 
-        // The SQL storage capability opens the database that
-        // `[storage.sql]` declares; without that table there is no
-        // database and no schema to grant.
+        // The host provisions SQL storage only when both halves are
+        // present: the permission grants the database that
+        // `[storage.sql]` declares. Either half alone is an authoring
+        // mistake, so both must appear together.
         let wants_sql_storage = manifest.permissions.as_ref().is_some_and(|p| p.sql_storage);
         let has_storage_sql = manifest.storage.as_ref().is_some_and(|s| s.sql.is_some());
         if wants_sql_storage && !has_storage_sql {
             anyhow::bail!(
                 "manifest sets `permissions.sql-storage = true` but declares no `[storage.sql]` \
                  table; add `[storage.sql]` with its migrations or remove the permission"
+            );
+        }
+        if has_storage_sql && !wants_sql_storage {
+            anyhow::bail!(
+                "manifest declares a `[storage.sql]` table but does not set \
+                 `permissions.sql-storage = true`; add the permission or remove the table"
             );
         }
 
@@ -368,6 +375,28 @@ mod tests {
             assert!(msg.contains("sql-storage"), "{extra}: {msg}");
             assert!(msg.contains("[storage.sql]"), "{extra}: {msg}");
         }
+    }
+
+    // Without the permission the host provisions no database, so the
+    // table would declare storage the gadget never gets.
+    #[test]
+    fn reject_storage_sql_without_sql_storage_permission() {
+        for extra in [
+            "[storage.sql]\nmigrations = [\"migrations/001.sql\"]",
+            "[permissions]\nsql-storage = false\n[storage.sql]\nmigrations = []",
+            "[permissions]\nsettings = true\n[storage.sql]\nmigrations = []",
+        ] {
+            let err = Manifest::parse(&minimal(extra)).expect_err(extra);
+            let msg = err.to_string();
+            assert!(msg.contains("sql-storage"), "{extra}: {msg}");
+            assert!(msg.contains("[storage.sql]"), "{extra}: {msg}");
+        }
+    }
+
+    #[test]
+    fn accept_empty_storage_table_without_sql_storage_permission() {
+        let m = Manifest::parse(&minimal("[storage]")).expect("should parse");
+        assert!(m.storage.expect("storage").sql.is_none());
     }
 
     #[test]

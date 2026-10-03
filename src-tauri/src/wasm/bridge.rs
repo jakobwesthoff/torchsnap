@@ -1148,6 +1148,9 @@ version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
 
+[permissions]
+sql-storage = true
+
 [storage.sql]
 migrations = ["migrations/001_init.sql"]
 "#,
@@ -1259,6 +1262,9 @@ description = "gadget with sql config"
 version = "0.0.0"
 wasm = "minimal_gadget.wasm"
 icon = "heroicons:circle-stack"
+
+[permissions]
+sql-storage = true
 
 [storage.sql]
 migrations = ["migrations/001_init.sql"]

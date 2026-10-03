@@ -304,6 +304,9 @@ mod tests {
             [frontend.settings]
             component = "MySettings"
 
+            [permissions]
+            sql-storage = true
+
             [storage.sql]
             migrations = ["migrations/001_init.sql", "migrations/002_tweak.sql"]
         "#;
