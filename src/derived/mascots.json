@@ -601,30 +601,6 @@
     },
     "boxLeft": 0.0547
   },
-  "bladed-helmet-armor-master": {
-    "alt": "Snappy in a horned samurai helmet -- its clan lost to four green brothers again, but its launches win every time.",
-    "nsfw": false,
-    "character": "bladed-helmet-armor-master",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.484,
-      "y": 0.9782
-    },
-    "boxLeft": 0.0332
-  },
-  "bladed-helmet-armor-master-nsfw": {
-    "alt": "Snappy crossing its arm blades -- its plans fail every single week, but the hotkey cuts through anyway.",
-    "nsfw": true,
-    "character": "bladed-helmet-armor-master",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5132,
-      "y": 0.9748
-    },
-    "boxLeft": 0.0195
-  },
   "blond-bowl-cut-harness": {
     "alt": "Snappy raises its fist -- by the power of the hotkey, I have the launcher.",
     "nsfw": false,
@@ -684,18 +660,6 @@
       "y": 0.9156
     },
     "boxLeft": 0.0723
-  },
-  "blue-bandana-leader-shell-hero": {
-    "alt": "Snappy pointing the way -- someone has to lead the four brothers, and it leads with the hotkey.",
-    "nsfw": false,
-    "character": "blue-bandana-leader-shell-hero",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5968,
-      "y": 0.9023
-    },
-    "boxLeft": 0.126
   },
   "blue-fur-cookie-baker": {
     "alt": "Snappy in a chef's hat with a fresh tray -- what is love? Love is warm cookie and fast launch.",
@@ -914,18 +878,6 @@
       "y": 0.9248
     },
     "boxLeft": 0.0889
-  },
-  "brain-in-belly-android": {
-    "alt": "Snappy in a homemade cardboard robot -- the felt brain in the belly gives the orders, the body just presses the hotkey.",
-    "nsfw": false,
-    "character": "brain-in-belly-android",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5088,
-      "y": 0.961
-    },
-    "boxLeft": 0.0225
   },
   "brass-porthole-diving-guardian-nsfw": {
     "alt": "Snappy, drill spinning, portholes red -- would you kindly press the hotkey? An owl chooses, a mouse obeys.",
@@ -3151,18 +3103,6 @@
     },
     "boxLeft": 0.1055
   },
-  "hockey-mask-sports-bag-vigilante": {
-    "alt": "Snappy with a golf bag of sticks and rackets -- goongala! The vigilante of the launcher.",
-    "nsfw": false,
-    "character": "hockey-mask-sports-bag-vigilante",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.6213,
-      "y": 0.9347
-    },
-    "boxLeft": 0.0615
-  },
   "honking-goose-stolen-hat": {
     "alt": "Snappy, hat under a wing -- a lovely morning in the village, and it is a horrible launcher. Every gardener annoyed.",
     "nsfw": false,
@@ -4181,18 +4121,6 @@
     },
     "boxLeft": 0.0576
   },
-  "orange-bandana-cowabunga-shell-hero": {
-    "alt": "Snappy with an open pizza box -- pizza first, training second, and the app launches somewhere in between.",
-    "nsfw": false,
-    "character": "orange-bandana-cowabunga-shell-hero",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5762,
-      "y": 0.9375
-    },
-    "boxLeft": 0.0166
-  },
   "orange-cat-lasagna-parody-alien": {
     "alt": "Snappy with an alien-sized lasagna -- feed me, launcher. I hate Mondays in every dimension.",
     "nsfw": false,
@@ -4987,18 +4915,6 @@
     },
     "boxLeft": 0.0166
   },
-  "purple-bandana-gadget-shell-hero": {
-    "alt": "Snappy shows off its homemade gadget -- built from sewer junk, and it still launches faster than the brothers' van.",
-    "nsfw": false,
-    "character": "purple-bandana-gadget-shell-hero",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.519,
-      "y": 0.9046
-    },
-    "boxLeft": 0.0527
-  },
   "purple-caped-masked-mallard": {
     "alt": "Snappy bursting out of a smoke cloud -- it is the terror that flaps in the night. Let's get dangerous, and launch!",
     "nsfw": false,
@@ -5179,18 +5095,6 @@
     },
     "boxLeft": 0.0498
   },
-  "rat-sensei-robe-walking-stick": {
-    "alt": "Snappy leaning on the cane with a raised finger -- my students, the hotkey is the way.",
-    "nsfw": false,
-    "character": "rat-sensei-robe-walking-stick",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.4758,
-      "y": 0.9297
-    },
-    "boxLeft": 0.1055
-  },
   "raven-shawl-sorceress-dime": {
     "alt": "Snappy's raven drops a shiny dime into its wing -- one lucky coin, one satisfied cackle, one launch.",
     "nsfw": false,
@@ -5214,18 +5118,6 @@
       "y": 0.9209
     },
     "boxLeft": 0.1045
-  },
-  "red-bandana-hothead-shell-hero": {
-    "alt": "Snappy with crossed wings -- it never waits for the plan, hits the hotkey alone and sulks on the rooftop.",
-    "nsfw": false,
-    "character": "red-bandana-hothead-shell-hero",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.6108,
-      "y": 0.9043
-    },
-    "boxLeft": 0.1377
   },
   "red-beret-green-leotard-braids": {
     "alt": "Snappy, snapping a salute -- it can't remember its own past, but it never forgets a hotkey. Cannon spike!",
@@ -5655,18 +5547,6 @@
     },
     "boxLeft": 0.0674
   },
-  "rhino-army-helmet-henchman": {
-    "alt": "Snappy, dim-witted shrug and all -- the plan was to catch four teenagers in shells. It ended in the sewer again.",
-    "nsfw": false,
-    "character": "rhino-army-helmet-henchman",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5357,
-      "y": 0.9707
-    },
-    "boxLeft": 0.0713
-  },
   "rocket-sweater-hallway-trike": {
     "alt": "Snappy on the big wheel, rolling past room 237 -- come launch with us, forever and ever and ever.",
     "nsfw": false,
@@ -5996,30 +5876,6 @@
       "y": 0.9521
     },
     "boxLeft": 0.0264
-  },
-  "shell-bandana-pizza": {
-    "alt": "Snappy with a hot slice -- extra cheese, delivered down the manhole, and the app is out before it cools.",
-    "nsfw": false,
-    "character": "shell-bandana-pizza",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5207,
-      "y": 0.9199
-    },
-    "boxLeft": 0.082
-  },
-  "shell-bandana-pizza-nsfw": {
-    "alt": "Snappy with a blade in each wing -- slice the pizza, slice the foes, and every launch is a clean cut.",
-    "nsfw": true,
-    "character": "shell-bandana-pizza",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5175,
-      "y": 0.9209
-    },
-    "boxLeft": 0.0469
   },
   "shower-curtain-motel-scream": {
     "alt": "Snappy in the tub, curtain yanked -- ree! ree! ree! The violins scream, the launcher doesn't. It's already open.",
@@ -7527,18 +7383,6 @@
       "y": 0.9746
     },
     "boxLeft": 0.0166
-  },
-  "warthog-punk-mohawk-shades": {
-    "alt": "Snappy with a purple mohawk and red shades -- duh, which hotkey launches the green guys in shells?",
-    "nsfw": false,
-    "character": "warthog-punk-mohawk-shades",
-    "group": "SaturdayMorning",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5241,
-      "y": 0.9311
-    },
-    "boxLeft": 0.1455
   },
   "water-dog-salesman-villain": {
     "alt": "Snappy the water dog in a blue suit -- this launcher comes with a money-back guarantee! Satisfaction guaranteed.",
