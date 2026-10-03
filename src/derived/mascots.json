@@ -5835,10 +5835,8 @@
     "alt": "Snappy on its first delivery round -- the presents bite back, but every launch still arrives gift-wrapped.",
     "nsfw": false,
     "character": "pinstripe-skeleton-bat-bowtie",
-    "group": "Cartoons",
-    "occasions": [
-      "Christmas"
-    ],
+    "group": "Christmas",
+    "occasions": [],
     "groundAnchor": {
       "x": 0.4378,
       "y": 0.9414
