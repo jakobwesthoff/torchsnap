@@ -116,6 +116,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launching at login on or off fails, and stays usable when its state
   cannot be read. Before, it showed the requested state anyway, or
   stayed disabled for good.
+- Opening an entry's settings, or an action that runs nothing because
+  its entry or slot is gone, no longer counts as using the entry, so
+  it no longer raises the entry's ranking.
 
 ## [0.13.0] - 2026-09-25
 

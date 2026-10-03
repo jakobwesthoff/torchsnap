@@ -455,23 +455,29 @@ fn now_ms() -> i64 {
 // =========================================================
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Create a FrecencyStore backed by a temp directory, with
-    /// frecency always enabled (no real settings store needed).
-    fn test_store() -> (FrecencyStore, tempfile::TempDir) {
+impl FrecencyStore {
+    /// A store backed by a temp directory, with frecency always
+    /// enabled (no real settings store needed). Keep the directory
+    /// alive as long as the store.
+    pub(crate) fn for_tests() -> (FrecencyStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("create temp dir");
         let db_path = dir.path().join("frecency.sqlite3");
         let db = SqlStorage::open(db_path, schema::MIGRATIONS).expect("open test db");
 
-        // Create a settings watch that always returns true.
         let notifier = SettingsNotifier::new();
         let enabled =
             notifier.watch_with_initial::<bool>("frecency.enabled", serde_json::Value::Bool(true));
 
-        let store = FrecencyStore { db, enabled };
-        (store, dir)
+        (FrecencyStore { db, enabled }, dir)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_store() -> (FrecencyStore, tempfile::TempDir) {
+        FrecencyStore::for_tests()
     }
 
     #[test]

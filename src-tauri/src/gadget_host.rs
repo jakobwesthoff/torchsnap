@@ -1026,11 +1026,13 @@ impl GadgetHost {
         slot: Slot,
         app: &tauri::AppHandle,
     ) -> anyhow::Result<PostAction> {
-        // Record frecency before execution — captures user intent
-        // regardless of whether the action succeeds.
-        self.frecency.record(source, entry_id);
-
-        let command = match resolve_command(&self.entry_store, source, entry_id, slot) {
+        let command = match resolve_and_record_use(
+            &self.entry_store,
+            &self.frecency,
+            source,
+            entry_id,
+            slot,
+        ) {
             Ok(command) => command,
             Err(Unresolved::UnknownEntry) => {
                 eprintln!(
@@ -1168,6 +1170,25 @@ enum Unresolved {
     UnknownEntry,
     /// The entry has no action in the requested slot.
     EmptySlot,
+}
+
+/// Resolve the command in `slot` of the stored entry and record the
+/// selection for frecency. Recording happens before the gadget runs
+/// the command, so a use counts even when the action fails. An
+/// unresolved action ran nothing, and opening an entry's settings
+/// inspects it rather than using it, so neither is recorded.
+fn resolve_and_record_use(
+    store: &EntryStore,
+    frecency: &FrecencyStore,
+    source: &str,
+    entry_id: &str,
+    slot: Slot,
+) -> Result<String, Unresolved> {
+    let command = resolve_command(store, source, entry_id, slot)?;
+    if slot != Slot::OpenSettings {
+        frecency.record(source, entry_id);
+    }
+    Ok(command)
 }
 
 /// The command of the action in `slot` of the stored entry.
@@ -1457,6 +1478,58 @@ mod tests {
             resolve_command(&store, "gadget-a", "e1", Slot::Primary),
             Ok("join".to_string())
         );
+    }
+
+    // ---- resolve_and_record_use -------------------------------
+
+    fn store_with_settings_entry() -> EntryStore {
+        store_with_entry(EntryActions {
+            open_settings: Some(Action {
+                label: None,
+                command: "settings".to_string(),
+            }),
+            ..EntryActions::new().primary("Join", "join".to_string())
+        })
+    }
+
+    #[test]
+    fn running_an_action_records_a_use() {
+        let (frecency, _dir) = FrecencyStore::for_tests();
+        let store = store_with_settings_entry();
+
+        let command = resolve_and_record_use(&store, &frecency, "gadget-a", "e1", Slot::Primary);
+
+        assert_eq!(command, Ok("join".to_string()));
+        assert!(frecency.score("gadget-a", "e1") > 0);
+    }
+
+    // Frecency ranks what the user runs. An id the current search did
+    // not return, or a slot the entry leaves empty, ran nothing.
+    #[test]
+    fn an_unresolved_action_records_nothing() {
+        let (frecency, _dir) = FrecencyStore::for_tests();
+        let store = store_with_settings_entry();
+
+        let unknown = resolve_and_record_use(&store, &frecency, "gadget-a", "ghost", Slot::Primary);
+        let empty = resolve_and_record_use(&store, &frecency, "gadget-a", "e1", Slot::Delete);
+
+        assert_eq!(unknown, Err(Unresolved::UnknownEntry));
+        assert_eq!(empty, Err(Unresolved::EmptySlot));
+        assert_eq!(frecency.score("gadget-a", "ghost"), 0);
+        assert_eq!(frecency.score("gadget-a", "e1"), 0);
+    }
+
+    // Opening an entry's settings inspects it rather than using it.
+    #[test]
+    fn opening_settings_records_nothing() {
+        let (frecency, _dir) = FrecencyStore::for_tests();
+        let store = store_with_settings_entry();
+
+        let command =
+            resolve_and_record_use(&store, &frecency, "gadget-a", "e1", Slot::OpenSettings);
+
+        assert_eq!(command, Ok("settings".to_string()));
+        assert_eq!(frecency.score("gadget-a", "e1"), 0);
     }
 
     #[test]
