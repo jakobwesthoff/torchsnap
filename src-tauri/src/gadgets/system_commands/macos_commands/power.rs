@@ -10,11 +10,11 @@
 
 use std::process::Command;
 
-use anyhow::Context;
-
 use crate::commands::types::{CatalogEntry, EntryIcon, PostAction};
 use crate::gadgets::system_commands::{RunCommand, SystemCommand, run_on_enter};
 use crate::platform::macos::osascript;
+
+use super::run_tool;
 
 // =========================================================
 // Lock Screen
@@ -46,10 +46,10 @@ impl SystemCommand for LockScreen {
         // `pmset displaysleepnow` puts the display to sleep, which
         // triggers the lock screen if "require password" is enabled
         // in System Settings (the default on modern macOS).
-        Command::new("pmset")
-            .arg("displaysleepnow")
-            .status()
-            .context("lock screen via pmset")?;
+        run_tool(
+            Command::new("pmset").arg("displaysleepnow"),
+            "lock screen via pmset",
+        )?;
 
         Ok(PostAction::Dismiss)
     }

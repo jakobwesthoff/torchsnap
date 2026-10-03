@@ -10,11 +10,11 @@
 
 use std::process::Command;
 
-use anyhow::Context;
-
 use crate::commands::types::{CatalogEntry, EntryIcon, PostAction};
 use crate::gadgets::system_commands::{RunCommand, SystemCommand, run_on_enter};
 use crate::platform::macos::osascript;
+
+use super::run_tool;
 
 // =========================================================
 // Empty Trash
@@ -80,11 +80,10 @@ impl SystemCommand for StartScreenSaver {
     }
 
     fn execute(&self) -> anyhow::Result<PostAction> {
-        Command::new("open")
-            .arg("-a")
-            .arg("ScreenSaverEngine")
-            .status()
-            .context("start screen saver")?;
+        run_tool(
+            Command::new("open").args(["-a", "ScreenSaverEngine"]),
+            "start screen saver",
+        )?;
 
         Ok(PostAction::Dismiss)
     }
@@ -122,10 +121,7 @@ impl SystemCommand for EjectDisc {
     }
 
     fn execute(&self) -> anyhow::Result<PostAction> {
-        Command::new("drutil")
-            .arg("eject")
-            .status()
-            .context("eject disc via drutil")?;
+        run_tool(Command::new("drutil").arg("eject"), "eject disc via drutil")?;
 
         Ok(PostAction::Dismiss)
     }

@@ -14,9 +14,7 @@ area: [src-tauri/src/gadgets/system_commands/macos_commands/utilities.rs]
 drive since 2012ish; for virtually all users this entry is
 permanent noise in the result list ("eject", "disk" are common
 search fragments) and executing it runs `drutil eject` against
-nothing (which also fails silently — see the separate todo on
-ignored exit statuses,
-`01kwg2ftae87zzd75qgcpa6tv0-system-command-exit-status-ignored.md`).
+nothing.
 
 The `SystemCommand` trait explicitly designed `is_available` for
 this: "Whether this command should appear in the launcher right

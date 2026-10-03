@@ -68,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max-stdin-bytes` set to 0, fails the manifest with an error naming
   the rule. Before, a bad glob failed only later, when the gadget was
   enabled.
+- Lock Screen, Start Screen Saver and Eject Disc keep the launcher open
+  when the tool behind them exits with an error, and log the tool's
+  error message. Before, the launcher
+  closed as if the command had worked.
 
 ## [0.13.0] - 2026-09-25
 
