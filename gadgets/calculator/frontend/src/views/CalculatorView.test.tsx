@@ -38,6 +38,7 @@ function renderView({
   dismiss = vi.fn(),
   onExecute = vi.fn(),
   logError = vi.fn(),
+  showError = vi.fn(),
 } = {}) {
   const logger = {
     trace: vi.fn(),
@@ -51,12 +52,12 @@ function renderView({
   render(
     <MockGadgetContextProvider
       runtime={{ sendMessage, logger }}
-      launcher={{ dismiss, onExecute }}
+      launcher={{ dismiss, onExecute, showError }}
     >
       <CalculatorView results={results} data={data} query="6*7" matchedPrefix="=" />
     </MockGadgetContextProvider>,
   );
-  return { sendMessage, dismiss, onExecute, logError };
+  return { sendMessage, dismiss, onExecute, logError, showError };
 }
 
 describe("CalculatorView", () => {
@@ -98,13 +99,14 @@ describe("CalculatorView", () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
-  it("keeps the launcher open and logs when copying fails", async () => {
+  it("keeps the launcher open and shows and logs the error when copying fails", async () => {
     const sendMessage = vi.fn().mockRejectedValue(new Error("clipboard denied"));
-    const { dismiss, logError } = renderView({ sendMessage });
+    const { dismiss, logError, showError } = renderView({ sendMessage });
 
     fireEvent.keyDown(document, { key: "Enter" });
 
     await waitFor(() => expect(logError).toHaveBeenCalled());
+    expect(showError).toHaveBeenCalledWith("Copying the result failed: clipboard denied");
     expect(dismiss).not.toHaveBeenCalled();
   });
 });

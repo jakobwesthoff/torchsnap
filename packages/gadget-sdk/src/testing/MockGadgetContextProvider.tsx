@@ -68,6 +68,12 @@ const noopSendMessage = async () => undefined as never;
 // Provider
 // ---------------------------------------------------------
 
+/** Launcher overrides a test may pass. An `onExecute` override may
+ *  return nothing, such as `() => {}` or `vi.fn()`. */
+export type MockLauncherActions = Partial<Omit<LauncherActions, "onExecute">> & {
+  onExecute?: (...args: Parameters<LauncherActions["onExecute"]>) => void | Promise<void>;
+};
+
 export interface MockGadgetContextProviderProps {
   /** Override fields for the `info` slice. Defaults:
    *  `{ id: "test-gadget", enabled: true }`. */
@@ -80,7 +86,7 @@ export interface MockGadgetContextProviderProps {
    *  absent — calling `useLauncher()` from a child throws
    *  exactly as it would in a settings panel. Pass an empty
    *  object `{}` to install the no-op defaults. */
-  launcher?: Partial<LauncherActions>;
+  launcher?: MockLauncherActions;
   children: ReactNode;
 }
 
@@ -114,11 +120,14 @@ export function MockGadgetContextProvider({
             goBack: () => {},
             dismiss: () => {},
             openSettings: async () => {},
-            onExecute: () => {},
             onFooterChange: () => {},
             setDisplayQuery: () => {},
+            showError: () => {},
             mouseActiveRef,
             ...launcher,
+            onExecute: async (entryId, slot) => {
+              await launcher?.onExecute?.(entryId, slot);
+            },
           };
 
     return {

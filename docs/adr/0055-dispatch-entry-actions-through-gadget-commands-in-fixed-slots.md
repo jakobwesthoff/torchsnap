@@ -18,6 +18,8 @@ Amends [54. Open gadget settings through a post-action](0054-open-gadget-setting
 
 Amended by [56. Version the WIT contract and both gadget SDKs in lockstep](0056-version-the-wit-contract-and-both-gadget-sdks-in-lockstep.md) (the SDKs get the WIT's new version too)
 
+Amended by [62. Show failed launcher actions in the footer](0062-show-failed-launcher-actions-in-the-footer.md)
+
 ## Context
 
 Each action on a result entry has an `ActionId` and a label. The

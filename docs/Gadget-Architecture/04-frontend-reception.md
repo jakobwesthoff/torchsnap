@@ -160,21 +160,44 @@ returned `PostAction`:
 - `{ ShowCustomUI: { view, data } }`: switch to that gadget view
   and clear the query.
 
+When `search_execute` rejects, the launcher stays open and the footer
+shows `<entry title> failed: <message>` (see "Action errors" below).
+
 A click on a row runs its `primary` action, like Enter.
 
 Gadget- and inline-view execute paths (`handleGadgetExecute`,
 `handleInlineExecute`) back `onExecute(entryId, slot)` on
 `LauncherActions`. They send the view's gadget id as `source` and
 only handle `"Dismiss"` since `ShowCustomUI` is not meaningful from
-within a gadget-owned surface.
+within a gadget-owned surface. They return a promise that rejects
+with the error message when `search_execute` fails; the footer shows
+`<gadget name> failed: <message>`, the name coming from the gadget
+registry (`getGadgetLabel`).
 
 `openSettings()` on `LauncherActions` (`handleGadgetOpenSettings`,
 `handleInlineOpenSettings`) calls `openGadgetSettings` in
 `src/launcher/openGadgetSettings.ts` with the view's gadget id. That
 invokes the `gadget_open_settings` command, which opens the Settings
 window on that gadget's section, and then dismisses the launcher.
-When the command fails, the launcher stays open and the promise
+When the command fails, the launcher stays open, the footer shows
+`Opening <gadget name> settings failed: <message>`, and the promise
 rejects.
+
+### Action errors (ADR 0062)
+
+`useActionError` (`src/launcher/hooks/useActionError.ts`) holds the
+error of the last failed action, and `LauncherFooter` shows it in
+place of the hints, cut to one line with the full text as tooltip.
+`runAction(lead, action)` wraps every host action above: it clears
+the error, runs the action, and on a rejection shows `<lead> failed:
+<message>` and passes the rejection on. The promises handed to views
+get a handler attached (`handledByLauncher`), so a view that ignores
+one causes no unhandled-rejection report. `showError(message)` on
+`LauncherActions` shows a view's own failure as given.
+
+The error clears on the next action, on any key press other than a
+lone modifier, when the reset key changes (query, selection, active
+custom view) and when the launcher hides (`resetState`).
 
 ### Footer priority
 
@@ -288,7 +311,7 @@ The provider carries three slices:
 - `runtime: { sendMessage, logger }`: capabilities every gadget
   gets. `sendMessage` is bound to the active gadget's id;
   `logger` is created per active gadget via `createLogger(id)`.
-- `launcher: { goBack, dismiss, openSettings, onExecute,
+- `launcher: { goBack, dismiss, openSettings, onExecute, showError,
   onFooterChange, setDisplayQuery, mouseActiveRef }`: only present
   inside the launcher tree. Inline views receive a slice with no-op `goBack` /
   `setDisplayQuery` (with dev-mode warnings) since neither makes

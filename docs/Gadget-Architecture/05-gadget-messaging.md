@@ -149,7 +149,9 @@ working, and only when that fails decodes again without the payload.
 An unknown method, a payload that does not fit its variant, or a
 payload that is not JSON becomes an `Err` before gadget code runs.
 The value `handle` returns is serialized as the response, and
-`Err(string)` rejects the frontend's promise. `decode_request` is
+`Err(string)` rejects the frontend's promise. A launcher view that
+sent the message for a user action shows the rejection with
+`useLauncher().showError()` (ADR 0062). `decode_request` is
 public so gadget tests can check their request enum against the
 payloads their frontend sends.
 

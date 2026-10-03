@@ -18,7 +18,7 @@ import { useEmacsBindings } from "../hooks/useEmacsBindings";
 import { MascotDebugPanel, MascotInfoOverlay, useMascotVariant } from "../mascot";
 import { useResizeObserver } from "../hooks/useResizeObserver";
 import { useSetting } from "../hooks/useSetting";
-import { getGadgetView, getGadgetInlineView } from "../gadgets/registry";
+import { getGadgetView, getGadgetInlineView, getGadgetLabel } from "../gadgets/registry";
 import type { GadgetViewProps, InlineViewProps } from "../gadgets/types";
 import { useWindowLifecycle } from "./hooks/useWindowLifecycle";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
@@ -27,6 +27,7 @@ import { useLauncherMascotPlacement } from "./hooks/useLauncherMascotPlacement";
 import { useMascotDebugPanel } from "./hooks/useMascotDebugPanel";
 import { useMascotInfo } from "./hooks/useMascotInfo";
 import { useSearch } from "./hooks/useSearch";
+import { useActionError } from "./hooks/useActionError";
 import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
@@ -49,6 +50,15 @@ const NO_FOOTER: FooterEntry = { viewKey: null, footer: null };
  *  reference take part. */
 function viewKey(ref: GadgetViewRef | null): string | null {
   return ref ? `${ref.gadgetId} ${ref.view}` : null;
+}
+
+/** Hand a view the promise of a launcher action. The launcher shows a
+ *  failure in its footer, so it marks the rejection as handled; a view
+ *  that ignores the promise causes no unhandled-rejection report, and
+ *  one that awaits it still sees the rejection. */
+function handledByLauncher(action: Promise<void>): Promise<void> {
+  action.catch(() => {});
+  return action;
 }
 
 /** Dummy footer state used during measurement to ensure the footer
@@ -201,6 +211,10 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // an explicit view name and optional data.
   const [executeGadgetView, setExecuteGadgetView] = useState<GadgetViewRef | null>(null);
 
+  // Counts how often the launcher was reset on hide. Part of the
+  // action error's reset key, so hiding always clears the error.
+  const [resetCount, setResetCount] = useState(0);
+
   // The mascot debug panel (dev builds) closes with the launcher's reset
   // on dismiss, since the next mascot is drawn then.
   const mascotDebug = useMascotDebugPanel();
@@ -211,6 +225,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     setSearchQuery("");
     setSelectedIndex(0);
     setExecuteGadgetView(null);
+    setResetCount((count) => count + 1);
     closeMascotDebug();
   }, [closeMascotDebug]);
 
@@ -288,6 +303,16 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   const activeInlineViewRef = useRef(activeInlineView);
   // eslint-disable-next-line react-hooks/refs
   activeInlineViewRef.current = activeInlineView;
+
+  // The footer error of the last failed action (ADR 62). Typing,
+  // moving the selection, switching views and hiding clear it.
+  const {
+    error: actionError,
+    showError,
+    runAction,
+  } = useActionError(
+    [resetCount, displayQuery, selectedIndex, viewKey(customGadgetView)].join("\u0000"),
+  );
 
   // Reset selection when the search query changes (new search
   // cycle). Done during render (prev-vs-current pattern) to avoid
@@ -391,61 +416,79 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // Gadget execute handler — wraps the Tauri invoke with the
   // gadget's source ID and handles PostAction.
   const handleGadgetExecute = useCallback(
-    async (entryId: string, slot: ActionSlot) => {
+    (entryId: string, slot: ActionSlot): Promise<void> => {
       const view = customGadgetViewRef.current;
-      if (!view) return;
+      if (!view) return Promise.resolve();
 
-      const postAction = await command("search_execute", {
-        source: view.gadgetId,
-        entryId,
-        slot,
-      });
+      return handledByLauncher(
+        runAction(getGadgetLabel(view.gadgetId), async () => {
+          const postAction = await command("search_execute", {
+            source: view.gadgetId,
+            entryId,
+            slot,
+          });
 
-      if (postAction === "Dismiss") {
-        dismiss();
-      }
-      // ShowCustomUI is not meaningful from within a gadget view;
-      // Nothing and KeepOpen require no action.
+          if (postAction === "Dismiss") {
+            dismiss();
+          }
+          // ShowCustomUI is not meaningful from within a gadget view;
+          // Nothing and KeepOpen require no action.
+        }),
+      );
     },
-    [dismiss],
+    [dismiss, runAction],
   );
 
   // Inline view execute handler — routes through the inline
   // view's gadget ID.
   const handleInlineExecute = useCallback(
-    async (entryId: string, slot: ActionSlot) => {
+    (entryId: string, slot: ActionSlot): Promise<void> => {
       const view = activeInlineViewRef.current;
-      if (!view) return;
+      if (!view) return Promise.resolve();
 
-      const postAction = await command("search_execute", {
-        source: view.gadgetId,
-        entryId,
-        slot,
-      });
+      return handledByLauncher(
+        runAction(getGadgetLabel(view.gadgetId), async () => {
+          const postAction = await command("search_execute", {
+            source: view.gadgetId,
+            entryId,
+            slot,
+          });
 
-      if (postAction === "Dismiss") {
-        dismiss();
-      }
-      // ShowCustomUI is not meaningful from an inline view;
-      // Nothing and KeepOpen require no action.
+          if (postAction === "Dismiss") {
+            dismiss();
+          }
+          // ShowCustomUI is not meaningful from an inline view;
+          // Nothing and KeepOpen require no action.
+        }),
+      );
     },
-    [dismiss],
+    [dismiss, runAction],
   );
 
   // `openSettings()` for the custom and the inline view. Each
   // resolves the gadget id of its own view at call time, so a view
   // opens only its own gadget's settings section.
+  const openSettingsFor = useCallback(
+    (gadgetId: string): Promise<void> =>
+      handledByLauncher(
+        runAction(`Opening ${getGadgetLabel(gadgetId)} settings`, () =>
+          openGadgetSettings(gadgetId, dismiss),
+        ),
+      ),
+    [dismiss, runAction],
+  );
+
   const handleGadgetOpenSettings = useCallback(async () => {
     const view = customGadgetViewRef.current;
     if (!view) return;
-    await openGadgetSettings(view.gadgetId, dismiss);
-  }, [dismiss]);
+    await openSettingsFor(view.gadgetId);
+  }, [openSettingsFor]);
 
   const handleInlineOpenSettings = useCallback(async () => {
     const view = activeInlineViewRef.current;
     if (!view) return;
-    await openGadgetSettings(view.gadgetId, dismiss);
-  }, [dismiss]);
+    await openSettingsFor(view.gadgetId);
+  }, [openSettingsFor]);
 
   // Inline view message handler — same pattern as the gadget
   // sendMessage but routed through the inline view's gadget ID.
@@ -545,6 +588,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       dismiss,
       openSettings: handleGadgetOpenSettings,
       onExecute: handleGadgetExecute,
+      showError,
       onFooterChange: handleGadgetFooterChange,
       setDisplayQuery,
       mouseActiveRef,
@@ -554,6 +598,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       dismiss,
       handleGadgetOpenSettings,
       handleGadgetExecute,
+      showError,
       handleGadgetFooterChange,
       setDisplayQuery,
     ],
@@ -583,6 +628,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       dismiss,
       openSettings: handleInlineOpenSettings,
       onExecute: handleInlineExecute,
+      showError,
       onFooterChange: handleInlineFooterChange,
       setDisplayQuery: () => {
         if (import.meta.env.DEV) {
@@ -593,7 +639,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
       },
       mouseActiveRef,
     }),
-    [dismiss, handleInlineOpenSettings, handleInlineExecute, handleInlineFooterChange],
+    [dismiss, handleInlineOpenSettings, handleInlineExecute, showError, handleInlineFooterChange],
   );
 
   // =========================================================
@@ -607,11 +653,19 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     async (entry: SourcedEntry, slot: ActionSlot = "primary") => {
       if (!hasSlot(entry.actions, slot)) return;
 
-      const postAction = await command("search_execute", {
-        source: entry.source,
-        entryId: entry.id,
-        slot,
-      });
+      let postAction;
+      try {
+        postAction = await runAction(entry.title, () =>
+          command("search_execute", {
+            source: entry.source,
+            entryId: entry.id,
+            slot,
+          }),
+        );
+      } catch {
+        // The footer shows the error.
+        return;
+      }
 
       if (postAction === "Dismiss") {
         dismiss();
@@ -626,7 +680,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         setQuery("");
       }
     },
-    [dismiss, setQuery],
+    [dismiss, runAction, setQuery],
   );
 
   // Keyboard-path executor — resolves the currently selected
@@ -733,7 +787,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         </Suspense>
       </GadgetErrorBoundary>
     );
-    contentFooter = <LauncherFooter footer={footer} />;
+    contentFooter = <LauncherFooter footer={footer} error={actionError} />;
   } else if (activeInlineView != null || results.length > 0) {
     contentBody = (
       <>
@@ -770,7 +824,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         )}
       </>
     );
-    contentFooter = <LauncherFooter footer={footer} />;
+    contentFooter = <LauncherFooter footer={footer} error={actionError} />;
   }
 
   const contentSection = contentBody ? (

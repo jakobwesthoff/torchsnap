@@ -17,11 +17,11 @@ export interface CopyRequest {
  *
  * The backend's `copy` message writes the result to the clipboard
  * and records it in the history. The launcher closes only once the
- * copy succeeded; on failure it stays open and the error goes to the
- * gadget log, so the user can see nothing was copied.
+ * copy succeeded; on failure it stays open, shows the error in its
+ * footer and the error goes to the gadget log.
  */
 export function useCopyResult(): (request: CopyRequest) => Promise<void> {
-  const { dismiss } = useLauncher();
+  const { dismiss, showError } = useLauncher();
   const { sendMessage, logger } = useGadgetRuntime();
 
   return useCallback(
@@ -29,11 +29,13 @@ export function useCopyResult(): (request: CopyRequest) => Promise<void> {
       try {
         await sendMessage("copy", request);
       } catch (error) {
-        logger.error("copying the result failed", [["error", String(error)]]);
+        const detail = error instanceof Error ? error.message : String(error);
+        showError(`Copying the result failed: ${detail}`);
+        logger.error("copying the result failed", [["error", detail]]);
         return;
       }
       dismiss();
     },
-    [dismiss, sendMessage, logger],
+    [dismiss, showError, sendMessage, logger],
   );
 }

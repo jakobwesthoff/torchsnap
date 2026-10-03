@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   between them. The window is a little larger.
 - Torchsnap installs with Homebrew:
   `brew install --cask jakobwesthoff/tap/torchsnap`.
+- When an action in the launcher fails, the launcher stays open and its
+  footer shows what failed and why, for example `Eject Disc failed:
+  …`. The line goes away on the next key press or action. Before,
+  nothing showed.
+- Gadget views get `showError(message)` from `useLauncher()`. It shows
+  a failure of the view's own action, such as a `sendMessage` call, in
+  the launcher footer.
+- `useLauncher().onExecute()` returns a promise that rejects with the
+  error message when the action fails. The launcher already shows the
+  error, so a view may ignore the promise. In tests,
+  `MockGadgetContextProvider` still accepts an `onExecute` override
+  that returns nothing.
 
 ### Changed
 
@@ -22,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The General page of the settings shows Snappy's emblem above the
   build version. Snappy peeks up a little on hover, and clicking opens
   torchsnap.app in the browser.
-- Snappy comes in 631 costumes instead of 189. A newer image model
+- Snappy comes in 626 costumes instead of 189. A newer image model
   redrew 170 of the 189 earlier ones close to their old look; the other
   19, the plain Snappy among them, keep their drawings. Every mascot has
   a reviewed alt text, and the owls inside the costumes are drawn at
@@ -69,9 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rule. Before, a bad glob failed only later, when the gadget was
   enabled.
 - Lock Screen, Start Screen Saver and Eject Disc keep the launcher open
-  when the tool behind them exits with an error, and log the tool's
-  error message. Before, the launcher
+  when the tool behind them exits with an error, and show the tool's
+  error message in the footer. Before, the launcher
   closed as if the command had worked.
+- Copying a calculator result, and copying or removing a clipboard
+  history entry, show a failure in the launcher footer. Before, the
+  calculator only logged it and the clipboard showed nothing.
 - Running an entry or sending a message to a gadget that was turned off
   in the meantime fails with "gadget is disabled". Before, the call
   reached the turned-off gadget and failed with whatever error its

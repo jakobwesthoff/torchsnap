@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [62. Show failed launcher actions in the footer](0062-show-failed-launcher-actions-in-the-footer.md)
+
 ## Context
 
 Plugin React components — `PluginViewProps`, `InlineViewProps`, and

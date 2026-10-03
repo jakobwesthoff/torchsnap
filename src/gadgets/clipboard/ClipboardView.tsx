@@ -212,7 +212,7 @@ function DetailPreview({
 // =========================================================
 
 export default function ClipboardView({ query }: GadgetViewProps) {
-  const { goBack, dismiss, mouseActiveRef, onFooterChange } = useLauncher();
+  const { goBack, dismiss, mouseActiveRef, onFooterChange, showError } = useLauncher();
   const { sendMessage, logger } = useGadgetRuntime();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const detailRef = useRef<HTMLDivElement>(null);
@@ -329,21 +329,41 @@ export default function ClipboardView({ query }: GadgetViewProps) {
   // Actions
   // -------------------------------------------------------
 
+  // A failed action keeps the launcher open and shows the error in its
+  // footer.
+  const reportFailure = useCallback(
+    (action: string, error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      showError(`${action} failed: ${detail}`);
+      logger.error(`${action} failed`, [["error", detail]]);
+    },
+    [showError, logger],
+  );
+
   const handlePaste = useCallback(async () => {
     const entry = entries[selectedIndex];
     if (!entry) return;
     // The backend spawns the actual clipboard write on a background
     // thread, so this await only covers the fast SQL query. Dismiss
     // after to keep ordering predictable.
-    await sendMessage("paste", { id: entry.id });
+    try {
+      await sendMessage("paste", { id: entry.id });
+    } catch (error) {
+      reportFailure("Copying the entry", error);
+      return;
+    }
     dismiss();
-  }, [entries, selectedIndex, sendMessage, dismiss]);
+  }, [entries, selectedIndex, sendMessage, dismiss, reportFailure]);
 
   const handleDelete = useCallback(async () => {
     const entry = entries[selectedIndex];
     if (!entry) return;
-    await sendMessage("delete", { id: entry.id });
-  }, [entries, selectedIndex, sendMessage]);
+    try {
+      await sendMessage("delete", { id: entry.id });
+    } catch (error) {
+      reportFailure("Removing the entry", error);
+    }
+  }, [entries, selectedIndex, sendMessage, reportFailure]);
 
   // -------------------------------------------------------
   // Footer

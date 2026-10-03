@@ -40,6 +40,7 @@ export default defineConfig(async (env) =>
         "src/**/*.test.{ts,tsx}",
         "vite/**/*.test.ts",
         "gadgets/*/frontend/src/**/*.test.{ts,tsx}",
+        "packages/*/src/**/*.test.{ts,tsx}",
       ],
       setupFiles: ["src/test/setup.ts"],
     },

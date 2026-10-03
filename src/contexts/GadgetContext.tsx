@@ -67,11 +67,20 @@ export interface LauncherActions {
   dismiss: () => void;
   /** Open the Settings window on this gadget's section and close the
    *  launcher, like the `open-settings` post-action from `execute()`.
-   *  Rejects, leaving the launcher open, when the window cannot open. */
+   *  When the window cannot open, the launcher stays open, shows the
+   *  error in its footer, and the promise rejects. */
   openSettings: () => Promise<void>;
   /** Run the action in `slot` of an entry the view received in
-   *  `results`. */
-  onExecute: (entryId: string, slot: ActionSlot) => void;
+   *  `results`. When the gadget's `execute()` fails, the launcher shows
+   *  the error in its footer and the promise rejects with the error
+   *  message. The launcher handles the rejection itself, so a view may
+   *  ignore the promise. */
+  onExecute: (entryId: string, slot: ActionSlot) => Promise<void>;
+  /** Show a failure of the view's own action, such as a `sendMessage`
+   *  call, in the launcher footer. The message is shown as given and
+   *  goes away on the user's next key press, action, query or
+   *  selection change, or when the launcher hides. */
+  showError: (message: string) => void;
   onFooterChange: (state: FooterState) => void;
   setDisplayQuery: (query: string) => void;
   mouseActiveRef: RefObject<boolean>;

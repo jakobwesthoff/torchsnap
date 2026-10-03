@@ -12,7 +12,9 @@
 // - JSX with the automatic runtime (no `import React` needed)
 // - React hooks via the SDK
 // - Per-render data (`data`, `query`) from GadgetViewProps
-// - Launcher actions via the `useLauncher()` context hook
+// - Launcher actions via the `useLauncher()` context hook,
+//   including `showError` to report a failed action in the
+//   launcher footer
 // - Custom RPC into your Rust backend via
 //   `useGadgetRuntime().sendMessage(method, payload)` —
 //   the host routes the call to your `MessagingGuest::handle_message`
@@ -44,7 +46,7 @@ const DEMO_ITEMS = Array.from({ length: 32 }, (_, i) => `Item #${i + 1}`);
 const PAGE_SIZE = 6;
 
 export function DemoView({ data, query }: GadgetViewProps) {
-  const { dismiss } = useLauncher();
+  const { dismiss, showError } = useLauncher();
   const { sendMessage } = useGadgetRuntime();
   const [count, setCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -191,6 +193,21 @@ export function DemoView({ data, query }: GadgetViewProps) {
           })}
         </div>
       </div>
+
+      {/* A failing action. The backend rejects a method it does not
+          know; the view reports that in the launcher footer, which
+          clears it on the next key press or action. `onExecute` and
+          `openSettings` report their failures there on their own. */}
+      <button
+        onClick={() =>
+          sendMessage("no-such-method", {}).catch((e) =>
+            showError(`Demo action failed: ${String(e)}`),
+          )
+        }
+        className="self-start rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-hover transition-colors"
+      >
+        Fail an action
+      </button>
 
       <button
         onClick={dismiss}

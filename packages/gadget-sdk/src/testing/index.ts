@@ -17,4 +17,5 @@ export { setupSdkGlobalsForTesting } from "./setup";
 export {
   MockGadgetContextProvider,
   type MockGadgetContextProviderProps,
+  type MockLauncherActions,
 } from "./MockGadgetContextProvider";

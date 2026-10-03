@@ -21,6 +21,7 @@ function renderInline({
   dismiss = vi.fn(),
   onExecute = vi.fn(),
   logError = vi.fn(),
+  showError = vi.fn(),
 } = {}) {
   const logger = {
     trace: vi.fn(),
@@ -34,12 +35,12 @@ function renderInline({
   const view = render(
     <MockGadgetContextProvider
       runtime={{ sendMessage, logger }}
-      launcher={{ dismiss, onExecute }}
+      launcher={{ dismiss, onExecute, showError }}
     >
       <CalculatorInline data={data} query="2+2" matchedPrefix="" selected={selected} />
     </MockGadgetContextProvider>,
   );
-  return { ...view, sendMessage, dismiss, onExecute, logError };
+  return { ...view, sendMessage, dismiss, onExecute, logError, showError };
 }
 
 describe("CalculatorInline", () => {
@@ -75,13 +76,14 @@ describe("CalculatorInline", () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
-  it("keeps the launcher open and logs when copying fails", async () => {
+  it("keeps the launcher open and shows and logs the error when copying fails", async () => {
     const sendMessage = vi.fn().mockRejectedValue(new Error("clipboard denied"));
-    const { dismiss, logError } = renderInline({ sendMessage });
+    const { dismiss, logError, showError } = renderInline({ sendMessage });
 
     fireEvent.keyDown(document, { key: "Enter" });
 
     await waitFor(() => expect(logError).toHaveBeenCalled());
+    expect(showError).toHaveBeenCalledWith("Copying the result failed: clipboard denied");
     expect(dismiss).not.toHaveBeenCalled();
   });
 });

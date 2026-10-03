@@ -518,7 +518,11 @@ There is no `ShowCustomUI` variant. A WASM gadget mounts custom UI
 only through `SearchResponse::CustomUi` from `search()`.
 
 Returning `Err(string)` rejects the launcher's `search_execute`
-call with `gadget execute() returned error: <string>`.
+call with `gadget execute() returned error: <string>`. The launcher
+stays open and shows `<entry title> failed: <message>` in its footer,
+or `<gadget name> failed: <message>` when a view ran the action, until
+the user's next key press, action, query or selection change (ADR
+0062).
 
 On the host side, the launcher calls `search_execute` with the
 entry's source gadget, its id and the slot. The host records the
@@ -1205,7 +1209,7 @@ import type { GadgetViewProps } from "@torchsnap/gadget-sdk";
 export function MyView({ data, results, query, matchedPrefix }: GadgetViewProps) {
   const { id, enabled } = useGadgetInfo();              // identity (always)
   const { sendMessage, logger } = useGadgetRuntime();   // RPC + logging (always)
-  const { dismiss, onExecute, openSettings, onFooterChange } = useLauncher(); // launcher tree only
+  const { dismiss, onExecute, openSettings, showError, onFooterChange } = useLauncher(); // launcher tree only
   const [retentionDays, setRetentionDays] = useGadgetSetting<number>("retentionDays");
   // ...
 }
@@ -1221,14 +1225,24 @@ A view runs an action of an entry it received in `results` with
 `onExecute(entry.id, "copy")` when a history row is clicked.
 `onExecute` only reaches entries of the current search: for an id
 the gadget did not return from that search, the host logs the miss
-and does nothing. A view that acts on its own state calls its backend with
+and does nothing. `onExecute` returns a promise. When `execute()`
+fails, the launcher shows `<gadget name> failed: <message>` in its
+footer and the promise rejects with the message. The launcher handles
+that rejection itself, so a view may ignore the promise and await it
+only to react, for example to reset a busy state.
+
+A view that acts on its own state calls its backend with
 `sendMessage` and then a launcher action such as `dismiss()`. The
-calculator copies a freshly evaluated result that way.
+calculator copies a freshly evaluated result that way. When such an
+action fails, the view passes the message to `showError(message)`,
+which shows it as given in the same footer line. Report only failures
+of something the user did there, not of background loads.
 
 `openSettings()` opens the Settings window on the gadget's own
 section and closes the launcher, the same effect as the
-`open-settings` post-action from `execute()`. The returned promise
-rejects, leaving the launcher open, when the window cannot open.
+`open-settings` post-action from `execute()`. When the window cannot
+open, the launcher stays open, shows `Opening <gadget name> settings
+failed: <message>` in its footer, and the promise rejects.
 
 ### Per-render props
 
@@ -1525,8 +1539,9 @@ impl TasksGuest for CalculatorPlugin {
 
 On Enter, both launcher views copy the evaluated result with
 `useGadgetRuntime().sendMessage("copy", { expression, result,
-resultType })` and then call `useLauncher().dismiss()`. Enter on a
-selected history row, or a click on one, runs that row's `copy`
+resultType })` and then call `useLauncher().dismiss()`. When the copy
+fails, they keep the launcher open and pass the error to
+`useLauncher().showError()`. Enter on a selected history row, or a click on one, runs that row's `copy`
 action with `useLauncher().onExecute(entry.id, "copy")`. The settings panel
 renders its slider from `useGadgetSetting<number>("retentionDays")`
 and sends `stats` and `clear_history`. The Rust `Messaging` impl

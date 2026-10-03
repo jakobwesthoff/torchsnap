@@ -112,6 +112,14 @@ export function getGadgetInlineView(
 /**
  * Look up the settings component for a gadget.
  */
+/**
+ * The gadget's human-readable name, or its id when it is not
+ * registered.
+ */
+export function getGadgetLabel(gadgetId: string): string {
+  return registry.get(gadgetId)?.label ?? gadgetId;
+}
+
 export function getGadgetSettingsComponent(
   gadgetId: string,
 ): ComponentType<GadgetSettingsProps> | undefined {
