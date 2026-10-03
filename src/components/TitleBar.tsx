@@ -90,7 +90,9 @@ function MacTitleBar({ variant = "embedded", title, closable = true }: TitleBarP
 
   // Track Alt so hovering the green button shows the zoom
   // (`+`) glyph instead of the fullscreen (two triangles)
-  // glyph, matching native macOS behavior.
+  // glyph, matching native macOS behavior. A keyup that happens
+  // after the window lost focus goes to another window, so blur
+  // resets the state.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "Alt") setIsAltPressed(true);
@@ -98,11 +100,14 @@ function MacTitleBar({ variant = "embedded", title, closable = true }: TitleBarP
     const up = (e: KeyboardEvent) => {
       if (e.key === "Alt") setIsAltPressed(false);
     };
+    const blur = () => setIsAltPressed(false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
   }, []);
 

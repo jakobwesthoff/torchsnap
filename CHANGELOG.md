@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The tree view of the devtools console shows the end of a span whose
   start has left the log buffer, with its duration, as a top-level row.
   Before, it hid that row while the flat view showed it.
+- The green window button of Torchsnap's own windows goes
+  fullscreen again after the window lost focus while Option was held.
+  Before, it kept zooming until Option was pressed in the window again.
 
 ## [0.13.0] - 2026-09-25
 

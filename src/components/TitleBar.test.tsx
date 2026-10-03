@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TitleBar } from "./TitleBar";
@@ -31,6 +31,27 @@ describe("TitleBar", () => {
     render(<TitleBar />);
     await userEvent.click(screen.getByRole("button", { name: "Toggle Fullscreen" }));
     expect(win.setFullscreen).toHaveBeenCalledWith(true);
+  });
+
+  it("zooms instead of going fullscreen while Option is held", async () => {
+    render(<TitleBar />);
+    fireEvent.keyDown(window, { key: "Alt" });
+    await userEvent.click(screen.getByRole("button", { name: "Zoom" }));
+    expect(win.toggleMaximize).toHaveBeenCalledOnce();
+
+    fireEvent.keyUp(window, { key: "Alt" });
+    expect(screen.getByRole("button", { name: "Toggle Fullscreen" })).toBeInTheDocument();
+  });
+
+  // The Option keyup goes to whichever window has focus by then, so this
+  // window never sees it.
+  it("forgets a held Option key when the window loses focus", () => {
+    render(<TitleBar />);
+    fireEvent.keyDown(window, { key: "Alt" });
+    expect(screen.getByRole("button", { name: "Zoom" })).toBeInTheDocument();
+
+    fireEvent.blur(window);
+    expect(screen.getByRole("button", { name: "Toggle Fullscreen" })).toBeInTheDocument();
   });
 
   it("shows the title in the titlebar variant", () => {
