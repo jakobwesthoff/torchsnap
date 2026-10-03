@@ -514,6 +514,25 @@ mod tests {
     }
 
     #[test]
+    fn compile_fs_patterns_star_stays_in_one_segment() {
+        let tmp = TempDir::new().expect("tempdir");
+        let ctx = ctx_for(&tmp);
+        let root = std::fs::canonicalize(tmp.path()).expect("canonicalize");
+        let root = root.display();
+
+        let allowlist = compile_fs_patterns(
+            &[format!("{root}/one/*.json"), format!("{root}/many/**")],
+            &ctx,
+        )
+        .expect("compile");
+
+        let matches = |path: String| allowlist.globset.is_match(path);
+        assert!(matches(format!("{root}/one/a.json")));
+        assert!(!matches(format!("{root}/one/sub/a.json")));
+        assert!(matches(format!("{root}/many/sub/deeper/a.json")));
+    }
+
+    #[test]
     fn compile_fs_patterns_rejects_unknown_variable() {
         let tmp = TempDir::new().expect("tempdir");
         let ctx = ctx_for(&tmp);

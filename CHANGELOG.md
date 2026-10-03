@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ctrl+F on Linux and Windows, where it needed the Super key before.
   On every platform the two shortcuts do nothing while Shift or Alt is
   also held, and they work with Caps Lock on.
+- A gadget manifest whose `[permissions.filesystem]` `read` list holds
+  a relative path fails to load with an error naming the entry. Before,
+  it loaded and the path never matched. Patterns start with `/`, a
+  substitution variable or a Windows drive letter.
 
 ## [0.13.0] - 2026-09-25
 

@@ -68,7 +68,7 @@ impl FsPermissionsDef {
 
 /// Parse-time syntactic validation of a `[permissions.filesystem]
 /// read = [...]` entry. Covers the checks that depend only on
-/// the literal string the user typed: non-empty, no `..`
+/// the literal string the user typed: non-empty, absolute, no `..`
 /// traversal segments, well-formed `${...}` substitution
 /// tokens. The unsupported-glob-metacharacter check lives in
 /// `host::fs::compile_fs_patterns`, where it runs against the
@@ -79,6 +79,21 @@ fn validate_fs_pattern(pattern: &str, index: usize) -> anyhow::Result<()> {
         anyhow::bail!(
             "`[permissions.filesystem]` read[{index}]: empty pattern; \
              remove the entry or supply a real path"
+        );
+    }
+
+    // Every substitution variable resolves to an absolute directory, so a
+    // pattern that starts with one is anchored. The drive-letter forms
+    // cover Windows paths, which a manifest may list next to Unix ones.
+    let bytes = pattern.as_bytes();
+    let is_drive_path = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/');
+    if !(pattern.starts_with('/') || pattern.starts_with("${") || is_drive_path) {
+        anyhow::bail!(
+            "`[permissions.filesystem]` read[{index}]: pattern `{pattern}` \
+             is not absolute; start it with `/` or a `${{...}}` variable"
         );
     }
 
@@ -188,6 +203,41 @@ mod tests {
         ))
         .unwrap_err();
         assert!(err.to_string().contains("unknown variable"));
+    }
+
+    #[test]
+    fn fs_pattern_rejects_relative_path() {
+        for pattern in [
+            "myapp/config.toml",
+            "./config.toml",
+            "*.toml",
+            "home/${home}",
+        ] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[permissions.filesystem]\nread = [\"/etc/hosts\", \"{pattern}\"]"
+            )))
+            .expect_err(pattern);
+            let message = err.to_string();
+            assert!(message.contains("read[1]"), "{pattern}: {message}");
+            assert!(message.contains("not absolute"), "{pattern}: {message}");
+        }
+    }
+
+    #[test]
+    fn fs_pattern_accepts_absolute_and_variable_anchored_paths() {
+        // The Windows forms are absolute there; zerotier's manifest lists
+        // one next to the macOS and Linux paths.
+        let m = Manifest::parse(&minimal(
+            r#"[permissions.filesystem]
+               read = [
+                   "/etc/hosts",
+                   "${home}/.myapprc",
+                   'C:\ProgramData\MyApp\config.toml',
+                   "d:/data/myapp.json",
+               ]"#,
+        ))
+        .expect("should parse");
+        assert_eq!(m.permissions.unwrap().filesystem.unwrap().read.len(), 4);
     }
 
     #[test]
