@@ -91,6 +91,14 @@ fn detect_url(query: &str) -> Option<DetectedUrl> {
         }
     }
 
+    // An `@` before the path would make the text before it userinfo,
+    // which turns an email address into a URL for its mail domain. A
+    // typed URL with credentials takes the explicit-scheme path above.
+    let authority = trimmed.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.contains('@') {
+        return None;
+    }
+
     let candidate = format!("https://{trimmed}");
     let parsed = url::Url::parse(&candidate).ok()?;
     let host = parsed.host_str()?;
@@ -309,6 +317,30 @@ mod tests {
         // `addr` strips the trailing dot before parsing, so this
         // collapses to the same case as `bare_suffix_alone_rejected`.
         assert!(detect_url("google.").is_none());
+    }
+
+    // Without a scheme, text before `@` would become userinfo, so an
+    // email address would turn into an "Open https://…" result for its
+    // mail domain.
+    #[test]
+    fn bare_email_address_rejected() {
+        assert!(detect_url("jane.doe@gmail.com").is_none());
+        assert!(detect_url("jane:secret@example.com").is_none());
+        assert!(detect_url("@example.com/path").is_none());
+    }
+
+    #[test]
+    fn explicit_scheme_with_userinfo_kept() {
+        let result = detect_url("https://user:pass@example.com").unwrap();
+        assert_eq!(result.domain, "example.com");
+        assert!(result.has_explicit_scheme);
+    }
+
+    #[test]
+    fn bare_domain_with_at_in_path_kept() {
+        let result = detect_url("medium.com/@jane").unwrap();
+        assert_eq!(result.domain, "medium.com");
+        assert_eq!(result.full_url, "https://medium.com/@jane");
     }
 
     #[test]

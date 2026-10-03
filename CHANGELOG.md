@@ -94,6 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an entry that is no URL scheme, such as `""` or `"https://"`, fails
   to load with an error naming the entry. Before, the entry loaded and
   never matched a URL.
+- Typing or pasting an email address such as `jane.doe@gmail.com` no
+  longer offers "Open https://jane.doe@gmail.com" as a result.
 
 ## [0.13.0] - 2026-09-25
 
