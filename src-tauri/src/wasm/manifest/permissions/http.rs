@@ -73,6 +73,21 @@ impl HttpPermissionsDef {
                         "`[permissions.http]` origin `{origin}` is not a valid URL: {e}"
                     )
                 })?;
+                // An opaque origin (`file:`, `data:`, ...) serializes as
+                // `null`, and a path would drop silently. Grants are per
+                // scheme, host and port only.
+                if !parsed.origin().is_tuple() {
+                    anyhow::bail!(
+                        "`[permissions.http]` origin `{origin}` has no scheme and host; \
+                         write an origin such as `https://api.example.com`"
+                    );
+                }
+                if parsed.path() != "/" || parsed.query().is_some() || parsed.fragment().is_some() {
+                    anyhow::bail!(
+                        "`[permissions.http]` origin `{origin}` has a path, query or fragment; \
+                         an origin grants its whole host, so write only scheme, host and port"
+                    );
+                }
                 Ok(parsed.origin().ascii_serialization())
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -182,6 +197,54 @@ mod tests {
         .expect("should parse");
         let origins = m.permissions.unwrap().http.unwrap().origins;
         assert_eq!(origins[0], "*");
+    }
+
+    fn parse_origins(origins: &str) -> anyhow::Result<Vec<String>> {
+        let m = Manifest::parse(&minimal(&format!(
+            "[permissions.http]\norigins = {origins}"
+        )))?;
+        Ok(m.permissions.unwrap().http.unwrap().origins)
+    }
+
+    // A non-tuple scheme has an opaque origin, which serializes as
+    // `null`. Storing that would keep a grant nobody wrote.
+    #[test]
+    fn reject_origin_without_host() {
+        for origin in [
+            "file:///etc",
+            "data:text/plain,hi",
+            "mailto:jane@example.com",
+        ] {
+            let err = parse_origins(&format!(r#"["https://example.com", "{origin}"]"#))
+                .expect_err(origin);
+            let msg = err.to_string();
+            assert!(msg.contains(origin), "{origin}: {msg}");
+            assert!(msg.contains("scheme and host"), "{origin}: {msg}");
+        }
+    }
+
+    // Grants are per origin. A path would read as narrowing the grant
+    // while the whole host is granted.
+    #[test]
+    fn reject_origin_with_path_query_or_fragment() {
+        for origin in [
+            "https://api.example.com/v1/only",
+            "https://api.example.com/?key=1",
+            "https://api.example.com/#top",
+        ] {
+            let err = parse_origins(&format!(r#"["{origin}"]"#)).expect_err(origin);
+            let msg = err.to_string();
+            assert!(msg.contains(origin), "{origin}: {msg}");
+            assert!(msg.contains("path, query or fragment"), "{origin}: {msg}");
+        }
+    }
+
+    #[test]
+    fn accept_origin_with_port_and_loopback() {
+        assert_eq!(
+            parse_origins(r#"["http://127.0.0.1:9993", "https://example.com/"]"#).unwrap(),
+            vec!["http://127.0.0.1:9993", "https://example.com"]
+        );
     }
 
     #[test]

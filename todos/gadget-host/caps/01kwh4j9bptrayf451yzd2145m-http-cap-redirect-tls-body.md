@@ -199,9 +199,9 @@ error — map those to `PermissionDenied` (or a new redirect-blocked
 variant) so the guest gets an accurate signal.
 
 ## Caveats / cross-references
-- Opaque-origin and path-dropping normalization gaps are tracked in
-  `../host-wasm/01kwfz4kkaq7spwnm2ncket1ga-http-origin-opaque-and-path.md`;
-  #2's IP guard is orthogonal and does not fix those.
+- Manifest parsing rejects opaque origins (`file:`, `data:`, ...) and
+  origins with a path, query or fragment, so every stored origin is a
+  scheme, host and port.
 - The website-metadata fetch path
   (`network/website_metadata/fetch.rs`) shares the same `Http` wrapper
   and fetches HTML-derived favicon URLs (its own SSRF finding:

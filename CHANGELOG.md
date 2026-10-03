@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never matched a URL.
 - Typing or pasting an email address such as `jane.doe@gmail.com` no
   longer offers "Open https://jane.doe@gmail.com" as a result.
+- A gadget manifest whose `[permissions.http]` `origins` list holds an
+  origin without a host, such as `file:///etc`, or with a path, query
+  or fragment, such as `https://api.example.com/v1`, fails to load with
+  an error naming it. Before, the first became the meaningless origin
+  `null` and the second silently granted the whole host.
 
 ## [0.13.0] - 2026-09-25
 
