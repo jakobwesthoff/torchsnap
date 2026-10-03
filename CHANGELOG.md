@@ -76,6 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the meantime fails with "gadget is disabled". Before, the call
   reached the turned-off gadget and failed with whatever error its
   torn-down state produced.
+- A gadget manifest whose `[permissions.opener]` `schemes` list holds
+  an entry that is no URL scheme, such as `""` or `"https://"`, fails
+  to load with an error naming the entry. Before, the entry loaded and
+  never matched a URL.
 
 ## [0.13.0] - 2026-09-25
 

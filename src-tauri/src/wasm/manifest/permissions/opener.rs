@@ -61,8 +61,11 @@ impl From<OpenerPermissionsDef> for crate::caps::CapRequest {
 
 impl OpenerPermissionsDef {
     /// Reject an opener section declared without granting any
-    /// capability (no schemes, both booleans `false`).
-    pub(super) fn validate(self) -> anyhow::Result<Self> {
+    /// capability (no schemes, both booleans `false`), and
+    /// reject schemes outside the RFC 3986 grammar. Schemes are
+    /// case-insensitive, so they are stored lowercase and once
+    /// each.
+    pub(super) fn validate(mut self) -> anyhow::Result<Self> {
         let any_capability = !self.schemes.is_empty() || self.open_path || self.reveal_path;
         if !any_capability {
             anyhow::bail!(
@@ -70,14 +73,39 @@ impl OpenerPermissionsDef {
                  add at least one scheme or set `open-path` / `reveal-path` to `true`"
             );
         }
+
+        let mut schemes: Vec<String> = Vec::with_capacity(self.schemes.len());
+        for (index, scheme) in self.schemes.iter().enumerate() {
+            if scheme != "*" && !is_url_scheme(scheme) {
+                anyhow::bail!(
+                    "`[permissions.opener]` schemes[{index}]: `{scheme}` is not a valid URL \
+                     scheme; write the bare name, such as `https`, or `*` for any scheme"
+                );
+            }
+            let scheme = scheme.to_ascii_lowercase();
+            if !schemes.contains(&scheme) {
+                schemes.push(scheme);
+            }
+        }
+        self.schemes = schemes;
+
         Ok(self)
     }
+}
+
+/// RFC 3986: `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`.
+fn is_url_scheme(scheme: &str) -> bool {
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::caps::{CapRequest, OpenerPermissions};
+    use crate::wasm::manifest::Manifest;
+    use crate::wasm::manifest::test_helpers::minimal;
 
     #[test]
     fn into_opener_permissions_maps_all_fields() {
@@ -118,6 +146,54 @@ mod tests {
                 assert!(permissions.open_path);
             }
             _ => panic!("expected Opener variant"),
+        }
+    }
+
+    // ─── Scheme validation ──────────────────────────────────
+
+    fn parse_schemes(schemes: &str) -> anyhow::Result<Vec<String>> {
+        let manifest = Manifest::parse(&minimal(&format!(
+            "[permissions.opener]\nschemes = {schemes}"
+        )))?;
+        Ok(manifest
+            .permissions
+            .expect("permissions")
+            .opener
+            .expect("opener")
+            .schemes)
+    }
+
+    #[test]
+    fn schemes_are_lowercased_and_deduplicated() {
+        let schemes =
+            parse_schemes(r#"["HTTPS", "http", "https", "Mailto", "x-my.app+v2"]"#).expect("parse");
+        assert_eq!(schemes, vec!["https", "http", "mailto", "x-my.app+v2"]);
+    }
+
+    #[test]
+    fn wildcard_scheme_is_kept() {
+        assert_eq!(parse_schemes(r#"["*"]"#).expect("parse"), vec!["*"]);
+    }
+
+    #[test]
+    fn malformed_schemes_are_rejected() {
+        for bad in [
+            "",
+            "https://",
+            "https:",
+            " https",
+            "ht tps",
+            "1password",
+            "-x",
+            "*https",
+        ] {
+            let err = parse_schemes(&format!(r#"["https", "{bad}"]"#)).expect_err(bad);
+            let message = err.to_string();
+            assert!(message.contains("schemes[1]"), "{bad:?}: {message}");
+            assert!(
+                message.contains("not a valid URL scheme"),
+                "{bad:?}: {message}"
+            );
         }
     }
 }

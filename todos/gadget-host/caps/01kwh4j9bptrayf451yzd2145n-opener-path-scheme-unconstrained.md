@@ -144,10 +144,8 @@ application." Apply the same root list to `reveal_path` to honour ADR
   opener author knows which schemes it opens, and `*` provides little
   legitimate value while silently defeating the allowlist ADR 0037
   designed.
-- Fold in the sibling scheme-normalization fix
-  (`01kwfz4kkaq7spwnm2ncket1gb-opener-schemes-unvalidated.md`):
-  lowercase-normalize and validate scheme grammar (RFC 3986) at parse
-  so the runtime check is plain equality.
+- Manifest parsing already validates the scheme grammar (RFC 3986)
+  and lowercases schemes, so the runtime check can be plain equality.
 
 Least-surprising secure design: root-scoped `open-path`/`reveal-path`
 (list form, reusing the fs matcher) + `open_url` requiring parseable
@@ -192,8 +190,6 @@ model.
   correct)
 
 ## Related
-- Scheme normalization/validation at manifest parse:
-  `01kwfz4kkaq7spwnm2ncket1gb-opener-schemes-unvalidated.md`.
 - The app-launcher proxy (reaches `open_path` with no opener grant,
   but entry-store-gated):
   `../platform/01kwh4j9bptrayf451yzd2145r-app-launcher-forged-entry-id.md`.
