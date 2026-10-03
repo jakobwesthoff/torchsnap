@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,10 +12,16 @@ import { GeneralSection } from "./GeneralSection";
 const openUrl = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
-vi.mock("@tauri-apps/plugin-autostart", () => ({
-  enable: vi.fn(),
-  disable: vi.fn(),
+const autostart = vi.hoisted(() => ({
+  enable: vi.fn(() => Promise.resolve()),
+  disable: vi.fn(() => Promise.resolve()),
   isEnabled: vi.fn(() => Promise.resolve(false)),
+}));
+vi.mock("@tauri-apps/plugin-autostart", () => autostart);
+
+const logError = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/logger", () => ({
+  createLogger: () => ({ error: logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
 }));
 
 const SETTINGS: Record<string, unknown> = {
@@ -30,7 +36,97 @@ vi.mock("../../hooks/useSetting", () => ({
 }));
 
 describe("GeneralSection", () => {
-  beforeEach(() => openUrl.mockClear());
+  beforeEach(() => {
+    openUrl.mockClear();
+    logError.mockClear();
+    autostart.enable.mockReset().mockResolvedValue(undefined);
+    autostart.disable.mockReset().mockResolvedValue(undefined);
+    autostart.isEnabled.mockReset().mockResolvedValue(false);
+  });
+
+  function launchAtLogin(): HTMLElement {
+    return screen.getByRole("switch", { name: "Launch at login" });
+  }
+
+  function mockBuildInfo() {
+    mockCommands({
+      build_info: () => ({ version: "0.12.0", gitHash: "abc1234" }),
+      shortcut_problems: () => ({}),
+    });
+  }
+
+  it("shows the autostart state and turns it on", async () => {
+    mockBuildInfo();
+    render(<GeneralSection />);
+    await waitFor(() => expect(launchAtLogin()).toBeEnabled());
+    expect(launchAtLogin()).toHaveAttribute("aria-checked", "false");
+
+    await userEvent.click(launchAtLogin());
+
+    expect(autostart.enable).toHaveBeenCalledOnce();
+    expect(launchAtLogin()).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("turns autostart off", async () => {
+    autostart.isEnabled.mockResolvedValue(true);
+    mockBuildInfo();
+    render(<GeneralSection />);
+    await waitFor(() => expect(launchAtLogin()).toHaveAttribute("aria-checked", "true"));
+
+    await userEvent.click(launchAtLogin());
+
+    expect(autostart.disable).toHaveBeenCalledOnce();
+    expect(launchAtLogin()).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("enables the switch and logs when the autostart state cannot be read", async () => {
+    autostart.isEnabled.mockRejectedValue(new Error("plugin not registered"));
+    mockBuildInfo();
+    render(<GeneralSection />);
+
+    await waitFor(() => expect(launchAtLogin()).toBeEnabled());
+    expect(launchAtLogin()).toHaveAttribute("aria-checked", "false");
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining("plugin not registered"));
+  });
+
+  it("reverts the switch and logs when turning autostart on fails", async () => {
+    autostart.enable.mockRejectedValue(new Error("denied"));
+    mockBuildInfo();
+    render(<GeneralSection />);
+    await waitFor(() => expect(launchAtLogin()).toBeEnabled());
+
+    await userEvent.click(launchAtLogin());
+
+    await waitFor(() => expect(launchAtLogin()).toHaveAttribute("aria-checked", "false"));
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining("denied"));
+  });
+
+  it("reverts the switch and logs when turning autostart off fails", async () => {
+    autostart.isEnabled.mockResolvedValue(true);
+    autostart.disable.mockRejectedValue(new Error("denied"));
+    mockBuildInfo();
+    render(<GeneralSection />);
+    await waitFor(() => expect(launchAtLogin()).toHaveAttribute("aria-checked", "true"));
+
+    await userEvent.click(launchAtLogin());
+
+    await waitFor(() => expect(launchAtLogin()).toHaveAttribute("aria-checked", "true"));
+    expect(autostart.disable).toHaveBeenCalledOnce();
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining("denied"));
+  });
+
+  it("shows no build line and logs when the build info fails", async () => {
+    mockCommands({
+      build_info: () => Promise.reject("backend gone"),
+      shortcut_problems: () => ({}),
+    });
+    render(<GeneralSection />);
+
+    await waitFor(() =>
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining("backend gone")),
+    );
+    expect(screen.queryByText(/^Build:/)).not.toBeInTheDocument();
+  });
 
   it("has the updates section between startup and advanced", async () => {
     mockCommands({

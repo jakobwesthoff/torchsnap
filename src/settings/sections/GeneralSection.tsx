@@ -7,6 +7,7 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSetting } from "../../hooks/useSetting";
 import { command } from "../../lib/command";
+import { createLogger } from "../../lib/logger";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { Entry } from "../Entry";
@@ -16,6 +17,8 @@ import { UpdatesSection } from "../UpdatesSection";
 import { SnappyEmblem } from "../../components/SnappyEmblem";
 
 const WEBSITE = "https://torchsnap.app/";
+
+const logger = createLogger("settings");
 
 export function GeneralSection() {
   const [globalShortcut, setGlobalShortcut] = useSetting<string>("globalShortcut");
@@ -27,22 +30,33 @@ export function GeneralSection() {
   const [buildInfo, setBuildInfo] = useState<{ version: string; gitHash: string } | null>(null);
 
   useEffect(() => {
-    command("build_info").then(setBuildInfo);
+    command("build_info")
+      .then(setBuildInfo)
+      .catch((e: unknown) => logger.error(`reading build info failed: ${String(e)}`));
   }, []);
 
+  // When the autostart state cannot be read, the switch starts off and
+  // stays usable, so the user can still turn launching at login on.
   useEffect(() => {
-    isEnabled().then((enabled) => {
-      setLaunchAtLogin(enabled);
-      setAutoStartLoading(false);
-    });
+    isEnabled()
+      .then(setLaunchAtLogin)
+      .catch((e: unknown) => logger.error(`reading launch at login failed: ${String(e)}`))
+      .finally(() => setAutoStartLoading(false));
   }, []);
 
+  // The switch moves at once and moves back when the change fails, so
+  // it never shows a state the system does not have.
   const handleLaunchAtLoginChange = async (checked: boolean) => {
     setLaunchAtLogin(checked);
-    if (checked) {
-      await enable();
-    } else {
-      await disable();
+    try {
+      if (checked) {
+        await enable();
+      } else {
+        await disable();
+      }
+    } catch (e) {
+      setLaunchAtLogin(!checked);
+      logger.error(`changing launch at login failed: ${String(e)}`);
     }
   };
 
