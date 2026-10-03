@@ -60,7 +60,7 @@ pub fn register_gadget_protocol<R: tauri::Runtime>(
             // Spawn blocking because GadgetSource::read_file may
             // hold a Mutex (ArchiveSource) and do file I/O.
             std::thread::spawn(move || {
-                let response = handle_request(&registry, &request);
+                let response = respond_to(&registry, &request);
                 responder.respond(response);
             });
         },
@@ -71,35 +71,64 @@ pub fn register_gadget_protocol<R: tauri::Runtime>(
 // Request Handler
 // =========================================================
 
+/// The response for one asset request. The responder answers only
+/// once this returns, so a panic while serving becomes a 500 rather
+/// than a request the webview waits on forever.
+fn respond_to(
+    registry: &GadgetSourceRegistry,
+    request: &http::Request<Vec<u8>>,
+) -> http::Response<Vec<u8>> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_request(registry, request)
+    }))
+    .unwrap_or_else(|_| {
+        error_response(
+            request,
+            500,
+            "serving the gadget asset panicked".to_string(),
+        )
+    })
+}
+
 /// Parse the request, look up the gadget source, read the
 /// file, and build the HTTP response.
 fn handle_request(
     registry: &GadgetSourceRegistry,
     request: &http::Request<Vec<u8>>,
 ) -> http::Response<Vec<u8>> {
-    // Extract the origin for CORS. Echo the request's Origin
-    // header so it works in both dev (http://localhost:1420)
-    // and prod (tauri://localhost, https://tauri.localhost).
-    let origin = request
-        .headers()
-        .get("Origin")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("*");
-
     match serve_gadget_asset(registry, request) {
         Ok((body, content_type)) => http::Response::builder()
             .status(200)
             .header("Content-Type", content_type)
-            .header("Access-Control-Allow-Origin", origin)
+            .header("Access-Control-Allow-Origin", cors_origin(request))
             .body(body)
             .expect("valid response"),
-        Err(ErrorResponse { status, message }) => http::Response::builder()
-            .status(status)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .header("Access-Control-Allow-Origin", origin)
-            .body(message.into_bytes())
-            .expect("valid error response"),
+        Err(ErrorResponse { status, message }) => error_response(request, status, message),
     }
+}
+
+/// Echo the request's Origin header so CORS works in both dev
+/// (http://localhost:1420) and prod (tauri://localhost,
+/// https://tauri.localhost).
+fn cors_origin(request: &http::Request<Vec<u8>>) -> &str {
+    request
+        .headers()
+        .get("Origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("*")
+}
+
+fn error_response(
+    request: &http::Request<Vec<u8>>,
+    status: u16,
+    message: String,
+) -> http::Response<Vec<u8>> {
+    http::Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .header("Access-Control-Allow-Origin", cors_origin(request))
+        .body(message.into_bytes())
+        .expect("valid error response")
 }
 
 struct ErrorResponse {
@@ -151,7 +180,10 @@ fn serve_gadget_asset(
     let file_path = file_path.as_ref();
 
     // Look up the gadget source.
-    let sources = registry.read().expect("registry not poisoned");
+    let sources = registry.read().map_err(|_| ErrorResponse {
+        status: 500,
+        message: "gadget registry is unavailable after a panic".to_string(),
+    })?;
     let source = sources.get(gadget_id).ok_or_else(|| ErrorResponse {
         status: 404,
         message: format!("unknown gadget: {gadget_id}"),
@@ -811,6 +843,71 @@ mod tests {
             String::from_utf8_lossy(response.body()).contains("unknown gadget"),
             "{}",
             String::from_utf8_lossy(response.body())
+        );
+    }
+
+    // =====================================================
+    // Panics
+    //
+    // The responder only answers at the end of the request
+    // thread. A panic before that would leave the webview's
+    // request hanging, so every failure becomes a 500.
+    // =====================================================
+
+    #[test]
+    fn poisoned_registry_answers_500() {
+        let registry = test_registry(HashMap::new());
+        let poisoner = Arc::clone(&registry);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.write().expect("lock");
+            panic!("poison the registry");
+        })
+        .join();
+        assert!(registry.is_poisoned());
+
+        let response = respond_to(
+            &registry,
+            &make_request("/test-gadget/frontend/launcher.js"),
+        );
+        assert_eq!(response.status(), 500);
+    }
+
+    struct PanickingSource(Manifest);
+
+    impl GadgetSource for PanickingSource {
+        fn manifest(&self) -> &Manifest {
+            &self.0
+        }
+        fn read_file(&self, _path: &str) -> anyhow::Result<Vec<u8>> {
+            panic!("source state corrupted")
+        }
+        fn file_exists(&self, _path: &str) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        fn root_path(&self) -> &std::path::Path {
+            std::path::Path::new("/")
+        }
+    }
+
+    #[test]
+    fn panicking_source_answers_500() {
+        let registry = new_registry();
+        registry.write().expect("lock").insert(
+            "test-gadget".to_string(),
+            Arc::new(PanickingSource(test_manifest())),
+        );
+
+        let response = respond_to(
+            &registry,
+            &make_request("/test-gadget/frontend/launcher.js"),
+        );
+        assert_eq!(response.status(), 500);
+        assert_eq!(
+            response
+                .headers()
+                .get("Access-Control-Allow-Origin")
+                .unwrap(),
+            "tauri://localhost"
         );
     }
 

@@ -119,6 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening an entry's settings, or an action that runs nothing because
   its entry or slot is gone, no longer counts as using the entry, so
   it no longer raises the entry's ranking.
+- A gadget frontend file request that hits an internal error answers
+  with status 500. Before, the request never finished.
 
 ## [0.13.0] - 2026-09-25
 
