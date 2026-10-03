@@ -207,7 +207,8 @@ carries one Apple silicon DMG named `Torchsnap.dmg` (ADR 0048).
   every installed app from updates.
 
 - The GitHub CLI `gh`, logged in with push access to this repository
-  and allowed to start workflows in `jakobwesthoff/torchsnap-web`.
+  and allowed to start workflows in `jakobwesthoff/torchsnap-web` and
+  `jakobwesthoff/homebrew-tap`.
 
 ### Making a release
 
@@ -247,13 +248,17 @@ The steps run in this order; each one checks what the earlier ones left.
    GitHub Pages sends it with `cache-control: max-age=600`, so installed
    apps and the check may see the previous file for up to ten minutes.
    Installed apps offer the update from then on.
+8. Merge the cask bump in `jakobwesthoff/homebrew-tap`. The tap's daily
+   bump opens a pull request that sets the Torchsnap cask to the new
+   version; `gh workflow run autobump.yml -R jakobwesthoff/homebrew-tap`
+   opens it right away. Merge it on GitHub once its tests pass.
 
 A version with a pre-release part, such as `0.10.0-beta.1`, becomes a
 GitHub prerelease and is not marked latest, so the download link on
 torchsnap.app keeps serving the last stable release. `release-publish`
 starts no website deploy for it, so the update feed keeps naming the
 last stable release and installed apps are never offered a prerelease.
-Its CHANGELOG section is left out of the `releases` notes of later
+The cask bump in the Homebrew tap skips it as well. Its CHANGELOG section is left out of the `releases` notes of later
 feeds.
 
 If the build must change, fix it on `main` and run `release-build` again.
