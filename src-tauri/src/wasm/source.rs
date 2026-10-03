@@ -145,7 +145,22 @@ impl DirectorySource {
         let root = root.into();
         let manifest_path = root.join("manifest.toml");
 
-        let toml_source = std::fs::read_to_string(&manifest_path)
+        // Same symlink-target guard as `resolve_inside_root`: the
+        // manifest must resolve inside the root. The root itself may
+        // be a link.
+        let canonical_root = root
+            .canonicalize()
+            .with_context(|| format!("resolving gadget directory {}", root.display()))?;
+        let canonical_manifest = manifest_path
+            .canonicalize()
+            .with_context(|| format!("reading manifest at {}", manifest_path.display()))?;
+        anyhow::ensure!(
+            canonical_manifest.starts_with(&canonical_root),
+            "manifest at {} escapes the gadget directory",
+            manifest_path.display()
+        );
+
+        let toml_source = std::fs::read_to_string(&canonical_manifest)
             .with_context(|| format!("reading manifest at {}", manifest_path.display()))?;
 
         let manifest = Manifest::parse(&toml_source)
@@ -713,6 +728,65 @@ mod tests {
         let source = DirectorySource::open(&root).expect("should open");
         assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
         assert_eq!(source.root_path(), root);
+    }
+
+    // The manifest read gets the same symlink-target guard as every
+    // other read: a `manifest.toml` that links out of the gadget root
+    // would make the host load an outside file as the gadget's
+    // manifest.
+    #[cfg(unix)]
+    #[test]
+    fn reject_manifest_symlinked_out_of_root() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let root = dir.path().join("gadget");
+        let outside = dir.path().join("outside.toml");
+        std::fs::create_dir(&root).expect("create gadget dir");
+        std::fs::write(&outside, MINIMAL_MANIFEST).expect("write outside manifest");
+        std::os::unix::fs::symlink(&outside, root.join("manifest.toml")).expect("symlink");
+
+        let err = DirectorySource::open(&root)
+            .err()
+            .expect("manifest escapes the root");
+        assert!(
+            format!("{err:#}").contains("escapes the gadget directory"),
+            "{err:#}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_manifest_symlinked_inside_root() {
+        let (_dir, root) =
+            make_gadget_dir("", &[("real/manifest.toml", MINIMAL_MANIFEST.as_bytes())]);
+        std::fs::remove_file(root.join("manifest.toml")).expect("remove placeholder");
+        std::os::unix::fs::symlink(root.join("real/manifest.toml"), root.join("manifest.toml"))
+            .expect("symlink");
+
+        let source = DirectorySource::open(&root).expect("should open");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
+    }
+
+    // The root itself may be a link, such as a dev gadget linked into
+    // the gadgets directory.
+    #[cfg(unix)]
+    #[test]
+    fn open_root_that_is_a_symlink() {
+        let (dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let link = dir.path().with_extension("link");
+        std::os::unix::fs::symlink(&root, &link).expect("symlink");
+
+        let source = DirectorySource::open(&link).expect("should open");
+        assert_eq!(source.manifest().gadget.id.as_str(), "test-gadget");
+        std::fs::remove_file(&link).expect("remove link");
+    }
+
+    #[test]
+    fn open_reports_missing_manifest() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let err = DirectorySource::open(dir.path())
+            .err()
+            .expect("no manifest");
+        assert!(format!("{err:#}").contains("manifest.toml"), "{err:#}");
     }
 
     #[test]

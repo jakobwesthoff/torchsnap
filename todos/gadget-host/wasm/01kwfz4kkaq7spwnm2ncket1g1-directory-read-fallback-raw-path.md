@@ -176,10 +176,6 @@ be acknowledged rather than silently left.
   spawned binary couldn't read directly). The cwd gap is the
   serious issue and is tracked in
   `../host-core/01kwh4j9bptrayf451yzd2145e-command-cwd-unvalidated.md`.
-- **`DirectorySource::open` reads `manifest.toml` unguarded (new).**
-  `DirectorySource::open` does a raw
-  `std::fs::read_to_string(root.join("manifest.toml"))`
-  (`source.rs:146-149`) with no `validate_gadget_path` /
-  `resolve_inside_root` guard, so a symlinked `manifest.toml` is
-  followed out of root on the next load. Filed separately:
-  `01kwh4j9bptrayf451yzd2145w-directory-source-manifest-symlink-follow.md`.
+- `DirectorySource::open` canonicalizes `manifest.toml` and refuses a
+  manifest that resolves outside the gadget root, the same guard
+  `resolve_inside_root` applies to every other read.
