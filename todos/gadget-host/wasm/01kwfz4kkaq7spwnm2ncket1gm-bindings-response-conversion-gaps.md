@@ -37,9 +37,10 @@ conversion:
    fetch will fail or truncate; nothing runs
    `validate_gadget_path` here (rejection currently relies on
    the source layer at serve time). Percent-encode the path
-   segments when building the URL (interacts with the protocol
-   percent-decoding todo,
-   `01kwfz4kkaq7spwnm2ncket1fv-protocol-no-percent-decoding.md`).
+   segments when building the URL. The asset protocol decodes the
+   file path exactly once (`serve_gadget_asset` in
+   `src-tauri/src/wasm/protocol.rs`), so encode each segment once
+   with the same percent-encoding.
 
 ## Impact
 All three degrade silently: missing custom-UI data, stale-entry

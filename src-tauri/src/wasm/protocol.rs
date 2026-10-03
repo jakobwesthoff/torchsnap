@@ -136,6 +136,20 @@ fn serve_gadget_asset(
         });
     }
 
+    // The webview percent-encodes the URL. Decode the file path
+    // exactly once, after the split, so an encoded `/` can never move
+    // the gadget-id boundary and `%252e` stays the literal `%2e`. The
+    // source's path guard then checks the decoded path. Strict UTF-8
+    // rejects overlong encodings such as `%c0%ae`. Path decoding keeps
+    // `+` as `+`.
+    let file_path = percent_encoding::percent_decode_str(file_path)
+        .decode_utf8()
+        .map_err(|_| ErrorResponse {
+            status: 400,
+            message: format!("file path is not valid UTF-8 after decoding: {file_path}"),
+        })?;
+    let file_path = file_path.as_ref();
+
     // Look up the gadget source.
     let sources = registry.read().expect("registry not poisoned");
     let source = sources.get(gadget_id).ok_or_else(|| ErrorResponse {
@@ -710,6 +724,93 @@ mod tests {
             response.status() == 400 || response.status() == 404,
             "expected 4xx, got {}",
             response.status()
+        );
+    }
+
+    // =====================================================
+    // Percent-encoded paths
+    //
+    // The webview percent-encodes request URLs. The handler
+    // decodes the file path once, after splitting off the
+    // gadget id, and the source's path guard checks the
+    // decoded path.
+    // =====================================================
+
+    fn encoded_registry() -> (tempfile::TempDir, GadgetSourceRegistry) {
+        directory_registry(
+            FRONTEND_MANIFEST,
+            &[
+                ("test.wasm", b"\0asm"),
+                ("frontend/launcher.js", b"//js"),
+                ("frontend/launcher.css", b"/*css*/"),
+                ("assets/my icon.svg", b"<svg/>"),
+                ("assets/caf\u{e9}.txt", b"cafe"),
+                ("assets/100%.txt", b"full"),
+                ("%2e%2e/x", b"literal"),
+            ],
+        )
+    }
+
+    #[test]
+    fn decodes_encoded_file_names() {
+        let (_dir, registry) = encoded_registry();
+        for (path, body) in [
+            ("/frontend-test/assets/my%20icon.svg", &b"<svg/>"[..]),
+            ("/frontend-test/assets/caf%C3%A9.txt", b"cafe"),
+            ("/frontend-test/assets/100%25.txt", b"full"),
+        ] {
+            let response = handle_request(&registry, &make_request(path));
+            assert_eq!(response.status(), 200, "{path}");
+            assert_eq!(response.body(), body, "{path}");
+        }
+    }
+
+    // Decoding happens once: `%252e` becomes the literal `%2e`, which
+    // names a real directory here, and never `..`.
+    #[test]
+    fn decodes_exactly_once() {
+        let (_dir, registry) = encoded_registry();
+        let response = handle_request(&registry, &make_request("/frontend-test/%252e%252e/x"));
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.body(), b"literal");
+    }
+
+    #[test]
+    fn rejects_encoded_traversal_and_control_characters() {
+        let (_dir, registry) = encoded_registry();
+        for path in [
+            "/frontend-test/%2e%2e/%2e%2e/etc/passwd",
+            "/frontend-test/..%2Fsecret",
+            "/frontend-test/assets/..%2F..%2F..%2Fetc%2Fpasswd",
+            "/frontend-test/%00x",
+            "/frontend-test/foo%5Cbar",
+        ] {
+            let response = handle_request(&registry, &make_request(path));
+            assert_eq!(response.status(), 404, "{path}");
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_utf8_after_decoding() {
+        let (_dir, registry) = encoded_registry();
+        let response = handle_request(&registry, &make_request("/frontend-test/%c0%ae%c0%ae"));
+        assert_eq!(response.status(), 400);
+    }
+
+    // The gadget id is split off before decoding, so an encoded `/`
+    // stays part of the id and never moves the boundary.
+    #[test]
+    fn splits_before_decoding() {
+        let (_dir, registry) = encoded_registry();
+        let response = handle_request(
+            &registry,
+            &make_request("/frontend-test%2Ffrontend/launcher.js"),
+        );
+        assert_eq!(response.status(), 404);
+        assert!(
+            String::from_utf8_lossy(response.body()).contains("unknown gadget"),
+            "{}",
+            String::from_utf8_lossy(response.body())
         );
     }
 

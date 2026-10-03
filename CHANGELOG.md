@@ -107,6 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A gadget directory whose `manifest.toml` is a symlink to a file
   outside the directory fails to load. Before, the host read the
   outside file as the gadget's manifest.
+- Gadget frontend files whose names contain spaces, `%` or non-ASCII
+  characters load. Before, the request failed with "file not found".
 
 ## [0.13.0] - 2026-09-25
 
