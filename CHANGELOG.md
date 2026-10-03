@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A search match on an emoji, a flag or an accented letter built from a
   combining mark highlights the whole character. Before, the launcher
   showed `�` in its place.
+- The tree view of the devtools console shows the end of a span whose
+  start has left the log buffer, with its duration, as a top-level row.
+  Before, it hid that row while the flat view showed it.
 
 ## [0.13.0] - 2026-09-25
 

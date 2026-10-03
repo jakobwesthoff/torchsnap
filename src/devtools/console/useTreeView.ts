@@ -83,6 +83,11 @@ function buildTree(items: LogItem[]): TreeBuildResult {
       if (node) {
         node.spanEnd = item;
         node.inProgress = false;
+      } else {
+        // The start was evicted from the ring buffer or never reached
+        // this window. The end still carries the span's duration, so
+        // it shows as a root row, like an orphan message.
+        rootChildren.push({ kind: "item", item });
       }
     } else {
       // Regular message — group under its span if one exists.
