@@ -48,7 +48,7 @@
     "boxLeft": 0.0371
   },
   "air-guitar-phone-booth-blond-mane": {
-    "alt": "Snappy tows a historical figure through the booth -- book that launch, dude, it's worth extra credit.",
+    "alt": "Snappy fresh out of the phone booth -- bodacious! Most triumphant launch, dude.",
     "nsfw": false,
     "character": "air-guitar-phone-booth",
     "group": "TimeTravel",
@@ -480,18 +480,6 @@
       "y": 0.962
     },
     "boxLeft": 0.1123
-  },
-  "black-coat-shades-3": {
-    "alt": "Snappy inside the construct -- the agents are very much aware of the launcher.",
-    "nsfw": false,
-    "character": "black-coat-shades",
-    "group": "SciFi",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5348,
-      "y": 0.9091
-    },
-    "boxLeft": 0.1377
   },
   "black-digger-molehill-hello": {
     "alt": "Snappy up out of the dirt -- all it ever wanted was trousers with two big pockets. One for the hotkey, one for the app.",
@@ -977,20 +965,6 @@
     },
     "boxLeft": 0.0762
   },
-  "cape-and-fangs-2": {
-    "alt": "Snappy rising at dusk -- the night is long and there are many apps to launch.",
-    "nsfw": false,
-    "character": "cape-and-fangs",
-    "group": "Horror",
-    "occasions": [
-      "Halloween"
-    ],
-    "groundAnchor": {
-      "x": 0.5141,
-      "y": 0.8941
-    },
-    "boxLeft": 0.041
-  },
   "cardboard-box-infiltrator": {
     "alt": "Snappy frozen under its box -- a guard turns, '!', then shrugs: just a box. Nobody saw the app launch.",
     "nsfw": false,
@@ -1100,7 +1074,7 @@
     "boxLeft": 0.0469
   },
   "christmas-thief-santa-sack": {
-    "alt": "Snappy pausing mid-heist with a sly grin -- you're a mean one, but never too mean to launch.",
+    "alt": "Snappy in a homemade Santa hat, sack on its back -- tie an antler on the dog, and every hotkey is bagged by dawn.",
     "nsfw": false,
     "character": "christmas-thief-green-fur",
     "group": "Christmas",
@@ -1172,28 +1146,28 @@
     "boxLeft": 0.0586
   },
   "chrome-centurion": {
-    "alt": "Snappy as a chrome centurion with a sweeping red eye -- by your command, the app will launch.",
+    "alt": "Snappy with a red light sweeping across its brow -- it has a plan. Nobody ever wrote it down, but it ends in a hotkey.",
     "nsfw": false,
     "character": "chrome-centurion",
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5769,
+      "x": 0.5626,
       "y": 0.9123
     },
-    "boxLeft": 0.1436
+    "boxLeft": 0.1377
   },
   "chrome-centurion-nsfw": {
-    "alt": "Snappy as a red-eyed toaster packing heat -- all of this has launched before, and all of it will launch again.",
+    "alt": "Snappy as a chrome toaster packing heat -- all of this has launched before, and all of it will launch again.",
     "nsfw": true,
     "character": "chrome-centurion",
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5015,
+      "x": 0.4929,
       "y": 0.9092
     },
-    "boxLeft": 0.0713
+    "boxLeft": 0.0791
   },
   "chrome-officer-visor": {
     "alt": "Snappy on Detroit patrol -- serve, protect, launch. Prime directive.",
@@ -1292,7 +1266,7 @@
     "boxLeft": 0.1133
   },
   "clues-were-elementary-nsfw": {
-    "alt": "Snappy taps the unlit pipe thoughtfully -- the curious thing was the dog barking. Or not barking, not even once, before this launch.",
+    "alt": "Snappy peering through the magnifier, pipe smoking -- the curious incident was the dog that did not bark before this launch.",
     "nsfw": true,
     "character": "clues-were-elementary",
     "group": "Detectives",
@@ -1808,16 +1782,16 @@
     "boxLeft": 0.1133
   },
   "exiled-duke-ogre-sidekick": {
-    "alt": "Snappy plotting with its ogre sidekick -- yes, sire! One hotkey, and the castle is ours.",
+    "alt": "Snappy plotting with its tusked little sidekick -- yes, your Dukiness! One hotkey, and the castle is ours.",
     "nsfw": false,
     "character": "exiled-duke-ogre-army",
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.498,
+      "x": 0.4148,
       "y": 0.9062
     },
-    "boxLeft": 0.1162
+    "boxLeft": 0.1289
   },
   "explorer-cartographer": {
     "alt": "Snappy unrolling the map by torchlight -- here be dragons. And here, one hotkey in, be the app.",
@@ -2024,7 +1998,7 @@
     "boxLeft": 0.0342
   },
   "flame-paladin-nsfw": {
-    "alt": "Snappy, sword ablaze and shield up -- Deus vult! The crusade against clicking starts with one hotkey.",
+    "alt": "Snappy, sword ablaze and shield up -- for the realm! The war on clicking starts with one hotkey.",
     "nsfw": true,
     "character": "flame-paladin",
     "group": "Fantasy",
@@ -2240,16 +2214,16 @@
     "boxLeft": 0.0234
   },
   "four-armed-arena-champion": {
-    "alt": "Snappy flexing all four arms -- undefeated for five hundred years, and nobody has closed its launcher yet.",
+    "alt": "Snappy flexing all four arms, two of them stuffed -- undefeated for five hundred years, and nobody has closed its launcher yet.",
     "nsfw": false,
     "character": "four-armed-arena-champion",
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5307,
+      "x": 0.5328,
       "y": 0.9629
     },
-    "boxLeft": 0.0723
+    "boxLeft": 0.0537
   },
   "four-metal-tentacle-scientist": {
     "alt": "Snappy with four hose arms -- the power of the sun in the palm of its wing, and it still needs only one hotkey.",
@@ -2894,7 +2868,7 @@
     "boxLeft": 0.1592
   },
   "half-white-mask-opera-cape": {
-    "alt": "Snappy with a rose and a sweeping cape -- the launcher of the opera is there, inside your mind.",
+    "alt": "Snappy with a rose for the leading lady -- keep box five free, or the chandelier comes down faster than any app comes up.",
     "nsfw": false,
     "character": "half-white-mask-opera-cape",
     "group": "Horror",
@@ -2932,7 +2906,7 @@
     "boxLeft": 0.127
   },
   "hawaiian-shirt-quiff-animal-sleuth": {
-    "alt": "Snappy, with a parrot on its head -- the hotkey fits laaaike a glove! Alrighty then, app launched.",
+    "alt": "Snappy, with a parrot on its shoulder -- the hotkey fits laaaike a glove! Alrighty then, app launched.",
     "nsfw": false,
     "character": "hawaiian-shirt-quiff-animal-sleuth",
     "group": "Detectives",
@@ -3186,10 +3160,10 @@
     "group": "Detectives",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5292,
-      "y": 0.9629
+      "x": 0.4538,
+      "y": 0.94
     },
-    "boxLeft": 0.0459
+    "boxLeft": 0.0781
   },
   "ice-hockey-goalie-camp-mask": {
     "alt": "Snappy in goal, mask on -- ki ki ki, ma ma ma... launch! Every shot at summer camp saved.",
@@ -3236,10 +3210,10 @@
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5163,
-      "y": 0.9659
+      "x": 0.5136,
+      "y": 0.8963
     },
-    "boxLeft": 0.0303
+    "boxLeft": 0.1006
   },
   "inkblot-mask-trench": {
     "alt": "Snappy's journal, October 12th -- the apps will look up and shout 'launch us!', and it will whisper 'use the hotkey.'",
@@ -3398,7 +3372,7 @@
     "boxLeft": 0.1152
   },
   "late-pocket-watch-rabbit": {
-    "alt": "Snappy dashing off, watch in wing -- it's late, it's late, for a very important launch! No time to say hello, goodbye.",
+    "alt": "Snappy dashing past, watch in wing -- oh dear! Oh dear! This owl shall be late! Good thing the hotkey never is.",
     "nsfw": false,
     "character": "late-pocket-watch-rabbit",
     "group": "Fantasy",
@@ -3498,16 +3472,16 @@
     "boxLeft": 0.2139
   },
   "lightbulb-helper-inventor": {
-    "alt": "Snappy with the lightbulb assistant on its shoulder -- the little helper has an idea. It lights up. The app launches.",
+    "alt": "Snappy, tin owl assistant on its shoulder -- the bulb flickers on, the gadget sparks: this invention actually launches apps.",
     "nsfw": false,
     "character": "lightbulb-helper-inventor",
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4856,
+      "x": 0.4764,
       "y": 0.9121
     },
-    "boxLeft": 0.082
+    "boxLeft": 0.0928
   },
   "lightning-bolt-scarlet-2": {
     "alt": "Snappy mid-stride -- to the outside world, an ordinary forensic scientist. Secretly, it launches apps faster than you can blink.",
@@ -3855,22 +3829,10 @@
     },
     "boxLeft": 0.1377
   },
-  "nakatomi-ho-ho-ho": {
-    "alt": "Snappy barefoot on the carpet after a long flight -- make fists with your toes, then press the hotkey.",
-    "nsfw": false,
-    "character": "nakatomi-ho-ho-ho",
-    "group": "Christmas",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5233,
-      "y": 0.9629
-    },
-    "boxLeft": 0.1064
-  },
   "nakatomi-ho-ho-ho-2": {
     "alt": "Snappy squeezing through the air vent, lighter in beak -- now it knows what a TV dinner feels like. The app is already warm.",
     "nsfw": false,
-    "character": "nakatomi-ho-ho-ho",
+    "character": "nakatomi-ho-ho-ho-2",
     "group": "Christmas",
     "occasions": [],
     "groundAnchor": {
@@ -3878,18 +3840,6 @@
       "y": 0.9893
     },
     "boxLeft": 0.0957
-  },
-  "nakatomi-ho-ho-ho-3": {
-    "alt": "Snappy spoiling a very expensive heist -- yippee-ki-yay, launcher.",
-    "nsfw": false,
-    "character": "nakatomi-ho-ho-ho",
-    "group": "Christmas",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5134,
-      "y": 0.9658
-    },
-    "boxLeft": 0.0664
   },
   "newyear-champagne-pop": {
     "alt": "Snappy popping the cork at midnight -- the first launch of the year always goes off with a bang.",
@@ -4772,7 +4722,7 @@
     "boxLeft": 0.0664
   },
   "pumpkin-head-under-arm-rider": {
-    "alt": "Snappy with its own head tucked under a wing -- the hessian rides again, hunting for a lost head and a free hotkey.",
+    "alt": "Snappy with a carved pumpkin where a head should be -- the Hessian rides again, and the hotkey is all the head it needs.",
     "nsfw": false,
     "character": "pumpkin-head-hobby-horse-rider",
     "group": "Halloween",
@@ -4784,7 +4734,7 @@
     "boxLeft": 0.0166
   },
   "pumpkin-head-under-arm-rider-nsfw": {
-    "alt": "Snappy raising a sabre, pumpkin under a wing -- run for the covered bridge all you like, the pumpkin launches first.",
+    "alt": "Snappy, sabre high and pumpkin aglow -- a cannonball took its head, so a pumpkin lights the way to every launch.",
     "nsfw": true,
     "character": "pumpkin-head-hobby-horse-rider",
     "group": "Halloween",
@@ -4892,7 +4842,7 @@
     "boxLeft": 0.1348
   },
   "purple-ogre-metal-helmet-footsoldier": {
-    "alt": "Snappy scratching its dented helmet -- duh, which one was the hotkey again? The duke will be furious.",
+    "alt": "Snappy in its ogre hood, juice jug in wing -- duh, which one was the hotkey again? The duke will be furious.",
     "nsfw": false,
     "character": "purple-ogre-metal-helmet-footsoldier",
     "group": "SaturdayMorning",
@@ -5392,40 +5342,28 @@
     "boxLeft": 0.04
   },
   "remember-remember": {
-    "alt": "Snappy behind a grinning mask -- the fifth of November is always a good day to launch.",
+    "alt": "Snappy behind a paper-plate mask -- the fifth of November is always a good day to launch.",
     "nsfw": false,
     "character": "remember-remember",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5188,
-      "y": 0.9716
+      "x": 0.5207,
+      "y": 0.9951
     },
-    "boxLeft": 0.0635
-  },
-  "remember-remember-2-nsfw": {
-    "alt": "Snappy, daggers at the belt -- beneath this mask there is more than feathers. There is a hotkey, and hotkeys are bulletproof.",
-    "nsfw": true,
-    "character": "remember-remember",
-    "group": "Superheroes",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.52,
-      "y": 0.9694
-    },
-    "boxLeft": 0.0674
+    "boxLeft": 0.04
   },
   "remember-remember-nsfw": {
-    "alt": "Snappy behind a grinning mask -- remember, remember to always launch in November.",
+    "alt": "Snappy, dagger drawn behind a paper plate -- remember, remember to always launch in November.",
     "nsfw": true,
     "character": "remember-remember",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5052,
-      "y": 0.9473
+      "x": 0.5016,
+      "y": 0.9914
     },
-    "boxLeft": 0.0967
+    "boxLeft": 0.0674
   },
   "retro-chrome-centurion": {
     "alt": "Snappy as the original toaster -- by your command, and every command that followed.",
@@ -6250,20 +6188,8 @@
     },
     "boxLeft": 0.0176
   },
-  "stone-gargoyle-battlement": {
-    "alt": "Snappy perched on the battlement -- stone by day, defender of the launcher by night.",
-    "nsfw": false,
-    "character": "stone-gargoyle",
-    "group": "Fantasy",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5011,
-      "y": 0.8887
-    },
-    "boxLeft": 0.0791
-  },
   "stone-head-island-giant": {
-    "alt": "Snappy standing very, very still -- dum-dum, give me gum-gum. Or a hotkey. A hotkey works too.",
+    "alt": "Snappy standing very, very still -- a whole body under the ground, and a hotkey under its wing.",
     "nsfw": false,
     "character": "stone-head-island-giant",
     "group": "Easter",
@@ -6365,16 +6291,16 @@
     "boxLeft": 0.0615
   },
   "striped-wooden-pull-toy": {
-    "alt": "Snappy with the striped pull-along duck -- oh, how beautiful is Panama, and how fast is this launcher.",
+    "alt": "Snappy pulling its striped owl on a string -- the crate smells of bananas, so one hotkey, and off to the land of its dreams.",
     "nsfw": false,
     "character": "striped-wooden-pull-toy",
     "group": "KidsTV",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5842,
-      "y": 0.8945
+      "x": 0.5722,
+      "y": 0.9238
     },
-    "boxLeft": 0.041
+    "boxLeft": 0.04
   },
   "synth-trench-fedora-noir-nsfw": {
     "alt": "Snappy tips the battered hat, gears showing -- the case of the missing shortcut is closed.",
@@ -7044,9 +6970,9 @@
     },
     "boxLeft": 0.1533
   },
-  "triangle-ops-nsfw": {
+  "triangle-ops-crystal": {
     "alt": "Snappy on a classified operation -- chevron seven locked, ready to launch.",
-    "nsfw": true,
+    "nsfw": false,
     "character": "triangle-ops",
     "group": "SciFi",
     "occasions": [],
@@ -7055,6 +6981,18 @@
       "y": 0.9113
     },
     "boxLeft": 0.1338
+  },
+  "triangle-ops-nsfw": {
+    "alt": "Snappy, submachine gun ready on the far side of the ring -- oh, for cryin' out loud, could one planet be as friendly as a hotkey?",
+    "nsfw": true,
+    "character": "triangle-ops",
+    "group": "SciFi",
+    "occasions": [],
+    "groundAnchor": {
+      "x": 0.4742,
+      "y": 0.921
+    },
+    "boxLeft": 0.126
   },
   "turkey-on-the-head": {
     "alt": "Snappy, waddling blind into the doorframe -- the teddy bear gets a present, the girlfriend gets a picture frame, you get a hotkey.",
@@ -7201,16 +7139,16 @@
     "boxLeft": 0.084
   },
   "victorian-spinning-disc-chair": {
-    "alt": "Snappy at the crystal lever -- it sets the dial for tomorrow, and the app is already waiting there.",
+    "alt": "Snappy at the brass lever -- 802,701 on the dial, the sun racing across the sky, and the app already waiting there.",
     "nsfw": false,
     "character": "victorian-spinning-disc-chair",
     "group": "TimeTravel",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5074,
-      "y": 0.9658
+      "x": 0.499,
+      "y": 0.989
     },
-    "boxLeft": 0.1318
+    "boxLeft": 0.1523
   },
   "walking-monolith-slab-bot": {
     "alt": "Snappy, humour setting at seventy-five percent -- honesty at ninety. Launch speed at a hundred.",
@@ -7723,9 +7661,9 @@
     "group": "Gaming",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5298,
+      "x": 0.5178,
       "y": 0.9521
     },
-    "boxLeft": 0.0498
+    "boxLeft": 0.0479
   }
 }
