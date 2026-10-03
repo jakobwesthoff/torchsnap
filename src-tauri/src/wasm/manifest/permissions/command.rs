@@ -117,6 +117,23 @@ impl CommandPermissionDef {
                 .map_err(|e| anyhow::anyhow!("rule {index} cwd: {e}"))?;
         }
 
+        // A zero ceiling clamps every call to nothing: no time to run,
+        // no output kept, no stdin accepted. Leave the key out to use
+        // the host default instead.
+        let ceilings = [
+            ("timeout-ms-max", self.timeout_ms_max.map(u64::from)),
+            ("max-output-bytes", self.max_output_bytes),
+            ("max-stdin-bytes", self.max_stdin_bytes),
+        ];
+        for (field, value) in ceilings {
+            if value == Some(0) {
+                anyhow::bail!(
+                    "`[[permissions.command]]` rule {index} `{field}` is 0, which allows \
+                     no invocation to succeed; use a positive limit or remove the key"
+                );
+            }
+        }
+
         Ok(())
     }
 }
@@ -346,12 +363,10 @@ fn position_overlaps(a: &ArgvConstraint, b: &ArgvConstraint) -> bool {
 /// manifest with multiple rules can pinpoint the offender.
 ///
 /// Validation only — no resolution or compilation. Variable
-/// references are recognized but not substituted; regex
-/// patterns are anchored and compile-tested but the
-/// compiled form is discarded (the matcher recompiles when
-/// it builds its compiled rule set). Glob patterns are
-/// checked for non-emptiness only; full glob compilation
-/// happens in the matcher.
+/// references are recognized but not substituted; regex and
+/// glob patterns are compile-tested but the compiled form is
+/// discarded (the matcher recompiles when it builds its
+/// compiled rule set).
 fn validate_argv_constraint(
     constraint: &ArgvConstraint,
     rule_index: usize,
@@ -379,6 +394,11 @@ fn validate_argv_constraint(
             if pattern.is_empty() {
                 anyhow::bail!("{where_} `glob` constraint has empty `pattern`");
             }
+            // Same builder the matcher uses, so a pattern that parses
+            // here also compiles there.
+            globset::Glob::new(pattern).map_err(|e| {
+                anyhow::anyhow!("{where_} `glob` pattern `{pattern}` does not compile: {e}")
+            })?;
         }
         ArgvConstraint::Regex { pattern } => {
             // Anchor before compile-checking so gadget authors
@@ -550,6 +570,60 @@ mod tests {
         ))
         .unwrap_err();
         assert!(err.to_string().contains("empty `pattern`"));
+    }
+
+    #[test]
+    fn reject_command_rule_with_bad_glob() {
+        for argv in [
+            r#"[{ kind = "glob", pattern = "[unclosed" }]"#,
+            r#"[{ kind = "rest", constraint = { kind = "glob", pattern = "{a,b" } }]"#,
+        ] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"git\"\nargv = {argv}"
+            )))
+            .expect_err(argv);
+            let message = err.to_string();
+            assert!(message.contains("rule 0 argv[0]"), "{argv}: {message}");
+            assert!(message.contains("does not compile"), "{argv}: {message}");
+        }
+    }
+
+    #[test]
+    fn accept_command_rule_with_valid_glob() {
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               argv = [{ kind = "glob", pattern = "refs/heads/*" }]"#,
+        ))
+        .expect("should parse");
+    }
+
+    #[test]
+    fn reject_command_rule_with_zero_ceiling() {
+        for field in ["timeout-ms-max", "max-output-bytes", "max-stdin-bytes"] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"git\"\n{field} = 0"
+            )))
+            .expect_err(field);
+            let message = err.to_string();
+            assert!(message.contains("rule 0"), "{field}: {message}");
+            assert!(
+                message.contains(&format!("`{field}` is 0")),
+                "{field}: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn accept_command_rule_with_minimal_ceilings() {
+        Manifest::parse(&minimal(
+            r#"[[permissions.command]]
+               binary = "git"
+               timeout-ms-max = 1
+               max-output-bytes = 1
+               max-stdin-bytes = 1"#,
+        ))
+        .expect("should parse");
     }
 
     #[test]

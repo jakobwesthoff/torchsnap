@@ -63,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a relative path fails to load with an error naming the entry. Before,
   it loaded and the path never matched. Patterns start with `/`, a
   substitution variable or a Windows drive letter.
+- A `[[permissions.command]]` rule with a `glob` pattern that does not
+  compile, or with `timeout-ms-max`, `max-output-bytes` or
+  `max-stdin-bytes` set to 0, fails the manifest with an error naming
+  the rule. Before, a bad glob failed only later, when the gadget was
+  enabled.
 
 ## [0.13.0] - 2026-09-25
 
