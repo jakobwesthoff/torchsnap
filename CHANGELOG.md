@@ -9,123 +9,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The DMG window shows a winter night with an aurora over a snowfield,
-  with Torchsnap and the Applications folder on the snow and a campfire
-  between them. The window is a little larger.
 - Torchsnap installs with Homebrew:
   `brew install --cask jakobwesthoff/tap/torchsnap`.
 - When an action in the launcher fails, the launcher stays open and its
-  footer shows what failed and why, for example `Eject Disc failed:
-  …`. The line goes away on the next key press or action. Before,
-  nothing showed.
-- Gadget views get `showError(message)` from `useLauncher()`. It shows
-  a failure of the view's own action, such as a `sendMessage` call, in
-  the launcher footer.
-- `useLauncher().onExecute()` returns a promise that rejects with the
-  error message when the action fails. The launcher already shows the
-  error, so a view may ignore the promise. In tests,
-  `MockGadgetContextProvider` still accepts an `onExecute` override
-  that returns nothing.
+  footer shows what failed and why, for example `Eject Disc failed: …`,
+  until the next key press or action. Before, nothing showed. This also
+  covers:
+  - Lock Screen, Start Screen Saver and Eject Disc when the tool behind
+    them exits with an error. Before, the launcher closed as if the
+    command had worked.
+  - Copying a calculator result, and copying or removing a clipboard
+    history entry. Before, the calculator only logged the failure and
+    the clipboard showed nothing.
+- Gadget views can report and react to failed actions:
+  - `useLauncher().showError(message)` shows a failure of the view's own
+    action, such as a `sendMessage` call, in the launcher footer.
+  - `useLauncher().onExecute()` returns a promise that rejects with the
+    error message when the action fails. The launcher already shows the
+    error, so a view may ignore the promise. In tests,
+    `MockGadgetContextProvider` still accepts an `onExecute` override
+    that returns nothing.
 
 ### Changed
 
-- New app icon: Snappy's face rising under a night sky with an aurora.
-  On macOS 26 it follows the dark, clear and tinted icon styles.
-- The General page of the settings shows Snappy's emblem above the
-  build version. Snappy peeks up a little on hover, and clicking opens
-  torchsnap.app in the browser.
-- Snappy comes in 626 costumes instead of 189. A newer image model
-  redrew most of the earlier ones close to their old look. Every mascot
-  has a reviewed alt text, and the owls inside the costumes are drawn at
-  about the same size.
-- Each mascot stands on the launcher card at a point chosen for it,
-  centred on the card in centre mode. As sidekick it keeps a fixed
-  distance from the card's right edge without reaching past it, and the
-  Escape hint sits centred below it.
-- The costumes are sorted into new themed groups. Mascots that only
-  relate to a holiday, such as the cartoon rabbits at Easter, now show
-  all year and also turn up more often on the holiday. The mascots that
-  are the holiday itself, such as pumpkins, Santa and Easter bunnies,
-  still show only then.
-- Snappy's costume is picked per character: a character with several
-  versions, such as an SFW and an NSFW one, shows as often as one with a
-  single version. The launcher holds back the characters it showed
-  recently, so a costume seldom comes twice in a row. While a holiday or
-  a full-moon night lasts, its costumes take a fixed share of the
-  launches: 40% at Christmas, Halloween and Easter, 90% on New Year's
-  Eve and on full-moon nights.
+- New artwork:
+  - The app icon shows Snappy's face rising under a night sky with an
+    aurora. On macOS 26 it follows the dark, clear and tinted icon
+    styles.
+  - The DMG window shows a winter night with an aurora over a snowfield,
+    with Torchsnap and the Applications folder on the snow and a
+    campfire between them. The window is a little larger.
+  - The General page of the settings shows Snappy's emblem above the
+    build version. Snappy peeks up a little on hover, and clicking opens
+    torchsnap.app in the browser.
+- Snappy's costumes:
+  - Snappy comes in 626 costumes instead of 189. A newer image model
+    redrew most of the earlier ones close to their old look. Every
+    mascot has a reviewed alt text, and the owls inside the costumes are
+    drawn at about the same size.
+  - The costumes are sorted into new themed groups. Mascots that only
+    relate to a holiday, such as the cartoon rabbits at Easter, now show
+    all year and also turn up more often on the holiday. The mascots
+    that are the holiday itself, such as pumpkins, Santa and Easter
+    bunnies, still show only then.
+  - The costume is picked per character: a character with several
+    versions, such as an SFW and an NSFW one, shows as often as one with
+    a single version. The launcher holds back the characters it showed
+    recently, so a costume seldom comes twice in a row. While a holiday
+    or a full-moon night lasts, its costumes take a fixed share of the
+    launches: 40% at Christmas, Halloween and Easter, 90% on New Year's
+    Eve and on full-moon nights.
+  - Each mascot stands on the launcher card at a point chosen for it,
+    centred on the card in centre mode. As sidekick it keeps a fixed
+    distance from the card's right edge without reaching past it, and
+    the Escape hint sits centred below it.
 
 ### Fixed
 
 - A search match on an emoji, a flag or an accented letter built from a
   combining mark highlights the whole character. Before, the launcher
   showed `�` in its place.
-- The tree view of the devtools console shows the end of a span whose
-  start has left the log buffer, with its duration, as a top-level row.
-  Before, it hid that row while the flat view showed it.
-- The green window button of Torchsnap's own windows goes
-  fullscreen again after the window lost focus while Option was held.
-  Before, it kept zooming until Option was pressed in the window again.
-- The devtools console clears with Ctrl+K and focuses its filter with
-  Ctrl+F on Linux and Windows, where it needed the Super key before.
-  On every platform the two shortcuts do nothing while Shift or Alt is
-  also held, and they work with Caps Lock on.
-- A gadget manifest whose `[permissions.filesystem]` `read` list holds
-  a relative path fails to load with an error naming the entry. Before,
-  it loaded and the path never matched. Patterns start with `/`, a
-  substitution variable or a Windows drive letter.
-- A `[[permissions.command]]` rule with a `glob` pattern that does not
-  compile, or with `timeout-ms-max`, `max-output-bytes` or
-  `max-stdin-bytes` set to 0, fails the manifest with an error naming
-  the rule. Before, a bad glob failed only later, when the gadget was
-  enabled.
-- Lock Screen, Start Screen Saver and Eject Disc keep the launcher open
-  when the tool behind them exits with an error, and show the tool's
-  error message in the footer. Before, the launcher
-  closed as if the command had worked.
-- Copying a calculator result, and copying or removing a clipboard
-  history entry, show a failure in the launcher footer. Before, the
-  calculator only logged it and the clipboard showed nothing.
-- Running an entry or sending a message to a gadget that was turned off
-  in the meantime fails with "gadget is disabled". Before, the call
-  reached the turned-off gadget and failed with whatever error its
-  torn-down state produced.
-- A gadget manifest whose `[permissions.opener]` `schemes` list holds
-  an entry that is no URL scheme, such as `""` or `"https://"`, fails
-  to load with an error naming the entry. Before, the entry loaded and
-  never matched a URL.
 - Typing or pasting an email address such as `jane.doe@gmail.com` no
   longer offers "Open https://jane.doe@gmail.com" as a result.
-- A gadget manifest whose `[permissions.http]` `origins` list holds an
-  origin without a host, such as `file:///etc`, or with a path, query
-  or fragment, such as `https://api.example.com/v1`, fails to load with
-  an error naming it. Before, the first became the meaningless origin
-  `null` and the second silently granted the whole host.
-- A gadget manifest with `permissions.sql-storage = true` but no
-  `[storage.sql]` table, or with the table but not the permission,
-  fails to load with an error naming both. Before, it loaded without a
-  database.
-- A gadget directory whose `manifest.toml` is a symlink to a file
-  outside the directory fails to load. Before, the host read the
-  outside file as the gadget's manifest.
-- Gadget frontend files whose names contain spaces, `%` or non-ASCII
-  characters load. Before, the request failed with "file not found".
-- The Control API reads at most 1 MiB per request line. A longer line
-  gets a `-32600` error and the connection closes. Before, a client
-  that never sent a newline made Torchsnap buffer without limit.
+- Opening an entry's settings, or an action that runs nothing because
+  its entry or slot is gone, no longer counts as using the entry, so it
+  no longer raises the entry's ranking.
 - The "Launch at login" switch in Settings moves back when turning
   launching at login on or off fails, and stays usable when its state
   cannot be read. Before, it showed the requested state anyway, or
   stayed disabled for good.
-- Opening an entry's settings, or an action that runs nothing because
-  its entry or slot is gone, no longer counts as using the entry, so
-  it no longer raises the entry's ranking.
-- A gadget frontend file request that hits an internal error answers
-  with status 500. Before, the request never finished.
 - When the Settings, DevTools or Welcome window fails to load its
-  settings or gadget list, it opens and shows the error with a button
-  to reload. Before, the window stayed invisible, and opening it again
+  settings or gadget list, it opens and shows the error with a button to
+  reload. Before, the window stayed invisible, and opening it again
   showed it blank.
+- The green window button of Torchsnap's own windows goes fullscreen
+  again after the window lost focus while Option was held. Before, it
+  kept zooming until Option was pressed in the window again.
+- In the devtools console:
+  - Ctrl+K clears and Ctrl+F focuses the filter on Linux and Windows,
+    where they needed the Super key before. On every platform the two
+    shortcuts do nothing while Shift or Alt is also held, and they work
+    with Caps Lock on.
+  - The tree view shows the end of a span whose start has left the log
+    buffer, with its duration, as a top-level row. Before, it hid that
+    row while the flat view showed it.
+- The Control API reads at most 1 MiB per request line. A longer line
+  gets a `-32600` error and the connection closes. Before, a client that
+  never sent a newline made Torchsnap buffer without limit.
+- A gadget manifest fails to load, with an error naming the offending
+  entry, when:
+  - a `[permissions.filesystem]` `read` pattern is a relative path.
+    Patterns start with `/`, a substitution variable or a Windows drive
+    letter. Before, the pattern never matched.
+  - a `[[permissions.command]]` rule has a `glob` pattern that does not
+    compile, or `timeout-ms-max`, `max-output-bytes` or
+    `max-stdin-bytes` set to 0. Before, a bad glob failed only when the
+    gadget was enabled.
+  - a `[permissions.opener]` scheme is no URL scheme, such as `""` or
+    `"https://"`. Before, it never matched a URL.
+  - a `[permissions.http]` origin has no host, such as `file:///etc`, or
+    has a path, query or fragment, such as `https://api.example.com/v1`.
+    Before, the first became the meaningless origin `null` and the
+    second granted the whole host.
+  - `permissions.sql-storage = true` and the `[storage.sql]` table do
+    not appear together. Before, such a gadget loaded without a
+    database.
+  - `manifest.toml` in a gadget directory is a symlink to a file outside
+    the directory. Before, the host read the outside file as the
+    manifest.
+- Gadget frontend files whose names contain spaces, `%` or non-ASCII
+  characters load. Before, the request failed with "file not found".
+  A request that hits an internal error answers with status 500 instead
+  of never finishing.
+- Running an entry or sending a message to a gadget that was turned off
+  in the meantime fails with "gadget is disabled". Before, the call
+  reached the turned-off gadget and failed with whatever error its
+  torn-down state produced.
 
 ## [0.13.0] - 2026-09-25
 
