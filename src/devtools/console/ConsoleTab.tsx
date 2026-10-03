@@ -8,7 +8,7 @@
 // Composes the log stream, filters, toolbar, and log list
 // into the full console experience. Supports flat (chrono)
 // and tree (grouped by span) view modes. Handles keyboard
-// shortcuts for the console (Cmd+K clear, Cmd+F search).
+// shortcuts for the console (Cmd/Ctrl+K clear, Cmd/Ctrl+F search).
 // =========================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import { useTreeView } from "./useTreeView";
 import { ConsoleToolbar, type ViewMode } from "./ConsoleToolbar";
 import { LogList } from "./LogList";
 import { TreeLogList } from "./TreeLogList";
+import { CLEAR_LOG, FOCUS_SEARCH, matchesConsoleShortcut } from "./shortcuts";
 
 export function ConsoleTab() {
   const { items, droppedCount, clear, spanDepthMap, completedSpanIds } = useLogStream();
@@ -49,10 +50,10 @@ export function ConsoleTab() {
   // Window-local keyboard shortcuts.
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === "k") {
+      if (matchesConsoleShortcut(e, CLEAR_LOG)) {
         e.preventDefault();
         clear();
-      } else if (e.metaKey && e.key === "f") {
+      } else if (matchesConsoleShortcut(e, FOCUS_SEARCH)) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }

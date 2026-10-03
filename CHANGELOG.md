@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The green window button of Torchsnap's own windows goes
   fullscreen again after the window lost focus while Option was held.
   Before, it kept zooming until Option was pressed in the window again.
+- The devtools console clears with Ctrl+K and focuses its filter with
+  Ctrl+F on Linux and Windows, where it needed the Super key before.
+  On every platform the two shortcuts do nothing while Shift or Alt is
+  also held, and they work with Caps Lock on.
 
 ## [0.13.0] - 2026-09-25
 

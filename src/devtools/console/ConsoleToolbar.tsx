@@ -22,6 +22,7 @@ import { cn } from "../../lib/cn";
 import type { LogLevel } from "../types";
 import type { LogFilters } from "./useLogFilters";
 import { GADGET_COLORS, gadgetColorIndex } from "./gadgetColors";
+import { CLEAR_LOG, consoleShortcutLabel } from "./shortcuts";
 
 // =========================================================
 // Level Pill Configuration
@@ -309,7 +310,7 @@ export function ConsoleToolbar({
         <button
           className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors"
           onClick={onClear}
-          title="Clear log (⌘K)"
+          title={`Clear log (${consoleShortcutLabel(CLEAR_LOG)})`}
         >
           <TrashIcon className="w-4 h-4" />
         </button>
