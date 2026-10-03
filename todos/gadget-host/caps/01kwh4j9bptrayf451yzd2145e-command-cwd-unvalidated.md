@@ -87,7 +87,7 @@ creates or overwrites files anywhere the user can write. That
 includes planting a symlink inside another gadget's (or its own)
 `DirectorySource` root — the concurrent-writer precondition for the
 directory-read TOCTOU
-(`../host-wasm/01kwfz4kkaq7spwnm2ncket1g1-directory-read-fallback-raw-path.md`)
+(`../wasm/01kwfz4kkaq7spwnm2ncket1g1-directory-read-toctou.md`)
 — and, more broadly, tampering with any user-writable file on disk.
 
 ## Suggested fix

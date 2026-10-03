@@ -28,6 +28,7 @@ use std::sync::Mutex;
 use anyhow::Context as _;
 
 use super::manifest::Manifest;
+use super::path_safety::{self, PathError};
 
 // =========================================================
 // GadgetSourceKind
@@ -145,20 +146,12 @@ impl DirectorySource {
         let root = root.into();
         let manifest_path = root.join("manifest.toml");
 
-        // Same symlink-target guard as `resolve_inside_root`: the
-        // manifest must resolve inside the root. The root itself may
-        // be a link.
-        let canonical_root = root
-            .canonicalize()
-            .with_context(|| format!("resolving gadget directory {}", root.display()))?;
-        let canonical_manifest = manifest_path
-            .canonicalize()
+        // The manifest gets the same guard as every other read; the
+        // root itself may be a link.
+        let canonical_manifest = existing_inside_root(&root, Path::new("manifest.toml"))
+            .with_context(|| format!("reading manifest at {}", manifest_path.display()))?
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))
             .with_context(|| format!("reading manifest at {}", manifest_path.display()))?;
-        anyhow::ensure!(
-            canonical_manifest.starts_with(&canonical_root),
-            "manifest at {} escapes the gadget directory",
-            manifest_path.display()
-        );
 
         let toml_source = std::fs::read_to_string(&canonical_manifest)
             .with_context(|| format!("reading manifest at {}", manifest_path.display()))?;
@@ -171,42 +164,29 @@ impl DirectorySource {
 
     /// Resolve a gadget-relative path against the gadget
     /// root, enforcing both the lexical guard
-    /// (`validate_gadget_path`) and the symlink-target
-    /// guard (`canonicalize` + `starts_with`). Returns the
-    /// canonical path when the file exists inside the root;
-    /// `Ok(None)` when the path is lexically valid but the
-    /// file is not present; `Err` on every rejection.
-    ///
-    /// The missing-file branch intentionally does **not**
-    /// perform a second lexical `starts_with` check against
-    /// the canonicalized root. On macOS the canonical form
-    /// (`/private/var/...`) diverges from the lexical
-    /// `self.root.join(path)` result (`/var/...`), which
-    /// would otherwise produce false-negative "escapes"
-    /// errors for every missing-file read.
-    /// `validate_gadget_path` has already enforced the
-    /// lexical bound, and there is no symlink target to
-    /// inspect when the file doesn't exist.
+    /// (`validate_gadget_path`) and the symlink-target guard
+    /// (`existing_inside_root`). Returns the canonical path when
+    /// the file exists inside the root, `Ok(None)` when it does
+    /// not exist, and `Err` on every rejection.
     fn resolve_inside_root(&self, path: &str) -> anyhow::Result<Option<PathBuf>> {
-        validate_gadget_path(path)?;
-
-        let full_path = self.root.join(path);
-        let canonical_root = self
-            .root
-            .canonicalize()
-            .context("resolving gadget root directory")?;
-
-        let canonical = match full_path.canonicalize() {
-            Ok(p) => p,
-            Err(_) => return Ok(None),
-        };
-
-        anyhow::ensure!(
-            canonical.starts_with(&canonical_root),
-            "gadget file path `{path}` escapes the gadget directory"
-        );
-        Ok(Some(canonical))
+        let relative = validate_gadget_path(path)?;
+        existing_inside_root(&self.root, &relative)
     }
+}
+
+/// The symlink-target guard for a path in a gadget directory, via
+/// the shared `path_safety::existing_under_root`: `Some` with the
+/// canonical path when it exists inside `root`, `None` when it does
+/// not exist, an "escapes" error when it resolves outside.
+fn existing_inside_root(root: &Path, relative: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let root = std::path::absolute(root).context("resolving gadget root directory")?;
+    path_safety::existing_under_root(&root.join(relative), &root).map_err(|e| match e {
+        PathError::EscapesRoot { .. } => anyhow::anyhow!(
+            "gadget file path `{}` escapes the gadget directory",
+            relative.display()
+        ),
+        other => anyhow::Error::new(other).context("resolving gadget file path"),
+    })
 }
 
 impl GadgetSource for DirectorySource {
@@ -219,14 +199,10 @@ impl GadgetSource for DirectorySource {
             Some(canonical) => {
                 std::fs::read(&canonical).with_context(|| format!("reading gadget file `{path}`"))
             }
-            None => {
-                // Surface a proper "not found" error. The
-                // lexical join is safe to expose — the guard
-                // in `resolve_inside_root` already validated
-                // the path.
-                std::fs::read(self.root.join(path))
-                    .with_context(|| format!("reading gadget file `{path}`"))
-            }
+            // No second filesystem access: a path that did not exist
+            // at the check is reported missing, never read.
+            None => Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                .with_context(|| format!("reading gadget file `{path}`")),
         }
     }
 
@@ -868,6 +844,46 @@ mod tests {
             msg.contains("does-not-exist.txt"),
             "error should name the missing file (got: {msg})"
         );
+    }
+
+    // A link whose target is missing is "not found". The read must not
+    // go through the link a second time, where a target created in
+    // between would be read from outside the root.
+    #[cfg(unix)]
+    #[test]
+    fn dangling_symlink_reads_as_not_found() {
+        let (dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        let target = dir.path().with_extension("later");
+        std::os::unix::fs::symlink(&target, root.join("data.json")).expect("symlink");
+
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source
+            .read_file("data.json")
+            .expect_err("target is missing");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("data.json"), "{msg}");
+        assert!(!msg.contains("escapes"), "{msg}");
+        let io = err.downcast_ref::<std::io::Error>().expect("io error");
+        assert_eq!(io.kind(), std::io::ErrorKind::NotFound);
+        assert!(!source.file_exists("data.json").expect("probe"));
+    }
+
+    // A missing file below a directory link that leaves the root is
+    // outside the root, not merely absent.
+    #[cfg(unix)]
+    #[test]
+    fn missing_file_below_escaping_dir_link_escapes() {
+        let outside = tempfile::tempdir().expect("outside dir");
+        let (_dir, root) = make_gadget_dir(MINIMAL_MANIFEST, &[("gadget.wasm", b"wasm")]);
+        std::os::unix::fs::symlink(outside.path(), root.join("assets")).expect("symlink");
+
+        let source = DirectorySource::open(&root).expect("open");
+        let err = source.read_file("assets/missing.png").expect_err("escapes");
+        assert!(format!("{err:#}").contains("escapes"), "{err:#}");
+        let err = source
+            .file_exists("assets/missing.png")
+            .expect_err("escapes");
+        assert!(format!("{err:#}").contains("escapes"), "{err:#}");
     }
 
     #[test]

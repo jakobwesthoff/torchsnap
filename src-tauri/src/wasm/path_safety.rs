@@ -8,8 +8,9 @@
 // Shared helper for "is this candidate path inside this
 // declared root?" checks. Used by the argv matcher's
 // `path-under` constraint, by per-rule cwd validation in the
-// manifest parser, and (future) by bundled-executable path
-// resolution.
+// manifest parser, by `DirectorySource` for every file it
+// reads from a gadget directory (`existing_under_root`), and
+// (future) by bundled-executable path resolution.
 //
 // The check supports candidates that do not yet exist: the
 // deepest existing ancestor is canonicalized so symlinks
@@ -21,10 +22,10 @@
 // dangling link is never skipped as part of the tail; it is
 // rejected instead.
 //
-// Distinct from the lexical-only `validate_gadget_path`
-// helper in `source.rs`, which solves a different problem
-// (manifest-relative paths inside an archive — no fs touch
-// allowed). The two coexist.
+// `validate_gadget_path` in `source.rs` is the lexical-only
+// check for manifest-relative paths, which archives need since
+// they have no filesystem to touch. `DirectorySource` runs it
+// first and this helper second.
 // =========================================================
 
 use std::path::{Component, Path, PathBuf};
@@ -109,6 +110,28 @@ pub enum PathError {
 /// "scaffold-this-path-later" case used by future
 /// bundled-binary support.
 pub fn canonical_under_root(candidate: &Path, root: &Path) -> Result<PathBuf, PathError> {
+    resolve_under_root(candidate, root).map(|(resolved, _exists)| resolved)
+}
+
+/// [`canonical_under_root`] for a candidate that must exist, such
+/// as a file about to be read. Returns `Ok(None)` when it does not
+/// exist, including a symlink whose target is missing, so the
+/// caller reports "not found" without touching the path again.
+/// Every returned path is fully canonical, and a candidate that
+/// resolves outside the root is `EscapesRoot` whether or not it
+/// exists.
+pub fn existing_under_root(candidate: &Path, root: &Path) -> Result<Option<PathBuf>, PathError> {
+    match resolve_under_root(candidate, root) {
+        Ok((resolved, true)) => Ok(Some(resolved)),
+        Ok((_, false)) | Err(PathError::DanglingSymlink(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// The resolution behind both public helpers. The flag reports
+/// whether the whole candidate exists, which is the case when no
+/// lexical tail was left after the deepest existing ancestor.
+fn resolve_under_root(candidate: &Path, root: &Path) -> Result<(PathBuf, bool), PathError> {
     if !candidate.is_absolute() {
         return Err(PathError::CandidateNotAbsolute(candidate.to_path_buf()));
     }
@@ -137,7 +160,8 @@ pub fn canonical_under_root(candidate: &Path, root: &Path) -> Result<PathBuf, Pa
         }
     })?;
 
-    let resolved = if tail.as_os_str().is_empty() {
+    let exists = tail.as_os_str().is_empty();
+    let resolved = if exists {
         canonical_existing
     } else {
         canonical_existing.join(&tail)
@@ -147,7 +171,7 @@ pub fn canonical_under_root(candidate: &Path, root: &Path) -> Result<PathBuf, Pa
         return Err(PathError::EscapesRoot { resolved });
     }
 
-    Ok(resolved)
+    Ok((resolved, exists))
 }
 
 /// Lexical resolution of `.` and `..` components. Operates
@@ -408,5 +432,85 @@ mod tests {
             resolved,
             root.path().canonicalize().expect("canonical root")
         );
+    }
+
+    // ─── existing_under_root ────────────────────────────────
+
+    #[test]
+    fn existing_file_inside_root_resolves() {
+        let root = td();
+        fs::write(root.path().join("data.json"), b"{}").expect("write");
+        let resolved = existing_under_root(&root.path().join("data.json"), root.path())
+            .expect("inside")
+            .expect("exists");
+        assert_eq!(
+            resolved,
+            root.path()
+                .canonicalize()
+                .expect("canonical root")
+                .join("data.json")
+        );
+    }
+
+    #[test]
+    fn missing_file_inside_root_is_none() {
+        let root = td();
+        let resolved =
+            existing_under_root(&root.path().join("a/b.json"), root.path()).expect("inside");
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn existing_relative_root_is_rejected() {
+        let err = existing_under_root(Path::new("/a/b"), Path::new("relative")).unwrap_err();
+        assert!(matches!(err, PathError::RootNotAbsolute(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_dangling_symlink_is_none() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        let link = root.path().join("link");
+        symlink(outside.path().join("not-yet-there"), &link).expect("symlink");
+
+        assert!(
+            existing_under_root(&link, root.path())
+                .expect("not found")
+                .is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_symlink_to_outside_file_escapes() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        fs::write(outside.path().join("secret"), b"x").expect("write");
+        let link = root.path().join("link");
+        symlink(outside.path().join("secret"), &link).expect("symlink");
+
+        let err = existing_under_root(&link, root.path()).unwrap_err();
+        assert!(matches!(err, PathError::EscapesRoot { .. }));
+    }
+
+    // A missing file below a directory link that leaves the root is
+    // outside the root, not merely absent.
+    #[cfg(unix)]
+    #[test]
+    fn existing_missing_file_below_escaping_dir_link_escapes() {
+        use std::os::unix::fs::symlink;
+
+        let outside = td();
+        let root = td();
+        let link = root.path().join("dir");
+        symlink(outside.path(), &link).expect("symlink");
+
+        let err = existing_under_root(&link.join("missing.json"), root.path()).unwrap_err();
+        assert!(matches!(err, PathError::EscapesRoot { .. }));
     }
 }
