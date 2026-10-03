@@ -101,6 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or fragment, such as `https://api.example.com/v1`, fails to load with
   an error naming it. Before, the first became the meaningless origin
   `null` and the second silently granted the whole host.
+- A gadget manifest with `permissions.sql-storage = true` but no
+  `[storage.sql]` table fails to load with an error naming both.
+  Before, it loaded without a database.
 
 ## [0.13.0] - 2026-09-25
 

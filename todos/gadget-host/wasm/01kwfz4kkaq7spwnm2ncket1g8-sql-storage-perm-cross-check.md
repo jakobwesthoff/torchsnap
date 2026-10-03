@@ -1,43 +1,29 @@
 ---
-kind: bug
+kind: question
 severity: low
-status: open
-area: [src-tauri/src/wasm/manifest/permissions/mod.rs]
-tags: [unconfirmed]
+status: needs-discussion
+area: [src-tauri/src/wasm/manifest/mod.rs, src-tauri/src/wasm/manifest/permissions/mod.rs]
 ---
 
-# Documented sql-storage/storage.sql coupling is not enforced
+# Decide whether `[storage.sql]` without `sql-storage = true` is legal
 
-## Problem
-The `permissions.sql-storage` field documents a cross-field
-requirement
-(`src-tauri/src/wasm/manifest/permissions/mod.rs:76-79`):
+`Manifest::parse` rejects `permissions.sql-storage = true` without a
+`[storage.sql]` table. The reverse is still accepted unchecked: a
+manifest with `[storage.sql]` and its migrations but no
+`sql-storage = true` parses. The bridge provisions SQL storage only
+when both are present (`src-tauri/src/wasm/bridge.rs`, "SqlStorage"
+block), so such a gadget gets no database.
 
-```rust
-/// `permissions.sql-storage` — opt-in for SQL storage
-/// capability. Requires `[storage.sql]` to also be present.
-#[serde(default, rename = "sql-storage")]
-pub sql_storage: bool,
-```
+## Open question
 
-Neither `validate_permissions` (which only sees the
-`PermissionsDef`) nor `Manifest::parse`
-(`manifest/mod.rs:279-332`, which has both halves in scope)
-checks this. A manifest with `sql-storage = true` and no
-`[storage.sql]` table parses successfully; whatever happens next
-is decided by the provisioning code, not the documented
-contract.
+Is that manifest legal, declaring storage the gadget never gets, or a
+parse error naming both keys, like the forward case?
 
-## Impact
-The failure surfaces late (at capability provisioning or first
-guest `sql` call) with an error that does not point at the
-manifest inconsistency. If provisioning happens to create an
-empty database instead, the gadget runs with no schema and every
-query fails.
+## Once decided
 
-## Suggested fix
-Enforce in `Manifest::parse` after permission validation:
-`sql_storage == true` requires `storage.sql` to be `Some`, with
-an error naming both keys. Add the parse test. Also decide and
-document the reverse case (`[storage.sql]` present without the
-permission): legal-but-unreachable storage or a parse error.
+- Parse error: add the check next to the forward one in
+  `Manifest::parse`, with a parse test, and state it in the manifest
+  docs (`torchsnap-docs`, `development/manifest.mdx`, `[storage.sql]`
+  section).
+- Legal: document that `[storage.sql]` without the permission
+  provisions no database.

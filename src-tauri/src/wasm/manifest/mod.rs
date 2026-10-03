@@ -307,6 +307,18 @@ impl Manifest {
         // comment in `source.rs` for the rationale.
         paths::validate_manifest_paths(&manifest)?;
 
+        // The SQL storage capability opens the database that
+        // `[storage.sql]` declares; without that table there is no
+        // database and no schema to grant.
+        let wants_sql_storage = manifest.permissions.as_ref().is_some_and(|p| p.sql_storage);
+        let has_storage_sql = manifest.storage.as_ref().is_some_and(|s| s.sql.is_some());
+        if wants_sql_storage && !has_storage_sql {
+            anyhow::bail!(
+                "manifest sets `permissions.sql-storage = true` but declares no `[storage.sql]` \
+                 table; add `[storage.sql]` with its migrations or remove the permission"
+            );
+        }
+
         // Validate that views/inline-views reference a launcher bundle.
         if let Some(ref frontend) = manifest.frontend {
             let has_launcher_components =
@@ -340,6 +352,33 @@ impl Manifest {
 mod tests {
     use super::test_helpers::minimal;
     use super::*;
+
+    // =====================================================
+    // Permissions: sql-storage needs [storage.sql]
+    // =====================================================
+
+    #[test]
+    fn reject_sql_storage_permission_without_storage_sql() {
+        for extra in [
+            "[permissions]\nsql-storage = true",
+            "[permissions]\nsql-storage = true\n[storage]",
+        ] {
+            let err = Manifest::parse(&minimal(extra)).expect_err(extra);
+            let msg = err.to_string();
+            assert!(msg.contains("sql-storage"), "{extra}: {msg}");
+            assert!(msg.contains("[storage.sql]"), "{extra}: {msg}");
+        }
+    }
+
+    #[test]
+    fn accept_sql_storage_permission_with_storage_sql() {
+        let m = Manifest::parse(&minimal(
+            "[permissions]\nsql-storage = true\n[storage.sql]\nmigrations = [\"migrations/001.sql\"]",
+        ))
+        .expect("should parse");
+        assert!(m.permissions.expect("permissions").sql_storage);
+        assert!(m.storage.and_then(|s| s.sql).is_some());
+    }
 
     // =====================================================
     // Manifest: happy paths
