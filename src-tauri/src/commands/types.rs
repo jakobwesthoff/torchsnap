@@ -348,6 +348,7 @@ impl SourcedEntry {
     }
 
     /// Deterministic composite sort key: score DESC, source ASC, id ASC.
+    /// Strings compare in Unicode code point order (`str::cmp`).
     ///
     /// This ordering is the single source of truth on the Rust side.
     /// The TypeScript frontend has an equivalent comparator in
@@ -606,6 +607,38 @@ mod scored_entry_tests {
         assert!(
             a.cmp_sort_key(&b).is_lt(),
             "lower id sorts first on source+score tie"
+        );
+    }
+
+    // Same fixtures as "orders ids by code point" in
+    // `src/launcher/compareEntries.test.ts`. They fall where code point
+    // order and UTF-16 unit order disagree.
+    #[test]
+    fn cmp_sort_key_orders_ids_by_code_point() {
+        let sorted = |ids: &[&str]| {
+            let mut entries: Vec<SourcedEntry> = ids
+                .iter()
+                .map(|id| {
+                    let mut inner = sample_scored_entry();
+                    inner.id = id.to_string();
+                    SourcedEntry::new("same".into(), inner)
+                })
+                .collect();
+            entries.sort_by(SourcedEntry::cmp_sort_key);
+            entries.into_iter().map(|e| e.inner.id).collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            sorted(&["\u{1F600}", "\u{FDFD}"]),
+            ["\u{FDFD}", "\u{1F600}"]
+        );
+        assert_eq!(
+            sorted(&["a\u{1F600}", "a\u{E000}", "a\u{D7FF}"]),
+            ["a\u{D7FF}", "a\u{E000}", "a\u{1F600}"]
+        );
+        assert_eq!(
+            sorted(&["\u{1F601}", "\u{1F600}"]),
+            ["\u{1F600}", "\u{1F601}"]
         );
     }
 }
