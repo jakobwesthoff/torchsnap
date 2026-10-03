@@ -66,10 +66,10 @@
     "group": "AnimatedComedy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5027,
-      "y": 0.9209
+      "x": 0.4942,
+      "y": 0.9002
     },
-    "boxLeft": 0.0752
+    "boxLeft": 0.0879
   },
   "armless-plumed-knight-flesh-wound-nsfw": {
     "alt": "Snappy's armour lies in pieces around it -- 'tis but a scratch. The launcher has had worse.",
@@ -162,7 +162,7 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4997,
+      "x": 0.4913,
       "y": 0.9668
     },
     "boxLeft": 0.0283
@@ -438,10 +438,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.554,
-      "y": 0.9531
+      "x": 0.494,
+      "y": 0.9736
     },
-    "boxLeft": 0.0771
+    "boxLeft": 0.0684
   },
   "black-braids-pet-hand": {
     "alt": "Snappy, never blinking -- no smiles, no mouse clicks, just that stiff little dance when the app launches.",
@@ -758,7 +758,7 @@
     "boxLeft": 0.0732
   },
   "blue-robe-wizard-owl-familiar": {
-    "alt": "Snappy, an owl with its own grumpy owl -- higitus figitus, zumbabazing! The whole app list packs itself.",
+    "alt": "Snappy, an owl with its own grumpy owl -- the books shrink, the teapot hops in, and the whole app list packs itself.",
     "nsfw": false,
     "character": "blue-robe-wizard-owl-familiar",
     "group": "Fantasy",
@@ -800,10 +800,10 @@
     "group": "AnimatedComedy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5299,
-      "y": 0.9805
+      "x": 0.4832,
+      "y": 0.9567
     },
-    "boxLeft": 0.0166
+    "boxLeft": 0.0488
   },
   "blue-spiky-hair-lab-coat-pointing-scientist": {
     "alt": "Snappy with a raised finger -- it turned itself into a launcher! Funniest thing it's ever seen.",
@@ -812,10 +812,10 @@
     "group": "AnimatedComedy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5147,
-      "y": 0.9814
+      "x": 0.4826,
+      "y": 0.9566
     },
-    "boxLeft": 0.0322
+    "boxLeft": 0.0488
   },
   "boldly-go-gold": {
     "alt": "Snappy on a five-year mission -- to boldly launch where no owl has launched before.",
@@ -1202,10 +1202,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.539,
-      "y": 0.9266
+      "x": 0.4712,
+      "y": 0.9061
     },
-    "boxLeft": 0.1689
+    "boxLeft": 0.1836
   },
   "chrome-officer-visor-nsfw": {
     "alt": "Snappy locked on a perp -- dead or alive, the app is launching with me.",
@@ -1214,10 +1214,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.6746,
-      "y": 0.9377
+      "x": 0.6126,
+      "y": 0.9161
     },
-    "boxLeft": 0.0166
+    "boxLeft": 0.04
   },
   "cloak-and-lantern": {
     "alt": "Snappy carrying double light -- because one torch is never enough.",
@@ -1459,18 +1459,6 @@
     },
     "boxLeft": 0.0811
   },
-  "daywalker-shades": {
-    "alt": "Snappy holding the coat open for the reveal -- the serum keeps the thirst down, the hotkey keeps the mouse away.",
-    "nsfw": false,
-    "character": "daywalker-blade",
-    "group": "Superheroes",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5244,
-      "y": 0.8843
-    },
-    "boxLeft": 0.0762
-  },
   "deadpan-badge-lampshade-mishap": {
     "alt": "Snappy narrates its own day in flat deadpan -- there it was, another ordinary app, needing to be launched.",
     "nsfw": false,
@@ -1544,16 +1532,16 @@
     "boxLeft": 0.0371
   },
   "desert-force-wielder-2-nsfw": {
-    "alt": "Snappy ignites the yellow blade beside its hood -- an elegant weapon, for a more civilized launch.",
+    "alt": "Snappy holding up a yellow toy sword beside its hood -- an elegant weapon, for a more civilized launch.",
     "nsfw": true,
     "character": "desert-force-wielder",
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5317,
-      "y": 0.9575
+      "x": 0.4881,
+      "y": 0.9464
     },
-    "boxLeft": 0.0576
+    "boxLeft": 0.0713
   },
   "desert-force-wielder-nsfw": {
     "alt": "Snappy waving a hand -- these aren't the apps you're looking for.",
@@ -1674,30 +1662,6 @@
       "y": 0.9053
     },
     "boxLeft": 0.125
-  },
-  "dreadlock-hunter-2": {
-    "alt": "Snappy scanning the jungle in heat vision -- cover yourself in mud all you like, the hotkey still finds your app.",
-    "nsfw": false,
-    "character": "dreadlock-hunter",
-    "group": "SciFi",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5047,
-      "y": 0.915
-    },
-    "boxLeft": 0.1104
-  },
-  "dreadlock-hunter-2-nsfw": {
-    "alt": "Snappy, cannon locked on the shoulder -- three red dots on your forehead, one on the launch button.",
-    "nsfw": true,
-    "character": "dreadlock-hunter",
-    "group": "SciFi",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5051,
-      "y": 0.9365
-    },
-    "boxLeft": 0.1123
   },
   "dreadlock-hunter-nsfw": {
     "alt": "Snappy shimmering half-invisible, cannon hot -- the jungle goes quiet, then one click. Not a mouse click.",
@@ -1934,7 +1898,7 @@
     "group": "Fantasy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.6108,
+      "x": 0.5879,
       "y": 0.9561
     },
     "boxLeft": 0.0996
@@ -2156,10 +2120,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5005,
+      "x": 0.5106,
       "y": 0.9619
     },
-    "boxLeft": 0.0508
+    "boxLeft": 0.0713
   },
   "fluffy-cat-alien-party-friend": {
     "alt": "Snappy ready to party -- the fluffy alien needs a moment alone first. Then it launches.",
@@ -2288,16 +2252,16 @@
     "boxLeft": 0.0723
   },
   "four-metal-tentacle-scientist": {
-    "alt": "Snappy with four metal arms -- the power of the sun in the palm of its wing, and it still needs only one hotkey.",
+    "alt": "Snappy with four hose arms -- the power of the sun in the palm of its wing, and it still needs only one hotkey.",
     "nsfw": false,
     "character": "four-metal-tentacle-scientist",
     "group": "Superheroes",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5195,
+      "x": 0.5155,
       "y": 0.9016
     },
-    "boxLeft": 0.0332
+    "boxLeft": 0.041
   },
   "friendly-white-ghost-sheet": {
     "alt": "Snappy under the bedsheet -- it passes straight through walls, doors and every menu on the way to the app.",
@@ -2320,7 +2284,7 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.4473,
+      "x": 0.4192,
       "y": 0.9427
     },
     "boxLeft": 0.1221
@@ -2332,10 +2296,10 @@
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5028,
-      "y": 0.9192
+      "x": 0.5073,
+      "y": 0.8986
     },
-    "boxLeft": 0.1377
+    "boxLeft": 0.1553
   },
   "frozen-veil-ninja-nsfw": {
     "alt": "Snappy, frost in one wing -- the fatality pulls the spine out. The hotkey only pulls the app up.",
@@ -2344,7 +2308,7 @@
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5252,
+      "x": 0.4858,
       "y": 0.879
     },
     "boxLeft": 0.1484
@@ -2406,10 +2370,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.4932,
-      "y": 0.9395
+      "x": 0.4734,
+      "y": 0.9168
     },
-    "boxLeft": 0.0908
+    "boxLeft": 0.1084
   },
   "ghost-witch-hat-candy": {
     "alt": "Snappy haunting the doorstep -- trick, treat, or launch.",
@@ -2991,77 +2955,29 @@
     },
     "boxLeft": 0.0527
   },
-  "hellfire-specter": {
-    "alt": "Snappy from beyond the grave -- get over here, there's an app to launch.",
-    "nsfw": false,
-    "character": "hellfire-specter",
-    "group": "Fighters",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5097,
-      "y": 0.9017
-    },
-    "boxLeft": 0.1426
-  },
-  "hellfire-specter-2": {
-    "alt": "Snappy in the gold mask -- it used to be a man with a family and a garden. Now it has a grudge and a hotkey.",
-    "nsfw": false,
-    "character": "hellfire-specter",
-    "group": "Fighters",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5364,
-      "y": 0.915
-    },
-    "boxLeft": 0.1143
-  },
-  "hellfire-specter-2-nsfw": {
-    "alt": "Snappy rising from the flames, kunai on its chain -- choose your destiny: novice, warrior, master, or just the hotkey.",
-    "nsfw": true,
-    "character": "hellfire-specter",
-    "group": "Fighters",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5211,
-      "y": 0.8896
-    },
-    "boxLeft": 0.1035
-  },
   "hellfire-specter-3": {
     "alt": "Snappy stepping out of the flames, fist first -- round one... fight! The app launched halfway through the announcement.",
     "nsfw": false,
-    "character": "hellfire-specter",
+    "character": "hellfire-specter-3",
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5006,
+      "x": 0.4688,
       "y": 0.9062
     },
-    "boxLeft": 0.1172
+    "boxLeft": 0.1152
   },
   "hellfire-specter-3-nsfw": {
     "alt": "Snappy swinging the chain of vengeance -- every app answers when summoned.",
     "nsfw": true,
-    "character": "hellfire-specter",
+    "character": "hellfire-specter-3",
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4908,
+      "x": 0.4755,
       "y": 0.9033
     },
-    "boxLeft": 0.0947
-  },
-  "hellfire-specter-nsfw": {
-    "alt": "Snappy reaching across the void -- GET OVER HERE and face the launcher.",
-    "nsfw": true,
-    "character": "hellfire-specter",
-    "group": "Fighters",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.516,
-      "y": 0.8965
-    },
-    "boxLeft": 0.1182
+    "boxLeft": 0.0938
   },
   "helmet-three-sizes-too-big": {
     "alt": "Snappy in an absurdly oversized black helmet -- surrounded by apps, and this launch has gone to plaid.",
@@ -3084,7 +3000,7 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5171,
+      "x": 0.4719,
       "y": 0.9011
     },
     "boxLeft": 0.1631
@@ -3284,10 +3200,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.5037,
-      "y": 0.915
+      "x": 0.5034,
+      "y": 0.894
     },
-    "boxLeft": 0.0586
+    "boxLeft": 0.0811
   },
   "icing-gumdrop-gingerbread": {
     "alt": "Snappy as a gingerbread cookie -- run, run, as fast as a launch.",
@@ -3804,14 +3720,14 @@
     "boxLeft": 0.1777
   },
   "motion-tracker-cargo-pants": {
-    "alt": "Snappy watches the tracker ping -- they're coming outta the walls, one hotkey each.",
+    "alt": "Snappy stomping out in the loader -- get away from the launcher, you mouse! This owl does the heavy lifting.",
     "nsfw": false,
     "character": "motion-tracker-cargo-pants",
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5182,
-      "y": 0.9492
+      "x": 0.5218,
+      "y": 0.9736
     },
     "boxLeft": 0.0166
   },
@@ -3876,7 +3792,7 @@
     "boxLeft": 0.0381
   },
   "multipass-cabbie": {
-    "alt": "Snappy flashing a multipass -- negative, this owl is a meat popsicle.",
+    "alt": "Snappy reporting for cab duty -- negative, negative, this owl is a meat popsicle.",
     "nsfw": false,
     "character": "multipass-cabbie",
     "group": "SciFi",
@@ -3888,7 +3804,7 @@
     "boxLeft": 0.1768
   },
   "multipass-cabbie-nsfw": {
-    "alt": "Snappy with a multipass and a blaster -- anyone else want to negotiate?",
+    "alt": "Snappy with a blaster in its wing -- anyone else want to negotiate? The app already launched.",
     "nsfw": true,
     "character": "multipass-cabbie",
     "group": "SciFi",
@@ -3934,10 +3850,10 @@
       "Halloween"
     ],
     "groundAnchor": {
-      "x": 0.6029,
-      "y": 0.9268
+      "x": 0.5549,
+      "y": 0.9055
     },
-    "boxLeft": 0.1201
+    "boxLeft": 0.1377
   },
   "nakatomi-ho-ho-ho": {
     "alt": "Snappy barefoot on the carpet after a long flight -- make fists with your toes, then press the hotkey.",
@@ -4121,18 +4037,6 @@
     },
     "boxLeft": 0.0576
   },
-  "orange-cat-lasagna-parody-alien": {
-    "alt": "Snappy with an alien-sized lasagna -- feed me, launcher. I hate Mondays in every dimension.",
-    "nsfw": false,
-    "character": "orange-cat-lasagna-parody-alien",
-    "group": "AnimatedComedy",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5309,
-      "y": 0.9463
-    },
-    "boxLeft": 0.1123
-  },
   "orange-crab-fearless": {
     "alt": "Snappy, claws up -- fearless launches, and the borrow checker approved every hotkey.",
     "nsfw": false,
@@ -4176,10 +4080,10 @@
     "group": "KidsTV",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4745,
-      "y": 0.9528
+      "x": 0.498,
+      "y": 0.9748
     },
-    "boxLeft": 0.0654
+    "boxLeft": 0.043
   },
   "orange-mustache-fluffy-tree-guardian": {
     "alt": "Snappy standing on the stump -- it speaks for the trees, and the trees would like a faster launcher.",
@@ -4188,10 +4092,10 @@
     "group": "Cartoons",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5385,
-      "y": 0.9099
+      "x": 0.4735,
+      "y": 0.9502
     },
-    "boxLeft": 0.0586
+    "boxLeft": 0.0381
   },
   "orange-turtleneck-lost-glasses": {
     "alt": "Snappy squinting through thick frames -- jinkies! It can't find a thing without its launcher.",
@@ -4384,10 +4288,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5512,
-      "y": 0.9192
+      "x": 0.4995,
+      "y": 0.8979
     },
-    "boxLeft": 0.1104
+    "boxLeft": 0.1416
   },
   "perfect-organism-2": {
     "alt": "Snappy, tail curled around its feet -- one drop of its blood eats through three decks. One press of the hotkey eats the whole wait.",
@@ -4396,10 +4300,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5941,
-      "y": 0.9162
+      "x": 0.7147,
+      "y": 0.9492
     },
-    "boxLeft": 0.0947
+    "boxLeft": 0.0439
   },
   "pink-armour-flute-cat": {
     "alt": "Snappy, flute at the beak -- the tune is lovely right up until someone calls it kitty. Then it's launch time.",
@@ -4456,10 +4360,10 @@
     "group": "Gaming",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5034,
+      "x": 0.4992,
       "y": 0.9512
     },
-    "boxLeft": 0.0869
+    "boxLeft": 0.0664
   },
   "pink-jumpsuit-shape-mask-guard": {
     "alt": "Snappy in the pink jumpsuit with the circle mask -- red light, green light, hotkey.",
@@ -4696,7 +4600,7 @@
     "boxLeft": 0.0703
   },
   "pork-pie-chemist": {
-    "alt": "Snappy cooking something blue in the lab -- say my name. I am the one who launches.",
+    "alt": "Snappy cooking something in the lab -- say my name. I am the one who launches.",
     "nsfw": false,
     "character": "pork-pie-chemist",
     "group": "Movies",
@@ -4970,10 +4874,10 @@
     "group": "Cartoons",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4617,
+      "x": 0.4537,
       "y": 0.9141
     },
-    "boxLeft": 0.0742
+    "boxLeft": 0.0664
   },
   "purple-lightning-scar-karateka": {
     "alt": "Snappy, one eye red -- won the first fist tournament, lost the second, and went into a volcano for it. Twenty years on, it launched again.",
@@ -5138,10 +5042,10 @@
     "group": "Halloween",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5106,
+      "x": 0.4764,
       "y": 0.9463
     },
-    "boxLeft": 0.0771
+    "boxLeft": 0.0762
   },
   "red-cape-skull-cap-psycho": {
     "alt": "Snappy clenches a psycho-powered fist -- for me, it was Tuesday; for you, it was a launch.",
@@ -5530,10 +5434,10 @@
     "group": "SciFi",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.548,
+      "x": 0.5204,
       "y": 0.9462
     },
-    "boxLeft": 0.1729
+    "boxLeft": 0.1689
   },
   "retro-computer-head": {
     "alt": "Snappy with a CRT for a head -- the original launch machine.",
@@ -5764,10 +5668,10 @@
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4905,
+      "x": 0.5005,
       "y": 0.9829
     },
-    "boxLeft": 0.1436
+    "boxLeft": 0.0723
   },
   "scoundrel-vest-golden-dice-nsfw": {
     "alt": "Snappy drawing from the hip -- it launched first, whatever the special edition says. Sorry about the mess.",
@@ -5788,10 +5692,10 @@
     "group": "SaturdayMorning",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4793,
-      "y": 0.9717
+      "x": 0.4868,
+      "y": 0.9482
     },
-    "boxLeft": 0.0225
+    "boxLeft": 0.0479
   },
   "sea-captain-lantern": {
     "alt": "Snappy lifting the ship's lantern -- O captain, my captain! The fearful trip is done, and the app is launched.",
@@ -5830,16 +5734,16 @@
     "boxLeft": 0.1377
   },
   "shaggy-bandolier-copilot-nsfw": {
-    "alt": "Snappy, bowcaster ready -- it's not wise to upset this copilot. Mice have been known to lose their scroll wheels.",
+    "alt": "Snappy, crossbow ready -- it's not wise to upset this copilot. Mice have been known to lose their scroll wheels.",
     "nsfw": true,
     "character": "shaggy-bandolier-copilot",
     "group": "SpaceOpera",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4803,
+      "x": 0.4462,
       "y": 0.9102
     },
-    "boxLeft": 0.1074
+    "boxLeft": 0.1133
   },
   "shaggy-ginger-fringe-horns": {
     "alt": "Snappy under a shaggy ginger fringe -- can't see the screen, still hits the hotkey.",
@@ -5910,10 +5814,10 @@
     "group": "TimeTravel",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5385,
+      "x": 0.541,
       "y": 0.9551
     },
-    "boxLeft": 0.1221
+    "boxLeft": 0.1211
   },
   "silver-hook-feathered-hat": {
     "alt": "Snappy with the ticking crocodile on its wing -- the beast swallowed a clock, so at least you hear it coming. Unlike this launch.",
@@ -6142,10 +6046,10 @@
     "group": "Anime",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5174,
+      "x": 0.5169,
       "y": 0.9879
     },
-    "boxLeft": 0.0762
+    "boxLeft": 0.0752
   },
   "spinning-whirlwind-devil": {
     "alt": "Snappy, a spinning tornado -- rrrarrgh-blbl! Menus eaten, app launched.",
@@ -6460,20 +6364,6 @@
     },
     "boxLeft": 0.0615
   },
-  "striped-sweater-fedora": {
-    "alt": "Snappy haunting your dreams -- it knows what apps you want to launch next.",
-    "nsfw": false,
-    "character": "striped-sweater-claw",
-    "group": "Horror",
-    "occasions": [
-      "Halloween"
-    ],
-    "groundAnchor": {
-      "x": 0.5174,
-      "y": 0.9369
-    },
-    "boxLeft": 0.1396
-  },
   "striped-wooden-pull-toy": {
     "alt": "Snappy with the striped pull-along duck -- oh, how beautiful is Panama, and how fast is this launcher.",
     "nsfw": false,
@@ -6617,10 +6507,10 @@
     "group": "Gaming",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4405,
+      "x": 0.4006,
       "y": 0.9836
     },
-    "boxLeft": 0.1143
+    "boxLeft": 0.1152
   },
   "three-headed-guard-dog-hood": {
     "alt": "Snappy guarding the gate three times over -- hum it a little tune and all three heads nod off. The hotkey still works.",
@@ -6851,30 +6741,6 @@
       "y": 0.9053
     },
     "boxLeft": 0.1475
-  },
-  "time-wanderer-rainbow-stripe-3": {
-    "alt": "Snappy as an ever-changing time traveller -- thirteen destinations, every one needs a launcher.",
-    "nsfw": false,
-    "character": "time-wanderer-rainbow-stripe",
-    "group": "TimeTravel",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.4823,
-      "y": 0.9287
-    },
-    "boxLeft": 0.1436
-  },
-  "time-wanderer-rainbow-stripe-4": {
-    "alt": "Snappy as an ever-changing time traveller -- a baker's dozen of incarnations, and every single one launches something.",
-    "nsfw": false,
-    "character": "time-wanderer-rainbow-stripe",
-    "group": "TimeTravel",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.487,
-      "y": 0.9134
-    },
-    "boxLeft": 0.1553
   },
   "time-wanderer-silver-sweep": {
     "alt": "Snappy as an ever-changing time traveller -- striking twelve with every entrance.",
@@ -7190,20 +7056,6 @@
     },
     "boxLeft": 0.1338
   },
-  "tricycle-puppet-spiral-cheeks": {
-    "alt": "Snappy on the red tricycle -- I want to play a game. It's called launch the app.",
-    "nsfw": false,
-    "character": "spiral-cheek-tricycle-puppet",
-    "group": "Horror",
-    "occasions": [
-      "Halloween"
-    ],
-    "groundAnchor": {
-      "x": 0.532,
-      "y": 0.9521
-    },
-    "boxLeft": 0.1211
-  },
   "turkey-on-the-head": {
     "alt": "Snappy, waddling blind into the doorframe -- the teddy bear gets a present, the girlfriend gets a picture frame, you get a hotkey.",
     "nsfw": false,
@@ -7229,7 +7081,7 @@
     "boxLeft": 0.0166
   },
   "tuxedo-martini-secret-agent-nsfw": {
-    "alt": "Snappy raises the pistol in the gun-barrel spiral -- the name is Snappy, launched, not stirred.",
+    "alt": "Snappy raises the pistol inside the owl's eye -- the name is Snappy. Launched, not stirred.",
     "nsfw": true,
     "character": "tuxedo-martini-secret-agent",
     "group": "Movies",
@@ -7319,10 +7171,10 @@
     "group": "AnimatedComedy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.4841,
+      "x": 0.4816,
       "y": 0.9404
     },
-    "boxLeft": 0.0752
+    "boxLeft": 0.0732
   },
   "venom-scale-lurker": {
     "alt": "Snappy lurking in green scales -- now you see the launcher, now you don't.",
@@ -7433,13 +7285,13 @@
     "boxLeft": 0.0361
   },
   "whale-stacked-containers": {
-    "alt": "Snappy hauls a stack of containers -- ships the app to any machine, launches it on yours.",
+    "alt": "Snappy in the blue whale suit -- it works on its machine? Then ship the whole machine, and launch it on yours.",
     "nsfw": false,
     "character": "whale-stacked-containers",
     "group": "DevCulture",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5407,
+      "x": 0.5401,
       "y": 0.9775
     },
     "boxLeft": 0.0166
@@ -7582,22 +7434,10 @@
     },
     "boxLeft": 0.1025
   },
-  "wide-hat-monk": {
-    "alt": "Snappy tired of being second best -- the hat trick lands before the app does.",
-    "nsfw": false,
-    "character": "wide-hat-monk",
-    "group": "Fighters",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.5187,
-      "y": 0.9422
-    },
-    "boxLeft": 0.0166
-  },
   "wide-hat-monk-2": {
     "alt": "Snappy holds a calm stance before the spin -- the launcher already knows how sharp this app's day is about to get.",
     "nsfw": false,
-    "character": "wide-hat-monk",
+    "character": "wide-hat-monk-2",
     "group": "Fighters",
     "occasions": [],
     "groundAnchor": {
@@ -7666,18 +7506,6 @@
     },
     "boxLeft": 0.0635
   },
-  "wormhole-gun-spring-boots": {
-    "alt": "Snappy fresh out of the test chamber -- the cake is a lie, but the launch is real.",
-    "nsfw": false,
-    "character": "test-subject-wormhole-gun",
-    "group": "Gaming",
-    "occasions": [],
-    "groundAnchor": {
-      "x": 0.4924,
-      "y": 0.9727
-    },
-    "boxLeft": 0.0957
-  },
   "wormhole-gun-spring-boots-2": {
     "alt": "Snappy turned itself into a pickle -- funniest launch you have ever seen.",
     "nsfw": false,
@@ -7697,10 +7525,10 @@
     "group": "AnimatedComedy",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5583,
+      "x": 0.5515,
       "y": 0.9736
     },
-    "boxLeft": 0.0391
+    "boxLeft": 0.0332
   },
   "wrinkled-snout-furry-alien": {
     "alt": "Snappy eyeing the family cat -- no problem! It's saving the cat for dinner and the hotkey for now.",
@@ -7709,10 +7537,10 @@
     "group": "Movies",
     "occasions": [],
     "groundAnchor": {
-      "x": 0.5538,
+      "x": 0.5644,
       "y": 0.9709
     },
-    "boxLeft": 0.0889
+    "boxLeft": 0.083
   },
   "yellow-chomping-ghost": {
     "alt": "Snappy chomping through a maze -- wakka wakka wakka, app launched.",

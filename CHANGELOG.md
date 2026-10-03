@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The General page of the settings shows Snappy's emblem above the
   build version. Snappy peeks up a little on hover, and clicking opens
   torchsnap.app in the browser.
-- Snappy comes in 645 costumes instead of 189. A newer image model
+- Snappy comes in 631 costumes instead of 189. A newer image model
   redrew 170 of the 189 earlier ones close to their old look; the other
   19, the plain Snappy among them, keep their drawings. Every mascot has
   a reviewed alt text, and the owls inside the costumes are drawn at
