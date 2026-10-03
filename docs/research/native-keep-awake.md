@@ -8,7 +8,8 @@ WASM gadget, and which host API it would need.
 
 Researched 2026-10-03 against Torchsnap `82df0c9` on macOS 27.0 (arm64).
 Statements marked _(unverified)_ come from one source that could not be
-checked further.
+checked further. The user's decisions on the open questions are in
+section 9.
 
 ---
 
@@ -261,8 +262,8 @@ Torchsnap's cron scheduler is no model for this. It reads wall time once
 per iteration and then waits with `tokio::time::sleep`
 (`src-tauri/src/wasm/bridge.rs`, `scheduler_loop`), so a task due while
 the Mac sleeps is skipped (todo
-`01kwfz4kkaq7spwnm2ncket1gk-scheduler-missed-fires`). Which semantics the
-gadget wants is open (section 9).
+`01kwfz4kkaq7spwnm2ncket1gk-scheduler-missed-fires`). The session timer
+counts wall time (section 9).
 
 ---
 
@@ -294,7 +295,7 @@ macOS:
   cursor in between.
 
 Untested: whether a granted zero-distance move resets the idle clocks.
-Vorssaint moves by one pixel.
+Vorssaint moves by one pixel, and Torchsnap's jiggle will too (section 9).
 
 None of the other keep-awake tools read for this research (PowerToys
 Awake, GNOME Caffeine, the two Tauri plugins, `keepawake`) implements a
@@ -463,7 +464,7 @@ Assessment: B fits the stated constraints. The mechanism (C1 to C4, C6)
 is a deep platform API and lives in the host, which matches the strategy
 log; the launcher behavior (C8) stays in the gadget, which matches the
 plan to retire native gadgets. Option C would move C8-adjacent decisions
-into the host. This is a proposal, not a decision.
+into the host. The user chose option B on 2026-10-03.
 
 ### 7.3 Host layering for option B
 
@@ -482,8 +483,8 @@ platform/            PowerManagement trait (ADR 0002)
   on drop, report support per level. That is the part each port has to
   write; the PowerToys thread model and the `keepawake` `Drop` panic show
   where ports differ.
-- The deadline lives in the platform-neutral service. Proposal: wall time,
-  pending the timer question in section 9. A wall-clock deadline needs a
+- The deadline lives in the platform-neutral service and counts wall
+  time (section 9). A wall-clock deadline needs a
   re-check after wake, for example on the wake message of
   `IORegisterForSystemPower` or by a periodic `SystemTime` check, because
   a `tokio::time::sleep` pauses while the Mac sleeps (section 3.5).
@@ -531,8 +532,8 @@ interface power {
         level: wake-level,
         /// Shown by OS tools such as `pmset -g assertions`.
         reason: string,
-        /// Seconds until the host releases the lock itself; which clock
-        /// counts them is open (section 9). `none` holds the lock until
+        /// Wall-clock seconds until the host releases the lock itself
+        /// (section 9). `none` holds the lock until
         /// the handle is dropped.
         timeout-secs: option<u32>,
     }
@@ -587,7 +588,8 @@ In general form:
 Foreign sessions (C7) would be a read-only call returning wake requests
 not held by the calling gadget: other Torchsnap gadgets' locks (by gadget
 id) and other processes' assertions (name and level). It exposes what
-other apps are doing, so it would need its own permission.
+other apps are doing, so it would need its own permission. The awake
+gadget reports foreign sessions and never ends them (section 9).
 
 Changes in the awake gadget:
 
@@ -604,33 +606,35 @@ Changes in the awake gadget:
   description and the "amphetamine" keyword become platform neutral, for
   example supplied by the backend.
 
-Whether the Amphetamine backend stays as an alternative is open
-(section 9).
+The Amphetamine backend is removed (section 9).
 
 ---
 
-## 9. Open questions
+## 9. Decisions and open questions
 
-- Timer semantics: should a timed session count wall time, so it ends at
-  the announced time even if the Mac slept in between, or awake time?
+Decided by the user on 2026-10-03:
+
+| Question | Decision |
+|---|---|
+| Where the code lives (section 7.2) | Option B: WASM gadget on a low-level `power` interface with a `wake-lock` resource |
+| Session lifetime | A session ends when Torchsnap quits or the gadget is disabled or updated (section 7.2) |
+| Timer semantics | Wall time. A timed session ends at the announced time even if the Mac slept in between |
+| Amphetamine backend | Removed |
+| Wake locks of other Torchsnap gadgets and other processes (C7) | The awake gadget reports them and never ends them |
+| Closed-lid mode (C11) | Out of scope |
+| Safeguards (screen lock, battery limit, Low Power Mode) | None in the first version. Evaluated later in `todos/gadgets/awake/01m414x1hq141vaaec7aj0y7x7-keep-awake-safeguards.md` |
+| Tray indicator while a lock is held (C9) | Not in the first version. Tracked in `todos/product/features/01m414x1hq141vaaec7aj0y7x8-tray-wake-lock-indicator.md` |
+| Notice when a timed session ends (C9) | Not in the first version; a session ends silently. A general notification host API is tracked in `todos/gadget-host/api/01m414x1hq141vaaec7aj0y7x6-notification-host-api.md` |
+| Mouse jiggle (C6) | Not in the first version. When built, it moves one pixel out and back |
+
+Still open:
+
 - Does an IOKit assertion timeout count time the Mac spends asleep? Needs
-  a test with a sleep cycle.
-- May the awake gadget end wake locks held by other Torchsnap gadgets, or
-  only report them (C7)? A reviewer suggested report only.
-- Keep the Amphetamine backend as an option (for users who rely on its
-  Triggers or closed-display mode), or remove it?
-- Jiggle: move by zero pixels or one pixel and back (Vorssaint's choice)?
-  Zero pixels needs a test with the Accessibility grant in place.
-- Closed-lid mode (C11): in scope at all? It needs admin rights or a
-  sudoers rule and changes a system-wide setting that survives a crash.
-- Which safeguards from Vorssaint to adopt: pause while the screen is
-  locked, battery limit?
+  a test with a sleep cycle; the user agreed to run it.
 - Jiggle on Wayland: accept the portal dialog, or leave Wayland out?
+  Decided when the Linux port starts.
 - Does `PreventSystemSleep` keep a MacBook awake with the lid closed on AC
   power? Needs a test on a laptop.
-- Should the host show a tray indicator while any wake lock is held (C9)?
-- Should a timed session that ends while the user is away be announced
-  (C9)? WASM gadgets cannot notify today.
 
 ---
 
