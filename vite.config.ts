@@ -46,6 +46,13 @@ export default defineConfig(async () => ({
           ) {
             return "mascot";
           }
+          // React DOM is its own chunk. Every window mounts through
+          // `src/lib/startWindow.tsx` or `src/launcher/main.tsx`, and
+          // without this rule Rolldown would fold React DOM into the
+          // shared chunk.
+          if (id.includes("/node_modules/react-dom/") || id.includes("/node_modules/scheduler/")) {
+            return "client";
+          }
           // Keep entry chunks free of shared exports. Rolldown may
           // otherwise inline shared modules into an entry chunk and
           // re-export them. When the other entry's lazy chunks import

@@ -121,6 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it no longer raises the entry's ranking.
 - A gadget frontend file request that hits an internal error answers
   with status 500. Before, the request never finished.
+- When the Settings, DevTools or Welcome window fails to load its
+  settings or gadget list, it opens and shows the error with a button
+  to reload. Before, the window stayed invisible, and opening it again
+  showed it blank.
 
 ## [0.13.0] - 2026-09-25
 

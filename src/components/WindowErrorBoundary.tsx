@@ -34,28 +34,32 @@ export function WindowErrorBoundary({ window: windowName, children }: WindowErro
   );
 
   return (
-    <ErrorBoundary
-      onError={logError}
-      fallback={(error) => (
-        <div className="flex h-screen items-center justify-center p-4 font-sans antialiased">
-          <div
-            role="alert"
-            className="flex max-w-md flex-col items-center gap-3 rounded-xl bg-surface p-6 text-center text-sm text-text-primary shadow-lg"
-          >
-            <span className="font-medium">Something went wrong in this window.</span>
-            <span className="break-words font-mono text-xs text-text-muted">{error.message}</span>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="rounded-lg px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
-            >
-              Reload window
-            </button>
-          </div>
-        </div>
-      )}
-    >
+    <ErrorBoundary onError={logError} fallback={(error) => <WindowError message={error.message} />}>
       {children}
     </ErrorBoundary>
+  );
+}
+
+/** The error a window shows in place of its content, with a way to
+ *  reload it. Also used when a window's startup fails before React
+ *  renders its content. */
+export function WindowError({ message }: { message: string }) {
+  return (
+    <div className="flex h-screen items-center justify-center p-4 font-sans antialiased">
+      <div
+        role="alert"
+        className="flex max-w-md flex-col items-center gap-3 rounded-xl bg-surface p-6 text-center text-sm text-text-primary shadow-lg"
+      >
+        <span className="font-medium">Something went wrong in this window.</span>
+        <span className="break-words font-mono text-xs text-text-muted">{message}</span>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-lg px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
+        >
+          Reload window
+        </button>
+      </div>
+    </div>
   );
 }
