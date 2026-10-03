@@ -109,6 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside file as the gadget's manifest.
 - Gadget frontend files whose names contain spaces, `%` or non-ASCII
   characters load. Before, the request failed with "file not found".
+- The Control API reads at most 1 MiB per request line. A longer line
+  gets a `-32600` error and the connection closes. Before, a client
+  that never sent a newline made Torchsnap buffer without limit.
 
 ## [0.13.0] - 2026-09-25
 

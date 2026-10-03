@@ -176,6 +176,42 @@ impl ControlServer {
 // Connection handling
 // =========================================================
 
+/// Longest request line the server reads, without its newline.
+const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+
+/// One request line read from a client.
+#[derive(Debug, PartialEq)]
+enum RequestLine {
+    Line(String),
+    Eof,
+    /// The client sent more than `MAX_REQUEST_BYTES` without a
+    /// newline. The rest of the stream is not read.
+    TooLong,
+}
+
+/// Read the next newline-terminated request, buffering at most
+/// `MAX_REQUEST_BYTES` plus its newline. Invalid UTF-8 is an
+/// `InvalidData` error.
+async fn read_request_line<R>(reader: &mut R) -> std::io::Result<RequestLine>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    use tokio::io::AsyncReadExt as _;
+
+    let mut bytes = Vec::new();
+    let limit = MAX_REQUEST_BYTES as u64 + 1;
+    let read = reader.take(limit).read_until(b'\n', &mut bytes).await?;
+    if read == 0 {
+        return Ok(RequestLine::Eof);
+    }
+    if bytes.len() > MAX_REQUEST_BYTES && bytes.last() != Some(&b'\n') {
+        return Ok(RequestLine::TooLong);
+    }
+    String::from_utf8(bytes)
+        .map(RequestLine::Line)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
 /// Handle a single client connection. Reads newline-delimited
 /// JSON-RPC requests, dispatches to the handler registry, and
 /// writes newline-delimited JSON-RPC responses.
@@ -186,13 +222,26 @@ async fn handle_connection(
 ) {
     let (reader, mut writer) = stream.into_split();
     let mut reader = tokio::io::BufReader::new(reader);
-    let mut line = String::new();
 
     loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => break, // EOF — client disconnected
-            Ok(_) => {
+        match read_request_line(&mut reader).await {
+            Ok(RequestLine::Eof) => break, // client disconnected
+            Ok(RequestLine::TooLong) => {
+                // The request has no readable id, so the error goes out
+                // with a null id, and the connection closes since the
+                // rest of the stream has no known request boundary.
+                let response = json_rpc_error(
+                    Value::Null,
+                    -32600,
+                    &format!("Invalid request: longer than {MAX_REQUEST_BYTES} bytes"),
+                );
+                let mut response_bytes =
+                    serde_json::to_vec(&response).expect("serializing JSON-RPC response");
+                response_bytes.push(b'\n');
+                let _ = writer.write_all(&response_bytes).await;
+                break;
+            }
+            Ok(RequestLine::Line(line)) => {
                 let response = process_request(&line, registry, app);
                 let mut response_bytes =
                     serde_json::to_vec(&response).expect("serializing JSON-RPC response");
@@ -328,4 +377,76 @@ pub fn start_control_server_reactor(
             s.stop();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn read_all(input: &[u8]) -> Vec<std::io::Result<RequestLine>> {
+        let mut reader = tokio::io::BufReader::new(input);
+        let mut lines = Vec::new();
+        loop {
+            let next = read_request_line(&mut reader).await;
+            let done = !matches!(next, Ok(RequestLine::Line(_)));
+            lines.push(next);
+            if done {
+                return lines;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn reads_newline_delimited_requests_until_eof() {
+        let lines = read_all(b"{\"a\":1}\n{\"b\":2}").await;
+        let lines: Vec<RequestLine> = lines.into_iter().map(|l| l.expect("read")).collect();
+        assert_eq!(
+            lines,
+            vec![
+                RequestLine::Line("{\"a\":1}\n".into()),
+                RequestLine::Line("{\"b\":2}".into()),
+                RequestLine::Eof,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn accepts_a_request_of_exactly_the_limit() {
+        let mut input = vec![b'x'; MAX_REQUEST_BYTES];
+        input.push(b'\n');
+        let lines = read_all(&input).await;
+        assert!(matches!(&lines[0], Ok(RequestLine::Line(l)) if l.len() == MAX_REQUEST_BYTES + 1));
+    }
+
+    // A client that never sends a newline, or one huge line, must not
+    // grow the host's buffer without bound.
+    #[tokio::test]
+    async fn stops_at_an_oversized_request() {
+        let input = vec![b'x'; MAX_REQUEST_BYTES + 2];
+        let lines = read_all(&input).await;
+        assert!(
+            matches!(lines[0], Ok(RequestLine::TooLong)),
+            "{:?}",
+            lines[0]
+        );
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn stops_at_an_oversized_line_followed_by_more() {
+        let mut input = vec![b'x'; MAX_REQUEST_BYTES + 1];
+        input.extend_from_slice(b"\n{}\n");
+        let lines = read_all(&input).await;
+        assert!(
+            matches!(lines[0], Ok(RequestLine::TooLong)),
+            "{:?}",
+            lines[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_utf8() {
+        let lines = read_all(b"\xff\xfe\n").await;
+        assert!(lines[0].is_err());
+    }
 }
