@@ -432,6 +432,15 @@ mod tests {
         assert_eq!(lines.len(), 1);
     }
 
+    // A client that streams bytes forever without a newline: the read
+    // must end after the limit instead of buffering the whole stream.
+    #[tokio::test]
+    async fn stops_reading_an_endless_line_at_the_limit() {
+        let mut reader = tokio::io::BufReader::new(tokio::io::repeat(b'x'));
+        let line = read_request_line(&mut reader).await.expect("read");
+        assert_eq!(line, RequestLine::TooLong);
+    }
+
     #[tokio::test]
     async fn stops_at_an_oversized_line_followed_by_more() {
         let mut input = vec![b'x'; MAX_REQUEST_BYTES + 1];
