@@ -1,0 +1,46 @@
+---
+title: "Set up import aliases for lib and shared frontend modules"
+kind: refactor
+component: frontend
+---
+# Set up import aliases for lib and shared frontend modules
+
+The frontend imports across directories with relative paths everywhere. That
+makes file moves cascade through imports and hides whether an import is
+project-local or from `node_modules`. Aliases also prepare the shared lib and
+hooks for the WASM gadget frontends, which need a subset of the launcher's code
+without its Tauri-specific parts.
+
+## Problem
+
+The frontend currently uses relative paths everywhere (e.g.,
+`../../lib/gadgetMessage`, `../hooks/useSetting`). This makes it harder to:
+
+- Move files between directories without cascading import updates.
+- Identify at a glance whether an import is project-local or from
+  `node_modules`.
+- Decouple shared logic for reuse in the upcoming WASM/gadget frontend, where
+  gadget UIs need access to a subset of the launcher's lib/hooks/components
+  without pulling in Tauri-specific code.
+
+## What's needed
+
+1. Audit the current `tsconfig.json` / Vite config for existing path aliases
+   (if any).
+2. Define aliases for key directories. Candidates:
+   - `@lib/` → `src/lib/`
+   - `@hooks/` → shared hooks (currently split across `src/launcher/hooks/` and
+     `src/settings/hooks/`; may need consolidation first)
+   - `@components/` → shared components
+   - `@types/` or `@shared/` → shared type definitions
+3. Configure both TypeScript (`paths` in `tsconfig.json`) and Vite
+   (`resolve.alias`) so aliases resolve correctly at build time and in the IDE.
+4. Refactor existing imports to use aliases.
+
+## Context
+
+This is preparatory work for the WASM/gadget decoupling. When gadget frontends
+run in their own context they'll need to import shared utilities (e.g.,
+`sendGadgetMessage`, UI components, types) via clean aliases rather than fragile
+relative paths that assume the launcher's directory structure. Getting aliases
+in place now avoids a larger migration later.

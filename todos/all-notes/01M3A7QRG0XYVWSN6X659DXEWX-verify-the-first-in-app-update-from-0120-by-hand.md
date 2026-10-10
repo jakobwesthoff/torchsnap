@@ -1,0 +1,17 @@
+---
+title: "Verify the first in-app update from 0.12.0 by hand"
+kind: chore
+component: project
+tags: [macos]
+---
+# Verify the first in-app update from 0.12.0 by hand
+
+0.12.0 (2026-09-24) is the first release with the self-updater (ADR 0053). Its feed is live at `https://torchsnap.app/updates/latest.json`, but no installed app has updated through that feed yet, so the first in-app update is still unverified.
+
+## Done when
+
+With the next release, update an installed 0.12.0 in-app and check:
+
+- the update window lists the notes of the new version;
+- "Install and Restart" replaces the app without a Gatekeeper prompt;
+- after the restart the launcher shows once. This is the only hands-on check of `ef01a26` (a launcher show requested during startup used to be hidden again by the warm-up); a unit test covers the step order, and the test builds before 0.12.0 did not retry it.

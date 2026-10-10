@@ -1,0 +1,33 @@
+---
+title: "Capture image content of files copied to the clipboard"
+kind: improvement
+component: gadgets
+---
+# Capture image content of files copied to the clipboard
+
+When a file is copied from Finder and it is an image (PNG, JPEG and so
+on), the capture currently skips the image entirely, because macOS puts
+the file's type icon on the clipboard as the image representation. The
+capture should load the real image content instead, so the user gets
+image previews and paste-back for file copies too, not only for directly
+copied images.
+
+The capture should:
+
+1. Detect that the clipboard contains files via `ContentFormat::Files`
+2. Check if any of the file paths point to image files (by extension
+   or by reading the magic bytes)
+3. Load the actual image data from disk and store it in FileStorage
+   as we would for a directly copied image
+4. Still skip the `get_image()` call since that returns the file icon,
+   not the content
+
+## Considerations
+
+- Multiple files: should we create one clipboard entry per image file,
+  or one entry with multiple images? Probably one entry per file to
+  match the "one clipboard change = one entry" model.
+- Non-image files: continue to skip image capture for those (current
+  behavior after the fix in `f578c79`).
+- File size limits: large images (e.g., raw photos) could bloat
+  FileStorage. May want a size cap.

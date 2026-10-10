@@ -1,0 +1,55 @@
+---
+title: "Settings notifier drops a change that races a first subscribe"
+kind: bug
+component: backend
+impact: low
+---
+# Settings notifier drops a change that races a first subscribe
+
+`SettingsNotifier::notify` in `src-tauri/src/settings/notifier.rs` drops an update for a key that has no channel yet. A settings change that lands between a subscriber's store read and its channel creation is then lost, and the subscriber stays on its pre-change value until the setting changes again. Read in the code, not reproduced.
+
+## Problem
+`SettingsNotifier::notify` ignores keys that have no channel yet
+(`src-tauri/src/settings/notifier.rs:140-149`):
+
+```rust
+pub fn notify(&self, key: &str, value: Value) {
+    let channels = self.channels.lock().expect("channels not poisoned");
+    if let Some(tx) = channels.get(key) {
+        let _ = tx.send(value);
+    }
+}
+```
+
+Subscribers create the channel via `watch_with_initial(key,
+initial)` where `initial` is a value the *caller* read from the
+store beforehand (`src-tauri/src/settings/notifier.rs:116-135`). Between that store read
+and the channel insertion under the lock, a concurrent
+`settings-changed` event can fire `notify()`, which finds no
+channel and drops the update. The subscriber then starts with the
+stale pre-change value and, because `watch` only wakes on the
+*next* send, stays stale until the setting changes again.
+
+The same shape exists for two subscribers: the second caller's
+`initial` is documented as ignored when the channel exists, which
+is fine, but the first-subscription race window is real and invisible.
+
+## Impact
+A settings change performed exactly during subsystem startup
+(frontend restores UI state and writes settings while the backend
+is still wiring up FrecencyStore / control socket / metadata
+service) is lost. The affected subsystem runs with the old value
+indefinitely. Low probability, but the failure is permanent until
+the next change and leaves no trace.
+
+## Suggested fix
+Have `watch_with_initial` take the store (or a value-provider
+closure) and perform the read *inside* the channels lock, so the
+initial value and channel creation are atomic with respect to
+`notify()`. Alternatively re-read the store immediately after
+inserting the channel and `send()` if the value differs from
+`initial`.
+
+## Relations
+
+- Relates to: [CoalescingDispatcher can strand the last enqueued change](01KWG0B6TYFPTJCAFW5TMAG25W-coalescingdispatcher-can-strand-the-last-enqueued-change.md), both settings pathways have subscribe/dispatch races at the edges.

@@ -72,8 +72,10 @@ side only: the todo that depends on, is blocked by, or is part of
 another carries the line; *Relates to* goes on the todo with the larger
 ULID; a plan never lists its steps. A todo with a *Depends on* line to
 an existing todo, or a *Blocked by* that still holds, has
-`status: blocked`. Code comments and docs refer to a todo by its ULID
-alone.
+`status: blocked`. Code comments and docs refer to a todo by its
+filename without a path, `<ULID>-<slug>.md`; when a todo is retitled
+and reconcile renames it, those citations change with it
+(`rg -i <ulid>` finds them).
 
 Code references name the repo-relative path and the symbol. Line
 numbers in older todos drift as the code changes, so find the code
