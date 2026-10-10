@@ -18,7 +18,7 @@ pub fn send(&self, command: ControlCommand) {
     if let Some(ch) = guard.as_ref()
         && ch.send(command).is_err()
     {
-        // Channel closed: webview was destroyed. ...
+        // Channel closed — webview was destroyed. ...
         *guard = None;
     }
 }

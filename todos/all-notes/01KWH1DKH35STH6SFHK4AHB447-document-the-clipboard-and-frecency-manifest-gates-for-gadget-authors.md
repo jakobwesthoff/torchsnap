@@ -18,9 +18,9 @@ The manifest parser recognizes boolean opt-ins for clipboard and
 frecency (`src-tauri/src/wasm/manifest/permissions/mod.rs`, around lines 72-82):
 
 ```rust
-/// `permissions.frecency`: opt-in for the WIT frecency interface ...
+/// `permissions.frecency` — opt-in for the WIT frecency interface ...
 pub frecency: bool,
-/// `permissions.clipboard`: opt-in for clipboard write.
+/// `permissions.clipboard` — opt-in for clipboard write.
 pub clipboard: bool,
 ```
 

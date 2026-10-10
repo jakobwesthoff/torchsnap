@@ -12,7 +12,7 @@ tags: [ux]
 
 ```ts
 // Listen for the toggle-theme event emitted by the built-in
-// commands gadget. Switches between dark and light only. ...
+// commands gadget. Switches between dark and light only — ...
 useEffect(() => {
   const unlisten = listen("toggle-theme", () => { ... });
 ```

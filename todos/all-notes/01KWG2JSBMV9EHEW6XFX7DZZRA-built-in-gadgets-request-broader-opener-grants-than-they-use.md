@@ -27,8 +27,8 @@ grant although neither needs it:
 
 The opener capability treats `*` as a short-circuit that passes
 raw, unparsed strings straight to the opener backend (see
-`src-tauri/src/caps/opener.rs:129-131` and a parked security-queue
-entry on opener scheme wildcards). Built-ins are trusted
+`src-tauri/src/caps/opener.rs:129-131` and the todo on opener root
+constraints and the `open_url` wildcard). Built-ins are trusted
 code, so this is not an exploit path by itself. They do set the
 reference example for what a "normal" permission request looks
 like, though, and the wildcard weakens any future auditing or consent UI

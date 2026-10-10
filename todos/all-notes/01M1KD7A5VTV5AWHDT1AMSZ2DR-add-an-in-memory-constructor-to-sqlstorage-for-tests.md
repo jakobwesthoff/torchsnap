@@ -1,6 +1,6 @@
 ---
 title: "Add an in-memory constructor to SqlStorage for tests"
-kind: feature
+kind: refactor
 component: backend
 status: needs-discussion
 origin: implementation

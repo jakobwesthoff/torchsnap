@@ -16,7 +16,7 @@ The `sql::connection()` host import has two panic paths
 ```rust
 fn connection(&mut self) -> Resource<SqlHandleEntry> {
     let sql_cap = self.caps.sql_storage.as_ref().expect(
-        "sql::connection() called but no SQL storage is initialized, \
+        "sql::connection() called but no SQL storage is initialized — \
          declare [storage.sql] in manifest.toml",
     );
     ...

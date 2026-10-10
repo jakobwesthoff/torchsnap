@@ -49,10 +49,10 @@ for icing.
 
 ```rust
 let mode = if had_explicit_scheme {
-    // Result renders regardless: metadata is decoration.
+    // Result will render regardless — metadata is decoration.
     LookupMode::Cached
 } else {
-    // Result existence depends on reachability: must wait.
+    // Result existence depends on reachability — must wait.
     LookupMode::Blocking
 };
 ```

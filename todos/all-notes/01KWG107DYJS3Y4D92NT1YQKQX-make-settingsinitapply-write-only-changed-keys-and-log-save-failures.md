@@ -19,7 +19,7 @@ pub fn apply<R: tauri::Runtime>(self, store: &Arc<Store<R>>, prefix: &str) {
         let full_key = format!("{prefix}{key}");
         // Only write keys that don't already exist or whose value
         // changed. Since `from_store` loaded the current state and
-        // `ensure` only fills gaps, most keys will already match.
+        // `ensure` only fills gaps, most keys will already match —
         // But migrations via `remove` + `ensure` can produce new
         // values that need writing.
         store.set(full_key, value);

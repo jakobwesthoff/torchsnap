@@ -1,12 +1,12 @@
 ---
-title: "Website-metadata lookups reach internal hosts, and the favicon protocol echoes Origin"
+title: "Website-metadata lookups reach internal hosts"
 kind: bug
 component: backend
 tags: [security]
 ---
-# Website-metadata lookups reach internal hosts, and the favicon protocol echoes Origin
+# Website-metadata lookups reach internal hosts
 
-Installed gadgets with the `website-metadata` permission choose the domain that the host fetches. The host follows redirects and fetches favicon URLs taken from page HTML with no IP filtering, which makes the service a gadget-driven SSRF. It can probe internal HTTPS hosts, read their titles and descriptions, and blindly request internal http and https URLs. Separately, the favicon protocol reflects any request Origin and spawns one OS thread per request. The origin and thread issues are small, and the SSRF fix is shared with the HTTP capability todo.
+Installed gadgets with the `website-metadata` permission choose the domain that the host fetches. The host follows redirects and fetches favicon URLs taken from page HTML with no IP filtering, which makes the service a gadget-driven SSRF. It can probe internal HTTPS hosts, read their titles and descriptions, and blindly request internal http and https URLs. The SSRF fix is shared with the HTTP capability todo.
 
 ## Invocation surface: gadget-driven (decisive for severity)
 The website-metadata service is exposed to untrusted WASM gadgets as a
@@ -94,24 +94,8 @@ image-shaped bit; the favicon path is fully blind). It shares
 the HTTP capability's exact root cause, and it is reached through a distinct,
 install-consented capability. Severity: **medium (upper)**.
 
-## CORS: Origin echo, low
-`handle_request` (`src-tauri/src/network/website_metadata/protocol.rs:109-131`) reflects the request `Origin`
-into `Access-Control-Allow-Origin`, falling back to `*`. There is no
-`Access-Control-Allow-Credentials`, so reflection is equivalent to
-`*`. The scheme serves favicon image bytes to the host webview via
-`<img>`. A request with no Origin gets the `*` fallback, which is normal traffic. Favicon bytes
-are not secrets, so the incremental read risk is negligible. The same
-pattern was already fixed on the gadget asset scheme with an origin
-allowlist. Apply the identical fix here for consistency, not because
-this scheme leaks anything sensitive.
-
-## Thread per request, low
-`register_favicon_protocol` (`protocol.rs:88-97`) calls `std::thread::spawn` per request to run the blocking
-`FaviconStore::resolve` and `std::fs::read`. A request burst therefore creates an unbounded number of short-lived OS threads.
-
 ## Suggested fix
 
-### SSRF (primary)
 1. **Apply the resolve-then-pin egress guard from the HTTP capability todo, in the shared `Http` and `HttpBuilder`,** so that both `HttpCap` and website-metadata are covered by one implementation. This is the concrete resolution of that todo's open question about where the guard lives. The answer is the shared `Http`, because an `HttpCap`-only guard leaves this
    path as an independent unmitigated bypass, and duplicating the range table invites drift. The guard resolves the host and filters the returned
    `SocketAddr`s against the blocked-range table (loopback, link-local
@@ -147,15 +131,6 @@ this scheme leaks anything sensitive.
    ranges. If a local-preview affordance is ever wanted, gate it behind
    an explicit, separate opt-in rather than leaving the range open.
 
-### CORS
-Replace the Origin echo with the same origin allowlist used on the
-gadget asset scheme. Factor the allowlist so both schemes share it.
-
-### Thread per request
-Replace `std::thread::spawn` with `tauri::async_runtime::spawn_blocking`
-(a bounded pool).
-
 ## Relations
+
 - Relates to: [Redirects and DNS rebinding let HTTP gadget requests bypass the origin allowlist](01KWH4J9BPTRAYF451YZD2145M-redirects-and-dns-rebinding-let-http-gadget-requests-bypass-the-origin.md), the shared root cause and the egress-guard design; the guard placement above resolves that todo's open question
-- Relates to: [Replace Origin reflection on the gadget asset protocol with an allowlist](01KWH4J9BPTRAYF451YZD2145B-replace-origin-reflection-on-the-gadget-asset-protocol-with-an-allowlist.md), the same origin allowlist fix, to mirror
-- Relates to: [Gadget asset protocol spawns one OS thread per request](01KWFZ4KKAQ7SPWNM2NCKET1FT-gadget-asset-protocol-spawns-one-os-thread-per-request.md), the same thread-per-request fix, to mirror

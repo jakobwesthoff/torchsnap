@@ -5,7 +5,7 @@ component: frontend
 ---
 # Move the gadget runtime code into a src/gadget-runtime vertical
 
-Host-side gadget runtime infrastructure is scattered across `src/lib/`, `src/contexts/`, `src/hooks/` and the top level of `src/gadgets/`. Consolidate it into `src/gadget-runtime/`. This is the largest of the vertical moves, so it is medium-high priority and should follow the mascot and logger verticals.
+Host-side gadget runtime infrastructure is scattered across `src/lib/`, `src/contexts/`, `src/hooks/` and the top level of `src/gadgets/`. Consolidate it into `src/gadget-runtime/`. This is the largest of the vertical moves, so it is medium-high priority and should follow the logger vertical (the mascot vertical is done, `e469a5ab`).
 
 The vertical is distinct from `src/gadgets/`, which holds per-gadget UI implementations. It covers the machinery that loads, mounts, communicates with and provides context for all gadgets. These files exist for the same reason, enabling the gadget runtime on the frontend, and they change together. Any WIT interface update touches the loader, the bridge and the context at once. Scattered across four folders, that coupling is hard to see and the blast radius of interface changes is hard to judge.
 

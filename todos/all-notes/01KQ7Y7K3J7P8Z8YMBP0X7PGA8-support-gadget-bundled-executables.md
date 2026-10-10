@@ -1,12 +1,13 @@
 ---
-title: "Support gadget-bundled executables and runtime platform detection"
+title: "Support gadget-bundled executables"
 kind: feature
 component: gadget-host
+status: blocked
 tags: [security, macos, capabilities]
 ---
-# Support gadget-bundled executables and runtime platform detection
+# Support gadget-bundled executables
 
-Gadgets cannot yet ship and run their own executables. The v1 `command` host interface supports system binaries only, either absolute paths (`/usr/bin/mdfind`) or names resolved against the host process `$PATH` (`mdfind`). Gadget-bundled binaries (`${gadget-archive}/helper`) are deliberately excluded from v1, because they need more infrastructure than was worth gating the v1 release on. Gadgets also cannot tell which platform they run on, which bundled binaries need. This todo covers both.
+Gadgets cannot yet ship and run their own executables. The v1 `command` host interface supports system binaries only, either absolute paths (`/usr/bin/mdfind`) or names resolved against the host process `$PATH` (`mdfind`). Gadget-bundled binaries (`${gadget-archive}/helper`) are deliberately excluded from v1, because they need more infrastructure than was worth gating the v1 release on. Bundled binaries also need gadgets to know which platform they run on; that runtime platform detection is its own todo, which this one depends on.
 
 ## Context
 
@@ -22,32 +23,6 @@ Bundled executables let gadgets ship narrow, purpose-built tools (a Rust binary 
 4. **Quarantine attribute handling on macOS.** Binaries extracted from a `.torchsnap` archive carry the `com.apple.quarantine` attribute on macOS, and LaunchServices or `execve` refuse to run them without user approval. Extraction must strip the attribute (the `xattr -d` equivalent) for gadget-bundled binaries the user has already consented to install.
 5. **Code signing on macOS.** Apple Silicon refuses to execute unsigned binaries in many configurations. Gadgets shipping binaries on macOS will likely need ad-hoc signing at build time (`codesign --sign -`), or the host has to sign on extraction. Investigate before committing to a pattern.
 
-## Runtime platform detection
-
-Once bundled binaries land, gadgets need to know which platform they run on, so they can pick the right binary path or pass the right argv. WASM and WASI do not provide this. It would have to be a new host-imported function:
-
-```wit
-interface platform {
-  variant os {
-    macos,
-    linux,
-    windows,
-    other(string),
-  }
-
-  variant arch {
-    x86-64,
-    aarch64,
-    other(string),
-  }
-
-  os: func() -> os;
-  arch: func() -> arch;
-}
-```
-
-This interface is useful independently of bundled binaries. Any gadget making platform-conditional decisions (different SQL pragmas, different default paths, different feature availability) currently has no way to do so. It is worth landing as its own small feature even if bundled-binary support takes longer.
-
 ## Out of scope
 
 - General read and write filesystem access for gadgets. Bundled binaries read their own argv inputs via normal `command::run`. Gadgets gain no new filesystem capabilities through this work.
@@ -56,6 +31,11 @@ This interface is useful independently of bundled binaries. Any gadget making pl
 ## Prerequisites and follow-on work
 
 - The v1 `command` host interface must land first.
+- Runtime platform detection must land first, so gadgets can pick the right binary path or pass the right argv.
 - An audit of archive-format mode preservation must come before item 1 above.
 - Enables gadgets that ship purpose-built tools rather than relying on system-installed binaries.
-- Pairs naturally with a `platform` interface for runtime OS detection, which is useful on its own.
+
+## Relations
+
+- Depends on: [Add a platform host interface for runtime OS and architecture detection](01M4HJV77D9C01NAXBQYSP7WRN-add-a-platform-host-interface-for-runtime-os-and-architecture-detection.md)
+- Depends on: [Check whether gadget archives keep Unix file modes from packaging to extraction](01M4HKABQ31HQ1QBM1YNAVX2BS-check-whether-gadget-archives-keep-unix-file-modes-from-packaging-to.md)

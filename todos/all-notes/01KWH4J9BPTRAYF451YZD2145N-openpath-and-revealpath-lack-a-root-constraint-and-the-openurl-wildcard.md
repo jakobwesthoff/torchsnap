@@ -186,4 +186,8 @@ model.
   correct)
 
 ## Related
-The app-launcher proxy todo, "app-launcher execute opens a path embedded in a stored command; forgery is blocked by an incidental entry-store gate, leaving a low-severity cross-gadget app-launch proxy", reaches `open_path` without any opener grant, but it is gated by the entry store. It sits in the platform component.
+The todo "Stop gadget frontends from launching apps through the app-launcher execute path" covers a path that reaches `open_path` without any opener grant, gated only by the entry store.
+
+## Relations
+
+- Relates to: [Built-in gadgets request broader opener grants than they use](01KWG2JSBMV9EHEW6XFX7DZZRA-built-in-gadgets-request-broader-opener-grants-than-they-use.md), whose wildcard scheme grant takes the unparsed `open_url` path described here

@@ -6,7 +6,7 @@ status: blocked
 ---
 # Rationalize the leftover shared folders after the verticals
 
-After the mascot, logger and gadget-runtime verticals are extracted, the horizontal `components/`, `hooks/`, `lib/` and `contexts/` folders will contain only genuinely shared, cross-feature code. This todo tracks the final rationalization of those leftovers. Low priority. Do it last, once the feature verticals are done, so the remaining contents are stable and the right groupings are clear.
+The mascot vertical is done (`src/mascot/`, `e469a5ab`). After the logger and gadget-runtime verticals are extracted, the horizontal `components/`, `hooks/`, `lib/` and `contexts/` folders will contain only genuinely shared, cross-feature code. This todo tracks the final rationalization of those leftovers. Low priority. Do it last, once the feature verticals are done, so the remaining contents are stable and the right groupings are clear.
 
 ## Expected remaining contents (post-verticals)
 

@@ -29,8 +29,8 @@
   tags. File, update and close todos through the `ntropy-todos` skill,
   never by writing files into `todos/all-notes/` by hand. Code comments
   and docs cite a todo by its current filename without a path
-  (`01KPDSVJ5AT6AGXST1JVA5EEVA-gadget-hot-lifecycle.md`); a retitle
-  renames the file, so update those citations with it.
+  (`<ULID>-<slug>.md`); a retitle renames the file, so update those
+  citations with it.
 - Once a todo is implemented, delete it and deal with every reference
   to it (find them with
   `rg -i <ulid> . ../torchsnap-docs ../torchsnap-web`). If a

@@ -10,10 +10,6 @@ The frecency settings stats view shows raw item IDs. This todo shows the
 top five most frequently used items per gadget, with human-readable
 titles instead of IDs.
 
-## Prerequisite
-
-The frecency system's core implementation. No todo tracks it.
-
 ## Proposal
 
 Add a `frecency_items` lookup table:

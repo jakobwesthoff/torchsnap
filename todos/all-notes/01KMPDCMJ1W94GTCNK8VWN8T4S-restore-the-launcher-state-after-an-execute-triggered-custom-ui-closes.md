@@ -27,5 +27,4 @@ drill-in flows where the user was mid-search.
 
 ## Dependencies
 
-- `PostAction::ShowCustomUI` must be implemented first
 - Related to ADR 0013 topic 1 (execute-triggered activation path)

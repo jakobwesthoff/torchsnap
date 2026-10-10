@@ -32,7 +32,7 @@ Three places where comments describe behavior the code does not have:
 2. **Reference to a nonexistent rationale.**
    `src-tauri/src/gadgets/clipboard/formats.rs`, around lines 160-162:
    ```rust
-   // Intentionally not capturing unknown formats; see
+   // Intentionally not capturing unknown formats — see
    // module-level comment for rationale.
    ContentFormat::Other(_) => None,
    ```

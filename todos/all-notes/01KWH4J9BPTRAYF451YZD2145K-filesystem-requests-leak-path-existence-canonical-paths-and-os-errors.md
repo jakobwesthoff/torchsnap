@@ -154,7 +154,7 @@ if !suffix.is_empty() {
 Ok(effective)                                    // fully exists AND allowed
 
 // deny() => FilesystemError::PermissionDenied(request.to_string())
-//           echo the RAW request string, never the resolved canonical.
+//           — echo the RAW request string, never the resolved canonical.
 ```
 
 Why each piece matters:

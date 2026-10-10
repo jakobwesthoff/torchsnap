@@ -197,7 +197,7 @@ breaking the launcher. Options to weigh:
 
 The same shared-origin exposure applies to `gadget_message(source, ...)`
 for arbitrary sources and to every app command, so it warrants a broader
-pass than the B18 review finding alone.
+pass than one review finding.
 
 ## Forward-looking risk
 

@@ -27,7 +27,7 @@ The `SystemCommand` trait already has the hook for this
 
 ```rust
 /// Whether the command requires user confirmation before executing.
-/// Deferred: always returns false for now.
+/// Deferred — always returns false for now.
 #[allow(dead_code)]
 fn needs_confirmation(&self) -> bool {
     false

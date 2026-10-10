@@ -7,7 +7,7 @@ component: frontend
 
 Logging infrastructure is split across `src/lib/`, `src/contexts/` and `src/hooks/`, although it is one coherent feature with a clear public interface. The worker, the context and provider, and the consumer hook exist only to serve each other, so understanding one feature means opening three folders. Consolidate them into `src/logger/`.
 
-Medium priority: the change is small and low risk, and a good second step after the mascot vertical.
+Medium priority: the change is small and low risk, and a good next step now that the mascot vertical is done (`src/mascot/`, `e469a5ab`).
 
 ## Files to move
 

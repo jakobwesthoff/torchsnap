@@ -17,12 +17,11 @@ The official template targets Rust as the primary language (strategy doc §7.1).
 
 The template should include:
 
-- a Rust project structure that refers to the WIT by path,
+- a Rust crate that refers to the WIT by path and builds with plain `cargo build --release`, the `wasm32-wasip2` target set in `.cargo/config.toml` as in `gadgets/`,
 - `just` recipes for build, package and dev,
 - a Vite config for frontend bundles with SDK externalization (once §7.2 is decided),
 - a packaging script that produces the final `.torchsnap` zip.
 
 ## Open questions
 
-- The proposal names `cargo-component`, but the repository no longer uses it: gadgets build with plain `cargo build --release` (see `CLAUDE.md`). Decide which project structure the template uses.
 - SDK externalization (§7.2) is still undecided, and the Vite config depends on it.
