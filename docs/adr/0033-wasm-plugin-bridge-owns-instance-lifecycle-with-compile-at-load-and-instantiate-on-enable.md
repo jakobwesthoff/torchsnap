@@ -159,7 +159,7 @@ branch in the trait methods and no-ops with a warning. Fixing this
 properly requires extending the `Plugin` trait so `enable` can return
 a `Result` the host reacts to; that change is tracked as a separate
 follow-up todo
-(`todos/gadget-host/wasm/01knwq80dhks7hbvdnmq5f8e0h-gadget-enable-result-return.md`)
+(`01KNWQ80DHKS7HBVDNMQ5F8E0H-make-gadgetenable-return-a-result-so-the-host-can-revert-a-failed-enable.md`)
 because it touches every plugin impl in the repo.
 
 ### `load_single_wasm_plugin` becomes thin

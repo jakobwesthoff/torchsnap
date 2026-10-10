@@ -448,7 +448,7 @@ documented in the SDK docs.
 
 * **Bundled plugin executables** (`binary =
   "${plugin-archive}/helper"`). Tracked in
-  `todos/gadget-host/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`.
+  `01KQ7Y7K3J7P8Z8YMBP0X7PGA8-support-gadget-bundled-executables-and-runtime-platform-detection.md`.
   Requires archive-format mode preservation and (on macOS)
   quarantine-attribute handling and code-signing strategy.
 * **Settings UI display of plugin permissions**. Implemented by the

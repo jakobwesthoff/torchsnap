@@ -17,7 +17,7 @@
  * registration and `#[tauri::command]` signatures in
  * `src-tauri/src/lib.rs` and `src-tauri/src/search/mod.rs`.
  *
- * TODO(structured-errors): see todos/backend/errors/01kn44hd21r2sv9y457dr9c11m-structured-rust-error-types.md
+ * TODO(structured-errors): see 01KN44HD21R2SV9Y457DR9C11M-return-structured-error-types-from-tauri-commands.md
  */
 
 import { invoke, type Channel } from "@tauri-apps/api/core";

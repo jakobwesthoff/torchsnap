@@ -11,7 +11,7 @@
 // Snappy perched on top. It is the static launcher preview from the
 // torchsnap.app hero, rebuilt from the app's own components. The
 // animated version is a separate todo
-// (todos/product/features/01m3a6b1d9w8a0tec6y4qd9s1a-welcome-launcher-animation.md).
+// (01M3A6B1D9W8A0TEC6Y4QD9S1A-animate-the-launcher-preview-in-the-welcome-window.md).
 //
 // Decorative only: hidden from assistive technology.
 // =========================================================

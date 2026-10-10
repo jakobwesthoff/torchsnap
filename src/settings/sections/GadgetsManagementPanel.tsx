@@ -18,7 +18,7 @@
 // set after setup. The banner at the top of the panel
 // surfaces that requirement with a single-click restart
 // button;
-// `todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`
+// `01KPDSVJ5AT6AGXST1JVA5EEVA-install-uninstall-and-reload-gadgets-without-an-app-restart.md`
 // tracks the follow-up work that will remove the restart.
 // =========================================================
 

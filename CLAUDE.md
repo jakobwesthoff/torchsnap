@@ -25,10 +25,17 @@
 
 ## Todos
 
-- Once a todo is implemented, delete its file and every reference to it
-  (find them with `rg <ulid> . ../torchsnap-docs ../torchsnap-web`). If
-  a referencing file needs information from the todo, copy just that
-  part into it, compact and precise.
+- `todos/` is an ntropy vault; its `README.md` lists the components and
+  tags. File, update and close todos through the `ntropy-todos` skill,
+  never by writing files into `todos/all-notes/` by hand. Code comments
+  and docs cite a todo by its current filename without a path
+  (`01KPDSVJ5AT6AGXST1JVA5EEVA-gadget-hot-lifecycle.md`); a retitle
+  renames the file, so update those citations with it.
+- Once a todo is implemented, delete it and deal with every reference
+  to it (find them with
+  `rg -i <ulid> . ../torchsnap-docs ../torchsnap-web`). If a
+  referencing file needs information from the todo, copy just that part
+  into it, compact and precise.
 - After a large work package is done, have Sonnet or Haiku agents
   (choose per scan) check all todos for work that is already done.
   Delete todos that are fully done and rewrite partly done ones so they

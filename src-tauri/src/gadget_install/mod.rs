@@ -13,7 +13,7 @@
 // return `requires_restart: true`
 // because the `GadgetHost` slot list is frozen after setup;
 // a hot lifecycle path is tracked in
-// `todos/gadget-host/wasm/01kpdsvj5at6agxst1jva5eeva-gadget-hot-lifecycle.md`.
+// `01KPDSVJ5AT6AGXST1JVA5EEVA-install-uninstall-and-reload-gadgets-without-an-app-restart.md`.
 //
 // The logic works on plain values that `setup` manages as
 // Tauri state: `InstallPaths` for the filesystem layout,

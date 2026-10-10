@@ -117,7 +117,7 @@ export interface MascotGroupInfo {
 
 // Only `seasonal` is read here.
 // TODO: show the labels and descriptions in the group settings
-// (todos/product/features/01m3sgdr9bj0dtkzhyf584d2bg-mascot-group-settings.md).
+// (01M3SGDR9BJ0DTKZHYF584D2BG-let-users-switch-mascot-groups-on-and-off.md).
 const groups = groupData as Record<string, MascotGroupInfo>;
 
 // =========================================================

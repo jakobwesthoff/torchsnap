@@ -413,7 +413,7 @@ does not block them later.
   error; it keeps the instance, and the gadget stays unreachable until it
   is disabled. Only a trap in `enable()` tears the instance down
   (ADR 0033). This affects every gadget and is tracked in
-  `todos/gadget-host/wasm/01m40nwejxkmgyhxpf0jdjmre4-trapped-gadget-stays-enabled-but-unreachable.md`.
+  `01M40NWEJXKMGYHXPF0JDJMRE4-trapped-gadget-stays-enabled-but-can-never-be-called-again.md`.
 - `clear_caps` (`wasm/runtime/instance.rs`) is the only cleanup hook that
   runs synchronously at disable before the store is freed, and it only
   knows SQL handles. The host's resource `drop` (when the guest drops a
@@ -622,9 +622,9 @@ Decided by the user on 2026-10-03:
 | Amphetamine backend | Removed |
 | Wake locks of other Torchsnap gadgets and other processes (C7) | The awake gadget reports them and never ends them |
 | Closed-lid mode (C11) | Out of scope |
-| Safeguards (screen lock, battery limit, Low Power Mode) | None in the first version. Evaluated later in `todos/gadgets/awake/01m414x1hq141vaaec7aj0y7x7-keep-awake-safeguards.md` |
-| Tray indicator while a lock is held (C9) | Not in the first version. Tracked in `todos/product/features/01m414x1hq141vaaec7aj0y7x8-tray-wake-lock-indicator.md` |
-| Notice when a timed session ends (C9) | Not in the first version; a session ends silently. A general notification host API is tracked in `todos/gadget-host/api/01m414x1hq141vaaec7aj0y7x6-notification-host-api.md` |
+| Safeguards (screen lock, battery limit, Low Power Mode) | None in the first version. Evaluated later in `01M414X1HQ141VAAEC7AJ0Y7X7-evaluate-automatic-safeguards-for-keep-awake-sessions.md` |
+| Tray indicator while a lock is held (C9) | Not in the first version. Tracked in `01M414X1HQ141VAAEC7AJ0Y7X8-show-a-tray-indicator-while-a-wake-lock-is-held.md` |
+| Notice when a timed session ends (C9) | Not in the first version; a session ends silently. A general notification host API is tracked in `01M414X1HQ141VAAEC7AJ0Y7X6-add-a-notification-host-api-for-wasm-gadgets.md` |
 | Mouse jiggle (C6) | Not in the first version. When built, it moves one pixel out and back |
 
 Still open:

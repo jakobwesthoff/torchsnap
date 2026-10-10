@@ -35,7 +35,7 @@ pub enum Permission {
     /// Run `binary` with arguments matching `argv`. Per-rule limits
     /// (`cwd`, timeouts, output and stdin caps) are parsed from the
     /// manifest but not enforced, so they are deliberately left out:
-    /// see `todos/gadget-host/caps/01kwg1ajrvfsmxyjmm7bvcs04b-command-per-rule-limits-unenforced.md`.
+    /// see `01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-cwd-timeout-output-and-stdin-are-parsed-but.md`.
     Command {
         binary: String,
         argv: Vec<ArgvRule>,

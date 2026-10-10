@@ -206,7 +206,7 @@ implements `ErasedSearch` directly and passes command strings through.
 
 Gadget-defined actions with their own bindings are not part of this
 decision and will be designed separately
-(`todos/product/features/01kmh12n6r0mq94rwav32eczdn-keybind-system.md`).
+(`01KMH12N6R0MQ94RWAV32ECZDN-build-a-keybind-system-with-user-rebinding-and-gadget-shortcuts.md`).
 
 ## Consequences
 

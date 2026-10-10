@@ -290,7 +290,7 @@ setting does not fire from a normal focus on a Wayland session. The
 proper fix — registering via the freedesktop `GlobalShortcuts`
 desktop portal so GNOME delivers the keypress to the app directly —
 is tracked under
-`todos/platform/linux/01kpv9hwx9rs2hrdbjcvh1ypwp-global-shortcut-wayland-portal.md`
+`01KPV9HWX9RS2HRDBJCVH1YPWP-register-the-global-shortcut-on-wayland-through-the-globalshortcuts.md`
 and is not implemented yet.
 
 Root cause: `tauri-plugin-global-shortcut` on Linux uses the

@@ -160,7 +160,7 @@ Built from the SDK's `<Section>`, `<Entry>`, and the new shared
 ### Out of scope for v1
 
 - Unix domain socket transport — separate todo
-  (`01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md`).
+  (`01KQEWDADVNFGY90672X3E3FQ6-add-a-unix-domain-socket-transport-to-the-gadget-fetch-import.md`).
 - Streaming responses on fetch (deferred per ADR 0038).
 - File watching on `saved_networks.json`. Merge-on-instantiation
   plus a manual Re-import button cover the cases that matter; a
@@ -238,9 +238,9 @@ existing plugin recompiles cleanly against the SDK bump).
 
 ## Related todos
 
-- `01kqewdadvnfgy90672x3e3fq6-fetch-unix-socket-transport.md` —
+- `01KQEWDADVNFGY90672X3E3FQ6-add-a-unix-domain-socket-transport-to-the-gadget-fetch-import.md` —
   deferred Unix socket transport, needed for Docker / podman / etc.
   plugins but not for ZeroTier.
-- `01kqf1at1he1em7kfw6xa2rwfd-migrate-calculator-history-to-list-component.md`
+- `01KQF1AT1HE1EM7KFW6XA2RWFD-decide-whether-calculator-history-moves-to-the-shared-list-component.md`
   — exploratory follow-up on whether the calculator plugin's
   history view should migrate to the shared `<List>` component.

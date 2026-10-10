@@ -121,7 +121,7 @@ pub trait GadgetSource: Send + Sync {
     /// file under it. That is correct: archive contents are
     /// reachable via `assets::read`, not via filesystem paths.
     /// Bundled-binary support (deferred — see
-    /// `todos/gadget-host/wasm/01kq7y7k3j7p8z8ymbp0x7pga8-bundled-executables-and-platform-detection.md`)
+    /// `01KQ7Y7K3J7P8Z8YMBP0X7PGA8-support-gadget-bundled-executables-and-runtime-platform-detection.md`)
     /// will extract archives on install and update this contract.
     fn root_path(&self) -> &Path;
 }

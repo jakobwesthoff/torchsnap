@@ -157,7 +157,7 @@ impl WasmRuntime {
 
         // Minimal sandbox: no filesystem, no network, no env vars.
         // Stdout/stderr inherited so gadget println! reaches the host terminal.
-        // TODO(redirect-gadget-stdout): see todos/gadget-host/wasm/01kqmdf6rgavhar6m4mm8vhxeb-redirect-gadget-stdout-to-logger.md
+        // TODO(redirect-gadget-stdout): see 01KQMDF6RGAVHAR6M4MM8VHXEB-route-gadget-stdout-and-stderr-to-the-host-logging-pipeline.md
         let wasi = WasiCtxBuilder::new()
             .inherit_stdout()
             .inherit_stderr()

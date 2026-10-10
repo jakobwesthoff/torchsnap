@@ -523,7 +523,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   // reset the query. For prefix-triggered gadgets this deactivates
   // the gadget through the normal search flow; for execute-triggered
   // gadgets it returns to the empty launcher state.
-  // TODO(state-snapshot): see todos/gadgets/clipboard/01kmpdcmj1w94gtcnk8vwn8t4s-execute-triggered-custom-ui-state-snapshot.md
+  // TODO(state-snapshot): see 01KMPDCMJ1W94GTCNK8VWN8T4S-restore-the-launcher-state-after-an-execute-triggered-custom-ui-closes.md
   const handleGoBack = useCallback(() => {
     setExecuteGadgetView(null);
     setQuery("");

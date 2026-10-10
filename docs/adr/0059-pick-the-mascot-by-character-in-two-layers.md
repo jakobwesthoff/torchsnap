@@ -77,7 +77,7 @@ therefore never empty.
 dismissed, as before. If the launcher stays hidden across an occasion's
 edge, the first launch after it shows a draw from the other side.
 Re-checking while the launcher is hidden is left to the todo
-`todos/product/features/01m3sj9erdbc3xqpmvpa946v7t-mascot-occasion-recheck-while-hidden.md`.
+`01M3SJ9ERDBC3XQPMVPA946V7T-re-check-the-mascots-occasions-while-the-launcher-is-hidden.md`.
 
 **NSFW turned off** while an NSFW variant is drawn: the launcher draws
 again at once, without NSFW variants. Turning NSFW back on does not
