@@ -22,6 +22,8 @@ Representative call sites:
 
 The devtools log view shows gadget logs but none of these host events. That is misleading when triaging: "no errors in devtools" does not mean no errors.
 
+A case from the field (2026-10-05): an in-app update download failed on a DNS lookup of github.com. `src-tauri/src/updates/mod.rs` logs the plugin's error with `eprintln!` only, and the bundled app's stderr is `/dev/null` (checked with `lsof` on the running process). The cause had to be pieced together from mDNSResponder entries in the macOS unified log.
+
 ## Impact
 
 Field debugging is nearly impossible: the launcher can fail to show, shortcuts can silently stop registering, icon extraction can fail wholesale, and the packaged app leaves no trace.
