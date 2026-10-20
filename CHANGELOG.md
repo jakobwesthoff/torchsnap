@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A gadget's SQL can no longer attach other SQLite databases or write
-  copies of its database to other places with `VACUUM INTO`; it reaches
-  only the gadget's own database. Plain `VACUUM` is no longer available
-  to gadgets.
+  copies of its database to other places with `VACUUM INTO`, nor change
+  SQLite settings that apply to the whole app (`temp_store_directory`,
+  `data_store_directory`, `soft_heap_limit`, `hard_heap_limit`); it
+  reaches only the gadget's own database. Plain `VACUUM` is no longer
+  available to gadgets.
 - When "Install and Restart" fails while downloading the update, the
   update window says that Torchsnap could not download the update from
   github.com. Before, it said Torchsnap could not get update information

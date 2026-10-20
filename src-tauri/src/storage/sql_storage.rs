@@ -564,7 +564,23 @@ fn configure_connection(conn: &Connection) -> Result<()> {
 // of the database to any path. Both open the other file
 // through an attach, which plain `VACUUM` uses as well, so
 // plain `VACUUM` is unavailable on these connections.
+//
+// A few pragmas change SQLite state shared by every
+// connection in the process, the host's own stores included.
 // =========================================================
+
+/// Pragmas whose effect reaches beyond the connection that runs
+/// them. `temp_store_directory` (and `data_store_directory`, its
+/// Windows counterpart) picks the directory where every
+/// connection creates its temporary files. `soft_heap_limit` and
+/// `hard_heap_limit` cap the memory of all connections together,
+/// so a tiny limit makes every database in the app fail.
+const PROCESS_WIDE_PRAGMAS: &[&str] = &[
+    "temp_store_directory",
+    "data_store_directory",
+    "soft_heap_limit",
+    "hard_heap_limit",
+];
 
 /// Deny every attach and detach, and allow no attached
 /// database at all as a second barrier should the authorizer
@@ -591,6 +607,14 @@ fn authorize(ctx: AuthContext<'_>) -> Authorization {
             code: ffi::SQLITE_ATTACH | ffi::SQLITE_DETACH,
             ..
         } => Authorization::Deny,
+        // SQLite passes the pragma name as written in the statement.
+        AuthAction::Pragma { pragma_name, .. }
+            if PROCESS_WIDE_PRAGMAS
+                .iter()
+                .any(|denied| denied.eq_ignore_ascii_case(pragma_name)) =>
+        {
+            Authorization::Deny
+        }
         _ => Authorization::Allow,
     }
 }
@@ -1155,5 +1179,109 @@ mod tests {
             |_| Ok(()),
         );
         assert!(result.is_err());
+    }
+
+    // =========================================================
+    // Process-wide pragmas
+    //
+    // These pragmas change SQLite state shared by every connection
+    // in the process. The values are harmless should a test run
+    // without the confinement: 1 TiB heap limits and the test's
+    // own temporary directory.
+    // =========================================================
+
+    /// Pragmas that set a value also return rows, so they go
+    /// through `query_map`.
+    fn assert_query_denied(storage: &SqlStorage, sql: &str) {
+        let err = storage
+            .query_map(sql, &[], |_| Ok(()))
+            .expect_err("SQLite runs the statement");
+        assert_denied_err(&err);
+    }
+
+    const ONE_TIB: u64 = 1 << 40;
+
+    #[test]
+    fn temp_store_directory_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(
+            &storage,
+            &format!("PRAGMA temp_store_directory = '{}'", dir.path().display()),
+        );
+    }
+
+    #[test]
+    fn data_store_directory_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(
+            &storage,
+            &format!("PRAGMA data_store_directory = '{}'", dir.path().display()),
+        );
+    }
+
+    #[test]
+    fn soft_heap_limit_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(&storage, &format!("PRAGMA soft_heap_limit = {ONE_TIB}"));
+    }
+
+    #[test]
+    fn hard_heap_limit_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(&storage, &format!("PRAGMA hard_heap_limit = {ONE_TIB}"));
+    }
+
+    #[test]
+    fn reading_a_process_wide_pragma_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(&storage, "PRAGMA hard_heap_limit");
+    }
+
+    #[test]
+    fn reading_a_process_wide_pragma_through_its_table_function_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(&storage, "SELECT * FROM pragma_hard_heap_limit");
+    }
+
+    #[test]
+    fn pragma_names_match_case_insensitively() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_query_denied(
+            &storage,
+            &format!("PRAGMA TEMP_STORE_DIRECTORY = '{}'", dir.path().display()),
+        );
+    }
+
+    #[test]
+    fn other_pragmas_still_work() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        storage
+            .execute("PRAGMA user_version = 7", &[])
+            .expect("set user_version");
+        let version: Vec<i64> = storage
+            .query_map("PRAGMA user_version", &[], |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, vec![7]);
+
+        let mode: Vec<String> = storage
+            .query_map("PRAGMA journal_mode", &[], |row| row.get(0))
+            .expect("read journal_mode");
+        assert_eq!(mode, vec!["wal"]);
     }
 }

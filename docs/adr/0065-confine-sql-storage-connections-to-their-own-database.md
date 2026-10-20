@@ -36,6 +36,12 @@ database file, before any migration runs:
   (a bound parameter, an expression) as an unknown action.
 - `SQLITE_LIMIT_ATTACHED` is 0, so no database can be attached even
   without the authorizer.
+- The authorizer also denies the pragmas `temp_store_directory`,
+  `data_store_directory`, `soft_heap_limit` and `hard_heap_limit`,
+  matched case-insensitively. They set state shared by every
+  connection in the process: the directory for every connection's
+  temporary files, and memory limits whose low value makes every
+  connection fail.
 
 A denied statement fails to prepare and returns an error to the caller;
 it does not run, and the connection and an open transaction stay usable.
@@ -48,9 +54,10 @@ Plain `VACUUM` is not available on these connections.
 
 ## Consequences
 
-- Gadget SQL and migrations cannot attach, detach or `VACUUM INTO`;
-  such a statement returns an authorization error. A migration that
-  attaches fails the gadget's enable.
+- Gadget SQL and migrations cannot attach, detach or `VACUUM INTO`,
+  nor read or set the four process-wide pragmas; such a statement
+  returns an authorization error. A migration that does fails the
+  gadget's enable.
 - Gadget and host databases cannot be vacuumed. `auto_vacuum` cannot be
   turned on for them either: `SqlStorage::open` sets `journal_mode =
   wal` before migrations run, which writes the database header with

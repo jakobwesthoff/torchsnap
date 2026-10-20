@@ -912,7 +912,8 @@ gadget needs them.
 
 A gadget's SQL, its migrations included, reaches its own
 database file and no other. The host refuses every statement
-that would open another file, and `execute` / `query` return the
+that would open another file or change SQLite settings shared by
+the whole app, and `execute` / `query` return the
 error; the statement does not run, and the connection, an open
 transaction included, keeps working:
 
@@ -924,6 +925,11 @@ transaction included, keeps working:
   the same way and fails too: gadget databases cannot be
   vacuumed. SQLite reuses the pages that deleted rows free for
   later writes, but the file does not shrink.
+- `PRAGMA temp_store_directory`, `data_store_directory`,
+  `soft_heap_limit` and `hard_heap_limit` fail with
+  `not authorized`, reading as well as setting. They change
+  SQLite settings that every database connection in the app
+  shares.
 
 The host's own stores (frecency, website metadata cache,
 clipboard history) open their databases through the same
