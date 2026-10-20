@@ -120,8 +120,8 @@ impl CommandPermissionDef {
             !self.binary.contains(['/', '\\']) && self.binary != "." && self.binary != "..";
         if !(self.binary.starts_with('/') || is_bare_name) {
             anyhow::bail!(
-                "`[[permissions.command]]` rule {index} `binary` `{}` must be an absolute \
-                 path or a bare program name",
+                "Command rule {index}: the binary \"{}\" must be an absolute path or a \
+                 bare program name",
                 self.binary
             );
         }
@@ -147,7 +147,7 @@ impl CommandPermissionDef {
         }
 
         if let Some(cwd) = &self.cwd {
-            validate_rule_root(cwd, index, "cwd", ValueUse::Configuration)?;
+            validate_rule_root(cwd, index, "the working directory", ValueUse::Configuration)?;
         }
 
         for (key, constraint) in &self.env {
@@ -275,8 +275,8 @@ fn reject_writable_variables(
     };
     if let Some(variable) = variables.iter().find(|variable| value.contains(**variable)) {
         anyhow::bail!(
-            "`[[permissions.command]]` rule {rule_index} {field} `{value}` uses `{variable}`, \
-             an area the gadget can write"
+            "Command rule {rule_index}: {field} \"{value}\" uses {variable}, an area the \
+             gadget can write"
         );
     }
     Ok(())
@@ -296,8 +296,7 @@ fn validate_fixed_value_location(
     for token in path_tokens(value) {
         if token.split('/').any(|segment| segment == "..") {
             anyhow::bail!(
-                "`[[permissions.command]]` rule {rule_index} {field} value `{value}` contains \
-                 a path with `..`"
+                "Command rule {rule_index}: {field} \"{value}\" contains a path with \"..\""
             );
         }
     }
@@ -310,7 +309,7 @@ fn validate_argv_location(
     rule_index: usize,
     argv_index: usize,
 ) -> anyhow::Result<()> {
-    let field = format!("argv[{argv_index}]");
+    let field = format!("argument {argv_index}");
     match constraint {
         ArgvConstraint::Rest { constraint } => {
             validate_argv_location(constraint, rule_index, argv_index)
@@ -318,7 +317,7 @@ fn validate_argv_location(
         ArgvConstraint::PathUnder { root } => validate_rule_root(
             root,
             rule_index,
-            &format!("{field} root"),
+            &format!("the path-under root of {field}"),
             ValueUse::Argument,
         ),
         ArgvConstraint::Literal { value } => {
@@ -349,19 +348,16 @@ fn validate_rule_root(
 ) -> anyhow::Result<()> {
     reject_writable_variables(root, rule_index, field, use_)?;
     if root.is_empty() {
-        anyhow::bail!("`[[permissions.command]]` rule {rule_index} has an empty `{field}`");
+        anyhow::bail!("Command rule {rule_index}: {field} is empty");
     }
     if !(root.starts_with('/') || root.starts_with("${")) {
         anyhow::bail!(
-            "`[[permissions.command]]` rule {rule_index} `{field}` is not absolute: `{root}`; \
-             start it with `/` or a `${{...}}` variable"
+            "Command rule {rule_index}: {field} \"{root}\" is not absolute; start it \
+             with / or a ${{...}} variable"
         );
     }
     if root.split('/').any(|segment| segment == "..") {
-        anyhow::bail!(
-            "`[[permissions.command]]` rule {rule_index} `{field}` `{root}` contains a `..` \
-             segment"
-        );
+        anyhow::bail!("Command rule {rule_index}: {field} \"{root}\" contains \"..\"");
     }
     ParseTimeResolver
         .validate_variable_references(root)
@@ -657,15 +653,19 @@ fn validate_env_declaration(
     constraint: &ArgvConstraint,
     rule_index: usize,
 ) -> anyhow::Result<()> {
-    let where_ = format!("rule {rule_index} env `{key}`");
+    let where_ = format!("Command rule {rule_index}: environment variable {key}");
     if key.is_empty() {
-        anyhow::bail!("`[[permissions.command]]` rule {rule_index} has an empty env key");
+        anyhow::bail!("Command rule {rule_index}: an environment variable has an empty name");
     }
     if key.contains('\0') {
-        anyhow::bail!("`[[permissions.command]]` {where_}: the key contains a NUL byte");
+        anyhow::bail!(
+            "Command rule {rule_index}: the environment variable name \"{key}\" contains a NUL byte"
+        );
     }
     if key.contains('=') {
-        anyhow::bail!("`[[permissions.command]]` {where_}: the key contains `=`");
+        anyhow::bail!(
+            "Command rule {rule_index}: the environment variable name \"{key}\" contains \"=\""
+        );
     }
     let upper = key.to_ascii_uppercase();
     if REJECTED_ENV_KEYS.contains(&upper.as_str())
@@ -674,20 +674,22 @@ fn validate_env_declaration(
             .any(|prefix| upper.starts_with(prefix))
     {
         anyhow::bail!(
-            "`[[permissions.command]]` {where_}: this variable cannot be declared, since it \
-             makes the program load or run other code"
+            "Command rule {rule_index}: the environment variable {key} cannot be declared, \
+             since it makes the program load or run other code"
         );
     }
 
     match constraint {
         ArgvConstraint::Rest { .. } => {
-            anyhow::bail!("`[[permissions.command]]` {where_}: `rest` is not a value constraint");
+            anyhow::bail!(
+                "Command rule {rule_index}: rest is not a value constraint, as used for {key}"
+            );
         }
         ArgvConstraint::PathUnder { root } => {
             validate_rule_root(
                 root,
                 rule_index,
-                &format!("env `{key}` root"),
+                &format!("the path-under root of {key}"),
                 ValueUse::Configuration,
             )?;
         }
@@ -696,7 +698,7 @@ fn validate_env_declaration(
             validate_fixed_value_location(
                 value,
                 rule_index,
-                &format!("env `{key}`"),
+                &format!("the value of {key}"),
                 ValueUse::Configuration,
             )?;
         }
@@ -706,7 +708,7 @@ fn validate_env_declaration(
                 validate_fixed_value_location(
                     value,
                     rule_index,
-                    &format!("env `{key}`"),
+                    &format!("the value of {key}"),
                     ValueUse::Configuration,
                 )?;
             }
@@ -725,8 +727,8 @@ fn validate_fixed_env_value(value: &str, where_: &str) -> anyhow::Result<()> {
     for token in path_tokens(value) {
         if token.contains('/') && !token.starts_with('/') && !token.starts_with("${") {
             anyhow::bail!(
-                "`[[permissions.command]]` {where_}: value `{value}` contains the relative path \
-                 `{token}`; use an absolute path or a `${{...}}` variable"
+                "{where_}: the value \"{value}\" contains the relative path \"{token}\"; use an \
+                 absolute path or a ${{...}} variable"
             );
         }
     }
@@ -909,7 +911,10 @@ mod tests {
             "[[permissions.command]]\nbinary = \"git\"\ncwd = \"\"",
         ))
         .unwrap_err();
-        assert!(err.to_string().contains("empty `cwd`"), "{err}");
+        assert!(
+            err.to_string().contains("the working directory is empty"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -919,10 +924,7 @@ mod tests {
                 "[[permissions.command]]\nbinary = \"git\"\ncwd = \"{cwd}\""
             )))
             .expect_err(cwd);
-            assert!(
-                err.to_string().contains("`cwd` is not absolute"),
-                "{cwd}: {err}"
-            );
+            assert!(err.to_string().contains("is not absolute"), "{cwd}: {err}");
         }
     }
 
@@ -933,7 +935,7 @@ mod tests {
                 "[[permissions.command]]\nbinary = \"git\"\ncwd = \"{cwd}\""
             )))
             .expect_err(cwd);
-            assert!(err.to_string().contains("`..`"), "{cwd}: {err}");
+            assert!(err.to_string().contains("contains \"..\""), "{cwd}: {err}");
         }
     }
 
@@ -1044,13 +1046,13 @@ mod tests {
     #[test]
     fn reject_empty_env_key() {
         let err = parse_env(r#""" = { kind = "any-string" }"#).unwrap_err();
-        assert!(err.to_string().contains("empty env key"), "{err}");
+        assert!(err.to_string().contains("has an empty name"), "{err}");
     }
 
     #[test]
     fn reject_env_key_with_equals() {
         let err = parse_env(r#""A=B" = { kind = "any-string" }"#).unwrap_err();
-        assert!(err.to_string().contains("`=`"), "{err}");
+        assert!(err.to_string().contains("contains \"=\""), "{err}");
     }
 
     #[test]
@@ -1063,7 +1065,10 @@ mod tests {
     fn reject_rest_env_constraint() {
         let err = parse_env(r#"FOO = { kind = "rest", constraint = { kind = "any-string" } }"#)
             .unwrap_err();
-        assert!(err.to_string().contains("`rest`"), "{err}");
+        assert!(
+            err.to_string().contains("rest is not a value constraint"),
+            "{err}"
+        );
     }
 
     #[test]

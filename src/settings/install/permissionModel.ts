@@ -27,11 +27,17 @@ export interface GroupEntry {
   text: string;
   detail?: string;
   /** Further conditions of a command rule, one line each. */
-  lines?: string[];
-  /** Labels that call out what an entry leaves to the gadget. */
+  lines?: EntryLine[];
+  /** Labels that call out what the entry's own line leaves to the gadget. */
   tags?: EntryTag[];
   change: PermissionChange;
   broad: boolean;
+}
+
+export interface EntryLine {
+  text: string;
+  /** Labels that call out what this line leaves to the gadget. */
+  tags?: EntryTag[];
 }
 
 export interface EntryTag {
@@ -129,13 +135,13 @@ function describe(item: PermissionItem): { group: GroupId; entry: GroupEntry; pa
           lines: [
             ...(permission.cwd === null
               ? []
-              : [`in ${shortenPath(permission.cwd)} or a folder inside it`]),
-            ...permission.env.map(({ key, value }) => `sets ${key} to ${describeArgv(value)}`),
+              : [{ text: `in ${shortenPath(permission.cwd)} or a folder inside it` }]),
+            ...permission.env.map(({ key, value }) => ({
+              text: `sets ${key} to ${describeArgv(value)}`,
+              tags: acceptsAnyText(value) ? [ANY_VALUE] : [],
+            })),
           ],
-          tags: [
-            ...(permission.argv.some(acceptsAnyText) ? [ANY_ARGUMENTS] : []),
-            ...(permission.env.some(({ value }) => acceptsAnyText(value)) ? [ANY_VALUE] : []),
-          ],
+          tags: permission.argv.some(acceptsAnyText) ? [ANY_ARGUMENTS] : [],
         },
       };
     case "httpOrigin":

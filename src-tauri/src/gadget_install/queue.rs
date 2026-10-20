@@ -680,6 +680,8 @@ mod tests {
         let detail = detail.as_deref().expect("the rejection carries the error");
         assert!(detail.contains("can write"), "{detail}");
         assert!(!detail.contains("does not allow"), "{detail}");
+        // The review shows the error as it is; it carries no Markdown.
+        assert!(!detail.contains('`'), "{detail}");
     }
 
     #[test]

@@ -19,6 +19,7 @@ import { cn } from "../../lib/cn";
 import {
   changeSummary,
   groupPermissions,
+  type EntryTag,
   type GroupEntry,
   type PermissionGroup,
   type Platform,
@@ -104,37 +105,49 @@ function GroupView({ group, showChanges }: { group: PermissionGroup; showChanges
   );
 }
 
+// An entry is one run of text: the name, its detail right after it and
+// its tags at the end, wrapping like a sentence, so a long detail does
+// not jump onto a line of its own. A command's folder and variables
+// follow on indented lines, each with its own tags.
 function EntryView({ entry, showChanges }: { entry: GroupEntry; showChanges: boolean }) {
   const removed = entry.change === "removed";
   return (
     <li className="flex flex-col text-text-tertiary">
-      <div className="flex flex-wrap items-center gap-x-1.5">
+      <p className="break-words">
         <span className={cn("break-all", removed && "line-through")}>{entry.text}</span>
-        {entry.detail && <span>{entry.detail}</span>}
+        {entry.detail && <> {entry.detail}</>}
         {entry.tags?.map((tag) => (
-          <span
-            key={tag.label}
-            title={tag.hint}
-            className="rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-500"
-          >
-            {tag.label}
-          </span>
+          <HintTag key={tag.label} tag={tag} />
         ))}
         {showChanges && entry.change === "added" && <ChangeTag>New</ChangeTag>}
         {showChanges && removed && <ChangeTag>Removed</ChangeTag>}
-      </div>
+      </p>
       {entry.lines?.map((line) => (
-        <span key={line} className={cn("break-all pl-3", removed && "line-through")}>
-          {line}
-        </span>
+        <p key={line.text} className="break-words pl-3">
+          <span className={cn("break-all", removed && "line-through")}>{line.text}</span>
+          {line.tags?.map((tag) => (
+            <HintTag key={tag.label} tag={tag} />
+          ))}
+        </p>
       ))}
     </li>
   );
 }
 
+function HintTag({ tag }: { tag: EntryTag }) {
+  return (
+    <span
+      title={tag.hint}
+      className="ml-1.5 inline-block rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-500"
+    >
+      {tag.label}
+    </span>
+  );
+}
+
 function ChangeTag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded bg-accent/15 px-1 text-[10px] font-medium text-accent">
+    <span className="ml-1.5 inline-block rounded bg-accent/15 px-1 text-[10px] font-medium text-accent">
       {children}
     </span>
   );

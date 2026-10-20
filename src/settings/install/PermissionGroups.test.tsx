@@ -81,6 +81,28 @@ describe("PermissionGroups", () => {
     );
   });
 
+  it("writes a command's binary, arguments and tags as one line, a variable's tag on its line", () => {
+    const git: PermissionItem = {
+      permission: {
+        kind: "command",
+        binary: "git",
+        argv: [{ kind: "rest", constraint: { kind: "anyString" } }],
+        cwd: null,
+        env: [{ key: "GIT_COMMIT_MESSAGE", value: { kind: "anyString" } }],
+      },
+      severity: "warning",
+      change: "unchanged",
+    };
+    render(<PermissionGroups items={[git]} platform="macos" />);
+
+    const header = screen.getByText("git").parentElement;
+    expect(header).toHaveTextContent("git with any number of: any textAny arguments");
+    expect(header).not.toHaveTextContent("Any value");
+    const variable = screen.getByText("sets GIT_COMMIT_MESSAGE to any text").parentElement;
+    expect(variable).toHaveTextContent("Any value");
+    expect(variable).not.toHaveTextContent("Any arguments");
+  });
+
   it("shows no programs note without command rules", () => {
     render(<PermissionGroups items={[clipboard]} platform="macos" />);
 

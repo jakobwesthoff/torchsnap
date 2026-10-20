@@ -219,13 +219,13 @@ pub fn lies_within(candidate: &Path, area: &Path) -> Containment {
 
 fn resolve_for_comparison(path: &Path) -> Result<PathBuf, String> {
     if !path.is_absolute() {
-        return Err(format!("`{}` is not absolute", path.display()));
+        return Err(format!("\"{}\" is not absolute", path.display()));
     }
     let lexical = lexically_normalize(path);
     let (existing, tail) = split_at_existing_ancestor(&lexical);
     let canonical = existing
         .canonicalize()
-        .map_err(|e| format!("cannot resolve `{}`: {e}", existing.display()))?;
+        .map_err(|e| format!("cannot resolve \"{}\": {e}", existing.display()))?;
     Ok(if tail.as_os_str().is_empty() {
         canonical
     } else {

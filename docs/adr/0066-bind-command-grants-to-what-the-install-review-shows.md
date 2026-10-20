@@ -153,7 +153,7 @@ describes every command grant the same way and names no programs: the
 "Runs programs" group says "Each program runs outside the gadget's
 sandbox, with your rights.", a rule with an `any-string` argument,
 alone or as the `rest` constraint, is marked "Any arguments", and a
-rule with an `any-string` variable is marked "Any value". The gadget
+variable with an `any-string` value is marked "Any value" on its own line. The gadget
 cards in the settings show the same. Per-rule timeout, output and stdin limits
 stay out of the review while the host does not enforce them.
 

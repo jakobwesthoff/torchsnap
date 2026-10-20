@@ -117,7 +117,7 @@ describe("groupPermissions", () => {
       "macos",
     );
 
-    expect(programs.entries.map((entry) => entry.lines)).toEqual([
+    expect(programs.entries.map((entry) => entry.lines?.map((line) => line.text))).toEqual([
       ["in ~/projects or a folder inside it"],
       [],
     ]);
@@ -144,7 +144,7 @@ describe("groupPermissions", () => {
       "macos",
     );
 
-    expect(programs.entries[0].lines).toEqual([
+    expect(programs.entries[0].lines?.map((line) => line.text)).toEqual([
       "in ~/projects or a folder inside it",
       "sets GIT_AUTHOR_NAME to text matching /[A-Za-z ]{1,64}/",
       'sets LC_ALL to one of "C", "en_US.UTF-8"',
@@ -186,12 +186,21 @@ describe("groupPermissions", () => {
       "macos",
     );
 
-    expect(programs.entries.map((entry) => entry.tags?.map((tag) => tag.label) ?? [])).toEqual([
+    const labels = (tags?: { label: string }[]) => tags?.map((tag) => tag.label) ?? [];
+    expect(programs.entries.map((entry) => labels(entry.tags))).toEqual([
       ["Any arguments"],
       ["Any arguments"],
       [],
-      ["Any value"],
       [],
+      [],
+    ]);
+    // "Any value" belongs to the variable it describes.
+    expect(programs.entries.map((entry) => entry.lines?.map((line) => labels(line.tags)))).toEqual([
+      [],
+      [],
+      [],
+      [["Any value"]],
+      [[]],
     ]);
   });
 

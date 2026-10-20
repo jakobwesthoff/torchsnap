@@ -221,7 +221,7 @@ impl CommandCap {
             self.writable
                 .deny_touching(std::path::Path::new(value), Scope::Argument)
                 .map_err(|reason| {
-                    CommandCapError::PermissionDenied(format!("argument `{value}` {reason}"))
+                    CommandCapError::PermissionDenied(format!("argument \"{value}\" {reason}"))
                 })?;
         }
         let env_overrides = check_env_overrides(rule, &options.env, &self.writable)?;
@@ -235,7 +235,7 @@ impl CommandCap {
         // killed, so the directories outlast every use by the child.
         let spawn_dirs = SpawnDirs::create(&self.spawn_base).map_err(|e| {
             CommandCapError::SpawnFailed(format!(
-                "create the spawn directory in `{}`: {e}",
+                "create the spawn directory in \"{}\": {e}",
                 self.spawn_base.display()
             ))
         })?;
@@ -315,8 +315,8 @@ impl WritableAreas {
             .filter(|parent| parent.file_name().is_some_and(|name| name == "gadget-home"));
         let Some(app_data) = gadget_home.and_then(std::path::Path::parent) else {
             anyhow::bail!(
-                "the gadget's data directory `{}` is not in the host's \
-                 `<app data>/gadget-home/<id>/` layout",
+                "the gadget's data directory \"{}\" is not in the host's layout \
+                 <app data>/gadget-home/<id>/",
                 gadget_data_dir.display()
             );
         };
@@ -364,12 +364,27 @@ impl WritableAreas {
         match self.touches(path, scope) {
             Containment::Outside => Ok(()),
             Containment::Inside => Err(format!(
-                "lies in or contains an area the gadget can write (`{}`)",
-                self.app_data.display()
+                "lies in or contains {}, which the gadget can write",
+                self.describe_area_near(path, scope)
             )),
             Containment::Undetermined(reason) => Err(format!(
                 "cannot be checked against the areas the gadget can write: {reason}"
             )),
+        }
+    }
+
+    /// The area `path` lies in or contains, in words: the gadget's
+    /// package when it is that one, else the app data directory.
+    fn describe_area_near(&self, path: &std::path::Path, scope: Scope) -> String {
+        match &self.package {
+            Some(package)
+                if scope == Scope::Configuration
+                    && (lies_within(path, package) == Containment::Inside
+                        || lies_within(package, path) == Containment::Inside) =>
+            {
+                format!("the gadget's package \"{}\"", package.display())
+            }
+            _ => format!("Torchsnap's data folder \"{}\"", self.app_data.display()),
         }
     }
 }
@@ -404,14 +419,14 @@ fn check_rule_locations(
     let check = |path: &std::path::Path, scope: Scope, field: &str| -> anyhow::Result<()> {
         match writable.holds(path, scope) {
             Containment::Inside => anyhow::bail!(
-                "`[[permissions.command]]` rule {rule_index} {field} `{}` lies in an area the \
-                 gadget can write (`{}`)",
+                "Command rule {rule_index}: {field} \"{}\" lies in {}, which the gadget can write",
                 path.display(),
-                writable.app_data.display()
+                writable.describe_area_near(path, scope)
             ),
             Containment::Undetermined(reason) => {
                 eprintln!(
-                    "command: rule {rule_index} {field} `{}` is checked at run time: {reason}",
+                    "Command rule {rule_index}: {field} \"{}\" is checked when a call uses it, \
+                     since it cannot be resolved now: {reason}",
                     path.display()
                 );
                 Ok(())
@@ -425,7 +440,7 @@ fn check_rule_locations(
             other => other,
         };
         match constraint {
-            C::PathUnder(root) => check(root, scope, &format!("{field} root")),
+            C::PathUnder(root) => check(root, scope, &format!("the path-under root of {field}")),
             C::Literal(value) => check_fixed_value(value, scope, field, &check),
             C::Enum(values) => values
                 .iter()
@@ -435,13 +450,21 @@ fn check_rule_locations(
     };
 
     if let Some(root) = &rule.cwd {
-        check(root, Scope::Configuration, "`cwd`")?;
+        check(root, Scope::Configuration, "the working directory")?;
     }
     for (argv_index, constraint) in rule.argv.iter().enumerate() {
-        check_constraint(constraint, Scope::Argument, &format!("argv[{argv_index}]"))?;
+        check_constraint(
+            constraint,
+            Scope::Argument,
+            &format!("argument {argv_index}"),
+        )?;
     }
     for (key, constraint) in &rule.env {
-        check_constraint(constraint, Scope::Configuration, &format!("env `{key}`"))?;
+        check_constraint(
+            constraint,
+            Scope::Configuration,
+            &format!("the environment variable {key}"),
+        )?;
     }
     Ok(())
 }
@@ -485,7 +508,7 @@ fn check_guest_cwd(
     };
     let Some(root) = &rule.cwd else {
         return Err(CommandCapError::PermissionDenied(format!(
-            "the rule for `{}` declares no `cwd`, so a call cannot choose a working directory",
+            "the rule for \"{}\" declares no cwd, so a call cannot choose a working directory",
             rule.binary
         )));
     };
@@ -495,7 +518,7 @@ fn check_guest_cwd(
         .any(|component| component == std::path::Component::ParentDir)
     {
         return Err(CommandCapError::PermissionDenied(format!(
-            "working directory `{guest}` contains `..`"
+            "working directory \"{guest}\" contains \"..\""
         )));
     }
 
@@ -507,7 +530,7 @@ fn check_guest_cwd(
             | PathError::EscapesRoot { .. }),
         ) => {
             return Err(CommandCapError::PermissionDenied(format!(
-                "working directory `{guest}` is not inside the rule's `cwd`: {e}"
+                "working directory \"{guest}\" is not inside the rule's cwd: {e}"
             )));
         }
         Err(
@@ -516,7 +539,7 @@ fn check_guest_cwd(
             | PathError::CandidateCanonicalize(_)),
         ) => {
             return Err(CommandCapError::SpawnFailed(format!(
-                "resolve working directory `{guest}`: {e}"
+                "resolve working directory \"{guest}\": {e}"
             )));
         }
     };
@@ -524,17 +547,17 @@ fn check_guest_cwd(
     writable
         .deny_touching(&canonical, Scope::Configuration)
         .map_err(|reason| {
-            CommandCapError::PermissionDenied(format!("working directory `{guest}` {reason}"))
+            CommandCapError::PermissionDenied(format!("working directory \"{guest}\" {reason}"))
         })?;
 
     match std::fs::metadata(&canonical) {
         Ok(meta) if meta.is_dir() => Ok(Some(canonical)),
         Ok(_) => Err(CommandCapError::SpawnFailed(format!(
-            "working directory `{}` is not a directory",
+            "working directory \"{}\" is not a directory",
             canonical.display()
         ))),
         Err(e) => Err(CommandCapError::SpawnFailed(format!(
-            "working directory `{}`: {e}",
+            "working directory \"{}\": {e}",
             canonical.display()
         ))),
     }
@@ -548,7 +571,7 @@ fn prepare_rule_root(
     writable: &WritableAreas,
 ) -> Result<PathBuf, CommandCapError> {
     let deny = |reason: String| {
-        CommandCapError::PermissionDenied(format!("the rule's `cwd` `{}` {reason}", root.display()))
+        CommandCapError::PermissionDenied(format!("the rule's cwd \"{}\" {reason}", root.display()))
     };
     writable
         .deny_touching(root, Scope::Configuration)
@@ -557,7 +580,7 @@ fn prepare_rule_root(
         .and_then(|()| root.canonicalize())
         .map_err(|e| {
             CommandCapError::SpawnFailed(format!(
-                "prepare the rule's `cwd` `{}`: {e}",
+                "prepare the rule's cwd \"{}\": {e}",
                 root.display()
             ))
         })?;
@@ -687,7 +710,7 @@ impl Drop for SpawnDirs {
         make_tree_removable(&self.root);
         if let Err(e) = std::fs::remove_dir_all(&self.root) {
             eprintln!(
-                "command: could not remove spawn directory `{}`: {e}",
+                "command: could not remove spawn directory \"{}\": {e}",
                 self.root.display()
             );
         }
@@ -764,27 +787,27 @@ fn check_env_overrides(
     for (key, value) in overrides {
         let Some((_, constraint)) = rule.env.iter().find(|(declared, _)| declared == key) else {
             return deny(format!(
-                "the rule for `{}` does not declare the environment variable `{key}`",
+                "the rule for \"{}\" does not declare the environment variable {key}",
                 rule.binary
             ));
         };
         if value.contains('\0') {
-            return deny(format!("the value of `{key}` contains a NUL byte"));
+            return deny(format!("the value of {key} contains a NUL byte"));
         }
         let value = match constraint {
             C::PathUnder(root) => checked_path_value(key, value, root, writable)?,
             other => {
                 if !argv_matcher::value_matches(other, value) {
                     return deny(format!(
-                        "the value of `{key}` does not meet the rule's constraint"
+                        "the value of {key} does not meet the rule's constraint"
                     ));
                 }
                 if matches!(other, C::Regex(_) | C::Glob(_) | C::AnyString)
                     && value.chars().any(std::path::is_separator)
                 {
                     return deny(format!(
-                        "the value of `{key}` contains a path separator; declare it as \
-                         `path-under` to pass a path"
+                        "the value of {key} contains a path separator; declare it as \
+                         path-under to pass a path"
                     ));
                 }
                 value.into()
@@ -810,19 +833,19 @@ fn checked_path_value(
         .any(|component| component == std::path::Component::ParentDir)
     {
         return Err(CommandCapError::PermissionDenied(format!(
-            "the value of `{key}` contains `..`"
+            "the value of {key} contains \"..\""
         )));
     }
     let canonical =
         crate::wasm::path_safety::canonical_under_root(requested, root).map_err(|e| {
             CommandCapError::PermissionDenied(format!(
-                "the value of `{key}` is not inside the declared root: {e}"
+                "the value of {key} is not inside the declared root: {e}"
             ))
         })?;
     writable
         .deny_touching(&canonical, Scope::Configuration)
         .map_err(|reason| {
-            CommandCapError::PermissionDenied(format!("the value of `{key}` {reason}"))
+            CommandCapError::PermissionDenied(format!("the value of {key} {reason}"))
         })?;
     Ok(canonical.into_os_string())
 }
