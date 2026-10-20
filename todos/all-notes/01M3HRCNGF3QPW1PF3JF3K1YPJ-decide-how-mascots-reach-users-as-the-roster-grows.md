@@ -12,7 +12,7 @@ The app bundles every mascot, so the binary and the update archive grow with the
 
 ## Numbers
 
-Since ADR 0057 the app ships 662 mascots: 1986 WebPs, 40.4 MiB in `public/images/mascot/`. Per mascot mean 62.5 KiB, median 61.0 KiB, range 33.4 to 100.1 KiB; the 384 px file is 41.0 KiB of that, the 96 px file 6.0 KiB. The numbers below were measured with the 189 mascots before it.
+Since ADR 0057 the app ships hundreds of mascots. On 2026-10-21 `public/images/mascot/` holds 626 mascots: 1878 WebPs, 38.5 MiB. Per mascot mean 62.9 KiB, median 61.4 KiB, range 33.4 to 103.5 KiB; the 384 px file is 41.4 KiB of that, the 96 px file 6.0 KiB. The roster peaked at 662 mascots; later mascot commits removed some (for example `82df0c9c` and `75ff0eec`). The numbers below were measured with the 189 mascots before ADR 0057.
 
 - Bundled cost per mascot (96 + 192 + 384 px WebP): mean 55.2 KiB, median 54.8 KiB, range 33.2 to 81.1 KiB. The 384 px file is 37.1 KiB of that, the 96 px file 5.0 KiB.
 - All 189 mascots: 10.2 MiB in `public/images/mascot/`. Brotli, which Tauri applies to embedded assets, saves 0.5% on them.
@@ -48,7 +48,7 @@ No change. Size grows linearly with the roster.
 
 ### Keep bundling, shrink the files
 
-- Drop the 96 px size: saves about 3.9 MiB with 662 mascots. 1x displays would downscale the 192 px file in sidekick mode.
+- Drop the 96 px size: saves about 3.7 MiB with 626 mascots. 1x displays would downscale the 192 px file in sidekick mode.
 - Quality sweep on the 384 px files (`cwebp -q 90 -alpha_q 100` in torchsnap-mascot's `tools/webp.sh`). Not yet measured which settings stay visually clean.
 - AVIF instead of WebP. Not yet measured. WebKit supports AVIF from macOS 13; `tauri.conf.json` sets no `minimumSystemVersion`, so this needs a raised minimum.
 
@@ -65,6 +65,6 @@ No change. Size grows linearly with the roster.
 
 ## Open questions
 
-- The roster grew by 473 to 662. Is more growth planned?
+- The roster grew from 189 to a peak of 662 and stands at 626. Is more growth planned?
 - With packs: which mascots belong to the core set, whether the app must work fully offline with only that set, and whether the rest downloads automatically or on opt-in.
 - Is raising the minimum macOS version to 13 acceptable for AVIF?

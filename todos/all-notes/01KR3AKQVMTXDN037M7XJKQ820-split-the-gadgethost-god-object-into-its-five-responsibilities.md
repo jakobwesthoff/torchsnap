@@ -32,7 +32,11 @@ removed. `AppHandle` no longer appears in the `Gadget` trait.
 
 ## Remaining work
 
-The core decomposition is untouched:
+The core decomposition has barely started. Some pieces of item 4 moved
+since: `GadgetSlot::submit` owns each gadget's change queue,
+`route_setting_key` and `deliver_setting_change` route a settings key to
+its slot, and `EnableFailures` lives in `src-tauri/src/gadget_status.rs`.
+These are free functions and a helper type, not the extraction below.
 - Extract `ShortcutManager`, `SearchRouter`, and
   `SettingsDispatcher` as distinct types.
 - `GadgetHost` becomes a thin coordinator that owns the slot

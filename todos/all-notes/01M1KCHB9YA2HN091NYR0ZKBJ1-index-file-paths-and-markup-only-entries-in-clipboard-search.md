@@ -26,19 +26,20 @@ how the query is *built*; this todo is about what the index *contains*.
 requirements, and the searchable one loses:
 
 - The launcher list row, which truncates to `LIST_DISPLAY_MAX_CHARS = 40`
-  (`src-tauri/src/gadgets/clipboard/schema.rs`, around line 87) and wants
+  (`LIST_DISPLAY_MAX_CHARS` in `src-tauri/src/gadgets/clipboard/schema.rs`) and wants
   something short and human-readable.
 - `clipboard_fts`, an external-content FTS5 table whose only content
-  source is `clipboard_display` (`schema.rs`, around lines 60-64), which
+  source is `clipboard_display` (the `clipboard_fts` definition in `MIGRATION_001`, `schema.rs`), which
   wants the complete text.
 
-`derive_display_text` (`src-tauri/src/gadgets/clipboard/formats.rs`, around
-line 183) optimises for the first, so three categories of entry are partly
+`display_text` (`src-tauri/src/gadgets/clipboard/formats.rs`; it derives the
+text from the formats a capture stored, not from a further pasteboard read)
+optimises for the first, so three categories of entry are partly
 or wholly unsearchable.
 
 ### 1. File entries index basenames only
 
-`file_paths_to_display_text` (`formats.rs`, around line 227) maps every path
+`file_paths_to_display_text` (`formats.rs`) maps every path
 through `Path::file_name()`. Its doc comment states the intent plainly:
 "Uses filenames (not full paths) to keep the display compact." Correct for
 a 40-character row, wrong for the index.
@@ -56,9 +57,9 @@ Searching `Downloads` returns 0 hits despite one entry being a file
 from `~/Downloads`.
 
 The data is not lost. Full paths are stored as a JSON array in
-`clipboard_content` under the `files` format (written by `store_entry`,
-`storage.rs`, around lines 283-291; read back on paste by
-`captured_to_clipboard_content`, `formats.rs`, around lines 279-283). Only
+`clipboard_content` under the `files` format (written by `store_entry`
+in `storage.rs`; read back on paste by
+`captured_to_clipboard_contents` in `formats.rs`). Only
 the index never sees them, so this is fixable by backfill without
 re-capturing.
 
@@ -70,8 +71,8 @@ door making these searchable.
 
 ### 2. HTML/RTF-only entries index nothing
 
-`derive_display_text` returns `String::new()` when there is no files,
-text, or image content (`formats.rs`, around line 206). The doc comment notes
+`display_text` returns `String::new()` when there is no files,
+text, or image content (`formats.rs`). The doc comment notes
 HTML and RTF "don't produce display text (they're markup, not readable
 content)". Such an entry gets an empty FTS document and can never match
 any query. In practice most rich-text copies also carry a `text`
@@ -81,7 +82,7 @@ user-facing loss.
 
 ### 3. Images index only their dimensions
 
-Images become `Image (1920×1080)` (`formats.rs`, around line 203), searchable
+Images become `Image (1920×1080)` (`display_text` in `formats.rs`), searchable
 only by the literal word "image" or the dimensions. Arguably correct, since
 there is no text to index without OCR, but worth stating so it is a decision
 rather than an oversight. No change proposed.
@@ -125,7 +126,7 @@ Open questions to settle before implementing:
    concatenated column is probably sufficient. Prefer the simpler one
    unless relevance ordering returns.
 2. Cap `index_text` separately? `DISPLAY_TEXT_MAX_CHARS = 128_000`
-   (`schema.rs`, around line 84) currently bounds both roles. A long path list
+   (`schema.rs`) currently bounds both roles. A long path list
    could want a different bound than a long text paste.
 3. HTML-to-plaintext: a dependency, or a minimal tag stripper? Prefer
    minimal: this feeds an index, not a renderer, and imperfect
@@ -150,10 +151,10 @@ bounds growth.
 ### Trigger caveat
 
 `clipboard_display` has INSERT and DELETE triggers only
-(`schema.rs`, around lines 66-74); there is no UPDATE trigger. This is currently safe
+(the `clipboard_fts_insert` and `clipboard_fts_delete` triggers in `schema.rs`); there is no UPDATE trigger. This is currently safe
 because display rows are only ever inserted and the dedupe path bumps
 `captured_at` on `clipboard_entries` without touching display text
-(`storage.rs`, around lines 271-279). **If the backfill UPDATEs `clipboard_display`
+(`store_entry` and `touch_entry` in `storage.rs`). **If the backfill UPDATEs `clipboard_display`
 in place, the FTS index will silently go stale.** Either add an UPDATE
 trigger as part of the migration or rebuild the FTS table explicitly
 after the backfill. This is the single easiest thing to get wrong here.
@@ -197,7 +198,7 @@ Migration tests:
 
 - `CHANGELOG.md` entry.
 - If the `index_text` split is adopted, note it in the schema doc
-  comment (`schema.rs`, around lines 26-32), which currently describes
+  comment (the header comment of `MIGRATION_001` in `schema.rs`), which currently describes
   `clipboard_display` only as "derived human-readable display text".
 - ADR only if the two-column-vs-one-column question is decided in a way
   worth recording; a straightforward split does not warrant one.

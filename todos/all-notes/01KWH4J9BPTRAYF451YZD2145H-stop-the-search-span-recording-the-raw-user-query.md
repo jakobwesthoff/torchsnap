@@ -12,14 +12,14 @@ The search span records the full launcher input as span metadata on every keystr
 Read in the code, not reproduced.
 
 `WasmGadgetInstance::search` records the full user query as span
-metadata (`instance.rs:264`):
+metadata (`WasmGadgetInstance::search` in `instance.rs`):
 
 ```rust
 let span = self.logger.span("search").meta("query", query).start();
 ```
 
 `query` is the per-keystroke launcher input. The adjacent `execute`
-span (`instance.rs:298`) records no metadata at all since ADR 0055
+span (`WasmGadgetInstance::execute` in `instance.rs`) records no metadata at all since ADR 0055
 replaced the `entry_id`/`action_id` execute signature with a single
 `command` string. The `entry_id` privacy concern therefore no longer
 applies, and the `query` span is the sole remaining exposure this
@@ -29,14 +29,14 @@ todo tracks.
 
 ### Log-pipeline exposure (in-memory, but cross-gadget-readable)
 Storage is in-memory only. Span items flow through a bounded mpsc into
-a logging task (`logging/channel.rs:238-260`) that pushes into
+a logging task (`logging/channel.rs`) that pushes into
 `RingBufferStorage`, a `VecDeque` capped at 10,000 items
 (`logging/mod.rs:55`, `storage.rs:65-105`). No disk persistence
 exists anywhere (no `tauri-plugin-log`, no file writes; verified).
 The buffer is discarded on exit, and `devtools_log_clear` empties it on
 demand. The query enters the stream **twice per search call**. The
-`SpanStart` item carries the metadata immediately (`spans.rs:341-367`),
-and the `SpanEnd` item merges start and end metadata (`spans.rs:145-166`).
+`SpanStart` item carries the metadata immediately (`SpanBuilder::start` in `spans.rs`),
+and the `SpanEnd` item merges start and end metadata (`SpanRegistry::end` in `spans.rs`).
 
 Readers of the buffer:
 - Tauri commands `devtools_log_history` / `_subscribe` / `_clear` /
@@ -72,16 +72,16 @@ devtools console and by any gadget UI bundle, cross-gadget.
 - **Per keystroke, fanned out.** `useSearch.ts` fires the `search`
   command on every query change with no debounce (`useSearch.ts:153,158`).
   In non-prefix mode the host dispatches the full query to *every*
-  active WASM gadget (`gadget_host.rs:767-777`), and each one records it.
+  active WASM gadget (`GadgetHost::search` in `gadget_host.rs`), and each one records it.
   One keystroke therefore produces 2 × (active gadget count) log items
   containing the query fragment. The 10k buffer holds a deep recent
   history of everything typed.
 - **Elided searches still record.** The span (with query) is created
-  before the generation check (`instance.rs:264` vs `:267`), so even
+  before the generation check (in `WasmGadgetInstance::search`), so even
   superseded stale calls capture their fragment.
 - **Prefix mode records exactly the sensitive payload.** In prefix mode
   the host strips the prefix and passes the remainder
-  (`gadget_host.rs:675,682`). The span therefore records precisely what the
+  (the prefix path of `GadgetHost::search`). The span therefore records precisely what the
   user typed after the prefix. For a hypothetical secrets, password or URL
   gadget, that is the highest-sensitivity input in the app. Launcher queries
   generally contain file names, contact names, and pasted content.
@@ -107,7 +107,7 @@ returns raw `LogItem`s to whatever JS asks, so the raw query must never
 enter the mpsc channel.
 
 1. **Default: replace `.meta("query", query)` with
-   `.meta("query_len", query.len().to_string())`** at `instance.rs:264`.
+   `.meta("query_len", query.len().to_string())`** in `WasmGadgetInstance::search`.
    The span's debugging value (duration, `response_type`,
    `result_count`, `elided`) is preserved. Length keeps the
    perf-relevant signal, long versus short input. Do not hash.
@@ -138,6 +138,6 @@ the architectural root with the CORS finding.
 - Relates to: [Replace Origin reflection on the gadget asset protocol with an allowlist](01KWH4J9BPTRAYF451YZD2145B-replace-origin-reflection-on-the-gadget-asset-protocol-with-an-allowlist.md), the same gadget UI trust boundary
 
 ## Key files
-`instance.rs:264`; `wasm/logging/{spans.rs,channel.rs,storage.rs,commands.rs,mod.rs}`;
-`gadget_host.rs:660-828`; `src/launcher/hooks/useSearch.ts:153`;
+`WasmGadgetInstance::search` in `instance.rs`; `wasm/logging/{spans.rs,channel.rs,storage.rs,commands.rs,mod.rs}`;
+`gadget_host.rs`, `GadgetHost::search`; `src/launcher/hooks/useSearch.ts:153`;
 `src/gadgets/wasmPluginLoader.ts:54-92`; `capabilities/default.json`.

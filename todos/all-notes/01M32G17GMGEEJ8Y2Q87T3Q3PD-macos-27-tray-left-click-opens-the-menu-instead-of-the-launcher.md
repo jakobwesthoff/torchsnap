@@ -36,7 +36,8 @@ Related break reported by Wails (wails #6147): the deprecated
 `NSStatusItem.setTarget` / `setAction` no longer fire on 27. Wails fixed
 it by setting target/action on `statusItem.button`.
 
-Our versions (from `src-tauri/Cargo.lock`): tauri 2.11.5, tray-icon
+Our versions (from `src-tauri/Cargo.lock`): tauri 2.11.6 (the Tauri source locations
+below were read in 2.11.5), tray-icon
 0.24.2, muda 0.19.3. tray-icon 0.24 attaches the menu to the status item
 permanently at build time (`TrayIconBuilder::menu`) and in `set_menu`.
 The `menu_on_left_click` flag is only read inside tray-icon's own click

@@ -74,6 +74,8 @@ beyond that.
 
 - 2026-10-03, user: the native keep-awake work ships without an end-of-session notice, and this API is evaluated separately.
 
+A failed gadget enable shows in Settings (ADR 0063) but raises no toast or notification. That would be host UI, not a gadget API, but it would share the host side with this API.
+
 ## Revisit when
 
 No trigger known; reconsider at the next sweep.
@@ -81,4 +83,3 @@ No trigger known; reconsider at the next sweep.
 ## Relations
 
 - Relates to: [Decide whether scheduled gadget tasks catch up after sleep](01KWFZ4KKAQ7SPWNM2NCKET1GK-decide-whether-scheduled-gadget-tasks-catch-up-after-sleep.md), the sleep-skipped fires that option (a) runs into.
-- Relates to: [Make Gadget::enable return a Result so the host can revert a failed enable](01KNWQ80DHKS7HBVDNMQ5F8E0H-make-gadgetenable-return-a-result-so-the-host-can-revert-a-failed-enable.md), which asks whether a failed enable should surface a toast or notification. That is host UI, not a gadget API, but it would share the host side.

@@ -18,13 +18,13 @@ Every place the host runs gadget code on the blocking pool
 unwraps the `JoinHandle` result with a panic-on-panic `expect`:
 
 - prefix search: `.expect("prefix search task not panicked")`
-  (`src-tauri/src/gadget_host.rs:751`)
+  (`GadgetHost::search` in `src-tauri/src/gadget_host.rs`)
 - catalog search: `.expect("catalog search task not panicked")`
-  (`gadget_host.rs:815`)
+  (`GadgetHost::search` in `gadget_host.rs`)
 - query fan-out: `result.expect("query search task not
-  panicked")` (`gadget_host.rs:850`)
+  panicked")` (`GadgetHost::search` in `gadget_host.rs`)
 - execute: `.expect("search_execute task must not panic")`
-  (`src-tauri/src/commands/mod.rs:62`)
+  (`search_execute` in `src-tauri/src/commands/mod.rs`)
 
 A panic inside any single gadget's `search()` / `entries()` /
 `execute()` (a native gadget bug, or a WASM-bridge panic such as the
@@ -32,14 +32,14 @@ poisoned-mutex cascade described in the related todo) therefore
 re-panics the *host* task handling the whole request:
 
 - In `search()`, the panic unwinds the async command task before
-  `SearchMessage::Done` is sent (`gadget_host.rs:827`). The
+  `SearchMessage::Done` is sent (`GadgetHost::search`). The
   frontend's result channel never terminates for that
   generation.
 - In the query fan-out specifically, one panicking gadget
   discards the not-yet-drained results of every other gadget in
   the `JoinSet`.
 
-The comment at `gadget_host.rs:1246-1252` (test MockGadget)
+The comment on the test `MockGadget` in `gadget_host.rs`
 shows the trait contract assumes well-behaved gadgets. For
 third-party WASM gadgets that assumption doesn't hold, and the
 bridge itself has known panic paths.
@@ -56,7 +56,7 @@ gadgets' results.
 Treat `JoinError::is_panic()` as "this gadget produced no
 results": log which gadget panicked, optionally flip its
 `enabled` flag (self-quarantine, matching the existing
-enable-failure pattern at `gadget_host.rs:483-487`), and
+enable-failure pattern in `enable_gadget` in `gadget_host.rs`), and
 continue draining the JoinSet. `Done` must be sent on all paths.
 
 ## The same class in settings delivery

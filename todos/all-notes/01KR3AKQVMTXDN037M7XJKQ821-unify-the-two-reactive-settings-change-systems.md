@@ -17,12 +17,14 @@ fed by the same `settings-changed` Tauri event listener in `lib.rs`:
    ControlSocket, WebsiteMetadataService). Coalescing is inherent
    in `watch` semantics (latest value wins).
 
-2. **`CoalescingDispatcher`**: per-gadget mutex-based dispatcher
-   for gadget `setting_changed()` callbacks. Has its own dedup
+2. **`CoalescingDispatcher`**: per-gadget queue behind one mutex
+   for gadget `setting_changed()` callbacks. The caller that finds no drain
+   running drains the queue, one handler per slot (ADR 0067 fixed the lost
+   wakeup there). Has its own dedup
    logic (same key = latest value; different keys = preserve
    chronological ordering).
 
-The event listener in `lib.rs` manually routes to both:
+The event listener in `lib.rs` manually routes to both, and also to the shortcut reactor (`notify_shortcut_change`):
 
 ```rust
 notifier.notify(&payload.key, value.clone());   // path 1
@@ -55,5 +57,5 @@ becomes unnecessary.
 
 - `src-tauri/src/settings/notifier.rs`
 - `src-tauri/src/settings/coalescing_dispatcher.rs`
-- `src-tauri/src/gadget_host.rs` (settings dispatch path)
+- `src-tauri/src/gadget_host.rs` (`GadgetHost::handle_setting_changed`, the settings dispatch path)
 - `src-tauri/src/lib.rs` (event listener routing)

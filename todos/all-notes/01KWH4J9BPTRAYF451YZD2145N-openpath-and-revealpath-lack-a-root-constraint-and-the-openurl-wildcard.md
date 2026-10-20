@@ -14,7 +14,7 @@ Read in the code, not reproduced.
 
 `OpenerCap` gates `open_path` and `reveal_path` on a plain boolean and
 passes the path verbatim to the backend. `open_url`'s `*` wildcard
-short-circuits before URL parsing (`src-tauri/src/caps/opener.rs:105-143`).
+short-circuits before URL parsing (`check_scheme` in `src-tauri/src/caps/opener.rs`).
 
 Backend chain, traced end to end: the `OpenerCap` closure, then
 `tauri_plugin_opener` 2.5.3, then the `open` crate 5.3.3, then a spawned OS
@@ -63,7 +63,7 @@ Chains that raise it to code execution (then **high**):
 
 ### `open_url` `*` wildcard (medium, a footgun)
 `check_scheme` returns `Ok(())` on `"*"` before `url::Url::parse`
-(`opener.rs:129-132`), so:
+(`check_scheme` in `opener.rs`), so:
 - `file:///...` opens an arbitrary existing local file. This is the exact
   vector ADR 0037 explicitly rejected ("An unrestricted opener lets
   any installed plugin open arbitrary URLs, including `file://`,
@@ -118,7 +118,7 @@ open-path = ["${xdg-data}/myapp/exports/*", "/Applications/Calendar.app"]
 Reuse the existing canonicalizing matcher. `src-tauri/src/caps/filesystem.rs`
 already has `compile_fs_patterns` (glob `*` and `**`, `${...}` substitution,
 prefix canonicalization) and `path_in_allowlist`, which canonicalizes the
-request path, resolving symlinks, before matching (`filesystem.rs:328-334`).
+request path, resolving symlinks, before matching (`resolve_request` in `filesystem.rs`).
 Alternatively, reuse command's `path-under` primitive directly. Canonicalize the
 request path and require a declared-root match before forwarding. This
 brings `open_path` in line with the rest of the permission model. Filesystem read and command arguments are already root-scoped, and opener is the outlier.
@@ -166,16 +166,16 @@ model.
   is Linux. Both open documents.
 
 ## Files
-- `src-tauri/src/caps/opener.rs:105-143` (cap logic; `check_scheme` `*`
-  short-circuit at `:130-132`)
+- `src-tauri/src/caps/opener.rs`, `OpenerCap` (cap logic) and
+  `check_scheme` (the `*` short-circuit)
 - `tauri-plugin-opener-2.5.3/src/open.rs:33-61` (existence-check
   asymmetry: `open_path` checks, `open_url` doesn't)
 - `open-5.3.3/src/macos.rs:3-7` and `open-5.3.3/src/unix.rs:8-32` (spawned
   binaries)
 - `tauri-plugin-opener-2.5.3/src/reveal_item_in_dir.rs:12`
   (`reveal_path` is reveal-only)
-- `src-tauri/src/wasm/manifest/permissions/opener.rs:24-75` (bool grants, no roots)
-- `src-tauri/src/caps/filesystem.rs:185,328-334` (reusable `compile_fs_patterns` and
+- `src-tauri/src/wasm/manifest/permissions/opener.rs` (bool grants, no roots)
+- `src-tauri/src/caps/filesystem.rs` (reusable `compile_fs_patterns` and
   `path_in_allowlist`)
 - `src-tauri/src/wasm/manifest/permissions/command.rs:23-26,154-155,392-394`
   (opener-binary ban and `path-under` primitive)

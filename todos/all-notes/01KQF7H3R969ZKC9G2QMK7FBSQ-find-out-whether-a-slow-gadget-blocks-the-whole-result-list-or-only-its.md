@@ -49,7 +49,7 @@ which symptom is actually happening:
 ## Concrete questions to answer
 
 1. **Result streaming reality.** In `src-tauri/src/gadget_host.rs`
-   around line 449 (`GadgetHost::search`), trace the path
+   (`GadgetHost::search`), trace the path
    from per-gadget `spawn_blocking` task to the IPC channel
    send. Is each gadget's `SearchResponse` forwarded to the
    frontend independently as it arrives, or is there an
@@ -62,8 +62,7 @@ which symptom is actually happening:
    interleaved with query-gadget results? Could a slow query
    gadget delay catalog rendering?
 
-3. **Frontend reception.** In `src/launcher/hooks/useSearch.ts`
-   (around line 95), how does the frontend incorporate
+3. **Frontend reception.** In `src/launcher/hooks/useSearch.ts`, how does the frontend incorporate
    incremental results? Are gadget results merged into the
    visible list one at a time, or is there a buffer that
    waits for some completion signal?
@@ -97,9 +96,9 @@ patch.
 
 ## References
 
-- `src-tauri/src/gadget_host.rs:449`, the search orchestrator
-- `src-tauri/src/gadget_host.rs:560`, the per-gadget spawn_blocking
-- `src-tauri/src/wasm/runtime/instance.rs:232`, the WASM mutex
-- `src-tauri/src/wasm/runtime/host/website_metadata.rs:72`, block_in_place
-- `src/launcher/hooks/useSearch.ts:95-102`, the frontend generation
+- `src-tauri/src/gadget_host.rs`, `GadgetHost::search`, the search orchestrator
+- `src-tauri/src/gadget_host.rs`, the per-gadget `spawn_blocking` calls inside `GadgetHost::search`
+- `src-tauri/src/wasm/runtime/instance.rs`, `store: Mutex<Store<GadgetState>>` and `search`, the WASM mutex
+- `src-tauri/src/wasm/runtime/host/website_metadata.rs`, `lookup_sync`, the `block_in_place`
+- `src/launcher/hooks/useSearch.ts`, `generationRef`, the frontend generation
 - Conversation: open-url WASM port commits `72615b6`, `286f724`

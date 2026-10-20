@@ -11,19 +11,20 @@ The three largest gadgets are dominated by dependency code rather than their own
 ## Problem
 
 The three largest gadgets in the workspace are dominated by
-dependency code, not their own logic. Measured `.wasm` sizes from
-`gadgets/target/wasm32-wasip2/release/`:
+dependency code, not their own logic. `.wasm` sizes from
+`gadgets/target/wasm32-wasip2/release/`, measured 2026-10-21 (no
+dependency change has landed since the first measurement):
 
 | gadget         | size     | notable deps                               |
 |----------------|----------|--------------------------------------------|
-| calculator     | 1.63 MB  | regex, evalexpr, blake3, serde_json, ulid  |
-| emoji-picker   | 1.37 MB  | (TBD: audit)                               |
-| open-url       | 1.20 MB  | (TBD: audit)                               |
-| hello-world    |  232 KB  | floor: wit-bindgen + serde_json + SDK      |
+| calculator     | 1.73 MB  | regex, evalexpr, blake3, serde_json, ulid  |
+| emoji-picker   | 1.40 MB  | (TBD: audit)                               |
+| open-url       | 1.38 MB  | (TBD: audit)                               |
+| hello-world    |  309 KB  | floor: wit-bindgen + serde_json + SDK      |
 
 `hello-world` represents the practical floor imposed by
 `wit-bindgen` + the SDK + `serde_json`. Everything above that floor
-is dependency choice, and the calculator alone is **~7×** the floor.
+is dependency choice, and the calculator alone is **~6×** the floor.
 
 Cargo profile tweaks and `wasm-opt` get us a multiplier on whatever
 code is present, but they cannot remove a regex Unicode table that
@@ -147,5 +148,5 @@ is invasive; treat as a last resort.
 
 ## Relations
 
-- Relates to: [Post-process gadget WASM with `wasm-opt` and `wasm-tools strip`](01KQZJDCAK7WZ8CPZSDSZN6C63-post-process-gadget-wasm-with-wasm-opt-and-wasm-tools-strip.md), measured first so the baseline is clean.
+- Relates to: [Integrate wasm-opt into the gadget build pipeline](01KPKBVDHEXAEJA64E3X7PM3BN-integrate-wasm-opt-into-the-gadget-build-pipeline.md), measured first so the baseline is clean.
 - Relates to: [Tune the gadget Cargo release profile for size](01KQZJDCAK7WZ8CPZSDSZN6C64-tune-the-gadget-cargo-release-profile-for-size.md), the profile change to apply before this todo.

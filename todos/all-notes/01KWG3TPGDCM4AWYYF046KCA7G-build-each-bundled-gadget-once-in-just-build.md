@@ -10,7 +10,7 @@ impact: low
 
 ## Problem
 
-The top-level build recipe (`just/build.just:31-34`) runs:
+The top-level build recipe (the `build` recipe in `just/build.just`) runs:
 
 ```
 build profile="debug" sign="" config="":
@@ -19,9 +19,9 @@ build profile="debug" sign="" config="":
     bun run tauri build ...
 ```
 
-`stage-bundled-gadgets` already invokes `just build-gadget "$id"` for every gadget listed in `gadgets/bundled.toml` (`just/gadgets.just:200-201`). `build-gadgets` then loops over *all* gadget directories and calls `just build-gadget` again (`just/gadgets.just:20-23`), including the five bundled ones that were just built.
+`stage-bundled-gadgets` already invokes `just build-gadget "$id"` for every gadget listed in `gadgets/bundled.toml` (`stage-bundled-gadgets` in `just/gadgets.just`). `build-gadgets` then loops over *all* gadget directories and calls `just build-gadget` again (`build-gadgets` in `just/gadgets.just`), including the five bundled ones that were just built.
 
-Per duplicated gadget that repeats: `bun install` + `bun run build` for the frontend (`gadgets.just:37-40`), a cargo invocation (incremental, cheap), and a full re-zip of the archive (`package-gadget`). With five bundled gadgets, `just build` runs ten gadget build cycles for five distinct gadgets. The comment in `build.just:8-12` explains why `build-gadgets` runs at all ("so every gadget under `gadgets/`, bundled or not, has an up-to-date committed `.torchsnap`"), but not the overlap.
+Per duplicated gadget that repeats: `bun install` + `bun run build` for the frontend (`build-gadget` in `just/gadgets.just`), a cargo invocation (incremental, cheap), and a full re-zip of the archive (`package-gadget`). With five bundled gadgets, `just build` runs ten gadget build cycles for five distinct gadgets. The comment at the top of `just/build.just` explains why `build-gadgets` runs at all ("so every gadget under `gadgets/`, bundled or not, has an up-to-date committed `.torchsnap`"), but not the overlap.
 
 ## Impact
 

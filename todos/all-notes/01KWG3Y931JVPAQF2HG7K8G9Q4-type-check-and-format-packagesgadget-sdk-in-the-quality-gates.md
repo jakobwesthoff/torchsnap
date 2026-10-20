@@ -11,7 +11,7 @@ The frontend gadget SDK package in `packages/gadget-sdk` is outside every qualit
 
 The frontend gadget SDK package is not covered by any quality gate that `just check` / `just fullcycle` run:
 
-- **Type checking:** the root `tsconfig.json` has `"include": ["src"]` (`tsconfig.json:37`), so `bun run tsc --noEmit` (`just check-types`, `just/quality.just:37-38`) never looks at `packages/gadget-sdk/src/**`. The package has no `tsconfig.json` of its own (`ls packages/gadget-sdk/` shows `package.json`, `src`, `theme.css`), so nothing type-checks it standalone.
+- **Type checking:** the root `tsconfig.json` has `"include": ["src"]` (`tsconfig.json`), so `bun run tsc --noEmit` (`just check-types` in `just/quality.just`) never looks at `packages/gadget-sdk/src/**`. The package has no `tsconfig.json` of its own (`ls packages/gadget-sdk/` shows `package.json`, `src`, `theme.css`), so nothing type-checks it standalone.
 - **Formatting:** the prettier globs are `'src/**/*.{ts,tsx,css}' '*.{js,ts,json}'` (`package.json` scripts `fmt` / `fmt:check`). `packages/` is not matched.
 - **Linting:** `eslint .` does cover it (flat config matches `**/*.{ts,tsx}` with only `dist`/`src-tauri` ignored), but with the non-type-aware ruleset only.
 

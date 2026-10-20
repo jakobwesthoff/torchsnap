@@ -14,7 +14,7 @@ Two test-scaffolding items surfaced by the post-migration validation review of 2
 
 ### #24: Context test scaffolding
 
-**Where:** `src/contexts/__tests__/` (the directory does not exist yet, checked 2026-10-10).
+**Where:** `src/contexts/__tests__/` (the directory does not exist yet, checked 2026-10-21).
 
 **The thing:** the entire `src/contexts/` gadget component infrastructure ships without unit tests. The migration plan called for "extensive test coverage" of every new behaviour. This is the largest gap.
 
@@ -25,27 +25,26 @@ Two test-scaffolding items surfaced by the post-migration validation review of 2
 - **`GadgetContextProvider.test.tsx`**: a child calling the legacy `useLogger()` inside `GadgetContextProvider` receives the same `Logger` instance as `useGadgetRuntime().logger`. This guards the dual-drive coupling that was deliberately kept when the new contract was built.
 - **`Launcher.test.tsx`** (a new file, or folded into an existing Launcher test): the `useOptionalGadgetEnabled` path with `customGadgetView == null` resolves to `false` without reading any real `enabled.<gadget-id>` key.
 
-**Blocker for landing this:** the host frontend has no test infrastructure yet. Setting up Vitest and React Testing Library is a small but real prerequisite. The plan's "Frontend SDK testing requirements" section gives the shape. `@torchsnap/gadget-sdk/testing`'s `MockGadgetContextProvider` already exists and would be the basis for these tests.
+**Infrastructure:** Vitest, React Testing Library and `src/test/` helpers are in place (`vitest.config.ts`, `bun run test`), and `packages/gadget-sdk/src/testing/MockGadgetContextProvider.test.tsx` is the only test of the SDK testing entry so far. `MockGadgetContextProvider` is the basis for the context tests.
 
 ### #25: Workspace tsconfig path alias for `@torchsnap/host/*`
 
-**Where:** `gadget-sdk/tsconfig.json` (does not exist yet), `gadget-sdk/src/testing/setup.ts`, `gadget-sdk/src/testing/MockGadgetContextProvider.tsx`. The TypeScript gadget SDK now lives in `packages/gadget-sdk/`, and `packages/gadget-sdk/tsconfig.json` does not exist (checked 2026-10-10).
+**Where:** `packages/gadget-sdk/tsconfig.json` (does not exist yet), `packages/gadget-sdk/src/testing/setup.ts`, `packages/gadget-sdk/src/testing/MockGadgetContextProvider.tsx`.
 
 **The thing:** the testing entry point imports host source through relative paths:
 
 ```ts
-import { initGadgetSdk } from "../../../src/lib/sdk";
-import { GadgetContext } from "../../../src/contexts/GadgetContext";
+import { initGadgetSdk } from "../../../../src/lib/sdk";
+import { GadgetContext } from "../../../../src/contexts/GadgetContext";
 ```
 
-These work inside the monorepo but break as soon as the SDK is published to npm or moved out of the workspace. `setup.ts` documents the deferral, but the relative paths are still spread across two files.
+`MockGadgetContextProvider.tsx` also imports `KeyBindingProvider` from `src/keybindings` this way. The paths are four levels up (`../../../../src/...`). They work inside the monorepo but break as soon as the SDK is published to npm or moved out of the workspace. `setup.ts` documents the deferral, but the relative paths are still spread across two files.
 
-**Fix:** add a `gadget-sdk/tsconfig.json` with a `paths` mapping `"@torchsnap/host/*": ["../../src/*"]`, and rewrite the two imports to `import ... from "@torchsnap/host/lib/sdk"` and `"@torchsnap/host/contexts/GadgetContext"`. The intent ("reaching into host source") becomes structural rather than visual.
+**Fix:** add a `packages/gadget-sdk/tsconfig.json` with a `paths` mapping `"@torchsnap/host/*": ["../../src/*"]` (relative to `packages/gadget-sdk/`), and rewrite the host imports in both files to `import ... from "@torchsnap/host/lib/sdk"` and `"@torchsnap/host/contexts/GadgetContext"`. The intent ("reaching into host source") becomes structural rather than visual.
 
 When the SDK is published, swap the path alias for a real `@torchsnap/host` peer dependency or a separate `@torchsnap/host-fixtures` package. Only the tsconfig entry changes, not every file that uses it.
 
 ## Done when
 
 - The `@torchsnap/host/*` alias is in place and both testing-entry imports use it.
-- Vitest and React Testing Library run on the host frontend.
 - The four test files above exist and pass.

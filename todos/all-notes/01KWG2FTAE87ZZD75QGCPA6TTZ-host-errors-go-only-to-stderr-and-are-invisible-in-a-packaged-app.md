@@ -7,7 +7,7 @@ tags: [logging]
 ---
 # Host errors go only to stderr and are invisible in a packaged app
 
-Host-side error reporting outside the WASM runtime uses bare `eprintln!`. When Torchsnap runs as a bundled `.app`, stderr is attached to nothing, so these reports are discarded. Operationally significant failures such as "failed to show launcher", "shortcut: failed to register shortcuts" and "failed to create window" leave no trace, so field debugging is nearly impossible. The pattern is codebase-wide: `rg -c "eprintln!" src-tauri/src` counts 67 call sites across 19 files, up from about 30 when this todo was written.
+Host-side error reporting outside the WASM runtime uses bare `eprintln!`. When Torchsnap runs as a bundled `.app`, stderr is attached to nothing, so these reports are discarded. Operationally significant failures such as "failed to show launcher", "shortcut: failed to register shortcuts" and "failed to create window" leave no trace, so field debugging is nearly impossible. The pattern is codebase-wide: `rg -c "eprintln!" src-tauri/src` counts 74 call sites across 21 files (checked 2026-10-21), up from about 30 when this todo was written.
 
 ## Problem
 

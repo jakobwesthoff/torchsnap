@@ -13,7 +13,7 @@ tags: [security, ux]
 
 Read in the code, not reproduced.
 
-`injectGadgetCss` (`src/lib/gadgetCss.ts:24-42`) fetches a gadget's CSS via `torchsnap-gadget://` and injects it into the host webview's `<head>`, wrapped in `@scope ([data-gadget="${gadgetId}"]) {\n${raw}\n}`, with the body set via `style.textContent`. Call site: `src/gadgets/wasmPluginLoader.ts:100-105` (fire-and-forget on gadget registration). Container: `src/launcher/Launcher.tsx:93,118` (`<div data-gadget={gadgetId}>`). `textContent` (not `innerHTML`) rules out any HTML or `</style>` vector.
+`injectGadgetCss` (`injectGadgetCss` in `src/lib/gadgetCss.ts`) fetches a gadget's CSS via `torchsnap-gadget://` and injects it into the host webview's `<head>`, wrapped in `@scope ([data-gadget="${gadgetId}"]) {\n${raw}\n}`, with the body set via `style.textContent`. Call sites: `registerWasmGadget` in `src/gadgets/wasmPluginLoader.ts` (fire-and-forget on gadget registration), once for `frontend.launcherCss` and once for `frontend.settingsCss`. The settings CSS is scoped to the gadget's settings page since commit 083d2e6a (`src/settings/SettingsPanel.tsx`), but is wrapped in the same `@scope` block, so the breakout applies to it too. Container: `src/launcher/Launcher.tsx:93,118` (`<div data-gadget={gadgetId}>`). `textContent` (not `innerHTML`) rules out any HTML or `</style>` vector.
 
 ## Impact
 

@@ -23,14 +23,14 @@ race is needed.
 
 ### Built-in id shadowing
 
-`loaded_ids` in `load_wasm_gadgets` (`src-tauri/src/lib.rs:1214`) starts empty, so
+`loaded_ids` in `load_wasm_gadgets` (`src-tauri/src/lib.rs`) starts empty, so
 it only deduplicates WASM gadgets among themselves. Built-in gadgets
-register first, and `register_with_caps` (`src-tauri/src/gadget_host.rs:368`) pushes
+register first, and `register_with_caps` (`GadgetHost` in `src-tauri/src/gadget_host.rs`) pushes
 a slot without a duplicate check. An archive whose manifest id equals a
 built-in id (for example `clipboard-manager`) therefore registers a
 second slot with that id.
 
-`gadget_sources()` (`src-tauri/src/gadget_host.rs:394`) collects slots into a
+`gadget_sources()` (`GadgetHost` in `src-tauri/src/gadget_host.rs`) collects slots into a
 `HashMap`, where the later user slot wins. `RegisteredGadgets::from_host`
 is built from that map, so the install and uninstall decisions see the
 id as a user gadget. Uninstall is allowed, and the next startup deletes
@@ -53,7 +53,7 @@ data.
 - `remove_dir_all` on `gadget-home/<id>/` removes a symlink itself
   rather than following it (std behaviour since Rust 1.58.1). This was verified
   with a probe. Ids are `[a-z0-9-]`, so there is no traversal. The startup
-  cleanup documents this (`src-tauri/src/gadget_install/archive_ops.rs:190-192`).
+  cleanup documents this (the doc comment of the startup cleanup in `src-tauri/src/gadget_install/archive_ops.rs`).
 - Gadgets have no WASI filesystem, and `FilesystemCap` is read-only. A
   granted command whose arguments name a path in `gadget-home/<id>/`
   could plant symlinks there, which `remove_dir_all` does not follow.
@@ -74,7 +74,7 @@ becomes inconsistent.
    manifest id, with an error log. This restores the file-name-to-id
    mapping that uninstall relies on.
 3. Add the symlink-safety note to the `remove_dir_all` call in
-   `archive_ops::remove_user_gadget` (`src-tauri/src/gadget_install/archive_ops.rs:129`) as well.
+   `archive_ops::remove_user_gadget` (`src-tauri/src/gadget_install/archive_ops.rs`) as well.
 
 ## Relations
 - Relates to: [Cap the decompressed size of files read from gadget archives](01KWH4J9BPTRAYF451YZD2145G-cap-the-decompressed-size-of-files-read-from-gadget-archives.md), decompressed-size limits for archive entries

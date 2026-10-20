@@ -17,11 +17,11 @@ Three related defects in the output path of
 1. **Overflow doesn't terminate the child, and `Timeout` masks
    `OutputTooLarge`.** `read_capped` reads at most `cap + 1`
    bytes and then simply returns
-   (`src-tauri/src/caps/command.rs:387-406`). Nothing kills the
+   (`read_capped` in `src-tauri/src/caps/command.rs`). Nothing kills the
    child when the cap is hit. A child producing far more output
    than the cap fills the now-undrained pipe, blocks, never
    exits, and `timeout(child.wait())` elapses
-   (`command.rs:327-328`). The caller therefore receives
+   (`run_child_with_caps` in `command.rs`). The caller therefore receives
    `CommandCapError::Timeout` after waiting out the full
    timeout, when the true condition was "output too large". The
    `OutputTooLarge` variant is only reachable when the child's
@@ -29,7 +29,7 @@ Three related defects in the output path of
    buffer size above the cap.
 2. **Reader errors and panics collapse into "success with empty
    output".** In the normal-exit branch
-   (`command.rs:331-342`), both the `JoinError` and the
+   (`run_child_with_caps` in `command.rs`), both the `JoinError` and the
    `io::Result` layers are flattened with `unwrap_or_else`,
    producing `(Vec::new(), false, <error string>)`. The error string is
    immediately discarded by the destructuring
@@ -41,14 +41,14 @@ Three related defects in the output path of
    branch awaits both reader tasks, binds their bytes, then
    explicitly discards them: `let _ = (stdout_bytes,
    stderr_bytes); Err(CommandCapError::Timeout)`
-   (`command.rs:370-382`). The WIT `command-error::timeout`
+   (`run_child_with_caps` in `command.rs`). The WIT `command-error::timeout`
    variant carries no payload, so the collection is pure dead
    code today. Either the error type should carry partial
    output (useful for debugging what a killed command printed),
    or the collection should go.
 
 Relatedly, `read_capped`'s third tuple element is always
-`String::new()` (`command.rs:405`) and exists only to be
+`String::new()` (`read_capped` in `command.rs`) and exists only to be
 discarded. It is vestigial plumbing from an abandoned error-reporting
 design.
 

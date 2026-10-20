@@ -6,9 +6,8 @@ tags: [testing]
 ---
 # Add frontend tests for the existing features
 
-The frontend has a test runner but almost no tests, so existing frontend code
-is verified manually. This todo covers tests for the existing features, starting
-with the priority targets below.
+The frontend has a test runner and tests for part of the code. This todo covers
+the modules that are still untested, starting with the priority targets below.
 
 ## Infrastructure (in place)
 
@@ -23,19 +22,19 @@ with the priority targets below.
 
 ## Priority test targets
 
-1. **Log worker** (`src/lib/logWorker.ts`): the async queue, local→backend ID
+1. **Log worker** (`src/lib/logWorker.ts`, no test yet): the async queue, local→backend ID
    mapping, sequential processing, edge cases (unknown span IDs, queue drain
    ordering).
-2. **Logger class** (`src/lib/logger.ts`): level methods enqueue the correct
+2. **Logger class** (`src/lib/logger.ts`, no test yet): level methods enqueue the correct
    commands, spanStart returns local IDs, spanEnd references the correct IDs.
-3. **useLogFilters** (`src/devtools/console/useLogFilters.ts`): level, span,
+3. **useLogFilters** (`src/devtools/console/useLogFilters.ts`, no test yet): level, span,
    source and text filtering, counts.
-4. **useTreeView** (`src/devtools/console/useTreeView.ts`): tree building from a
-   flat stream, collapse/expand, flattening for virtualization.
-5. **formatters** (`src/devtools/console/formatters.ts`): timestamp, duration and
+4. **formatters** (`src/devtools/console/formatters.ts`, no test yet): timestamp, duration and
    clipboard formatting.
-6. **Gadget view integration**: LoggerProvider provides the logger via context,
+5. **Gadget view integration** (no test yet): LoggerProvider provides the logger via context,
    useLogger returns it, gadget views receive the logger prop.
+
+`useTreeView` is covered by `src/devtools/console/useTreeView.test.ts`.
 
 ## Non-priority (defer)
 

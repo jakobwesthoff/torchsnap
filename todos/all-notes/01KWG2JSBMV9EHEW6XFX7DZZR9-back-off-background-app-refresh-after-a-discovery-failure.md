@@ -14,10 +14,10 @@ process per keystroke for the rest of the session.
 
 ## Problem
 
-`maybe_trigger_background_refresh` (`app_launcher.rs:82-124`)
+`maybe_trigger_background_refresh` (`app_launcher.rs`)
 triggers a refresh whenever `now - last_refresh >= 300`. The
 `last_refresh` timestamp is only advanced on success
-(`app_launcher.rs:113` inside the `Ok` arm). The `Err` arm keeps
+(in the `Ok` arm of the refresh thread). The `Err` arm keeps
 the old timestamp:
 
 ```rust
@@ -29,7 +29,7 @@ Err(e) => {
 
 `entries()` is called on every search keystroke and calls
 `maybe_trigger_background_refresh()` first
-(`app_launcher.rs:190-191`). Once the interval has elapsed and
+(in `AppLauncherGadget::entries`). Once the interval has elapsed and
 discovery is failing (Spotlight disabled, `mdfind` missing or
 erroring), every keystroke spawns a new thread and `mdfind`
 subprocess as soon as the previous failed attempt clears the
@@ -37,7 +37,7 @@ subprocess as soon as the previous failed attempt clears the
 spawn per keystroke, indefinitely, plus an `eprintln!` per attempt.
 
 The same pattern applies after a failed `enable()` discovery
-(`app_launcher.rs:181-183`): `last_refresh` stays 0, so the first
+(the `Err` arm in `enable()`): `last_refresh` stays 0, so the first
 `entries()` call immediately triggers a retry. That retry is correct and
 desirable. Only the lack of failure backoff is the issue.
 

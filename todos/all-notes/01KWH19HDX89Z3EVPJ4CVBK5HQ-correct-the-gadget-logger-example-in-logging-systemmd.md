@@ -10,7 +10,7 @@ impact: low
 
 ## Problem
 
-The "Acquiring a logger" section (`docs/api/logging-system.md:359-380`)
+The "Acquiring a logger" section (`docs/api/logging-system.md`)
 shows:
 
 ```typescript
@@ -20,12 +20,12 @@ function ClipboardView({ logger, sendMessage, ...props }: GadgetViewProps) {
 ```
 
 That contract predates ADR 0028. The current `GadgetViewProps`
-(`packages/gadget-sdk/src/types/gadget.ts:25-37`) carries only
+(`packages/gadget-sdk/src/types/gadget.ts`) carries only
 per-render data (`results`, `data`, `query`, `matchedPrefix`);
-the header comment (`gadget.ts:9-12`) states explicitly that
+the header comment of `gadget.ts` states explicitly that
 `sendMessage`, `logger`, identity, and launcher actions flow
 through the context hooks. The real `ClipboardView`
-(`src/gadgets/clipboard/ClipboardView.tsx:198-200`) does:
+(`src/gadgets/clipboard/ClipboardView.tsx`) does:
 
 ```typescript
 export default function ClipboardView({ query }: GadgetViewProps) {
@@ -33,13 +33,13 @@ export default function ClipboardView({ query }: GadgetViewProps) {
 ```
 
 The follow-up paragraph ("Deeper components in a gadget tree can
-use the `useLogger()` hook", `logging-system.md:369-380`, with
+use the `useLogger()` hook", the same section of `logging-system.md`, with
 `import { useLogger } from "../hooks/useLogger"`) is also
 misleading for gadget authors: `useLogger` at
 `src/hooks/useLogger.ts` is host-internal and not exported from
 `@torchsnap/gadget-sdk/hooks` (which exports exactly
 `useGadgetInfo`, `useGadgetRuntime`, `useLauncher`,
-`useGadgetSetting`: `packages/gadget-sdk/src/shims/hooks.ts:154-169`).
+`useGadgetSetting`: `packages/gadget-sdk/src/shims/hooks.ts`).
 A gadget bundle cannot import it by relative path.
 
 The rest of the document checked out against the code

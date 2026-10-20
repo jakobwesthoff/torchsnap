@@ -38,7 +38,7 @@ breakage look intermittent.
 ## Impact
 
 - Release bundles are unaffected today: `gadgets/bundled.toml`
-  ships calculator, emoji-picker, bangs, open-url, zerotier, and not
+  ships calculator, emoji-picker, bangs, open-url, awake, and not
   hello-world.
 - Every debug build is affected: the dev discovery root loads
   every directory under `gadgets/` (ADR 0035), so hello-world

@@ -72,7 +72,7 @@ not be the gradient-on-app-icon.
 
 ## Pointers
 
-- `src-tauri/src/platform/fallback/tray.rs:50`: `include_bytes!` of
+- `src-tauri/src/platform/fallback/tray.rs`, `FallbackTray`'s tray build: `include_bytes!` of
   `icons/32x32.png`.
 - `just/assets.just`: `asset-app-icons` builds 32x32 et al.;
   `asset-tray-icon` builds the macOS template.

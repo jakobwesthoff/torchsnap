@@ -24,7 +24,7 @@ same residual risk apply.
 
 ## Problem
 
-`AppLauncherGadget::execute` (`app_launcher.rs:236-253`) passes the
+`AppLauncherGadget::execute` (`execute` in `app_launcher.rs`) passes the
 path carried by the command straight to the opener, without
 re-checking it against the discovered-apps cache:
 
@@ -36,15 +36,15 @@ match command {
 ```
 
 For app entries, `id` is the app's filesystem path, produced by
-`app_actions(&app.id)` (`app_launcher.rs:204`) at search time and
+`app_actions(&app.id)` (`app_actions` in `app_launcher.rs`) at search time and
 stored on the entry's `EntryActions`. `SystemPreferencesGadget::execute`
-(`system_preferences.rs:161-178`) has the same shape:
+(`execute` in `system_preferences.rs`) has the same shape:
 `Command::OpenPane(pane_id)` builds `x-apple.systempreferences:<pane_id>`
 via `pane_url`. `open_path` routes to the OS default-open handler and can
-launch apps (`opener.rs:110-127`).
+launch apps (`open_path` in `caps/opener.rs`).
 
 The `search_execute` IPC command lets the caller supply the target
-`source`, `entry_id` and `slot` (`commands/mod.rs:47-62`). That raised
+`source`, `entry_id` and `slot` (`search_execute` in `commands/mod.rs`). That raised
 the concern that a gadget-controlled webview could forge
 `search_execute("app-launcher", "/arbitrary/path", Slot::Primary)` to
 open an arbitrary path.
@@ -52,8 +52,8 @@ open an arbitrary path.
 ### Correction: the premise of "arbitrary-path forgery" is wrong
 
 `search_execute` does **not** hand the caller-supplied path to the
-gadget. `GadgetHost::execute` (`gadget_host.rs:1022-1049`) resolves the
-command through `resolve_command`, which looks the entry up in an
+gadget. `GadgetHost::execute` (`gadget_host.rs`) resolves the
+command through `resolve_and_record_use`, which calls `resolve_command`. That function looks the entry up in an
 `EntryStore` and reads the command string stored on the requested slot:
 
 ```rust
@@ -71,9 +71,9 @@ fn resolve_command(
 
 Both failure cases (`UnknownEntry`, `EmptySlot`) return
 `PostAction::Nothing` without dispatching to the gadget
-(`gadget_host.rs:1035-1048`).
+(the two `Err` arms in `GadgetHost::execute`).
 
-The `EntryStore` (`entry_store.rs:45-90`) is keyed by
+The `EntryStore` (`entry_store.rs`) is keyed by
 `(source, entry.id)`, populated only from real search results, and
 cleared at the top of every `search()`. So for `source="app-launcher"`
 the only resolvable commands are the ones the gadget itself produced
@@ -92,10 +92,10 @@ realizing it was preventing arbitrary `open_path`.
 
 Gadget frontend JS can reach `search_execute` for any `source`:
 
-- Windows `main`/`settings`/`devtools` (`lib.rs:268-300,958`) are all
+- Windows `main`/`settings`/`devtools` (the window builders in `lib.rs`) are all
   covered by the single capability `capabilities/default.json`.
 - `search`, `search_execute`, `gadget_message` are application
-  commands (`lib.rs:591-614`). They are not listed in the capability
+  commands (the `invoke_handler` list in `lib.rs`). They are not listed in the capability
   `permissions` array yet are used and work, so in this app the
   app-defined commands are not per-window ACL-gated. The capability
   list gates only core and plugin commands like `opener:*` and `store:*`.
@@ -103,8 +103,8 @@ Gadget frontend JS can reach `search_execute` for any `source`:
   `window.__TAURI__.core.invoke` is available to all JS) and
   `csp: null`.
 - Gadget bundles are `import()`ed directly into the launcher and
-  settings webviews (`src/gadgets/wasmPluginLoader.ts:56-96`) and render
-  inside the launcher React tree (`src/launcher/Launcher.tsx:226-236`).
+  settings webviews (`src/gadgets/wasmPluginLoader.ts`) and render
+  inside the launcher React tree (`src/launcher/Launcher.tsx`).
   There is no separate window, webview or narrower capability for gadget
   UI.
 
@@ -129,7 +129,7 @@ This silently launches any **installed** application, with no user
 interaction at the moment of launch, regardless of the malicious
 gadget's own capability grants (it need hold no opener cap). It is a
 cross-gadget privilege proxy through app-launcher's
-`schemes:["*"], open_path:true` grant (`app_launcher.rs:58-64`).
+`schemes:["*"], open_path:true` grant (`AppLauncherGadget::cap_requests`).
 
 Exploitability ceiling:
 
@@ -145,7 +145,7 @@ Exploitability ceiling:
   would require chaining a separate write primitive (a `command` grant,
   or a filesystem-write grant landing where app-launcher discovers it).
 - system-preferences is lower. `pane_url` always prefixes
-  `x-apple.systempreferences:` (`settings_discovery.rs:34`), the id is
+  `x-apple.systempreferences:` (`pane_url` in `platform/macos/settings_discovery.rs`), the id is
   entry_store-gated to discovered pane ids, and its grant is
   `open_url`-only (`open_path:false, reveal_path:false`). The ceiling is
   opening a real System Settings pane.
@@ -179,7 +179,7 @@ installed app or open any pane" proxy cannot be closed by cache
 validation. The root cause is that gadget frontend JS runs at host origin
 in the same webview as the trusted launcher UI, inheriting the full host
 IPC surface: `search_execute` for any `source`, `gadget_message` for any
-`source` (`commands/mod.rs:75`), and every other app command.
+`source` (`gadget_message` in `commands/mod.rs`), and every other app command.
 `search_execute` is inherently cross-gadget by design, because the
 unified launcher dispatches the user's selection across gadgets. So
 cross-source calls cannot simply be forbidden at the command without
@@ -211,7 +211,7 @@ gadget-chosen paths must be reviewed against this.
 
 ## Key files
 
-`gadget_host.rs` (`execute` :1022-1062, `search` from :724),
+`gadget_host.rs` (`GadgetHost::execute`, `GadgetHost::search`),
 `entry_store.rs`, `gadgets/app_launcher.rs`,
 `gadgets/system_preferences.rs`, `caps/opener.rs`, `wasm/protocol.rs`,
 `src/gadgets/wasmPluginLoader.ts`, `capabilities/default.json`,

@@ -16,7 +16,7 @@ code, or the code with the documented meaning.
 Three places where comments describe behavior the code does not have:
 
 1. **Format-priority comment contradicts the priority list.**
-   `src-tauri/src/gadgets/clipboard/storage.rs`, around lines 569-573:
+   `src-tauri/src/gadgets/clipboard/storage.rs`, the doc comment of `primary_format_from_csv`:
    ```rust
    /// Priority: image > files > text. Returns "text" as default.
    fn primary_format_from_csv(csv: Option<&str>) -> &'static str {
@@ -24,19 +24,19 @@ Three places where comments describe behavior the code does not have:
    ```
    The doc says image outranks files; the code puts files first
    (and also handles html/rtf, which the doc omits). Whichever is
-   intended, one of the two is wrong. Note that `derive_display_text`
-   (`src-tauri/src/gadgets/clipboard/formats.rs`, around lines 183-207) also
+   intended, one of the two is wrong. Note that `display_text`
+   (`src-tauri/src/gadgets/clipboard/formats.rs`) also
    prioritizes files over image, so the *comment* is most likely the stale
    side.
 
 2. **Reference to a nonexistent rationale.**
-   `src-tauri/src/gadgets/clipboard/formats.rs`, around lines 160-162:
+   `src-tauri/src/gadgets/clipboard/formats.rs`, the `ContentFormat::Other(_)` arm of `read_format`:
    ```rust
    // Intentionally not capturing unknown formats — see
    // module-level comment for rationale.
    ContentFormat::Other(_) => None,
    ```
-   The module-level comment (around lines 5-24) lists supported
+   The module-level comment at the top of `formats.rs` lists supported
    formats but contains no rationale for skipping unknown ones.
    Either add the rationale there or state it inline.
 
@@ -44,12 +44,12 @@ Three places where comments describe behavior the code does not have:
    doc says "Flipped to true during app teardown. The lifecycle
    thread checks this to know when to exit entirely (vs. just
    stopping the watcher because `enabled` was toggled off)"
-   (`src-tauri/src/gadgets/clipboard/mod.rs`, around lines 76-79). But `disable()`
-   sets it unconditionally for both cases (around lines 340-347), and
-   `enable()` has to reset it (around lines 321-325). No behavioral
+   (`WatcherLifecycle` in `src-tauri/src/gadgets/clipboard/mod.rs`). But `disable()`
+   sets it unconditionally for both cases, and
+   `enable()` has to reset it. No behavioral
    difference today because every consumer checks `!running || app_shutting_down`
-   (`src-tauri/src/gadgets/clipboard/watcher.rs`, around lines 47-50, and
-   `mod.rs`, around line 248), which makes the flag redundant as implemented.
+   (the watcher loop in `src-tauri/src/gadgets/clipboard/watcher.rs`, and
+   the lifecycle thread in `mod.rs`), which makes the flag redundant as implemented.
    Either give the flag its documented meaning (set only from the app-exit
    path) or remove it and use `running` alone.
 

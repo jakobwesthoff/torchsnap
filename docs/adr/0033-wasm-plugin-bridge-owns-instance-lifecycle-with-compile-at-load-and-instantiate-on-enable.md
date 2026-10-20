@@ -159,7 +159,7 @@ branch in the trait methods and no-ops with a warning. Fixing this
 properly requires extending the `Plugin` trait so `enable` can return
 a `Result` the host reacts to; that change is tracked as a separate
 follow-up todo
-(`01KNWQ80DHKS7HBVDNMQ5F8E0H-make-gadgetenable-return-a-result-so-the-host-can-revert-a-failed-enable.md`)
+(`01KNWQ80DHKS7HBVDNMQ5F8E0H-fail-loudly-when-the-wasm-bridge-is-called-while-its-gadget-is-disabled.md`)
 because it touches every plugin impl in the repo.
 
 ### `load_single_wasm_plugin` becomes thin

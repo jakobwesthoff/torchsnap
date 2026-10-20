@@ -17,7 +17,7 @@ test-speed change; no production behaviour changes.
 ## Background
 
 `SqlStorage` exposes exactly one constructor
-(`src-tauri/src/storage/sql_storage.rs:283`):
+(`SqlStorage::open` in `src-tauri/src/storage/sql_storage.rs`):
 
 ```rust
 pub fn open(db_path: PathBuf, migrations: &[&str]) -> Result<Self>
@@ -26,7 +26,7 @@ pub fn open(db_path: PathBuf, migrations: &[&str]) -> Result<Self>
 Every test that needs storage must therefore create a real file. The
 established pattern is a `tempfile::tempdir()` whose `TempDir` the test
 keeps alive, as in `src-tauri/src/frecency/mod.rs:463` and
-`src-tauri/src/gadgets/clipboard/storage.rs`. There are 21 `SqlStorage::open` call
+`src-tauri/src/gadgets/clipboard/storage.rs`. There are 20 `SqlStorage::open` call
 sites in `src-tauri/src`, the majority in test modules.
 
 This surfaced while fixing a flaky test. `src-tauri/src/wasm/interface_gate.rs`
@@ -51,9 +51,12 @@ with `bundled`, `src-tauri/Cargo.toml:42`, SQLite 3.53.2), by probing
 through the real code rather than the system `sqlite3` CLI, which is a
 different build:
 
-- `configure_connection` (`src-tauri/src/storage/sql_storage.rs:516`) runs **unchanged**
-  against an in-memory connection and returns `Ok(())`. No branch is
-  needed for the pragma block.
+- `configure_connection` (`src-tauri/src/storage/sql_storage.rs`) ran **unchanged**
+  against an in-memory connection and returned `Ok(())`. No branch was
+  needed for the pragma block. This was probed before ADR 0065; `open` now
+  also calls `confine_connection` (denied `ATTACH`/`DETACH`/`VACUUM`,
+  process-wide pragmas, defensive mode, `set_limit`), which the new
+  constructor has to call too. Re-probe both against `:memory:` first.
 - `journal_mode = wal` is not an error on an in-memory database; it
   resolves to `memory`. This matters because a naive expectation would
   be that WAL is rejected and the constructor needs a separate pragma
@@ -75,7 +78,8 @@ pub fn open_in_memory(migrations: &[&str]) -> Result<Self>
 
 Implementation is `open()` with `Connection::open_in_memory()`
 substituted for `Connection::open(&db_path)` and the `create_dir_all`
-step skipped; pragmas and the `rusqlite_migration` run are identical.
+step skipped; `configure_connection`, `confine_connection` and the
+`rusqlite_migration` run are identical.
 Factor the shared tail into a private helper rather than duplicating
 it, so the two constructors cannot drift on pragma or migration
 handling.

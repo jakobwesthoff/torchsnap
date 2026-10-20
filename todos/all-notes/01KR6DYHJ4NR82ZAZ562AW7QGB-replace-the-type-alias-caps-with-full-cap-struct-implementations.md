@@ -63,7 +63,3 @@ For each alias cap:
   gadget-facing.
 - **IconCacheCap**: wraps `IconCache`. Exposes `ensure_icon()`,
   `cleanup()`. Native-only (no WIT host import).
-
-## Relations
-
-- Part of: [Unify capability permissions for native and WASM gadgets](01KR3W83G1TXD12ZWAPQSDDQGV-unify-capability-permissions-for-native-and-wasm-gadgets.md)

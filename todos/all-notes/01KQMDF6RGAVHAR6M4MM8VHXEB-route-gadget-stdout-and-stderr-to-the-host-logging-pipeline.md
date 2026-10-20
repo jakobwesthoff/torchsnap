@@ -14,7 +14,7 @@ Replace `WasiCtxBuilder::inherit_stdout()` and `inherit_stderr()` with a custom 
 
 ## Location
 
-`src-tauri/src/wasm/runtime/engine.rs`: `GadgetEngine::load_gadget`, the `WasiCtxBuilder` block.
+`src-tauri/src/wasm/runtime/engine.rs`: `WasmRuntime::instantiate`, the `WasiCtxBuilder` block.
 
 ## Considerations
 

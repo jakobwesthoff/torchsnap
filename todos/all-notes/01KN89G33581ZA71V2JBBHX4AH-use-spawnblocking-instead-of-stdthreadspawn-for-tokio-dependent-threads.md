@@ -12,7 +12,7 @@ Some background threads are started with `std::thread::spawn` and then call `blo
 ## Affected code
 
 - The original calculator gadget (deleted in the WASM port) used `std::thread::spawn` for its retention cleanup loop. The WASM rewrite replaced that with the host-managed scheduler in `src-tauri/src/wasm/bridge.rs` (`scheduler_loop`), which calls the guest export inline from the tokio task. See ADR 0032 and the comment block in `scheduler_loop` that explains when a future pathological task could justify wrapping in `spawn_blocking`.
-- Any remaining native gadget that follows the `std::thread::spawn` plus `blocking_changed()` pattern.
+- `src-tauri/src/network/website_metadata/mod.rs`: the retention thread started with `std::thread::spawn` calls `ttl_watch.blocking_changed()`. This is the one remaining case found on 2026-10-21. `std::thread::spawn` in `src-tauri/src/wasm/protocol.rs` was not checked for async calls.
 
 ## Recommended fix
 

@@ -139,7 +139,7 @@ automatically. `just build-gadget` does not need new arguments.
 
 ## Relations
 
-- Relates to: [Post-process gadget WASM with `wasm-opt` and `wasm-tools strip`](01KQZJDCAK7WZ8CPZSDSZN6C63-post-process-gadget-wasm-with-wasm-opt-and-wasm-tools-strip.md), the cheaper option to verify first.
+- Relates to: [Integrate wasm-opt into the gadget build pipeline](01KPKBVDHEXAEJA64E3X7PM3BN-integrate-wasm-opt-into-the-gadget-build-pipeline.md), the cheaper option to verify first.
 - Relates to: [Tune the gadget Cargo release profile for size](01KQZJDCAK7WZ8CPZSDSZN6C64-tune-the-gadget-cargo-release-profile-for-size.md), the cheaper option to verify first.
 - Relates to: [Audit and slim heavy gadget dependencies](01KQZJDCAK7WZ8CPZSDSZN6C65-audit-and-slim-heavy-gadget-dependencies.md), the cheaper option to verify first.
 - Relates to: [Replace `dlmalloc` with a smaller wasm allocator](01KQZJDCAK7WZ8CPZSDSZN6C66-replace-dlmalloc-with-a-smaller-wasm-allocator.md), another size todo this one comes after.

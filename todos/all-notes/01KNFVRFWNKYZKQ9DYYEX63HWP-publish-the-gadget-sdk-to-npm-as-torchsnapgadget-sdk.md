@@ -5,100 +5,40 @@ component: gadget-sdk
 ---
 # Publish the gadget SDK to npm as @torchsnap/gadget-sdk
 
-Third-party gadget authors need to install the TypeScript gadget SDK from npm with `bun add -D @torchsnap/gadget-sdk` instead of cloning the monorepo. The workspace package at `packages/gadget-sdk/` already exists, and in-repo consumers reach it through `file:` dependencies, so in-tree development works. What remains is the external publishing: shipping the package to the npm registry with generated `.d.ts` artifacts and the runtime shims.
+Third-party gadget authors need to install the TypeScript gadget SDK from npm with `bun add -D @torchsnap/gadget-sdk` instead of cloning the monorepo. The workspace package at `packages/gadget-sdk/` already holds the types, the runtime shims, the Vite plugin and the theme CSS, and in-repo consumers reach it through `file:` dependencies, so in-tree development works. What remains is the external publishing: the package is still `"private": true` (version 0.2.0), and its `exports` point at TypeScript sources instead of built JavaScript with generated `.d.ts` files.
 
-## Scope
+## What the workspace package already has
 
-- **Type definitions** (`.d.ts`): `GadgetViewProps`, `InlineViewProps`,
-  `GadgetSettingsProps`, `ActionId`, `SourcedEntry`, `FooterState`, etc.
-  Generated/copied from host source at publish time, so the single source of
-  truth stays in `src/`.
-- **Runtime shims**: `react`, `react/jsx-runtime`, `@torchsnap/components`,
-  `@torchsnap/keybindings`, `@torchsnap/hooks`, re-exported from
-  `window.__torchsnap.*`.
-- **Vite gadget** (`@torchsnap/gadget-sdk/vite`): auto-configures React
-  shim aliases, JSX runtime, and lib-mode output settings. Gadget authors
-  just add `torchsnapGadget()` to their Vite config.
-- **Theme CSS**: shared Tailwind v4 design tokens for gadget builds.
+- Types (`@torchsnap/gadget-sdk`, `src/types/`): `GadgetViewProps`, the logger and settings types and the data types.
+- Runtime shims (`./hooks`, `./components`, `./keybindings`, `./utils`, plus the `react` and `react/jsx-runtime` shims), which re-export from `window.__torchsnap`. `src/lib/sdk.ts` in the host sets that global with React, components, keybindings and hooks, and declares its full shape.
+- `./vite` (`src/vite/index.ts`): the `torchsnap()` plugin that sets the React shim aliases. Gadget frontends add it to their Vite plugins, as `gadgets/template/frontend/vite.config.ts` does.
+- `./testing` (`MockGadgetContextProvider`) and `./theme.css`.
 
-## Design Decisions
+## Scope of the publish
 
-### Type duplication avoidance
+- **Build output**: compile the TypeScript sources to JavaScript and generate `.d.ts` files, so the `exports` map points at built files. Keep the subpaths above.
+- **Package metadata**: drop `"private": true`, set the version policy, the license (MPL-2.0 like the rest of the repository), `files`, the registry namespace and the `vite` peer range (`>=8`, optional today).
+- **Documentation**: a README for the package, covering the subpaths, the shim architecture below and how a gadget author wires up Vite.
+- **Publishing step**: a recipe and a check that the published tarball installs and builds a gadget outside the monorepo.
 
-During in-repo development, gadget `tsconfig.json` uses `paths` to
-point `@torchsnap/types` at the host's `src/types.ts` via relative
-paths. Since gadgets only use `import type`, these are erased at compile
-time, so there is no runtime shim and no duplication. The npm package replaces
-this with proper `.d.ts` files copied/generated from the host source at
-publish time.
+## Design decisions
 
 ### React shim architecture
 
-React is a runtime dependency provided by the host via
-`window.__torchsnap.React`. Gadgets must NOT bundle their own copy.
+React is a runtime dependency provided by the host via `window.__torchsnap.React`. Gadgets must NOT bundle their own copy.
 
-During in-repo development, a shim file
-(`packages/gadget-sdk/src/shims/react.ts`) re-exports from the global,
-and Vite `resolve.alias` redirects `import React from "react"` to the
-shim. The shim gets inlined into the bundle (~2 lines), producing a
-self-contained ES module with no unresolved imports.
+The `torchsnap()` Vite plugin aliases `react` and `react/jsx-runtime` to the SDK shims, which are inlined into the gadget bundle (a few lines), producing a self-contained ES module with no unresolved imports. This follows the same pattern as VS Code extensions (where `require("vscode")` is intercepted by the extension host) and Figma gadgets (`figma` global). The npm package keeps this unchanged: the aliases point into the installed package instead of the workspace.
 
-In the npm package, this becomes a Vite gadget:
+### Types
 
-```ts
-// @torchsnap/gadget-sdk/vite
-export function torchsnapGadget(): VitePlugin {
-  return {
-    name: "torchsnap-gadget",
-    config() {
-      return {
-        resolve: {
-          alias: {
-            "react": "@torchsnap/gadget-sdk/shims/react",
-            "react/jsx-runtime": "@torchsnap/gadget-sdk/shims/jsx-runtime",
-          },
-        },
-      };
-    },
-  };
-}
-```
-
-Gadget authors just add `torchsnapGadget()` to their Vite config, and the
-alias machinery becomes invisible. This follows the same pattern as
-VS Code extensions (where `require("vscode")` is intercepted by the
-extension host) and Figma gadgets (`figma` global).
-
-### Host SDK global expansion
-
-`window.__torchsnap` currently only exposes `{ React }` (in
-`src/lib/sdk.ts`). It needs to be expanded to include:
-
-- `components`: `Switch`, `Slider`, `Icon`, `ShortcutRecorder`, etc.
-- `keybindings`: `useKeyBindings`, `LAYER`, etc.
-- `hooks`: `useGadgetSetting`, `useGadgetStream`, etc.
-
-Each gets a corresponding shim file in `gadget-sdk/shims/` and
-eventually a package entry point in the npm package.
-
-### Once aliases are no longer needed
-
-With a proper npm package, the `resolve.alias` entries in each gadget's
-`vite.config.ts` disappear. The Vite gadget in the SDK handles React
-shimming. Type imports resolve from `node_modules` normally. The only
-remaining special handling is React (always host-provided, never
-bundled), and the Vite gadget takes care of that permanently.
+Gadgets only use `import type` for host types, which is erased at compile time, so no runtime shim or duplication is needed. The npm package ships the types from `src/types/` as generated `.d.ts` files.
 
 ## When
 
-After the `gadget-sdk/` directory stabilizes through one or two real gadget
-migrations. The in-repo alias approach works fine during development.
-The npm package is for third-party consumption.
+After the package's shape is stable through one or two more real gadgets. The in-repo workspace setup works fine during development. The npm package is for third-party consumption.
 
 ## References
 
-- Current shim approach: `gadget-sdk/shims/` (to be created)
+- Package: `packages/gadget-sdk/` (`package.json` `exports`, `src/shims/`, `src/vite/`, `src/types/`)
 - Host SDK global: `src/lib/sdk.ts`
-- Type sources: `src/types.ts`, `src/gadgets/types.ts`
-- Related: the Rust-side gadget SDK crate, already shipped at
-  `gadgets/gadget-sdk/`
+- Related: the Rust-side gadget SDK crate, already shipped at `gadgets/gadget-sdk/`

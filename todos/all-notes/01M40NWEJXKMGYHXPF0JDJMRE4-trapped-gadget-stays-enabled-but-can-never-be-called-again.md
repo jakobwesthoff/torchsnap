@@ -25,24 +25,28 @@ The bridge treats every guest-call error as a one-off and keeps the
 instance:
 
 - `search()` logs `search() failed` and returns `None`
-  (`src-tauri/src/wasm/bridge.rs:760-763`). The gadget silently drops out
+  (`Gadget::search` in `src-tauri/src/wasm/bridge.rs`). The gadget silently drops out
   of the results and logs an error on every keystroke.
-- `entries()` logs and returns an empty list (`bridge.rs:722-725`).
+- `entries()` logs and returns an empty list (`Gadget::entries` in `bridge.rs`).
 - `execute()` and `handle_message()` return the error to the caller
-  (`bridge.rs:729-735`, `bridge.rs:668-701`).
-- `setting_changed()` logs (`bridge.rs:646`).
+  (`Gadget::execute` and `Gadget::handle_message` in `bridge.rs`).
+- `setting_changed()` logs (`Gadget::setting_changed` in `bridge.rs`).
 - Scheduled tasks log `scheduled task ... failed` on every fire, and the
-  scheduler keeps running (`bridge.rs:495-497`).
+  scheduler keeps running (the task scheduler in `bridge.rs`).
 
-Only a failed `enable()` tears the instance down (`bridge.rs:581-601`,
-ADR 0033), and `GadgetHost` then clears the slot's `enabled` flag
-(`src-tauri/src/gadget_host.rs:567-568`, `1124-1125`). Nothing looks for
-the trapped state anywhere else (`rg -i 'trapped|Trap::' src-tauri/src`
-finds nothing).
+Only a failed `enable()` tears the instance down (`Gadget::enable` in
+`bridge.rs`, ADR 0033), and `GadgetHost` then clears the slot's runtime
+flag and keeps the error for Settings (`enable_gadget` in
+`src-tauri/src/gadget_host.rs`, `EnableFailures` in
+`src-tauri/src/gadget_status.rs`, ADR 0063). Only the `enable()`
+call recognises a trap (`guest_trapped` in
+`src-tauri/src/wasm/runtime/instance.rs`, which words the error). Nothing
+looks for the trapped state after any other call (`may_enter` is not
+used anywhere in `src-tauri/src`).
 
 `disable()` still works on a trapped instance. The guest `disable()`
 call fails and is logged, but `clear_caps()` runs and the store is
-dropped (`bridge.rs:604-621`). A later `enable()` builds a fresh
+dropped (`Gadget::disable` in `bridge.rs`). A later `enable()` builds a fresh
 instance.
 
 ## Impact
@@ -71,8 +75,9 @@ trap once, with the gadget id and the call that failed.
 - Quarantine until the user re-enables the gadget, or restart it
   automatically with a backoff and a retry limit?
 - Is the in-memory `enabled` flag alone enough, or should the settings
-  UI show the gadget as crashed? Today a failed `enable()` also
-  only flips the in-memory flag.
+  UI show the gadget as crashed? A failed `enable()` is now shown in
+  Settings with its error and a Retry button (ADR 0063, ADR 0064), so a
+  trapped gadget could reuse that mechanism.
 - Should an error returned by a host import, which also poisons the
   store, be treated like a guest panic?
 

@@ -23,7 +23,7 @@ The docstring argues this "should not happen if defaults were
 initialized correctly via `SettingsInit`", but `SettingsInit`
 only fills *missing* keys once at startup. The values that flow
 into the watch channels afterwards come from the
-`settings-changed` listener in `src-tauri/src/lib.rs:889-912`,
+`settings-changed` listener registered in `src-tauri/src/lib.rs` (`app.listen("settings-changed", ...)` in the setup closure),
 which re-reads whatever is currently in the store and explicitly
 substitutes `Value::Null` when the key is absent:
 

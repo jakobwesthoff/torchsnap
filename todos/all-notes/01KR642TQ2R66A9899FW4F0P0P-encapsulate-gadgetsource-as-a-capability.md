@@ -34,7 +34,3 @@ all resources a gadget receives should flow through `ProvisionedCaps`.
 ## Revisit when
 
 Native gadgets need asset loading for bundled resources, the question raised in the last TODO item.
-
-## Relations
-
-- Part of: [Unify capability permissions for native and WASM gadgets](01KR3W83G1TXD12ZWAPQSDDQGV-unify-capability-permissions-for-native-and-wasm-gadgets.md)

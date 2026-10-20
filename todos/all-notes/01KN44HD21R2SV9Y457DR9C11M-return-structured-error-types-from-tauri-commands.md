@@ -15,11 +15,7 @@ Every `#[tauri::command]` serializes its errors as an opaque string via `.map_er
 
 ## Affected commands
 
-All 8 current commands use `Result<_, String>`:
-
-- `search`, `search_execute`, `gadget_message` (search domain)
-- `frecency_stats`, `frecency_clear` (frecency domain)
-- `launcher_hide`, `launcher_set_layout`, `control_subscribe` (infallible today, but should be consistent)
+About 40 `#[tauri::command]` functions exist (`rg '#\[tauri::command\]' src-tauri/src`), in `commands/mod.rs`, `lib.rs`, `welcome.rs`, `updates/mod.rs`, `gadget_install/` and `wasm/logging/commands.rs`. Those that can fail return `Result<_, String>`, for example `frecency_clear`, `welcome_finish` and `update_install`. List them again when starting, and decide per domain which get a typed error. Infallible ones such as `launcher_hide` and `control_subscribe` only need to stay consistent.
 
 ## Notes
 

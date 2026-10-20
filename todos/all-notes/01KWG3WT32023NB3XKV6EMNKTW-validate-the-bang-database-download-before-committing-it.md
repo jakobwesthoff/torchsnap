@@ -10,13 +10,13 @@ impact: low
 
 ## Problem
 
-The recipe pipes the download straight into the bundled asset (`just/bangs.just:13-20`):
+The recipe pipes the download straight into the bundled asset (`asset-bang-data` in `just/bangs.just`):
 
 ```
 curl -sL 'https://duckduckgo.com/bang.js' -o "$dst"
 ```
 
-`curl -sL` follows redirects and writes whatever body arrives, including CDN error pages, captive-portal HTML, or rate-limit responses. It runs without a `--fail` flag (non-2xx still writes the body and exits 0 for most cases without `-f`) and without JSON validation. A corrupted `gadgets/bangs/assets/bang.json` defeats the exact purpose of the file: it is the *offline fallback* the bangs gadget imports when the runtime network fetch fails (`gadgets/bangs/src/lib.rs:532-539`). A bad commit here means first-launch-without-network users get an empty bang database and only a devtools log entry.
+`curl -sL` follows redirects and writes whatever body arrives, including CDN error pages, captive-portal HTML, or rate-limit responses. It runs without a `--fail` flag (non-2xx still writes the body and exits 0 for most cases without `-f`) and without JSON validation. A corrupted `gadgets/bangs/assets/bang.json` defeats the exact purpose of the file: it is the *offline fallback* the bangs gadget imports when the runtime network fetch fails (`import_from_best_source` in `gadgets/bangs/src/lib.rs`). A bad commit here means first-launch-without-network users get an empty bang database and only a devtools log entry.
 
 ## Suggested fix
 

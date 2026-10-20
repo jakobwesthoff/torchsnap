@@ -12,7 +12,7 @@ Three polish items surfaced by the post-migration validation review of 2026-04-0
 
 ## #22: Explanatory comments on intentionally omitted memo deps
 
-**Where:** `src/launcher/Launcher.tsx`, around the `gadgetLauncher` and `inlineLauncher` `useMemo` blocks (around lines 498 and 521 in the slice-assembly section; line numbers drift, so search for `useMemo<LauncherActions>`).
+**Where:** `src/launcher/Launcher.tsx`, around the `gadgetLauncher` and `inlineLauncher` `useMemo` blocks (search for `useMemo<LauncherActions>`: `gadgetLauncher` and `inlineLauncher`).
 
 **The thing:** the deps arrays for these memos intentionally omit `setGadgetFooter` / `setInlineFooter` (stable React `setState` setters) and `mouseActiveRef` (a stable ref). The omissions are correct but undocumented. A future maintainer running an exhaustive-deps lint check will be tempted to "fix" them and trigger needless re-renders.
 
@@ -20,7 +20,7 @@ Three polish items surfaced by the post-migration validation review of 2026-04-0
 
 ## #23: Generalize the `useLauncher()` error message
 
-**Where:** `src/contexts/useLauncher.ts` and the matching shim in `gadget-sdk/src/shims/hooks.ts` (the TypeScript gadget SDK now lives in `packages/gadget-sdk/`).
+**Where:** `src/contexts/useLauncher.ts`. The SDK shim `useLauncher` in `packages/gadget-sdk/src/shims/hooks.ts` only delegates to the host hook and carries no message of its own.
 
 **Current error string:**
 > `useLauncher called outside the launcher tree (settings panels do not have launcher actions)`
@@ -31,7 +31,7 @@ Three polish items surfaced by the post-migration validation review of 2026-04-0
 
 ## #26: `MockGadgetContextProvider` JSDoc accuracy
 
-**Where:** `gadget-sdk/src/testing/MockGadgetContextProvider.tsx` (now `packages/gadget-sdk/src/testing/MockGadgetContextProvider.tsx`).
+**Where:** `packages/gadget-sdk/src/testing/MockGadgetContextProvider.tsx`.
 
 **The thing:** the `launcher` prop's JSDoc says "calling `useLauncher()` from a child throws exactly as it would in a settings panel". That is accurate for the current code, but it conflates two facts: (a) the `launcher` slice is absent, and (b) `useLauncher()` throws when the slice is absent. If `useLauncher()` ever returns `undefined` instead of throwing, the doc claim silently becomes wrong.
 

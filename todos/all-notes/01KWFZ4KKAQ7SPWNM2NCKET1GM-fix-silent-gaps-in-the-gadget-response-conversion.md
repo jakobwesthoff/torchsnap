@@ -16,24 +16,24 @@ conversion:
 
 1. **Malformed `data` JSON is silently dropped.**
    `parse_optional_json`
-   (`src-tauri/src/wasm/bindings.rs:261-263`) maps a gadget's
+   (`src-tauri/src/wasm/bindings.rs`) maps a gadget's
    unparseable `view-response.data` string to `None` with no
    diagnostic. Contrast the asset-icon resolver in the same
    file, which returns warnings that the bridge logs. A gadget
    author whose custom UI mysteriously receives no data gets
    zero feedback.
 2. **`SearchResponse::Nothing` is conflated with
-   `Results([])`** (`:236-241`). The WIT gives guests two
+   `Results([])`** (the `SearchResponse` conversion in `bindings.rs`). The WIT gives guests two
    distinct variants; the host converts both to
    `GadgetResponse::Results(vec![])`. Per the bridge comment
-   (`bridge.rs:683-686`), empty results actively evict stale
+   (in `search` in `bridge.rs`), empty results actively evict stale
    frontend entries, so a guest returning `Nothing`
    ("not participating") behaves identically to "participating
    with zero hits". If that equivalence is intended, the WIT
    `nothing` variant is redundant and should say so in its doc;
    if not, `Nothing` should map to the bridge returning `None`.
 3. **Relative `AssetIcon` paths are spliced into URLs without
-   validation or encoding** (`:339-342`):
+   validation or encoding** (the asset icon resolver in `bindings.rs`):
    `format!("torchsnap-gadget://localhost/{gadget_id}/{path}")`.
    A path containing spaces, `#`, or `?` produces a URL whose
    fetch will fail or truncate. Nothing runs

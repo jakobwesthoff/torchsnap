@@ -15,7 +15,7 @@ not say so, although the manifest parser and the interface gate enforce it.
 Read in the code and docs.
 
 The manifest parser recognizes boolean opt-ins for clipboard and
-frecency (`src-tauri/src/wasm/manifest/permissions/mod.rs`, around lines 72-82):
+frecency (the `frecency` and `clipboard` fields of the permissions struct in `src-tauri/src/wasm/manifest/permissions/mod.rs`):
 
 ```rust
 /// `permissions.frecency` — opt-in for the WIT frecency interface ...
@@ -28,25 +28,24 @@ and the interface gate enforces them at load time: a component
 that imports a gated interface without the matching permission is
 rejected with "imports interfaces without matching permissions"
 (`src-tauri/src/wasm/interface_gate.rs`, `is_provisioned` arms).
-`docs/Gadget-Architecture/01-overview.md`, around lines 254-268, documents both
+`docs/Gadget-Architecture/01-overview.md` (the capability table) documents both
 gates correctly.
 
 Two gadget-author-facing sources do not:
 
 1. **`docs/api/gadget-development.md`**: the `[permissions]`
-   schema section (around lines 575-605) lists only `website-metadata`,
-   `opener`, `http`, `fs`, `command`. The `clipboard` interface
-   section (around lines 665-670) and the `frecency` section (around lines
-   713-727) describe the APIs with no mention that using them requires
+   schema section lists only `website-metadata`,
+   `opener`, `http`, `filesystem`, `command`. The `clipboard` interface
+   section and the `frecency` section describe the APIs with no mention that using them requires
    `[permissions] clipboard = true` / `frecency = true`.
 2. **The WIT itself** (`gadgets/gadget-sdk/wit/torchsnap-gadget.wit`): the
-   `clipboard` interface doc-comment (around lines 34-49) and the `frecency`
-   doc-comment (around lines 115-129) say nothing about a manifest
+   `clipboard` interface doc-comment and the `frecency`
+   doc-comment say nothing about a manifest
    gate, while the neighboring `website-metadata` comment
-   explicitly documents its gate (around lines 856-857)
+   explicitly documents its gate
    and `opener`/`http`/`filesystem`/`command` document theirs.
    The guide declares "when this guide and the WIT disagree, the
-   WIT wins" (`gadget-development.md`, around lines 11-12), so the WIT staying
+   WIT wins" (the opening of `gadget-development.md`), so the WIT staying
    silent on the gates matters doubly.
 
 ## Impact

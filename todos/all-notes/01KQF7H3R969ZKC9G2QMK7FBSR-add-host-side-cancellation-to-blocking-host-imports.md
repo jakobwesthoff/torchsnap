@@ -11,9 +11,9 @@ A slow blocking host import holds the gadget instance's mutex for its full durat
 
 ## Context: the problem
 
-WASM gadget instances are single-threaded by component-model spec. The host's `WasmGadgetInstance` (`src-tauri/src/wasm/runtime/instance.rs`, around lines 41 and 232) serializes calls into each instance with a `Mutex<Store>`. When a gadget makes a host import call that blocks for a significant time, the mutex is held for the entire wait. Example: `website_metadata::lookup` with `LookupMode::Blocking` on a cold cache uses `tokio::task::block_in_place` (`src-tauri/src/wasm/runtime/host/website_metadata.rs`, around line 72) to run a 2+ second synchronous network fetch.
+WASM gadget instances are single-threaded by component-model spec. The host's `WasmGadgetInstance` (`src-tauri/src/wasm/runtime/instance.rs`) serializes calls into each instance with a `Mutex<Store>`. When a gadget makes a host import call that blocks for a significant time, the mutex is held for the entire wait. Example: `website_metadata::lookup` with `LookupMode::Blocking` on a cold cache uses `tokio::task::block_in_place` (`src-tauri/src/wasm/runtime/host/website_metadata.rs`, `lookup_sync`) to run a 2+ second synchronous network fetch.
 
-The orchestrator (`GadgetHost::search` in `src-tauri/src/gadget_host.rs`, around lines 449 and 560) dispatches each keystroke's search to all gadgets via `spawn_blocking`. With no preemption, every keystroke during a slow call queues a new task that eventually runs to completion.
+The orchestrator (`GadgetHost::search` in `src-tauri/src/gadget_host.rs`) dispatches each keystroke's search to all gadgets via `spawn_blocking`. With no preemption, every keystroke during a slow call queues a new task that eventually runs to completion.
 
 A separate, simpler fix (a latest-wins mutex acquire, so older queued calls drop themselves rather than draining the queue) is not yet filed as a todo. It is in scope for short-term implementation and addresses the wasted-compute side of this problem.
 

@@ -25,7 +25,8 @@ macOS app discovery is a one-shot `mdfind` subprocess call
 `kMDItemContentType == 'com.apple.application-bundle'`), pulled by the
 app-launcher gadget at startup and then at most every 5 minutes,
 triggered only by searches
-(`src-tauri/src/gadgets/app_launcher.rs:44,82-123`).
+(`REFRESH_INTERVAL_SECS` and `maybe_trigger_background_refresh` in
+`src-tauri/src/gadgets/app_launcher.rs`).
 
 Observed on 2026-07-15 (macOS 26.3.1): the machine booted at 09:46:57,
 torchsnap auto-started at 09:47, and its startup discovery returned
@@ -59,7 +60,7 @@ entirely.
 ## Validated technical grounding (all against the locked dependency set)
 
 `objc2-foundation` 0.3.2 is already a macOS dependency
-(`src-tauri/Cargo.toml:105`), and its `NSMetadata` and
+(the `objc2-foundation` entry in `src-tauri/Cargo.toml`), and its `NSMetadata` and
 `NSMetadataAttributes` modules ship everything needed. Currently only the
 `NSString`, `NSData`, `NSGeometry` and `NSURL` features are enabled. The
 following must be added: `NSMetadata`, `NSMetadataAttributes`,
@@ -92,7 +93,7 @@ Verified present in the 0.3.2 bindings
 ## Architectural change: pull to push
 
 The current `AppDiscovery` trait is pull-based
-(`src-tauri/src/platform/app_discovery.rs:58`):
+(the `AppDiscovery` trait in `src-tauri/src/platform/app_discovery.rs`):
 `fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>>` plus
 `fn icon(...)`. A live query is push-based, so the platform API must
 change shape rather than being worked around.
@@ -234,7 +235,7 @@ mechanism.
   does not panic.
 - **macOS integration test** (`#[cfg(all(test, target_os = "macos"))]`,
   the same gating as the existing tests in
-  `src-tauri/src/platform/macos/app_resolver.rs:39`): construct the real
+  `src-tauri/src/platform/macos/app_resolver.rs`): construct the real
   query, start it, wait for DidFinishGathering with a timeout, and assert
   at least one result under an Applications directory. Caveat: it depends
   on the host's Spotlight state, like the existing
@@ -249,8 +250,8 @@ mechanism.
 - Rewrite the module header of `src-tauri/src/platform/macos/app_discovery.rs`
   (it currently describes mdfind) and the trait docs in
   `src-tauri/src/platform/app_discovery.rs` (they document the pull
-  contract and name mdfind at line 12).
-- Update the app-launcher module header (`src-tauri/src/gadgets/app_launcher.rs:5-22`,
+  contract and name mdfind in the module header).
+- Update the app-launcher module header (`src-tauri/src/gadgets/app_launcher.rs`,
   which currently documents the 5-minute refresh).
 - CHANGELOG entry.
 - Decide whether this warrants an ADR. The project records decisions as

@@ -18,7 +18,7 @@ and a full reindex of `clipboard_fts`.
 ## Problem
 
 `clipboard_fts` uses FTS5's default `unicode61` tokenizer
-(`src-tauri/src/gadgets/clipboard/schema.rs`, around lines 60-64, no
+(the `clipboard_fts` definition in `MIGRATION_001`, `src-tauri/src/gadgets/clipboard/schema.rs`, no
 `tokenize=` argument). It indexes whole tokens,
 so a query matches only at a token *prefix*. Searching `board` does not
 find `ClipboardManager`; `clip` does.
@@ -46,7 +46,7 @@ rather than being a strict improvement.
 
 FTS5's `trigram` tokenizer supports substring matching. Confirmed
 available in the SQLite this project actually ships: rusqlite 0.40
-with the `bundled` feature (`src-tauri/Cargo.toml`, line 42), SQLite 3.53.2.
+with the `bundled` feature (the `rusqlite` dependency in `src-tauri/Cargo.toml`), SQLite 3.53.2.
 This was checked by probing through `SqlStorage` rather than the system
 `sqlite3` CLI, which is a different build. `MATCH 'board'` against
 `ClipboardManager` returned a hit.
@@ -147,7 +147,7 @@ short-query fallback in option B does not become the bottleneck.
 - `CHANGELOG.md` entry.
 - Update the `search.rs` module header, which currently explains
   escaping for a prefix tokenizer.
-- Update the schema doc comment (`schema.rs`, around lines 26-32) with the
+- Update the schema doc comment (the header comment of `MIGRATION_001` in `schema.rs`) with the
   tokenizer choice and the `remove_diacritics` setting.
 - An ADR is warranted here if option A is chosen, since a dual index is
   a structural commitment; option B does not need one.

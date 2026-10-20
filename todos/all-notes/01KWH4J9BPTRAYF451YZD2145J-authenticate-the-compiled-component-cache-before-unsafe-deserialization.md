@@ -12,11 +12,12 @@ The compiled-component cache is loaded with wasmtime's `unsafe` `deserialize_fil
 ## Problem
 `WasmRuntime::deserialize_component` loads a compiled component from a
 cache file via wasmtime's `unsafe` `Component::deserialize_file`
-(`engine.rs:86-91`), whose own doc comment states it "trusts the
+(`WasmRuntime::deserialize_component` in `engine.rs`), whose own doc comment states it "trusts the
 serialized byte stream. The caller must ensure the file was written by
 us." `CachedComponent::acquire` calls this on
 `<app_data_dir>/gadget-home/<id>/compile-cache/<blake3(wasm)>.<engine_hash>.cwasm`
-(`cached_component.rs:259-266,336-340`). The load path is simply
+(`CachedComponent::first_acquire` and `cache_filename` in
+`cached_component.rs`). The load path is simply
 `if cache_path.exists() { deserialize(...) }`. Whatever bytes sit at
 the predictable path are trusted verbatim.
 
@@ -41,7 +42,7 @@ honest-but-incompatible images), not an integrity or authenticity guard.
 A structurally valid but malicious image can embed arbitrary native
 code or corrupt metadata, yielding native code execution or memory
 unsafety in the **host** process, outside the wasm sandbox. The
-"corrupt cache, recompile" branch (`cached_component.rs:267-276`) only
+"corrupt cache, recompile" branch in `first_acquire` only
 fires on deserialize *Err*. An image crafted to deserialize
 *successfully* into a hostile artifact bypasses it entirely. The
 content-hash filename provides zero protection, because the artifact is
@@ -50,26 +51,28 @@ never re-hashed and blake3 is unkeyed and recomputable.
 ### Write surface (who can plant the `.cwasm`)
 Every capability audited:
 - **filesystem**: read-only. Its public surface is `read_file` /
-  `file_exists` / `metadata` (`filesystem.rs:114,128,134`), with no write
+  `file_exists` / `metadata` (`FilesystemCap` in `filesystem.rs`), with no write
   path. It cannot write the cache.
-- **sql_storage** exposes arbitrary SQL (`execute`/`query`,
-  `torchsnap-gadget.wit:98,102` → `storage/sql_storage.rs:308,328`). A
-  gadget could `ATTACH DATABASE '<cache_path>'` to create a file at an
-  arbitrary path. ATTACH only produces a SQLite-format file, though. It
-  cannot emit attacker-chosen bytes at chosen offsets, so it cannot
-  synthesize a valid hostile `.cwasm`. At most it gives a cache-poisoning
-  DoS, where deserialize fails and the host recompiles. It is not a
-  code-exec planting primitive.
+- **sql_storage** exposes arbitrary SQL (`execute`/`query` in the
+  `sql-storage` interface of `torchsnap-gadget.wit`, implemented in
+  `storage/sql_storage.rs`). It used to allow `ATTACH DATABASE` to create a
+  file at an arbitrary path. ATTACH, DETACH and VACUUM are now denied and
+  defensive mode is on (ADR 0065), so SQL no longer writes outside the
+  gadget's own database file. It was never a code-exec planting primitive,
+  since ATTACH only produces SQLite-format files.
 - **icon_cache / website_metadata / settings / frecency / clipboard /
   http / opener**: none write attacker-controlled bytes to a
   gadget-chosen path under gadget-home.
 - **command** is the gadget-reachable write vector. `CommandCap::run`
   spawns a native subprocess as the user, outside the sandbox
-  (`command.rs:285`), gated only by the `[[permissions.command]]`
-  matcher. The guest may pass an explicit cwd or absolute paths
-  (`command.rs:177-189`). Any command grant broad enough to write a
-  file (a shell, `python`, `cp`, `tee`, `dd`, or a granted helper) lets
-  that subprocess write the sibling `compile-cache/` directory, and can
+  (`run_child_with_caps` in `caps/command.rs`), gated only by the
+  `[[permissions.command]]` matcher. Since ADR 0066 the host keeps the
+  working directory and path arguments out of the app data directory
+  (`WritableAreas` in `caps/command.rs`), so a call cannot name
+  `compile-cache/` itself. That does not stop a granted program that
+  writes files on its own terms. Any command grant broad enough to write
+  a file (a shell, `python`, `cp`, `tee`, `dd`, or a granted helper) can
+  still plant a file in the sibling `compile-cache/` directory, and can
   `ls` it to read the exact target filename.
 
 Realistic write vectors: (1) a gadget's own `command` subprocess able
@@ -78,7 +81,7 @@ arbitrary-file-write bug (install traversal, symlink, a scoped write
 grant), which this issue silently upgrades to RCE.
 
 Directory permissions: `create_dir_all` with no explicit mode
-(`cached_component.rs:300-301`) inherits the umask, which gives 0755 on
+(`CachedComponent::first_acquire`) inherits the umask, which gives 0755 on
 default macOS and Linux. 0755 lets other local users read. It does
 nothing to stop a same-user writer, which is the actual threat.
 
@@ -112,7 +115,7 @@ Enforce the doc comment's "written by us" invariant cryptographically:
   (sidecar `<name>.cwasm.mac` or a small prepended header). blake3's
   keyed mode is a purpose-built MAC and PRF, and `blake3::Hash`'s `==` is
   constant-time, so no extra crate is needed. **blake3 is already a
-  dependency** (`Cargo.toml:33`).
+  dependency** (`Cargo.toml`).
 - On load (before the `unsafe` deserialize): recompute the tag over the
   on-disk bytes and compare it in constant time against the stored tag. On
   mismatch, treat it exactly like the existing corrupt path (delete and
@@ -173,14 +176,15 @@ the documented same-user trust assumption. If the RSS and latency budget
 tolerates it, prefer recompile-always, which removes the `unsafe` outright.
 
 ## Key files
-- `engine.rs:86-91`: the `unsafe` deserialize.
-- `cached_component.rs:259-276` (load and corrupt-only recompile),
-  `:300-301` (dir perms), `:336-340` (filename derivation).
-- `caps/command.rs:171,177-189,285`: the gadget-reachable
-  native-subprocess write vector.
-- `caps/filesystem.rs:114,128,134`: read-only fs cap (no write path).
-- `storage/sql_storage.rs:308,328` and `torchsnap-gadget.wit:98,102`:
-  arbitrary SQL (ATTACH produces SQLite-format only, not a hostile-`.cwasm`
-  primitive).
-- `Cargo.toml:33`: blake3 already present (keyed mode is a MAC, no new
+- `engine.rs`, `WasmRuntime::deserialize_component`: the `unsafe` deserialize.
+- `cached_component.rs`, `CachedComponent::first_acquire` (load,
+  corrupt-only recompile, directory creation) and `cache_filename`
+  (filename derivation).
+- `caps/command.rs`, `run_child_with_caps` and `WritableAreas`: the
+  gadget-reachable native-subprocess write vector.
+- `caps/filesystem.rs`: read-only fs cap (no write path).
+- `storage/sql_storage.rs` and the `sql-storage` interface in
+  `torchsnap-gadget.wit`: arbitrary SQL, confined to the gadget's own
+  database file by ADR 0065.
+- `Cargo.toml`: blake3 already present (keyed mode is a MAC, no new
   dependency).

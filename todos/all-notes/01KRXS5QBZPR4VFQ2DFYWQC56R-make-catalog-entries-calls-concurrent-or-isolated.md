@@ -7,8 +7,7 @@ tags: [performance, concurrency]
 # Make catalog entries() calls concurrent or isolated
 
 `entries()` calls for all catalog gadgets currently run sequentially inside a
-single `spawn_blocking` task in `gadget_host.rs` (`search_catalogs_static`,
-lines 859-933). A single slow `entries()` implementation delays the entire
+single `spawn_blocking` task in `gadget_host.rs` (`GadgetHost::search_catalogs_static`). A single slow `entries()` implementation delays the entire
 catalog batch for every gadget.
 
 This is acceptable while all gadgets are bundled and trusted, but becomes a

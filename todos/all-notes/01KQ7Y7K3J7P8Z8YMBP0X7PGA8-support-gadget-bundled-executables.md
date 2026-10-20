@@ -7,7 +7,7 @@ tags: [security, macos, capabilities]
 ---
 # Support gadget-bundled executables
 
-Gadgets cannot yet ship and run their own executables. The v1 `command` host interface supports system binaries only, either absolute paths (`/usr/bin/mdfind`) or names resolved against the host process `$PATH` (`mdfind`). Gadget-bundled binaries (`${gadget-archive}/helper`) are deliberately excluded from v1, because they need more infrastructure than was worth gating the v1 release on. Bundled binaries also need gadgets to know which platform they run on; that runtime platform detection is its own todo, which this one depends on.
+Gadgets cannot yet ship and run their own executables. The v1 `command` host interface supports system binaries only, either absolute paths (`/usr/bin/mdfind`) or bare names resolved against the fixed `PATH` the command capability sets for the child (`mdfind`; the host's own `PATH` is not inherited, ADR 0066). Gadget-bundled binaries (`${gadget-archive}/helper`) are deliberately excluded from v1, because they need more infrastructure than was worth gating the v1 release on. Bundled binaries also need gadgets to know which platform they run on; the `platform` host interface (`current-os`, `current-arch`) provides that.
 
 ## Context
 
@@ -30,12 +30,9 @@ Bundled executables let gadgets ship narrow, purpose-built tools (a Rust binary 
 
 ## Prerequisites and follow-on work
 
-- The v1 `command` host interface must land first.
-- Runtime platform detection must land first, so gadgets can pick the right binary path or pass the right argv.
 - An audit of archive-format mode preservation must come before item 1 above.
 - Enables gadgets that ship purpose-built tools rather than relying on system-installed binaries.
 
 ## Relations
 
-- Depends on: [Add a platform host interface for runtime OS and architecture detection](01M4HJV77D9C01NAXBQYSP7WRN-add-a-platform-host-interface-for-runtime-os-and-architecture-detection.md)
 - Depends on: [Check whether gadget archives keep Unix file modes from packaging to extraction](01M4HKABQ31HQ1QBM1YNAVX2BS-check-whether-gadget-archives-keep-unix-file-modes-from-packaging-to.md)

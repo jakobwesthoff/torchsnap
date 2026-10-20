@@ -10,13 +10,13 @@ impact: low
 
 ## Problem
 
-`package-gadget` documents its blacklist as excluding "build inputs and developer-only artifacts" (`just/gadgets.just:80-99`) and excludes `Cargo.toml`, `Cargo.lock`, and `src/*`, but not `build.rs`, which is equally a Rust build input living at the gadget root. The emoji-picker gadget still has one (`gadgets/emoji-picker/build.rs`), so its `.torchsnap` archive ships the build script alongside the compiled `.wasm`.
+`package-gadget` documents its blacklist as excluding "build inputs and developer-only artifacts" (the comment above `package-gadget` in `just/gadgets.just`) and excludes `Cargo.toml`, `Cargo.lock`, and `src/*`, but not `build.rs`, which is equally a Rust build input living at the gadget root. The emoji-picker gadget still has one (`gadgets/emoji-picker/build.rs`), so its `.torchsnap` archive ships the build script alongside the compiled `.wasm`.
 
 Harmless at runtime (the loader ignores unknown files), but it contradicts the recipe's own contract ("only the compiled binary ships"), leaks build-machine details (the script embeds local path conventions), and slightly bloats archives. Any future gadget adding `.cargo/` or `rust-toolchain.toml` at its root would ship those too.
 
 ## Suggested fix
 
-Add to the `zip` exclusion list in `package-gadget` (`gadgets.just:129-144`):
+Add to the `zip` exclusion list in `package-gadget` (the `zip -r` call in `just/gadgets.just`):
 
 ```
 -x 'build.rs' \

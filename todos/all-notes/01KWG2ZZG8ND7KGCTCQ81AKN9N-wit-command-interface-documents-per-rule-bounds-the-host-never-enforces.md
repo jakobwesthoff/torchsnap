@@ -12,7 +12,7 @@ The `command-options` record in the WIT contract, which gadget authors read, pro
 
 The `command-options` record documentation in the WIT contract
 promises per-rule enforcement
-(`gadgets/gadget-sdk/wit/torchsnap-gadget.wit:523-532`):
+(the `command-options` record in `gadgets/gadget-sdk/wit/torchsnap-gadget.wit`):
 
 - `stdin`: "Bounded by the host `max-stdin-bytes` ceiling and the
   per-rule `max-stdin-bytes` override if declared."
@@ -38,7 +38,7 @@ Verified-accurate claims in the same doc block (no action
 needed): the default cwd is an empty directory created per call
 (`SpawnDirs` in `src-tauri/src/caps/command.rs`), and manifest-time rule
 overlap rejection exists
-(`src-tauri/src/wasm/manifest/permissions/command.rs:198-227`).
+(`detect_command_rule_overlap` in `src-tauri/src/wasm/manifest/permissions/command.rs`).
 
 ## Suggested fix
 

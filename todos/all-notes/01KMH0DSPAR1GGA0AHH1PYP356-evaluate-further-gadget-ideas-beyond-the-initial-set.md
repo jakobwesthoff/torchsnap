@@ -13,17 +13,16 @@ use.
 
 ## Gadget ideas to evaluate
 
+The emoji picker (`gadgets/emoji-picker`) and the system commands (sleep, restart, shutdown, lock screen, empty trash; `src-tauri/src/gadgets/system_commands/`) were on this list and are built. A calculator gadget exists too, but it does no currency or unit conversion, so that idea stays.
+
 - **File search**: Index and search files by name (like macOS
   Spotlight). Integration with `mdfind` on macOS, `locate`/`fd` on
   Linux, Windows Search on Windows.
 - **Snippet manager**: Store and search text snippets, paste into
   active app. Synced across devices?
-- **Emoji picker**: Search emoji by name/keyword, copy to clipboard.
 - **Color picker/converter**: Convert between hex, rgb, hsl. Show
   color preview swatch.
 - **Dictionary/thesaurus**: Word definitions and synonyms.
-- **System commands**: Sleep, restart, shutdown, lock screen, empty
-  trash.
 - **SSH connections**: List and connect to saved SSH hosts from
   `~/.ssh/config`.
 - **Docker/container management**: List running containers,

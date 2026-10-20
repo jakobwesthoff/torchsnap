@@ -28,11 +28,11 @@ macOS app discovery is a one-shot `mdfind` subprocess call
 `kMDItemContentType == 'com.apple.application-bundle'`, plus a
 `/Applications/`-path filter, an embedded-helper filter and `Info.plist`
 parsing). The app-launcher
-gadget runs it once at startup (`enable()`,
-`src-tauri/src/gadgets/app_launcher.rs:170`) and afterwards at most every
-`REFRESH_INTERVAL_SECS = 300` (`app_launcher.rs:44`). It is triggered
+gadget runs it once at startup (`enable()` in
+`src-tauri/src/gadgets/app_launcher.rs`) and afterwards at most every
+`REFRESH_INTERVAL_SECS = 300` (`app_launcher.rs`). It is triggered
 lazily from `entries()` during searches
-(`maybe_trigger_background_refresh`, `app_launcher.rs:82-123`).
+(`maybe_trigger_background_refresh` in `app_launcher.rs`).
 
 Observed on 2026-07-15 (macOS 26.3.1): the machine booted at 09:46:57,
 torchsnap auto-started at 09:47, and its startup discovery returned only
@@ -49,11 +49,11 @@ Two properties of the current code amplified the partial result:
 
 1. A partial `Ok` from `discover()` is indistinguishable from a complete
    one. It wholesale-replaces the cache
-   (`app_launcher.rs:112-113`), so searches right after login could
+   (the refresh thread in `maybe_trigger_background_refresh`), so searches right after login could
    not find third-party apps. (A hard `Err` behaves better: the old
-   cache is kept, `app_launcher.rs:116-119`.)
+   cache is kept, the `Err` arm of the same thread.)
 2. Every successful discovery runs `icon_cache.cleanup` against its
-   result set (`app_launcher.rs:110,182`), so the 94 icons of the
+   result set (in the refresh thread and in `enable()`), so the 94 icons of the
    "vanished" apps were deleted as orphans and had to be re-extracted
    when the full result arrived.
 
@@ -131,7 +131,7 @@ uninstall bursts settle within one or two fast polls.
 
 ### 3. Interval selection
 
-`maybe_trigger_background_refresh` (`app_launcher.rs:82-98`) currently
+`maybe_trigger_background_refresh` currently
 compares against the fixed `REFRESH_INTERVAL_SECS`. Change the comparison
 to pick the interval from the stability state. Extract the decision into a
 pure function for testability:
@@ -142,13 +142,13 @@ fn refresh_interval(stable: bool) -> i64 { ... }
 ```
 
 The trigger mechanism itself stays search-driven: `entries()` calls
-`maybe_trigger_background_refresh` (`app_launcher.rs:195`). See the open
+`maybe_trigger_background_refresh`. See the open
 question on a warm-up timer thread.
 
 ### 4. Result handling (both `enable()` and the refresh thread)
 
-Unify the two `Ok(apps)` paths (`app_launcher.rs:107-115` and
-`170-186`) into one handler:
+Unify the two `Ok(apps)` paths (the refresh thread in
+`maybe_trigger_background_refresh` and `enable()`) into one handler:
 
 - Compute the fingerprint and call `Stability::observe`.
 - **Stable** (threshold reached): today's behavior. Wholesale-replace the
@@ -186,7 +186,7 @@ incident are gated behind stability.
   new path until stability is reached, because the old entry is never
   removed additively. Launching the old entry fails if the bundle is gone.
   `execute()` already returns an error result for that case
-  (`app_launcher.rs:231-256` via `opener.open_path`).
+  (`AppLauncherGadget::execute` via `opener.open_path`).
 - Between searches nothing refreshes, warm-up or not. This is unchanged
   from today.
 
@@ -210,7 +210,7 @@ Pure-logic units (no discovery backend, no filesystem):
 
 Gadget-level, with a scripted mock `AppDiscovery`. The trait is already
 object-safe and injected via `AppLauncherGadget::new`
-(`app_launcher.rs:68`):
+(`AppLauncherGadget::new`):
 
 - Sequence partial (82-like), then full (176-like), then full:
   `entries()` never shrinks during warm-up, and equals the full set after
@@ -226,8 +226,8 @@ object-safe and injected via `AppLauncherGadget::new`
 
 ## Documentation updates (part of the implementation)
 
-- Module header of `src-tauri/src/gadgets/app_launcher.rs` (lines 5-22
-  currently document the flat 5-minute refresh). Describe the two
+- Module header of `src-tauri/src/gadgets/app_launcher.rs` (it
+  currently documents the flat 5-minute refresh). Describe the two
   cadences, the stability criterion, and the cleanup-only-when-stable rule.
 - CHANGELOG entry.
 

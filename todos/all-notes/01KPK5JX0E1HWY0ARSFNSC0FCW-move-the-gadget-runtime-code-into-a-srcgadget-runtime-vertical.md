@@ -17,7 +17,7 @@ The vertical is distinct from `src/gadgets/`, which holds per-gadget UI implemen
 | `src/lib/gadgetCss.ts` | `src/gadget-runtime/gadgetCss.ts` |
 | `src/lib/gadgetMessage.ts` | `src/gadget-runtime/gadgetMessage.ts` |
 | `src/lib/sdk.ts` | `src/gadget-runtime/sdk.ts` |
-| `src/gadgets/wasmGadgetLoader.ts` | `src/gadget-runtime/wasmGadgetLoader.ts` |
+| `src/gadgets/wasmPluginLoader.ts` (still under its pre-ADR 0042 name) | `src/gadget-runtime/wasmGadgetLoader.ts` |
 | `src/gadgets/registry.ts` | `src/gadget-runtime/registry.ts` |
 | `src/gadgets/types.ts` | `src/gadget-runtime/types.ts` |
 | `src/contexts/GadgetContext.tsx` | `src/gadget-runtime/GadgetContext.tsx` |
@@ -25,10 +25,9 @@ The vertical is distinct from `src/gadgets/`, which holds per-gadget UI implemen
 | `src/contexts/useGadgetInfo.ts` | `src/gadget-runtime/useGadgetInfo.ts` |
 | `src/contexts/useGadgetRuntime.ts` | `src/gadget-runtime/useGadgetRuntime.ts` |
 | `src/contexts/useGadgetSetting.ts` | `src/gadget-runtime/useGadgetSetting.ts` |
-| `src/hooks/useGadgetSetting.ts` | merge with the contexts version, or deduplicate |
 | `src/hooks/useGadgetStream.ts` | `src/gadget-runtime/useGadgetStream.ts` |
 
-There appear to be two `useGadgetSetting.ts` files, one in `contexts/` and one in `hooks/`. Investigate and deduplicate them before moving.
+`useGadgetSetting.ts` now exists only in `src/contexts/`; the former duplicate in `src/hooks/` is gone.
 
 ## Barrel export
 
@@ -46,9 +45,7 @@ After the move, `src/gadgets/` contains only per-gadget UI folders:
 
 ```
 src/gadgets/
-├── bangs/
-├── clipboard/
-└── emoji/
+└── clipboard/
 ```
 
 These per-gadget UI implementations import shared types and hooks from `src/gadget-runtime/`, but the runtime machinery itself lives in `src/gadget-runtime/`.
@@ -63,8 +60,7 @@ These per-gadget UI implementations import shared types and hooks from `src/gadg
 
 ## Suggested approach
 
-1. Investigate the `useGadgetSetting` duplication first, and merge or clarify it.
-2. Create `src/gadget-runtime/` and move the files with `git mv`.
-3. Fix the imports incrementally, keeping the build green.
-4. Add the barrel `index.ts`.
-5. Clean up the locations that are now empty in `src/contexts/`, `src/hooks/` and `src/lib/`.
+1. Create `src/gadget-runtime/` and move the files with `git mv`.
+2. Fix the imports incrementally, keeping the build green.
+3. Add the barrel `index.ts`.
+4. Clean up the locations that are now empty in `src/contexts/`, `src/hooks/` and `src/lib/`.
