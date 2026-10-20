@@ -72,11 +72,15 @@ export function GadgetEnableFailureNote({
       <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
         <ExclamationTriangleIcon aria-hidden className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-sm font-medium">{name} failed to start</span>
+        {/* On the red tint the button has its own surface and a border
+            of about 3:1 against the tint, so it reads as a button in
+            both themes. "Retrying…" is a state to read, so the disabled
+            button stays at 70 %. */}
         <button
           type="button"
           onClick={() => void retry()}
           disabled={retrying || retryDisabled}
-          className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-md border border-red-600/75 bg-white/70 px-2.5 py-1 text-xs font-medium text-red-700 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent enabled:hover:border-red-600 enabled:hover:bg-white disabled:cursor-not-allowed disabled:opacity-70 dark:border-red-400/65 dark:bg-white/5 dark:text-red-300 dark:enabled:hover:border-red-400/90 dark:enabled:hover:bg-white/10"
         >
           {retrying ? "Retrying…" : "Retry"}
         </button>
