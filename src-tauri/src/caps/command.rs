@@ -633,4 +633,118 @@ mod tests {
             other => panic!("expected PermissionDenied, got {other:?}"),
         }
     }
+
+    // ─── awake, the gadget that ships with a command grant ─
+
+    /// Paths for a gadget whose data directory follows the host's
+    /// `<app data>/gadget-home/<id>/` layout below `root`.
+    fn gadget_paths(root: &std::path::Path, gadget_id: &str) -> crate::paths::GadgetPaths {
+        crate::paths::GadgetPaths {
+            platform: std::sync::Arc::new(crate::paths::PlatformPaths {
+                home: root.join("home"),
+                xdg_config: root.join("home/Library/Application Support"),
+                xdg_data: root.join("home/Library/Application Support"),
+            }),
+            gadget_data: root.join("app-data/gadget-home").join(gadget_id),
+            gadget_archive: root
+                .join("app-data/gadgets")
+                .join(format!("{gadget_id}.torchsnap")),
+        }
+    }
+
+    fn options(args: &[&str]) -> CommandOptions {
+        CommandOptions {
+            args: args.iter().map(|arg| arg.to_string()).collect(),
+            cwd: None,
+            env: vec![],
+            stdin: None,
+            timeout_ms: Some(5_000),
+            max_output_bytes: None,
+        }
+    }
+
+    /// The three scripts `gadgets/awake/src/backend/amphetamine.rs`
+    /// sends, copied verbatim, so the host keeps accepting exactly
+    /// what awake emits.
+    const AWAKE_STATUS_SCRIPT: &str = "\
+if application \"Amphetamine\" is running then\n\
+tell application \"Amphetamine\"\n\
+set isActive to session is active\n\
+set remaining to session time remaining\n\
+set displayAllowed to display sleep allowed\n\
+end tell\n\
+return isActive as text & \"|\" & remaining as text & \"|\" & displayAllowed as text\n\
+else\n\
+return \"not-running\"\n\
+end if";
+    const AWAKE_STOP_SCRIPT: &str = "tell application \"Amphetamine\" to end session";
+    const AWAKE_START_SCRIPT: &str = "tell application \"Amphetamine\" to start new session \
+         with options {duration:30, interval:minutes, displaySleepAllowed:false}";
+
+    #[test]
+    fn awake_manifest_compiles_into_a_command_cap() {
+        let manifest = crate::wasm::manifest::Manifest::parse(include_str!(
+            "../../../gadgets/awake/manifest.toml"
+        ))
+        .expect("awake's manifest parses");
+        let rules = manifest
+            .permissions
+            .expect("awake declares permissions")
+            .command;
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let paths = gadget_paths(root.path(), "awake");
+
+        let cap = CommandCap::new(&rules, &paths, paths.gadget_data.clone())
+            .expect("awake's command rules compile");
+
+        for script in [AWAKE_STATUS_SCRIPT, AWAKE_STOP_SCRIPT, AWAKE_START_SCRIPT] {
+            argv_matcher::matches(
+                &cap.rules,
+                "osascript",
+                &[String::from("-e"), script.into()],
+            )
+            .unwrap_or_else(|e| panic!("awake's rule rejects {script:?}: {e}"));
+        }
+        let altered = AWAKE_STOP_SCRIPT.replace("end session", "quit");
+        assert!(
+            argv_matcher::matches(&cap.rules, "osascript", &["-e".into(), altered]).is_err(),
+            "awake's rule must not accept other scripts"
+        );
+    }
+
+    /// Awake names its binary without a path, so this pins that a bare
+    /// name still resolves and `osascript` runs in the environment the
+    /// host gives commands. The script touches no other application.
+    #[cfg(target_os = "macos")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn osascript_runs_by_name_in_the_command_environment() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let paths = gadget_paths(root.path(), "awake");
+        let rule = CommandPermissionDef {
+            binary: "osascript".into(),
+            argv: vec![
+                crate::wasm::manifest::ArgvConstraint::Literal { value: "-e".into() },
+                crate::wasm::manifest::ArgvConstraint::Literal {
+                    value: "return \"ok\"".into(),
+                },
+            ],
+            cwd: None,
+            timeout_ms_max: None,
+            max_output_bytes: None,
+            max_stdin_bytes: None,
+        };
+        let cap = CommandCap::new(&[rule], &paths, paths.gadget_data.clone()).expect("compile");
+
+        let result = cap
+            .run("osascript", options(&["-e", "return \"ok\""]))
+            .expect("osascript runs");
+
+        assert_eq!(
+            result.exit_code,
+            Some(0),
+            "stderr: {:?}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(result.stdout, b"ok\n");
+    }
 }

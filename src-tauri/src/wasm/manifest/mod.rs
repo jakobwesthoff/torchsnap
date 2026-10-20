@@ -881,4 +881,58 @@ mod tests {
         // fields are added in later versions.
         Manifest::parse(toml).expect("should parse despite unknown fields");
     }
+
+    // =====================================================
+    // Every gadget in the repository parses
+    // =====================================================
+
+    /// The gadgets under `gadgets/` and the command test fixture are
+    /// what real manifests look like, so a parser rule that rejects one
+    /// of them breaks a shipped or a template gadget.
+    #[test]
+    fn every_gadget_manifest_parses() {
+        let manifests = [
+            (
+                "awake",
+                include_str!("../../../../gadgets/awake/manifest.toml"),
+            ),
+            (
+                "bangs",
+                include_str!("../../../../gadgets/bangs/manifest.toml"),
+            ),
+            (
+                "calculator",
+                include_str!("../../../../gadgets/calculator/manifest.toml"),
+            ),
+            (
+                "emoji-picker",
+                include_str!("../../../../gadgets/emoji-picker/manifest.toml"),
+            ),
+            (
+                "hello-world",
+                include_str!("../../../../gadgets/hello-world/manifest.toml"),
+            ),
+            (
+                "open-url",
+                include_str!("../../../../gadgets/open-url/manifest.toml"),
+            ),
+            (
+                "template",
+                include_str!("../../../../gadgets/template/manifest.toml"),
+            ),
+            (
+                "zerotier",
+                include_str!("../../../../gadgets/zerotier/manifest.toml"),
+            ),
+            (
+                "command-gadget fixture",
+                include_str!("../../../tests/fixtures/command-gadget/manifest.toml"),
+            ),
+        ];
+        for (name, source) in manifests {
+            if let Err(e) = Manifest::parse(source) {
+                panic!("manifest of `{name}` no longer parses: {e:#}");
+            }
+        }
+    }
 }
