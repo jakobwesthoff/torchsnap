@@ -5,7 +5,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockWindows } from "@tauri-apps/api/mocks";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { removeGadgetCss } from "../../lib/gadgetCss";
+import { injectedScopeSelector } from "../../test/gadgetCss";
 import { mockCommands } from "../../test/tauri";
 import type { PendingGadget } from "../install/types";
 import { GadgetsManagementPanel } from "./GadgetsManagementPanel";
@@ -50,6 +52,11 @@ describe("GadgetsManagementPanel", () => {
     webview.handler = undefined;
     webview.register = (unlisten) => Promise.resolve(unlisten);
     webview.unlisten = () => {};
+  });
+
+  afterEach(() => {
+    removeGadgetCss("weather");
+    vi.unstubAllGlobals();
   });
 
   function mockPanelCommands(submitted: unknown[]) {
@@ -141,7 +148,7 @@ describe("GadgetsManagementPanel", () => {
   }
 
   async function card(name: string): Promise<HTMLElement> {
-    return (await screen.findByText(name)).closest("[data-gadget]") as HTMLElement;
+    return (await screen.findByText(name)).closest("[data-gadget-row]") as HTMLElement;
   }
 
   it("names the permission groups in one line and expands them on click", async () => {
@@ -580,5 +587,16 @@ describe("GadgetsManagementPanel", () => {
     expect(note.closest(".opacity-60")).not.toBeNull();
     expect(within(row).getByRole("switch").closest(".opacity-60")).toBeNull();
     expect(row.querySelector("[data-slot='trailing']")?.closest(".opacity-60")).toBeNull();
+  });
+
+  it("keeps a gadget's settings CSS off its row", async () => {
+    mockCardCommands({});
+    const selector = await injectedScopeSelector("weather");
+
+    render(<GadgetsManagementPanel />);
+    await screen.findByText("Weather");
+
+    expect(document.querySelector(selector)).toBeNull();
+    expect(await card("Weather")).not.toBeNull();
   });
 });

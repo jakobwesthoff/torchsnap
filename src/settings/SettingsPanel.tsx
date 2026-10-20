@@ -166,6 +166,12 @@ function SectionContent({
 // Renders the GadgetSettingsWrapper (header + enable/disable)
 // with an optional custom settings component as children.
 // Memoizes the scoped hook factory per gadget ID.
+//
+// The custom component renders inside a `data-gadget` container,
+// the scope the gadget's settings CSS is wrapped in (`gadgetCss.ts`).
+// The container sits inside the error boundary, so the host's error
+// card replaces it and stays out of the gadget's styles, like the
+// header and switch above it.
 // =========================================================
 
 function GadgetSectionContent({
@@ -201,9 +207,13 @@ function GadgetSectionContent({
     >
       {CustomSettings && (
         <GadgetErrorBoundary key={gadget.id} gadgetId={gadget.id}>
-          <GadgetContextProvider info={info} runtime={runtime}>
-            <CustomSettings />
-          </GadgetContextProvider>
+          {/* Spaces the component's top-level sections as the page
+              spaces its own. */}
+          <div data-gadget={gadget.id} className="flex flex-col gap-4">
+            <GadgetContextProvider info={info} runtime={runtime}>
+              <CustomSettings />
+            </GadgetContextProvider>
+          </div>
         </GadgetErrorBoundary>
       )}
     </GadgetSettingsWrapper>

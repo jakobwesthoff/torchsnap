@@ -4,7 +4,9 @@
 
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { removeGadgetCss } from "../lib/gadgetCss";
+import { injectedScopeSelector } from "../test/gadgetCss";
 import { emitTauriEvent, mockCommands } from "../test/tauri";
 import { SettingsPanel } from "./SettingsPanel";
 import { SETTINGS_START_SECTION } from "./useStartSection";
@@ -15,12 +17,16 @@ vi.mock("../components/TitleBar", () => ({ TitleBar: () => null }));
 function BrokenSettings(): never {
   throw new Error("settings form crashed");
 }
+function ZeroTierSettings() {
+  return <p>zerotier form</p>;
+}
 vi.mock("../gadgets/registry", () => ({
   getGadgetsWithSettings: () => [
     { id: "zerotier", label: "ZeroTier" },
     { id: "broken", label: "Broken" },
   ],
-  getGadgetSettingsComponent: (id: string) => (id === "broken" ? BrokenSettings : undefined),
+  getGadgetSettingsComponent: (id: string) =>
+    ({ broken: BrokenSettings, zerotier: ZeroTierSettings })[id],
 }));
 vi.mock("../hooks/useSetting", () => ({ useSetting: () => [true] }));
 vi.mock("../lib/logger", () => ({ createLogger: () => ({ error: () => {} }) }));
@@ -38,6 +44,12 @@ vi.mock("./sections/GadgetsManagementPanel", () => ({
 }));
 
 describe("SettingsPanel", () => {
+  afterEach(() => {
+    removeGadgetCss("zerotier");
+    removeGadgetCss("broken");
+    vi.unstubAllGlobals();
+  });
+
   it("opens the Gadgets section when install requests are waiting", async () => {
     mockCommands({
       take_settings_start_section: () => null,
@@ -134,6 +146,34 @@ describe("SettingsPanel", () => {
 
     expect(await screen.findByText("Broken settings")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("settings form crashed");
+    vi.restoreAllMocks();
+  });
+
+  it("scopes a gadget's settings CSS to its settings component", async () => {
+    mockCommands({
+      install_queue_snapshot: () => [],
+      take_settings_start_section: () => "zerotier",
+    });
+    const selector = await injectedScopeSelector("zerotier");
+
+    render(<SettingsPanel />);
+
+    const scope = (await screen.findByText("zerotier form")).closest(selector);
+    expect(scope).not.toBeNull();
+    // The scope container spaces the component's top-level sections
+    // as the page spaces its own.
+    expect(scope).toHaveClass("flex", "flex-col", "gap-4");
+    expect(screen.getByText(/ZeroTier settings/).closest(selector)).toBeNull();
+  });
+
+  it("keeps a crashed settings component's error card outside the gadget's CSS", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockCommands({ install_queue_snapshot: () => [], take_settings_start_section: () => "broken" });
+    const selector = await injectedScopeSelector("broken");
+
+    render(<SettingsPanel />);
+
+    expect((await screen.findByRole("alert")).closest(selector)).toBeNull();
     vi.restoreAllMocks();
   });
 });

@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again. Before, the gadget looked enabled but
   did nothing, and a gadget that failed while Torchsnap started kept
   its global shortcut.
+- Gadget settings pages get the styles their gadget ships for them.
+  Before, those styles applied to the gadget's row under Installed
+  Gadgets instead.
 
 ## [0.14.1] - 2026-10-20
 

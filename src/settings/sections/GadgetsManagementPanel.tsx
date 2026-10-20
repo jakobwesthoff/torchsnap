@@ -336,7 +336,9 @@ function PluginRowView({
   const dim = dimmed && "opacity-60";
 
   return (
-    <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+    // `data-gadget` marks gadget-owned content, the scope a gadget's
+    // CSS applies to; this row is host UI and has its own attribute.
+    <div data-gadget-row={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
       {row.icon && (
         <Icon
           icon={row.icon}
