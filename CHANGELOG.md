@@ -14,7 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name; a relative path such as `bin/tool` is rejected. A gadget can
   pass a working directory only inside the `cwd` its rule declares;
   without one, the program runs in an empty folder that exists only for
-  that run. The install review shows each rule's folder.
+  that run. Programs get locale settings, `TZ`, a fixed `PATH`
+  (`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin`) and
+  `HOME` and `TMPDIR` pointing at empty folders of their own, instead of
+  Torchsnap's environment; a program outside that `PATH` needs an
+  absolute path in the rule. The install review shows each rule's
+  folder.
 
 ### Fixed
 

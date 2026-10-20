@@ -1129,6 +1129,14 @@ Where the program runs depends on the rule's `cwd`:
   `permission-denied`, and the program runs in an empty directory
   the host creates for that one call and removes afterwards.
 
+The program gets a minimal environment, not Torchsnap's: `LANG`,
+`LANGUAGE`, `LC_*`, `TZ` and `__CF_USER_TEXT_ENCODING` from the
+host, `PATH` set to
+`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin`,
+and `HOME` and `TMPDIR` pointing at empty directories of that one
+call. A bare `binary` name is looked up on that `PATH`; a program
+installed elsewhere needs an absolute `binary`.
+
 `opener`-class binaries (`open`, `xdg-open`, `start`, `cmd /c
 start`) are rejected at manifest parse time — gadgets that want
 "open with the registered application" use

@@ -96,9 +96,11 @@ impl CommandBuilder {
         self
     }
 
-    /// Add or override one environment variable. Repeated
-    /// calls with the same key keep all entries — the host's
-    /// env-vec semantics treat the last one as authoritative.
+    /// Add or override one environment variable on top of the
+    /// minimal environment the host gives every program (locale
+    /// settings, `TZ`, a fixed `PATH`, and empty `HOME` and
+    /// `TMPDIR` directories of this call). Repeated calls with
+    /// the same key keep all entries; the last one wins.
     pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.push((key.into(), value.into()));
         self

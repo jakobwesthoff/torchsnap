@@ -5,9 +5,9 @@
 // =========================================================
 // CommandCap
 //
-// Process-spawning capability with permission checking,
-// credential-stripping environment, timeout enforcement, and
-// output capping. The gadget declares `[[permissions.command]]`
+// Process-spawning capability with permission checking, a
+// minimal environment, timeout enforcement, and output
+// capping. The gadget declares `[[permissions.command]]`
 // rules in its manifest; the bridge compiles them via
 // `argv_matcher` and passes them here. At runtime, `run()`
 // matches the requested `(binary, argv)` against the compiled
@@ -50,25 +50,6 @@ fn resolve_max_output_bytes(requested: Option<u64>) -> u64 {
         .unwrap_or(DEFAULT_COMMAND_OUTPUT_BYTES)
         .min(MAX_COMMAND_OUTPUT_BYTES)
 }
-
-const ENV_HARD_DENYLIST: &[&str] = &[
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "SSH_AUTH_SOCK",
-    "GPG_AGENT_INFO",
-];
-
-const ENV_CREDENTIAL_SUFFIXES: &[&str] = &[
-    "_TOKEN",
-    "_KEY",
-    "_PASSWORD",
-    "_SECRET",
-    "_PASS",
-    "_PASSWD",
-    "_APIKEY",
-];
 
 // =========================================================
 // Error type
@@ -222,7 +203,7 @@ impl CommandCap {
             .or(rule_default_cwd)
             .unwrap_or_else(|| spawn_dirs.cwd().to_path_buf());
 
-        let env = build_command_env(&options.env);
+        let env = build_command_env(std::env::vars_os(), &spawn_dirs, &options.env);
 
         let timeout_ms = resolve_timeout_ms(options.timeout_ms);
         let max_output_bytes = resolve_max_output_bytes(options.max_output_bytes);
@@ -350,10 +331,15 @@ fn default_spawn_base() -> PathBuf {
     std::env::temp_dir()
 }
 
-/// The directories of one spawn, removed on drop.
+/// The directories of one spawn, removed on drop: the working
+/// directory for a rule without `cwd`, and the child's `HOME` and
+/// `TMPDIR`, kept apart so the program's temporary files do not
+/// land where it looks for configuration.
 struct SpawnDirs {
     root: PathBuf,
     cwd: PathBuf,
+    home: PathBuf,
+    tmp: PathBuf,
 }
 
 impl SpawnDirs {
@@ -367,16 +353,28 @@ impl SpawnDirs {
         }
         // Until `keep`, a failure below removes the half-built tree.
         let root = builder.tempdir_in(base)?;
-        let cwd = root.path().join("cwd");
-        private_dir_builder().create(&cwd)?;
+        let [cwd, home, tmp] = ["cwd", "home", "tmp"].map(|name| root.path().join(name));
+        for dir in [&cwd, &home, &tmp] {
+            private_dir_builder().create(dir)?;
+        }
         Ok(Self {
             root: root.keep(),
             cwd,
+            home,
+            tmp,
         })
     }
 
     fn cwd(&self) -> &std::path::Path {
         &self.cwd
+    }
+
+    fn home(&self) -> &std::path::Path {
+        &self.home
+    }
+
+    fn tmp(&self) -> &std::path::Path {
+        &self.tmp
     }
 }
 
@@ -436,54 +434,61 @@ fn make_tree_removable(root: &std::path::Path) {
 }
 
 // =========================================================
-// Environment filtering
+// Environment
+//
+// The child inherits nothing but locale and time zone settings. Its
+// `PATH` is fixed, so a bare `binary` name and the program's own
+// subprocess lookups resolve the same way on every machine, and its
+// `HOME` and `TMPDIR` are the spawn's own empty directories, so
+// programs that find configuration through them see none of the
+// user's files.
 // =========================================================
 
-fn is_credential_var(name: &str) -> bool {
-    if ENV_HARD_DENYLIST.contains(&name) {
-        return true;
-    }
-    let upper = name.to_uppercase();
-    ENV_CREDENTIAL_SUFFIXES
-        .iter()
-        .any(|suffix| upper.ends_with(suffix))
+/// The child's `PATH`. macOS-specific: the system directories plus
+/// the Homebrew prefixes of Intel (`/usr/local/bin`) and Apple
+/// silicon (`/opt/homebrew/bin`) Macs, where the command-line tools
+/// gadgets run are usually installed. Other platforms need their own
+/// list (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+const COMMAND_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin";
+
+/// Whether the host's value of `key` passes to the child.
+/// `__CF_USER_TEXT_ENCODING` is macOS-specific: CoreFoundation reads
+/// the default text encoding from it. Other platforms need their own
+/// choice (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+fn is_inherited_env_key(key: &std::ffi::OsStr) -> bool {
+    let Some(key) = key.to_str() else {
+        return false;
+    };
+    matches!(key, "LANG" | "LANGUAGE" | "TZ" | "__CF_USER_TEXT_ENCODING") || key.starts_with("LC_")
 }
 
+/// The child's environment: the inherited locale keys, the fixed
+/// `PATH`, the spawn's `HOME` and `TMPDIR`, then `overrides`, each
+/// replacing a key of the same name.
 fn build_command_env(
-    gadget_overrides: &[(String, String)],
+    inherited: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    spawn_dirs: &SpawnDirs,
+    overrides: &[(String, String)],
 ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     use std::ffi::OsString;
 
-    let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
-        .filter(|(k, _)| {
-            let name = k.to_string_lossy();
-            !is_credential_var(&name)
-        })
-        .map(|(k, v)| {
-            if k == "PATH" {
-                let cleaned = strip_empty_path_entries(&v.to_string_lossy());
-                (k, OsString::from(cleaned))
-            } else {
-                (k, v)
-            }
-        })
+    let mut env: Vec<(OsString, OsString)> = inherited
+        .into_iter()
+        .filter(|(key, _)| is_inherited_env_key(key))
         .collect();
+    env.push(("PATH".into(), COMMAND_PATH.into()));
+    env.push(("HOME".into(), spawn_dirs.home().into()));
+    env.push(("TMPDIR".into(), spawn_dirs.tmp().into()));
 
-    for (override_key, override_value) in gadget_overrides {
-        let key = OsString::from(override_key);
+    for (key, value) in overrides {
+        let key = OsString::from(key);
         env.retain(|(existing, _)| existing != &key);
-        env.push((key, OsString::from(override_value)));
+        env.push((key, OsString::from(value)));
     }
 
     env
-}
-
-fn strip_empty_path_entries(path: &str) -> String {
-    let sep = if cfg!(windows) { ';' } else { ':' };
-    path.split(sep)
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(&sep.to_string())
 }
 
 // =========================================================
@@ -706,82 +711,6 @@ mod tests {
         assert!(perms.rules.is_empty());
     }
 
-    // ─── is_credential_var ────────────────────────────────
-
-    #[test]
-    fn hard_denylist_vars_are_credential() {
-        for name in ENV_HARD_DENYLIST {
-            assert!(
-                is_credential_var(name),
-                "`{name}` should be denied by hard denylist"
-            );
-        }
-    }
-
-    #[test]
-    fn suffix_matching_is_case_insensitive() {
-        assert!(is_credential_var("MY_API_TOKEN"));
-        assert!(is_credential_var("my_api_token"));
-        assert!(is_credential_var("Github_Token"));
-        assert!(is_credential_var("DB_PASSWORD"));
-        assert!(is_credential_var("db_password"));
-        assert!(is_credential_var("AWS_SECRET"));
-    }
-
-    #[test]
-    fn non_credential_vars_pass_through() {
-        assert!(!is_credential_var("HOME"));
-        assert!(!is_credential_var("PATH"));
-        assert!(!is_credential_var("LANG"));
-        assert!(!is_credential_var("TERM"));
-        assert!(!is_credential_var("EDITOR"));
-    }
-
-    // ─── build_command_env ────────────────────────────────
-
-    #[test]
-    fn overrides_replace_existing_env_vars() {
-        let overrides = vec![("TEST_VAR".to_string(), "override_value".to_string())];
-        let env = build_command_env(&overrides);
-
-        let found = env
-            .iter()
-            .filter(|(k, _)| k == "TEST_VAR")
-            .collect::<Vec<_>>();
-        // There should be exactly one entry with the override
-        // value, regardless of whether the host env had a
-        // TEST_VAR.
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].1, "override_value");
-    }
-
-    #[test]
-    fn credential_vars_stripped_from_inherited_env() {
-        let env = build_command_env(&[]);
-        for (k, _) in &env {
-            let name = k.to_string_lossy();
-            assert!(
-                !is_credential_var(&name),
-                "credential var `{name}` leaked into child env"
-            );
-        }
-    }
-
-    // ─── strip_empty_path_entries ─────────────────────────
-
-    #[test]
-    fn removes_empty_path_segments() {
-        let input = "/usr/bin::/usr/local/bin:";
-        let cleaned = strip_empty_path_entries(input);
-        assert_eq!(cleaned, "/usr/bin:/usr/local/bin");
-    }
-
-    #[test]
-    fn preserves_clean_path() {
-        let input = "/usr/bin:/usr/local/bin";
-        assert_eq!(strip_empty_path_entries(input), input);
-    }
-
     // ─── timeout / output clamp arithmetic ────────────────
 
     #[test]
@@ -867,6 +796,11 @@ mod tests {
                 CompiledCommandRule {
                     binary: "/bin/sh".into(),
                     argv: vec![C::Literal("-c".into()), C::AnyString],
+                    cwd: None,
+                },
+                CompiledCommandRule {
+                    binary: "/usr/bin/env".into(),
+                    argv: vec![],
                     cwd: None,
                 },
             ],
@@ -1148,6 +1082,194 @@ mod tests {
     fn spawn_dirs_in_a_missing_base_fail_to_create() {
         let base = tempfile::TempDir::new().expect("tempdir");
         assert!(SpawnDirs::create(&base.path().join("missing")).is_err());
+    }
+
+    // ─── the child's environment ──────────────────────────
+
+    /// The child's environment as `/usr/bin/env` prints it, which adds
+    /// nothing of its own (a shell would add `PWD`, `SHLVL` and `_`).
+    fn child_env(cap: &CommandCap) -> Vec<(String, String)> {
+        let result = cap.run("/usr/bin/env", options(&[])).expect("env runs");
+        String::from_utf8_lossy(&result.stdout)
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    fn child_var(env: &[(String, String)], key: &str) -> Option<String> {
+        env.iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.clone())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn child_env_has_only_allowlisted_keys() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        let unexpected: Vec<String> = child_env(&cap)
+            .into_iter()
+            .map(|(key, _)| key)
+            .filter(|key| {
+                !matches!(
+                    key.as_str(),
+                    "LANG"
+                        | "LANGUAGE"
+                        | "TZ"
+                        | "__CF_USER_TEXT_ENCODING"
+                        | "PATH"
+                        | "HOME"
+                        | "TMPDIR"
+                ) && !key.starts_with("LC_")
+            })
+            .collect();
+
+        assert_eq!(
+            unexpected,
+            Vec::<String>::new(),
+            "keys outside the allowlist"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn child_path_is_the_fixed_path() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        let path = child_var(&child_env(&cap), "PATH");
+
+        assert_eq!(
+            path.as_deref(),
+            Some("/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn child_home_and_tmpdir_are_empty_spawn_dirs() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let (cap, base) = cap_with_spawn_base(root.path());
+        let base = base.canonicalize().expect("canonical base");
+
+        let result = cap
+            .run(
+                "/bin/sh",
+                options(&[
+                    "-c",
+                    "cd \"$HOME\" && pwd -P && ls -A && cd \"$TMPDIR\" && pwd -P && ls -A",
+                ]),
+            )
+            .expect("sh runs");
+
+        let output = String::from_utf8_lossy(&result.stdout).into_owned();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "HOME or TMPDIR is missing or not empty: {output:?}"
+        );
+        for dir in lines {
+            assert!(
+                std::path::Path::new(dir).starts_with(&base),
+                "`{dir}` is not a spawn directory"
+            );
+        }
+    }
+
+    #[test]
+    fn credentials_are_not_inherited() {
+        let dirs = SpawnDirs::create(&std::env::temp_dir()).expect("spawn dirs");
+        let inherited = [
+            "PGPASSWORD",
+            "MYSQL_PWD",
+            "DATABASE_URL",
+            "SENTRY_DSN",
+            "KUBECONFIG",
+            "GITHUB_TOKEN",
+            "SSH_AUTH_SOCK",
+            "USER",
+        ]
+        .map(|key| (key.into(), "secret".into()));
+
+        let env = build_command_env(inherited, &dirs, &[]);
+
+        let leaked: Vec<_> = env
+            .iter()
+            .filter(|(_, value)| value == "secret")
+            .map(|(key, _)| key.clone())
+            .collect();
+        assert_eq!(leaked, Vec::<std::ffi::OsString>::new());
+    }
+
+    #[test]
+    fn locale_and_time_zone_are_inherited() {
+        let dirs = SpawnDirs::create(&std::env::temp_dir()).expect("spawn dirs");
+        let inherited = [
+            ("LANG", "de_DE.UTF-8"),
+            ("LANGUAGE", "de"),
+            ("LC_CTYPE", "UTF-8"),
+            ("LC_ALL", "C"),
+            ("TZ", "Europe/Berlin"),
+            ("__CF_USER_TEXT_ENCODING", "0x1F5:0x0:0x0"),
+        ]
+        .map(|(key, value)| (key.into(), value.into()));
+
+        let env = build_command_env(inherited.clone(), &dirs, &[]);
+
+        for (key, value) in inherited {
+            assert!(
+                env.contains(&(key.clone(), value)),
+                "{key:?} was not inherited"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_key_that_is_not_utf8_is_not_inherited() {
+        use std::os::unix::ffi::OsStringExt;
+        let dirs = SpawnDirs::create(&std::env::temp_dir()).expect("spawn dirs");
+        let key = std::ffi::OsString::from_vec(b"LC_\xff".to_vec());
+
+        let env = build_command_env([(key.clone(), "x".into())], &dirs, &[]);
+
+        assert!(!env.iter().any(|(name, _)| name == &key));
+    }
+
+    #[test]
+    fn host_path_home_and_tmpdir_are_replaced() {
+        let dirs = SpawnDirs::create(&std::env::temp_dir()).expect("spawn dirs");
+        let inherited = [
+            ("PATH", "/Users/me/evil:/usr/bin"),
+            ("HOME", "/Users/me"),
+            ("TMPDIR", "/var/folders/xy/T/"),
+        ]
+        .map(|(key, value)| (key.into(), value.into()));
+
+        let env = build_command_env(inherited, &dirs, &[]);
+
+        let value = |key: &str| {
+            env.iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(value("PATH"), Some(COMMAND_PATH.into()));
+        assert_eq!(value("HOME"), Some(dirs.home().as_os_str().to_owned()));
+        assert_eq!(value("TMPDIR"), Some(dirs.tmp().as_os_str().to_owned()));
+    }
+
+    #[test]
+    fn overrides_replace_existing_env_vars() {
+        let dirs = SpawnDirs::create(&std::env::temp_dir()).expect("spawn dirs");
+        let inherited = [("LANG".into(), "de_DE.UTF-8".into())];
+
+        let env = build_command_env(inherited, &dirs, &[("LANG".into(), "C".into())]);
+
+        let langs: Vec<_> = env.iter().filter(|(key, _)| key == "LANG").collect();
+        assert_eq!(langs, vec![&("LANG".into(), "C".into())]);
     }
 
     // ─── the rule's cwd root ──────────────────────────────
