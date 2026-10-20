@@ -117,6 +117,34 @@ value must be absolute, contain no `..` and lie under its root, and the
 program receives its canonical path. A value checked only by `regex`,
 `glob` or `any-string` must not contain a path separator.
 
+### Nothing the gadget can write is configuration
+
+Config-reading programs are not singled out by a list of binaries,
+since such a list is always incomplete. Instead, nothing the gadget can
+write may be visible to a spawned program as configuration. The areas
+the gadget can write are the app's data directory, which holds every
+gadget's `gadget-home/<id>/`, the installed packages in `gadgets/` and
+the stores that keep values gadgets set, and, for working directories
+and environment values, the gadget's own package (`${gadget-archive}`).
+Arguments may name files in the own package, such as a script a granted
+interpreter runs; the review shows such an argument as written.
+
+- The manifest parser rejects a rule `cwd`, a `path-under` root and a
+  `literal` or `enum` value that uses `${gadget-data}`, and for working
+  directories and environment values also `${gadget-archive}`. Roots
+  and paths inside fixed values may not contain `..`.
+- When the install review is built and when the gadget loads, the
+  resolved roots and the absolute paths inside fixed values are checked
+  against those areas, through symlinks and ignoring case; a rule with
+  one inside is refused in the review and does not load. A path that
+  cannot be resolved at load, such as one through a dangling symlink, is
+  checked when a call uses it.
+- At run time the working directory a call runs in and every path a
+  call passes for a `path-under` argument or environment value may
+  neither lie in those areas nor contain them, since programs look for
+  configuration below the directories they are given. A path that
+  cannot be checked is denied. Argument paths with `..` do not match.
+
 ### Install review
 
 The review shows each command rule's `cwd` and declared variables as
@@ -139,6 +167,21 @@ stay out of the review while the host does not enforce them.
   directory in the user database, such as ssh, or use the per-user
   temporary and cache directories macOS reports without the
   environment, still reach the user's real directories.
+- `/`, `/Users`, the home directory, `~/Library` and
+  `~/Library/Application Support` contain the app's data directory, so
+  none of them can be a call's working directory, including as the
+  default of a rule `cwd` such as `${home}`, or a `path-under` value.
+- A `regex`, `glob` or `any-string` argument can still name a path in
+  those areas, absolutely or relative with `..`; only the review's
+  display of the pattern bounds that. A program whose arguments let it
+  write files can still plant configuration in one call for the next.
+  Programs still read configuration the user keeps in their own
+  directories.
+- Between the check of a working directory and the program's start,
+  another writer could swap a component of the path for a symlink: a
+  second gadget with a writing grant, or a process left over from an
+  earlier call. Opening the directory and changing into it by file
+  descriptor would close that gap and is not done.
 - The per-call directories, the fixed `PATH` and the inherited
   `__CF_USER_TEXT_ENCODING` are chosen for macOS; other platforms have
   their own open decision in todo

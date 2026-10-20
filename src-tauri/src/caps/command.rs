@@ -24,6 +24,8 @@ use std::path::PathBuf;
 use crate::paths::PathResolver;
 use crate::wasm::argv_matcher::{self, CompiledCommandRule};
 use crate::wasm::manifest::CommandPermissionDef;
+use crate::wasm::manifest::permissions::path_tokens;
+use crate::wasm::path_safety::{Containment, lies_within};
 
 // =========================================================
 // Constants
@@ -115,46 +117,77 @@ pub struct CommandPermissions {
 
 pub struct CommandCap {
     rules: Vec<CompiledCommandRule>,
+    writable: WritableAreas,
     /// Where each spawn's private directories are created (see
     /// [`SpawnDirs`]).
     spawn_base: PathBuf,
+}
+
+/// Compile `rules_raw` and check that no root or fixed value of them
+/// lies in an area the gadget can write. The install review runs this
+/// so a gadget that would fail to load is refused before it is
+/// installed; [`CommandCap::new`] runs it again at load.
+pub fn check_command_rules(
+    rules_raw: &[CommandPermissionDef],
+    resolver: &impl PathResolver,
+    gadget_data_dir: &std::path::Path,
+) -> anyhow::Result<()> {
+    let writable = WritableAreas::for_gadget(gadget_data_dir, resolver)?;
+    compile_checked_rules(rules_raw, resolver, &writable).map(|_| ())
+}
+
+fn compile_checked_rules(
+    rules_raw: &[CommandPermissionDef],
+    resolver: &impl PathResolver,
+    writable: &WritableAreas,
+) -> anyhow::Result<Vec<CompiledCommandRule>> {
+    let mut rules = Vec::with_capacity(rules_raw.len());
+    for (index, raw) in rules_raw.iter().enumerate() {
+        let rule = argv_matcher::compile_rule(raw, index, resolver)?;
+        check_rule_locations(&rule, index, writable)?;
+        rules.push(rule);
+    }
+    Ok(rules)
 }
 
 impl CommandCap {
     /// Compile raw `[[permissions.command]]` rules from the
     /// manifest against the provided resolver and construct
     /// a capability. Fails on the first rule that cannot be
-    /// compiled (consistent with `FilesystemCap::new`).
-    ///
-    /// The gadget's data directory plays no part in running a
-    /// command: programs run in directories created per spawn.
+    /// compiled (consistent with `FilesystemCap::new`), or whose
+    /// roots or fixed values lie in an area the gadget can write.
     pub fn new(
         rules_raw: &[CommandPermissionDef],
         resolver: &impl PathResolver,
-        _gadget_data_dir: PathBuf,
+        gadget_data_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        let mut rules = Vec::with_capacity(rules_raw.len());
-        for (index, raw) in rules_raw.iter().enumerate() {
-            let rule = argv_matcher::compile_rule(raw, index, resolver)?;
-            rules.push(rule);
-        }
+        let writable = WritableAreas::for_gadget(&gadget_data_dir, resolver)?;
+        let rules = compile_checked_rules(rules_raw, resolver, &writable)?;
+        let spawn_base = default_spawn_base();
+        sweep_stale_spawn_dirs(&spawn_base, STALE_SPAWN_DIR_AGE);
         Ok(Self {
             rules,
-            spawn_base: default_spawn_base(),
+            writable,
+            spawn_base,
         })
     }
 
     /// Construct from pre-compiled rules. Test-only escape
     /// hatch so integration tests can build fixtures with
     /// hand-crafted rule sets without going through the full
-    /// manifest → compile pipeline.
+    /// manifest → compile pipeline. `app_data_dir` is taken as the
+    /// gadget's writable area as it is.
     #[cfg(test)]
     pub(crate) fn from_compiled_rules(
         rules: Vec<CompiledCommandRule>,
-        _gadget_data_dir: PathBuf,
+        app_data_dir: PathBuf,
     ) -> Self {
         Self {
             rules,
+            writable: WritableAreas {
+                app_data: app_data_dir,
+                package: None,
+            },
             spawn_base: default_spawn_base(),
         }
     }
@@ -184,10 +217,17 @@ impl CommandCap {
 
         // Every check that can deny the call runs before anything is
         // created on disk.
-        let env_overrides = check_env_overrides(rule, &options.env)?;
-        let guest_cwd = check_guest_cwd(rule, options.cwd.as_deref())?;
+        for value in argv_matcher::path_under_arguments(rule, &options.args) {
+            self.writable
+                .deny_touching(std::path::Path::new(value), Scope::Argument)
+                .map_err(|reason| {
+                    CommandCapError::PermissionDenied(format!("argument `{value}` {reason}"))
+                })?;
+        }
+        let env_overrides = check_env_overrides(rule, &options.env, &self.writable)?;
+        let guest_cwd = check_guest_cwd(rule, options.cwd.as_deref(), &self.writable)?;
         let rule_default_cwd = match (&guest_cwd, &rule.cwd) {
-            (None, Some(root)) => Some(prepare_rule_root(root)?),
+            (None, Some(root)) => Some(prepare_rule_root(root, &self.writable)?),
             _ => None,
         };
 
@@ -225,6 +265,202 @@ impl CommandCap {
 }
 
 // =========================================================
+// The gadget's writable areas
+//
+// Nothing the gadget can write may be visible to a program as
+// configuration. Every root a rule names, every fixed value that
+// names a path, and every path a call passes is kept out of the
+// areas whose files the gadget controls. A working directory or a
+// path argument also may not contain such an area, since programs
+// look for configuration below the directories they are given.
+// =========================================================
+
+/// The areas whose files the gadget controls.
+///
+/// macOS-specific in what they hold: `app_data` is the app's data
+/// directory with every gadget's `gadget-home/<id>/`, the installed
+/// packages in `gadgets/`, and the host's own stores, which keep
+/// values gadgets set. Other platforms need their own choice (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+#[derive(Debug, Clone)]
+struct WritableAreas {
+    app_data: PathBuf,
+    /// The gadget's own package (`${gadget-archive}`). A directory for
+    /// a development gadget, the archive file for an installed one.
+    package: Option<PathBuf>,
+}
+
+/// What a path is used for, which decides the areas it must avoid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scope {
+    /// A working directory or an environment value: everything the
+    /// gadget controls, its own package included.
+    Configuration,
+    /// A program argument: the app data, except the gadget's own
+    /// package, whose scripts a granted interpreter may run. The review
+    /// shows such an argument as written.
+    Argument,
+}
+
+impl WritableAreas {
+    /// The areas of the gadget whose data directory is
+    /// `gadget_data_dir`, which the host lays out as
+    /// `<app data>/gadget-home/<id>/`.
+    fn for_gadget(
+        gadget_data_dir: &std::path::Path,
+        resolver: &impl PathResolver,
+    ) -> anyhow::Result<Self> {
+        let gadget_home = gadget_data_dir
+            .parent()
+            .filter(|parent| parent.file_name().is_some_and(|name| name == "gadget-home"));
+        let Some(app_data) = gadget_home.and_then(std::path::Path::parent) else {
+            anyhow::bail!(
+                "the gadget's data directory `{}` is not in the host's \
+                 `<app data>/gadget-home/<id>/` layout",
+                gadget_data_dir.display()
+            );
+        };
+        let package = resolver
+            .resolve("gadget-archive")
+            .filter(|package| !package.as_os_str().is_empty())
+            .map(std::path::Path::to_path_buf);
+        Ok(Self {
+            app_data: app_data.to_path_buf(),
+            package,
+        })
+    }
+
+    /// Whether `path` lies in an area of `scope`.
+    fn holds(&self, path: &std::path::Path, scope: Scope) -> Containment {
+        let in_package = || match &self.package {
+            Some(package) => lies_within(path, package),
+            None => Containment::Outside,
+        };
+        match scope {
+            Scope::Configuration => any_inside([lies_within(path, &self.app_data), in_package()]),
+            Scope::Argument => match lies_within(path, &self.app_data) {
+                Containment::Inside if in_package() == Containment::Inside => Containment::Outside,
+                other => other,
+            },
+        }
+    }
+
+    /// Whether `path` lies in an area of `scope` or contains one.
+    fn touches(&self, path: &std::path::Path, scope: Scope) -> Containment {
+        let contains_package = match (&self.package, scope) {
+            (Some(package), Scope::Configuration) => lies_within(package, path),
+            _ => Containment::Outside,
+        };
+        any_inside([
+            self.holds(path, scope),
+            lies_within(&self.app_data, path),
+            contains_package,
+        ])
+    }
+
+    /// `Err` with the reason when `path` lies in or contains an area of
+    /// `scope`, or when that cannot be established.
+    fn deny_touching(&self, path: &std::path::Path, scope: Scope) -> Result<(), String> {
+        match self.touches(path, scope) {
+            Containment::Outside => Ok(()),
+            Containment::Inside => Err(format!(
+                "lies in or contains an area the gadget can write (`{}`)",
+                self.app_data.display()
+            )),
+            Containment::Undetermined(reason) => Err(format!(
+                "cannot be checked against the areas the gadget can write: {reason}"
+            )),
+        }
+    }
+}
+
+/// `Inside` if any is, else the first `Undetermined`, else `Outside`.
+fn any_inside(results: impl IntoIterator<Item = Containment>) -> Containment {
+    let mut undetermined = None;
+    for result in results {
+        match result {
+            Containment::Inside => return Containment::Inside,
+            Containment::Undetermined(reason) => {
+                undetermined.get_or_insert(reason);
+            }
+            Containment::Outside => {}
+        }
+    }
+    undetermined.map_or(Containment::Outside, Containment::Undetermined)
+}
+
+/// Load-time check of one compiled rule: its `cwd` root, its
+/// `path-under` roots and the paths in its fixed values must not lie in
+/// an area the gadget can write. A path that cannot be resolved now (a
+/// volume not mounted, a dangling link) is accepted here; the check at
+/// run time denies it if it is still unresolved then.
+fn check_rule_locations(
+    rule: &CompiledCommandRule,
+    rule_index: usize,
+    writable: &WritableAreas,
+) -> anyhow::Result<()> {
+    use argv_matcher::CompiledArgvConstraint as C;
+
+    let check = |path: &std::path::Path, scope: Scope, field: &str| -> anyhow::Result<()> {
+        match writable.holds(path, scope) {
+            Containment::Inside => anyhow::bail!(
+                "`[[permissions.command]]` rule {rule_index} {field} `{}` lies in an area the \
+                 gadget can write (`{}`)",
+                path.display(),
+                writable.app_data.display()
+            ),
+            Containment::Undetermined(reason) => {
+                eprintln!(
+                    "command: rule {rule_index} {field} `{}` is checked at run time: {reason}",
+                    path.display()
+                );
+                Ok(())
+            }
+            Containment::Outside => Ok(()),
+        }
+    };
+    let check_constraint = |constraint: &C, scope: Scope, field: &str| -> anyhow::Result<()> {
+        let constraint = match constraint {
+            C::Rest(inner) => inner.as_ref(),
+            other => other,
+        };
+        match constraint {
+            C::PathUnder(root) => check(root, scope, &format!("{field} root")),
+            C::Literal(value) => check_fixed_value(value, scope, field, &check),
+            C::Enum(values) => values
+                .iter()
+                .try_for_each(|value| check_fixed_value(value, scope, field, &check)),
+            C::Glob(_) | C::Regex(_) | C::AnyString | C::Rest(_) => Ok(()),
+        }
+    };
+
+    if let Some(root) = &rule.cwd {
+        check(root, Scope::Configuration, "`cwd`")?;
+    }
+    for (argv_index, constraint) in rule.argv.iter().enumerate() {
+        check_constraint(constraint, Scope::Argument, &format!("argv[{argv_index}]"))?;
+    }
+    for (key, constraint) in &rule.env {
+        check_constraint(constraint, Scope::Configuration, &format!("env `{key}`"))?;
+    }
+    Ok(())
+}
+
+/// Check every absolute path inside a fixed value, alone, in a list or
+/// after `--option=`.
+fn check_fixed_value(
+    value: &str,
+    scope: Scope,
+    field: &str,
+    check: &impl Fn(&std::path::Path, Scope, &str) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    path_tokens(value)
+        .into_iter()
+        .filter(|token| token.starts_with('/'))
+        .try_for_each(|token| check(std::path::Path::new(token), scope, field))
+}
+
+// =========================================================
 // Working directory
 //
 // A rule's `cwd` is the root of the working directories a call
@@ -240,6 +476,7 @@ impl CommandCap {
 fn check_guest_cwd(
     rule: &CompiledCommandRule,
     guest: Option<&str>,
+    writable: &WritableAreas,
 ) -> Result<Option<PathBuf>, CommandCapError> {
     use crate::wasm::path_safety::{self, PathError};
 
@@ -284,6 +521,12 @@ fn check_guest_cwd(
         }
     };
 
+    writable
+        .deny_touching(&canonical, Scope::Configuration)
+        .map_err(|reason| {
+            CommandCapError::PermissionDenied(format!("working directory `{guest}` {reason}"))
+        })?;
+
     match std::fs::metadata(&canonical) {
         Ok(meta) if meta.is_dir() => Ok(Some(canonical)),
         Ok(_) => Err(CommandCapError::SpawnFailed(format!(
@@ -298,16 +541,30 @@ fn check_guest_cwd(
 }
 
 /// The rule's root as the default working directory, created when
-/// it does not exist yet.
-fn prepare_rule_root(root: &std::path::Path) -> Result<PathBuf, CommandCapError> {
-    std::fs::create_dir_all(root)
+/// it does not exist yet. It is checked before it is created, since
+/// creating follows symlinks, and again once it is canonical.
+fn prepare_rule_root(
+    root: &std::path::Path,
+    writable: &WritableAreas,
+) -> Result<PathBuf, CommandCapError> {
+    let deny = |reason: String| {
+        CommandCapError::PermissionDenied(format!("the rule's `cwd` `{}` {reason}", root.display()))
+    };
+    writable
+        .deny_touching(root, Scope::Configuration)
+        .map_err(deny)?;
+    let canonical = std::fs::create_dir_all(root)
         .and_then(|()| root.canonicalize())
         .map_err(|e| {
             CommandCapError::SpawnFailed(format!(
                 "prepare the rule's `cwd` `{}`: {e}",
                 root.display()
             ))
-        })
+        })?;
+    writable
+        .deny_touching(&canonical, Scope::Configuration)
+        .map_err(deny)?;
+    Ok(canonical)
 }
 
 // =========================================================
@@ -330,6 +587,50 @@ const SPAWN_DIR_PREFIX: &str = "torchsnap-command-";
 
 fn default_spawn_base() -> PathBuf {
     std::env::temp_dir()
+}
+
+/// Spawn directories older than this are left over from a host that
+/// exited without removing them; a call lasts at most a minute.
+const STALE_SPAWN_DIR_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Remove spawn directories in `base` that a crashed or killed host
+/// left behind: entries with the spawn prefix that are directories
+/// (not symlinks), owned by this user, and older than `max_age`.
+/// Best effort; an entry that cannot be inspected or removed stays.
+fn sweep_stale_spawn_dirs(base: &std::path::Path, max_age: std::time::Duration) {
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(SPAWN_DIR_PREFIX)
+        {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        #[cfg(unix)]
+        let owned_by_us = {
+            use std::os::unix::fs::MetadataExt;
+            // SAFETY: `getuid` has no preconditions and cannot fail.
+            meta.uid() == unsafe { libc::getuid() }
+        };
+        #[cfg(not(unix))]
+        let owned_by_us = true;
+        let stale = meta
+            .modified()
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if meta.is_dir() && owned_by_us && stale {
+            make_tree_removable(&path);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
 }
 
 /// The directories of one spawn, removed on drop: the working
@@ -454,6 +755,7 @@ fn make_tree_removable(root: &std::path::Path) {
 fn check_env_overrides(
     rule: &CompiledCommandRule,
     overrides: &[(String, String)],
+    writable: &WritableAreas,
 ) -> Result<Vec<(std::ffi::OsString, std::ffi::OsString)>, CommandCapError> {
     use argv_matcher::CompiledArgvConstraint as C;
 
@@ -470,7 +772,7 @@ fn check_env_overrides(
             return deny(format!("the value of `{key}` contains a NUL byte"));
         }
         let value = match constraint {
-            C::PathUnder(root) => checked_path_value(key, value, root)?,
+            C::PathUnder(root) => checked_path_value(key, value, root, writable)?,
             other => {
                 if !argv_matcher::value_matches(other, value) {
                     return deny(format!(
@@ -493,12 +795,14 @@ fn check_env_overrides(
     Ok(checked)
 }
 
-/// A `path-under` env value: absolute, without `..`, and under the
-/// declared root. Returns the canonical path.
+/// A `path-under` env value: absolute, without `..`, under the
+/// declared root, and neither in nor around an area the gadget can
+/// write. Returns the canonical path.
 fn checked_path_value(
     key: &str,
     value: &str,
     root: &std::path::Path,
+    writable: &WritableAreas,
 ) -> Result<std::ffi::OsString, CommandCapError> {
     let requested = std::path::Path::new(value);
     if requested
@@ -509,13 +813,18 @@ fn checked_path_value(
             "the value of `{key}` contains `..`"
         )));
     }
-    crate::wasm::path_safety::canonical_under_root(requested, root)
-        .map(PathBuf::into_os_string)
-        .map_err(|e| {
+    let canonical =
+        crate::wasm::path_safety::canonical_under_root(requested, root).map_err(|e| {
             CommandCapError::PermissionDenied(format!(
                 "the value of `{key}` is not inside the declared root: {e}"
             ))
-        })
+        })?;
+    writable
+        .deny_touching(&canonical, Scope::Configuration)
+        .map_err(|reason| {
+            CommandCapError::PermissionDenied(format!("the value of `{key}` {reason}"))
+        })?;
+    Ok(canonical.into_os_string())
 }
 
 /// The child's `PATH`. macOS-specific: the system directories plus
@@ -1542,6 +1851,424 @@ mod tests {
             .filter(|line| line.starts_with("LANG="))
             .collect();
         assert_eq!(langs, vec!["LANG=C"]);
+    }
+
+    // ─── the gadget's writable areas ──────────────────────
+
+    /// Compile one rule (TOML body below `binary = "/bin/pwd"`) for the
+    /// gadget `w` laid out below `root` (app data at `root/app-data`).
+    fn cap_from_rule(
+        root: &std::path::Path,
+        body: &str,
+        paths: &crate::paths::GadgetPaths,
+    ) -> anyhow::Result<CommandCap> {
+        let manifest = crate::wasm::manifest::Manifest::parse(&format!(
+            r#"
+            [gadget]
+            id = "w"
+            name = "W"
+            description = "W"
+            version = "0.1.0"
+            wasm = "w.wasm"
+            icon = "heroicons:beaker"
+            [[permissions.command]]
+            binary = "/bin/pwd"
+            {body}
+            "#
+        ))?;
+        let rules = manifest.permissions.expect("permissions").command;
+        let _ = root;
+        CommandCap::new(&rules, paths, paths.gadget_data.clone())
+    }
+
+    /// `root/app-data` with the gadget's data, another gadget's data and
+    /// the installed packages, created.
+    fn app_data(root: &std::path::Path) -> PathBuf {
+        let app_data = root.join("app-data");
+        for dir in ["gadget-home/w/sql", "gadget-home/other", "gadgets"] {
+            std::fs::create_dir_all(app_data.join(dir)).expect("app data dirs");
+        }
+        app_data
+    }
+
+    fn load_error(root: &std::path::Path, body: &str) -> String {
+        match cap_from_rule(root, body, &gadget_paths(root, "w")) {
+            Ok(_) => "loaded".to_string(),
+            Err(e) => format!("{e:#}"),
+        }
+    }
+
+    #[test]
+    fn cwd_root_resolving_into_gadget_data_is_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+
+        let error = load_error(
+            root.path(),
+            &format!("cwd = \"{}\"", app_data.join("gadget-home/w/sql").display()),
+        );
+
+        assert!(error.contains("the gadget can write"), "{error}");
+    }
+
+    #[test]
+    fn roots_in_other_gadgets_data_or_packages_are_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        let bodies = [
+            format!("cwd = \"{}\"", app_data.join("gadget-home/other").display()),
+            format!("cwd = \"{}\"", app_data.join("gadgets").display()),
+            format!(
+                "argv = [{{ kind = \"path-under\", root = \"{}\" }}]",
+                app_data.join("gadget-home/other").display()
+            ),
+            format!(
+                "[permissions.command.env]\nX = {{ kind = \"path-under\", root = \"{}\" }}",
+                app_data.display()
+            ),
+        ];
+
+        let loaded: Vec<&String> = bodies
+            .iter()
+            .filter(|body| load_error(root.path(), body) == "loaded")
+            .collect();
+
+        assert_eq!(loaded, Vec::<&String>::new());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_root_into_app_data_is_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        std::fs::create_dir_all(root.path().join("home")).expect("home");
+        std::os::unix::fs::symlink(&app_data, root.path().join("home/link")).expect("link");
+
+        let error = load_error(root.path(), "cwd = \"${home}/link/gadget-home\"");
+
+        assert!(error.contains("the gadget can write"), "{error}");
+    }
+
+    /// APFS is case-insensitive by default: a root spelled in other case
+    /// names the same directory.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn case_variant_root_into_app_data_is_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        let variant = root.path().join("APP-DATA/GADGET-HOME/w/new");
+        if !root.path().join("APP-DATA").exists() {
+            return;
+        }
+        let _ = app_data;
+
+        let error = load_error(root.path(), &format!("cwd = \"{}\"", variant.display()));
+
+        assert!(error.contains("the gadget can write"), "{error}");
+    }
+
+    #[test]
+    fn literal_values_resolving_into_app_data_are_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path()).display().to_string();
+        let bodies = [
+            format!("argv = [{{ kind = \"literal\", value = \"{app_data}/gadget-home/w/x\" }}]"),
+            format!(
+                "argv = [{{ kind = \"literal\", value = \"--file={app_data}/./gadget-home/x\" }}]"
+            ),
+            format!(
+                "[permissions.command.env]\nX = {{ kind = \"literal\", value = \"/etc:{app_data}//gadget-home/w\" }}"
+            ),
+            format!(
+                "[permissions.command.env]\nX = {{ kind = \"enum\", values = [\"file://{app_data}/gadgets/w.torchsnap\"] }}"
+            ),
+        ];
+
+        let loaded: Vec<&String> = bodies
+            .iter()
+            .filter(|body| load_error(root.path(), body) == "loaded")
+            .collect();
+
+        assert_eq!(loaded, Vec::<&String>::new());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_through_symlink_into_app_data_is_rejected() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        std::os::unix::fs::symlink(&app_data, root.path().join("alias")).expect("link");
+
+        let error = load_error(
+            root.path(),
+            &format!(
+                "argv = [{{ kind = \"literal\", value = \"{}/gadget-home/w\" }}]",
+                root.path().join("alias").display()
+            ),
+        );
+
+        assert!(error.contains("the gadget can write"), "{error}");
+    }
+
+    #[test]
+    fn a_dev_gadget_package_is_off_limits_for_cwd_and_env() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        let package = root.path().join("repo/gadgets/w");
+        std::fs::create_dir_all(package.join("scripts")).expect("package");
+        let mut paths = gadget_paths(root.path(), "w");
+        paths.gadget_archive = package.clone();
+        let bodies = [
+            format!("cwd = \"{}\"", package.join("scripts").display()),
+            format!(
+                "[permissions.command.env]\nX = {{ kind = \"literal\", value = \"{}/x\" }}",
+                package.display()
+            ),
+        ];
+
+        let loaded: Vec<&String> = bodies
+            .iter()
+            .filter(|body| cap_from_rule(root.path(), body, &paths).is_ok())
+            .collect();
+
+        assert_eq!(loaded, Vec::<&String>::new());
+    }
+
+    #[test]
+    fn argv_may_name_files_in_the_gadget_package() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        let paths = gadget_paths(root.path(), "w");
+
+        let cap = cap_from_rule(
+            root.path(),
+            "argv = [{ kind = \"literal\", value = \"${gadget-archive}\" }]",
+            &paths,
+        );
+
+        assert!(cap.is_ok(), "{:?}", cap.err());
+    }
+
+    #[test]
+    fn gadget_data_dir_outside_gadget_home_fails_to_load() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let mut paths = gadget_paths(root.path(), "w");
+        paths.gadget_data = root.path().join("somewhere/w");
+
+        let cap = cap_from_rule(root.path(), "", &paths);
+
+        assert!(
+            cap.is_err(),
+            "loaded with a data directory outside gadget-home"
+        );
+    }
+
+    /// A root that cannot be resolved at load (a dangling link) loads,
+    /// and the check at run time denies it.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn root_through_dangling_symlink_loads_but_is_denied_at_run() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        std::fs::create_dir_all(root.path().join("home")).expect("home");
+        std::os::unix::fs::symlink(root.path().join("missing"), root.path().join("home/link"))
+            .expect("link");
+        let cap = cap_from_rule(
+            root.path(),
+            "cwd = \"${home}/link/repo\"",
+            &gadget_paths(root.path(), "w"),
+        )
+        .expect("loads");
+
+        assert_denied(cap.run("/bin/pwd", options(&[])));
+    }
+
+    /// A rule whose root contains the app data (here: the test root).
+    fn broad_cap(root: &std::path::Path) -> CommandCap {
+        cap_from_rule(
+            root,
+            &format!(
+                "cwd = \"{}\"\nargv = [{{ kind = \"rest\", constraint = {{ kind = \"path-under\", root = \"{}\" }} }}]\n[permissions.command.env]\nGIT_DIR = {{ kind = \"path-under\", root = \"{}\" }}",
+                root.display(),
+                root.display(),
+                root.display()
+            ),
+            &gadget_paths(root, "w"),
+        )
+        .expect("a root containing the app data loads")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_in_gadget_data_under_a_broad_root_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        let cap = broad_cap(root.path());
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&app_data.join("gadget-home/w/sql"))));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_through_symlink_into_app_data_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        std::fs::create_dir_all(root.path().join("projects")).expect("projects");
+        std::os::unix::fs::symlink(
+            app_data.join("gadget-home/other"),
+            root.path().join("projects/link"),
+        )
+        .expect("link");
+        let cap = broad_cap(root.path());
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&root.path().join("projects/link"))));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cwd_containing_the_app_data_dir_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        let cap = broad_cap(root.path());
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(root.path())));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn default_cwd_at_a_root_containing_the_app_data_dir_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        let cap = broad_cap(root.path());
+
+        assert_denied(cap.run("/bin/pwd", options(&[])));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn broad_root_containing_the_app_data_dir_allows_other_dirs() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        let projects = root.path().join("projects");
+        std::fs::create_dir_all(&projects).expect("projects");
+        let cap = broad_cap(root.path());
+
+        let result = cap.run("/bin/pwd", with_cwd(&projects));
+
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_argv_value_in_app_data_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        std::fs::create_dir_all(root.path().join("projects")).expect("projects");
+        let cap = broad_cap(root.path());
+        let mut opts = with_cwd(&root.path().join("projects"));
+        opts.args = vec![app_data.join("gadget-home/w/sql").display().to_string()];
+
+        assert_denied(cap.run("/bin/pwd", opts));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_argv_value_containing_the_app_data_dir_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        std::fs::create_dir_all(root.path().join("projects")).expect("projects");
+        let cap = broad_cap(root.path());
+        let mut opts = with_cwd(&root.path().join("projects"));
+        opts.args = vec![root.path().display().to_string()];
+
+        assert_denied(cap.run("/bin/pwd", opts));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_argv_value_with_dotdot_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        app_data(root.path());
+        std::fs::create_dir_all(root.path().join("projects/a")).expect("projects");
+        let cap = broad_cap(root.path());
+        let mut opts = with_cwd(&root.path().join("projects"));
+        opts.args = vec![root.path().join("projects/a/../a").display().to_string()];
+
+        assert_denied(cap.run("/bin/pwd", opts));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_env_value_in_app_data_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        std::fs::create_dir_all(root.path().join("projects")).expect("projects");
+        let cap = broad_cap(root.path());
+        let mut opts = with_cwd(&root.path().join("projects"));
+        opts.env = vec![(
+            "GIT_DIR".into(),
+            app_data.join("gadget-home/other").display().to_string(),
+        )];
+
+        assert_denied(cap.run("/bin/pwd", opts));
+    }
+
+    #[test]
+    fn stale_spawn_dirs_are_swept() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        let stale = base.path().join(format!("{SPAWN_DIR_PREFIX}stale"));
+        let fresh = base.path().join(format!("{SPAWN_DIR_PREFIX}fresh"));
+        let unrelated = base.path().join("unrelated");
+        for dir in [&stale, &fresh, &unrelated] {
+            std::fs::create_dir_all(dir.join("home")).expect("dir");
+        }
+        let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        for dir in [&stale, &unrelated] {
+            std::fs::File::open(dir)
+                .expect("open dir")
+                .set_modified(two_hours_ago)
+                .expect("set mtime");
+        }
+
+        sweep_stale_spawn_dirs(base.path(), std::time::Duration::from_secs(3600));
+
+        let mut left = entries(base.path());
+        left.sort();
+        assert_eq!(
+            left,
+            vec![format!("{SPAWN_DIR_PREFIX}fresh"), "unrelated".to_string()]
+        );
+    }
+
+    #[test]
+    fn sweeping_a_missing_base_does_nothing() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        sweep_stale_spawn_dirs(&base.path().join("missing"), std::time::Duration::ZERO);
+    }
+
+    #[test]
+    fn without_a_package_only_the_app_data_is_writable() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let app_data = app_data(root.path());
+        let writable = WritableAreas {
+            app_data: app_data.clone(),
+            package: None,
+        };
+
+        for scope in [Scope::Configuration, Scope::Argument] {
+            assert_eq!(
+                writable.holds(&app_data.join("x"), scope),
+                Containment::Inside
+            );
+            assert_eq!(writable.holds(root.path(), scope), Containment::Outside);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sweeping_leaves_symlinks_alone() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        let target = tempfile::TempDir::new().expect("target");
+        let link = base.path().join(format!("{SPAWN_DIR_PREFIX}link"));
+        std::os::unix::fs::symlink(target.path(), &link).expect("link");
+
+        sweep_stale_spawn_dirs(base.path(), std::time::Duration::ZERO);
+
+        assert!(link.symlink_metadata().is_ok());
+        assert!(target.path().exists());
     }
 
     // ─── the rule's cwd root ──────────────────────────────

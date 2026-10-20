@@ -274,6 +274,29 @@ pub fn matches<'r>(
     Err(MatchError::NoMatchingRule(binary.to_string()))
 }
 
+/// The arguments of `argv` that `rule`'s `path-under` positions
+/// accepted, for the checks the caller makes beyond the root. `rule`
+/// must be the rule [`matches`] returned for `argv`.
+pub fn path_under_arguments<'a>(rule: &CompiledCommandRule, argv: &'a [String]) -> Vec<&'a str> {
+    let rest = match rule.argv.last() {
+        Some(CompiledArgvConstraint::Rest(inner)) => Some(inner.as_ref()),
+        _ => None,
+    };
+    let prefix_len = rule.argv.len() - usize::from(rest.is_some());
+    argv.iter()
+        .enumerate()
+        .filter(|(index, _)| {
+            let constraint = if *index < prefix_len {
+                Some(&rule.argv[*index])
+            } else {
+                rest
+            };
+            matches!(constraint, Some(CompiledArgvConstraint::PathUnder(_)))
+        })
+        .map(|(_, arg)| arg.as_str())
+        .collect()
+}
+
 fn argv_satisfies_rule(rule_argv: &[CompiledArgvConstraint], argv: &[String]) -> bool {
     let has_rest = matches!(rule_argv.last(), Some(CompiledArgvConstraint::Rest(_)));
     let prefix_len = if has_rest {
@@ -329,7 +352,15 @@ fn position_matches(constraint: &CompiledArgvConstraint, arg: &str) -> bool {
             // could still accept the call, so the matcher
             // simply returns false here.
             let candidate = Path::new(arg);
-            if !candidate.is_absolute() {
+            // The program receives the argument as written, and the
+            // kernel resolves `link/..` against the link's target where
+            // the check below resolves it lexically, so `..` never
+            // matches.
+            if !candidate.is_absolute()
+                || candidate
+                    .components()
+                    .any(|component| component == std::path::Component::ParentDir)
+            {
                 return false;
             }
             match path_safety::canonical_under_root(candidate, root) {

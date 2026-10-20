@@ -21,8 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   absolute path in the rule. A gadget can set only the environment
   variables its rule declares in `[permissions.command.env]`, never
   `PATH`, `HOME`, `TMPDIR`, `LD_*`, `DYLD_*` or the interpreter and tool
-  variables that make a program run other code. The install review shows
-  each rule's folder and variables.
+  variables that make a program run other code. Folders, paths and fixed
+  values in a rule cannot point into Torchsnap's data folder, which holds
+  every gadget's data, and a program cannot run in or be handed a folder
+  that lies in or contains it; the install review refuses a gadget whose
+  rules do. The install review shows each rule's folder and variables.
 
 ### Fixed
 

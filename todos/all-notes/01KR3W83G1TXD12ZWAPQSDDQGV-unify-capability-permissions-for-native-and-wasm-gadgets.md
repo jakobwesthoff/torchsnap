@@ -244,7 +244,6 @@ binary = "/usr/bin/zerotier-cli"
 argv = [
     { kind = "enum", values = ["listnetworks", "info", "peers"] },
 ]
-cwd = "${gadget-data}/exec-cwd"
 timeout-ms-max = 5000
 max-output-bytes = 65536
 ```

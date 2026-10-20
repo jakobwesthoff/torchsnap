@@ -86,7 +86,9 @@ impl CommandBuilder {
     }
 
     /// Set the child's working directory: an absolute path
-    /// without `..` at or below the matching rule's `cwd` root.
+    /// without `..` at or below the matching rule's `cwd` root
+    /// that neither lies in nor contains the host's data
+    /// directory.
     /// A rule without `cwd` rejects every working directory with
     /// [`CommandError::PermissionDenied`]. When omitted, the
     /// program runs in the rule's `cwd` root, or without one in

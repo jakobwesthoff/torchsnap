@@ -38,6 +38,8 @@ use super::registered::RegisteredGadgets;
 use super::review::{InstallReview, build_review};
 use super::staging::{StagedArchive, StagingArea};
 use super::{InstalledGadgetInfo, install_staged};
+use crate::paths::{GadgetPaths, PlatformPaths};
+use crate::wasm::manifest::Manifest;
 
 pub type RequestId = String;
 
@@ -48,8 +50,55 @@ pub struct QueueContext {
     pub registered: RegisteredGadgets,
     pub pending: Arc<Mutex<PendingChanges>>,
     pub staging: StagingArea,
+    /// The user's home, config and data directories, to resolve the
+    /// incoming gadget's command rules as loading would. `None` when
+    /// they could not be determined; loading then still checks them.
+    pub platform: Option<Arc<PlatformPaths>>,
     /// Called after every change to the queue, outside its lock.
     pub on_change: Arc<dyn Fn() + Send + Sync>,
+}
+
+/// [`decide_install`], plus a check of the incoming gadget's command
+/// rules against the areas it could write once installed, so a gadget
+/// that would fail to load is refused in the review.
+fn decide(
+    context: &QueueContext,
+    pending: &PendingChanges,
+    manifest: &Manifest,
+) -> InstallDecision {
+    let gadget_id = manifest.gadget.id.as_str();
+    let decision = decide_install(
+        context.registered.get(gadget_id),
+        pending.get(gadget_id),
+        manifest,
+    );
+    if matches!(decision, InstallDecision::Reject(_)) {
+        return decision;
+    }
+    match command_rule_problem(context, manifest) {
+        Some(reason) => InstallDecision::Reject(reason),
+        None => decision,
+    }
+}
+
+fn command_rule_problem(context: &QueueContext, manifest: &Manifest) -> Option<String> {
+    let platform = context.platform.as_ref()?;
+    let rules = manifest
+        .permissions
+        .as_ref()
+        .map(|permissions| &permissions.command)
+        .filter(|rules| !rules.is_empty())?;
+    let gadget_id = manifest.gadget.id.as_str();
+    let paths = GadgetPaths {
+        platform: Arc::clone(platform),
+        gadget_data: context.paths.home(gadget_id),
+        gadget_archive: context.paths.archive(gadget_id),
+    };
+    crate::caps::check_command_rules(rules, &paths, &paths.gadget_data)
+        .err()
+        .map(|e| {
+            format!("This gadget asks to run programs in a way Torchsnap does not allow: {e:#}")
+        })
 }
 
 #[derive(Debug)]
@@ -230,12 +279,7 @@ impl InstallQueue {
                     .pending
                     .lock()
                     .expect("pending changes lock is never poisoned");
-                let gadget_id = staged.manifest().gadget.id.as_str();
-                decide_install(
-                    context.registered.get(gadget_id),
-                    pending.get(gadget_id),
-                    staged.manifest(),
-                )
+                decide(&context, &pending, staged.manifest())
             };
             let review = build_review(staged.manifest(), &source_path, provenance, &decision);
             (staged, review, ReviewedDecision::from(&decision))
@@ -287,11 +331,7 @@ impl InstallQueue {
             .lock()
             .expect("pending changes lock is never poisoned");
         let gadget_id = staged.manifest().gadget.id.as_str();
-        let current = ReviewedDecision::from(&decide_install(
-            context.registered.get(gadget_id),
-            pending.get(gadget_id),
-            staged.manifest(),
-        ));
+        let current = ReviewedDecision::from(&decide(context, &pending, staged.manifest()));
 
         let result = if current != *reviewed {
             Err(anyhow::anyhow!(
@@ -406,6 +446,7 @@ mod tests {
     use crate::gadget_install::paths::InstallPaths;
     use crate::gadget_install::pending::PendingChanges;
     use crate::gadget_install::registered::{RegisteredGadgets, Registration};
+    use crate::gadget_install::review::ReviewAction;
     use crate::gadget_install::staging::StagingArea;
     use crate::wasm::manifest::test_helpers::{
         archive_with_manifest, write_archive_without_manifest,
@@ -429,6 +470,11 @@ mod tests {
                 registered,
                 pending: Arc::new(Mutex::new(PendingChanges::default())),
                 staging: StagingArea::new(root.path().join("staging")),
+                platform: Some(Arc::new(crate::paths::PlatformPaths {
+                    home: root.path().join("home"),
+                    xdg_config: root.path().join("config"),
+                    xdg_data: root.path().join("xdg-data"),
+                })),
                 on_change: Arc::new(move || {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
@@ -597,6 +643,50 @@ mod tests {
         assert_eq!(review.gadget.id, "weather");
         assert_eq!(review.permissions.len(), 1);
         assert_eq!(fixture.staged_files().len(), 1);
+    }
+
+    /// The resolved check of command rules runs at review time, so a
+    /// gadget that would not load is refused visibly instead of
+    /// failing after the restart.
+    #[test]
+    fn a_command_rule_rooted_in_the_app_data_is_rejected_in_the_review() {
+        let fixture = Fixture::started(RegisteredGadgets::default());
+        let inside = fixture.root.path().join("data/gadget-home/weather/repos");
+        let (_src, archive) = archive_with_manifest(
+            "weather",
+            "1.0.0",
+            &format!(
+                "[[permissions.command]]\nbinary = \"/bin/pwd\"\ncwd = \"{}\"\n",
+                inside.display()
+            ),
+        );
+
+        let id = fixture.submit_and_process(&archive);
+
+        let RequestStateView::Ready { review } = state_of(&fixture.queue, &id) else {
+            panic!("expected a ready request");
+        };
+        let ReviewAction::Reject { reason } = &review.action else {
+            panic!("expected a rejection, got {:?}", review.action);
+        };
+        assert!(reason.contains("can write"), "{reason}");
+    }
+
+    #[test]
+    fn a_command_rule_outside_the_app_data_is_installable() {
+        let fixture = Fixture::started(RegisteredGadgets::default());
+        let (_src, archive) = archive_with_manifest(
+            "weather",
+            "1.0.0",
+            "[[permissions.command]]\nbinary = \"/bin/pwd\"\ncwd = \"${home}/projects\"\n",
+        );
+
+        let id = fixture.submit_and_process(&archive);
+
+        let RequestStateView::Ready { review } = state_of(&fixture.queue, &id) else {
+            panic!("expected a ready request");
+        };
+        assert_eq!(review.action, ReviewAction::Install);
     }
 
     #[test]

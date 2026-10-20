@@ -175,6 +175,68 @@ fn resolve_under_root(candidate: &Path, root: &Path) -> Result<(PathBuf, bool), 
     Ok((resolved, exists))
 }
 
+/// Where a path lies relative to an area.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Containment {
+    Inside,
+    Outside,
+    /// The relation could not be established, for example through a
+    /// symlink whose target does not exist. Carries the reason.
+    Undetermined(String),
+}
+
+/// Whether `candidate` is `area` or lies below it. Both paths are
+/// resolved the same way: `.` and `..` lexically, then the deepest
+/// existing ancestor canonicalized and the rest appended.
+///
+/// macOS-specific: components are compared ignoring case, as on the
+/// default case-insensitive APFS, where a canonical existing prefix
+/// already has the on-disk case but a not-yet-existing tail may not.
+/// On a case-sensitive file system this can only report `Inside` for a
+/// path that is not, which errs toward denying. Other platforms need
+/// their own choice (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+pub fn lies_within(candidate: &Path, area: &Path) -> Containment {
+    let (candidate, area) = match (
+        resolve_for_comparison(candidate),
+        resolve_for_comparison(area),
+    ) {
+        (Ok(candidate), Ok(area)) => (candidate, area),
+        (Err(reason), _) | (_, Err(reason)) => return Containment::Undetermined(reason),
+    };
+    let mut candidate_components = candidate.components();
+    let inside = area.components().all(|area_component| {
+        candidate_components
+            .next()
+            .is_some_and(|component| same_component(component, area_component))
+    });
+    if inside {
+        Containment::Inside
+    } else {
+        Containment::Outside
+    }
+}
+
+fn resolve_for_comparison(path: &Path) -> Result<PathBuf, String> {
+    if !path.is_absolute() {
+        return Err(format!("`{}` is not absolute", path.display()));
+    }
+    let lexical = lexically_normalize(path);
+    let (existing, tail) = split_at_existing_ancestor(&lexical);
+    let canonical = existing
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve `{}`: {e}", existing.display()))?;
+    Ok(if tail.as_os_str().is_empty() {
+        canonical
+    } else {
+        canonical.join(tail)
+    })
+}
+
+fn same_component(a: Component<'_>, b: Component<'_>) -> bool {
+    a.as_os_str().to_string_lossy().to_lowercase() == b.as_os_str().to_string_lossy().to_lowercase()
+}
+
 /// Lexical resolution of `.` and `..` components. Operates
 /// purely on the path string — does not consult the
 /// filesystem. The result still contains the same prefix
@@ -433,6 +495,117 @@ mod tests {
             resolved,
             root.path().canonicalize().expect("canonical root")
         );
+    }
+
+    // ─── lies_within ────────────────────────────────────────
+
+    #[test]
+    fn a_path_below_an_area_lies_within_it() {
+        let area = td();
+        fs::create_dir(area.path().join("sub")).expect("mkdir");
+
+        assert_eq!(
+            lies_within(&area.path().join("sub"), area.path()),
+            Containment::Inside
+        );
+        assert_eq!(lies_within(area.path(), area.path()), Containment::Inside);
+        assert_eq!(
+            lies_within(&area.path().join("not/yet/there"), area.path()),
+            Containment::Inside
+        );
+    }
+
+    #[test]
+    fn a_sibling_or_parent_does_not_lie_within_an_area() {
+        let parent = td();
+        let area = parent.path().join("area");
+        fs::create_dir(&area).expect("mkdir");
+
+        assert_eq!(lies_within(parent.path(), &area), Containment::Outside);
+        assert_eq!(
+            lies_within(&parent.path().join("area-sibling"), &area),
+            Containment::Outside
+        );
+    }
+
+    #[test]
+    fn dotdot_is_resolved_before_comparing() {
+        let area = td();
+        let escape = area.path().join("a/../../elsewhere");
+        let back_in = area.path().join("a/../b");
+
+        assert_eq!(lies_within(&escape, area.path()), Containment::Outside);
+        assert_eq!(lies_within(&back_in, area.path()), Containment::Inside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_into_an_area_lies_within_it() {
+        use std::os::unix::fs::symlink;
+        let area = td();
+        let other = td();
+        symlink(area.path(), other.path().join("link")).expect("symlink");
+
+        assert_eq!(
+            lies_within(&other.path().join("link/x"), area.path()),
+            Containment::Inside
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlink_is_undetermined() {
+        use std::os::unix::fs::symlink;
+        let area = td();
+        let other = td();
+        symlink(other.path().join("missing"), other.path().join("link")).expect("symlink");
+
+        assert!(matches!(
+            lies_within(&other.path().join("link/x"), area.path()),
+            Containment::Undetermined(_)
+        ));
+    }
+
+    #[test]
+    fn a_relative_path_is_undetermined() {
+        let area = td();
+        assert!(matches!(
+            lies_within(Path::new("relative"), area.path()),
+            Containment::Undetermined(_)
+        ));
+        assert!(matches!(
+            lies_within(area.path(), Path::new("relative")),
+            Containment::Undetermined(_)
+        ));
+    }
+
+    #[test]
+    fn a_missing_tail_is_compared_ignoring_case() {
+        let area = td();
+        let area_tail = area.path().join("Gadget-Home/w");
+        let candidate = area.path().join("gadget-home/W/x");
+
+        assert_eq!(lies_within(&candidate, &area_tail), Containment::Inside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// Below a directory the user cannot search, nothing can be looked
+    /// up, so the walk stops above it and the rest is compared by name.
+    fn a_path_below_an_unreadable_directory_is_compared_by_name() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::getuid() } == 0 {
+            return;
+        }
+        let parent = td();
+        let locked = parent.path().join("locked");
+        fs::create_dir_all(locked.join("inner")).expect("mkdir");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+
+        let result = lies_within(&locked.join("inner/x"), parent.path());
+
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).expect("chmod back");
+        assert_eq!(result, Containment::Inside);
     }
 
     // ─── existing_under_root ────────────────────────────────

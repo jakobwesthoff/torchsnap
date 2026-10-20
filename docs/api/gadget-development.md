@@ -1129,6 +1129,23 @@ Where the program runs depends on the rule's `cwd`:
   `permission-denied`, and the program runs in an empty directory
   the host creates for that one call and removes afterwards.
 
+Nothing a gadget can write may act as configuration for the
+program. The app data directory (every gadget's
+`gadget-home/<id>/`, the installed packages, the host's stores)
+and, for working directories and environment values, the gadget's
+own package (`${gadget-archive}`) are off limits:
+
+- The manifest is rejected when a rule `cwd`, a `path-under` root or
+  a `literal`/`enum` value uses `${gadget-data}`, or, for `cwd` and
+  env values, `${gadget-archive}`, and when a root or a path in a
+  fixed value contains `..`.
+- The install review refuses, and loading fails for, a rule whose
+  resolved roots or fixed absolute paths lie in those areas.
+- A call is denied when its working directory, or a path it passes
+  for a `path-under` argument or env value, lies in or contains
+  those areas. `~`, `~/Library` and `~/Library/Application Support`
+  contain the app data directory, so they cannot be used.
+
 The program gets a minimal environment, not Torchsnap's: `LANG`,
 `LANGUAGE`, `LC_*`, `TZ` and `__CF_USER_TEXT_ENCODING` from the
 host, `PATH` set to

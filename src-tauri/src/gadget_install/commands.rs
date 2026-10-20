@@ -185,6 +185,7 @@ mod tests {
                 registered: RegisteredGadgets::default(),
                 pending: Arc::new(Mutex::new(PendingChanges::default())),
                 staging: StagingArea::new(root.path().join("staging")),
+                platform: None,
                 on_change: Arc::new(move || {
                     let _ = handle.emit(QUEUE_CHANGED_EVENT, ());
                 }),

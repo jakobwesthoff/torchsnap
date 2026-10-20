@@ -138,13 +138,14 @@ impl CommandPermissionDef {
                 &format!("rule {index} argv[{argv_index}]"),
                 false,
             )?;
+            validate_argv_location(constraint, index, argv_index)?;
             if matches!(constraint, ArgvConstraint::Rest { .. }) {
                 saw_rest = true;
             }
         }
 
         if let Some(cwd) = &self.cwd {
-            validate_rule_root(cwd, index, "cwd")?;
+            validate_rule_root(cwd, index, "cwd", ValueUse::Configuration)?;
         }
 
         for (key, constraint) in &self.env {
@@ -244,6 +245,92 @@ pub enum ArgvConstraint {
 // Internal validators
 // =========================================================
 
+/// What a rule value is for, which decides the variables naming areas
+/// the gadget can write that it may not contain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValueUse {
+    /// A working directory or an environment value: neither
+    /// `${gadget-data}` nor the gadget's package `${gadget-archive}`.
+    Configuration,
+    /// A program argument: not `${gadget-data}`. Arguments may name
+    /// files in the package, such as a script a granted interpreter
+    /// runs; the review shows them as written.
+    Argument,
+}
+
+/// Reject a value that names a directory the gadget can write through
+/// a variable. Parsing cannot know where the other variables resolve;
+/// the host checks the resolved values when it loads the gadget.
+fn reject_writable_variables(
+    value: &str,
+    rule_index: usize,
+    field: &str,
+    use_: ValueUse,
+) -> anyhow::Result<()> {
+    let variables: &[&str] = match use_ {
+        ValueUse::Configuration => &["${gadget-data}", "${gadget-archive}"],
+        ValueUse::Argument => &["${gadget-data}"],
+    };
+    if let Some(variable) = variables.iter().find(|variable| value.contains(**variable)) {
+        anyhow::bail!(
+            "`[[permissions.command]]` rule {rule_index} {field} `{value}` uses `{variable}`, \
+             an area the gadget can write"
+        );
+    }
+    Ok(())
+}
+
+/// Parse-time checks of a fixed (`literal` or `enum`) value: no
+/// variable naming an area the gadget can write, and no `..` in a path
+/// inside it, so the path means the same before and after symlinks
+/// are resolved.
+fn validate_fixed_value_location(
+    value: &str,
+    rule_index: usize,
+    field: &str,
+    use_: ValueUse,
+) -> anyhow::Result<()> {
+    reject_writable_variables(value, rule_index, field, use_)?;
+    for token in path_tokens(value) {
+        if token.split('/').any(|segment| segment == "..") {
+            anyhow::bail!(
+                "`[[permissions.command]]` rule {rule_index} {field} value `{value}` contains \
+                 a path with `..`"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The location checks of one argv constraint, `rest` unwrapped.
+fn validate_argv_location(
+    constraint: &ArgvConstraint,
+    rule_index: usize,
+    argv_index: usize,
+) -> anyhow::Result<()> {
+    let field = format!("argv[{argv_index}]");
+    match constraint {
+        ArgvConstraint::Rest { constraint } => {
+            validate_argv_location(constraint, rule_index, argv_index)
+        }
+        ArgvConstraint::PathUnder { root } => validate_rule_root(
+            root,
+            rule_index,
+            &format!("{field} root"),
+            ValueUse::Argument,
+        ),
+        ArgvConstraint::Literal { value } => {
+            validate_fixed_value_location(value, rule_index, &field, ValueUse::Argument)
+        }
+        ArgvConstraint::Enum { values } => values.iter().try_for_each(|value| {
+            validate_fixed_value_location(value, rule_index, &field, ValueUse::Argument)
+        }),
+        ArgvConstraint::Glob { .. } | ArgvConstraint::Regex { .. } | ArgvConstraint::AnyString => {
+            Ok(())
+        }
+    }
+}
+
 /// Parse-time checks of a directory a rule names as a root: it must
 /// be non-empty, start with `/` or a `${...}` variable (every variable
 /// resolves to an absolute directory), and contain no `..` segment, so
@@ -252,7 +339,13 @@ pub enum ArgvConstraint {
 /// macOS-specific: only `/`-anchored paths with `/` separators are
 /// accepted. Other platforms need their own choice (todo
 /// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
-fn validate_rule_root(root: &str, rule_index: usize, field: &str) -> anyhow::Result<()> {
+fn validate_rule_root(
+    root: &str,
+    rule_index: usize,
+    field: &str,
+    use_: ValueUse,
+) -> anyhow::Result<()> {
+    reject_writable_variables(root, rule_index, field, use_)?;
     if root.is_empty() {
         anyhow::bail!("`[[permissions.command]]` rule {rule_index} has an empty `{field}`");
     }
@@ -589,12 +682,31 @@ fn validate_env_declaration(
             anyhow::bail!("`[[permissions.command]]` {where_}: `rest` is not a value constraint");
         }
         ArgvConstraint::PathUnder { root } => {
-            validate_rule_root(root, rule_index, &format!("env `{key}` root"))?;
+            validate_rule_root(
+                root,
+                rule_index,
+                &format!("env `{key}` root"),
+                ValueUse::Configuration,
+            )?;
         }
-        ArgvConstraint::Literal { value } => validate_fixed_env_value(value, &where_)?,
+        ArgvConstraint::Literal { value } => {
+            validate_fixed_env_value(value, &where_)?;
+            validate_fixed_value_location(
+                value,
+                rule_index,
+                &format!("env `{key}`"),
+                ValueUse::Configuration,
+            )?;
+        }
         ArgvConstraint::Enum { values } => {
             for value in values {
                 validate_fixed_env_value(value, &where_)?;
+                validate_fixed_value_location(
+                    value,
+                    rule_index,
+                    &format!("env `{key}`"),
+                    ValueUse::Configuration,
+                )?;
             }
         }
         ArgvConstraint::Glob { .. } | ArgvConstraint::Regex { .. } | ArgvConstraint::AnyString => {}
@@ -723,7 +835,7 @@ mod tests {
                    { kind = "enum", values = ["HEAD", "main"] },
                    { kind = "glob", pattern = "refs/heads/*" },
                    { kind = "regex", pattern = "[0-9a-f]{40}" },
-                   { kind = "path-under", root = "${gadget-data}/repos" },
+                   { kind = "path-under", root = "${home}/repos" },
                    { kind = "any-string" },
                    { kind = "rest", constraint = { kind = "any-string" } },
                ]"#,
@@ -988,6 +1100,90 @@ mod tests {
         .expect("should parse");
     }
 
+    // ─── nothing in the gadget's writable areas ─────────────
+
+    fn parse_rule(body: &str) -> anyhow::Result<Manifest> {
+        Manifest::parse(&minimal(&format!(
+            "[[permissions.command]]\nbinary = \"git\"\n{body}\n"
+        )))
+    }
+
+    /// Every rule body of `bodies` that the parser accepts.
+    fn accepted_rules<'a>(bodies: &[&'a str]) -> Vec<&'a str> {
+        bodies
+            .iter()
+            .copied()
+            .filter(|body| parse_rule(body).is_ok())
+            .collect()
+    }
+
+    #[test]
+    fn reject_rule_cwd_in_gadget_data_or_package() {
+        let bodies = [
+            r#"cwd = "${gadget-data}""#,
+            r#"cwd = "${gadget-data}/repos""#,
+            r#"cwd = "${gadget-archive}""#,
+            r#"cwd = "${gadget-archive}/scripts""#,
+        ];
+        assert_eq!(accepted_rules(&bodies), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_path_under_root_in_gadget_data() {
+        let bodies = [
+            r#"argv = [{ kind = "path-under", root = "${gadget-data}" }]"#,
+            r#"argv = [{ kind = "rest", constraint = { kind = "path-under", root = "${gadget-data}/x" } }]"#,
+            "[permissions.command.env]\nGIT_DIR = { kind = \"path-under\", root = \"${gadget-data}\" }",
+            "[permissions.command.env]\nGIT_DIR = { kind = \"path-under\", root = \"${gadget-archive}\" }",
+        ];
+        assert_eq!(accepted_rules(&bodies), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_argv_path_under_root_that_is_relative_or_has_dotdot() {
+        let bodies = [
+            r#"argv = [{ kind = "path-under", root = "repos" }]"#,
+            r#"argv = [{ kind = "path-under", root = "${home}/repos/.." }]"#,
+            r#"argv = [{ kind = "rest", constraint = { kind = "path-under", root = "/a/../b" } }]"#,
+        ];
+        assert_eq!(accepted_rules(&bodies), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_literal_values_in_gadget_data() {
+        let bodies = [
+            r#"argv = [{ kind = "literal", value = "${gadget-data}/Makefile" }]"#,
+            r#"argv = [{ kind = "literal", value = "--file=${gadget-data}/x" }]"#,
+            r#"argv = [{ kind = "enum", values = ["-C", "${gadget-data}"] }]"#,
+            r#"argv = [{ kind = "rest", constraint = { kind = "literal", value = "${gadget-data}" } }]"#,
+            "[permissions.command.env]\nGIT_CONFIG_GLOBAL = { kind = \"literal\", value = \"${gadget-data}/gitconfig\" }",
+            "[permissions.command.env]\nGIT_CONFIG_GLOBAL = { kind = \"literal\", value = \"${gadget-archive}/gitconfig\" }",
+            "[permissions.command.env]\nX = { kind = \"enum\", values = [\"a\", \"/etc:${gadget-data}\"] }",
+        ];
+        assert_eq!(accepted_rules(&bodies), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_literal_values_with_a_dotdot_path() {
+        let bodies = [
+            r#"argv = [{ kind = "literal", value = "/etc/../Users/x" }]"#,
+            r#"argv = [{ kind = "literal", value = "--file=${home}/a/../b" }]"#,
+            "[permissions.command.env]\nX = { kind = \"literal\", value = \"/usr/share/../lib\" }",
+        ];
+        assert_eq!(accepted_rules(&bodies), Vec::<&str>::new());
+    }
+
+    /// The package may hold scripts a granted interpreter runs, and the
+    /// review shows such an argument as it is written.
+    #[test]
+    fn accept_argv_values_in_the_gadget_package() {
+        let bodies = [
+            r#"argv = [{ kind = "literal", value = "${gadget-archive}/scripts/run.py" }]"#,
+            r#"argv = [{ kind = "path-under", root = "${gadget-archive}" }]"#,
+        ];
+        assert_eq!(accepted_rules(&bodies), bodies.to_vec());
+    }
+
     #[test]
     fn reject_command_rule_with_bad_regex() {
         let err = Manifest::parse(&minimal(
@@ -1124,15 +1320,11 @@ mod tests {
         assert!(err.to_string().contains("nested inside another `rest`"));
     }
 
+    /// `${gadget-data}` is rejected in values; see
+    /// `reject_literal_values_in_gadget_data`.
     #[test]
     fn accept_recognized_variables_in_literal() {
-        for var in &[
-            "gadget-data",
-            "gadget-archive",
-            "home",
-            "xdg-config",
-            "xdg-data",
-        ] {
+        for var in &["gadget-archive", "home", "xdg-config", "xdg-data"] {
             let toml_text = format!(
                 r#"[[permissions.command]]
                    binary = "echo"

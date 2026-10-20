@@ -519,8 +519,9 @@ interface command {
     /// the rule's argv constraints.
     args: list<string>,
     /// Working directory: an absolute path without `..` at or below the
-    /// matching rule's `cwd` root, or `permission-denied`. A rule
-    /// without `cwd` accepts none. When omitted, the program runs in the
+    /// matching rule's `cwd` root that neither lies in nor contains the
+    /// host's data directory, or `permission-denied`. A rule without
+    /// `cwd` accepts none. When omitted, the program runs in the
     /// rule's `cwd` root, or without one in an empty directory the host
     /// creates for this one call and removes afterwards.
     cwd: option<string>,

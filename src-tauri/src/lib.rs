@@ -1213,11 +1213,31 @@ pub fn run() {
             let install_queue =
                 Arc::clone(app.state::<Arc<gadget_install::InstallQueue>>().inner());
             let queue_changed = app.handle().clone();
+            // The same directories gadget provisioning resolves command
+            // rules against, so the review refuses rules loading would.
+            let platform_paths = {
+                let resolver = app.path();
+                match (
+                    resolver.home_dir(),
+                    resolver.config_dir(),
+                    resolver.data_dir(),
+                ) {
+                    (Ok(home), Ok(xdg_config), Ok(xdg_data)) => {
+                        Some(Arc::new(crate::paths::PlatformPaths {
+                            home,
+                            xdg_config,
+                            xdg_data,
+                        }))
+                    }
+                    _ => None,
+                }
+            };
             let buffered_requests = install_queue.start(gadget_install::QueueContext {
                 paths: install_paths.clone(),
                 registered: registered_gadgets.clone(),
                 pending: Arc::clone(&pending_changes),
                 staging: install_staging.clone(),
+                platform: platform_paths,
                 on_change: Arc::new(move || {
                     let _ = queue_changed.emit(gadget_install::QUEUE_CHANGED_EVENT, ());
                 }),

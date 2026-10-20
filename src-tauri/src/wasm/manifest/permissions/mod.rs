@@ -39,6 +39,7 @@ pub(super) mod filesystem;
 pub use filesystem::FsPermissionsDef;
 
 pub(super) mod command;
+pub(crate) use command::path_tokens;
 pub use command::{ArgvConstraint, CommandPermissionDef};
 
 /// `[permissions]` block.
