@@ -6,7 +6,7 @@
 // SqlStorageCap
 //
 // Thin capability wrapping a per-gadget SqlStorage instance.
-// The binary gate is encoded by the Option on WasmGadgetCaps.
+// The binary gate is encoded by the Option on ProvisionedCaps.
 // Resource handle lifecycle (handle_reps, ResourceTable) is
 // managed by the WASM bridge, not by this cap.
 // =========================================================

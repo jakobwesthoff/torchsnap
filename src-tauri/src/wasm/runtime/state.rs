@@ -7,12 +7,11 @@
 //
 // `GadgetState` is the `T` in `Store<T>`. It holds the WASI
 // context, foundational per-gadget state (gadget id, log
-// sender, span registry), and an optional `WasmGadgetCaps`
-// bundle that is present only during an enable lifetime.
+// sender, span registry), and the `ProvisionedCaps` bundle
+// injected when the instance is built.
 //
-// Host imports access per-capability state through a single
-// `caps()` chokepoint that returns a uniform error when the
-// gadget is not enabled.
+// Host imports access per-capability state through the single
+// `caps()` accessor.
 // =========================================================
 
 use std::sync::Arc;

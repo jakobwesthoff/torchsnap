@@ -9,7 +9,7 @@
 // The cap wraps the shared service that handles caching,
 // single-flight coalescing, negative-caching, and favicon
 // storage. The shim's job is permission gating (via the
-// Option on `WasmGadgetCaps.website_metadata`) and type
+// Option on `ProvisionedCaps.website_metadata`) and type
 // translation across the WIT boundary.
 // =========================================================
 
