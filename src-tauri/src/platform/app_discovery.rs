@@ -56,11 +56,11 @@ pub struct DiscoveredApp {
 /// icon extraction run on background threads during gadget setup
 /// and cache refresh.
 pub trait AppDiscovery: Send + Sync {
-    /// Scan the system for installed applications.
+    /// Scan the system for installed applications a user can launch.
     ///
-    /// Returns the full list of user-visible applications. Background
-    /// agents, UI-less helpers, and other non-launchable bundles
-    /// should be filtered out by the implementation.
+    /// Apps without a Dock icon, such as menu-bar apps and background
+    /// apps, are included, since users start them from the launcher on
+    /// purpose.
     fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>>;
 
     /// Extract the icon for an application as a decoded image.
