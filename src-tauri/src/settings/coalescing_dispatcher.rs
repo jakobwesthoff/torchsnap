@@ -9,23 +9,31 @@
 // single gadget. The host enqueues `(key, value)` pairs as
 // settings change events arrive; the dispatcher ensures:
 //
-// 1. Only one callback runs at a time (serialization via
-//    `work` mutex with `try_lock`)
-// 2. Rapid changes to the same key are coalesced — only the
-//    latest value is dispatched (dedup via retain + push)
-// 3. Changes to different keys preserve chronological order
+// 1. Only one drain runs at a time. A `dispatch()` that finds
+//    a drain running returns at once and leaves its changes to
+//    that drain.
+// 2. Rapid changes to the same key are coalesced: only the
+//    latest value is dispatched (dedup via retain + push).
+// 3. Changes to different keys preserve chronological order.
 // 4. Changes that arrive while a callback is running are
-//    picked up in the next loop iteration
+//    picked up in the next loop iteration.
+//
+// The queue and the `draining` flag live under one mutex, and a
+// drain clears `draining` only in the critical section that
+// finds the queue empty; nothing after that point touches the
+// flag. A change is therefore either in the queue when the drain
+// looks, or enqueued after the drain stopped, in which case the
+// enqueuing caller's own `dispatch()` starts a new drain. No
+// change is left in the queue with no drain to take it.
 //
 // Threading model:
 //
-// - `enqueue()` is called from the Tauri event listener
-//   (main thread). It only locks `pending` briefly.
-// - `dispatch()` is called from a `spawn_blocking` thread.
-//   It holds `work` for the duration of the callback but
-//   only locks `pending` to drain the queue.
-// - The two mutexes never nest: `pending` is released before
-//   `work` calls the callback, so no deadlock is possible.
+// - Both `enqueue()` and `dispatch()` run on the thread of the
+//   caller: the `settings-changed` listener (a tokio worker) or
+//   a Retry (a `spawn_blocking` thread). Whichever caller drains
+//   runs every queued change on its own thread.
+// - The queue lock is never held while a callback runs, so a
+//   callback may enqueue.
 // =========================================================
 
 use std::sync::Mutex;
@@ -33,23 +41,56 @@ use std::sync::Mutex;
 use serde_json::Value;
 
 pub struct CoalescingDispatcher {
-    /// Serializes dispatch execution. Held for the duration of
-    /// callback processing. `try_lock` ensures concurrent
-    /// `dispatch()` calls return immediately instead of blocking.
-    work: Mutex<()>,
+    queue: Mutex<Queue>,
 
+    #[cfg(test)]
+    drained: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
+
+struct Queue {
     /// Queued `(key, value)` pairs awaiting dispatch. When a key
     /// is enqueued that already exists, the old entry is removed
-    /// and the new one is appended to the back — preserving
+    /// and the new one is appended to the back, preserving
     /// chronological order while deduplicating same-key changes.
-    pending: Mutex<Vec<(String, Value)>>,
+    items: Vec<(String, Value)>,
+
+    /// Whether a `dispatch()` is draining the queue.
+    draining: bool,
 }
 
 impl CoalescingDispatcher {
     pub fn new() -> Self {
         Self {
-            work: Mutex::new(()),
-            pending: Mutex::new(Vec::new()),
+            queue: Mutex::new(Queue {
+                items: Vec::new(),
+                draining: false,
+            }),
+            #[cfg(test)]
+            drained: Mutex::new(None),
+        }
+    }
+
+    /// The queue lock is held only for bookkeeping, never while a
+    /// callback runs, so a panicking callback cannot poison it.
+    fn lock_queue(&self) -> std::sync::MutexGuard<'_, Queue> {
+        self.queue
+            .lock()
+            .expect("queue lock is not held while callbacks run")
+    }
+
+    /// Run `hook` once, on the draining thread, right after the drain
+    /// loop released the queue in the iteration that found it empty.
+    /// Tests use it to enqueue at the moment a drain ends.
+    #[cfg(test)]
+    fn on_drained(&self, hook: impl FnOnce() + Send + 'static) {
+        *self.drained.lock().expect("hook not poisoned") = Some(Box::new(hook));
+    }
+
+    #[cfg(test)]
+    fn run_drained_hook(&self) {
+        let hook = self.drained.lock().expect("hook not poisoned").take();
+        if let Some(hook) = hook {
+            hook();
         }
     }
 
@@ -57,39 +98,55 @@ impl CoalescingDispatcher {
     /// for the same key already exists, it is replaced and moved
     /// to the back of the queue (reflecting chronological order).
     ///
-    /// This method is cheap and non-blocking with respect to the
-    /// dispatch callback — it only briefly locks the `pending`
-    /// mutex.
+    /// This method is cheap and does not wait for a running
+    /// callback; it only briefly locks the queue.
     pub fn enqueue(&self, key: String, value: Value) {
-        let mut pending = self.pending.lock().expect("pending not poisoned");
-        pending.retain(|(k, _)| k != &key);
-        pending.push((key, value));
+        let mut queue = self.lock_queue();
+        queue.items.retain(|(k, _)| k != &key);
+        queue.items.push((key, value));
     }
 
     /// Process all pending changes by calling `callback` for each
     /// `(key, value)` pair. If another `dispatch()` call is already
-    /// running, this returns immediately — the active dispatch loop
-    /// will pick up any newly enqueued items.
+    /// draining, this returns immediately and that drain processes
+    /// the queued changes with its own callback.
     ///
-    /// The dispatch loop drains the pending queue, processes each
-    /// entry, then checks again for items that arrived during
-    /// processing. This repeats until the queue is empty.
+    /// The dispatch loop drains the queue, processes each entry,
+    /// then checks again for items that arrived during processing.
+    /// This repeats until the queue is empty.
+    ///
+    /// A panicking callback is not caught: `draining` stays set,
+    /// every later dispatch returns at once, and the gadget gets no
+    /// further changes. Isolating gadget panics is todo
+    /// 01KWG1PH0QCDQTARA5JCW7ABYK-keep-a-panicking-gadget-from-aborting-the-whole-search-and-execute.md.
     pub fn dispatch(&self, callback: impl Fn(&str, &Value)) {
-        // Non-blocking: if another dispatch is already running,
-        // it will pick up our enqueued items in its next iteration.
-        let Ok(_guard) = self.work.try_lock() else {
-            return;
-        };
+        {
+            let mut queue = self.lock_queue();
+            if queue.draining {
+                return;
+            }
+            queue.draining = true;
+        }
 
         loop {
             let batch = {
-                let mut pending = self.pending.lock().expect("pending not poisoned");
-                std::mem::take(&mut *pending)
+                let mut queue = self.lock_queue();
+                if queue.items.is_empty() {
+                    // Stopping is decided under the same lock that
+                    // `enqueue()` takes, so no change can slip in
+                    // between the empty check and the flag.
+                    queue.draining = false;
+                    None
+                } else {
+                    Some(std::mem::take(&mut queue.items))
+                }
             };
 
-            if batch.is_empty() {
-                break;
-            }
+            let Some(batch) = batch else {
+                #[cfg(test)]
+                self.run_drained_hook();
+                return;
+            };
 
             for (key, value) in &batch {
                 callback(key, value);
@@ -104,7 +161,10 @@ impl CoalescingDispatcher {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::panic::AssertUnwindSafe;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier, mpsc};
     use std::time::Duration;
 
     use super::*;
@@ -301,42 +361,173 @@ mod tests {
 
     #[test]
     fn dispatch_while_dispatch_running_returns() {
-        // Two threads call dispatch. The second should return
-        // immediately (try_lock fails). The first processes
-        // everything.
         let d = Arc::new(CoalescingDispatcher::new());
-        let call_count = Arc::new(Mutex::new(0u32));
+        let collected = Arc::new(Mutex::new(Vec::new()));
 
-        d.enqueue("item".into(), json(1));
+        // A drain that already ended on another thread must leave
+        // nothing behind that lets a later dispatch run next to the
+        // one that is running.
+        {
+            let d = Arc::clone(&d);
+            std::thread::spawn(move || {
+                d.enqueue("warm-up".into(), json(0));
+                d.dispatch(|_, _| {});
+            })
+            .join()
+            .unwrap();
+        }
 
-        let d1 = Arc::clone(&d);
-        let d2 = Arc::clone(&d);
-        let count1 = Arc::clone(&call_count);
-        let count2 = Arc::clone(&call_count);
+        // The drainer's first callback announces itself and waits
+        // until the test releases it.
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        d.enqueue("first".into(), json(1));
+        let drainer = {
+            let d = Arc::clone(&d);
+            let collected = Arc::clone(&collected);
+            std::thread::spawn(move || {
+                d.dispatch(|key, value| {
+                    collected
+                        .lock()
+                        .unwrap()
+                        .push((key.to_string(), value.clone()));
+                    if key == "first" {
+                        started_tx.send(()).unwrap();
+                        release_rx.recv().unwrap();
+                    }
+                });
+            })
+        };
+        started_rx.recv().unwrap();
 
-        // Thread 1: dispatch with a slow callback
-        let t1 = std::thread::spawn(move || {
-            d1.dispatch(move |_, _| {
-                *count1.lock().unwrap() += 1;
-                std::thread::sleep(Duration::from_millis(50));
+        // A second caller enqueues and dispatches while the drainer is
+        // held. Its dispatch must return without running its own
+        // callback; the timeout turns a blocking dispatch into a
+        // failure instead of a hang.
+        let (returned_tx, returned_rx) = mpsc::channel();
+        let second_ran = Arc::new(AtomicBool::new(false));
+        {
+            let d = Arc::clone(&d);
+            let second_ran = Arc::clone(&second_ran);
+            std::thread::spawn(move || {
+                d.enqueue("second".into(), json(2));
+                d.dispatch(|_, _| second_ran.store(true, Ordering::SeqCst));
+                returned_tx.send(()).unwrap();
             });
+        }
+        returned_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a second dispatch returns while the first one runs");
+
+        release_tx.send(()).unwrap();
+        drainer.join().unwrap();
+
+        assert!(!second_ran.load(Ordering::SeqCst));
+        let result = collected.lock().unwrap();
+        let keys: Vec<&str> = result.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn a_change_enqueued_as_a_drain_ends_is_dispatched() {
+        let d = Arc::new(CoalescingDispatcher::new());
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        d.enqueue("first".into(), json(1));
+
+        // At the moment the drain has found the queue empty, another
+        // thread enqueues a change and dispatches. The drain has not
+        // returned yet, so that dispatch leaves the change to it.
+        let other = Arc::clone(&d);
+        let other_collected = Arc::clone(&collected);
+        d.on_drained(move || {
+            std::thread::spawn(move || {
+                other.enqueue("late".into(), json(2));
+                other.dispatch(collecting_callback(&other_collected));
+            })
+            .join()
+            .unwrap();
         });
 
-        // Give thread 1 time to acquire the work mutex
-        std::thread::sleep(Duration::from_millis(10));
+        d.dispatch(collecting_callback(&collected));
 
-        // Thread 2: dispatch should return immediately
-        let t2 = std::thread::spawn(move || {
-            d2.dispatch(move |_, _| {
-                *count2.lock().unwrap() += 1;
-            });
-        });
+        let result = collected.lock().unwrap();
+        let keys: Vec<&str> = result.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, vec!["first", "late"]);
+    }
 
-        t1.join().unwrap();
-        t2.join().unwrap();
+    #[test]
+    fn every_last_value_arrives_when_many_threads_enqueue_and_dispatch() {
+        const THREADS: usize = 8;
+        const KEYS: i64 = 4;
+        const WRITES: i64 = 100;
 
-        // Only thread 1's callback should have fired
-        assert_eq!(*call_count.lock().unwrap(), 1);
+        let d = Arc::new(CoalescingDispatcher::new());
+        let delivered = Arc::new(Mutex::new(HashMap::<String, Vec<i64>>::new()));
+        let start = Arc::new(Barrier::new(THREADS));
+
+        // Each thread owns its keys, so the last value written to a key
+        // is known: the thread's last write to it.
+        let workers: Vec<_> = (0..THREADS)
+            .map(|thread| {
+                let d = Arc::clone(&d);
+                let delivered = Arc::clone(&delivered);
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    start.wait();
+                    for write in 0..WRITES {
+                        d.enqueue(format!("t{thread}-k{}", write % KEYS), json(write));
+                        d.dispatch(|key, value| {
+                            delivered
+                                .lock()
+                                .unwrap()
+                                .entry(key.to_string())
+                                .or_default()
+                                .push(value.as_i64().unwrap());
+                        });
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+
+        let delivered = delivered.lock().unwrap();
+        for thread in 0..THREADS {
+            for key_index in 0..KEYS {
+                let key = format!("t{thread}-k{key_index}");
+                let values = &delivered[&key];
+                assert!(
+                    values.windows(2).all(|pair| pair[0] < pair[1]),
+                    "{key}: {values:?}"
+                );
+                assert_eq!(values.last(), Some(&(WRITES - KEYS + key_index)), "{key}");
+            }
+        }
+        d.dispatch(|key, _| panic!("queue should be empty, found {key}"));
+    }
+
+    // =====================================================
+    // Panics
+    //
+    // A panicking callback is not isolated here (todo
+    // 01KWG1PH0QCDQTARA5JCW7ABYK-keep-a-panicking-gadget-from-aborting-the-whole-search-and-execute.md);
+    // the dispatcher must only not make it worse than a dead
+    // dispatcher for that gadget.
+    // =====================================================
+
+    #[test]
+    fn a_panicking_callback_leaves_enqueue_and_dispatch_callable() {
+        let d = CoalescingDispatcher::new();
+        d.enqueue("boom".into(), json(1));
+
+        let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            d.dispatch(|_, _| panic!("gadget bug"));
+        }));
+        assert!(outcome.is_err());
+
+        d.enqueue("after".into(), json(2));
+        d.dispatch(|_, _| {});
     }
 
     #[test]

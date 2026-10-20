@@ -106,33 +106,41 @@ enqueues the relative `setting-key` into the slot's
 `(key, value)` to `gadget.setting_changed(key, value)`. Gadgets see
 relative keys (`"retentionDays"`), never the full path.
 
-## CoalescingDispatcher (ADR 0026)
+## CoalescingDispatcher (ADR 0026, ADR 0067)
 
-`src-tauri/src/settings/coalescing_dispatcher.rs`. One per gadget slot. Two
-mutexes:
+`src-tauri/src/settings/coalescing_dispatcher.rs`. One per gadget slot.
+One mutex holds the queue and a `draining` flag:
 
-- `pending: Mutex<Vec<(String, Value)>>`: the queue.
-  `enqueue(key, value)` does `retain(|(k,_)| k != &key); push(...)`,
-  so same-key updates are deduplicated to the latest value while
-  preserving chronological order across distinct keys.
-- `work: Mutex<()>`: held for the duration of dispatch.
-  `dispatch()` uses `try_lock`; if another dispatch is already
-  running, this call returns immediately and the active loop will
-  pick up newly enqueued items in its next iteration.
+- The queue: `enqueue(key, value)` does
+  `retain(|(k,_)| k != &key); push(...)`, so same-key updates are
+  deduplicated to the latest value while preserving chronological
+  order across distinct keys.
+- `draining`: set while a `dispatch()` drains. A `dispatch()` that
+  finds it set returns immediately; the running drain picks up the
+  newly enqueued items in its next iteration.
 
-The dispatch loop drains the queue with `mem::take`, processes the
-batch, and re-checks for items that arrived during processing.
+The dispatch loop takes the queue with `mem::take`, processes the
+batch, and re-checks for items that arrived during processing. It
+clears `draining` in the same critical section that finds the queue
+empty, so a change enqueued at any moment is either taken by the
+running drain or drained by its own caller's `dispatch()`.
+
 Threading model:
 
-- `enqueue` is called from the Tauri event listener (main thread),
-  briefly holding `pending`.
-- `dispatch` runs the callback inline. For Path 2 the callback is
-  `gadget.setting_changed(k, v.clone())`, which for native gadgets
-  is whatever the gadget implements and for WASM gadgets crosses the
+- `enqueue` and `dispatch` run on the caller's thread: the
+  `settings-changed` listener's tokio worker, or the `spawn_blocking`
+  thread of a Retry (`gadget_retry_enable`, ADR 0064). Tauri runs Rust
+  listener callbacks one at a time, so only a Retry runs at the same
+  time as another caller.
+- `dispatch` runs the callback inline on the draining thread, also for
+  changes other callers enqueued. For Path 2 the callback is
+  `gadget.setting_changed(k, v.clone())`, which for native gadgets is
+  whatever the gadget implements and for WASM gadgets crosses the
   wasmtime boundary.
 
-`pending` is always released before the callback runs, so the two
-mutexes never nest.
+The queue lock is released before each callback runs, so a callback
+may enqueue. A panicking callback leaves `draining` set, and the
+dispatcher delivers nothing more to that gadget.
 
 ## Native Gadget API
 

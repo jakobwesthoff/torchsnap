@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [67. Drain a gadget's settings changes without a lost wakeup](0067-drain-a-gadget-s-settings-changes-without-a-lost-wakeup.md)
+
 ## Context
 
 When the host routes settings changes to plugins via `setting_changed()`,
