@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update window says that Torchsnap could not download the update from
   github.com. Before, it said Torchsnap could not get update information
   from torchsnap.app.
+- A clipboard history entry no longer shows, or is found in search by,
+  text from a copy it does not contain. Copying twice in quick
+  succession could cause this.
 
 ## [0.14.1] - 2026-10-20
 
