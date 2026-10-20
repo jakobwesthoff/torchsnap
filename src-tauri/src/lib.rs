@@ -778,6 +778,22 @@ fn gadget_enable_failures(
     host.enable_failures()
 }
 
+/// Start a gadget that failed to start again, from its Retry button in
+/// Settings. `enable()` can do blocking work (open a database,
+/// instantiate a WASM component), so it runs off the IPC thread.
+#[tauri::command]
+async fn gadget_retry_enable(
+    gadget_id: String,
+    host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
+) -> Result<(), String> {
+    let host = Arc::clone(&host);
+    tauri::async_runtime::spawn_blocking(move || {
+        host.retry_enable(&gadget_id).map_err(|e| format!("{e:#}"))
+    })
+    .await
+    .map_err(|e| format!("retry task failed: {e}"))?
+}
+
 // =========================================================
 // Control API — frontend channel subscription
 // =========================================================
@@ -851,6 +867,7 @@ pub fn run() {
             gadget_sources,
             shortcut_problems,
             gadget_enable_failures,
+            gadget_retry_enable,
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,

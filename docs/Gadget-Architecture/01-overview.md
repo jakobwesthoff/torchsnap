@@ -257,8 +257,12 @@ but leaves the key on, and keeps the error per gadget id in
 `EnableFailures` (`src-tauri/src/gadget_status.rs`). Settings read it
 through the `gadget_enable_failures` command and the
 `gadget-enable-failures-changed` event and show it under the gadget's
-switch. Turning the gadget off removes the error; turning it on again
-retries `enable()`.
+switch. Turning the gadget off removes the error. The Retry button
+next to the error calls `gadget_retry_enable`, which runs `enable()`
+again through the same path as switching the gadget on, as long as
+its key is on (ADR 0064). For a WASM gadget the kept error is the
+guest's own message, or the trap's root cause when the guest trapped;
+the log keeps the whole chain.
 
 ## Search dispatch
 

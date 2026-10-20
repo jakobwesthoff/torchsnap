@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCommands } from "../test/tauri";
 import { GadgetSettingsWrapper } from "./GadgetSettingsWrapper";
@@ -42,7 +42,9 @@ describe("GadgetSettingsWrapper", () => {
     setting.enabled = true;
     renderWrapper();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Failed to start.*\(no app\)/);
+    const note = await screen.findByRole("alert");
+    expect(within(note).getByText("Awake failed to start")).toBeInTheDocument();
+    expect(within(note).getByText("no app")).toBeInTheDocument();
     expect(screen.getByText("Gadget settings")).toBeInTheDocument();
   });
 
@@ -50,7 +52,7 @@ describe("GadgetSettingsWrapper", () => {
     setting.enabled = undefined;
     renderWrapper();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Failed to start/);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Awake failed to start");
   });
 
   it("hides the failure once the gadget is turned off", async () => {

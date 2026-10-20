@@ -457,15 +457,38 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
       gadget_permissions: () => ({}),
-      gadget_enable_failures: () => ({ weather: "gadget enable() returned error: no key" }),
+      gadget_enable_failures: () => ({ weather: "no key" }),
       install_queue_snapshot: () => [],
     });
     render(<GadgetsManagementPanel />);
 
-    const weather = await card("Weather");
-    expect(await within(weather).findByRole("alert")).toHaveTextContent(
-      "Failed to start, so it does not work. Turn it off and on again to retry. (gadget enable() returned error: no key)",
-    );
+    const note = await within(await card("Weather")).findByRole("alert");
+    expect(within(note).getByText("Weather failed to start")).toBeInTheDocument();
+    expect(within(note).getByText("no key")).toBeInTheDocument();
+    expect(within(note).getByRole("button", { name: "Retry" })).toBeEnabled();
     expect(within(await card("Clipboard")).queryByRole("alert")).toBeNull();
+  });
+
+  it("offers no Retry for a gadget that is removed on restart", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({
+        weather: {
+          kind: "uninstalled",
+          name: "Weather",
+          description: "Forecasts",
+          version: null,
+          previousVersion: "1.0.0",
+        },
+      }),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({ weather: "no key" }),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const note = await within(await card("Weather")).findByRole("alert");
+    expect(within(note).getByRole("button", { name: "Retry" })).toBeDisabled();
   });
 });

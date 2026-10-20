@@ -20,6 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use wasmtime::Store;
 
+use crate::gadgets::GadgetMessage;
 use crate::wasm::bindings;
 use crate::wasm::logging::spans::Logger;
 
@@ -134,8 +135,8 @@ impl WasmGadgetInstance {
         self.gadget
             .torchsnap_gadget_lifecycle()
             .call_enable(&mut *store)
-            .map_err(|e| anyhow::anyhow!("calling gadget enable(): {e}"))?
-            .map_err(|e| anyhow::anyhow!("gadget enable() returned error: {e}"))
+            .map_err(guest_trapped)?
+            .map_err(guest_returned_error)
     }
 
     /// Call the guest's `disable` export.
@@ -308,5 +309,66 @@ impl WasmGadgetInstance {
             Ok(post_action) => Ok(post_action.into()),
             Err(msg) => anyhow::bail!("gadget execute() returned error: {msg}"),
         }
+    }
+}
+
+// =========================================================
+// Enable failures
+// =========================================================
+
+/// The guest's `enable()` returned `Err(message)`: Settings show the
+/// gadget's message as it wrote it.
+fn guest_returned_error(message: String) -> anyhow::Error {
+    anyhow::Error::new(GadgetMessage(message)).context("gadget enable() returned error")
+}
+
+/// The guest's `enable()` trapped, for example on a guest panic.
+/// The outermost layer of a trap is the multi-line wasm backtrace, so
+/// Settings show the root cause, the trap itself. wasmtime's `From`
+/// conversion to `anyhow` is behind a feature this build leaves off;
+/// the boxed error keeps the chain.
+fn guest_trapped(error: wasmtime::Error) -> anyhow::Error {
+    let root_cause = error.root_cause().to_string();
+    anyhow::Error::from_boxed(error.into_boxed_dyn_error())
+        .context(GadgetMessage(root_cause))
+        .context("calling gadget enable()")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_returned_error_carries_the_gadgets_own_message() {
+        let error = guest_returned_error("Amphetamine is not installed".into());
+
+        assert_eq!(
+            error.downcast_ref::<GadgetMessage>().map(|m| m.0.as_str()),
+            Some("Amphetamine is not installed")
+        );
+        assert_eq!(
+            format!("{error:#}"),
+            "gadget enable() returned error: Amphetamine is not installed"
+        );
+    }
+
+    #[test]
+    fn a_trap_carries_its_root_cause_and_keeps_the_whole_chain() {
+        let trap = wasmtime::Error::msg("wasm trap: wasm `unreachable` instruction executed")
+            .context("error while executing at wasm backtrace:\n    0: 0x1f2 - enable");
+
+        let error = guest_trapped(trap);
+
+        assert_eq!(
+            error.downcast_ref::<GadgetMessage>().map(|m| m.0.as_str()),
+            Some("wasm trap: wasm `unreachable` instruction executed")
+        );
+        let chain = format!("{error:#}");
+        assert!(chain.starts_with("calling gadget enable(): "), "{chain}");
+        assert!(chain.contains("wasm backtrace"), "{chain}");
+        assert!(
+            chain.contains("`unreachable` instruction executed"),
+            "{chain}"
+        );
     }
 }

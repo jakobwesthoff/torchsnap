@@ -49,7 +49,7 @@ export function GadgetSettingsWrapper({
         <Entry label={`Enable ${name}`}>
           <Switch checked={enabled} onChange={setEnabled} />
         </Entry>
-        {enabled !== false && <GadgetEnableFailureNote gadgetId={gadgetId} />}
+        {enabled !== false && <GadgetEnableFailureNote gadgetId={gadgetId} name={name} />}
       </Section>
       {children}
     </div>

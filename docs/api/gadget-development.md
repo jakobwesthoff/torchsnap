@@ -263,9 +263,9 @@ any declared migrations *before* this runs, so
 Returning `Err(string)` signals that initialization failed: the
 host stops dispatching further calls to the gadget and does not
 register its shortcuts. Settings show the gadget as failed to start,
-with the error string, under its switch. The switch stays on; the
-user retries by turning the gadget off and on again, which calls
-`enable()` again (ADR 0063).
+with the error string as you wrote it, under its switch. The switch
+stays on; the Retry button there calls `enable()` again (ADR 0063,
+ADR 0064).
 
 ### `disable()`
 

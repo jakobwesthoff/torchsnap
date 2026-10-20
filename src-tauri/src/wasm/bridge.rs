@@ -1085,10 +1085,9 @@ migrations = ["migrations/001_init.sql"]
 
     #[test]
     fn guest_enable_failure_reports_err() {
-        // The fixture's guest `enable()` panics → wasmtime
-        // turns the panic into a trap → host sees `Err`.
-        // This is the signal `Gadget::enable` uses to tear
-        // the slot back down.
+        // The fixture's guest `enable()` returns `Err`, which is
+        // the signal `Gadget::enable` uses to tear the slot back
+        // down.
         let tmp = tempfile::tempdir().expect("tempdir");
         let bridge = test_bridge("failing-enable-gadget", tmp.path()).expect("bridge construction");
 
@@ -1098,6 +1097,26 @@ migrations = ["migrations/001_init.sql"]
         drop(instance);
         assert!(bridge.take_instance().is_some());
         assert!(!bridge.instance_is_some());
+    }
+
+    #[test]
+    fn guest_enable_failure_carries_the_gadgets_message() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bridge = test_bridge("failing-enable-gadget", tmp.path()).expect("bridge construction");
+
+        let error = bridge
+            .ensure_instance()
+            .expect("instantiate")
+            .enable()
+            .expect_err("the fixture's enable fails");
+
+        assert_eq!(
+            error
+                .downcast_ref::<crate::gadgets::GadgetMessage>()
+                .map(|m| m.0.as_str()),
+            Some("failing-enable-gadget: enable() intentionally fails")
+        );
+        assert!(format!("{error:#}").starts_with("gadget enable() returned error: "));
     }
 
     #[test]

@@ -23,10 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on disk that nothing removed. Leftover files are removed when the
   clipboard gadget starts.
 - When a gadget fails to start, Settings say so under its switch, with
-  the reason, and the switch stays on. Turning the gadget off and on
-  again retries. Before, the gadget looked enabled but did nothing, and
-  a gadget that failed while Torchsnap started kept its global
-  shortcut.
+  the reason, and the switch stays on. A Retry button starts the gadget
+  again. Before, the gadget looked enabled but
+  did nothing, and a gadget that failed while Torchsnap started kept
+  its global shortcut.
 
 ## [0.14.1] - 2026-10-20
 

@@ -8,6 +8,8 @@ Accepted
 
 Amends [25. Host-managed plugin enable/disable lifecycle](0025-host-managed-plugin-enable-disable-lifecycle.md) (the stored setting and the runtime flag can differ)
 
+Amended by [64. Retry a failed gadget enable from Settings](0064-retry-a-failed-gadget-enable-from-settings.md)
+
 ## Context
 
 When a gadget's `enable()` returned `Err`, the host set the gadget's

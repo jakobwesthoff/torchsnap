@@ -43,6 +43,7 @@ use crate::entry_store::{EntryStore, SearchGeneration};
 use crate::frecency::FrecencyStore;
 use crate::gadget_status::{
     EnableFailures, GADGET_ENABLE_FAILURES_CHANGED, apply_enabled_setting, enable_gadget,
+    retry_allowed,
 };
 use crate::gadgets::Gadget;
 use crate::icons::IconCache;
@@ -640,6 +641,28 @@ impl GadgetHost {
     /// id. Read by the Settings gadget switches.
     pub fn enable_failures(&self) -> std::collections::BTreeMap<String, String> {
         self.enable_failures.snapshot()
+    }
+
+    /// Start a gadget that failed to start again, the way switching it
+    /// on does. Blocks while `enable()` runs.
+    ///
+    /// The stored setting is read again afterwards: when the user
+    /// turned the gadget off between the first read and the dispatch,
+    /// the `true` dispatched here would otherwise leave a gadget
+    /// running whose switch is off.
+    pub fn retry_enable(&self, gadget_id: &str) -> anyhow::Result<()> {
+        if !self.slots.iter().any(|s| s.gadget.id() == gadget_id) {
+            anyhow::bail!("unknown gadget source: {gadget_id}");
+        }
+        let key = format!("enabled.{gadget_id}");
+        retry_allowed(self.store.get(&key).as_ref())?;
+
+        self.handle_setting_changed(&key, serde_json::Value::Bool(true));
+
+        if retry_allowed(self.store.get(&key).as_ref()).is_err() {
+            self.handle_setting_changed(&key, serde_json::Value::Bool(false));
+        }
+        Ok(())
     }
 
     fn register_all_shortcuts(&self, app: &tauri::AppHandle) {

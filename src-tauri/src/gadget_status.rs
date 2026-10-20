@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::gadgets::Gadget;
+use crate::gadgets::{Gadget, GadgetMessage};
 
 /// Emitted to every window when a gadget's enable failure is recorded
 /// or cleared.
@@ -91,9 +91,19 @@ pub(crate) fn enable_gadget(
         .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        failures.record(id, format!("{e:#}"));
+        failures.record(id, shown_reason(&e));
     }
     true
+}
+
+/// What Settings show for a failed `enable()`: the gadget's own
+/// message when the chain carries one, otherwise the whole chain, the
+/// host context a native gadget's error is built from.
+fn shown_reason(error: &anyhow::Error) -> String {
+    match error.downcast_ref::<GadgetMessage>() {
+        Some(message) => message.0.clone(),
+        None => format!("{error:#}"),
+    }
 }
 
 /// Apply a change of the stored `enabled.<id>` setting to the gadget:
@@ -116,6 +126,16 @@ pub(crate) fn apply_enabled_setting(
     }
 }
 
+/// Whether Retry may start a gadget, given its stored `enabled.<id>`
+/// value: only while the user has it turned on. Retry restarts a
+/// failed gadget; it never overrides the switch.
+pub(crate) fn retry_allowed(stored: Option<&serde_json::Value>) -> anyhow::Result<()> {
+    match stored {
+        Some(serde_json::Value::Bool(true)) => Ok(()),
+        _ => anyhow::bail!("the gadget is turned off"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -126,11 +146,14 @@ mod tests {
     use crate::commands::types::PostAction;
     use crate::gadgets::ErasedSearch;
 
-    /// A gadget whose `enable()` fails with `enable_error` when set.
-    /// With a gate, `enable()` first announces that it started and
-    /// then waits until the test releases it.
+    /// A gadget whose `enable()` fails with `enable_error` when set,
+    /// as a native gadget does, or, with `own_message`, as the WASM
+    /// bridge reports a guest's `Err`. With a gate, `enable()` first
+    /// announces that it started and then waits until the test
+    /// releases it.
     struct TestGadget {
         enable_error: Mutex<Option<String>>,
+        own_message: bool,
         gate: Option<(mpsc::Sender<()>, Mutex<mpsc::Receiver<()>>)>,
         enables: AtomicUsize,
         disables: AtomicUsize,
@@ -140,6 +163,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 enable_error: Mutex::new(None),
+                own_message: false,
                 gate: None,
                 enables: AtomicUsize::new(0),
                 disables: AtomicUsize::new(0),
@@ -149,6 +173,12 @@ mod tests {
         fn failing(reason: &str) -> Self {
             let gadget = Self::new();
             gadget.fail_with(Some(reason));
+            gadget
+        }
+
+        fn failing_in_its_own_words(reason: &str) -> Self {
+            let mut gadget = Self::failing(reason);
+            gadget.own_message = true;
             gadget
         }
 
@@ -188,6 +218,8 @@ mod tests {
                     .expect("test releases enable");
             }
             match self.enable_error.lock().expect("not poisoned").clone() {
+                Some(reason) if self.own_message => Err(anyhow::Error::new(GadgetMessage(reason))
+                    .context("gadget enable() returned error")),
                 Some(reason) => Err(anyhow::anyhow!(reason).context("start the gadget")),
                 None => Ok(()),
             }
@@ -205,6 +237,20 @@ mod tests {
     // -----------------------------------------------------
     // enable_gadget
     // -----------------------------------------------------
+
+    #[test]
+    fn the_gadgets_own_message_is_recorded_without_the_bridge_prefix() {
+        let gadget = TestGadget::failing_in_its_own_words("Amphetamine is not installed");
+        let active = AtomicBool::new(true);
+        let failures = EnableFailures::default();
+
+        enable_gadget(&gadget, &active, &failures);
+
+        assert_eq!(
+            failure_of(&failures).as_deref(),
+            Some("Amphetamine is not installed")
+        );
+    }
 
     #[test]
     fn a_failed_enable_deactivates_the_gadget_and_records_the_reason() {
@@ -362,6 +408,32 @@ mod tests {
 
         assert_eq!(gadget.enables.load(Ordering::SeqCst), 0);
         assert_eq!(gadget.disables.load(Ordering::SeqCst), 0);
+    }
+
+    // -----------------------------------------------------
+    // retry_allowed
+    // -----------------------------------------------------
+
+    #[test]
+    fn a_gadget_that_is_turned_on_may_be_retried() {
+        assert!(retry_allowed(Some(&serde_json::json!(true))).is_ok());
+    }
+
+    #[test]
+    fn a_gadget_that_is_turned_off_is_not_retried() {
+        let error = retry_allowed(Some(&serde_json::json!(false))).expect_err("turned off");
+
+        assert!(error.to_string().contains("turned off"), "{error}");
+    }
+
+    #[test]
+    fn a_gadget_without_a_stored_setting_is_not_retried() {
+        assert!(retry_allowed(None).is_err());
+    }
+
+    #[test]
+    fn a_stored_setting_that_is_not_a_bool_is_not_retried() {
+        assert!(retry_allowed(Some(&serde_json::json!("true"))).is_err());
     }
 
     // -----------------------------------------------------

@@ -54,6 +54,25 @@ pub struct GadgetShortcut {
 }
 
 // =========================================================
+// GadgetMessage — a failure in the gadget's own words
+// =========================================================
+
+/// The text Settings show for a gadget's failure, carried in an
+/// error chain: what a WASM gadget's `enable()` returned, or the root
+/// cause of a guest trap. The chain around it keeps the host's
+/// context for the log.
+#[derive(Debug)]
+pub struct GadgetMessage(pub String);
+
+impl std::fmt::Display for GadgetMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for GadgetMessage {}
+
+// =========================================================
 // Gadget Trait
 // =========================================================
 
@@ -94,9 +113,10 @@ pub trait Gadget: ErasedSearch {
     ///
     /// Returning `Err` deactivates the gadget: no further calls are
     /// dispatched and its shortcuts are not registered. The host keeps
-    /// the error, and Settings show it under the gadget's switch. The
-    /// stored `enabled.<id>` setting stays on; turning the gadget off
-    /// and on again calls `enable()` again.
+    /// the error, and Settings show it under the gadget's switch, as a
+    /// [`GadgetMessage`] in the chain says it or else as the whole
+    /// chain. The stored `enabled.<id>` setting stays on; the Retry
+    /// button in Settings calls `enable()` again.
     fn enable(&self) -> anyhow::Result<()> {
         Ok(())
     }

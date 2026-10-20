@@ -328,6 +328,9 @@ function PluginRowView({
   // A gadget that is not running yet, or will not run after the
   // restart, is dimmed; a replaced one keeps running until then.
   const dimmed = change !== undefined && change.kind !== "replaced";
+  // The gadget cannot be switched, or started again, before the
+  // restart that installs or removes it.
+  const switchDisabled = !row.loaded || change?.kind === "uninstalled";
 
   return (
     <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
@@ -351,15 +354,18 @@ function PluginRowView({
             <span className="truncate text-xs text-text-tertiary">{row.description}</span>
           )}
           {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
-          {row.loaded && enabled !== false && <GadgetEnableFailureNote gadgetId={row.id} />}
+          {row.loaded && enabled !== false && (
+            <GadgetEnableFailureNote
+              gadgetId={row.id}
+              name={row.label}
+              retryDisabled={switchDisabled}
+              className="mt-2"
+            />
+          )}
           {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
         </div>
       </div>
-      <Switch
-        checked={enabled ?? true}
-        onChange={setEnabled}
-        disabled={!row.loaded || change?.kind === "uninstalled"}
-      />
+      <Switch checked={enabled ?? true} onChange={setEnabled} disabled={switchDisabled} />
       {/* Trailing slot: Undo for a pending change, Uninstall for user
           gadgets, the source badge for every other kind. Its fixed
           width keeps every switch in the same column. */}

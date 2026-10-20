@@ -118,6 +118,8 @@ export interface CommandMap {
   shortcut_problems: { params: void; result: Record<string, ShortcutProblem> };
   /** Why gadgets that are turned on failed to start, keyed by gadget id. */
   gadget_enable_failures: { params: void; result: Record<string, string> };
+  /** Start a gadget that failed to start again, as switching it on does. */
+  gadget_retry_enable: { params: { gadgetId: string }; result: void };
   uninstall_user_gadget: {
     params: { gadgetId: string };
     result: UninstallResult;
