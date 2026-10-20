@@ -12,7 +12,7 @@ import { GadgetsManagementPanel } from "./GadgetsManagementPanel";
 
 vi.mock("../../gadgets/registry", () => ({
   getGadgetsWithSettings: () => [
-    { id: "weather", label: "Weather", description: "Forecasts" },
+    { id: "weather", label: "Weather", description: "Forecasts", icon: "heroicons:cloud" },
     { id: "clipboard-manager", label: "Clipboard", description: "History" },
   ],
 }));
@@ -492,7 +492,7 @@ describe("GadgetsManagementPanel", () => {
     expect(within(note).getByRole("button", { name: "Retry" })).toBeDisabled();
   });
 
-  it("spans a failed gadget's note across its row, below the rest", async () => {
+  it("starts a failed gadget's note where its name starts and runs it to the row's end", async () => {
     mockCommands({
       pending_gadget_changes: () => ({}),
       wasm_gadgets: () => [],
@@ -506,20 +506,55 @@ describe("GadgetsManagementPanel", () => {
     const row = await card("Weather");
     const note = await within(row).findByRole("alert");
 
-    // jsdom has no layout: a column row whose last child is the note,
-    // after the line with the name, the switch and the trailing slot,
-    // is what gives the note the row's full width.
-    expect(row).toHaveClass("flex-col");
-    expect(note.parentElement).toBe(row);
-    expect(row.lastElementChild).toBe(note);
+    // jsdom has no layout. A row-direction flex with the icon first and,
+    // as its stretching last child, a column holding the line with the
+    // name and then the note puts the note's left edge at the name's and
+    // its right edge at the row's. Nothing on the way may add a left
+    // inset; the captures measure the result.
+    expect(row).toHaveClass("flex", "items-start");
+    expect(row).not.toHaveClass("flex-col");
+    const column = note.parentElement as HTMLElement;
+    expect(column.parentElement).toBe(row);
+    expect(row.lastElementChild).toBe(column);
+    expect(column).toHaveClass("min-w-0", "flex-1", "flex-col");
+    expect(column.previousElementSibling?.tagName).toBe("svg");
+    expect(column.lastElementChild).toBe(note);
     const line = note.previousElementSibling as HTMLElement;
-    expect(line).toContainElement(within(row).getByText("Weather"));
+    const text = line.firstElementChild as HTMLElement;
+    expect(text).toContainElement(within(row).getByText("Weather"));
     expect(line).toContainElement(within(row).getByRole("switch"));
     expect(line).toContainElement(row.querySelector<HTMLElement>("[data-slot='trailing']"));
-    expect(note.closest(".opacity-60")).toBeNull();
+    for (const element of [column, line, text]) {
+      expect(element.className).not.toMatch(/(^|\s)-?(m|mx|ml|ms|p|px|pl|ps)-/);
+    }
+    // The note's own padding insets its content, not its box.
+    expect(note.className).not.toMatch(/(^|\s)-?(m|mx|ml|ms)-/);
+    expect(row.querySelector(".opacity-60")).toBeNull();
   });
 
-  it("dims the note with the rest of a row that is removed on restart", async () => {
+  it("starts the note at the row's edge for a gadget without an icon", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ "clipboard-manager": "builtin" }),
+      gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({ "clipboard-manager": "no key" }),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const row = await card("Clipboard");
+    const note = await within(row).findByRole("alert");
+
+    expect(row).not.toHaveClass("flex-col");
+    const column = note.parentElement as HTMLElement;
+    expect(column.parentElement).toBe(row);
+    expect(row.firstElementChild).toBe(column);
+    const line = note.previousElementSibling as HTMLElement;
+    expect(line.firstElementChild).toContainElement(within(row).getByText("Clipboard"));
+  });
+
+  it("dims the icon, the text and the note of a row removed on restart, not its controls", async () => {
     mockCommands({
       pending_gadget_changes: () => ({
         weather: {
@@ -538,7 +573,12 @@ describe("GadgetsManagementPanel", () => {
     });
     render(<GadgetsManagementPanel />);
 
-    const note = await within(await card("Weather")).findByRole("alert");
+    const row = await card("Weather");
+    const note = await within(row).findByRole("alert");
+    expect(row.querySelector("svg")?.closest(".opacity-60")).not.toBeNull();
+    expect(within(row).getByText("Weather").closest(".opacity-60")).not.toBeNull();
     expect(note.closest(".opacity-60")).not.toBeNull();
+    expect(within(row).getByRole("switch").closest(".opacity-60")).toBeNull();
+    expect(row.querySelector("[data-slot='trailing']")?.closest(".opacity-60")).toBeNull();
   });
 });

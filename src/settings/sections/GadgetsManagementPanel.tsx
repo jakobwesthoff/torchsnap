@@ -331,18 +331,24 @@ function PluginRowView({
   // The gadget cannot be switched, or started again, before the
   // restart that installs or removes it.
   const switchDisabled = !row.loaded || change?.kind === "uninstalled";
+  // The column after the icon also holds the controls, which stay
+  // undimmed, so icon, text and failure note are dimmed one by one.
+  const dim = dimmed && "opacity-60";
 
   return (
-    <div data-gadget={row.id} className="flex flex-col py-2 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3">
-        <div className={cn("flex min-w-0 flex-1 items-start gap-3", dimmed && "opacity-60")}>
-          {row.icon && (
-            <Icon
-              icon={row.icon}
-              className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
-            />
+    <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+      {row.icon && (
+        <Icon
+          icon={row.icon}
+          className={cn(
+            "h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary",
+            dim,
           )}
-          <div className="flex min-w-0 flex-1 flex-col">
+        />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-start gap-3">
+          <div className={cn("flex min-w-0 flex-1 flex-col", dim)}>
             <span className="truncate text-sm font-medium text-text-primary">
               {row.label}
               {versionText(row) && (
@@ -357,47 +363,47 @@ function PluginRowView({
             {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
             {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
           </div>
+          <Switch checked={enabled ?? true} onChange={setEnabled} disabled={switchDisabled} />
+          {/* Trailing slot: Undo for a pending change, Uninstall for user
+              gadgets, the source badge for every other kind. Its fixed
+              width keeps every switch in the same column. */}
+          <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
+            {change ? (
+              <button
+                type="button"
+                onClick={() => onUndo(row.id)}
+                title="Undo this change before it takes effect"
+                className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
+              >
+                Undo
+              </button>
+            ) : canUninstall ? (
+              <button
+                type="button"
+                onClick={() => onUninstall(row.id)}
+                title="Uninstall this user gadget"
+                className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                Uninstall
+              </button>
+            ) : (
+              <SourceBadge kind={row.sourceKind} />
+            )}
+          </div>
         </div>
-        <Switch checked={enabled ?? true} onChange={setEnabled} disabled={switchDisabled} />
-        {/* Trailing slot: Undo for a pending change, Uninstall for user
-            gadgets, the source badge for every other kind. Its fixed
-            width keeps every switch in the same column. */}
-        <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
-          {change ? (
-            <button
-              type="button"
-              onClick={() => onUndo(row.id)}
-              title="Undo this change before it takes effect"
-              className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
-            >
-              Undo
-            </button>
-          ) : canUninstall ? (
-            <button
-              type="button"
-              onClick={() => onUninstall(row.id)}
-              title="Uninstall this user gadget"
-              className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-            >
-              Uninstall
-            </button>
-          ) : (
-            <SourceBadge kind={row.sourceKind} />
-          )}
-        </div>
+        {/* The failure note sits in the column after the icon, so it
+            starts where the name starts and runs under the switch and
+            the trailing slot to the row's end. Its indent is the icon's
+            width and the row's gap, whatever they are. */}
+        {row.loaded && enabled !== false && (
+          <GadgetEnableFailureNote
+            gadgetId={row.id}
+            name={row.label}
+            retryDisabled={switchDisabled}
+            className={cn("mt-2", dim)}
+          />
+        )}
       </div>
-      {/* The failure note spans the whole row below its line, from
-          under the icon to under the badge. It sits outside the dimmed
-          part, so it takes the row's dimming itself and never looks
-          more alive than its row. */}
-      {row.loaded && enabled !== false && (
-        <GadgetEnableFailureNote
-          gadgetId={row.id}
-          name={row.label}
-          retryDisabled={switchDisabled}
-          className={cn("mt-2", dimmed && "opacity-60")}
-        />
-      )}
     </div>
   );
 }
