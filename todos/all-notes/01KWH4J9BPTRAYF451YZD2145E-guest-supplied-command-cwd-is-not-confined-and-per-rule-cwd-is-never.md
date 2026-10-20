@@ -2,13 +2,12 @@
 title: "Guest-supplied command cwd is not confined and per-rule cwd is never enforced"
 kind: bug
 component: gadget-host
-status: needs-discussion
 impact: critical
 tags: [security, capabilities]
 ---
 # Guest-supplied command cwd is not confined and per-rule cwd is never enforced
 
-A command grant lets the guest choose the working directory of the spawned binary, and no root check applies to it. A permitted tool such as `git`, `make` or `npm` then reads config and plugins from a directory the gadget controls, which turns the grant into arbitrary native code execution as the user. The per-rule `cwd` the manifest declares is parsed but never applied. This todo covers both halves, since one fix addresses both. The cwd policy is a security decision that needs settling before implementation.
+A command grant lets the guest choose the working directory of the spawned binary, and no root check applies to it. A permitted tool such as `git`, `make` or `npm` then reads config and plugins from a directory the gadget controls, which turns the grant into arbitrary native code execution as the user. The per-rule `cwd` the manifest declares is parsed but never applied. This todo covers both halves, since one fix addresses both. The cwd policy was decided on 2026-10-20 (see Decisions).
 
 ## Problem
 Read in the code, not reproduced.
@@ -88,8 +87,40 @@ includes planting a symlink inside another gadget's (or its own)
 directory-read race covered by its own todo, and more broadly it allows
 tampering with any user-writable file on disk.
 
+## Decisions
+
+Decided by Jakob on 2026-10-20:
+
+- **Threat model: permissions are binding.** What the install review
+  shows bounds what a gadget can do. A grant read as "may run
+  `git log`" must not mean more. This overrides the trusted-author
+  reasoning of ADR 0036 and ADR 0040 for command grants; the
+  implementation records it in a new ADR that amends both.
+- **cwd policy: only under the rule's `cwd` root**, as in the table
+  under Suggested fix, point 2. A guest-supplied cwd is checked with
+  `canonical_under_root` against the rule's root; without a rule `cwd`,
+  a guest-supplied cwd is `PermissionDenied`.
+- **Config-reading binaries are handled by structural rules, not by a
+  list of binaries** (a list is always incomplete). Nothing the gadget
+  can write may be visible to a spawned program as configuration:
+  - The manifest parser rejects a rule `cwd` root that lies in, or has
+    an ancestor in, an area the gadget may write. The same holds for
+    `path-under` argv roots.
+  - Without a rule `cwd`, and for `HOME` and `TMPDIR`, the host creates
+    a fresh empty directory per spawn that the gadget cannot reach, and
+    removes it afterwards. This replaces the `${gadget-data}/exec-cwd/`
+    scratch in the table below.
+  - The install review describes every command grant generically (a
+    native program runs with the user's rights) and marks
+    unconstrained argv; it names no binaries.
+  - The env half (declared env values must not point into
+    gadget-writable areas) is in the env todo.
+  The follow-up todo "Neutralize config loading for config-reading
+  binaries in command grants" carries these rules.
+
 ## Suggested fix
-Two independent decisions.
+Two parts; the policy in part 2 is decided (see Decisions), except
+that the absent/absent row now uses the fresh per-spawn directory.
 
 **1. Wire the per-rule `cwd` back in (mechanical, low risk).**
 - Add `cwd: Option<PathBuf>` to `CompiledCommandRule`

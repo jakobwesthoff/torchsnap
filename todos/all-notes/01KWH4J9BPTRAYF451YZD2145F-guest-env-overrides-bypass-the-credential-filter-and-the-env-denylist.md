@@ -2,13 +2,39 @@
 title: "Guest env overrides bypass the credential filter, and the env denylist leaks credentials"
 kind: bug
 component: gadget-host
-status: needs-discussion
 impact: critical
 tags: [security, capabilities]
 ---
 # Guest env overrides bypass the credential filter, and the env denylist leaks credentials
 
-The spawned command's environment is built by filtering the inherited host env through a denylist, but the guest's own `options.env` overrides skip that filter. A gadget can set `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES` or an interpreter hijack variable and run attacker code inside a permitted binary. The denylist also misses many real credentials in the inherited half. The first decision is the threat model, because the severity of the override half depends on it.
+The spawned command's environment is built by filtering the inherited host env through a denylist, but the guest's own `options.env` overrides skip that filter. A gadget can set `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES` or an interpreter hijack variable and run attacker code inside a permitted binary. The denylist also misses many real credentials in the inherited half. The threat model and the env policy were decided on 2026-10-20 (see Decisions).
+
+## Decisions
+
+Decided by Jakob on 2026-10-20:
+
+- **Threat model: permissions are binding.** What the install review
+  shows bounds what a gadget can do, so sub-issue 2 is a real escape
+  and both sub-issues get fixed. This overrides ADR 0040's env handling
+  and its rejection of a manifest env allowlist, and the trusted-author
+  reasoning of ADR 0036 for command grants; the implementation records
+  it in a new ADR that amends both.
+- **Env is declared in the manifest now** (option (c) under Suggested
+  fix): a command rule declares the env keys it may set, the install
+  review shows them, and runtime overrides are limited to the declared
+  keys. An undeclared override is rejected.
+- **Hard rejection even when declared:** `LD_*`, `DYLD_*`, `PATH` and
+  the interpreter and tool-hijack set listed under Suggested fix,
+  point 2, cannot be declared; the manifest parser rejects them.
+- **Inherited base is an allowlist** (Suggested fix, point 1): locale
+  and `TZ`, a fixed `PATH`, and `HOME` and `TMPDIR` pointing at a fresh
+  per-spawn directory the host creates and the gadget cannot reach (the
+  structural rule from the cwd todo).
+- **Declared env values must not point into areas the gadget may
+  write**, or a config pointer such as `GIT_CONFIG_GLOBAL` would plant
+  configuration. How this is enforced for guest-supplied values (fixed
+  values in the manifest, value patterns, or a path check) is for the
+  implementation plan.
 
 ## Problem
 Read in the code, not reproduced.
