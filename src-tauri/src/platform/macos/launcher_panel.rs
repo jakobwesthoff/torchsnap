@@ -149,10 +149,14 @@ impl LauncherPanel for MacosLauncherPanel {
 
             // macOS global coordinates use bottom-left origin relative
             // to the primary screen. Flip the top-left y coordinate.
-            let primary_height = NSScreen::mainScreen(mtm)
-                .map(|s| s.frame().size.height)
-                .unwrap_or(0.0);
-            let flipped_y = primary_height - y - height;
+            // AppKit lists the primary screen first in `screens`.
+            let primary_height = NSScreen::screens(mtm)
+                .firstObject()
+                .map(|s| s.frame().size.height);
+            let Some(flipped_y) = appkit_frame_y(primary_height, y, height) else {
+                eprintln!("set_frame: no primary screen to place the launcher on");
+                return;
+            };
 
             let frame = NSRect::new(
                 objc2_foundation::NSPoint::new(x, flipped_y),
@@ -163,5 +167,38 @@ impl LauncherPanel for MacosLauncherPanel {
         .context("dispatch set_frame to main thread")?;
 
         Ok(())
+    }
+}
+
+/// AppKit y of a frame's bottom edge, from the frame's `top` edge in
+/// top-left-origin global points. AppKit's global origin is the
+/// bottom-left corner of the primary screen, so the flip needs that
+/// screen's height; without a primary screen there is no frame.
+fn appkit_frame_y(primary_screen_height: Option<f64>, top: f64, height: f64) -> Option<f64> {
+    primary_screen_height.map(|primary| primary - top - height)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appkit_frame_y_on_the_primary_screen() {
+        assert_eq!(appkit_frame_y(Some(982.0), 100.0, 830.0), Some(52.0));
+    }
+
+    #[test]
+    fn appkit_frame_y_for_a_top_below_the_primary() {
+        assert_eq!(appkit_frame_y(Some(982.0), 1200.0, 830.0), Some(-1048.0));
+    }
+
+    #[test]
+    fn appkit_frame_y_for_a_negative_top() {
+        assert_eq!(appkit_frame_y(Some(982.0), -1300.0, 830.0), Some(1452.0));
+    }
+
+    #[test]
+    fn appkit_frame_y_is_none_without_a_primary_screen() {
+        assert_eq!(appkit_frame_y(None, 100.0, 830.0), None);
     }
 }
