@@ -10,6 +10,8 @@ Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
 Amended by [33. WASM plugin bridge owns instance lifecycle with compile-at-load and instantiate-on-enable](0033-wasm-plugin-bridge-owns-instance-lifecycle-with-compile-at-load-and-instantiate-on-enable.md)
 
+Amended by [65. Confine SQL storage connections to their own database](0065-confine-sql-storage-connections-to-their-own-database.md)
+
 ## Context
 
 WASM plugins need persistent storage for the same reason native plugins

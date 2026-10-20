@@ -151,3 +151,131 @@ impl From<HostSqlValue> for bindings::torchsnap::gadget::sql_storage::SqlValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bindings::torchsnap::gadget::sql_storage::{Host, HostSqlHandle, SqlValue as Wit};
+
+    use crate::caps::{ProvisionedCaps, SqlStorageCap};
+
+    /// A gadget state whose only capability is SQL storage, the
+    /// one capability these host imports read.
+    fn state_with_sql_storage(storage: Arc<SqlStorage>) -> GadgetState {
+        GadgetState {
+            caps: Arc::new(ProvisionedCaps {
+                opener: None,
+                http: None,
+                filesystem: None,
+                command: None,
+                clipboard: None,
+                sql_storage: Some(Arc::new(SqlStorageCap::new(storage))),
+                website_metadata: None,
+                icon_cache: None,
+                settings: None,
+                frecency: None,
+                path_resolver: None,
+            }),
+            ..GadgetState::default_for_test()
+        }
+    }
+
+    fn items_storage(dir: &tempfile::TempDir) -> Arc<SqlStorage> {
+        Arc::new(
+            SqlStorage::open(
+                dir.path().join("storage.sqlite3"),
+                &["CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"],
+            )
+            .expect("open database"),
+        )
+    }
+
+    /// `Resource` is consumed by every call, so tests keep the rep
+    /// and hand each call a borrow of the same table entry.
+    fn handle(rep: u32) -> Resource<SqlHandleEntry> {
+        Resource::new_borrow(rep)
+    }
+
+    fn insert(state: &mut GadgetState, rep: u32, name: &str) {
+        state
+            .execute(
+                handle(rep),
+                "INSERT INTO items (name) VALUES (?)".to_string(),
+                vec![Wit::Text(name.to_string())],
+            )
+            .expect("insert");
+    }
+
+    fn names(state: &mut GadgetState, rep: u32) -> Vec<String> {
+        state
+            .query(
+                handle(rep),
+                "SELECT name FROM items ORDER BY name".to_string(),
+                vec![],
+            )
+            .expect("query")
+            .into_iter()
+            .map(|row| match row.as_slice() {
+                [Wit::Text(name)] => name.clone(),
+                other => panic!("unexpected row {other:?}"),
+            })
+            .collect()
+    }
+
+    fn attach_sql(dir: &tempfile::TempDir) -> String {
+        format!(
+            "ATTACH DATABASE '{}' AS other",
+            dir.path().join("other.sqlite3").display()
+        )
+    }
+
+    #[test]
+    fn a_gadget_attach_returns_an_error_and_the_handle_keeps_working() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let mut state = state_with_sql_storage(items_storage(&dir));
+        let rep = state.connection().rep();
+
+        let err = state
+            .execute(handle(rep), attach_sql(&dir), vec![])
+            .expect_err("SQLite runs the ATTACH");
+        assert!(err.contains("not authorized"), "unexpected error: {err}");
+        assert!(!dir.path().join("other.sqlite3").exists());
+
+        insert(&mut state, rep, "after");
+        assert_eq!(names(&mut state, rep), vec!["after"]);
+    }
+
+    #[test]
+    fn a_gadget_query_that_attaches_returns_an_error() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let mut state = state_with_sql_storage(items_storage(&dir));
+        let rep = state.connection().rep();
+
+        let err = state
+            .query(handle(rep), attach_sql(&dir), vec![])
+            .expect_err("SQLite runs the ATTACH");
+        assert!(err.contains("not authorized"), "unexpected error: {err}");
+        assert!(!dir.path().join("other.sqlite3").exists());
+    }
+
+    #[test]
+    fn a_gadget_transaction_survives_a_denied_statement() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let mut state = state_with_sql_storage(items_storage(&dir));
+        let rep = state.connection().rep();
+
+        state
+            .execute(handle(rep), "BEGIN".to_string(), vec![])
+            .expect("begin");
+        insert(&mut state, rep, "before");
+        state
+            .execute(handle(rep), attach_sql(&dir), vec![])
+            .expect_err("SQLite runs the ATTACH");
+        insert(&mut state, rep, "after");
+        state
+            .execute(handle(rep), "COMMIT".to_string(), vec![])
+            .expect("commit");
+
+        assert_eq!(names(&mut state, rep), vec!["after", "before"]);
+    }
+}

@@ -714,6 +714,9 @@ migrations = [
 Each path is gadget-relative. Files are plain SQL — diffable,
 shareable with unit tests via `include_str!`, and `query_one` /
 `query_all` helpers in the SDK consume the host's response rows.
+Migrations follow the same rules as the gadget's other SQL (see
+"What gadget SQL can reach" under `sql_storage`); a migration
+that the host refuses fails the gadget's enable.
 
 ### `[[tasks]]`
 
@@ -904,6 +907,27 @@ internal `List` variant — gadgets build their own `IN (?, ?, ?)`
 clauses (one `?` per element) before calling `query` / `execute`.
 Transactions are not currently exposed; raise the API gap if a
 gadget needs them.
+
+#### What gadget SQL can reach
+
+A gadget's SQL, its migrations included, reaches its own
+database file and no other. The host refuses every statement
+that would open another file, and `execute` / `query` return the
+error; the statement does not run, and the connection, an open
+transaction included, keeps working:
+
+- `ATTACH DATABASE` and `DETACH DATABASE` fail with
+  `not authorized`, whether the file name is a literal, a bound
+  parameter or an expression.
+- `VACUUM INTO` fails, since it writes the copy through an
+  attached database. Plain `VACUUM` attaches a temporary database
+  the same way and fails too: gadget databases cannot be
+  vacuumed. SQLite reuses the pages that deleted rows free for
+  later writes, but the file does not shrink.
+
+The host's own stores (frecency, website metadata cache,
+clipboard history) open their databases through the same
+storage layer and follow the same rules.
 
 ### `frecency`
 

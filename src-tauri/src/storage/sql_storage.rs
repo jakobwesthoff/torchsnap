@@ -14,13 +14,18 @@
 // rusqlite types, so callers never depend on the underlying
 // database driver. This abstraction is designed to be
 // serde-serializable for a future WASM gadget boundary.
+//
+// Gadgets send SQL verbatim, so every connection is confined
+// to its own database file (see `confine_connection`).
 // =========================================================
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, Transaction, TransactionBehavior};
+use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+use rusqlite::limits::Limit;
+use rusqlite::{Connection, Transaction, TransactionBehavior, ffi};
 use rusqlite_migration::{M, Migrations};
 
 // =========================================================
@@ -265,8 +270,9 @@ pub struct SqlStorage {
 
 impl SqlStorage {
     /// Open (or create) a database at `db_path`, configure
-    /// pragmas for performance and correctness, and run any
-    /// pending schema migrations.
+    /// pragmas for performance and correctness, confine the
+    /// connection to this one file, and run any pending schema
+    /// migrations.
     ///
     /// `migrations` is a slice of SQL strings, each representing
     /// one forward migration step. They are applied in order and
@@ -280,6 +286,13 @@ impl SqlStorage {
             Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
 
         configure_connection(&conn).context("configure database connection")?;
+
+        // Gadget databases and the host's own stores share this
+        // constructor, and no host store attaches databases or
+        // vacuums, so every connection is confined. It happens
+        // before the migrations because a gadget's migrations come
+        // from its manifest and are gadget SQL too.
+        confine_connection(&conn).context("confine database connection")?;
 
         let migration_set: Vec<M<'_>> = migrations.iter().map(|sql| M::up(sql)).collect();
         let migrations = Migrations::new(migration_set);
@@ -539,6 +552,47 @@ fn configure_connection(conn: &Connection) -> Result<()> {
     conn.pragma_update(None, "cache_size", -2000)
         .context("set cache_size")?;
     Ok(())
+}
+
+// =========================================================
+// Connection Confinement
+//
+// A gadget's `[storage.sql]` grants its own database file and
+// nothing else, but SQLite can open further files from SQL:
+// `ATTACH` reads and writes any SQLite file the user can
+// access and creates new ones, and `VACUUM INTO` writes a copy
+// of the database to any path. Both open the other file
+// through an attach, which plain `VACUUM` uses as well, so
+// plain `VACUUM` is unavailable on these connections.
+// =========================================================
+
+/// Deny every attach and detach, and allow no attached
+/// database at all as a second barrier should the authorizer
+/// ever be missing.
+fn confine_connection(conn: &Connection) -> Result<()> {
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)
+        .context("limit attached databases")?;
+    conn.authorizer(Some(authorize))
+        .context("install SQL authorizer")?;
+    Ok(())
+}
+
+/// SQLite asks this for every action while it prepares a
+/// statement; a denied statement fails to prepare with "not
+/// authorized" and never runs.
+fn authorize(ctx: AuthContext<'_>) -> Authorization {
+    match ctx.action {
+        // rusqlite reports an attach or detach whose argument is
+        // not a string literal (`ATTACH ? AS x`, `ATTACH 'a' || 'b'
+        // AS x`) as `Unknown` with the raw action code.
+        AuthAction::Attach { .. }
+        | AuthAction::Detach { .. }
+        | AuthAction::Unknown {
+            code: ffi::SQLITE_ATTACH | ffi::SQLITE_DETACH,
+            ..
+        } => Authorization::Deny,
+        _ => Authorization::Allow,
+    }
 }
 
 // =========================================================
@@ -850,5 +904,256 @@ mod tests {
         other.join().expect("the other thread finishes");
 
         assert_eq!(item_names(&storage), vec!["other thread"]);
+    }
+
+    // =========================================================
+    // Connection confinement
+    //
+    // Every statement below would reach a file other than the
+    // storage's own database if SQLite ran it.
+    // =========================================================
+
+    /// The full anyhow chain, since the outer context
+    /// (`execute SQL statement`) hides SQLite's message.
+    fn error_chain(err: &anyhow::Error) -> String {
+        format!("{err:#}")
+    }
+
+    /// A denial reaches the caller as `SQLITE_AUTH`. Its message
+    /// varies: "not authorized" for a denied statement, the
+    /// generic "authorization denied" when the denied attach is
+    /// the one `VACUUM` runs internally.
+    fn assert_denied_err(err: &anyhow::Error) {
+        let code = err
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<rusqlite::Error>())
+            .and_then(rusqlite::Error::sqlite_error_code);
+        assert_eq!(
+            code,
+            Some(rusqlite::ErrorCode::AuthorizationForStatementDenied),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    fn assert_denied(result: Result<usize>) {
+        assert_denied_err(&result.expect_err("SQLite runs the statement"));
+    }
+
+    #[test]
+    fn attach_of_a_literal_path_is_denied_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        assert_denied(storage.execute(
+            &format!("ATTACH DATABASE '{}' AS other", other.display()),
+            &[],
+        ));
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn attach_of_a_bound_path_is_denied_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        assert_denied(storage.execute(
+            "ATTACH DATABASE ? AS other",
+            &[SqlValue::from(other.display().to_string())],
+        ));
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn attach_of_a_computed_path_is_denied_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        assert_denied(storage.execute(
+            &format!(
+                "ATTACH DATABASE '{}/' || 'other.sqlite3' AS other",
+                dir.path().display()
+            ),
+            &[],
+        ));
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn attach_through_a_query_is_denied_and_leaves_the_other_database_alone() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other_dir = tempfile::tempdir().expect("create second temp dir");
+        let other = items_storage(&other_dir);
+        other
+            .execute(
+                "INSERT INTO items (name) VALUES (?)",
+                &[SqlValue::from("kept")],
+            )
+            .expect("insert into the other database");
+        let other_path = other_dir.path().join("test.sqlite3");
+
+        let err = storage
+            .query_map(
+                &format!("ATTACH DATABASE '{}' AS other", other_path.display()),
+                &[],
+                |_| Ok(()),
+            )
+            .expect_err("SQLite runs the statement");
+        assert_denied_err(&err);
+        assert_eq!(item_names(&other), vec!["kept"]);
+    }
+
+    #[test]
+    fn detach_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_denied(storage.execute("DETACH DATABASE other", &[]));
+    }
+
+    #[test]
+    fn detach_of_a_bound_name_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_denied(storage.execute("DETACH DATABASE ?", &[SqlValue::from("other")]));
+    }
+
+    #[test]
+    fn vacuum_into_is_denied_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let copy = dir.path().join("copy.sqlite3");
+
+        assert_denied(storage.execute(&format!("VACUUM INTO '{}'", copy.display()), &[]));
+        assert!(!copy.exists());
+    }
+
+    #[test]
+    fn vacuum_into_a_non_utf8_uri_is_denied_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let copy = dir.path().join("copy.sqlite3");
+
+        // The invalid byte sits in a URI query parameter, so the file
+        // name itself stays valid UTF-8 and the file system accepts it.
+        // rusqlite cannot hand the filename to the authorizer as a
+        // `&str` and fails, which SQLite counts as a denial.
+        assert_denied(storage.execute(
+            &format!(
+                "VACUUM INTO 'file:{}?x=' || CAST(X'ff' AS TEXT)",
+                copy.display()
+            ),
+            &[],
+        ));
+        assert!(!copy.exists());
+    }
+
+    #[test]
+    fn plain_vacuum_is_denied() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        assert_denied(storage.execute("VACUUM", &[]));
+    }
+
+    #[test]
+    fn attach_limit_stops_attach_without_the_authorizer() {
+        use rusqlite::hooks::{AuthContext, Authorization};
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        let conn = storage.connection();
+        conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+            .expect("remove the authorizer");
+        let err = execute_on(
+            &conn,
+            &format!("ATTACH DATABASE '{}' AS other", other.display()),
+            &[],
+        )
+        .expect_err("SQLite runs the statement");
+        assert!(
+            error_chain(&err).contains("too many attached databases - max 0"),
+            "unexpected error: {err:#}"
+        );
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn a_migration_that_attaches_fails_open_and_creates_no_file() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let other = dir.path().join("other.sqlite3");
+
+        let result = SqlStorage::open(
+            dir.path().join("test.sqlite3"),
+            &[&format!("ATTACH DATABASE '{}' AS other;", other.display())],
+        );
+        let err = match result {
+            Ok(_) => panic!("the migration ran"),
+            Err(err) => err,
+        };
+        assert_denied_err(&err);
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn a_denied_statement_inside_a_transaction_leaves_it_usable() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        storage
+            .transaction(|tx| {
+                insert(tx, "before")?;
+                assert_denied(tx.execute(
+                    &format!("ATTACH DATABASE '{}' AS other", other.display()),
+                    &[],
+                ));
+                insert(tx, "after")?;
+                Ok(())
+            })
+            .expect("transaction commits");
+
+        assert_eq!(item_names(&storage), vec!["after", "before"]);
+    }
+
+    #[test]
+    fn a_denied_statement_leaves_the_storage_usable() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+        let other = dir.path().join("other.sqlite3");
+
+        assert_denied(storage.execute(
+            &format!("ATTACH DATABASE '{}' AS other", other.display()),
+            &[],
+        ));
+        storage
+            .execute(
+                "INSERT INTO items (name) VALUES (?)",
+                &[SqlValue::from("after")],
+            )
+            .expect("insert after the denied statement");
+        assert_eq!(item_names(&storage), vec!["after"]);
+    }
+
+    #[test]
+    fn load_extension_is_unavailable() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        let result = storage.query_map(
+            &format!(
+                "SELECT load_extension('{}')",
+                dir.path().join("extension").display()
+            ),
+            &[],
+            |_| Ok(()),
+        );
+        assert!(result.is_err());
     }
 }
