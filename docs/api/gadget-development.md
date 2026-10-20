@@ -911,11 +911,10 @@ gadget needs them.
 #### What gadget SQL can reach
 
 A gadget's SQL, its migrations included, reaches its own
-database file and no other. The host refuses every statement
-that would open another file or change SQLite settings shared by
-the whole app, and `execute` / `query` return the
-error; the statement does not run, and the connection, an open
-transaction included, keeps working:
+database file and no other. The host refuses the statements
+below: `execute` / `query` return an error and the statement
+does not run. The connection, an open transaction included,
+keeps working.
 
 - `ATTACH DATABASE` and `DETACH DATABASE` fail with
   `not authorized`, whether the file name is a literal, a bound
@@ -930,6 +929,12 @@ transaction included, keeps working:
   `not authorized`, reading as well as setting. They change
   SQLite settings that every database connection in the app
   shares.
+- SQLite's defensive mode is on. Writes to `sqlite_schema` (even
+  with `PRAGMA writable_schema = ON`) and to the internal tables
+  of FTS and R*Tree indexes (`<name>_segdir`, `<name>_data` and
+  the like) fail with `may not be modified`; write to the index
+  table itself instead. `PRAGMA journal_mode = OFF` leaves the
+  journal mode unchanged.
 
 The host's own stores (frecency, website metadata cache,
 clipboard history) open their databases through the same

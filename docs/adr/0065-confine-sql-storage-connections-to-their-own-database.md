@@ -42,6 +42,12 @@ database file, before any migration runs:
   connection in the process: the directory for every connection's
   temporary files, and memory limits whose low value makes every
   connection fail.
+- `SQLITE_DBCONFIG_DEFENSIVE` is on. SQLite parses the database inside
+  the host process, and gadget SQL that writes the structures it parses
+  by hand (the schema table through `writable_schema`, the shadow
+  tables of FTS and R*Tree indexes) hands that parser crafted input.
+  Defensive mode refuses those writes, `journal_mode = OFF` and
+  `schema_version = N`.
 
 A denied statement fails to prepare and returns an error to the caller;
 it does not run, and the connection and an open transaction stay usable.
@@ -58,6 +64,8 @@ Plain `VACUUM` is not available on these connections.
   nor read or set the four process-wide pragmas; such a statement
   returns an authorization error. A migration that does fails the
   gadget's enable.
+- Gadget SQL cannot edit `sqlite_schema` or write FTS and R*Tree shadow
+  tables directly; writes through the index tables themselves work.
 - Gadget and host databases cannot be vacuumed. `auto_vacuum` cannot be
   turned on for them either: `SqlStorage::open` sets `journal_mode =
   wal` before migrations run, which writes the database header with

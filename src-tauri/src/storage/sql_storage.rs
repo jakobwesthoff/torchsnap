@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use anyhow::{Context, Result};
+use rusqlite::config::DbConfig;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, Transaction, TransactionBehavior, ffi};
@@ -567,6 +568,12 @@ fn configure_connection(conn: &Connection) -> Result<()> {
 //
 // A few pragmas change SQLite state shared by every
 // connection in the process, the host's own stores included.
+//
+// SQLite runs inside the host process and parses the database
+// file there. SQL that writes the structures SQLite parses by
+// hand (the schema table through `writable_schema`, the
+// internal tables of FTS and R*Tree indexes) can feed that
+// parser crafted bytes, which defensive mode refuses.
 // =========================================================
 
 /// Pragmas whose effect reaches beyond the connection that runs
@@ -582,14 +589,16 @@ const PROCESS_WIDE_PRAGMAS: &[&str] = &[
     "hard_heap_limit",
 ];
 
-/// Deny every attach and detach, and allow no attached
-/// database at all as a second barrier should the authorizer
-/// ever be missing.
+/// Deny attaches, detaches and process-wide pragmas, allow no
+/// attached database at all as a second barrier should the
+/// authorizer ever be missing, and turn on defensive mode.
 fn confine_connection(conn: &Connection) -> Result<()> {
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)
         .context("limit attached databases")?;
     conn.authorizer(Some(authorize))
         .context("install SQL authorizer")?;
+    conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)
+        .context("turn on defensive mode")?;
     Ok(())
 }
 
@@ -1282,6 +1291,72 @@ mod tests {
         let mode: Vec<String> = storage
             .query_map("PRAGMA journal_mode", &[], |row| row.get(0))
             .expect("read journal_mode");
+        assert_eq!(mode, vec!["wal"]);
+    }
+
+    // =========================================================
+    // Defensive mode
+    //
+    // SQLite's own code parses the database inside the host
+    // process, so gadget SQL must not hand-write the structures
+    // it parses.
+    // =========================================================
+
+    #[test]
+    fn writable_schema_edits_are_refused() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        storage
+            .execute("PRAGMA writable_schema = ON", &[])
+            .expect("the pragma itself is accepted");
+        let err = storage
+            .execute(
+                "UPDATE sqlite_schema SET sql = sql WHERE name = 'items'",
+                &[],
+            )
+            .expect_err("SQLite edits the schema table");
+        assert!(
+            error_chain(&err).contains("may not be modified"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn fts_shadow_tables_cannot_be_written() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = SqlStorage::open(
+            dir.path().join("test.sqlite3"),
+            &["CREATE VIRTUAL TABLE notes USING fts4(body);"],
+        )
+        .expect("open database");
+        storage
+            .execute(
+                "INSERT INTO notes (body) VALUES (?)",
+                &[SqlValue::from("hello")],
+            )
+            .expect("writing the index itself works");
+
+        let err = storage
+            .execute(
+                "INSERT INTO notes_segdir VALUES (9, 9, 0, 0, 0, X'00')",
+                &[],
+            )
+            .expect_err("SQLite writes the shadow table");
+        assert!(
+            error_chain(&err).contains("may not be modified"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn journal_mode_off_is_ignored() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = items_storage(&dir);
+
+        let mode: Vec<String> = storage
+            .query_map("PRAGMA journal_mode = OFF", &[], |row| row.get(0))
+            .expect("set journal_mode");
         assert_eq!(mode, vec!["wal"]);
     }
 }
