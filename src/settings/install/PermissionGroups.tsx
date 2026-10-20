@@ -80,6 +80,7 @@ function GroupView({ group, showChanges }: { group: PermissionGroup; showChanges
           </span>
           {group.broad && <BroadAccessTag />}
         </div>
+        {group.note && <p className="text-text-tertiary">{group.note}</p>}
         <ul className="flex flex-col gap-0.5">
           {group.entries.map((entry, index) => (
             <EntryView key={index} entry={entry} showChanges={showChanges} />
@@ -110,6 +111,15 @@ function EntryView({ entry, showChanges }: { entry: GroupEntry; showChanges: boo
       <div className="flex flex-wrap items-center gap-x-1.5">
         <span className={cn("break-all", removed && "line-through")}>{entry.text}</span>
         {entry.detail && <span>{entry.detail}</span>}
+        {entry.tags?.map((tag) => (
+          <span
+            key={tag.label}
+            title={tag.hint}
+            className="rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-500"
+          >
+            {tag.label}
+          </span>
+        ))}
         {showChanges && entry.change === "added" && <ChangeTag>New</ChangeTag>}
         {showChanges && removed && <ChangeTag>Removed</ChangeTag>}
       </div>

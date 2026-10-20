@@ -10,7 +10,7 @@ import {
   isForOtherSystem,
   shortenPath,
 } from "./permissionModel";
-import type { Permission, PermissionChange, PermissionItem } from "./types";
+import type { ArgvRule, EnvRule, Permission, PermissionChange, PermissionItem } from "./types";
 
 function item(
   permission: Permission,
@@ -148,6 +148,50 @@ describe("groupPermissions", () => {
       "in ~/projects or a folder inside it",
       "sets GIT_AUTHOR_NAME to text matching /[A-Za-z ]{1,64}/",
       'sets LC_ALL to one of "C", "en_US.UTF-8"',
+    ]);
+  });
+
+  it("says once that programs run outside the sandbox", () => {
+    const groups = groupPermissions(
+      [
+        item({ kind: "command", binary: "git", argv: [], cwd: null, env: [] }, "warning"),
+        item({ kind: "command", binary: "osascript", argv: [], cwd: null, env: [] }, "warning"),
+        item({ kind: "clipboard" }),
+      ],
+      [],
+      "macos",
+    );
+
+    expect(groups.map((group) => [group.id, group.note])).toEqual([
+      ["programs", "Each program runs outside the gadget's sandbox, with your rights."],
+      ["clipboard", undefined],
+    ]);
+  });
+
+  it("marks command rules that accept arbitrary arguments or values", () => {
+    const command = (argv: ArgvRule[], env: EnvRule[] = []) =>
+      item({ kind: "command", binary: "tool", argv, cwd: null, env }, "warning");
+    const [programs] = groupPermissions(
+      [
+        command([{ kind: "literal", value: "log" }, { kind: "anyString" }]),
+        command([{ kind: "rest", constraint: { kind: "anyString" } }]),
+        command([
+          { kind: "regex", pattern: ".*" },
+          { kind: "pathUnder", root: "${home}" },
+        ]),
+        command([], [{ key: "GIT_AUTHOR_NAME", value: { kind: "anyString" } }]),
+        command([], [{ key: "LC_ALL", value: { kind: "literal", value: "C" } }]),
+      ],
+      [],
+      "macos",
+    );
+
+    expect(programs.entries.map((entry) => entry.tags?.map((tag) => tag.label) ?? [])).toEqual([
+      ["Any arguments"],
+      ["Any arguments"],
+      [],
+      ["Any value"],
+      [],
     ]);
   });
 

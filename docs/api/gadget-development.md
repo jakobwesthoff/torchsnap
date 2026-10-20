@@ -1146,6 +1146,11 @@ own package (`${gadget-archive}`) are off limits:
   those areas. `~`, `~/Library` and `~/Library/Application Support`
   contain the app data directory, so they cannot be used.
 
+The install review says for every command rule that the program runs
+outside the gadget's sandbox with the user's rights, and marks a rule
+"Any arguments" when an argv position (or the `rest` constraint) is
+`any-string`, and "Any value" when a declared env value is.
+
 The program gets a minimal environment, not Torchsnap's: `LANG`,
 `LANGUAGE`, `LC_*`, `TZ` and `__CF_USER_TEXT_ENCODING` from the
 host, `PATH` set to

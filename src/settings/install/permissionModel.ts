@@ -28,22 +28,39 @@ export interface GroupEntry {
   detail?: string;
   /** Further conditions of a command rule, one line each. */
   lines?: string[];
+  /** Labels that call out what an entry leaves to the gadget. */
+  tags?: EntryTag[];
   change: PermissionChange;
   broad: boolean;
+}
+
+export interface EntryTag {
+  label: string;
+  hint: string;
 }
 
 export interface PermissionGroup {
   id: GroupId;
   title: string;
   icon: string;
+  /** One sentence about every entry of the group. */
+  note?: string;
   broad: boolean;
   entries: GroupEntry[];
   /** Entries that only apply on another operating system. */
   otherSystems: GroupEntry[];
 }
 
-const GROUPS: { id: GroupId; title: string; icon: string }[] = [
-  { id: "programs", title: "Runs programs", icon: "heroicons:command-line" },
+// The review describes every command grant the same way and names no
+// programs: what a program does with its arguments and configuration
+// is not something the review can judge.
+const GROUPS: { id: GroupId; title: string; icon: string; note?: string }[] = [
+  {
+    id: "programs",
+    title: "Runs programs",
+    icon: "heroicons:command-line",
+    note: "Each program runs outside the gadget's sandbox, with your rights.",
+  },
   { id: "network", title: "Network", icon: "heroicons:globe-alt" },
   { id: "files", title: "Files", icon: "heroicons:document" },
   { id: "links", title: "Opens links", icon: "heroicons:link" },
@@ -79,6 +96,21 @@ export function groupPermissions(
   );
 }
 
+const ANY_ARGUMENTS: EntryTag = {
+  label: "Any arguments",
+  hint: "The gadget can pass this program arguments of its choosing, so it can make the program do anything those arguments allow.",
+};
+
+const ANY_VALUE: EntryTag = {
+  label: "Any value",
+  hint: "The gadget can set this variable to a value of its choosing.",
+};
+
+/** Whether a constraint takes any text, alone or for every remaining argument. */
+function acceptsAnyText(rule: ArgvRule): boolean {
+  return rule.kind === "anyString" || (rule.kind === "rest" && acceptsAnyText(rule.constraint));
+}
+
 /** Where one grant belongs and how it reads. */
 function describe(item: PermissionItem): { group: GroupId; entry: GroupEntry; path?: string } {
   const base = { change: item.change, broad: item.severity === "warning" };
@@ -99,6 +131,10 @@ function describe(item: PermissionItem): { group: GroupId; entry: GroupEntry; pa
               ? []
               : [`in ${shortenPath(permission.cwd)} or a folder inside it`]),
             ...permission.env.map(({ key, value }) => `sets ${key} to ${describeArgv(value)}`),
+          ],
+          tags: [
+            ...(permission.argv.some(acceptsAnyText) ? [ANY_ARGUMENTS] : []),
+            ...(permission.env.some(({ value }) => acceptsAnyText(value)) ? [ANY_VALUE] : []),
           ],
         },
       };

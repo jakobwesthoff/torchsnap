@@ -148,7 +148,13 @@ interpreter runs; the review shows such an argument as written.
 ### Install review
 
 The review shows each command rule's `cwd` and declared variables as
-written, so a rule whose `cwd` or variables change is a new grant. Per-rule timeout, output and stdin limits
+written, so a rule whose `cwd` or variables change is a new grant. It
+describes every command grant the same way and names no programs: the
+"Runs programs" group says "Each program runs outside the gadget's
+sandbox, with your rights.", a rule with an `any-string` argument,
+alone or as the `rest` constraint, is marked "Any arguments", and a
+rule with an `any-string` variable is marked "Any value". The gadget
+cards in the settings show the same. Per-rule timeout, output and stdin limits
 stay out of the review while the host does not enforce them.
 
 ## Consequences

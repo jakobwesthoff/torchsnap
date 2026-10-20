@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values in a rule cannot point into Torchsnap's data folder, which holds
   every gadget's data, and a program cannot run in or be handed a folder
   that lies in or contains it; the install review refuses a gadget whose
-  rules do. The install review shows each rule's folder and variables.
+  rules do. The install review shows each rule's folder and variables,
+  says that programs run outside the gadget's sandbox with your rights,
+  and marks rules that accept any argument or any variable value.
 
 ### Fixed
 

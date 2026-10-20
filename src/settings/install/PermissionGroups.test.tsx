@@ -57,6 +57,36 @@ describe("PermissionGroups", () => {
     expect(within(programs).getByText("in ~/projects or a folder inside it")).toBeInTheDocument();
   });
 
+  it("says that programs run outside the sandbox and marks free arguments", () => {
+    const anyGit: PermissionItem = {
+      permission: {
+        kind: "command",
+        binary: "git",
+        argv: [{ kind: "rest", constraint: { kind: "anyString" } }],
+        cwd: null,
+        env: [],
+      },
+      severity: "warning",
+      change: "unchanged",
+    };
+    render(<PermissionGroups items={[anyGit]} platform="macos" />);
+
+    const programs = screen.getByRole("group", { name: "Runs programs" });
+    expect(programs).toHaveTextContent(
+      "Each program runs outside the gadget's sandbox, with your rights.",
+    );
+    expect(within(programs).getByText("Any arguments")).toHaveAttribute(
+      "title",
+      "The gadget can pass this program arguments of its choosing, so it can make the program do anything those arguments allow.",
+    );
+  });
+
+  it("shows no programs note without command rules", () => {
+    render(<PermissionGroups items={[clipboard]} platform="macos" />);
+
+    expect(screen.queryByText(/outside the gadget's sandbox/)).not.toBeInTheDocument();
+  });
+
   it("strikes through the folder of a removed command rule", () => {
     const removedGit: PermissionItem = {
       permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects", env: [] },
