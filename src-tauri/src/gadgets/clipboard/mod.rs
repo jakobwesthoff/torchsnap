@@ -18,7 +18,8 @@
 // Lifecycle:
 //   The host manages enable/disable. On enable(), the gadget
 //   opens its database, starts the clipboard watcher and the
-//   retention cleanup thread. On disable(), both are stopped.
+//   retention cleanup thread. When the system clipboard cannot
+//   be acquired, enable() fails. On disable(), both are stopped.
 //   The host calls setting_changed() for runtime updates to
 //   retentionDays and bringToFrontOnPaste.
 // =========================================================
@@ -107,6 +108,27 @@ pub struct ClipboardGadget {
     /// Whether to bump pasted entries to the top of history.
     /// Updated by the host via `setting_changed("bringToFrontOnPaste", ...)`.
     bring_to_front: AtomicBool,
+
+    /// Acquires the system clipboard for the watcher. Always
+    /// [`open_system_clipboard`] outside tests, which replace it to
+    /// make the acquisition fail.
+    open_clipboard: fn() -> Result<ClipboardAccess>,
+}
+
+/// What the clipboard watcher needs from the system.
+struct ClipboardAccess {
+    watcher: ClipboardWatcherContext<WatcherHandler>,
+    clipboard: ClipboardContext,
+}
+
+/// Acquire the system clipboard. On macOS this cannot fail; on Linux
+/// it fails without a reachable X server.
+fn open_system_clipboard() -> Result<ClipboardAccess> {
+    let watcher = ClipboardWatcherContext::new()
+        .map_err(|e| anyhow::anyhow!("create clipboard watcher: {e}"))?;
+    let clipboard =
+        ClipboardContext::new().map_err(|e| anyhow::anyhow!("acquire clipboard context: {e}"))?;
+    Ok(ClipboardAccess { watcher, clipboard })
 }
 
 impl ClipboardGadget {
@@ -127,6 +149,7 @@ impl ClipboardGadget {
             retention_condvar: Arc::new(Condvar::new()),
             retention_days: Arc::new(AtomicU32::new(30)),
             bring_to_front: AtomicBool::new(true),
+            open_clipboard: open_system_clipboard,
         }
     }
 
@@ -150,33 +173,35 @@ fn retention_days_from(days: u64) -> u32 {
     u32::try_from(days).unwrap_or(u32::MAX).max(1)
 }
 
-/// Start the clipboard watcher and retention cleanup thread.
+/// Start the clipboard watcher and retention cleanup thread on the
+/// acquired clipboard.
 ///
 /// Standalone function (not a method) so it can be called from
 /// `enable()` without borrowing issues.
 fn start_watcher(
+    access: ClipboardAccess,
     platform: &Arc<dyn ClipboardPlatform>,
     state: &Arc<SharedState>,
     lifecycle: &Arc<Mutex<WatcherLifecycle>>,
     retention_condvar: &Arc<Condvar>,
     retention_days: &Arc<AtomicU32>,
-) -> Result<()> {
+) {
     let mut lc = lifecycle.lock().expect("lifecycle not poisoned");
     if lc.running {
-        return Ok(());
+        return;
     }
 
     // ----- Clipboard watcher thread -----
-    let mut watcher_ctx: ClipboardWatcherContext<WatcherHandler> =
-        ClipboardWatcherContext::new()
-            .map_err(|e| anyhow::anyhow!("create clipboard watcher: {e}"))?;
+    let ClipboardAccess {
+        watcher: mut watcher_ctx,
+        clipboard,
+    } = access;
 
     let handler = WatcherHandler {
         platform: Arc::clone(platform),
         state: Arc::clone(state),
         shutdown: Arc::clone(lifecycle),
-        clipboard: ClipboardContext::new()
-            .map_err(|e| anyhow::anyhow!("acquire clipboard context: {e}"))?,
+        clipboard,
     };
 
     watcher_ctx.add_handler(handler);
@@ -204,8 +229,6 @@ fn start_watcher(
             retention_days,
         );
     });
-
-    Ok(())
 }
 
 /// Stop the clipboard watcher and signal the retention thread
@@ -303,6 +326,12 @@ impl Gadget for ClipboardGadget {
 
         let shared = Arc::new(SharedState::open(&data_dir)?);
 
+        // Without the clipboard the gadget records nothing and its
+        // retention cleanup never runs, so it fails to start. Acquiring
+        // the clipboard before the state is kept means a failure leaves
+        // nothing behind.
+        let access = (self.open_clipboard)().context("start the clipboard watcher")?;
+
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
 
         // Read initial values for settings managed via setting_changed.
@@ -322,15 +351,14 @@ impl Gadget for ClipboardGadget {
         }
 
         // ----- Start watcher + retention thread -----
-        if let Err(e) = start_watcher(
+        start_watcher(
+            access,
             &self.platform,
             &shared,
             &self.lifecycle,
             &self.retention_condvar,
             &self.retention_days,
-        ) {
-            eprintln!("clipboard: failed to start watcher: {e:#}");
-        }
+        );
         Ok(())
     }
 
@@ -638,6 +666,33 @@ mod tests {
             .expect_err("enable fails without a database");
 
         assert!(format!("{error:#}").contains("open clipboard database"));
+    }
+
+    /// Only acquires the handles; nothing reads or writes the
+    /// pasteboard, and no watcher starts.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_system_clipboard_is_acquired_on_macos() {
+        assert!(open_system_clipboard().is_ok());
+    }
+
+    #[test]
+    fn enable_fails_when_the_clipboard_cannot_be_acquired() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut gadget = gadget_with_data_dir(dir.path());
+        gadget.open_clipboard = || anyhow::bail!("no pasteboard");
+
+        let error = gadget
+            .enable()
+            .expect_err("enable fails without a clipboard");
+
+        let chain = format!("{error:#}");
+        assert!(chain.contains("start the clipboard watcher"), "{chain}");
+        assert!(chain.contains("no pasteboard"), "{chain}");
+        let not_enabled = gadget
+            .handle_message("stats", serde_json::Value::Null, discarding_channel())
+            .expect_err("a failed enable keeps no state");
+        assert!(format!("{not_enabled:#}").contains("not enabled"));
     }
 
     #[test]
