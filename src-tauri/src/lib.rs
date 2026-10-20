@@ -655,6 +655,38 @@ pub(crate) fn show_launcher_window(app: &tauri::AppHandle) {
     }
 }
 
+/// What the run loop does with a close request on a window.
+#[derive(Debug, PartialEq, Eq)]
+enum CloseRequestAction {
+    /// Keep the launcher window and hide it.
+    HideLauncherWindow,
+    /// Keep the window open.
+    PreventClose,
+    /// Let the window close. The settings, developer tools and update
+    /// windows are built again when next opened.
+    Close,
+}
+
+/// `welcome_finished` is asked only for the welcome window.
+fn close_request_action(
+    label: &str,
+    welcome_finished: impl FnOnce() -> bool,
+) -> CloseRequestAction {
+    match label {
+        "main" => CloseRequestAction::HideLauncherWindow,
+        // The welcome window closes only once it is finished; before
+        // that, its close control and Cmd+W do nothing.
+        label if label == WELCOME_WINDOW.label => {
+            if welcome_finished() {
+                CloseRequestAction::Close
+            } else {
+                CloseRequestAction::PreventClose
+            }
+        }
+        _ => CloseRequestAction::Close,
+    }
+}
+
 // =========================================================
 // Frecency Commands
 // =========================================================
@@ -1323,12 +1355,16 @@ pub fn run() {
             label,
             event: WindowEvent::CloseRequested { api, .. },
             ..
-        } if label == "main" => {
-            api.prevent_close();
-            if let Some(win) = app.get_webview_window(label) {
-                let _ = win.hide();
+        } => match close_request_action(label, || welcome::may_close(app)) {
+            CloseRequestAction::HideLauncherWindow => {
+                api.prevent_close();
+                if let Some(win) = app.get_webview_window(label) {
+                    let _ = win.hide();
+                }
             }
-        }
+            CloseRequestAction::PreventClose => api.prevent_close(),
+            CloseRequestAction::Close => {}
+        },
         // However the update window closes (its close control, Later,
         // Close), the update state learns about it here.
         RunEvent::WindowEvent {
@@ -1336,17 +1372,6 @@ pub fn run() {
             event: WindowEvent::Destroyed,
             ..
         } if label == UPDATE_WINDOW.label => updates::update_window_closed(app),
-        // The welcome window closes only once it is finished; before
-        // that, its close control and Cmd+W do nothing.
-        RunEvent::WindowEvent {
-            label,
-            event: WindowEvent::CloseRequested { api, .. },
-            ..
-        } if label == WELCOME_WINDOW.label => {
-            if !welcome::may_close(app) {
-                api.prevent_close();
-            }
-        }
         RunEvent::WindowEvent {
             label,
             event: WindowEvent::Destroyed,
@@ -1653,5 +1678,67 @@ mod launcher_tests {
     #[test]
     fn a_hidden_launcher_with_layout_is_shown() {
         assert_eq!(launcher_show_step(false, true), LauncherShowStep::Show);
+    }
+
+    /// Passed for every window but the welcome window, whose state no
+    /// other window's close request may depend on.
+    fn welcome_flag_must_not_be_read() -> bool {
+        panic!("the welcome flag is read only for the welcome window")
+    }
+
+    #[test]
+    fn a_close_request_on_the_launcher_hides_it() {
+        assert_eq!(
+            close_request_action("main", welcome_flag_must_not_be_read),
+            CloseRequestAction::HideLauncherWindow
+        );
+    }
+
+    #[test]
+    fn a_close_request_keeps_an_unfinished_welcome_window_open() {
+        assert_eq!(
+            close_request_action(WELCOME_WINDOW.label, || false),
+            CloseRequestAction::PreventClose
+        );
+    }
+
+    #[test]
+    fn a_close_request_closes_a_finished_welcome_window() {
+        assert_eq!(
+            close_request_action(WELCOME_WINDOW.label, || true),
+            CloseRequestAction::Close
+        );
+    }
+
+    #[test]
+    fn a_close_request_closes_the_settings_window() {
+        assert_eq!(
+            close_request_action(SETTINGS_WINDOW.label, welcome_flag_must_not_be_read),
+            CloseRequestAction::Close
+        );
+    }
+
+    #[test]
+    fn a_close_request_closes_the_developer_tools_window() {
+        assert_eq!(
+            close_request_action(DEVTOOLS_WINDOW.label, welcome_flag_must_not_be_read),
+            CloseRequestAction::Close
+        );
+    }
+
+    #[test]
+    fn a_close_request_closes_the_update_window() {
+        assert_eq!(
+            close_request_action(UPDATE_WINDOW.label, welcome_flag_must_not_be_read),
+            CloseRequestAction::Close
+        );
+    }
+
+    #[test]
+    fn a_close_request_closes_an_unknown_window() {
+        assert_eq!(
+            close_request_action("other", welcome_flag_must_not_be_read),
+            CloseRequestAction::Close
+        );
     }
 }
