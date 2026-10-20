@@ -333,65 +333,71 @@ function PluginRowView({
   const switchDisabled = !row.loaded || change?.kind === "uninstalled";
 
   return (
-    <div data-gadget={row.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
-      <div className={cn("flex min-w-0 flex-1 items-start gap-3", dimmed && "opacity-60")}>
-        {row.icon && (
-          <Icon
-            icon={row.icon}
-            className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
-          />
-        )}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium text-text-primary">
-            {row.label}
-            {versionText(row) && (
-              <span className="ml-1.5 text-xs font-normal text-text-tertiary">
-                {versionText(row)}
-              </span>
-            )}
-          </span>
-          {row.description && (
-            <span className="truncate text-xs text-text-tertiary">{row.description}</span>
-          )}
-          {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
-          {row.loaded && enabled !== false && (
-            <GadgetEnableFailureNote
-              gadgetId={row.id}
-              name={row.label}
-              retryDisabled={switchDisabled}
-              className="mt-2"
+    <div data-gadget={row.id} className="flex flex-col py-2 first:pt-0 last:pb-0">
+      <div className="flex items-start gap-3">
+        <div className={cn("flex min-w-0 flex-1 items-start gap-3", dimmed && "opacity-60")}>
+          {row.icon && (
+            <Icon
+              icon={row.icon}
+              className="h-8 w-8 shrink-0 rounded-md bg-surface-hover p-1.5 text-text-primary"
             />
           )}
-          {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-medium text-text-primary">
+              {row.label}
+              {versionText(row) && (
+                <span className="ml-1.5 text-xs font-normal text-text-tertiary">
+                  {versionText(row)}
+                </span>
+              )}
+            </span>
+            {row.description && (
+              <span className="truncate text-xs text-text-tertiary">{row.description}</span>
+            )}
+            {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
+            {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
+          </div>
+        </div>
+        <Switch checked={enabled ?? true} onChange={setEnabled} disabled={switchDisabled} />
+        {/* Trailing slot: Undo for a pending change, Uninstall for user
+            gadgets, the source badge for every other kind. Its fixed
+            width keeps every switch in the same column. */}
+        <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
+          {change ? (
+            <button
+              type="button"
+              onClick={() => onUndo(row.id)}
+              title="Undo this change before it takes effect"
+              className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
+            >
+              Undo
+            </button>
+          ) : canUninstall ? (
+            <button
+              type="button"
+              onClick={() => onUninstall(row.id)}
+              title="Uninstall this user gadget"
+              className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+            >
+              Uninstall
+            </button>
+          ) : (
+            <SourceBadge kind={row.sourceKind} />
+          )}
         </div>
       </div>
-      <Switch checked={enabled ?? true} onChange={setEnabled} disabled={switchDisabled} />
-      {/* Trailing slot: Undo for a pending change, Uninstall for user
-          gadgets, the source badge for every other kind. Its fixed
-          width keeps every switch in the same column. */}
-      <div data-slot="trailing" className="flex w-32 shrink-0 justify-end">
-        {change ? (
-          <button
-            type="button"
-            onClick={() => onUndo(row.id)}
-            title="Undo this change before it takes effect"
-            className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/15"
-          >
-            Undo
-          </button>
-        ) : canUninstall ? (
-          <button
-            type="button"
-            onClick={() => onUninstall(row.id)}
-            title="Uninstall this user gadget"
-            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-          >
-            Uninstall
-          </button>
-        ) : (
-          <SourceBadge kind={row.sourceKind} />
-        )}
-      </div>
+      {/* The failure note spans the whole row below its line, from
+          under the icon to under the badge. It sits outside the dimmed
+          part, so it takes the row's dimming itself and never looks
+          more alive than its row. */}
+      {row.loaded && enabled !== false && (
+        <GadgetEnableFailureNote
+          gadgetId={row.id}
+          name={row.label}
+          retryDisabled={switchDisabled}
+          className={cn("mt-2", dimmed && "opacity-60")}
+        />
+      )}
     </div>
   );
 }

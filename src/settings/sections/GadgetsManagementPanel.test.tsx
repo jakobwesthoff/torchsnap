@@ -491,4 +491,54 @@ describe("GadgetsManagementPanel", () => {
     const note = await within(await card("Weather")).findByRole("alert");
     expect(within(note).getByRole("button", { name: "Retry" })).toBeDisabled();
   });
+
+  it("spans a failed gadget's note across its row, below the rest", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({ weather: "no key" }),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const row = await card("Weather");
+    const note = await within(row).findByRole("alert");
+
+    // jsdom has no layout: a column row whose last child is the note,
+    // after the line with the name, the switch and the trailing slot,
+    // is what gives the note the row's full width.
+    expect(row).toHaveClass("flex-col");
+    expect(note.parentElement).toBe(row);
+    expect(row.lastElementChild).toBe(note);
+    const line = note.previousElementSibling as HTMLElement;
+    expect(line).toContainElement(within(row).getByText("Weather"));
+    expect(line).toContainElement(within(row).getByRole("switch"));
+    expect(line).toContainElement(row.querySelector<HTMLElement>("[data-slot='trailing']"));
+    expect(note.closest(".opacity-60")).toBeNull();
+  });
+
+  it("dims the note with the rest of a row that is removed on restart", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({
+        weather: {
+          kind: "uninstalled",
+          name: "Weather",
+          description: "Forecasts",
+          version: null,
+          previousVersion: "1.0.0",
+        },
+      }),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ weather: "user" }),
+      gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({ weather: "no key" }),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const note = await within(await card("Weather")).findByRole("alert");
+    expect(note.closest(".opacity-60")).not.toBeNull();
+  });
 });
