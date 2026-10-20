@@ -8,7 +8,7 @@ tags: [security, capabilities, linux, windows]
 ---
 # Decide how command confinement works on Linux and Windows
 
-The confinement of gadget command grants (decided 2026-10-20 in the cwd, env and config-reading todos, implemented on macOS) is built from macOS-specific values. Linux and Windows need their own values, or a decision that the command capability is not offered there until they exist. Whether a port is worth doing at all, and how, is open; this todo records what has to be decided. Code comments at each macOS-specific place cite this todo.
+The confinement of gadget command grants (ADR 0066, implemented on macOS) is built from macOS-specific values. Linux and Windows need their own values, or a decision that the command capability is not offered there until they exist. Whether a port is worth doing at all, and how, is open; this todo records what has to be decided. Code comments at each macOS-specific place cite this todo.
 
 ## What is macOS-specific
 
@@ -18,6 +18,8 @@ The confinement of gadget command grants (decided 2026-10-20 in the cwd, env and
 - The per-spawn `HOME`, `TMPDIR` and cwd directory: its location, the 0700 permissions and the chmod-then-remove cleanup are POSIX; Windows uses ACLs, `USERPROFILE`, `TEMP` and `TMP` instead of `HOME` and `TMPDIR`.
 - The area the gadget may write (the app data directory and its layout) and the path checks: `/` separators, case-insensitive APFS comparison, symlinks; Windows adds drive letters, UNC paths, `\\?\` prefixes, short 8.3 names and junctions.
 - Binary resolution: a bare `binary` name is looked up on macOS paths; Windows also resolves extensions through `PATHEXT`.
+- `path_tokens` splits list values at `:`, which would cut Windows drive letters (`C:\...`).
+- `cfg(unix)` code: the uid check in the sweep of stale per-spawn directories, and `make_tree_removable`, which does nothing on other platforms.
 
 ## Open questions
 
