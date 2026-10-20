@@ -129,11 +129,32 @@ pub(crate) fn apply_enabled_setting(
 /// Whether Retry may start a gadget, given its stored `enabled.<id>`
 /// value: only while the user has it turned on. Retry restarts a
 /// failed gadget; it never overrides the switch.
-pub(crate) fn retry_allowed(stored: Option<&serde_json::Value>) -> anyhow::Result<()> {
+fn retry_allowed(stored: Option<&serde_json::Value>) -> anyhow::Result<()> {
     match stored {
         Some(serde_json::Value::Bool(true)) => Ok(()),
         _ => anyhow::bail!("the gadget is turned off"),
     }
+}
+
+/// Retry a gadget's start: `stored` reads its `enabled.<id>` setting,
+/// `dispatch` delivers a switch value the way a settings change does.
+///
+/// The stored setting is read again afterwards: when the user turned
+/// the gadget off between the first read and the dispatch, the `true`
+/// dispatched here would otherwise leave a gadget running whose switch
+/// is off.
+pub(crate) fn retry_with(
+    stored: impl Fn() -> Option<serde_json::Value>,
+    dispatch: impl Fn(bool),
+) -> anyhow::Result<()> {
+    retry_allowed(stored().as_ref())?;
+
+    dispatch(true);
+
+    if retry_allowed(stored().as_ref()).is_err() {
+        dispatch(false);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -434,6 +455,65 @@ mod tests {
     #[test]
     fn a_stored_setting_that_is_not_a_bool_is_not_retried() {
         assert!(retry_allowed(Some(&serde_json::json!("true"))).is_err());
+    }
+
+    // -----------------------------------------------------
+    // retry_with
+    // -----------------------------------------------------
+
+    /// Runs `retry_with` against stored values read in turn, and
+    /// returns its result with the switch values it dispatched.
+    fn retry_reading(stored: &[Option<serde_json::Value>]) -> (anyhow::Result<()>, Vec<bool>) {
+        let reads = Mutex::new(stored.iter().cloned());
+        let dispatched = Mutex::new(Vec::new());
+        let result = retry_with(
+            || {
+                reads
+                    .lock()
+                    .expect("not poisoned")
+                    .next()
+                    .expect("the test supplies every read")
+            },
+            |on| dispatched.lock().expect("not poisoned").push(on),
+        );
+        (result, dispatched.into_inner().expect("not poisoned"))
+    }
+
+    #[test]
+    fn a_retry_of_a_gadget_that_stays_on_dispatches_only_the_start() {
+        let on = Some(serde_json::json!(true));
+
+        let (result, dispatched) = retry_reading(&[on.clone(), on]);
+
+        assert!(result.is_ok());
+        assert_eq!(dispatched, [true]);
+    }
+
+    #[test]
+    fn a_retry_of_a_gadget_that_is_off_dispatches_nothing() {
+        let (result, dispatched) = retry_reading(&[Some(serde_json::json!(false))]);
+
+        assert!(result.is_err());
+        assert!(dispatched.is_empty());
+    }
+
+    #[test]
+    fn a_retry_of_a_gadget_without_a_stored_setting_dispatches_nothing() {
+        let (result, dispatched) = retry_reading(&[None]);
+
+        assert!(result.is_err());
+        assert!(dispatched.is_empty());
+    }
+
+    #[test]
+    fn a_retry_turns_the_gadget_off_again_when_it_was_switched_off_meanwhile() {
+        let (result, dispatched) = retry_reading(&[
+            Some(serde_json::json!(true)),
+            Some(serde_json::json!(false)),
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(dispatched, [true, false]);
     }
 
     // -----------------------------------------------------

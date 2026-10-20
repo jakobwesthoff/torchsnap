@@ -43,7 +43,7 @@ use crate::entry_store::{EntryStore, SearchGeneration};
 use crate::frecency::FrecencyStore;
 use crate::gadget_status::{
     EnableFailures, GADGET_ENABLE_FAILURES_CHANGED, apply_enabled_setting, enable_gadget,
-    retry_allowed,
+    retry_with,
 };
 use crate::gadgets::Gadget;
 use crate::icons::IconCache;
@@ -100,11 +100,14 @@ enum ViewKind {
 // Gadget construction
 // =========================================================
 
-/// Construct a gadget from its provisioned caps and wrap it in a slot.
+/// Construct a gadget from its provisioned caps and wrap it in a slot
+/// that reports to the host's `failures` and `shortcut_signal`.
 fn build_slot<G, F>(
     caps: Arc<crate::caps::ProvisionedCaps>,
     factory: F,
     source_kind: GadgetSourceKind,
+    failures: Arc<EnableFailures>,
+    shortcut_signal: mpsc::Sender<()>,
 ) -> anyhow::Result<GadgetSlot>
 where
     G: Gadget + 'static,
@@ -114,6 +117,8 @@ where
     Ok(GadgetSlot::new(
         Arc::new(gadget) as Arc<dyn Gadget>,
         source_kind,
+        failures,
+        shortcut_signal,
     ))
 }
 
@@ -229,15 +234,30 @@ struct GadgetSlot {
     /// this gadget. Both `enabled.<id>` changes and
     /// `gadgets.<id>.*` changes are funneled through here.
     dispatcher: CoalescingDispatcher,
+
+    /// The host's record of enable failures, kept by the slot so that
+    /// whichever caller drains the dispatcher records into the same
+    /// place.
+    failures: Arc<EnableFailures>,
+
+    /// Wakes the host's shortcut reactor after a switch change.
+    shortcut_signal: mpsc::Sender<()>,
 }
 
 impl GadgetSlot {
-    fn new(gadget: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> Self {
+    fn new(
+        gadget: Arc<dyn Gadget>,
+        source_kind: GadgetSourceKind,
+        failures: Arc<EnableFailures>,
+        shortcut_signal: mpsc::Sender<()>,
+    ) -> Self {
         Self {
             gadget,
             source_kind,
             enabled: Arc::new(AtomicBool::new(true)),
             dispatcher: CoalescingDispatcher::new(),
+            failures,
+            shortcut_signal,
         }
     }
 
@@ -246,6 +266,64 @@ impl GadgetSlot {
     fn is_active(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
+
+    /// Deliver a settings change to this gadget.
+    fn submit(&self, change: SlotChange, value: serde_json::Value) {
+        match change {
+            SlotChange::Enabled => self.submit_enabled(value),
+            SlotChange::Setting(key) => self.submit_setting(&key, value),
+        }
+    }
+
+    /// Apply a change of the gadget's `enabled.<id>` setting.
+    fn submit_enabled(&self, value: serde_json::Value) {
+        self.dispatcher
+            .enqueue(format!("enabled.{}", self.gadget.id()), value);
+
+        self.dispatcher.dispatch(|dispatch_key, dispatch_value| {
+            if !dispatch_key.starts_with("enabled.") {
+                return;
+            }
+
+            let new_enabled = dispatch_value.as_bool().unwrap_or(true);
+            apply_enabled_setting(&*self.gadget, &self.enabled, &self.failures, new_enabled);
+        });
+
+        // Always signal shortcut reactor on enabled changes
+        // so shortcuts are re-registered accordingly.
+        let _ = self.shortcut_signal.try_send(());
+    }
+
+    /// Deliver a change of one of the gadget's own settings, by its
+    /// key relative to `gadgets.<id>.`.
+    fn submit_setting(&self, key: &str, value: serde_json::Value) {
+        self.dispatcher.enqueue(key.to_string(), value);
+        self.dispatcher.dispatch(|k, v| {
+            self.gadget.setting_changed(k, v.clone());
+        });
+    }
+}
+
+/// What a settings key changes for the gadget it belongs to.
+#[derive(Debug, PartialEq, Eq)]
+enum SlotChange {
+    /// The host-managed `enabled.<id>` switch.
+    Enabled,
+    /// One of the gadget's own settings, by its key relative to
+    /// `gadgets.<id>.`.
+    Setting(String),
+}
+
+/// The gadget id a settings key belongs to and what it changes there;
+/// `None` for keys outside the gadget namespaces. A gadget settings key
+/// splits at the first dot after `gadgets.`, so the relative key may
+/// itself contain dots.
+fn route_setting_key(key: &str) -> Option<(&str, SlotChange)> {
+    if let Some(gadget_id) = key.strip_prefix("enabled.") {
+        return Some((gadget_id, SlotChange::Enabled));
+    }
+    let (gadget_id, setting_key) = key.strip_prefix("gadgets.")?.split_once('.')?;
+    Some((gadget_id, SlotChange::Setting(setting_key.to_string())))
 }
 
 // =========================================================
@@ -477,7 +555,13 @@ impl GadgetHost {
         F: FnOnce(Arc<crate::caps::ProvisionedCaps>) -> anyhow::Result<G>,
     {
         let caps = Self::build_provisioned_caps(gadget_id, &requests, ctx, source_path)?;
-        self.slots.push(build_slot(caps, factory, source_kind)?);
+        self.slots.push(build_slot(
+            caps,
+            factory,
+            source_kind,
+            Arc::clone(&self.enable_failures),
+            self.shortcut_signal_tx.clone(),
+        )?);
         Ok(())
     }
 
@@ -644,25 +728,16 @@ impl GadgetHost {
     }
 
     /// Start a gadget that failed to start again, the way switching it
-    /// on does. Blocks while `enable()` runs.
-    ///
-    /// The stored setting is read again afterwards: when the user
-    /// turned the gadget off between the first read and the dispatch,
-    /// the `true` dispatched here would otherwise leave a gadget
-    /// running whose switch is off.
+    /// on does (`retry_with`). Blocks while `enable()` runs.
     pub fn retry_enable(&self, gadget_id: &str) -> anyhow::Result<()> {
         if !self.slots.iter().any(|s| s.gadget.id() == gadget_id) {
             anyhow::bail!("unknown gadget source: {gadget_id}");
         }
         let key = format!("enabled.{gadget_id}");
-        retry_allowed(self.store.get(&key).as_ref())?;
-
-        self.handle_setting_changed(&key, serde_json::Value::Bool(true));
-
-        if retry_allowed(self.store.get(&key).as_ref()).is_err() {
-            self.handle_setting_changed(&key, serde_json::Value::Bool(false));
-        }
-        Ok(())
+        retry_with(
+            || self.store.get(&key),
+            |on| self.handle_setting_changed(&key, serde_json::Value::Bool(on)),
+        )
     }
 
     fn register_all_shortcuts(&self, app: &tauri::AppHandle) {
@@ -1144,57 +1219,20 @@ impl GadgetHost {
     /// Both paths go through the gadget's `CoalescingDispatcher`
     /// for serialization and dedup.
     pub fn handle_setting_changed(&self, key: &str, value: serde_json::Value) {
-        // -------------------------------------------------------
-        // Path 1: enabled.<gadget-id>
-        // -------------------------------------------------------
-        if let Some(gadget_id) = key.strip_prefix("enabled.") {
-            let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == gadget_id) else {
-                return;
-            };
-
-            slot.dispatcher.enqueue(key.to_string(), value);
-
-            let gadget = Arc::clone(&slot.gadget);
-            let enabled_flag = &slot.enabled;
-
-            slot.dispatcher.dispatch(|dispatch_key, dispatch_value| {
-                let Some(_id) = dispatch_key.strip_prefix("enabled.") else {
-                    return;
-                };
-
-                let new_enabled = dispatch_value.as_bool().unwrap_or(true);
-                apply_enabled_setting(&*gadget, enabled_flag, &self.enable_failures, new_enabled);
-            });
-
-            // Always signal shortcut reactor on enabled changes
-            // so shortcuts are re-registered accordingly.
-            self.notify_shortcut_change();
-            return;
-        }
-
-        // -------------------------------------------------------
-        // Path 2: gadgets.<gadget-id>.<setting-key>
-        // -------------------------------------------------------
-        if let Some(rest) = key.strip_prefix("gadgets.") {
-            // Split "gadget-id.setting-key" at the first dot.
-            let Some(dot_pos) = rest.find('.') else {
-                return;
-            };
-            let gadget_id = &rest[..dot_pos];
-            let setting_key = &rest[dot_pos + 1..];
-
-            let Some(slot) = self.slots.iter().find(|s| s.gadget.id() == gadget_id) else {
-                return;
-            };
-
-            slot.dispatcher.enqueue(setting_key.to_string(), value);
-
-            let gadget = Arc::clone(&slot.gadget);
-            slot.dispatcher.dispatch(|k, v| {
-                gadget.setting_changed(k, v.clone());
-            });
-        }
+        deliver_setting_change(&self.slots, key, value);
     }
+}
+
+/// Hand a settings change to the slot of the gadget its key belongs
+/// to; keys of no registered gadget are ignored.
+fn deliver_setting_change(slots: &[GadgetSlot], key: &str, value: serde_json::Value) {
+    let Some((gadget_id, change)) = route_setting_key(key) else {
+        return;
+    };
+    let Some(slot) = slots.iter().find(|s| s.gadget.id() == gadget_id) else {
+        return;
+    };
+    slot.submit(change, value);
 }
 
 // =========================================================
@@ -1592,6 +1630,18 @@ mod tests {
         );
     }
 
+    /// A slot with its own enable failures and a shortcut signal
+    /// nobody reads, for tests that do not look at either.
+    fn test_slot(gadget: Arc<dyn Gadget>, source_kind: GadgetSourceKind) -> GadgetSlot {
+        let (shortcut_signal, _unread) = mpsc::channel(1);
+        GadgetSlot::new(
+            gadget,
+            source_kind,
+            Arc::new(EnableFailures::default()),
+            shortcut_signal,
+        )
+    }
+
     /// Helper to wrap mock gadgets in `GadgetSlot`. Tests
     /// default slots to `GadgetSourceKind::Builtin` since
     /// they exercise host routing logic, not source-kind
@@ -1602,7 +1652,7 @@ mod tests {
             .into_iter()
             .map(|p| {
                 let enabled = p.enabled;
-                let slot = GadgetSlot::new(Arc::new(p), GadgetSourceKind::Builtin);
+                let slot = test_slot(Arc::new(p), GadgetSourceKind::Builtin);
                 slot.enabled.store(enabled, Ordering::Relaxed);
                 slot
             })
@@ -1950,7 +2000,7 @@ mod tests {
             GadgetSourceKind::User,
             GadgetSourceKind::Dev,
         ] {
-            let slot = GadgetSlot::new(Arc::new(MockGadget::new("probe")), kind);
+            let slot = test_slot(Arc::new(MockGadget::new("probe")), kind);
             assert_eq!(slot.source_kind, kind);
         }
     }
@@ -1989,16 +2039,16 @@ mod tests {
     #[test]
     fn slot_aggregation_produces_expected_source_map() {
         let slots = [
-            GadgetSlot::new(
+            test_slot(
                 Arc::new(MockGadget::new("builtin-a")),
                 GadgetSourceKind::Builtin,
             ),
-            GadgetSlot::new(
+            test_slot(
                 Arc::new(MockGadget::new("system-x")),
                 GadgetSourceKind::System,
             ),
-            GadgetSlot::new(Arc::new(MockGadget::new("user-y")), GadgetSourceKind::User),
-            GadgetSlot::new(Arc::new(MockGadget::new("dev-z")), GadgetSourceKind::Dev),
+            test_slot(Arc::new(MockGadget::new("user-y")), GadgetSourceKind::User),
+            test_slot(Arc::new(MockGadget::new("dev-z")), GadgetSourceKind::Dev),
         ];
         let map: std::collections::HashMap<String, GadgetSourceKind> = slots
             .iter()
@@ -2039,10 +2089,13 @@ mod tests {
 
     #[test]
     fn a_failing_gadget_factory_yields_an_error_and_no_slot() {
+        let (shortcut_signal, _unread) = mpsc::channel(1);
         let result = build_slot::<MockGadget, _>(
             no_caps(),
             |_caps| anyhow::bail!("compile WASM component"),
             GadgetSourceKind::User,
+            Arc::new(EnableFailures::default()),
+            shortcut_signal,
         );
 
         let error = result.err().expect("a failing factory yields no slot");
@@ -2050,16 +2103,26 @@ mod tests {
     }
 
     #[test]
-    fn a_constructed_gadget_becomes_a_slot() {
+    fn a_constructed_gadget_becomes_a_slot_reporting_to_the_host() {
+        let failures = Arc::new(EnableFailures::default());
+        let (shortcut_signal, mut shortcut_signals) = mpsc::channel(1);
+
         let slot = build_slot(
             no_caps(),
             |_caps| Ok(MockGadget::new("weather")),
             GadgetSourceKind::Dev,
+            Arc::clone(&failures),
+            shortcut_signal,
         )
         .expect("a succeeding factory yields a slot");
 
         assert_eq!(slot.gadget.id(), "weather");
         assert_eq!(slot.source_kind, GadgetSourceKind::Dev);
+        assert!(Arc::ptr_eq(&slot.failures, &failures));
+        slot.shortcut_signal
+            .try_send(())
+            .expect("the slot holds the host's sender");
+        assert!(shortcut_signals.try_recv().is_ok());
     }
 
     // -------------------------------------------------------
@@ -2226,6 +2289,456 @@ mod tests {
                 accelerator.parse::<Shortcut>().is_ok(),
                 "{accelerator} should parse"
             );
+        }
+    }
+
+    // =======================================================
+    // Settings change routing and delivery through a slot
+    //
+    // `GadgetHost` needs a `Store<tauri::Wry>`, so these tests drive
+    // `route_setting_key` and `GadgetSlot::submit`, which make up
+    // `handle_setting_changed` apart from the slot lookup.
+    // =======================================================
+
+    mod setting_dispatch {
+        use std::sync::Mutex;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::mpsc as std_mpsc;
+
+        use serde_json::json;
+
+        use super::*;
+
+        // ---------------------------------------------------
+        // Recording gadget with one-shot gates
+        // ---------------------------------------------------
+
+        /// Held by the gadget: the first call through it reports that
+        /// it started and waits until the test releases it. Later calls
+        /// pass straight through, so a test never waits on a call it
+        /// did not expect.
+        struct Gate {
+            started: std_mpsc::Sender<()>,
+            release: std_mpsc::Receiver<()>,
+        }
+
+        /// Held by the test.
+        struct GateControl {
+            started: std_mpsc::Receiver<()>,
+            release: std_mpsc::Sender<()>,
+        }
+
+        impl GateControl {
+            fn wait_until_started(&self) {
+                self.started.recv().expect("the gated call starts");
+            }
+
+            fn release(&self) {
+                self.release.send(()).expect("the gated call waits");
+            }
+        }
+
+        fn gate() -> (Mutex<Option<Gate>>, GateControl) {
+            let (started_tx, started_rx) = std_mpsc::channel();
+            let (release_tx, release_rx) = std_mpsc::channel();
+            (
+                Mutex::new(Some(Gate {
+                    started: started_tx,
+                    release: release_rx,
+                })),
+                GateControl {
+                    started: started_rx,
+                    release: release_tx,
+                },
+            )
+        }
+
+        fn pass(gate: &Mutex<Option<Gate>>) {
+            let gate = gate.lock().expect("not poisoned").take();
+            if let Some(gate) = gate {
+                gate.started.send(()).expect("the test waits for the start");
+                gate.release.recv().expect("the test releases the gate");
+            }
+        }
+
+        struct RecordingGadget {
+            id: &'static str,
+            fail_enable: bool,
+            enables: AtomicUsize,
+            disables: AtomicUsize,
+            setting_changes: Mutex<Vec<(String, serde_json::Value)>>,
+            enable_gate: Mutex<Option<Gate>>,
+            setting_gate: Mutex<Option<Gate>>,
+        }
+
+        impl Default for RecordingGadget {
+            fn default() -> Self {
+                Self {
+                    id: "recorder",
+                    fail_enable: false,
+                    enables: AtomicUsize::new(0),
+                    disables: AtomicUsize::new(0),
+                    setting_changes: Mutex::new(Vec::new()),
+                    enable_gate: Mutex::new(None),
+                    setting_gate: Mutex::new(None),
+                }
+            }
+        }
+
+        impl RecordingGadget {
+            fn with_enable_gate(mut self) -> (Self, GateControl) {
+                let (gate, control) = gate();
+                self.enable_gate = gate;
+                (self, control)
+            }
+
+            fn with_setting_gate(mut self) -> (Self, GateControl) {
+                let (gate, control) = gate();
+                self.setting_gate = gate;
+                (self, control)
+            }
+        }
+
+        impl ErasedSearch for RecordingGadget {
+            fn execute(&self, _command: &str) -> anyhow::Result<PostAction> {
+                Ok(PostAction::Nothing)
+            }
+        }
+
+        impl Gadget for RecordingGadget {
+            fn id(&self) -> &str {
+                self.id
+            }
+
+            fn enable(&self) -> anyhow::Result<()> {
+                self.enables.fetch_add(1, Ordering::SeqCst);
+                pass(&self.enable_gate);
+                if self.fail_enable {
+                    anyhow::bail!("no display");
+                }
+                Ok(())
+            }
+
+            fn disable(&self) {
+                self.disables.fetch_add(1, Ordering::SeqCst);
+            }
+
+            fn setting_changed(&self, key: &str, value: serde_json::Value) {
+                self.setting_changes
+                    .lock()
+                    .expect("not poisoned")
+                    .push((key.to_string(), value));
+                pass(&self.setting_gate);
+            }
+        }
+
+        // ---------------------------------------------------
+        // Fixture
+        // ---------------------------------------------------
+
+        struct Fixture {
+            slot: Arc<GadgetSlot>,
+            gadget: Arc<RecordingGadget>,
+            failures: Arc<EnableFailures>,
+            shortcut_signals: mpsc::Receiver<()>,
+        }
+
+        /// A slot for `gadget`, running when `active`.
+        fn fixture(gadget: RecordingGadget, active: bool) -> Fixture {
+            let gadget = Arc::new(gadget);
+            let failures = Arc::new(EnableFailures::default());
+            let (shortcut_signal, shortcut_signals) = mpsc::channel(16);
+            let slot = GadgetSlot::new(
+                Arc::clone(&gadget) as Arc<dyn Gadget>,
+                GadgetSourceKind::Builtin,
+                Arc::clone(&failures),
+                shortcut_signal,
+            );
+            slot.enabled.store(active, Ordering::SeqCst);
+            Fixture {
+                slot: Arc::new(slot),
+                gadget,
+                failures,
+                shortcut_signals,
+            }
+        }
+
+        impl Fixture {
+            fn enables(&self) -> usize {
+                self.gadget.enables.load(Ordering::SeqCst)
+            }
+
+            fn disables(&self) -> usize {
+                self.gadget.disables.load(Ordering::SeqCst)
+            }
+
+            fn setting_changes(&self) -> Vec<(String, serde_json::Value)> {
+                self.gadget
+                    .setting_changes
+                    .lock()
+                    .expect("not poisoned")
+                    .clone()
+            }
+
+            /// How many shortcut signals arrived since the last call.
+            fn take_shortcut_signals(&mut self) -> usize {
+                std::iter::from_fn(|| self.shortcut_signals.try_recv().ok()).count()
+            }
+
+            /// Submit `change` on a thread of its own, as the drainer
+            /// that a concurrent caller finds busy.
+            fn submit_on_thread(
+                &self,
+                change: SlotChange,
+                value: serde_json::Value,
+            ) -> std::thread::JoinHandle<()> {
+                let slot = Arc::clone(&self.slot);
+                std::thread::spawn(move || slot.submit(change, value))
+            }
+        }
+
+        fn setting(key: &str) -> SlotChange {
+            SlotChange::Setting(key.to_string())
+        }
+
+        // ---------------------------------------------------
+        // route_setting_key
+        // ---------------------------------------------------
+
+        #[test]
+        fn an_enabled_key_routes_to_the_gadgets_switch() {
+            assert_eq!(
+                route_setting_key("enabled.clipboard"),
+                Some(("clipboard", SlotChange::Enabled))
+            );
+        }
+
+        #[test]
+        fn a_gadget_key_routes_to_its_relative_setting() {
+            assert_eq!(
+                route_setting_key("gadgets.clipboard.retentionDays"),
+                Some(("clipboard", setting("retentionDays")))
+            );
+        }
+
+        #[test]
+        fn a_gadget_key_splits_at_the_first_dot_after_the_gadget_id() {
+            assert_eq!(
+                route_setting_key("gadgets.clipboard.history.limit"),
+                Some(("clipboard", setting("history.limit")))
+            );
+        }
+
+        #[test]
+        fn a_gadget_key_without_a_setting_routes_nowhere() {
+            assert_eq!(route_setting_key("gadgets.clipboard"), None);
+        }
+
+        #[test]
+        fn a_key_outside_the_gadget_namespaces_routes_nowhere() {
+            assert_eq!(route_setting_key("globalShortcut"), None);
+        }
+
+        #[test]
+        fn an_enabled_key_with_an_empty_id_routes_to_no_real_gadget() {
+            assert_eq!(
+                route_setting_key("enabled."),
+                Some(("", SlotChange::Enabled))
+            );
+        }
+
+        // ---------------------------------------------------
+        // deliver_setting_change
+        // ---------------------------------------------------
+
+        /// Two running slots, for gadgets `first` and `second`.
+        fn two_slots() -> (Vec<GadgetSlot>, Arc<RecordingGadget>, Arc<RecordingGadget>) {
+            let first = fixture(
+                RecordingGadget {
+                    id: "first",
+                    ..RecordingGadget::default()
+                },
+                true,
+            );
+            let second = fixture(
+                RecordingGadget {
+                    id: "second",
+                    ..RecordingGadget::default()
+                },
+                true,
+            );
+            let (first_gadget, second_gadget) =
+                (Arc::clone(&first.gadget), Arc::clone(&second.gadget));
+            let slots = [first.slot, second.slot]
+                .into_iter()
+                .map(|slot| Arc::into_inner(slot).expect("the fixture holds the only reference"))
+                .collect();
+            (slots, first_gadget, second_gadget)
+        }
+
+        #[test]
+        fn a_change_goes_to_the_slot_of_its_gadget() {
+            let (slots, first, second) = two_slots();
+
+            deliver_setting_change(&slots, "gadgets.second.theme", json!("dark"));
+            deliver_setting_change(&slots, "enabled.first", json!(false));
+
+            assert_eq!(first.disables.load(Ordering::SeqCst), 1);
+            assert!(
+                first
+                    .setting_changes
+                    .lock()
+                    .expect("not poisoned")
+                    .is_empty()
+            );
+            assert_eq!(second.disables.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                *second.setting_changes.lock().expect("not poisoned"),
+                [("theme".to_string(), json!("dark"))]
+            );
+        }
+
+        #[test]
+        fn a_change_for_no_registered_gadget_is_ignored() {
+            let (slots, first, second) = two_slots();
+
+            deliver_setting_change(&slots, "gadgets.ghost.theme", json!("dark"));
+            deliver_setting_change(&slots, "enabled.ghost", json!(false));
+            deliver_setting_change(&slots, "globalShortcut", json!("Cmd+Space"));
+
+            for gadget in [first, second] {
+                assert_eq!(gadget.disables.load(Ordering::SeqCst), 0);
+                assert!(
+                    gadget
+                        .setting_changes
+                        .lock()
+                        .expect("not poisoned")
+                        .is_empty()
+                );
+            }
+            assert!(slots.iter().all(GadgetSlot::is_active));
+        }
+
+        // ---------------------------------------------------
+        // One caller at a time
+        // ---------------------------------------------------
+
+        #[test]
+        fn switching_a_running_gadget_off_stops_it_and_signals_the_shortcut_reactor() {
+            let mut f = fixture(RecordingGadget::default(), true);
+
+            f.slot.submit(SlotChange::Enabled, json!(false));
+
+            assert_eq!(f.disables(), 1);
+            assert!(!f.slot.is_active());
+            assert_eq!(f.take_shortcut_signals(), 1);
+        }
+
+        #[test]
+        fn switching_a_stopped_gadget_on_starts_it_and_signals_the_shortcut_reactor() {
+            let mut f = fixture(RecordingGadget::default(), false);
+
+            f.slot.submit(SlotChange::Enabled, json!(true));
+
+            assert_eq!(f.enables(), 1);
+            assert!(f.slot.is_active());
+            assert_eq!(f.take_shortcut_signals(), 1);
+        }
+
+        #[test]
+        fn an_enabled_value_that_is_not_a_bool_counts_as_on() {
+            let f = fixture(RecordingGadget::default(), false);
+
+            f.slot.submit(SlotChange::Enabled, json!("yes"));
+
+            assert_eq!(f.enables(), 1);
+            assert!(f.slot.is_active());
+        }
+
+        #[test]
+        fn a_failed_start_is_recorded_with_the_hosts_failures() {
+            let gadget = RecordingGadget {
+                fail_enable: true,
+                ..RecordingGadget::default()
+            };
+            let f = fixture(gadget, false);
+
+            f.slot.submit(SlotChange::Enabled, json!(true));
+
+            assert!(!f.slot.is_active());
+            assert_eq!(
+                f.failures.snapshot().get("recorder").map(String::as_str),
+                Some("no display")
+            );
+        }
+
+        #[test]
+        fn a_setting_change_reaches_the_gadget_by_its_relative_key() {
+            let mut f = fixture(RecordingGadget::default(), true);
+
+            f.slot.submit(setting("theme"), json!("dark"));
+
+            assert_eq!(f.setting_changes(), [("theme".to_string(), json!("dark"))]);
+            assert_eq!(f.take_shortcut_signals(), 0);
+        }
+
+        #[test]
+        fn setting_changes_arrive_in_the_order_they_were_made() {
+            let f = fixture(RecordingGadget::default(), true);
+
+            f.slot.submit(setting("theme"), json!("dark"));
+            f.slot.submit(setting("limit"), json!(10));
+
+            assert_eq!(
+                f.setting_changes(),
+                [
+                    ("theme".to_string(), json!("dark")),
+                    ("limit".to_string(), json!(10)),
+                ]
+            );
+        }
+
+        // ---------------------------------------------------
+        // A second caller while a change is being delivered
+        //
+        // The drainer runs on its own thread and is held in the
+        // gadget; the test thread is the second caller.
+        // ---------------------------------------------------
+
+        #[test]
+        fn a_setting_changed_while_another_is_delivered_follows_it() {
+            let (gadget, control) = RecordingGadget::default().with_setting_gate();
+            let f = fixture(gadget, true);
+
+            let drainer = f.submit_on_thread(setting("theme"), json!("dark"));
+            control.wait_until_started();
+            f.slot.submit(setting("limit"), json!(10));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(
+                f.setting_changes(),
+                [
+                    ("theme".to_string(), json!("dark")),
+                    ("limit".to_string(), json!(10)),
+                ]
+            );
+        }
+
+        #[test]
+        fn a_switch_off_while_the_gadget_starts_stops_it_afterwards() {
+            let (gadget, control) = RecordingGadget::default().with_enable_gate();
+            let f = fixture(gadget, false);
+
+            let drainer = f.submit_on_thread(SlotChange::Enabled, json!(true));
+            control.wait_until_started();
+            f.slot.submit(SlotChange::Enabled, json!(false));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(f.enables(), 1);
+            assert_eq!(f.disables(), 1);
+            assert!(!f.slot.is_active());
         }
     }
 }
