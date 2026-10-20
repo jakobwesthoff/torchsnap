@@ -11,6 +11,7 @@ mod gadget_host;
 mod gadget_install;
 mod gadgets;
 mod icons;
+mod monitor_placement;
 mod navigation_guard;
 mod network;
 mod paths;
@@ -35,6 +36,7 @@ use tauri::{
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
+use monitor_placement::{ReportedMonitor, centered_window_origin, monitor_index_under_cursor};
 use platform::{
     LauncherPanel as _, PlatformLauncherPanel, PlatformTray, PlatformWindowChrome, Tray as _,
     WindowChrome as _,
@@ -143,16 +145,8 @@ fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) 
     if let Some(monitor) = monitor_under_cursor(app)
         && let Ok(win_size) = win.outer_size()
     {
-        let mon_size = monitor.size();
-        let mon_pos = monitor.position();
-        let scale = monitor.scale_factor();
-
-        let x = mon_pos.x as f64 / scale
-            + (mon_size.width as f64 / scale - win_size.width as f64 / scale) / 2.0;
-        let y = mon_pos.y as f64 / scale
-            + (mon_size.height as f64 / scale - win_size.height as f64 / scale) / 2.0;
-
-        let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+        let origin = centered_window_origin(&ReportedMonitor::of(&monitor), win_size);
+        let _ = win.set_position(origin);
     }
 
     let _ = win.show();
@@ -402,23 +396,17 @@ pub(crate) fn close_update_window(app: &tauri::AppHandle) {
 // Launcher Window
 // =========================================================
 
+/// The monitor the cursor is on, or the primary monitor when no monitor
+/// contains the cursor.
 fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
     let cursor = app.cursor_position().ok()?;
+    let monitors = app.available_monitors().unwrap_or_default();
+    let reported: Vec<_> = monitors.iter().map(ReportedMonitor::of).collect();
 
-    app.available_monitors()
-        .ok()
-        .and_then(|monitors| {
-            monitors.into_iter().find(|m| {
-                let pos = m.position();
-                let size = m.size();
-                let x = pos.x as f64;
-                let y = pos.y as f64;
-                let w = size.width as f64;
-                let h = size.height as f64;
-                cursor.x >= x && cursor.x < x + w && cursor.y >= y && cursor.y < y + h
-            })
-        })
-        .or_else(|| app.primary_monitor().ok().flatten())
+    match monitor_index_under_cursor(cursor, &reported) {
+        Some(index) => monitors.into_iter().nth(index),
+        None => app.primary_monitor().ok().flatten(),
+    }
 }
 
 pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout: &LauncherLayout) {
