@@ -6,11 +6,10 @@
 // Failing-Enable Test Gadget
 //
 // Variant of `minimal-gadget` whose guest `lifecycle::enable`
-// panics. Used by the bridge test suite to drive the
+// returns `Err`. Used by the bridge test suite to drive the
 // "guest enable() failed → bridge drops the instance" path.
 //
-// A Rust panic inside a guest export becomes a wasmtime trap
-// on the host side, which surfaces as an `Err` from
+// The guest's `Err` surfaces as an `Err` from
 // `WasmGadgetInstance::enable()`. That is the signal the
 // bridge uses to tear the instance back down to `None`.
 //
