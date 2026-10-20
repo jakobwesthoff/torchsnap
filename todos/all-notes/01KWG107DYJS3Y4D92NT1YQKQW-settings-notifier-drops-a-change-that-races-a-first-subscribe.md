@@ -49,7 +49,3 @@ initial value and channel creation are atomic with respect to
 `notify()`. Alternatively re-read the store immediately after
 inserting the channel and `send()` if the value differs from
 `initial`.
-
-## Relations
-
-- Relates to: [CoalescingDispatcher can strand the last enqueued change](01KWG0B6TYFPTJCAFW5TMAG25W-coalescingdispatcher-can-strand-the-last-enqueued-change.md), both settings pathways have subscribe/dispatch races at the edges.

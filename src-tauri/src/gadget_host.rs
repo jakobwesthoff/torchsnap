@@ -232,12 +232,12 @@ struct GadgetSlot {
 
     /// Serializes and deduplicates settings change dispatch for
     /// this gadget. Both `enabled.<id>` changes and
-    /// `gadgets.<id>.*` changes are funneled through here.
-    dispatcher: CoalescingDispatcher,
+    /// `gadgets.<id>.*` changes queue here, keyed by their kind, and
+    /// `submit` drains them all with one handler.
+    dispatcher: CoalescingDispatcher<SlotChange>,
 
-    /// The host's record of enable failures, kept by the slot so that
-    /// whichever caller drains the dispatcher records into the same
-    /// place.
+    /// The host's record of enable failures. The slot holds it so the
+    /// handler does not depend on which caller drains the dispatcher.
     failures: Arc<EnableFailures>,
 
     /// Wakes the host's shortcut reactor after a switch change.
@@ -267,39 +267,22 @@ impl GadgetSlot {
         self.enabled.load(Ordering::Relaxed)
     }
 
-    /// Deliver a settings change to this gadget.
+    /// Deliver a settings change to this gadget. When another caller
+    /// is draining this slot's dispatcher, this returns at once and
+    /// that caller applies the change after the ones before it.
     fn submit(&self, change: SlotChange, value: serde_json::Value) {
-        match change {
-            SlotChange::Enabled => self.submit_enabled(value),
-            SlotChange::Setting(key) => self.submit_setting(&key, value),
-        }
-    }
+        self.dispatcher.enqueue(change, value);
 
-    /// Apply a change of the gadget's `enabled.<id>` setting.
-    fn submit_enabled(&self, value: serde_json::Value) {
-        self.dispatcher
-            .enqueue(format!("enabled.{}", self.gadget.id()), value);
+        self.dispatcher.dispatch(|change, value| match change {
+            SlotChange::Enabled => {
+                let new_enabled = value.as_bool().unwrap_or(true);
+                apply_enabled_setting(&*self.gadget, &self.enabled, &self.failures, new_enabled);
 
-        self.dispatcher.dispatch(|dispatch_key, dispatch_value| {
-            if !dispatch_key.starts_with("enabled.") {
-                return;
+                // The reactor registers the shortcuts of active
+                // gadgets, so it runs once the switch is applied.
+                let _ = self.shortcut_signal.try_send(());
             }
-
-            let new_enabled = dispatch_value.as_bool().unwrap_or(true);
-            apply_enabled_setting(&*self.gadget, &self.enabled, &self.failures, new_enabled);
-        });
-
-        // Always signal shortcut reactor on enabled changes
-        // so shortcuts are re-registered accordingly.
-        let _ = self.shortcut_signal.try_send(());
-    }
-
-    /// Deliver a change of one of the gadget's own settings, by its
-    /// key relative to `gadgets.<id>.`.
-    fn submit_setting(&self, key: &str, value: serde_json::Value) {
-        self.dispatcher.enqueue(key.to_string(), value);
-        self.dispatcher.dispatch(|k, v| {
-            self.gadget.setting_changed(k, v.clone());
+            SlotChange::Setting(key) => self.gadget.setting_changed(key, value.clone()),
         });
     }
 }
@@ -728,7 +711,9 @@ impl GadgetHost {
     }
 
     /// Start a gadget that failed to start again, the way switching it
-    /// on does (`retry_with`). Blocks while `enable()` runs.
+    /// on does (`retry_with`). Blocks while `enable()` runs, unless
+    /// another change to the gadget is being delivered: then it returns
+    /// at once, and that delivery starts the gadget once it is done.
     pub fn retry_enable(&self, gadget_id: &str) -> anyhow::Result<()> {
         if !self.slots.iter().any(|s| s.gadget.id() == gadget_id) {
             anyhow::bail!("unknown gadget source: {gadget_id}");
@@ -2739,6 +2724,91 @@ mod tests {
             assert_eq!(f.enables(), 1);
             assert_eq!(f.disables(), 1);
             assert!(!f.slot.is_active());
+        }
+
+        // A switch and a setting change land in one queue; whichever
+        // caller drains it must handle both kinds.
+
+        #[test]
+        fn a_setting_changed_while_the_gadget_starts_reaches_it() {
+            let (gadget, control) = RecordingGadget::default().with_enable_gate();
+            let f = fixture(gadget, false);
+
+            let drainer = f.submit_on_thread(SlotChange::Enabled, json!(true));
+            control.wait_until_started();
+            f.slot.submit(setting("theme"), json!("dark"));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(f.setting_changes(), [("theme".to_string(), json!("dark"))]);
+        }
+
+        #[test]
+        fn a_retry_that_lands_while_a_setting_is_delivered_starts_the_gadget() {
+            let (gadget, control) = RecordingGadget::default().with_setting_gate();
+            let f = fixture(gadget, false);
+
+            let drainer = f.submit_on_thread(setting("theme"), json!("dark"));
+            control.wait_until_started();
+            f.slot.submit(SlotChange::Enabled, json!(true));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(f.enables(), 1);
+            assert!(f.slot.is_active());
+            assert_eq!(f.setting_changes(), [("theme".to_string(), json!("dark"))]);
+        }
+
+        #[test]
+        fn a_switch_off_that_lands_while_a_setting_is_delivered_stops_the_gadget() {
+            let (gadget, control) = RecordingGadget::default().with_setting_gate();
+            let f = fixture(gadget, true);
+
+            let drainer = f.submit_on_thread(setting("theme"), json!("dark"));
+            control.wait_until_started();
+            f.slot.submit(SlotChange::Enabled, json!(false));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(f.disables(), 1);
+            assert!(!f.slot.is_active());
+            assert_eq!(f.setting_changes(), [("theme".to_string(), json!("dark"))]);
+        }
+
+        #[test]
+        fn a_gadget_setting_named_like_the_switch_stays_a_setting() {
+            let (gadget, control) = RecordingGadget::default().with_enable_gate();
+            let f = fixture(gadget, false);
+
+            let drainer = f.submit_on_thread(SlotChange::Enabled, json!(true));
+            control.wait_until_started();
+            f.slot.submit(setting("enabled.recorder"), json!(false));
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert!(f.slot.is_active());
+            assert_eq!(f.disables(), 0);
+            assert_eq!(
+                f.setting_changes(),
+                [("enabled.recorder".to_string(), json!(false))]
+            );
+        }
+
+        #[test]
+        fn the_shortcut_signal_follows_a_switch_applied_by_another_caller() {
+            let (gadget, control) = RecordingGadget::default().with_setting_gate();
+            let mut f = fixture(gadget, true);
+
+            let drainer = f.submit_on_thread(setting("theme"), json!("dark"));
+            control.wait_until_started();
+            f.slot.submit(SlotChange::Enabled, json!(false));
+            let before_the_switch_applied = f.take_shortcut_signals();
+            control.release();
+            drainer.join().expect("the drainer finishes");
+
+            assert_eq!(before_the_switch_applied, 0);
+            assert_eq!(f.disables(), 1);
+            assert_eq!(f.take_shortcut_signals(), 1);
         }
     }
 }

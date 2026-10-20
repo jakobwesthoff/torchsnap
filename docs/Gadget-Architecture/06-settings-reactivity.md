@@ -57,15 +57,23 @@ from the surrounding `GadgetContextProvider`.
 `"settings-changed"`:
 
 ```rust
-app.listen("settings-changed", move |event| {
-    let payload: { key } = ...;
-    let value = store.get(&payload.key).unwrap_or(Value::Null);
+app.listen("settings-changed", move |event: tauri::Event| {
+    #[derive(serde::Deserialize)]
+    struct Payload {
+        key: String,
+    }
+    if let Ok(payload) = serde_json::from_str::<Payload>(event.payload()) {
+        let value = store_for_listener
+            .get(&payload.key)
+            .unwrap_or(serde_json::Value::Null);
 
-    notifier.notify(&payload.key, value.clone());
-    host.handle_setting_changed(&payload.key, value, &app);
+        notifier.notify(&payload.key, value.clone());
 
-    if host.is_key_watched(&payload.key) {
-        host.notify_shortcut_change();
+        host_for_listener.handle_setting_changed(&payload.key, value);
+
+        if host_for_listener.is_key_watched(&payload.key) {
+            host_for_listener.notify_shortcut_change();
+        }
     }
 });
 ```
@@ -81,13 +89,18 @@ The three callees are independent:
 
 ## Host Routing — `handle_setting_changed`
 
-`src-tauri/src/gadget_host.rs`. Two prefix branches:
+`src-tauri/src/gadget_host.rs`. `route_setting_key` turns the store key
+into the gadget id and a `SlotChange`, the slot with that id is looked
+up, and `GadgetSlot::submit` enqueues the change into the slot's
+`CoalescingDispatcher` and dispatches it. Both kinds of change share the
+queue, and every dispatch of a slot runs the slot's one handler, so
+whichever caller drains handles both kinds (ADR 0067).
 
-**Path 1 — `enabled.<gadget-id>`**
+**`enabled.<gadget-id>` → `SlotChange::Enabled`**
 
 The dispatcher is reused as a serialization point even for the
-enable/disable toggle. The callback, `apply_enabled_setting` in
-`src-tauri/src/gadget_status.rs`, flips
+enable/disable toggle. The handler calls `apply_enabled_setting` in
+`src-tauri/src/gadget_status.rs`, which flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
 `gadget.enable()` or `gadget.disable()`. A failed `enable()` clears the
 flag again and keeps the error for Settings; turning the gadget off
@@ -95,16 +108,20 @@ removes the error (ADR 0063). The `Gadget::enable()`
 method takes no arguments, since capabilities are available as fields on
 `self` (set during construction). See
 [01-overview.md](01-overview.md#lifecycle-adr-0033-adr-0044) for the
-full lifecycle sequence. Always signals shortcut re-registration
-before returning.
+full lifecycle sequence. After applying the switch, the handler signals
+shortcut re-registration.
 
-**Path 2 — `gadgets.<gadget-id>.<setting-key>`**
+**`gadgets.<gadget-id>.<setting-key>` → `SlotChange::Setting`**
 
-Splits at the first `.` after the prefix, looks up the slot, and
-enqueues the relative `setting-key` into the slot's
-`CoalescingDispatcher`. The callback simply forwards
+Splits at the first `.` after the prefix and enqueues the relative
+`setting-key` as a setting change. The handler forwards
 `(key, value)` to `gadget.setting_changed(key, value)`. Gadgets see
 relative keys (`"retentionDays"`), never the full path.
+
+The slot holds the host's `EnableFailures` and the shortcut reactor's
+sender itself, so the handler is the same whichever caller drains.
+Changes submitted through a slot never overlap each other; the startup
+`enable()` and `disable_all()` at exit do not go through the slot.
 
 ## CoalescingDispatcher (ADR 0026, ADR 0067)
 
@@ -133,10 +150,10 @@ Threading model:
   listener callbacks one at a time, so only a Retry runs at the same
   time as another caller.
 - `dispatch` runs the callback inline on the draining thread, also for
-  changes other callers enqueued. For Path 2 the callback is
-  `gadget.setting_changed(k, v.clone())`, which for native gadgets is
-  whatever the gadget implements and for WASM gadgets crosses the
-  wasmtime boundary.
+  changes other callers enqueued. For a setting change the slot's
+  handler calls `gadget.setting_changed(k, v.clone())`, which for
+  native gadgets is whatever the gadget implements and for WASM gadgets
+  crosses the wasmtime boundary.
 
 The queue lock is released before each callback runs, so a callback
 may enqueue. A panicking callback leaves `draining` set, and the
@@ -345,9 +362,8 @@ The signal is sent from two places:
 
 - The `settings-changed` event listener, when
   `host.is_key_watched(&key)` returns true.
-- `handle_setting_changed`, unconditionally when an `enabled.<id>`
-  key changes (enabling/disabling a gadget may add or remove its
-  shortcuts).
+- The gadget slot's handler, after it applied an `enabled.<id>` change
+  (enabling/disabling a gadget may add or remove its shortcuts).
 
 `watched_keys: HashSet<String>` is populated during
 `initialize_and_start` with `"globalShortcut"`, all

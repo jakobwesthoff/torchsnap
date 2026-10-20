@@ -245,7 +245,8 @@ only a disk-cached compiled artifact, not a live store.
 
 The host owns the enabled state (ADR 0025). Each gadget is wrapped in
 a `GadgetSlot` that holds an `AtomicBool` for the enabled flag plus
-the `CoalescingDispatcher` for `on-setting-changed`. The enabled key
+the `CoalescingDispatcher` that serializes the gadget's switch changes
+and `on-setting-changed` calls (ADR 0067). The enabled key
 lives at `enabled.<gadget-id>` in the top-level settings namespace,
 outside the `gadgets.<id>.*` prefix and unreachable from the gadget
 itself. The host intercepts changes to that key and drives

@@ -40,25 +40,25 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
-pub struct CoalescingDispatcher {
-    queue: Mutex<Queue>,
+pub struct CoalescingDispatcher<K> {
+    queue: Mutex<Queue<K>>,
 
     #[cfg(test)]
     drained: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
-struct Queue {
+struct Queue<K> {
     /// Queued `(key, value)` pairs awaiting dispatch. When a key
     /// is enqueued that already exists, the old entry is removed
     /// and the new one is appended to the back, preserving
     /// chronological order while deduplicating same-key changes.
-    items: Vec<(String, Value)>,
+    items: Vec<(K, Value)>,
 
     /// Whether a `dispatch()` is draining the queue.
     draining: bool,
 }
 
-impl CoalescingDispatcher {
+impl<K: PartialEq> CoalescingDispatcher<K> {
     pub fn new() -> Self {
         Self {
             queue: Mutex::new(Queue {
@@ -72,7 +72,7 @@ impl CoalescingDispatcher {
 
     /// The queue lock is held only for bookkeeping, never while a
     /// callback runs, so a panicking callback cannot poison it.
-    fn lock_queue(&self) -> std::sync::MutexGuard<'_, Queue> {
+    fn lock_queue(&self) -> std::sync::MutexGuard<'_, Queue<K>> {
         self.queue
             .lock()
             .expect("queue lock is not held while callbacks run")
@@ -100,7 +100,7 @@ impl CoalescingDispatcher {
     ///
     /// This method is cheap and does not wait for a running
     /// callback; it only briefly locks the queue.
-    pub fn enqueue(&self, key: String, value: Value) {
+    pub fn enqueue(&self, key: K, value: Value) {
         let mut queue = self.lock_queue();
         queue.items.retain(|(k, _)| k != &key);
         queue.items.push((key, value));
@@ -109,7 +109,9 @@ impl CoalescingDispatcher {
     /// Process all pending changes by calling `callback` for each
     /// `(key, value)` pair. If another `dispatch()` call is already
     /// draining, this returns immediately and that drain processes
-    /// the queued changes with its own callback.
+    /// the queued changes with its own callback. Every caller of one
+    /// dispatcher must therefore pass a callback that handles every
+    /// key the queue can hold.
     ///
     /// The dispatch loop drains the queue, processes each entry,
     /// then checks again for items that arrived during processing.
@@ -119,7 +121,7 @@ impl CoalescingDispatcher {
     /// every later dispatch returns at once, and the gadget gets no
     /// further changes. Isolating gadget panics is todo
     /// 01KWG1PH0QCDQTARA5JCW7ABYK-keep-a-panicking-gadget-from-aborting-the-whole-search-and-execute.md.
-    pub fn dispatch(&self, callback: impl Fn(&str, &Value)) {
+    pub fn dispatch(&self, callback: impl Fn(&K, &Value)) {
         {
             let mut queue = self.lock_queue();
             if queue.draining {
@@ -176,13 +178,17 @@ mod tests {
     /// Collect dispatched `(key, value)` pairs into a shared Vec.
     fn collecting_callback(
         collected: &Arc<Mutex<Vec<(String, Value)>>>,
-    ) -> impl Fn(&str, &Value) + '_ {
+    ) -> impl Fn(&String, &Value) + '_ {
         move |key, value| {
             collected
                 .lock()
                 .unwrap()
                 .push((key.to_string(), value.clone()));
         }
+    }
+
+    fn dispatcher() -> CoalescingDispatcher<String> {
+        CoalescingDispatcher::new()
     }
 
     fn json(v: impl Into<Value>) -> Value {
@@ -195,7 +201,7 @@ mod tests {
 
     #[test]
     fn single_entry_dispatched() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("key".into(), json(1));
@@ -208,7 +214,7 @@ mod tests {
 
     #[test]
     fn multiple_entries_dispatched_in_order() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("a".into(), json(1));
@@ -223,7 +229,7 @@ mod tests {
 
     #[test]
     fn same_key_deduplicates() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("k".into(), json(1));
@@ -237,7 +243,7 @@ mod tests {
 
     #[test]
     fn same_key_moves_to_end() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("a".into(), json(1));
@@ -253,7 +259,7 @@ mod tests {
 
     #[test]
     fn empty_dispatch_is_noop() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let called = Arc::new(Mutex::new(false));
 
         d.dispatch({
@@ -270,7 +276,7 @@ mod tests {
     fn pending_during_dispatch_picked_up() {
         // The callback enqueues a new item during processing.
         // The dispatch loop should pick it up in the next iteration.
-        let d = Arc::new(CoalescingDispatcher::new());
+        let d = Arc::new(dispatcher());
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("first".into(), json(1));
@@ -309,7 +315,7 @@ mod tests {
         // A background thread enqueues items while the dispatch
         // callback is running. The dispatch loop should pick them
         // up after the current batch completes.
-        let d = Arc::new(CoalescingDispatcher::new());
+        let d = Arc::new(dispatcher());
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("initial".into(), json(0));
@@ -346,7 +352,7 @@ mod tests {
 
     #[test]
     fn rapid_same_key_only_latest_survives() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         for i in 0..100 {
@@ -361,7 +367,7 @@ mod tests {
 
     #[test]
     fn dispatch_while_dispatch_running_returns() {
-        let d = Arc::new(CoalescingDispatcher::new());
+        let d = Arc::new(dispatcher());
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         // A drain that already ended on another thread must leave
@@ -430,7 +436,7 @@ mod tests {
 
     #[test]
     fn a_change_enqueued_as_a_drain_ends_is_dispatched() {
-        let d = Arc::new(CoalescingDispatcher::new());
+        let d = Arc::new(dispatcher());
         let collected = Arc::new(Mutex::new(Vec::new()));
         d.enqueue("first".into(), json(1));
 
@@ -461,7 +467,7 @@ mod tests {
         const KEYS: i64 = 4;
         const WRITES: i64 = 100;
 
-        let d = Arc::new(CoalescingDispatcher::new());
+        let d = Arc::new(dispatcher());
         let delivered = Arc::new(Mutex::new(HashMap::<String, Vec<i64>>::new()));
         let start = Arc::new(Barrier::new(THREADS));
 
@@ -518,7 +524,7 @@ mod tests {
 
     #[test]
     fn a_panicking_callback_leaves_enqueue_and_dispatch_callable() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         d.enqueue("boom".into(), json(1));
 
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -532,7 +538,7 @@ mod tests {
 
     #[test]
     fn interleaved_keys_preserve_order() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("a".into(), json(1));
@@ -553,7 +559,7 @@ mod tests {
 
     #[test]
     fn dispatch_after_drain_is_empty() {
-        let d = CoalescingDispatcher::new();
+        let d = dispatcher();
         let collected = Arc::new(Mutex::new(Vec::new()));
 
         d.enqueue("x".into(), json(1));
