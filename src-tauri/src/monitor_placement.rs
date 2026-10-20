@@ -36,8 +36,8 @@ impl ReportedMonitor {
     }
 }
 
-/// How the reported cursor position relates to the reported monitor
-/// rects.
+/// How the reported cursor position and window sizes relate to the
+/// reported monitor rects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CoordinateSpace {
     /// Cursor and monitor rects compare as reported. Used on every
@@ -45,7 +45,8 @@ pub(crate) enum CoordinateSpace {
     Shared,
     /// tao on macOS: a monitor rect is its rect in points times the
     /// monitor's own scale factor, the cursor its position in points
-    /// times the primary monitor's scale factor.
+    /// times the primary monitor's scale factor, a window's outer size
+    /// its size in points times the window's own scale factor.
     MacosPoints,
 }
 
@@ -92,19 +93,30 @@ pub(crate) fn monitor_index_under_cursor(
 }
 
 /// Top-left origin in logical points that centers a window of
-/// `window_size` on `monitor`.
+/// `window_size` (its reported outer size) on `monitor`.
+///
+/// `Shared` divides the window size by the monitor's scale factor and
+/// does not use `window_scale_factor`. `MacosPoints` divides it by the
+/// window's own scale factor, the one tao scaled it with, and gives no
+/// origin without it.
 pub(crate) fn centered_window_origin(
     monitor: &ReportedMonitor,
     window_size: PhysicalSize<u32>,
-) -> LogicalPosition<f64> {
+    window_scale_factor: Option<f64>,
+    space: CoordinateSpace,
+) -> Option<LogicalPosition<f64>> {
     // Divided by hand rather than with `dpi`'s `to_logical`, which
     // asserts on the scale factor.
     let scale = monitor.scale_factor;
+    let window_scale = match space {
+        CoordinateSpace::Shared => scale,
+        CoordinateSpace::MacosPoints => window_scale_factor?,
+    };
     let x = monitor.position.x as f64 / scale
-        + (monitor.size.width as f64 / scale - window_size.width as f64 / scale) / 2.0;
+        + (monitor.size.width as f64 / scale - window_size.width as f64 / window_scale) / 2.0;
     let y = monitor.position.y as f64 / scale
-        + (monitor.size.height as f64 / scale - window_size.height as f64 / scale) / 2.0;
-    LogicalPosition::new(x, y)
+        + (monitor.size.height as f64 / scale - window_size.height as f64 / window_scale) / 2.0;
+    Some(LogicalPosition::new(x, y))
 }
 
 #[cfg(test)]
@@ -489,29 +501,136 @@ mod tests {
     // =========================================================
 
     #[test]
-    fn centered_origin_on_a_1x_monitor_for_a_1x_window() {
+    fn shared_centered_origin_on_a_1x_monitor_for_a_1x_window() {
         let target = monitor(1512, 0, 2560, 1440, 1.0);
         assert_eq!(
-            centered_window_origin(&target, PhysicalSize::new(720, 520)),
-            LogicalPosition::new(2432.0, 460.0)
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(720, 520),
+                Some(1.0),
+                CoordinateSpace::Shared
+            ),
+            Some(LogicalPosition::new(2432.0, 460.0))
         );
     }
 
     #[test]
-    fn centered_origin_on_a_2x_monitor_for_a_2x_window() {
+    fn shared_centered_origin_on_a_2x_monitor_for_a_2x_window() {
         let target = monitor(0, 0, 3024, 1964, 2.0);
         assert_eq!(
-            centered_window_origin(&target, PhysicalSize::new(1440, 1040)),
-            LogicalPosition::new(396.0, 231.0)
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(1440, 1040),
+                Some(2.0),
+                CoordinateSpace::Shared
+            ),
+            Some(LogicalPosition::new(396.0, 231.0))
         );
     }
 
     #[test]
-    fn centered_origin_on_a_monitor_left_of_the_primary() {
+    fn shared_centered_origin_on_a_monitor_left_of_the_primary() {
         let target = monitor(-2560, -200, 2560, 1440, 1.0);
         assert_eq!(
-            centered_window_origin(&target, PhysicalSize::new(720, 520)),
-            LogicalPosition::new(-1640.0, 260.0)
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(720, 520),
+                Some(1.0),
+                CoordinateSpace::Shared
+            ),
+            Some(LogicalPosition::new(-1640.0, 260.0))
+        );
+    }
+
+    #[test]
+    fn shared_centered_origin_ignores_the_window_scale() {
+        let target = monitor(1512, 0, 2560, 1440, 1.0);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(1440, 1040),
+                Some(2.0),
+                CoordinateSpace::Shared
+            ),
+            Some(LogicalPosition::new(2072.0, 200.0))
+        );
+    }
+
+    #[test]
+    fn shared_centered_origin_ignores_a_missing_window_scale() {
+        let target = monitor(1512, 0, 2560, 1440, 1.0);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(1440, 1040),
+                None,
+                CoordinateSpace::Shared
+            ),
+            Some(LogicalPosition::new(2072.0, 200.0))
+        );
+    }
+
+    // =========================================================
+    // Window centering in macOS points
+    // =========================================================
+
+    #[test]
+    fn macos_centered_origin_on_a_1x_monitor_for_a_window_on_a_2x_screen() {
+        let target = macos_monitor(1512, 0, 2560, 1440, 1.0);
+        // 720 by 520 points on a 2x screen.
+        let window_size = PhysicalSize::new(1440, 1040);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                window_size,
+                Some(2.0),
+                CoordinateSpace::MacosPoints
+            ),
+            Some(LogicalPosition::new(2432.0, 460.0))
+        );
+    }
+
+    #[test]
+    fn macos_centered_origin_on_a_2x_monitor_for_a_window_on_a_1x_screen() {
+        let target = macos_monitor(0, 0, 1512, 982, 2.0);
+        // 720 by 520 points on a 1x screen.
+        let window_size = PhysicalSize::new(720, 520);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                window_size,
+                Some(1.0),
+                CoordinateSpace::MacosPoints
+            ),
+            Some(LogicalPosition::new(396.0, 231.0))
+        );
+    }
+
+    #[test]
+    fn macos_centered_origin_with_equal_scale_factors() {
+        let target = macos_monitor(0, 0, 1512, 982, 2.0);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(1440, 1040),
+                Some(2.0),
+                CoordinateSpace::MacosPoints
+            ),
+            Some(LogicalPosition::new(396.0, 231.0))
+        );
+    }
+
+    #[test]
+    fn macos_centered_origin_is_none_without_a_window_scale() {
+        let target = macos_monitor(1512, 0, 2560, 1440, 1.0);
+        assert_eq!(
+            centered_window_origin(
+                &target,
+                PhysicalSize::new(1440, 1040),
+                None,
+                CoordinateSpace::MacosPoints
+            ),
+            None
         );
     }
 }

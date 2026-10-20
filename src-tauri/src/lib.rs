@@ -146,8 +146,13 @@ fn present_auxiliary_window(win: &tauri::WebviewWindow, app: &tauri::AppHandle) 
 
     if let Some(monitor) = monitor_under_cursor(app)
         && let Ok(win_size) = win.outer_size()
+        && let Some(origin) = centered_window_origin(
+            &ReportedMonitor::of(&monitor),
+            win_size,
+            win.scale_factor().ok(),
+            PLATFORM_COORDINATE_SPACE,
+        )
     {
-        let origin = centered_window_origin(&ReportedMonitor::of(&monitor), win_size);
         let _ = win.set_position(origin);
     }
 

@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On Macs with displays of different scale factors, such as a Retina
   MacBook next to a non-Retina display, the launcher and the settings,
   developer tools, update and welcome windows open on the screen with
-  the mouse pointer.
+  the mouse pointer, and those windows open centered on it.
 
 ## [0.14.0] - 2026-10-03
 
