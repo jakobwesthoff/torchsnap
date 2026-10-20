@@ -124,8 +124,8 @@ export async function setupLauncherVisibilityChoreography(): Promise<void> {
   }
 
   // Externally-initiated dismisses (hotkey toggle, Control API
-  // `dismiss`). Only emitted by Rust on Linux — see
-  // `request_launcher_dismiss` in `src-tauri/src/lib.rs`.
+  // `dismiss`, a close request on the window). Only emitted by Rust
+  // on Linux, see `request_launcher_dismiss` in `src-tauri/src/lib.rs`.
   // Frontend-initiated dismisses call `dismissLauncher()` directly
   // and do not rely on this event.
   await win.listen("launcher-dismiss-requested", () => {

@@ -658,8 +658,9 @@ pub(crate) fn show_launcher_window(app: &tauri::AppHandle) {
 /// What the run loop does with a close request on a window.
 #[derive(Debug, PartialEq, Eq)]
 enum CloseRequestAction {
-    /// Keep the launcher window and hide it.
-    HideLauncherWindow,
+    /// Keep the launcher window and dismiss it the way every other
+    /// dismiss does.
+    DismissLauncher,
     /// Keep the window open.
     PreventClose,
     /// Let the window close. The settings, developer tools and update
@@ -673,7 +674,7 @@ fn close_request_action(
     welcome_finished: impl FnOnce() -> bool,
 ) -> CloseRequestAction {
     match label {
-        "main" => CloseRequestAction::HideLauncherWindow,
+        "main" => CloseRequestAction::DismissLauncher,
         // The welcome window closes only once it is finished; before
         // that, its close control and Cmd+W do nothing.
         label if label == WELCOME_WINDOW.label => {
@@ -1345,8 +1346,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // Intercept window close for the launcher: hide instead of destroying,
-    // so the menubar app keeps running. The settings window is allowed to
+    // A close request on the launcher dismisses it instead of destroying
+    // it, so the menubar app keeps running. The settings window is allowed to
     // close normally — it will be recreated on demand next time the user
     // opens it, keeping RAM usage low while it is not visible.
     // On exit, disable all gadgets.
@@ -1356,11 +1357,9 @@ pub fn run() {
             event: WindowEvent::CloseRequested { api, .. },
             ..
         } => match close_request_action(label, || welcome::may_close(app)) {
-            CloseRequestAction::HideLauncherWindow => {
+            CloseRequestAction::DismissLauncher => {
                 api.prevent_close();
-                if let Some(win) = app.get_webview_window(label) {
-                    let _ = win.hide();
-                }
+                request_launcher_dismiss(app);
             }
             CloseRequestAction::PreventClose => api.prevent_close(),
             CloseRequestAction::Close => {}
@@ -1687,10 +1686,10 @@ mod launcher_tests {
     }
 
     #[test]
-    fn a_close_request_on_the_launcher_hides_it() {
+    fn a_close_request_dismisses_the_launcher() {
         assert_eq!(
             close_request_action("main", welcome_flag_must_not_be_read),
-            CloseRequestAction::HideLauncherWindow
+            CloseRequestAction::DismissLauncher
         );
     }
 
