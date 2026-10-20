@@ -19,8 +19,8 @@ fields, parsed and documented in
 - `max-output-bytes`, `max-stdin-bytes`: per-rule caps.
 
 None of them survive rule compilation. `CompiledCommandRule`
-(`src-tauri/src/wasm/argv_matcher.rs`) holds `binary`, `argv`
-and `cwd` only, and `compile_rule` drops the three limits. At
+(`src-tauri/src/wasm/argv_matcher.rs`) holds `binary`, `argv`,
+`cwd` and `env` only, and `compile_rule` drops the three limits. At
 run time `CommandCap::run` (`src-tauri/src/caps/command.rs`):
 
 - clamps timeout and output only against the global constants

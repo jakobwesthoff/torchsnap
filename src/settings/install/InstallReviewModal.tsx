@@ -89,6 +89,13 @@ export function InstallReviewModal({
           <>
             <GadgetIdentity review={review} />
             <p className="text-sm text-red-500">{action.reason}</p>
+            {/* The technical error behind the reason, set apart so the
+                sentence stays readable and the error can be copied. */}
+            {action.detail && (
+              <p className="rounded bg-black/5 px-2 py-1.5 font-mono text-xs break-words whitespace-pre-wrap text-text-secondary select-text dark:bg-black/30">
+                {action.detail}
+              </p>
+            )}
           </>
         );
         actions = <DialogButton onClick={cancel}>Dismiss</DialogButton>;

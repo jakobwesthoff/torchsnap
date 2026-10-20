@@ -112,9 +112,33 @@ describe("InstallReviewModal", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a rejection's technical detail apart from its reason", () => {
+    const detail =
+      "`[[permissions.command]]` rule 0 `cwd` `/Users/me/Library/x` lies in an area the gadget can write";
+    renderModal(
+      ready({
+        action: {
+          kind: "reject",
+          reason: "This gadget asks to run programs in a way Torchsnap does not allow.",
+          detail,
+        },
+      }),
+    );
+
+    const reason = screen.getByText(
+      "This gadget asks to run programs in a way Torchsnap does not allow.",
+    );
+    const detailElement = screen.getByText(detail);
+    expect(detailElement).not.toBe(reason);
+    expect(reason).not.toContainElement(detailElement);
+    expect(detailElement).toHaveClass("font-mono", "select-text");
+  });
+
   it("offers only dismissal for a rejected gadget", async () => {
     const { onCancel } = renderModal(
-      ready({ action: { kind: "reject", reason: "Built-in gadgets cannot be replaced." } }),
+      ready({
+        action: { kind: "reject", reason: "Built-in gadgets cannot be replaced.", detail: null },
+      }),
     );
 
     expect(screen.getByRole("dialog")).toHaveTextContent("Built-in gadgets cannot be replaced.");

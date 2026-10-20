@@ -72,15 +72,21 @@ fn decide(
         pending.get(gadget_id),
         manifest,
     );
-    if matches!(decision, InstallDecision::Reject(_)) {
+    if matches!(decision, InstallDecision::Reject { .. }) {
         return decision;
     }
     match command_rule_problem(context, manifest) {
-        Some(reason) => InstallDecision::Reject(reason),
+        Some(error) => InstallDecision::Reject {
+            reason: "This gadget asks to run programs in a way Torchsnap does not allow."
+                .to_string(),
+            detail: Some(error),
+        },
         None => decision,
     }
 }
 
+/// The error that would stop the incoming gadget's command rules from
+/// loading, if any.
 fn command_rule_problem(context: &QueueContext, manifest: &Manifest) -> Option<String> {
     let platform = context.platform.as_ref()?;
     let rules = manifest
@@ -96,9 +102,7 @@ fn command_rule_problem(context: &QueueContext, manifest: &Manifest) -> Option<S
     };
     crate::caps::check_command_rules(rules, &paths, &paths.gadget_data)
         .err()
-        .map(|e| {
-            format!("This gadget asks to run programs in a way Torchsnap does not allow: {e:#}")
-        })
+        .map(|e| format!("{e:#}"))
 }
 
 #[derive(Debug)]
@@ -146,7 +150,7 @@ impl From<&InstallDecision> for ReviewedDecision {
             InstallDecision::Replace { previous, .. } => ReviewedDecision::Replace {
                 previous_version: previous.gadget.version.clone(),
             },
-            InstallDecision::Reject(_) => ReviewedDecision::Reject,
+            InstallDecision::Reject { .. } => ReviewedDecision::Reject,
         }
     }
 }
@@ -666,10 +670,16 @@ mod tests {
         let RequestStateView::Ready { review } = state_of(&fixture.queue, &id) else {
             panic!("expected a ready request");
         };
-        let ReviewAction::Reject { reason } = &review.action else {
+        let ReviewAction::Reject { reason, detail } = &review.action else {
             panic!("expected a rejection, got {:?}", review.action);
         };
-        assert!(reason.contains("can write"), "{reason}");
+        assert_eq!(
+            reason,
+            "This gadget asks to run programs in a way Torchsnap does not allow."
+        );
+        let detail = detail.as_deref().expect("the rejection carries the error");
+        assert!(detail.contains("can write"), "{detail}");
+        assert!(!detail.contains("does not allow"), "{detail}");
     }
 
     #[test]

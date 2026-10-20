@@ -303,8 +303,11 @@ pub enum ReviewAction {
         previous_version: String,
         relation: VersionRelation,
     },
+    /// `reason` is a sentence for the user; `detail`, when present, is
+    /// the technical error behind it, shown apart from the sentence.
     Reject {
         reason: String,
+        detail: Option<String>,
     },
 }
 
@@ -334,9 +337,10 @@ pub fn build_review(
             },
             Some(previous.as_ref()),
         ),
-        InstallDecision::Reject(reason) => (
+        InstallDecision::Reject { reason, detail } => (
             ReviewAction::Reject {
                 reason: reason.clone(),
+                detail: detail.clone(),
             },
             None,
         ),
@@ -788,7 +792,10 @@ mod tests {
 
     #[test]
     fn a_rejected_review_carries_the_reason() {
-        let decision = InstallDecision::Reject("Built-in gadgets cannot be replaced.".to_string());
+        let decision = InstallDecision::Reject {
+            reason: "Built-in gadgets cannot be replaced.".to_string(),
+            detail: None,
+        };
 
         let review = build_review(
             &manifest("1.0.0", ""),
@@ -800,8 +807,26 @@ mod tests {
         assert_eq!(
             review.action,
             ReviewAction::Reject {
-                reason: "Built-in gadgets cannot be replaced.".to_string()
+                reason: "Built-in gadgets cannot be replaced.".to_string(),
+                detail: None,
             }
+        );
+    }
+
+    #[test]
+    fn a_rejection_serializes_its_detail_apart_from_the_reason() {
+        let action = ReviewAction::Reject {
+            reason: "This gadget asks to run programs in a way Torchsnap does not allow.".into(),
+            detail: Some("rule 0 `cwd` lies in an area the gadget can write".into()),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&action).expect("action serializes"),
+            json!({
+                "kind": "reject",
+                "reason": "This gadget asks to run programs in a way Torchsnap does not allow.",
+                "detail": "rule 0 `cwd` lies in an area the gadget can write"
+            })
         );
     }
 

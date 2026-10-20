@@ -329,7 +329,7 @@ fn install_staged(
     );
 
     let (previous_version, version_relation) = match decision {
-        InstallDecision::Reject(message) => anyhow::bail!(message),
+        InstallDecision::Reject { reason, .. } => anyhow::bail!(reason),
         InstallDecision::Fresh => {
             archive_ops::publish_fresh(paths, staged.path(), &gadget_id)?;
             pending.record_install(&gadget_id, manifest.clone());

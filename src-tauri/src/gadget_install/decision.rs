@@ -22,7 +22,12 @@ pub enum InstallDecision {
         previous: Box<Manifest>,
         relation: VersionRelation,
     },
-    Reject(String),
+    /// Refused. `reason` is the sentence the review shows; `detail` is
+    /// a technical error behind it, shown apart from the sentence.
+    Reject {
+        reason: String,
+        detail: Option<String>,
+    },
 }
 
 /// How the incoming version relates to the one it replaces.
@@ -53,19 +58,28 @@ pub fn decide_install(
     // happened in this session.
     let registered_user = match registered {
         Some(Registration::Builtin) => {
-            return InstallDecision::Reject(format!(
-                "A built-in gadget with id `{gadget_id}` already exists. Built-in gadgets cannot be replaced."
-            ));
+            return InstallDecision::Reject {
+                reason: format!(
+                    "A built-in gadget with id `{gadget_id}` already exists. Built-in gadgets cannot be replaced."
+                ),
+                detail: None,
+            };
         }
         Some(Registration::System) => {
-            return InstallDecision::Reject(format!(
-                "A bundled gadget with id `{gadget_id}` ships with Torchsnap. Bundled gadgets cannot be replaced."
-            ));
+            return InstallDecision::Reject {
+                reason: format!(
+                    "A bundled gadget with id `{gadget_id}` ships with Torchsnap. Bundled gadgets cannot be replaced."
+                ),
+                detail: None,
+            };
         }
         Some(Registration::Dev) => {
-            return InstallDecision::Reject(format!(
-                "A development gadget with id `{gadget_id}` is loaded from the repository. Edit the dev gadget directly or change its id before installing."
-            ));
+            return InstallDecision::Reject {
+                reason: format!(
+                    "A development gadget with id `{gadget_id}` is loaded from the repository. Edit the dev gadget directly or change its id before installing."
+                ),
+                detail: None,
+            };
         }
         Some(Registration::User {
             manifest,
@@ -82,9 +96,12 @@ pub fn decide_install(
             .manifest()
             .expect("installed and replaced changes carry a manifest"),
         (None, Some((_, true))) => {
-            return InstallDecision::Reject(format!(
-                "The gadget `{gadget_id}` is installed as a directory under gadgets/. Remove that directory by hand to install this version."
-            ));
+            return InstallDecision::Reject {
+                reason: format!(
+                    "The gadget `{gadget_id}` is installed as a directory under gadgets/. Remove that directory by hand to install this version."
+                ),
+                detail: None,
+            };
         }
         (None, Some((manifest, false))) => manifest,
         (None, None) => return InstallDecision::Fresh,
@@ -97,9 +114,12 @@ pub fn decide_install(
     let previous_migrations = sql_migration_count(previous);
     let incoming_migrations = sql_migration_count(incoming);
     if incoming_migrations < previous_migrations {
-        return InstallDecision::Reject(format!(
-            "This version of `{gadget_id}` declares fewer storage migrations ({incoming_migrations}) than the installed one ({previous_migrations}), so it could not open the installed version's data. Uninstall the installed version first, then install this one."
-        ));
+        return InstallDecision::Reject {
+            reason: format!(
+                "This version of `{gadget_id}` declares fewer storage migrations ({incoming_migrations}) than the installed one ({previous_migrations}), so it could not open the installed version's data. Uninstall the installed version first, then install this one."
+            ),
+            detail: None,
+        };
     }
 
     InstallDecision::Replace {
@@ -220,7 +240,7 @@ mod tests {
 
     fn rejection(decision: InstallDecision) -> String {
         match decision {
-            InstallDecision::Reject(message) => message,
+            InstallDecision::Reject { reason, .. } => reason,
             other => panic!("expected a rejection, got {other:?}"),
         }
     }
@@ -377,7 +397,7 @@ mod tests {
             is_directory: false,
         };
         let decision = decide_install(Some(&registration), None, &manifest("1.0.0", ""));
-        assert!(matches!(decision, InstallDecision::Reject(_)));
+        assert!(matches!(decision, InstallDecision::Reject { .. }));
     }
 
     #[test]

@@ -64,7 +64,7 @@ export interface Provenance {
 export type ReviewAction =
   | { kind: "install" }
   | { kind: "replace"; previousVersion: string; relation: VersionRelation }
-  | { kind: "reject"; reason: string };
+  | { kind: "reject"; reason: string; detail: string | null };
 
 export interface InstallReview {
   gadget: { id: string; name: string; description: string; version: string };
