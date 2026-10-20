@@ -36,7 +36,9 @@ use tauri::{
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
-use monitor_placement::{ReportedMonitor, centered_window_origin, monitor_index_under_cursor};
+use monitor_placement::{
+    PLATFORM_COORDINATE_SPACE, ReportedMonitor, centered_window_origin, monitor_index_under_cursor,
+};
 use platform::{
     LauncherPanel as _, PlatformLauncherPanel, PlatformTray, PlatformWindowChrome, Tray as _,
     WindowChrome as _,
@@ -400,12 +402,14 @@ pub(crate) fn close_update_window(app: &tauri::AppHandle) {
 /// contains the cursor.
 fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
     let cursor = app.cursor_position().ok()?;
+    let primary = app.primary_monitor().ok().flatten();
     let monitors = app.available_monitors().unwrap_or_default();
     let reported: Vec<_> = monitors.iter().map(ReportedMonitor::of).collect();
+    let primary_scale = primary.as_ref().map(tauri::Monitor::scale_factor);
 
-    match monitor_index_under_cursor(cursor, &reported) {
+    match monitor_index_under_cursor(cursor, &reported, primary_scale, PLATFORM_COORDINATE_SPACE) {
         Some(index) => monitors.into_iter().nth(index),
-        None => app.primary_monitor().ok().flatten(),
+        None => primary,
     }
 }
 
