@@ -184,6 +184,7 @@ impl CommandCap {
 
         // Every check that can deny the call runs before anything is
         // created on disk.
+        let env_overrides = check_env_overrides(rule, &options.env)?;
         let guest_cwd = check_guest_cwd(rule, options.cwd.as_deref())?;
         let rule_default_cwd = match (&guest_cwd, &rule.cwd) {
             (None, Some(root)) => Some(prepare_rule_root(root)?),
@@ -203,7 +204,7 @@ impl CommandCap {
             .or(rule_default_cwd)
             .unwrap_or_else(|| spawn_dirs.cwd().to_path_buf());
 
-        let env = build_command_env(std::env::vars_os(), &spawn_dirs, &options.env);
+        let env = build_command_env(std::env::vars_os(), &spawn_dirs, &env_overrides);
 
         let timeout_ms = resolve_timeout_ms(options.timeout_ms);
         let max_output_bytes = resolve_max_output_bytes(options.max_output_bytes);
@@ -444,6 +445,79 @@ fn make_tree_removable(root: &std::path::Path) {
 // user's files.
 // =========================================================
 
+/// The guest's env overrides, checked against the keys and value
+/// constraints the rule declares. A `path-under` value is replaced by
+/// its canonical path, so the program reads the path that was checked.
+/// A value checked only by a pattern (`regex`, `glob`, `any-string`)
+/// may not contain a path separator: it can then name nothing but
+/// something relative to the program's working directory or `HOME`.
+fn check_env_overrides(
+    rule: &CompiledCommandRule,
+    overrides: &[(String, String)],
+) -> Result<Vec<(std::ffi::OsString, std::ffi::OsString)>, CommandCapError> {
+    use argv_matcher::CompiledArgvConstraint as C;
+
+    let deny = |message: String| Err(CommandCapError::PermissionDenied(message));
+    let mut checked = Vec::with_capacity(overrides.len());
+    for (key, value) in overrides {
+        let Some((_, constraint)) = rule.env.iter().find(|(declared, _)| declared == key) else {
+            return deny(format!(
+                "the rule for `{}` does not declare the environment variable `{key}`",
+                rule.binary
+            ));
+        };
+        if value.contains('\0') {
+            return deny(format!("the value of `{key}` contains a NUL byte"));
+        }
+        let value = match constraint {
+            C::PathUnder(root) => checked_path_value(key, value, root)?,
+            other => {
+                if !argv_matcher::value_matches(other, value) {
+                    return deny(format!(
+                        "the value of `{key}` does not meet the rule's constraint"
+                    ));
+                }
+                if matches!(other, C::Regex(_) | C::Glob(_) | C::AnyString)
+                    && value.chars().any(std::path::is_separator)
+                {
+                    return deny(format!(
+                        "the value of `{key}` contains a path separator; declare it as \
+                         `path-under` to pass a path"
+                    ));
+                }
+                value.into()
+            }
+        };
+        checked.push((key.into(), value));
+    }
+    Ok(checked)
+}
+
+/// A `path-under` env value: absolute, without `..`, and under the
+/// declared root. Returns the canonical path.
+fn checked_path_value(
+    key: &str,
+    value: &str,
+    root: &std::path::Path,
+) -> Result<std::ffi::OsString, CommandCapError> {
+    let requested = std::path::Path::new(value);
+    if requested
+        .components()
+        .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(CommandCapError::PermissionDenied(format!(
+            "the value of `{key}` contains `..`"
+        )));
+    }
+    crate::wasm::path_safety::canonical_under_root(requested, root)
+        .map(PathBuf::into_os_string)
+        .map_err(|e| {
+            CommandCapError::PermissionDenied(format!(
+                "the value of `{key}` is not inside the declared root: {e}"
+            ))
+        })
+}
+
 /// The child's `PATH`. macOS-specific: the system directories plus
 /// the Homebrew prefixes of Intel (`/usr/local/bin`) and Apple
 /// silicon (`/opt/homebrew/bin`) Macs, where the command-line tools
@@ -470,7 +544,7 @@ fn is_inherited_env_key(key: &std::ffi::OsStr) -> bool {
 fn build_command_env(
     inherited: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
     spawn_dirs: &SpawnDirs,
-    overrides: &[(String, String)],
+    overrides: &[(std::ffi::OsString, std::ffi::OsString)],
 ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     use std::ffi::OsString;
 
@@ -483,9 +557,9 @@ fn build_command_env(
     env.push(("TMPDIR".into(), spawn_dirs.tmp().into()));
 
     for (key, value) in overrides {
-        let key = OsString::from(key);
+        let key = key.clone();
         env.retain(|(existing, _)| existing != &key);
-        env.push((key, OsString::from(value)));
+        env.push((key, value.clone()));
     }
 
     env
@@ -699,6 +773,7 @@ mod tests {
                 timeout_ms_max: None,
                 max_output_bytes: None,
                 max_stdin_bytes: None,
+                env: Default::default(),
             }],
         };
         assert_eq!(perms.rules.len(), 1);
@@ -787,21 +862,25 @@ mod tests {
                     binary: "/bin/pwd".into(),
                     argv: vec![],
                     cwd: None,
+                    env: vec![],
                 },
                 CompiledCommandRule {
                     binary: "/bin/ls".into(),
                     argv: vec![C::Literal("-A".into())],
                     cwd: None,
+                    env: vec![],
                 },
                 CompiledCommandRule {
                     binary: "/bin/sh".into(),
                     argv: vec![C::Literal("-c".into()), C::AnyString],
                     cwd: None,
+                    env: vec![],
                 },
                 CompiledCommandRule {
                     binary: "/usr/bin/env".into(),
                     argv: vec![],
                     cwd: None,
+                    env: vec![],
                 },
             ],
             paths.gadget_data,
@@ -952,6 +1031,7 @@ mod tests {
                 binary: missing.to_string_lossy().into_owned(),
                 argv: vec![],
                 cwd: None,
+                env: vec![],
             }],
             gadget_paths(root.path(), "spawner").gadget_data,
         )
@@ -997,9 +1077,12 @@ mod tests {
         let (cap, base) = cap_with_spawn_base(root.path());
         let mut guest_cwd = options(&[]);
         guest_cwd.cwd = Some(root.path().to_string_lossy().into_owned());
+        let mut undeclared_env = options(&[]);
+        undeclared_env.env = vec![("GIT_DIR".into(), "x".into())];
         let denials = [
             ("argv no rule accepts", options(&["unexpected-argument"])),
             ("cwd without a rule cwd", guest_cwd),
+            ("env not declared", undeclared_env),
         ];
 
         for (case, opts) in denials {
@@ -1272,6 +1355,195 @@ mod tests {
         assert_eq!(langs, vec![&("LANG".into(), "C".into())]);
     }
 
+    // ─── declared environment overrides ───────────────────
+
+    /// A cap over `/usr/bin/env` whose rule declares the env keys of
+    /// `declaration` (TOML table body), compiled for a gadget laid out
+    /// below `root`.
+    fn env_cap(root: &std::path::Path, declaration: &str) -> CommandCap {
+        let manifest = crate::wasm::manifest::Manifest::parse(&format!(
+            r#"
+            [gadget]
+            id = "env"
+            name = "Env"
+            description = "Env"
+            version = "0.1.0"
+            wasm = "env.wasm"
+            icon = "heroicons:beaker"
+            [[permissions.command]]
+            binary = "/usr/bin/env"
+            [permissions.command.env]
+            {declaration}
+            "#
+        ))
+        .expect("test manifest parses");
+        let rules = manifest.permissions.expect("permissions").command;
+        let paths = gadget_paths(root, "env");
+        CommandCap::new(&rules, &paths, paths.gadget_data.clone()).expect("rules compile")
+    }
+
+    fn with_env(pairs: &[(&str, &str)]) -> CommandOptions {
+        let mut opts = options(&[]);
+        opts.env = pairs
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect();
+        opts
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn undeclared_env_override_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("GIT_COMMITTER_NAME", "x")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ld_preload_override_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("LD_PRELOAD", "evil.so")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_override_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("PATH", "/tmp")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn env_key_case_must_match_the_declaration() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("git_author_name", "x")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn env_value_violating_its_constraint_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(
+            root.path(),
+            r#"LC_ALL = { kind = "enum", values = ["C", "en_US.UTF-8"] }"#,
+        );
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("LC_ALL", "de_DE.UTF-8")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn env_value_with_nul_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("GIT_AUTHOR_NAME", "a\0b")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pattern_env_value_with_a_path_separator_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_DIR = { kind = "any-string" }"#);
+
+        assert_denied(cap.run("/usr/bin/env", with_env(&[("GIT_DIR", "../repo/.git")])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_env_value_outside_root_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        projects(root.path());
+        std::fs::create_dir_all(root.path().join("elsewhere")).expect("elsewhere");
+        let cap = env_cap(
+            root.path(),
+            r#"GIT_DIR = { kind = "path-under", root = "${home}/projects" }"#,
+        );
+
+        let outside = root.path().join("elsewhere");
+        assert_denied(cap.run(
+            "/usr/bin/env",
+            with_env(&[("GIT_DIR", &outside.to_string_lossy())]),
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_env_value_with_dotdot_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let repo = projects(root.path()).join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let cap = env_cap(
+            root.path(),
+            r#"GIT_DIR = { kind = "path-under", root = "${home}/projects" }"#,
+        );
+
+        let value = repo.join("../repo");
+        assert_denied(cap.run(
+            "/usr/bin/env",
+            with_env(&[("GIT_DIR", &value.to_string_lossy())]),
+        ));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn path_under_env_value_reaches_the_child_canonical() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let repo = projects(root.path()).join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        std::os::unix::fs::symlink(&repo, projects(root.path()).join("alias")).expect("link");
+        let cap = env_cap(
+            root.path(),
+            r#"GIT_DIR = { kind = "path-under", root = "${home}/projects" }"#,
+        );
+
+        let value = projects(root.path()).join("alias");
+        let result = cap
+            .run(
+                "/usr/bin/env",
+                with_env(&[("GIT_DIR", &value.to_string_lossy())]),
+            )
+            .expect("env runs");
+
+        let env = String::from_utf8_lossy(&result.stdout).into_owned();
+        let canonical = repo.canonicalize().expect("canonical repo");
+        assert!(
+            env.lines()
+                .any(|line| line == format!("GIT_DIR={}", canonical.display())),
+            "{env}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn declared_env_override_reaches_the_child() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"GIT_AUTHOR_NAME = { kind = "any-string" }"#);
+
+        let result = cap
+            .run("/usr/bin/env", with_env(&[("GIT_AUTHOR_NAME", "Jo Doe")]))
+            .expect("env runs");
+
+        assert!(String::from_utf8_lossy(&result.stdout).contains("GIT_AUTHOR_NAME=Jo Doe\n"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn declared_override_replaces_a_base_key() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = env_cap(root.path(), r#"LANG = { kind = "literal", value = "C" }"#);
+
+        let result = cap
+            .run("/usr/bin/env", with_env(&[("LANG", "C")]))
+            .expect("env runs");
+
+        let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
+        let langs: Vec<&str> = stdout
+            .lines()
+            .filter(|line| line.starts_with("LANG="))
+            .collect();
+        assert_eq!(langs, vec!["LANG=C"]);
+    }
+
     // ─── the rule's cwd root ──────────────────────────────
 
     /// A cap over `/bin/pwd` whose one rule declares `rule_cwd`, for a
@@ -1285,6 +1557,7 @@ mod tests {
             timeout_ms_max: None,
             max_output_bytes: None,
             max_stdin_bytes: None,
+            env: Default::default(),
         };
         CommandCap::new(&[rule], &paths, paths.gadget_data.clone()).expect("rule compiles")
     }
@@ -1612,6 +1885,7 @@ end if";
             timeout_ms_max: None,
             max_output_bytes: None,
             max_stdin_bytes: None,
+            env: Default::default(),
         };
         let cap = CommandCap::new(&[rule], &paths, paths.gadget_data.clone()).expect("compile");
 

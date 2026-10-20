@@ -94,10 +94,12 @@ function describe(item: PermissionItem): { group: GroupId; entry: GroupEntry; pa
             permission.argv.length === 0
               ? "without arguments"
               : `with ${permission.argv.map(describeArgv).join(", ")}`,
-          lines:
-            permission.cwd === null
+          lines: [
+            ...(permission.cwd === null
               ? []
-              : [`in ${shortenPath(permission.cwd)} or a folder inside it`],
+              : [`in ${shortenPath(permission.cwd)} or a folder inside it`]),
+            ...permission.env.map(({ key, value }) => `sets ${key} to ${describeArgv(value)}`),
+          ],
         },
       };
     case "httpOrigin":

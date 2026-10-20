@@ -527,6 +527,9 @@ interface command {
     /// Additional environment variables, layered on a minimal base:
     /// the host's locale settings and `TZ`, a fixed `PATH`, and `HOME`
     /// and `TMPDIR` pointing at empty directories of this one call.
+    /// Each key must be declared in the matching rule's
+    /// `[permissions.command.env]` and its value must meet the declared
+    /// constraint, or the call fails with `permission-denied`.
     env: list<tuple<string, string>>,
     /// Bytes written to the child's stdin. Bounded by the host
     /// `max-stdin-bytes` ceiling and the per-rule `max-stdin-bytes`

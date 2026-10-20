@@ -67,6 +67,9 @@ pub struct CompiledCommandRule {
     pub argv: Vec<CompiledArgvConstraint>,
     /// The rule's `cwd` root with its variables resolved.
     pub cwd: Option<PathBuf>,
+    /// The environment variables a call may set, each with the
+    /// constraint its value must meet, sorted by key.
+    pub env: Vec<(String, CompiledArgvConstraint)>,
 }
 
 // =========================================================
@@ -82,18 +85,18 @@ pub enum CompileError {
         #[source]
         source: ResolveError,
     },
-    #[error("rule {rule_index} argv[{argv_index}] regex `{pattern}` failed to compile: {source}")]
+    #[error("rule {rule_index} {position} regex `{pattern}` failed to compile: {source}")]
     Regex {
         rule_index: usize,
-        argv_index: usize,
+        position: String,
         pattern: String,
         #[source]
         source: regex::Error,
     },
-    #[error("rule {rule_index} argv[{argv_index}] glob `{pattern}` failed to compile: {source}")]
+    #[error("rule {rule_index} {position} glob `{pattern}` failed to compile: {source}")]
     Glob {
         rule_index: usize,
-        argv_index: usize,
+        position: String,
         pattern: String,
         #[source]
         source: globset::Error,
@@ -129,7 +132,9 @@ pub fn compile_rule(
         .argv
         .iter()
         .enumerate()
-        .map(|(argv_index, c)| compile_constraint(c, rule_index, argv_index, resolver))
+        .map(|(argv_index, c)| {
+            compile_constraint(c, rule_index, &format!("argv[{argv_index}]"), resolver)
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     let cwd = raw
@@ -147,17 +152,27 @@ pub fn compile_rule(
         })
         .transpose()?;
 
+    let env = raw
+        .env
+        .iter()
+        .map(|(key, constraint)| {
+            compile_constraint(constraint, rule_index, &format!("env `{key}`"), resolver)
+                .map(|compiled| (key.clone(), compiled))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(CompiledCommandRule {
         binary: raw.binary.clone(),
         argv,
         cwd,
+        env,
     })
 }
 
 fn compile_constraint(
     constraint: &ArgvConstraint,
     rule_index: usize,
-    argv_index: usize,
+    position: &str,
     resolver: &impl PathResolver,
 ) -> Result<CompiledArgvConstraint, CompileError> {
     match constraint {
@@ -167,7 +182,7 @@ fn compile_constraint(
                     .substitute_variables(value)
                     .map_err(|e| CompileError::Resolve {
                         rule_index,
-                        field: format!("argv[{argv_index}].value"),
+                        field: format!("{position}.value"),
                         source: e,
                     })?;
             Ok(CompiledArgvConstraint::Literal(resolved))
@@ -180,7 +195,7 @@ fn compile_constraint(
                         .substitute_variables(v)
                         .map_err(|e| CompileError::Resolve {
                             rule_index,
-                            field: format!("argv[{argv_index}].values"),
+                            field: format!("{position}.values"),
                             source: e,
                         })
                 })
@@ -190,7 +205,7 @@ fn compile_constraint(
         ArgvConstraint::Glob { pattern } => {
             let glob = Glob::new(pattern).map_err(|e| CompileError::Glob {
                 rule_index,
-                argv_index,
+                position: position.to_string(),
                 pattern: pattern.clone(),
                 source: e,
             })?;
@@ -205,7 +220,7 @@ fn compile_constraint(
             let anchored = format!("^(?:{pattern})$");
             let compiled = Regex::new(&anchored).map_err(|e| CompileError::Regex {
                 rule_index,
-                argv_index,
+                position: position.to_string(),
                 pattern: pattern.clone(),
                 source: e,
             })?;
@@ -217,7 +232,7 @@ fn compile_constraint(
                     .substitute_variables(root)
                     .map_err(|e| CompileError::Resolve {
                         rule_index,
-                        field: format!("argv[{argv_index}].root"),
+                        field: format!("{position}.root"),
                         source: e,
                     })?;
             Ok(CompiledArgvConstraint::PathUnder(PathBuf::from(resolved)))
@@ -228,7 +243,7 @@ fn compile_constraint(
             // so the inner constraint here is never another
             // `Rest`. Compile recursively to keep the type
             // shape consistent.
-            let inner = compile_constraint(constraint, rule_index, argv_index, resolver)?;
+            let inner = compile_constraint(constraint, rule_index, position, resolver)?;
             Ok(CompiledArgvConstraint::Rest(Box::new(inner)))
         }
     }
@@ -293,6 +308,12 @@ fn argv_satisfies_rule(rule_argv: &[CompiledArgvConstraint], argv: &[String]) ->
     }
 
     true
+}
+
+/// Whether `value` meets one compiled constraint, as an argv position
+/// would. Env values use the same constraint vocabulary.
+pub fn value_matches(constraint: &CompiledArgvConstraint, value: &str) -> bool {
+    position_matches(constraint, value)
 }
 
 fn position_matches(constraint: &CompiledArgvConstraint, arg: &str) -> bool {
@@ -369,6 +390,7 @@ mod tests {
             timeout_ms_max: None,
             max_output_bytes: None,
             max_stdin_bytes: None,
+            env: Default::default(),
         }
     }
 
@@ -436,6 +458,83 @@ mod tests {
         let err = compile_rule(&raw, 3, &default_ctx()).unwrap_err();
 
         assert!(err.to_string().contains("rule 3 cwd"), "{err}");
+    }
+
+    #[test]
+    fn compile_compiles_declared_env_in_key_order() {
+        let mut raw = rule("git", vec![]);
+        raw.env.insert(
+            "LC_ALL".to_string(),
+            ArgvConstraint::Literal {
+                value: "C".to_string(),
+            },
+        );
+        raw.env
+            .insert("GIT_AUTHOR_NAME".to_string(), ArgvConstraint::AnyString);
+
+        let compiled = compile_rule(&raw, 0, &default_ctx()).expect("compile");
+
+        let keys: Vec<&str> = compiled.env.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, vec!["GIT_AUTHOR_NAME", "LC_ALL"]);
+        assert!(value_matches(&compiled.env[1].1, "C"));
+        assert!(!value_matches(&compiled.env[1].1, "POSIX"));
+    }
+
+    /// Each kind that resolves variables or compiles a pattern names the
+    /// position of a failure, for argv and env alike.
+    #[test]
+    fn compile_errors_name_the_failing_position() {
+        let unknown = || "${nope}".to_string();
+        let cases = [
+            (
+                ArgvConstraint::Literal { value: unknown() },
+                "argv[0].value",
+            ),
+            (
+                ArgvConstraint::Enum {
+                    values: vec![unknown()],
+                },
+                "argv[0].values",
+            ),
+            (
+                ArgvConstraint::PathUnder { root: unknown() },
+                "argv[0].root",
+            ),
+            (
+                ArgvConstraint::Glob {
+                    pattern: "{a,b".to_string(),
+                },
+                "argv[0] glob",
+            ),
+            (
+                ArgvConstraint::Regex {
+                    pattern: "[unclosed".to_string(),
+                },
+                "argv[0] regex",
+            ),
+        ];
+        for (constraint, position) in cases {
+            let err = compile_rule(&rule("git", vec![constraint]), 1, &default_ctx()).unwrap_err();
+            assert!(
+                err.to_string().contains(&format!("rule 1 {position}")),
+                "{position}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn compile_names_the_env_key_of_a_bad_pattern() {
+        let mut raw = rule("git", vec![]);
+        raw.env.insert(
+            "FOO".to_string(),
+            ArgvConstraint::Regex {
+                pattern: "[unclosed".to_string(),
+            },
+        );
+
+        let err = compile_rule(&raw, 2, &default_ctx()).unwrap_err();
+
+        assert!(err.to_string().contains("rule 2 env `FOO` regex"), "{err}");
     }
 
     #[test]

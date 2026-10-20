@@ -41,6 +41,7 @@ pub enum Permission {
         binary: String,
         argv: Vec<ArgvRule>,
         cwd: Option<String>,
+        env: Vec<EnvRule>,
     },
     HttpOrigin {
         origin: String,
@@ -60,6 +61,15 @@ pub enum Permission {
     SqlStorage,
     IconCache,
     PathResolver,
+}
+
+/// An environment variable a command rule lets a call set, with the
+/// constraint its value must meet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvRule {
+    pub key: String,
+    pub value: ArgvRule,
 }
 
 /// Mirror of `ArgvConstraint` with the review's own serialization,
@@ -137,6 +147,14 @@ fn permissions_of(manifest: &Manifest) -> Vec<Permission> {
             binary: rule.binary.clone(),
             argv: rule.argv.iter().map(ArgvRule::from).collect(),
             cwd: rule.cwd.clone(),
+            env: rule
+                .env
+                .iter()
+                .map(|(key, constraint)| EnvRule {
+                    key: key.clone(),
+                    value: ArgvRule::from(constraint),
+                })
+                .collect(),
         });
     }
     if let Some(http) = &declared.http {
@@ -431,6 +449,7 @@ mod tests {
                         ArgvRule::AnyString,
                     ],
                     cwd: None,
+                    env: vec![],
                 },
                 &Permission::HttpOrigin {
                     origin: "https://api.example.com".to_string()
@@ -502,6 +521,7 @@ mod tests {
                     },
                 ],
                 cwd: None,
+                env: vec![],
             }]
         );
     }
@@ -522,6 +542,45 @@ mod tests {
                 binary: "git".to_string(),
                 argv: vec![],
                 cwd: Some("${home}/projects".to_string()),
+                env: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn command_items_carry_the_declared_env() {
+        let (items, _) = permission_items(
+            &manifest(
+                "1.0.0",
+                r#"
+                [[permissions.command]]
+                binary = "git"
+                [permissions.command.env]
+                LC_ALL = { kind = "enum", values = ["C"] }
+                GIT_AUTHOR_NAME = { kind = "any-string" }
+                "#,
+            ),
+            None,
+        );
+
+        assert_eq!(
+            kinds(&items),
+            vec![&Permission::Command {
+                binary: "git".to_string(),
+                argv: vec![],
+                cwd: None,
+                env: vec![
+                    EnvRule {
+                        key: "GIT_AUTHOR_NAME".to_string(),
+                        value: ArgvRule::AnyString,
+                    },
+                    EnvRule {
+                        key: "LC_ALL".to_string(),
+                        value: ArgvRule::Enum {
+                            values: vec!["C".to_string()]
+                        },
+                    },
+                ],
             }]
         );
     }
@@ -557,6 +616,7 @@ mod tests {
                     binary: "ls".to_string(),
                     argv: vec![],
                     cwd: None,
+                    env: vec![],
                 },
                 Severity::Warning,
             ),
@@ -760,6 +820,8 @@ mod tests {
             binary = "git"
             argv = [{ kind = "literal", value = "log" }]
             cwd = "${home}/projects"
+            [permissions.command.env]
+            GIT_AUTHOR_NAME = { kind = "any-string" }
             [[permissions.command]]
             binary = "osascript"
             "#,
@@ -798,7 +860,8 @@ mod tests {
                             "kind": "command",
                             "binary": "git",
                             "argv": [{ "kind": "literal", "value": "log" }],
-                            "cwd": "${home}/projects"
+                            "cwd": "${home}/projects",
+                            "env": [{ "key": "GIT_AUTHOR_NAME", "value": { "kind": "anyString" } }]
                         },
                         "severity": "warning",
                         "change": "added"
@@ -808,7 +871,8 @@ mod tests {
                             "kind": "command",
                             "binary": "osascript",
                             "argv": [],
-                            "cwd": null
+                            "cwd": null,
+                            "env": []
                         },
                         "severity": "warning",
                         "change": "added"

@@ -18,8 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin`) and
   `HOME` and `TMPDIR` pointing at empty folders of their own, instead of
   Torchsnap's environment; a program outside that `PATH` needs an
-  absolute path in the rule. The install review shows each rule's
-  folder.
+  absolute path in the rule. A gadget can set only the environment
+  variables its rule declares in `[permissions.command.env]`, never
+  `PATH`, `HOME`, `TMPDIR`, `LD_*`, `DYLD_*` or the interpreter and tool
+  variables that make a program run other code. The install review shows
+  each rule's folder and variables.
 
 ### Fixed
 

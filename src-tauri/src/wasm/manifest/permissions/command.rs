@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::paths::{ParseTimeResolver, PathResolver};
@@ -51,6 +53,17 @@ pub struct CommandPermissionDef {
     /// the program runs in an empty directory the host creates
     /// for that one spawn.
     pub cwd: Option<String>,
+
+    /// Environment variables a call may set, each with the
+    /// constraint its value must meet (the argv kinds except
+    /// `rest`). A call may set no other variable.
+    ///
+    /// ```toml
+    /// [permissions.command.env]
+    /// GIT_AUTHOR_NAME = { kind = "regex", pattern = "[A-Za-z ]{1,64}" }
+    /// ```
+    #[serde(default)]
+    pub env: BTreeMap<String, ArgvConstraint>,
 
     /// Hard ceiling on `command-options.timeout-ms` for
     /// invocations matching this rule. Calls that request
@@ -120,7 +133,11 @@ impl CommandPermissionDef {
                      trailing position"
                 );
             }
-            validate_argv_constraint(constraint, index, argv_index, false)?;
+            validate_argv_constraint(
+                constraint,
+                &format!("rule {index} argv[{argv_index}]"),
+                false,
+            )?;
             if matches!(constraint, ArgvConstraint::Rest { .. }) {
                 saw_rest = true;
             }
@@ -128,6 +145,10 @@ impl CommandPermissionDef {
 
         if let Some(cwd) = &self.cwd {
             validate_rule_root(cwd, index, "cwd")?;
+        }
+
+        for (key, constraint) in &self.env {
+            validate_env_declaration(key, constraint, index)?;
         }
 
         // A zero ceiling clamps every call to nothing: no time to run,
@@ -411,11 +432,9 @@ fn position_overlaps(a: &ArgvConstraint, b: &ArgvConstraint) -> bool {
 /// compiled rule set).
 fn validate_argv_constraint(
     constraint: &ArgvConstraint,
-    rule_index: usize,
-    argv_index: usize,
+    where_: &str,
     nested_in_rest: bool,
 ) -> anyhow::Result<()> {
-    let where_ = format!("rule {rule_index} argv[{argv_index}]");
     match constraint {
         ArgvConstraint::Literal { value } => {
             ParseTimeResolver
@@ -467,10 +486,160 @@ fn validate_argv_constraint(
                      `rest` may only appear at the top level"
                 );
             }
-            validate_argv_constraint(constraint, rule_index, argv_index, true)?;
+            validate_argv_constraint(constraint, where_, true)?;
         }
     }
     Ok(())
+}
+
+// =========================================================
+// Declared environment
+// =========================================================
+
+/// Keys a rule can never declare, compared case-insensitively. They
+/// make a program load or run other code: the dynamic loader, `PATH`
+/// lookups, interpreter startup hooks, and programs a tool starts on
+/// its own (pagers, editors, ssh, askpass helpers, git config from the
+/// environment). `HOME` and `TMPDIR` are the spawn's own empty
+/// directories; declaring them would undo that. The list is defense in
+/// depth on top of declared, reviewed keys, not the guarantee.
+const REJECTED_ENV_KEYS: &[&str] = &[
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONHOME",
+    "PERL5LIB",
+    "PERL5OPT",
+    "RUBYOPT",
+    "RUBYLIB",
+    "JAVA_TOOL_OPTIONS",
+    "BASH_ENV",
+    "ENV",
+    "IFS",
+    "ZDOTDIR",
+    "PROMPT_COMMAND",
+    "SHELL",
+    "PAGER",
+    "LESSOPEN",
+    "EDITOR",
+    "VISUAL",
+    "BROWSER",
+    "SSH_ASKPASS",
+    "GIT_SSH",
+    "GIT_SSH_COMMAND",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_PAGER",
+    "GIT_EDITOR",
+    "GIT_SEQUENCE_EDITOR",
+    "GIT_ASKPASS",
+    "GIT_PROXY_COMMAND",
+    "GIT_EXEC_PATH",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+];
+
+/// Key prefixes a rule can never declare, compared case-insensitively.
+/// `DYLD_` is the macOS dynamic loader and `LD_` its Linux twin; other
+/// platforms need their own entries (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+/// `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` set git configuration
+/// such as `core.pager`, and `npm_config_*` sets npm's.
+const REJECTED_ENV_KEY_PREFIXES: &[&str] = &[
+    "LD_",
+    "DYLD_",
+    "GIT_CONFIG_KEY_",
+    "GIT_CONFIG_VALUE_",
+    "NPM_CONFIG_",
+];
+
+/// Parse-time checks of one `[permissions.command.env]` entry.
+fn validate_env_declaration(
+    key: &str,
+    constraint: &ArgvConstraint,
+    rule_index: usize,
+) -> anyhow::Result<()> {
+    let where_ = format!("rule {rule_index} env `{key}`");
+    if key.is_empty() {
+        anyhow::bail!("`[[permissions.command]]` rule {rule_index} has an empty env key");
+    }
+    if key.contains('\0') {
+        anyhow::bail!("`[[permissions.command]]` {where_}: the key contains a NUL byte");
+    }
+    if key.contains('=') {
+        anyhow::bail!("`[[permissions.command]]` {where_}: the key contains `=`");
+    }
+    let upper = key.to_ascii_uppercase();
+    if REJECTED_ENV_KEYS.contains(&upper.as_str())
+        || REJECTED_ENV_KEY_PREFIXES
+            .iter()
+            .any(|prefix| upper.starts_with(prefix))
+    {
+        anyhow::bail!(
+            "`[[permissions.command]]` {where_}: this variable cannot be declared, since it \
+             makes the program load or run other code"
+        );
+    }
+
+    match constraint {
+        ArgvConstraint::Rest { .. } => {
+            anyhow::bail!("`[[permissions.command]]` {where_}: `rest` is not a value constraint");
+        }
+        ArgvConstraint::PathUnder { root } => {
+            validate_rule_root(root, rule_index, &format!("env `{key}` root"))?;
+        }
+        ArgvConstraint::Literal { value } => validate_fixed_env_value(value, &where_)?,
+        ArgvConstraint::Enum { values } => {
+            for value in values {
+                validate_fixed_env_value(value, &where_)?;
+            }
+        }
+        ArgvConstraint::Glob { .. } | ArgvConstraint::Regex { .. } | ArgvConstraint::AnyString => {}
+    }
+    validate_argv_constraint(constraint, &where_, false)
+}
+
+/// A fixed env value names a path only absolutely: a relative path
+/// would be resolved against whatever directory the program runs in.
+/// The value is checked token by token, so a path inside a list or
+/// after `--option=` counts too. A URL with a scheme other than `file`
+/// names no file.
+fn validate_fixed_env_value(value: &str, where_: &str) -> anyhow::Result<()> {
+    for token in path_tokens(value) {
+        if token.contains('/') && !token.starts_with('/') && !token.starts_with("${") {
+            anyhow::bail!(
+                "`[[permissions.command]]` {where_}: value `{value}` contains the relative path \
+                 `{token}`; use an absolute path or a `${{...}}` variable"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The parts of `value` that may be paths: the value split at the
+/// separators lists and options use (`:`, `;`, `,`, `=`, whitespace).
+/// A `file://` URL contributes its path; a URL of any other scheme
+/// contributes nothing.
+pub(crate) fn path_tokens(value: &str) -> Vec<&str> {
+    if let Some((scheme, rest)) = value.split_once("://")
+        && !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    {
+        return if scheme.eq_ignore_ascii_case("file") {
+            vec![rest]
+        } else {
+            Vec::new()
+        };
+    }
+    value
+        .split(|c: char| matches!(c, ':' | ';' | ',' | '=') || c.is_ascii_whitespace())
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -491,6 +660,7 @@ mod tests {
             timeout_ms_max: None,
             max_output_bytes: None,
             max_stdin_bytes: None,
+            env: Default::default(),
         }];
         let perms: CommandPermissions = rules.into();
         assert_eq!(perms.rules.len(), 1);
@@ -513,6 +683,7 @@ mod tests {
             timeout_ms_max: Some(5000),
             max_output_bytes: Some(1024),
             max_stdin_bytes: None,
+            env: Default::default(),
         }];
         let req: CapRequest = rules.into();
         match req {
@@ -655,6 +826,166 @@ mod tests {
             )))
             .unwrap_or_else(|e| panic!("{cwd}: {e}"));
         }
+    }
+
+    // ─── declared environment ───────────────────────────────
+
+    fn parse_env(declaration: &str) -> anyhow::Result<Manifest> {
+        Manifest::parse(&minimal(&format!(
+            "[[permissions.command]]\nbinary = \"git\"\n[permissions.command.env]\n{declaration}\n"
+        )))
+    }
+
+    /// Every key of `keys` that the parser accepts as a declaration.
+    fn accepted_keys<'a>(keys: &[&'a str]) -> Vec<&'a str> {
+        keys.iter()
+            .copied()
+            .filter(|key| parse_env(&format!("\"{key}\" = {{ kind = \"any-string\" }}")).is_ok())
+            .collect()
+    }
+
+    #[test]
+    fn accept_declared_env() {
+        let m = parse_env(
+            r#"GIT_AUTHOR_NAME = { kind = "regex", pattern = "[A-Za-z ]{1,64}" }
+               LC_ALL = { kind = "enum", values = ["C", "en_US.UTF-8"] }"#,
+        )
+        .expect("should parse");
+        let env = &m.permissions.unwrap().command[0].env;
+        assert_eq!(
+            env.keys().collect::<Vec<_>>(),
+            vec!["GIT_AUTHOR_NAME", "LC_ALL"]
+        );
+    }
+
+    #[test]
+    fn reject_env_key_with_loader_prefix() {
+        let keys = [
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_FALLBACK_LIBRARY_PATH",
+            "ld_preload",
+            "Dyld_Insert_Libraries",
+        ];
+        assert_eq!(accepted_keys(&keys), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_env_key_path_home_and_tmpdir() {
+        let keys = ["PATH", "Path", "HOME", "home", "TMPDIR"];
+        assert_eq!(accepted_keys(&keys), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_interpreter_and_tool_hijack_keys() {
+        let keys = [
+            "NODE_OPTIONS",
+            "PYTHONPATH",
+            "PYTHONSTARTUP",
+            "PERL5LIB",
+            "PERL5OPT",
+            "RUBYOPT",
+            "RUBYLIB",
+            "BASH_ENV",
+            "ENV",
+            "IFS",
+            "GIT_SSH",
+            "GIT_SSH_COMMAND",
+            "GIT_EXTERNAL_DIFF",
+            "GIT_PAGER",
+            "PAGER",
+            "LESSOPEN",
+            "EDITOR",
+            "VISUAL",
+            "BROWSER",
+            "SHELL",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_12",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_ASKPASS",
+            "SSH_ASKPASS",
+            "GIT_EDITOR",
+            "GIT_SEQUENCE_EDITOR",
+            "GIT_PROXY_COMMAND",
+            "GIT_EXEC_PATH",
+            "PYTHONHOME",
+            "NODE_PATH",
+            "JAVA_TOOL_OPTIONS",
+            "ZDOTDIR",
+            "PROMPT_COMMAND",
+            "npm_config_script_shell",
+            "NPM_CONFIG_NODE_OPTIONS",
+        ];
+        assert_eq!(accepted_keys(&keys), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn reject_empty_env_key() {
+        let err = parse_env(r#""" = { kind = "any-string" }"#).unwrap_err();
+        assert!(err.to_string().contains("empty env key"), "{err}");
+    }
+
+    #[test]
+    fn reject_env_key_with_equals() {
+        let err = parse_env(r#""A=B" = { kind = "any-string" }"#).unwrap_err();
+        assert!(err.to_string().contains("`=`"), "{err}");
+    }
+
+    #[test]
+    fn reject_env_key_with_nul() {
+        let err = parse_env("\"A\\u0000B\" = { kind = \"any-string\" }").unwrap_err();
+        assert!(err.to_string().contains("NUL"), "{err}");
+    }
+
+    #[test]
+    fn reject_rest_env_constraint() {
+        let err = parse_env(r#"FOO = { kind = "rest", constraint = { kind = "any-string" } }"#)
+            .unwrap_err();
+        assert!(err.to_string().contains("`rest`"), "{err}");
+    }
+
+    #[test]
+    fn reject_env_constraint_with_bad_regex() {
+        let err = parse_env(r#"FOO = { kind = "regex", pattern = "[unclosed" }"#).unwrap_err();
+        assert!(err.to_string().contains("does not compile"), "{err}");
+    }
+
+    #[test]
+    fn reject_relative_literal_env_path() {
+        for declaration in [
+            r#"FOO = { kind = "literal", value = "conf/app.toml" }"#,
+            r#"FOO = { kind = "enum", values = ["/etc/app.toml", "conf/app.toml"] }"#,
+            r#"FOO = { kind = "literal", value = "/etc/a.toml:conf/b.toml" }"#,
+            r#"FOO = { kind = "literal", value = "--config=conf/app.toml" }"#,
+            r#"FOO = { kind = "literal", value = "file://conf/app.toml" }"#,
+        ] {
+            let err = parse_env(declaration).expect_err(declaration);
+            assert!(
+                err.to_string().contains("relative path"),
+                "{declaration}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn reject_env_path_under_with_a_relative_root() {
+        let err = parse_env(r#"FOO = { kind = "path-under", root = "projects" }"#).unwrap_err();
+        assert!(err.to_string().contains("not absolute"), "{err}");
+    }
+
+    #[test]
+    fn accept_absolute_literal_env_paths_and_plain_values() {
+        parse_env(
+            r#"A = { kind = "literal", value = "/etc/app.toml" }
+               B = { kind = "literal", value = "${home}/app.toml" }
+               C = { kind = "literal", value = "https://proxy.example.com:8080/" }
+               E = { kind = "literal", value = "file:///etc/app.toml" }
+               D = { kind = "enum", values = ["C", "en_US.UTF-8"] }"#,
+        )
+        .expect("should parse");
     }
 
     #[test]

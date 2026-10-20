@@ -47,7 +47,7 @@ describe("PermissionGroups", () => {
 
   it("shows the folder a command rule may run in below the rule", () => {
     const gitInProjects: PermissionItem = {
-      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects" },
+      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects", env: [] },
       severity: "warning",
       change: "added",
     };
@@ -59,7 +59,7 @@ describe("PermissionGroups", () => {
 
   it("strikes through the folder of a removed command rule", () => {
     const removedGit: PermissionItem = {
-      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects" },
+      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects", env: [] },
       severity: "warning",
       change: "removed",
     };

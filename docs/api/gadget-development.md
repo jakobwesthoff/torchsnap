@@ -1137,6 +1137,31 @@ and `HOME` and `TMPDIR` pointing at empty directories of that one
 call. A bare `binary` name is looked up on that `PATH`; a program
 installed elsewhere needs an absolute `binary`.
 
+`.env(key, value)` works only for keys the rule declares, each
+with a value constraint from the argv vocabulary except `rest`:
+
+```toml
+[[permissions.command]]
+binary = "git"
+argv   = [{ kind = "literal", value = "log" }]
+
+[permissions.command.env]
+GIT_AUTHOR_NAME = { kind = "regex", pattern = "[A-Za-z ]{1,64}" }
+```
+
+An undeclared key, a value with a NUL byte or a value outside its
+constraint fails with `permission-denied`. A `regex`, `glob` or
+`any-string` value must not contain `/`; pass a path through a
+`path-under` declaration, which hands the program the canonical
+path. Fixed `literal` and `enum` values may name only absolute
+paths. The manifest is rejected when a key is empty or contains
+`=`, and for keys that make a program load or run other code:
+`PATH`, `HOME`, `TMPDIR`, the `LD_*`, `DYLD_*`,
+`GIT_CONFIG_KEY_*`, `GIT_CONFIG_VALUE_*` and `npm_config_*`
+families, and the interpreter, pager, editor, ssh and git hooks
+listed in `REJECTED_ENV_KEYS` in
+`src-tauri/src/wasm/manifest/permissions/command.rs`.
+
 `opener`-class binaries (`open`, `xdg-open`, `start`, `cmd /c
 start`) are rejected at manifest parse time — gadgets that want
 "open with the registered application" use

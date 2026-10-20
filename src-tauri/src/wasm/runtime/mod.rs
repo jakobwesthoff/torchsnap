@@ -1179,6 +1179,7 @@ icon = "heroicons:beaker"
                                 binary: "/bin/echo".to_string(),
                                 argv: vec![CompiledArgvConstraint::AnyString],
                                 cwd: None,
+                                env: vec![],
                             },
                             CompiledCommandRule {
                                 binary: "/bin/sh".to_string(),
@@ -1187,6 +1188,7 @@ icon = "heroicons:beaker"
                                     CompiledArgvConstraint::AnyString,
                                 ],
                                 cwd: None,
+                                env: vec![],
                             },
                         ],
                         scratch.path().to_path_buf(),

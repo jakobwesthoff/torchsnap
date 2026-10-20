@@ -24,8 +24,14 @@ export type ArgvRule =
   | { kind: "anyString" }
   | { kind: "rest"; constraint: ArgvRule };
 
+/** An environment variable a command rule lets a call set. */
+export interface EnvRule {
+  key: string;
+  value: ArgvRule;
+}
+
 export type Permission =
-  | { kind: "command"; binary: string; argv: ArgvRule[]; cwd: string | null }
+  | { kind: "command"; binary: string; argv: ArgvRule[]; cwd: string | null; env: EnvRule[] }
   | { kind: "httpOrigin"; origin: string }
   | { kind: "openerOpenPath" }
   | { kind: "openerScheme"; scheme: string }
