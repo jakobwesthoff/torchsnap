@@ -482,6 +482,28 @@ mod tests {
         assert_eq!(macos_choice(1512.0, 0.0, &monitors, 2.0), Some(1));
     }
 
+    // A Retina MacBook as primary and a 1x Full HD display, with the
+    // pointer at the external display's menu bar icon: the setup in
+    // which the launcher opened on the MacBook.
+
+    #[test]
+    fn macos_choice_finds_a_full_hd_display_right_of_a_macbook_at_its_menu_bar_icon() {
+        let monitors = [
+            macos_monitor(0, 0, 1512, 982, 2.0),
+            macos_monitor(1512, 0, 1920, 1080, 1.0),
+        ];
+        assert_eq!(macos_choice(3300.0, 10.0, &monitors, 2.0), Some(1));
+    }
+
+    #[test]
+    fn macos_choice_finds_a_full_hd_display_above_a_macbook_at_its_menu_bar_icon() {
+        let monitors = [
+            macos_monitor(0, 0, 1512, 982, 2.0),
+            macos_monitor(0, -1080, 1920, 1080, 1.0),
+        ];
+        assert_eq!(macos_choice(1800.0, -1070.0, &monitors, 2.0), Some(1));
+    }
+
     #[test]
     fn macos_choice_finds_nothing_without_a_primary_scale() {
         let monitors = retina_primary_with_external_on_the_right();
