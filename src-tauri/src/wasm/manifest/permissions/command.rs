@@ -113,7 +113,9 @@ impl CommandPermissionDef {
         }
         // A relative path such as `bin/tool` would be resolved against
         // the working directory, which the guest may choose, so it could
-        // pick which program runs.
+        // pick which program runs. macOS-specific: only `/` starts an
+        // absolute path; other platforms need their own rule (todo
+        // `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
         let is_bare_name =
             !self.binary.contains(['/', '\\']) && self.binary != "." && self.binary != "..";
         if !(self.binary.starts_with('/') || is_bare_name) {
@@ -735,6 +737,11 @@ fn validate_fixed_env_value(value: &str, where_: &str) -> anyhow::Result<()> {
 /// separators lists and options use (`:`, `;`, `,`, `=`, whitespace).
 /// A `file://` URL contributes its path; a URL of any other scheme
 /// contributes nothing.
+///
+/// macOS-specific: splitting at `:` fits Unix path lists but would cut
+/// a Windows drive letter off its path. Other platforms need their own
+/// separators (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
 pub(crate) fn path_tokens(value: &str) -> Vec<&str> {
     if let Some((scheme, rest)) = value.split_once("://")
         && !scheme.is_empty()
