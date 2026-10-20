@@ -7,11 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- The project's todos live in an [ntropy](https://ntropy.westhoffswelt.de)
-  vault in `todos/`, one note per todo with its kind, component, status
-  and impact in the frontmatter (see `todos/README.md`).
+## [0.14.1] - 2026-10-20
 
 ### Fixed
 
@@ -703,6 +699,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.14.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.1
 [0.14.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.0
 [0.13.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.13.0
 [0.12.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.12.0
