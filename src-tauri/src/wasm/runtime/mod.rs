@@ -1158,10 +1158,8 @@ icon = "heroicons:beaker"
         let component = runtime
             .compile(COMMAND_GADGET_WASM)
             .expect("compile command fixture");
-        // Stash a path context so the default cwd resolution
-        // (`<gadget-data>/exec-cwd/`) has somewhere real to
-        // create. The tempdir lives on so the test's child
-        // process actually has a valid cwd at spawn time.
+        // Real directories for the path context the fixture's
+        // `path-resolver` import resolves against.
         let scratch = tempfile::TempDir::new().expect("scratch tempdir");
 
         let instance = runtime

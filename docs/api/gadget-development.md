@@ -1325,7 +1325,6 @@ gadget **code** which lives under
 |-------------------------------------------------------------------|-----------------|
 | `<app_data_dir>/gadgets/<id>.torchsnap`                           | User-installed gadget archives. |
 | `<app_data_dir>/gadget-home/<id>/sql/storage.sqlite3`             | Per-gadget SQLite database. |
-| `<app_data_dir>/gadget-home/<id>/exec-cwd/`                       | Default cwd for `command::run` calls. |
 | `<resource_dir>/gadgets/`                                         | App-bundle gadgets (read-only). |
 
 Uninstalling a user gadget removes both `gadgets/<id>.torchsnap`

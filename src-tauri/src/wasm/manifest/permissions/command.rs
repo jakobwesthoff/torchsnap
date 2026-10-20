@@ -45,8 +45,8 @@ pub struct CommandPermissionDef {
 
     /// Optional default working directory for invocations
     /// matching this rule. Gadget can override per-call;
-    /// when omitted, the host falls back to the per-gadget
-    /// scratch directory at `${gadget-data}/exec-cwd/`.
+    /// when omitted, the program runs in an empty directory
+    /// the host creates for that one spawn.
     pub cwd: Option<String>,
 
     /// Hard ceiling on `command-options.timeout-ms` for

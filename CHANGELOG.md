@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A program a gadget runs without naming a working directory now runs in
+  an empty folder that exists only for that run, instead of a folder in
+  the gadget's data that the gadget's earlier runs could have written
+  to.
+
 ### Fixed
 
 - A gadget's SQL can no longer attach other SQLite databases or write

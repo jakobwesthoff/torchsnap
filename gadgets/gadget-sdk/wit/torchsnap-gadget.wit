@@ -518,8 +518,9 @@ interface command {
     /// Argument vector. Each element is matched per-position against
     /// the rule's argv constraints.
     args: list<string>,
-    /// Working directory. When omitted, the host substitutes
-    /// `<gadget-data>/exec-cwd/`, lazily created.
+    /// Working directory. When omitted, the program runs in an empty
+    /// directory the host creates for this one call and removes
+    /// afterwards.
     cwd: option<string>,
     /// Additional environment variables. Layered on top of the host
     /// process env (with credential-leakage variables stripped).

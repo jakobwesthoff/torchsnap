@@ -55,8 +55,8 @@ data.
   with a probe. Ids are `[a-z0-9-]`, so there is no traversal. The startup
   cleanup documents this (`src-tauri/src/gadget_install/archive_ops.rs:190-192`).
 - Gadgets have no WASI filesystem, and `FilesystemCap` is read-only. A
-  granted command runs in `gadget-home/<id>/exec-cwd/` and could plant
-  symlinks there, which `remove_dir_all` does not follow.
+  granted command whose arguments name a path in `gadget-home/<id>/`
+  could plant symlinks there, which `remove_dir_all` does not follow.
 
 ## Impact
 

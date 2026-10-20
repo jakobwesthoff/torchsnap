@@ -35,8 +35,8 @@ further than the manifest-parser comments already covered by the
 host-core todo.
 
 Verified-accurate claims in the same doc block (no action
-needed): the `<gadget-data>/exec-cwd/` default cwd exists
-(`src-tauri/src/caps/command.rs:180`), and manifest-time rule
+needed): the default cwd is an empty directory created per call
+(`SpawnDirs` in `src-tauri/src/caps/command.rs`), and manifest-time rule
 overlap rejection exists
 (`src-tauri/src/wasm/manifest/permissions/command.rs:198-227`).
 

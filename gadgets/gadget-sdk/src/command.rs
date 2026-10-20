@@ -86,7 +86,8 @@ impl CommandBuilder {
     }
 
     /// Set the child's working directory. When omitted, the
-    /// host falls back to `${gadget-data}/exec-cwd/`.
+    /// program runs in an empty directory the host creates for
+    /// this one call and removes afterwards.
     pub fn cwd(mut self, cwd: impl Into<String>) -> Self {
         self.cwd = Some(cwd.into());
         self

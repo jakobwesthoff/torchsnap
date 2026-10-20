@@ -134,10 +134,9 @@ pub struct CommandPermissions {
 
 pub struct CommandCap {
     rules: Vec<CompiledCommandRule>,
-    /// `<app_data_dir>/gadget-home/<gadget-id>/` — used to
-    /// derive the default cwd (`exec-cwd/` subdirectory) when
-    /// the guest does not supply an explicit cwd.
-    gadget_data_dir: PathBuf,
+    /// Where each spawn's private directories are created (see
+    /// [`SpawnDirs`]).
+    spawn_base: PathBuf,
 }
 
 impl CommandCap {
@@ -145,10 +144,13 @@ impl CommandCap {
     /// manifest against the provided resolver and construct
     /// a capability. Fails on the first rule that cannot be
     /// compiled (consistent with `FilesystemCap::new`).
+    ///
+    /// The gadget's data directory plays no part in running a
+    /// command: programs run in directories created per spawn.
     pub fn new(
         rules_raw: &[CommandPermissionDef],
         resolver: &impl PathResolver,
-        gadget_data_dir: PathBuf,
+        _gadget_data_dir: PathBuf,
     ) -> anyhow::Result<Self> {
         let mut rules = Vec::with_capacity(rules_raw.len());
         for (index, raw) in rules_raw.iter().enumerate() {
@@ -157,7 +159,7 @@ impl CommandCap {
         }
         Ok(Self {
             rules,
-            gadget_data_dir,
+            spawn_base: default_spawn_base(),
         })
     }
 
@@ -168,12 +170,20 @@ impl CommandCap {
     #[cfg(test)]
     pub(crate) fn from_compiled_rules(
         rules: Vec<CompiledCommandRule>,
-        gadget_data_dir: PathBuf,
+        _gadget_data_dir: PathBuf,
     ) -> Self {
         Self {
             rules,
-            gadget_data_dir,
+            spawn_base: default_spawn_base(),
         }
+    }
+
+    /// Create spawn directories below `base` instead of the host's
+    /// temp directory, so a test can see what a run leaves behind.
+    #[cfg(test)]
+    pub(crate) fn with_spawn_base(mut self, base: PathBuf) -> Self {
+        self.spawn_base = base;
+        self
     }
 
     /// Execute a command if the `(binary, argv)` pair matches
@@ -191,18 +201,18 @@ impl CommandCap {
             )));
         }
 
+        // Lives until `run` returns, after the child has exited or been
+        // killed, so the directories outlast every use by the child.
+        let spawn_dirs = SpawnDirs::create(&self.spawn_base).map_err(|e| {
+            CommandCapError::SpawnFailed(format!(
+                "create the spawn directory in `{}`: {e}",
+                self.spawn_base.display()
+            ))
+        })?;
+
         let cwd = match options.cwd.as_deref() {
             Some(explicit) => PathBuf::from(explicit),
-            None => {
-                let scratch = self.gadget_data_dir.join("exec-cwd");
-                if let Err(e) = std::fs::create_dir_all(&scratch) {
-                    return Err(CommandCapError::SpawnFailed(format!(
-                        "create scratch cwd `{}`: {e}",
-                        scratch.display()
-                    )));
-                }
-                scratch
-            }
+            None => spawn_dirs.cwd().to_path_buf(),
         };
 
         let env = build_command_env(&options.env);
@@ -223,6 +233,113 @@ impl CommandCap {
             ))
         })
     }
+}
+
+// =========================================================
+// Per-spawn directories
+//
+// Every spawn gets a fresh, empty directory tree that nothing
+// else has written to. A program run without a rule `cwd` works
+// in its `cwd/`, so no file the gadget planted earlier can act as
+// its configuration. The tree is removed when the run ends.
+//
+// macOS-specific: the tree lives in `std::env::temp_dir()`, which
+// is the per-user `$TMPDIR` below `/var/folders/` there; on Linux
+// it is the shared `/tmp`. The 0700 mode and the chmod-then-remove
+// cleanup rely on Unix permissions. Other platforms need their
+// own choice (todo
+// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+// =========================================================
+
+const SPAWN_DIR_PREFIX: &str = "torchsnap-command-";
+
+fn default_spawn_base() -> PathBuf {
+    std::env::temp_dir()
+}
+
+/// The directories of one spawn, removed on drop.
+struct SpawnDirs {
+    root: PathBuf,
+    cwd: PathBuf,
+}
+
+impl SpawnDirs {
+    fn create(base: &std::path::Path) -> std::io::Result<Self> {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(SPAWN_DIR_PREFIX);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o700));
+        }
+        // Until `keep`, a failure below removes the half-built tree.
+        let root = builder.tempdir_in(base)?;
+        let cwd = root.path().join("cwd");
+        private_dir_builder().create(&cwd)?;
+        Ok(Self {
+            root: root.keep(),
+            cwd,
+        })
+    }
+
+    fn cwd(&self) -> &std::path::Path {
+        &self.cwd
+    }
+}
+
+impl Drop for SpawnDirs {
+    fn drop(&mut self) {
+        // A program may leave directories it made read-only, which
+        // `remove_dir_all` cannot empty.
+        make_tree_removable(&self.root);
+        if let Err(e) = std::fs::remove_dir_all(&self.root) {
+            eprintln!(
+                "command: could not remove spawn directory `{}`: {e}",
+                self.root.display()
+            );
+        }
+    }
+}
+
+fn private_dir_builder() -> std::fs::DirBuilder {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+}
+
+/// Give the owner full access to every directory below `root`,
+/// without following symlinks, so the whole tree can be removed.
+fn make_tree_removable(root: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Iterative, since a program can nest directories deeper than
+        // the stack would allow for recursion.
+        let mut pending = vec![root.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            let Ok(meta) = std::fs::symlink_metadata(&dir) else {
+                continue;
+            };
+            if !meta.is_dir() {
+                continue;
+            }
+            let mode = meta.permissions().mode();
+            if mode & 0o700 != 0o700 {
+                let _ =
+                    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode | 0o700));
+            }
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                pending.extend(entries.flatten().map(|entry| entry.path()));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = root;
 }
 
 // =========================================================
@@ -632,6 +749,314 @@ mod tests {
             }
             other => panic!("expected PermissionDenied, got {other:?}"),
         }
+    }
+
+    // ─── default working directory ────────────────────────
+
+    /// A cap over `/bin/pwd`, `/bin/ls -A` and `/bin/sh -c <script>`,
+    /// with the gadget's data directory in the host layout below
+    /// `root`.
+    fn spawning_cap(root: &std::path::Path) -> CommandCap {
+        use argv_matcher::CompiledArgvConstraint as C;
+        let paths = gadget_paths(root, "spawner");
+        CommandCap::from_compiled_rules(
+            vec![
+                CompiledCommandRule {
+                    binary: "/bin/pwd".into(),
+                    argv: vec![],
+                },
+                CompiledCommandRule {
+                    binary: "/bin/ls".into(),
+                    argv: vec![C::Literal("-A".into())],
+                },
+                CompiledCommandRule {
+                    binary: "/bin/sh".into(),
+                    argv: vec![C::Literal("-c".into()), C::AnyString],
+                },
+            ],
+            paths.gadget_data,
+        )
+    }
+
+    fn stdout_line(result: &CommandResult) -> String {
+        String::from_utf8_lossy(&result.stdout)
+            .trim_end()
+            .to_string()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn default_cwd_is_outside_the_gadget_data_dir() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", options(&[])).expect("pwd runs"));
+
+        let data = gadget_paths(root.path(), "spawner").gadget_data;
+        std::fs::create_dir_all(&data).expect("data dir");
+        let data = data.canonicalize().expect("canonical data dir");
+        assert!(
+            !std::path::Path::new(&cwd).starts_with(&data),
+            "the default cwd `{cwd}` lies in the gadget's data directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn each_spawn_gets_its_own_cwd() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        let first = stdout_line(&cap.run("/bin/pwd", options(&[])).expect("pwd runs"));
+        let second = stdout_line(&cap.run("/bin/pwd", options(&[])).expect("pwd runs"));
+
+        assert_ne!(first, second, "two spawns shared the cwd `{first}`");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn default_cwd_is_removed_after_the_run() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", options(&[])).expect("pwd runs"));
+
+        assert!(
+            !std::path::Path::new(&cwd).exists(),
+            "the default cwd `{cwd}` outlived the run"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_exec_cwd_is_created_in_the_gadget_data_dir() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+
+        cap.run("/bin/pwd", options(&[])).expect("pwd runs");
+
+        let data = gadget_paths(root.path(), "spawner").gadget_data;
+        assert!(
+            !data.join("exec-cwd").exists(),
+            "a run created `exec-cwd/` in the gadget's data directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn default_cwd_is_empty() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+        cap.run("/bin/sh", options(&["-c", "touch left-behind"]))
+            .expect("sh runs");
+
+        let listing = cap.run("/bin/ls", options(&["-A"])).expect("ls runs");
+
+        assert_eq!(stdout_line(&listing), "", "the default cwd is not empty");
+    }
+
+    /// A cap whose spawn directories go below a base the test owns,
+    /// so the test can see whether a run leaves anything behind.
+    fn cap_with_spawn_base(root: &std::path::Path) -> (CommandCap, PathBuf) {
+        let base = root.join("spawn-base");
+        std::fs::create_dir_all(&base).expect("spawn base");
+        (spawning_cap(root).with_spawn_base(base.clone()), base)
+    }
+
+    fn entries(dir: &std::path::Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .expect("read dir")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn spawn_dirs_are_removed_after_a_timeout() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let (cap, base) = cap_with_spawn_base(root.path());
+        let mut opts = options(&["-c", "sleep 5"]);
+        opts.timeout_ms = Some(150);
+
+        let result = cap.run("/bin/sh", opts);
+
+        assert!(
+            matches!(result, Err(CommandCapError::Timeout)),
+            "{result:?}"
+        );
+        assert_eq!(entries(&base), Vec::<String>::new());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn spawn_dirs_are_removed_after_too_much_output() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let (cap, base) = cap_with_spawn_base(root.path());
+        let mut opts = options(&["-c", "head -c 1024 /dev/zero"]);
+        opts.max_output_bytes = Some(64);
+
+        let result = cap.run("/bin/sh", opts);
+
+        assert!(
+            matches!(result, Err(CommandCapError::OutputTooLarge(..))),
+            "{result:?}"
+        );
+        assert_eq!(entries(&base), Vec::<String>::new());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn spawn_dirs_are_removed_after_a_failed_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let base = root.path().join("spawn-base");
+        std::fs::create_dir_all(&base).expect("spawn base");
+        let missing = root.path().join("no-such-program");
+        let cap = CommandCap::from_compiled_rules(
+            vec![CompiledCommandRule {
+                binary: missing.to_string_lossy().into_owned(),
+                argv: vec![],
+            }],
+            gadget_paths(root.path(), "spawner").gadget_data,
+        )
+        .with_spawn_base(base.clone());
+
+        let result = cap.run(&missing.to_string_lossy(), options(&[]));
+
+        assert!(
+            matches!(result, Err(CommandCapError::SpawnFailed(_))),
+            "{result:?}"
+        );
+        assert_eq!(entries(&base), Vec::<String>::new());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn spawn_dirs_with_read_only_subdirectories_are_removed() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let (cap, base) = cap_with_spawn_base(root.path());
+
+        let result = cap
+            .run(
+                "/bin/sh",
+                options(&[
+                    "-c",
+                    "mkdir -p a/b && touch a/b/f && chmod 555 a/b a && chmod 000 a",
+                ]),
+            )
+            .expect("sh runs");
+
+        assert_eq!(
+            result.exit_code,
+            Some(0),
+            "{:?}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(entries(&base), Vec::<String>::new());
+    }
+
+    #[test]
+    fn denied_call_creates_no_spawn_dir() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let (cap, base) = cap_with_spawn_base(root.path());
+
+        let result = cap.run("/bin/pwd", options(&["unexpected-argument"]));
+
+        assert!(
+            matches!(result, Err(CommandCapError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(entries(&base), Vec::<String>::new());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_dirs_are_private_to_the_user() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = tempfile::TempDir::new().expect("tempdir");
+
+        let dirs = SpawnDirs::create(base.path()).expect("spawn dirs");
+
+        let root = dirs.cwd().parent().expect("cwd has a parent");
+        for dir in [root, dirs.cwd()] {
+            let mode = std::fs::metadata(dir)
+                .expect("metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700, "{}", dir.display());
+        }
+        assert!(
+            root.file_name()
+                .expect("root has a name")
+                .to_string_lossy()
+                .starts_with(SPAWN_DIR_PREFIX)
+        );
+    }
+
+    #[test]
+    fn dropping_spawn_dirs_removes_them() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        let dirs = SpawnDirs::create(base.path()).expect("spawn dirs");
+        std::fs::write(dirs.cwd().join("file"), b"x").expect("write");
+
+        drop(dirs);
+
+        assert_eq!(entries(base.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn dropping_spawn_dirs_that_are_already_gone_does_not_panic() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        let dirs = SpawnDirs::create(base.path()).expect("spawn dirs");
+        std::fs::remove_dir_all(dirs.cwd().parent().expect("root")).expect("remove");
+
+        drop(dirs);
+
+        assert_eq!(entries(base.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn making_a_missing_tree_removable_is_a_no_op() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        make_tree_removable(&base.path().join("missing"));
+    }
+
+    #[test]
+    fn a_missing_spawn_base_fails_the_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path()).with_spawn_base(root.path().join("missing"));
+
+        let result = cap.run("/bin/pwd", options(&[]));
+
+        assert!(
+            matches!(result, Err(CommandCapError::SpawnFailed(_))),
+            "{result:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_explicit_cwd_is_used() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = spawning_cap(root.path());
+        let mut opts = options(&[]);
+        let wanted = root.path().canonicalize().expect("canonical root");
+        opts.cwd = Some(wanted.to_string_lossy().into_owned());
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", opts).expect("pwd runs"));
+
+        assert_eq!(std::path::Path::new(&cwd), wanted);
+    }
+
+    #[test]
+    fn spawn_dirs_in_a_missing_base_fail_to_create() {
+        let base = tempfile::TempDir::new().expect("tempdir");
+        assert!(SpawnDirs::create(&base.path().join("missing")).is_err());
     }
 
     // ─── awake, the gadget that ships with a command grant ─
