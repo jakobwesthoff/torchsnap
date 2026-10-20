@@ -515,6 +515,30 @@ fn describe_plugin_error(error: &tauri_plugin_updater::Error) -> String {
     }
 }
 
+/// "Install and Restart" downloads the archive from the URL the feed
+/// names (github.com for releases, while the feed is on torchsnap.app).
+/// A network failure there names that URL's host. GitHub serves the
+/// file from a redirect target, which the text does not name, since
+/// neither the plugin's error nor reqwest's tells which hop failed.
+/// Everything after the download (the signature check, replacing the
+/// app) happens on this Mac and keeps the wording of
+/// [`describe_plugin_error`].
+fn describe_install_error(error: &tauri_plugin_updater::Error, archive: &Url) -> String {
+    use tauri_plugin_updater::Error;
+    match (error, archive.host_str()) {
+        (Error::Reqwest(_) | Error::Network(_), Some(host)) => format!(
+            "Torchsnap could not download the update from {host}. \
+             Check the internet connection and try again later."
+        ),
+        (Error::Reqwest(_) | Error::Network(_), None) => {
+            "Torchsnap could not download the update. \
+             Check the internet connection and try again later."
+                .to_string()
+        }
+        _ => describe_plugin_error(error),
+    }
+}
+
 // =========================================================
 // Window actions
 // =========================================================
@@ -604,7 +628,7 @@ pub fn update_install(app: tauri::AppHandle) -> Result<(), String> {
                 set_phase(
                     &app,
                     Phase::Failed {
-                        message: describe_plugin_error(&e),
+                        message: describe_install_error(&e, &update.download_url),
                     },
                 );
             }
@@ -1192,12 +1216,109 @@ mod tests {
 
     // ---- error wording ----
 
+    const CHECK_FAILED: &str = "Torchsnap could not get update information from torchsnap.app. \
+                                Check the internet connection and try again later.";
+
+    /// The archive URL `tools/release-feed` writes into a release feed.
+    fn release_archive() -> Url {
+        "https://github.com/jakobwesthoff/torchsnap/releases/download/v0.14.0/Torchsnap.app.tar.gz"
+            .parse()
+            .expect("the archive URL is valid")
+    }
+
+    /// A real `reqwest::Error`, built without network. It is a builder
+    /// error, not a failed connection; the wording only looks at the
+    /// plugin's error variant.
+    fn reqwest_error() -> tauri_plugin_updater::Error {
+        tauri_plugin_updater::Error::Reqwest(
+            reqwest::Client::new()
+                .get("not a url")
+                .build()
+                .expect_err("an unparsable URL fails the request builder"),
+        )
+    }
+
     #[test]
     fn unreachable_feed_is_worded_for_people() {
-        let message = describe_plugin_error(&tauri_plugin_updater::Error::ReleaseNotFound);
-        assert!(
-            message.contains("could not get update information"),
-            "{message}"
+        let error = CheckError::Plugin(tauri_plugin_updater::Error::ReleaseNotFound);
+        assert_eq!(error.to_string(), CHECK_FAILED);
+    }
+
+    #[test]
+    fn failed_check_names_the_feed_host() {
+        assert_eq!(
+            CheckError::Plugin(reqwest_error()).to_string(),
+            CHECK_FAILED
+        );
+    }
+
+    #[test]
+    fn failed_download_names_the_archive_host() {
+        let error = tauri_plugin_updater::Error::Network(
+            "Download request failed with status: 404 Not Found".into(),
+        );
+        assert_eq!(
+            describe_install_error(&error, &release_archive()),
+            "Torchsnap could not download the update from github.com. \
+             Check the internet connection and try again later."
+        );
+    }
+
+    #[test]
+    fn any_reqwest_error_in_the_download_names_the_archive_host() {
+        assert_eq!(
+            describe_install_error(&reqwest_error(), &release_archive()),
+            "Torchsnap could not download the update from github.com. \
+             Check the internet connection and try again later."
+        );
+    }
+
+    #[test]
+    fn download_from_a_test_feed_names_its_host() {
+        let archive: Url = "http://127.0.0.1:8123/Torchsnap.app.tar.gz"
+            .parse()
+            .expect("the archive URL is valid");
+        assert_eq!(
+            describe_install_error(&reqwest_error(), &archive),
+            "Torchsnap could not download the update from 127.0.0.1. \
+             Check the internet connection and try again later."
+        );
+    }
+
+    #[test]
+    fn failed_download_without_a_host_names_none() {
+        let archive: Url = "file:///tmp/Torchsnap.app.tar.gz"
+            .parse()
+            .expect("the archive URL is valid");
+        assert_eq!(archive.host_str(), None);
+        assert_eq!(
+            describe_install_error(&reqwest_error(), &archive),
+            "Torchsnap could not download the update. \
+             Check the internet connection and try again later."
+        );
+    }
+
+    #[test]
+    fn unverifiable_download_keeps_its_wording() {
+        let message = describe_install_error(
+            &tauri_plugin_updater::Error::MissingSignedVersion,
+            &release_archive(),
+        );
+        assert_eq!(
+            message,
+            "The downloaded update could not be verified, so it was not installed."
+        );
+    }
+
+    #[test]
+    fn failed_install_keeps_its_wording() {
+        let error = tauri_plugin_updater::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Failed to move the new app into place",
+        ));
+        assert_eq!(
+            describe_install_error(&error, &release_archive()),
+            "Torchsnap could not replace itself: Failed to move the new app into place"
         );
     }
 

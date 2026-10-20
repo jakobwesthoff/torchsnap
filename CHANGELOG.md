@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `=` prefix. Compact chains such as `10-2-3` and numbers with a leading
   zero such as `100-05` no longer show one either; typed with spaces or
   after `=`, they still do.
+- When "Install and Restart" fails while downloading the update, the
+  update window says that Torchsnap could not download the update from
+  github.com. Before, it said Torchsnap could not get update information
+  from torchsnap.app.
 
 ## [0.14.1] - 2026-10-20
 
