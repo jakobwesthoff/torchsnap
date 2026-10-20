@@ -251,6 +251,15 @@ outside the `gadgets.<id>.*` prefix and unreachable from the gadget
 itself. The host intercepts changes to that key and drives
 `enable()` / `disable()` directly.
 
+The stored key is the user's choice; the `AtomicBool` says whether the
+gadget runs (ADR 0063). When `enable()` fails, the host clears the flag
+but leaves the key on, and keeps the error per gadget id in
+`EnableFailures` (`src-tauri/src/gadget_status.rs`). Settings read it
+through the `gadget_enable_failures` command and the
+`gadget-enable-failures-changed` event and show it under the gadget's
+switch. Turning the gadget off removes the error; turning it on again
+retries `enable()`.
+
 ## Search dispatch
 
 Three modes coexist (ADR 0023, ADR 0024):

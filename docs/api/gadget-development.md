@@ -261,9 +261,11 @@ any declared migrations *before* this runs, so
   defaults to the user's configured values.
 
 Returning `Err(string)` signals that initialization failed: the
-host sets the gadget's `enabled` flag to false and stops
-dispatching further calls to it (`src-tauri/src/gadget_host.rs`,
-the spawned `enable()` call around lines 559-571).
+host stops dispatching further calls to the gadget and does not
+register its shortcuts. Settings show the gadget as failed to start,
+with the error string, under its switch. The switch stays on; the
+user retries by turning the gadget off and on again, which calls
+`enable()` again (ADR 0063).
 
 ### `disable()`
 

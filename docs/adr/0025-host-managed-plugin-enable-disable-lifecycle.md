@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [63. Show a failed gadget enable in Settings](0063-show-a-failed-gadget-enable-in-settings.md)
+
 Supersedes [14. Pass app handle to plugin setup](0014-pass-app-handle-to-plugin-setup.md)
 
 Supersedes [15. Add teardown to plugin lifecycle](0015-add-teardown-to-plugin-lifecycle.md)

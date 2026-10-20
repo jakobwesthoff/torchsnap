@@ -7,7 +7,8 @@
  * in the settings sidebar. Provides the standardized layout:
  *
  * 1. Section header (icon, name, description)
- * 2. Enable/disable toggle (reading `enabled.<gadgetId>`)
+ * 2. Enable/disable toggle (reading `enabled.<gadgetId>`), with the
+ *    reason below it when the gadget is on but failed to start
  * 3. Gadget-specific settings as children (optional)
  *
  * The enable/disable key lives at the top level of the settings
@@ -22,6 +23,7 @@ import { SectionHeader } from "./SectionHeader";
 import { Section } from "./Section";
 import { Entry } from "./Entry";
 import { Switch } from "../components/Switch";
+import { GadgetEnableFailureNote } from "./GadgetEnableFailureNote";
 
 interface GadgetSettingsWrapperProps {
   gadgetId: string;
@@ -47,6 +49,7 @@ export function GadgetSettingsWrapper({
         <Entry label={`Enable ${name}`}>
           <Switch checked={enabled} onChange={setEnabled} />
         </Entry>
+        {enabled !== false && <GadgetEnableFailureNote gadgetId={gadgetId} />}
       </Section>
       {children}
     </div>

@@ -9,6 +9,7 @@ mod entry_store;
 mod frecency;
 mod gadget_host;
 mod gadget_install;
+mod gadget_status;
 mod gadgets;
 mod icons;
 mod monitor_placement;
@@ -767,6 +768,16 @@ fn shortcut_problems(
     host.shortcut_problems()
 }
 
+/// Why gadgets that are turned on failed to start, keyed by gadget id.
+/// The Settings gadget switches read this on mount and again on
+/// `gadget-enable-failures-changed`.
+#[tauri::command]
+fn gadget_enable_failures(
+    host: tauri::State<'_, Arc<gadget_host::GadgetHost>>,
+) -> std::collections::BTreeMap<String, String> {
+    host.enable_failures()
+}
+
 // =========================================================
 // Control API — frontend channel subscription
 // =========================================================
@@ -839,6 +850,7 @@ pub fn run() {
             wasm_gadgets,
             gadget_sources,
             shortcut_problems,
+            gadget_enable_failures,
             gadget_install::uninstall_user_gadget,
             gadget_install::install_undo,
             gadget_install::gadget_permissions,

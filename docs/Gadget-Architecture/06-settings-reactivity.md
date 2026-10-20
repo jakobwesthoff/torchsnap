@@ -86,9 +86,12 @@ The three callees are independent:
 **Path 1 — `enabled.<gadget-id>`**
 
 The dispatcher is reused as a serialization point even for the
-enable/disable toggle. The callback flips
+enable/disable toggle. The callback, `apply_enabled_setting` in
+`src-tauri/src/gadget_status.rs`, flips
 `GadgetSlot::enabled: AtomicBool` and, on a real transition, calls
-`gadget.enable()` or `gadget.disable()`. The `Gadget::enable()`
+`gadget.enable()` or `gadget.disable()`. A failed `enable()` clears the
+flag again and keeps the error for Settings; turning the gadget off
+removes the error (ADR 0063). The `Gadget::enable()`
 method takes no arguments, since capabilities are available as fields on
 `self` (set during construction). See
 [01-overview.md](01-overview.md#lifecycle-adr-0033-adr-0044) for the

@@ -87,9 +87,16 @@ pub trait Gadget: ErasedSearch {
         settings
     }
 
-    /// Activate the gadget. Runs on a `spawn_blocking` thread.
-    /// Caps are available as plain fields on `self`. Returning
-    /// `Err` disables the gadget — no further calls dispatched.
+    /// Activate the gadget. Runs on a `spawn_blocking` thread at
+    /// startup, and on the thread that delivers the settings change
+    /// when the user turns the gadget on later. Caps are available as
+    /// plain fields on `self`.
+    ///
+    /// Returning `Err` deactivates the gadget: no further calls are
+    /// dispatched and its shortcuts are not registered. The host keeps
+    /// the error, and Settings show it under the gadget's switch. The
+    /// stored `enabled.<id>` setting stays on; turning the gadget off
+    /// and on again calls `enable()` again.
     fn enable(&self) -> anyhow::Result<()> {
         Ok(())
     }

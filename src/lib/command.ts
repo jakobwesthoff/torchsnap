@@ -116,6 +116,8 @@ export interface CommandMap {
   wasm_gadgets: { params: void; result: WasmGadgetManifest[] };
   gadget_sources: { params: void; result: Record<string, GadgetSourceKind> };
   shortcut_problems: { params: void; result: Record<string, ShortcutProblem> };
+  /** Why gadgets that are turned on failed to start, keyed by gadget id. */
+  gadget_enable_failures: { params: void; result: Record<string, string> };
   uninstall_user_gadget: {
     params: { gadgetId: string };
     result: UninstallResult;

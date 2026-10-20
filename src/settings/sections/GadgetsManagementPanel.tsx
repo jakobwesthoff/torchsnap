@@ -30,6 +30,7 @@ import { getGadgetsWithSettings } from "../../gadgets/registry";
 import { useSetting } from "../../hooks/useSetting";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
+import { GadgetEnableFailureNote } from "../GadgetEnableFailureNote";
 import { SectionHeader } from "../SectionHeader";
 import { Section } from "../Section";
 import { cn } from "../../lib/cn";
@@ -350,6 +351,7 @@ function PluginRowView({
             <span className="truncate text-xs text-text-tertiary">{row.description}</span>
           )}
           {change && <span className="text-xs text-accent">{pendingText(change)}</span>}
+          {row.loaded && enabled !== false && <GadgetEnableFailureNote gadgetId={row.id} />}
           {row.loaded && <PermissionLine sourceKind={row.sourceKind} items={row.permissions} />}
         </div>
       </div>

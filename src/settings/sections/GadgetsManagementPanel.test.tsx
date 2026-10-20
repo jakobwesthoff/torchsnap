@@ -58,6 +58,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
       install_queue_submit: (params) => {
         submitted.push(params);
@@ -134,6 +135,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
       gadget_permissions: () => permissions as never,
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
     });
   }
@@ -199,6 +201,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user" }),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
       uninstall_user_gadget: () => {
         pending = {
@@ -253,6 +256,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "user" }),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
     });
     render(<GadgetsManagementPanel />);
@@ -283,6 +287,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
     });
 
@@ -310,6 +315,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
       restart_to_apply_gadget_changes: restart,
     });
@@ -348,6 +354,7 @@ describe("GadgetsManagementPanel", () => {
       ],
       gadget_sources: () => ({ weather: "user" }),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
     });
     render(<GadgetsManagementPanel />);
@@ -361,6 +368,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({ weather: "system" }),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => [],
     });
     render(<GadgetsManagementPanel />);
@@ -407,6 +415,7 @@ describe("GadgetsManagementPanel", () => {
       wasm_gadgets: () => [],
       gadget_sources: () => ({}),
       gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({}),
       install_queue_snapshot: () => queue,
       install_queue_confirm: ({ requestId }) => {
         confirmed.push(requestId);
@@ -440,5 +449,23 @@ describe("GadgetsManagementPanel", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const weather = await card("Weather");
     expect(within(weather).getByText("Installs on restart")).toBeInTheDocument();
+  });
+
+  it("says in its row that a gadget failed to start, and why", async () => {
+    mockCommands({
+      pending_gadget_changes: () => ({}),
+      wasm_gadgets: () => [],
+      gadget_sources: () => ({ weather: "user", "clipboard-manager": "builtin" }),
+      gadget_permissions: () => ({}),
+      gadget_enable_failures: () => ({ weather: "gadget enable() returned error: no key" }),
+      install_queue_snapshot: () => [],
+    });
+    render(<GadgetsManagementPanel />);
+
+    const weather = await card("Weather");
+    expect(await within(weather).findByRole("alert")).toHaveTextContent(
+      "Failed to start, so it does not work. Turn it off and on again to retry. (gadget enable() returned error: no key)",
+    );
+    expect(within(await card("Clipboard")).queryByRole("alert")).toBeNull();
   });
 });

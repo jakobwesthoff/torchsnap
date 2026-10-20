@@ -41,6 +41,9 @@ use crate::commands::types::{
 };
 use crate::entry_store::{EntryStore, SearchGeneration};
 use crate::frecency::FrecencyStore;
+use crate::gadget_status::{
+    EnableFailures, GADGET_ENABLE_FAILURES_CHANGED, apply_enabled_setting, enable_gadget,
+};
 use crate::gadgets::Gadget;
 use crate::icons::IconCache;
 use crate::network::website_metadata::WebsiteMetadataService;
@@ -258,6 +261,7 @@ pub struct GadgetHost {
     shortcut_signal_tx: mpsc::Sender<()>,
     shortcut_signal_rx: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
     shortcut_problems: ShortcutProblems,
+    enable_failures: Arc<EnableFailures>,
 }
 
 impl GadgetHost {
@@ -272,6 +276,7 @@ impl GadgetHost {
             shortcut_signal_tx: tx,
             shortcut_signal_rx: std::sync::Mutex::new(Some(rx)),
             shortcut_problems: ShortcutProblems::default(),
+            enable_failures: Arc::new(EnableFailures::default()),
         }
     }
 
@@ -553,8 +558,18 @@ impl GadgetHost {
         //
         // Each gadget's `enable()` runs on a blocking thread.
         // On failure the shared `enabled` flag is set to false
-        // so the host stops dispatching to the gadget.
+        // so the host stops dispatching to the gadget, and the
+        // error is kept for Settings. The shortcuts registered
+        // above still include a gadget that failed, so a failure
+        // asks the reactor to register them again without it.
         // -------------------------------------------------------
+        let app = ctx.app.clone();
+        self.enable_failures.set_on_change(move || {
+            if let Err(e) = app.emit(GADGET_ENABLE_FAILURES_CHANGED, ()) {
+                eprintln!("gadget: failed to announce enable failures: {e}");
+            }
+        });
+
         let runtime = tauri::async_runtime::handle();
         for slot in &self.slots {
             if !slot.enabled.load(Ordering::Relaxed) {
@@ -563,9 +578,11 @@ impl GadgetHost {
 
             let gadget = Arc::clone(&slot.gadget);
             let enabled = Arc::clone(&slot.enabled);
+            let failures = Arc::clone(&self.enable_failures);
+            let shortcut_signal = self.shortcut_signal_tx.clone();
             runtime.spawn_blocking(move || {
-                if gadget.enable().is_err() {
-                    enabled.store(false, Ordering::Relaxed);
+                if enable_gadget(&*gadget, &enabled, &failures) {
+                    let _ = shortcut_signal.try_send(());
                 }
             });
         }
@@ -617,6 +634,12 @@ impl GadgetHost {
     /// keyed by settings key. Read by the Settings shortcut rows.
     pub fn shortcut_problems(&self) -> std::collections::BTreeMap<String, ShortcutProblem> {
         self.shortcut_problems.snapshot()
+    }
+
+    /// Why gadgets that are turned on failed to start, keyed by gadget
+    /// id. Read by the Settings gadget switches.
+    pub fn enable_failures(&self) -> std::collections::BTreeMap<String, String> {
+        self.enable_failures.snapshot()
     }
 
     fn register_all_shortcuts(&self, app: &tauri::AppHandle) {
@@ -1117,15 +1140,7 @@ impl GadgetHost {
                 };
 
                 let new_enabled = dispatch_value.as_bool().unwrap_or(true);
-                let was_enabled = enabled_flag.swap(new_enabled, Ordering::Relaxed);
-
-                if new_enabled && !was_enabled {
-                    if gadget.enable().is_err() {
-                        enabled_flag.store(false, Ordering::Relaxed);
-                    }
-                } else if !new_enabled && was_enabled {
-                    gadget.disable();
-                }
+                apply_enabled_setting(&*gadget, enabled_flag, &self.enable_failures, new_enabled);
             });
 
             // Always signal shortcut reactor on enabled changes
