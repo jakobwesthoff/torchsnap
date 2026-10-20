@@ -9,11 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The calculator no longer shows a result for dates such as
-  `2024-01-15` or phone numbers such as `555-1234` typed without the
-  `=` prefix. Compact chains such as `10-2-3` and numbers with a leading
-  zero such as `100-05` no longer show one either; typed with spaces or
-  after `=`, they still do.
 - When "Install and Restart" fails while downloading the update, the
   update window says that Torchsnap could not download the update from
   github.com. Before, it said Torchsnap could not get update information
