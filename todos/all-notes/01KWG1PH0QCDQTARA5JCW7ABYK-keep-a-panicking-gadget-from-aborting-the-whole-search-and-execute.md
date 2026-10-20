@@ -59,6 +59,19 @@ results": log which gadget panicked, optionally flip its
 enable-failure pattern at `gadget_host.rs:483-487`), and
 continue draining the JoinSet. `Done` must be sent on all paths.
 
+## The same class in settings delivery
+
+Found on 2026-10-21 in the review of the settings dispatcher fix. A
+gadget panicking inside `on_setting_changed` or `enable()` while its
+slot's settings dispatcher runs leaves that dispatcher dead: later
+switches and setting changes for that gadget are never delivered. On
+the Tauri listener path the panic also poisons Tauri's global
+`handlers` mutex, which stops every Rust event listener in the app.
+The reviewers weighed a batch guard that keeps the dispatcher alive
+(it does not help the listener path) and `catch_unwind` per callback
+(protects both); the fix should cover this path together with the
+search and execute pipeline.
+
 ## Relations
 
 - Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expects-turn-one-panic-into-a-permanent-cascade.md), one of the WASM-bridge panic paths that reach this pipeline.
