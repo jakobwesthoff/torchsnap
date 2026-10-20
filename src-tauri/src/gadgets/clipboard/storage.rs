@@ -15,19 +15,30 @@
 // inline as a BLOB in the clipboard_content table. Large or
 // always-binary formats are stored in FileStorage with a
 // file_key reference in the table.
+//
+// The watcher, the retention thread and the message handler
+// change the history concurrently. Every change runs as one SQL
+// transaction, and files follow one rule: a file is written only
+// inside the transaction that inserts its row, and deleted only
+// after the transaction that deleted its row has committed. A
+// failure can then leave a file nothing references, but never a
+// row whose file is gone. Unreferenced files are removed when the
+// state is opened.
 // =========================================================
 
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use tauri::ipc::Channel;
 
-use crate::storage::{FileStorage, SqlStorage, SqlValue, StorageKey};
+use crate::storage::{FileStorage, SqlStorage, SqlTransaction, SqlValue, StorageKey};
 
 use super::formats::CapturedFormat;
 use super::schema::{
     ClipboardHistoryEntry, ClipboardListEntry, ClipboardStats, FormatData,
-    INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS,
+    INLINE_STORAGE_MAX_BYTES, LIST_DISPLAY_MAX_CHARS, MIGRATION_001,
 };
 use super::search::build_fts_query;
 
@@ -57,7 +68,71 @@ pub struct SharedState {
     pub active_query: Mutex<Option<ActiveQuery>>,
 }
 
+/// A file-stored format of an entry, as `clipboard_content` lists it:
+/// the format name and the raw FileStorage key.
+type FileRow = (String, String);
+
 impl SharedState {
+    /// Open the database and file storage under the gadget's data
+    /// directory and remove files a failed operation left behind.
+    pub fn open(data_dir: &Path) -> Result<Self> {
+        let sql = SqlStorage::open(
+            data_dir.join("sql").join("clipboard.sqlite3"),
+            &[MIGRATION_001],
+        )
+        .context("open clipboard database")?;
+        let state = Self {
+            sql,
+            files: FileStorage::new(data_dir.join("files")),
+            active_query: Mutex::new(None),
+        };
+
+        // Leftover files only cost disk space, so a failed sweep does
+        // not keep the clipboard from starting.
+        if let Err(e) = state.remove_orphan_files() {
+            eprintln!("clipboard: removing leftover files failed: {e:#}");
+        }
+        Ok(state)
+    }
+
+    /// Delete FileStorage files that no `clipboard_content` row
+    /// references, and return how many were deleted.
+    ///
+    /// Runs inside a transaction, so it holds the database write lock:
+    /// a store that writes files does so inside its own transaction,
+    /// and its files and rows are either both visible here or not
+    /// written yet. Only files FileStorage itself places are considered,
+    /// a 64-character lowercase hex key in the shard directory of its
+    /// first two characters; anything else in the directory was not
+    /// written by this gadget and is left alone.
+    pub fn remove_orphan_files(&self) -> Result<usize> {
+        self.sql.transaction(|tx| {
+            let referenced: HashSet<String> = tx
+                .query_map(
+                    "SELECT file_key FROM clipboard_content WHERE file_key IS NOT NULL",
+                    &[],
+                    |row| row.get(0),
+                )?
+                .into_iter()
+                .collect();
+
+            let mut removed = 0;
+            for (key, ext, _) in self.files.entries() {
+                // `entries()` reports a file wherever it lies, while
+                // `delete` resolves the path from the key, so a file
+                // outside its key's shard would never go.
+                let placed_by_storage =
+                    is_storage_key(&key) && self.files.resolve(&key, &ext).is_file();
+                if !placed_by_storage || referenced.contains(&*key) {
+                    continue;
+                }
+                self.files.delete(&key, &ext)?;
+                removed += 1;
+            }
+            Ok(removed)
+        })
+    }
+
     /// Query clipboard history as lightweight list entries, optionally
     /// filtering with FTS5. Results are ordered most recently captured
     /// first, with or without a search term. Returns all matching
@@ -259,6 +334,10 @@ impl SharedState {
     /// (moving it to the top of the history) and no new data is
     /// stored. Returns `true` if a new entry was created, `false`
     /// if an existing entry was bumped.
+    ///
+    /// Either the whole entry is stored or nothing is: a failed file
+    /// write or statement rolls the rows back and deletes the files
+    /// this call already wrote.
     pub fn store_entry(
         &self,
         id: &str,
@@ -266,90 +345,110 @@ impl SharedState {
         formats: &[CapturedFormat],
     ) -> Result<bool> {
         let content_hash = compute_content_hash(formats);
+        let mut written: Vec<(StorageKey, &'static str)> = Vec::new();
 
-        // Check for an existing entry with the same content.
-        let existing: Option<String> = self
-            .sql
-            .query_map(
-                "SELECT id FROM clipboard_entries WHERE content_hash = ?1",
-                &[SqlValue::from(content_hash.as_str())],
-                |row| row.get(0),
-            )?
-            .into_iter()
-            .next();
+        let stored = self.sql.transaction(|tx| {
+            // Check for an existing entry with the same content.
+            let existing: Option<String> = tx
+                .query_map(
+                    "SELECT id FROM clipboard_entries WHERE content_hash = ?1",
+                    &[SqlValue::from(content_hash.as_str())],
+                    |row| row.get(0),
+                )?
+                .into_iter()
+                .next();
 
-        if let Some(existing_id) = existing {
-            // Bump the existing entry's timestamp to now.
-            self.sql.execute(
-                "UPDATE clipboard_entries
-                 SET captured_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                 WHERE id = ?1",
-                &[SqlValue::from(existing_id.as_str())],
+            if let Some(existing_id) = existing {
+                // Bump the existing entry's timestamp to now.
+                tx.execute(
+                    "UPDATE clipboard_entries
+                     SET captured_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                     WHERE id = ?1",
+                    &[SqlValue::from(existing_id.as_str())],
+                )?;
+                return Ok(false);
+            }
+
+            tx.execute(
+                "INSERT INTO clipboard_entries (id, content_hash) VALUES (?1, ?2)",
+                &[SqlValue::from(id), SqlValue::from(content_hash.as_str())],
             )?;
-            return Ok(false);
-        }
 
-        // No duplicate — insert a new entry.
-        self.sql.execute(
-            "INSERT INTO clipboard_entries (id, content_hash) VALUES (?1, ?2)",
-            &[SqlValue::from(id), SqlValue::from(content_hash.as_str())],
-        )?;
+            tx.execute(
+                "INSERT INTO clipboard_display (entry_id, display_text) VALUES (?1, ?2)",
+                &[SqlValue::from(id), SqlValue::from(display_text)],
+            )?;
 
-        self.sql.execute(
-            "INSERT INTO clipboard_display (entry_id, display_text) VALUES (?1, ?2)",
-            &[SqlValue::from(id), SqlValue::from(display_text)],
-        )?;
+            for fmt in formats {
+                let use_file_storage =
+                    fmt.format == "image" || fmt.data.len() > INLINE_STORAGE_MAX_BYTES;
 
-        for fmt in formats {
-            let use_file_storage =
-                fmt.format == "image" || fmt.data.len() > INLINE_STORAGE_MAX_BYTES;
+                if use_file_storage {
+                    // Store in FileStorage. The key is derived from
+                    // "{id}-{format}" so each format gets its own file.
+                    let ext = file_ext_for_format(&fmt.format);
+                    let key = StorageKey::new(&format!("{id}-{}", fmt.format));
+                    self.files
+                        .store(&key, &fmt.data, ext)
+                        .context("store file content")?;
+                    written.push((key.clone(), ext));
 
-            if use_file_storage {
-                // Store in FileStorage. The key is derived from
-                // "{id}-{format}" so each format gets its own file.
-                let ext = file_ext_for_format(&fmt.format);
-                let key = StorageKey::new(&format!("{id}-{}", fmt.format));
-                self.files
-                    .store(&key, &fmt.data, ext)
-                    .context("store file content")?;
+                    tx.execute(
+                        "INSERT INTO clipboard_content (entry_id, format, data, file_key)
+                         VALUES (?1, ?2, NULL, ?3)",
+                        &[
+                            SqlValue::from(id),
+                            SqlValue::from(fmt.format.as_str()),
+                            SqlValue::from(key.to_string()),
+                        ],
+                    )?;
+                } else {
+                    tx.execute(
+                        "INSERT INTO clipboard_content (entry_id, format, data, file_key)
+                         VALUES (?1, ?2, ?3, NULL)",
+                        &[
+                            SqlValue::from(id),
+                            SqlValue::from(fmt.format.as_str()),
+                            SqlValue::from(fmt.data.clone()),
+                        ],
+                    )?;
+                }
+            }
 
-                self.sql.execute(
-                    "INSERT INTO clipboard_content (entry_id, format, data, file_key)
-                     VALUES (?1, ?2, NULL, ?3)",
-                    &[
-                        SqlValue::from(id),
-                        SqlValue::from(fmt.format.as_str()),
-                        SqlValue::from(key.to_string()),
-                    ],
-                )?;
-            } else {
-                self.sql.execute(
-                    "INSERT INTO clipboard_content (entry_id, format, data, file_key)
-                     VALUES (?1, ?2, ?3, NULL)",
-                    &[
-                        SqlValue::from(id),
-                        SqlValue::from(fmt.format.as_str()),
-                        SqlValue::from(fmt.data.clone()),
-                    ],
-                )?;
+            Ok(true)
+        });
+
+        // A failed commit also lands here, so the files go whenever
+        // the rows did not make it.
+        if stored.is_err() {
+            for (key, ext) in &written {
+                if let Err(e) = self.files.delete(key, ext) {
+                    eprintln!("clipboard: remove file of a failed store: {e:#}");
+                }
             }
         }
-
-        Ok(true)
+        stored
     }
 
     /// Delete an entry and its associated FileStorage files.
     pub fn delete_entry(&self, id: &str) -> Result<()> {
-        // Collect file_keys before CASCADE deletes the rows.
-        self.delete_file_storage_for_entry(id);
+        let files = self.sql.transaction(|tx| {
+            let files = file_rows(
+                tx,
+                "SELECT format, file_key FROM clipboard_content
+                 WHERE entry_id = ?1 AND file_key IS NOT NULL",
+                &[SqlValue::from(id)],
+            )?;
+            // CASCADE deletes clipboard_content rows and FTS triggers
+            // handle the index cleanup.
+            tx.execute(
+                "DELETE FROM clipboard_entries WHERE id = ?1",
+                &[SqlValue::from(id)],
+            )?;
+            Ok(files)
+        })?;
 
-        // CASCADE deletes clipboard_content rows and FTS triggers
-        // handle the index cleanup.
-        self.sql.execute(
-            "DELETE FROM clipboard_entries WHERE id = ?1",
-            &[SqlValue::from(id)],
-        )?;
-
+        self.delete_files(&files);
         Ok(())
     }
 
@@ -357,24 +456,37 @@ impl SharedState {
     /// A period below one day counts as one day: a cutoff of "now"
     /// would delete the whole history.
     pub fn delete_expired_entries(&self, retention_days: u32) -> Result<()> {
-        let cutoff = format!("-{} days", retention_days.max(1));
+        let period = format!("-{} days", retention_days.max(1));
 
-        let old_ids: Vec<String> = self.sql.query_map(
-            "SELECT id FROM clipboard_entries
-             WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
-            &[SqlValue::from(cutoff.as_str())],
-            |row| row.get(0),
-        )?;
+        let files = self.sql.transaction(|tx| {
+            // One cutoff for both statements: an entry that crosses
+            // it in between would otherwise lose its row without its
+            // files being collected.
+            let cutoff: String = tx
+                .query_map(
+                    "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
+                    &[SqlValue::from(period.as_str())],
+                    |row| row.get(0),
+                )?
+                .into_iter()
+                .next()
+                .context("compute the retention cutoff")?;
 
-        for id in &old_ids {
-            self.delete_file_storage_for_entry(id);
-        }
+            let files = file_rows(
+                tx,
+                "SELECT c.format, c.file_key FROM clipboard_content c
+                 JOIN clipboard_entries e ON e.id = c.entry_id
+                 WHERE e.captured_at < ?1 AND c.file_key IS NOT NULL",
+                &[SqlValue::from(cutoff.as_str())],
+            )?;
+            tx.execute(
+                "DELETE FROM clipboard_entries WHERE captured_at < ?1",
+                &[SqlValue::from(cutoff)],
+            )?;
+            Ok(files)
+        })?;
 
-        self.sql.execute(
-            "DELETE FROM clipboard_entries
-             WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)",
-            &[SqlValue::from(cutoff)],
-        )?;
+        self.delete_files(&files);
 
         Ok(())
     }
@@ -437,24 +549,18 @@ impl SharedState {
     /// Delete all clipboard history entries and their associated
     /// files on disk. Used by the "clear history" button in settings.
     pub fn clear_all(&self) -> Result<()> {
-        // Collect all file keys before CASCADE deletes the rows.
-        let file_rows: Vec<(String, String)> = self
-            .sql
-            .query_map(
+        let files = self.sql.transaction(|tx| {
+            let files = file_rows(
+                tx,
                 "SELECT format, file_key FROM clipboard_content
                  WHERE file_key IS NOT NULL",
                 &[],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap_or_default();
+            )?;
+            tx.execute("DELETE FROM clipboard_entries", &[])?;
+            Ok(files)
+        })?;
 
-        for (format, raw_key) in &file_rows {
-            let key = StorageKey::from_raw(raw_key.clone());
-            let _ = self.files.delete(&key, file_ext_for_format(format));
-        }
-
-        self.sql.execute("DELETE FROM clipboard_entries", &[])?;
-
+        self.delete_files(&files);
         Ok(())
     }
 
@@ -503,26 +609,29 @@ impl SharedState {
     // Internal helpers
     // -------------------------------------------------------
 
-    /// Delete all FileStorage files associated with an entry.
-    /// Must be called before the SQL rows are deleted (CASCADE
-    /// would remove the file_key references we need to find the
-    /// files).
-    fn delete_file_storage_for_entry(&self, id: &str) {
-        let rows: Vec<(String, String)> = self
-            .sql
-            .query_map(
-                "SELECT format, file_key FROM clipboard_content
-                 WHERE entry_id = ?1 AND file_key IS NOT NULL",
-                &[SqlValue::from(id)],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap_or_default();
-
-        for (format, raw_key) in &rows {
+    /// Delete the files of rows a committed transaction removed. A
+    /// file that cannot be deleted is only a leftover, which the
+    /// sweep in [`SharedState::open`] removes later.
+    fn delete_files(&self, files: &[FileRow]) {
+        for (format, raw_key) in files {
             let key = StorageKey::from_raw(raw_key.clone());
-            let _ = self.files.delete(&key, file_ext_for_format(format));
+            if let Err(e) = self.files.delete(&key, file_ext_for_format(format)) {
+                eprintln!("clipboard: remove file of a deleted entry: {e:#}");
+            }
         }
     }
+}
+
+/// Collect the `(format, file_key)` rows a query selects, before the
+/// cascade of a delete removes them.
+fn file_rows(tx: &SqlTransaction<'_>, sql: &str, params: &[SqlValue]) -> Result<Vec<FileRow>> {
+    tx.query_map(sql, params, |row| Ok((row.get(0)?, row.get(1)?)))
+}
+
+/// Whether a FileStorage file name is a storage key, a 64-character
+/// lowercase hex blake3 hash.
+fn is_storage_key(name: &str) -> bool {
+    name.len() == 64 && name.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 // =========================================================
@@ -729,6 +838,344 @@ mod tests {
 
         let remaining = state.search_history(None).expect("history loads");
         assert_eq!(ids(&remaining), vec!["new"]);
+    }
+
+    // -----------------------------------------------------
+    // Rows and files stay consistent when an operation fails
+    // -----------------------------------------------------
+
+    fn image(data: &[u8]) -> CapturedFormat {
+        CapturedFormat {
+            format: "image".to_owned(),
+            data: data.to_vec(),
+        }
+    }
+
+    fn store_image(state: &SharedState, id: &str, data: &[u8]) {
+        state
+            .store_entry(id, "Image (1×1)", &[image(data)])
+            .expect("store image entry");
+    }
+
+    fn stored_files(state: &SharedState) -> usize {
+        state.files.entries().count()
+    }
+
+    fn pasted_formats(state: &SharedState, id: &str) -> Vec<(String, Vec<u8>)> {
+        state
+            .load_captured_formats(id)
+            .expect("formats load")
+            .into_iter()
+            .map(|f| (f.format, f.data))
+            .collect()
+    }
+
+    /// Make every delete of an entry fail, as a full disk or a locked
+    /// database would.
+    fn block_entry_deletes(state: &SharedState) {
+        state
+            .sql
+            .execute(
+                "CREATE TRIGGER block_delete BEFORE DELETE ON clipboard_entries
+                 BEGIN SELECT RAISE(ABORT, 'blocked'); END",
+                &[],
+            )
+            .expect("create blocking trigger");
+    }
+
+    #[test]
+    fn a_failed_file_write_stores_no_entry() {
+        let (state, dir) = test_state();
+        std::fs::write(
+            dir.path().join("files"),
+            b"a file where the directory belongs",
+        )
+        .expect("block the file storage");
+
+        let result = state.store_entry("e1", "Image (1×1)", &[image(b"png")]);
+
+        assert!(result.is_err());
+        assert!(ids(&state.search_history(None).expect("history loads")).is_empty());
+    }
+
+    #[test]
+    fn a_failed_file_write_removes_the_files_already_written() {
+        let (state, dir) = test_state();
+        let image_shard = StorageKey::new("e1-image")[..2].to_owned();
+        let text_shard = StorageKey::new("e1-text")[..2].to_owned();
+        assert_ne!(image_shard, text_shard, "the test needs separate shards");
+        std::fs::create_dir_all(dir.path().join("files")).expect("create file storage");
+        std::fs::write(dir.path().join("files").join(&text_shard), b"blocker")
+            .expect("block the text shard");
+        let large_text = CapturedFormat {
+            format: "text".to_owned(),
+            data: vec![b'x'; INLINE_STORAGE_MAX_BYTES + 1],
+        };
+
+        let result = state.store_entry("e1", "xxx", &[image(b"png"), large_text]);
+
+        assert!(result.is_err());
+        assert_eq!(stored_files(&state), 0);
+    }
+
+    #[test]
+    fn a_failed_delete_keeps_the_entry_pastable() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+        block_entry_deletes(&state);
+
+        assert!(state.delete_entry("e1").is_err());
+
+        assert_eq!(
+            pasted_formats(&state, "e1"),
+            [("image".to_owned(), b"png".to_vec())]
+        );
+    }
+
+    #[test]
+    fn a_failed_clear_keeps_the_entries_pastable() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+        block_entry_deletes(&state);
+
+        assert!(state.clear_all().is_err());
+
+        assert_eq!(
+            pasted_formats(&state, "e1"),
+            [("image".to_owned(), b"png".to_vec())]
+        );
+    }
+
+    #[test]
+    fn a_failed_retention_cleanup_keeps_the_entries_pastable() {
+        let (state, _dir) = test_state();
+        store_image(&state, "old", b"png");
+        state
+            .sql
+            .execute(
+                "UPDATE clipboard_entries SET captured_at = '2020-01-01T00:00:00.000Z'",
+                &[],
+            )
+            .expect("age the entry");
+        block_entry_deletes(&state);
+
+        assert!(state.delete_expired_entries(30).is_err());
+
+        assert_eq!(
+            pasted_formats(&state, "old"),
+            [("image".to_owned(), b"png".to_vec())]
+        );
+    }
+
+    #[test]
+    fn orphan_files_are_removed_and_other_files_kept() {
+        let (state, dir) = test_state();
+        store_image(&state, "kept", b"png");
+        let orphan_png = StorageKey::new("gone-image");
+        let orphan_bin = StorageKey::new("gone-text");
+        state
+            .files
+            .store(&orphan_png, b"png", "png")
+            .expect("store orphan");
+        state
+            .files
+            .store(&orphan_bin, b"bin", "bin")
+            .expect("store orphan");
+        // Files the clipboard never writes: a name that is no storage
+        // key, and a key in a shard directory it does not belong to.
+        let files_dir = dir.path().join("files");
+        let stray_shard = files_dir.join("zz");
+        std::fs::create_dir_all(&stray_shard).expect("create stray shard");
+        std::fs::write(stray_shard.join("x.tmp"), b"stray").expect("write stray file");
+        let misplaced = StorageKey::new("misplaced");
+        std::fs::write(
+            stray_shard.join(format!("{}.png", &*misplaced)),
+            b"misplaced",
+        )
+        .expect("write misplaced file");
+
+        let removed = state.remove_orphan_files().expect("sweep runs");
+
+        assert_eq!(removed, 2);
+        assert!(
+            state
+                .files
+                .load(&orphan_png, "png")
+                .expect("loads")
+                .is_none()
+        );
+        assert!(
+            state
+                .files
+                .load(&orphan_bin, "bin")
+                .expect("loads")
+                .is_none()
+        );
+        assert_eq!(
+            pasted_formats(&state, "kept"),
+            [("image".to_owned(), b"png".to_vec())]
+        );
+        assert!(stray_shard.join("x.tmp").exists());
+        assert!(stray_shard.join(format!("{}.png", &*misplaced)).exists());
+    }
+
+    #[test]
+    fn opening_the_state_removes_orphan_files() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let orphan = StorageKey::new("gone-image");
+        FileStorage::new(dir.path().join("files"))
+            .store(&orphan, b"png", "png")
+            .expect("store orphan");
+
+        let state = SharedState::open(dir.path()).expect("state opens");
+
+        assert!(state.files.load(&orphan, "png").expect("loads").is_none());
+        assert!(dir.path().join("sql").join("clipboard.sqlite3").exists());
+    }
+
+    /// Make a directory read-only so files in it cannot be deleted, and
+    /// give the permissions back when dropped so the temp dir can go.
+    #[cfg(unix)]
+    struct ReadOnlyDir(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl ReadOnlyDir {
+        fn new(dir: std::path::PathBuf) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555))
+                .expect("make the directory read-only");
+            Self(dir)
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for ReadOnlyDir {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_the_state_survives_a_sweep_that_fails() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let files = FileStorage::new(dir.path().join("files"));
+        let orphan = StorageKey::new("gone-image");
+        files.store(&orphan, b"png", "png").expect("store orphan");
+        let shard = files
+            .resolve(&orphan, "png")
+            .parent()
+            .expect("shard")
+            .to_owned();
+        let _read_only = ReadOnlyDir::new(shard);
+
+        let state = SharedState::open(dir.path()).expect("state opens despite the sweep");
+
+        assert!(state.files.load(&orphan, "png").expect("loads").is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_cannot_be_deleted_does_not_keep_its_entry() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+        let key = StorageKey::new("e1-image");
+        let shard = state
+            .files
+            .resolve(&key, "png")
+            .parent()
+            .expect("shard")
+            .to_owned();
+        let _read_only = ReadOnlyDir::new(shard);
+
+        state.delete_entry("e1").expect("delete runs");
+
+        assert!(ids(&state.search_history(None).expect("history loads")).is_empty());
+        assert!(state.files.load(&key, "png").expect("loads").is_some());
+    }
+
+    #[test]
+    fn opening_the_state_reports_a_database_that_cannot_be_opened() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(
+            dir.path().join("sql"),
+            b"a file where the directory belongs",
+        )
+        .expect("block the database directory");
+
+        assert!(SharedState::open(dir.path()).is_err());
+    }
+
+    // -----------------------------------------------------
+    // Files follow their entries
+    // -----------------------------------------------------
+
+    #[test]
+    fn retention_deletes_the_files_of_expired_entries_only() {
+        let (state, _dir) = test_state();
+        store_image(&state, "old", b"old png");
+        store_image(&state, "new", b"new png");
+        state
+            .sql
+            .execute(
+                "UPDATE clipboard_entries SET captured_at = '2020-01-01T00:00:00.000Z'
+                 WHERE id = 'old'",
+                &[],
+            )
+            .expect("age the entry");
+
+        state.delete_expired_entries(30).expect("cleanup runs");
+
+        assert_eq!(stored_files(&state), 1);
+        assert_eq!(
+            pasted_formats(&state, "new"),
+            [("image".to_owned(), b"new png".to_vec())]
+        );
+    }
+
+    #[test]
+    fn deleting_an_entry_deletes_its_files() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+        store_image(&state, "e2", b"other png");
+
+        state.delete_entry("e1").expect("delete runs");
+
+        assert_eq!(stored_files(&state), 1);
+        assert_eq!(
+            ids(&state.search_history(None).expect("history loads")),
+            ["e2"]
+        );
+    }
+
+    #[test]
+    fn clearing_deletes_all_files() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+        store_image(&state, "e2", b"other png");
+
+        state.clear_all().expect("clear runs");
+
+        assert_eq!(stored_files(&state), 0);
+        assert!(ids(&state.search_history(None).expect("history loads")).is_empty());
+    }
+
+    #[test]
+    fn a_duplicate_bumps_the_existing_entry_without_writing_files() {
+        let (state, _dir) = test_state();
+        store_image(&state, "e1", b"png");
+
+        let created = state
+            .store_entry("e2", "Image (1×1)", &[image(b"png")])
+            .expect("store duplicate");
+
+        assert!(!created);
+        assert_eq!(stored_files(&state), 1);
+        assert_eq!(
+            ids(&state.search_history(None).expect("history loads")),
+            ["e1"]
+        );
     }
 
     // -----------------------------------------------------

@@ -143,8 +143,6 @@ For the constructor itself, in `src-tauri/src/storage/sql_storage.rs` tests:
   against someone later "optimising" it into a shared-cache URI.
 - The storage is usable through the normal API surface: `execute`,
   `query_map`, and `transaction` all work, including a rollback.
-- A savepoint/nested transaction case, since `savepoint_counter` is
-  per-instance state.
 
 For any migrated test: no new assertions needed, but run the affected
 suites under `--test-threads=16` a few times, since the whole point is

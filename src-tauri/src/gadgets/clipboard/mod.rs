@@ -44,10 +44,9 @@ use crate::caps::{CapRequest, ProvisionedCaps};
 use crate::commands::types::{CatalogEntry, EntryActions, EntryIcon, PostAction};
 use crate::platform::clipboard::ClipboardPlatform;
 use crate::settings::SettingsInit;
-use crate::storage::{FileStorage, SqlStorage};
 
 use self::formats::captured_to_clipboard_contents;
-use self::schema::{EntryIdPayload, MIGRATION_001, PLUGIN_ID, SearchPayload};
+use self::schema::{EntryIdPayload, PLUGIN_ID, SearchPayload};
 use self::storage::SharedState;
 use self::watcher::WatcherHandler;
 
@@ -302,17 +301,7 @@ impl Gadget for ClipboardGadget {
             .expect("gadget-data is a recognized path variable")
             .to_path_buf();
 
-        let db_path = data_dir.join("sql").join("clipboard.sqlite3");
-        let files_dir = data_dir.join("files");
-
-        let sql = SqlStorage::open(db_path, &[MIGRATION_001]).context("open clipboard database")?;
-        let files = FileStorage::new(files_dir);
-
-        let shared = Arc::new(SharedState {
-            sql,
-            files,
-            active_query: Mutex::new(None),
-        });
+        let shared = Arc::new(SharedState::open(&data_dir)?);
 
         *self.state.lock().expect("state not poisoned") = Some(Arc::clone(&shared));
 
@@ -611,12 +600,7 @@ mod tests {
     }
 
     fn opened_state(data_dir: &std::path::Path) -> Arc<SharedState> {
-        Arc::new(SharedState {
-            sql: SqlStorage::open(data_dir.join("clipboard.sqlite3"), &[MIGRATION_001])
-                .expect("a fresh temp dir holds a database"),
-            files: FileStorage::new(data_dir.join("files")),
-            active_query: Mutex::new(None),
-        })
+        Arc::new(SharedState::open(data_dir).expect("a fresh temp dir holds a database"))
     }
 
     fn discarding_channel() -> Channel<serde_json::Value> {

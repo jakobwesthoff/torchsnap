@@ -16,4 +16,4 @@ mod sql_storage;
 
 pub use file_storage::{FileStorage, StorageKey};
 // TODO(re-export): add `SqlRow` here when callers outside this module need direct row access.
-pub use sql_storage::{SqlStorage, SqlValue};
+pub use sql_storage::{SqlStorage, SqlTransaction, SqlValue};

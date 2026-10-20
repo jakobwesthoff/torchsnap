@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A clipboard history entry no longer shows, or is found in search by,
   text from a copy it does not contain. Copying twice in quick
   succession could cause this.
+- Clipboard history no longer keeps entries it cannot paste or entries
+  without content. Pasting an entry while old entries were being
+  removed, a failed write while storing a copy, or a failure while
+  deleting or clearing could leave such entries, or leave stored copies
+  on disk that nothing removed. Leftover files are removed when the
+  clipboard gadget starts.
 
 ## [0.14.1] - 2026-10-20
 
