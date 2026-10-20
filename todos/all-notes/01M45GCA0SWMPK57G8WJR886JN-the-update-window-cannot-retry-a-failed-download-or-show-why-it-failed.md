@@ -26,6 +26,9 @@ When "Install and Restart" fails, "Try Again" in the update window starts a new 
 - Give `Phase::Failed` the step it failed in, so the window can word its text and its actions per step.
 - After a failed download, offer to retry the download instead of a new check.
 - Keep the plugin's error chain (`{e:#}`) reachable for diagnosis, for example as an expandable detail in the window.
+- Word the remaining plugin errors while touching the per-step wording. Both were found on 2026-10-20 while fixing the download wording (commit 8e888607), read in the plugin's source, not reproduced:
+  - `Base64` (a feed signature that is not valid base64) still shows the generic "Updating failed: <plugin message>"; it belongs with the "could not be verified" text. A test needs a dev-dependency on base64 0.22.1, the plugin's version (src-tauri uses 0.23.1).
+  - The "administrator password" wording for `AuthenticationFailed` looks unreachable on macOS: only the plugin's Linux install returns that error, while the macOS install reports a failed admin move as `Io`.
 
 ## Open questions
 
