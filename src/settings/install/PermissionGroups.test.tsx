@@ -45,6 +45,29 @@ describe("PermissionGroups", () => {
     expect(clipboardGroup).toHaveTextContent("copy text to the clipboard");
   });
 
+  it("shows the folder a command rule may run in below the rule", () => {
+    const gitInProjects: PermissionItem = {
+      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects" },
+      severity: "warning",
+      change: "added",
+    };
+    render(<PermissionGroups items={[gitInProjects]} platform="macos" />);
+
+    const programs = screen.getByRole("group", { name: "Runs programs" });
+    expect(within(programs).getByText("in ~/projects or a folder inside it")).toBeInTheDocument();
+  });
+
+  it("strikes through the folder of a removed command rule", () => {
+    const removedGit: PermissionItem = {
+      permission: { kind: "command", binary: "git", argv: [], cwd: "${home}/projects" },
+      severity: "warning",
+      change: "removed",
+    };
+    render(<PermissionGroups items={[]} removed={[removedGit]} platform="macos" showChanges />);
+
+    expect(screen.getByText("in ~/projects or a folder inside it")).toHaveClass("line-through");
+  });
+
   it("labels broad groups and explains the label", () => {
     render(<PermissionGroups items={[clipboard, anyWebsite]} platform="macos" />);
 

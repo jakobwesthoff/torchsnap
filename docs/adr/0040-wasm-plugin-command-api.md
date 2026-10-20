@@ -8,6 +8,8 @@ Accepted
 
 Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
+Amended by [66. Bind command grants to what the install review shows](0066-bind-command-grants-to-what-the-install-review-shows.md)
+
 ## Context
 
 ADR 0036 set the trust-model invariant: the WIT capability surface is

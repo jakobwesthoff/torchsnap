@@ -41,7 +41,7 @@ describe("groupPermissions", () => {
         item({ kind: "settings" }, "info"),
         item({ kind: "openerScheme", scheme: "https" }),
         item({ kind: "clipboard" }),
-        item({ kind: "command", binary: "/usr/bin/mdfind", argv: [] }, "warning"),
+        item({ kind: "command", binary: "/usr/bin/mdfind", argv: [], cwd: null }, "warning"),
         item({ kind: "filesystemRead", pattern: "/tmp/*" }),
         item({ kind: "httpOrigin", origin: "https://api.example.com" }),
       ],
@@ -67,6 +67,7 @@ describe("groupPermissions", () => {
             kind: "command",
             binary: "/usr/bin/mdfind",
             argv: [{ kind: "literal", value: "-name" }, { kind: "anyString" }],
+            cwd: null,
           },
           "warning",
         ),
@@ -97,6 +98,22 @@ describe("groupPermissions", () => {
       clipboard: [["copy text to the clipboard", undefined]],
       ownData: [["which results you pick most often", undefined]],
     });
+  });
+
+  it("names the folder a command rule may run in", () => {
+    const [programs] = groupPermissions(
+      [
+        item({ kind: "command", binary: "git", argv: [], cwd: "${home}/projects" }, "warning"),
+        item({ kind: "command", binary: "osascript", argv: [], cwd: null }, "warning"),
+      ],
+      [],
+      "macos",
+    );
+
+    expect(programs.entries.map((entry) => entry.lines)).toEqual([
+      ["in ~/projects or a folder inside it"],
+      [],
+    ]);
   });
 
   it("marks a group with any broad entry as broad", () => {

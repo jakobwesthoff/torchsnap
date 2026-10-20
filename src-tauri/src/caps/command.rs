@@ -195,11 +195,19 @@ impl CommandCap {
         binary: &str,
         options: CommandOptions,
     ) -> Result<CommandResult, CommandCapError> {
-        if argv_matcher::matches(&self.rules, binary, &options.args).is_err() {
+        let Ok(rule) = argv_matcher::matches(&self.rules, binary, &options.args) else {
             return Err(CommandCapError::PermissionDenied(format!(
                 "no `[[permissions.command]]` rule accepts `{binary}` with the given argv"
             )));
-        }
+        };
+
+        // Every check that can deny the call runs before anything is
+        // created on disk.
+        let guest_cwd = check_guest_cwd(rule, options.cwd.as_deref())?;
+        let rule_default_cwd = match (&guest_cwd, &rule.cwd) {
+            (None, Some(root)) => Some(prepare_rule_root(root)?),
+            _ => None,
+        };
 
         // Lives until `run` returns, after the child has exited or been
         // killed, so the directories outlast every use by the child.
@@ -210,10 +218,9 @@ impl CommandCap {
             ))
         })?;
 
-        let cwd = match options.cwd.as_deref() {
-            Some(explicit) => PathBuf::from(explicit),
-            None => spawn_dirs.cwd().to_path_buf(),
-        };
+        let cwd = guest_cwd
+            .or(rule_default_cwd)
+            .unwrap_or_else(|| spawn_dirs.cwd().to_path_buf());
 
         let env = build_command_env(&options.env);
 
@@ -233,6 +240,92 @@ impl CommandCap {
             ))
         })
     }
+}
+
+// =========================================================
+// Working directory
+//
+// A rule's `cwd` is the root of the working directories a call
+// may choose; without one, a call cannot choose at all. The child
+// is started in the canonical path, so what was checked is what
+// it runs in. A guest path with `..` is refused outright: the
+// lexical check reads `root/link/..` as `root`, while the kernel
+// resolves it against the link's target.
+// =========================================================
+
+/// The working directory the guest asked for, checked against the
+/// rule's root, or `None` when it asked for none.
+fn check_guest_cwd(
+    rule: &CompiledCommandRule,
+    guest: Option<&str>,
+) -> Result<Option<PathBuf>, CommandCapError> {
+    use crate::wasm::path_safety::{self, PathError};
+
+    let Some(guest) = guest else {
+        return Ok(None);
+    };
+    let Some(root) = &rule.cwd else {
+        return Err(CommandCapError::PermissionDenied(format!(
+            "the rule for `{}` declares no `cwd`, so a call cannot choose a working directory",
+            rule.binary
+        )));
+    };
+    let requested = std::path::Path::new(guest);
+    if requested
+        .components()
+        .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(CommandCapError::PermissionDenied(format!(
+            "working directory `{guest}` contains `..`"
+        )));
+    }
+
+    let canonical = match path_safety::canonical_under_root(requested, root) {
+        Ok(canonical) => canonical,
+        Err(
+            e @ (PathError::CandidateNotAbsolute(_)
+            | PathError::DanglingSymlink(_)
+            | PathError::EscapesRoot { .. }),
+        ) => {
+            return Err(CommandCapError::PermissionDenied(format!(
+                "working directory `{guest}` is not inside the rule's `cwd`: {e}"
+            )));
+        }
+        Err(
+            e @ (PathError::RootNotAbsolute(_)
+            | PathError::RootCanonicalize { .. }
+            | PathError::CandidateCanonicalize(_)),
+        ) => {
+            return Err(CommandCapError::SpawnFailed(format!(
+                "resolve working directory `{guest}`: {e}"
+            )));
+        }
+    };
+
+    match std::fs::metadata(&canonical) {
+        Ok(meta) if meta.is_dir() => Ok(Some(canonical)),
+        Ok(_) => Err(CommandCapError::SpawnFailed(format!(
+            "working directory `{}` is not a directory",
+            canonical.display()
+        ))),
+        Err(e) => Err(CommandCapError::SpawnFailed(format!(
+            "working directory `{}`: {e}",
+            canonical.display()
+        ))),
+    }
+}
+
+/// The rule's root as the default working directory, created when
+/// it does not exist yet.
+fn prepare_rule_root(root: &std::path::Path) -> Result<PathBuf, CommandCapError> {
+    std::fs::create_dir_all(root)
+        .and_then(|()| root.canonicalize())
+        .map_err(|e| {
+            CommandCapError::SpawnFailed(format!(
+                "prepare the rule's `cwd` `{}`: {e}",
+                root.display()
+            ))
+        })
 }
 
 // =========================================================
@@ -764,14 +857,17 @@ mod tests {
                 CompiledCommandRule {
                     binary: "/bin/pwd".into(),
                     argv: vec![],
+                    cwd: None,
                 },
                 CompiledCommandRule {
                     binary: "/bin/ls".into(),
                     argv: vec![C::Literal("-A".into())],
+                    cwd: None,
                 },
                 CompiledCommandRule {
                     binary: "/bin/sh".into(),
                     argv: vec![C::Literal("-c".into()), C::AnyString],
+                    cwd: None,
                 },
             ],
             paths.gadget_data,
@@ -921,6 +1017,7 @@ mod tests {
             vec![CompiledCommandRule {
                 binary: missing.to_string_lossy().into_owned(),
                 argv: vec![],
+                cwd: None,
             }],
             gadget_paths(root.path(), "spawner").gadget_data,
         )
@@ -960,18 +1057,26 @@ mod tests {
         assert_eq!(entries(&base), Vec::<String>::new());
     }
 
-    #[test]
-    fn denied_call_creates_no_spawn_dir() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn denied_call_creates_no_spawn_dir() {
         let root = tempfile::TempDir::new().expect("tempdir");
         let (cap, base) = cap_with_spawn_base(root.path());
+        let mut guest_cwd = options(&[]);
+        guest_cwd.cwd = Some(root.path().to_string_lossy().into_owned());
+        let denials = [
+            ("argv no rule accepts", options(&["unexpected-argument"])),
+            ("cwd without a rule cwd", guest_cwd),
+        ];
 
-        let result = cap.run("/bin/pwd", options(&["unexpected-argument"]));
+        for (case, opts) in denials {
+            let result = cap.run("/bin/pwd", opts);
 
-        assert!(
-            matches!(result, Err(CommandCapError::PermissionDenied(_))),
-            "{result:?}"
-        );
-        assert_eq!(entries(&base), Vec::<String>::new());
+            assert!(
+                matches!(result, Err(CommandCapError::PermissionDenied(_))),
+                "{case}: {result:?}"
+            );
+            assert_eq!(entries(&base), Vec::<String>::new(), "{case}");
+        }
     }
 
     #[cfg(unix)]
@@ -1039,24 +1144,252 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
-    #[tokio::test(flavor = "multi_thread")]
-    async fn an_explicit_cwd_is_used() {
-        let root = tempfile::TempDir::new().expect("tempdir");
-        let cap = spawning_cap(root.path());
-        let mut opts = options(&[]);
-        let wanted = root.path().canonicalize().expect("canonical root");
-        opts.cwd = Some(wanted.to_string_lossy().into_owned());
-
-        let cwd = stdout_line(&cap.run("/bin/pwd", opts).expect("pwd runs"));
-
-        assert_eq!(std::path::Path::new(&cwd), wanted);
-    }
-
     #[test]
     fn spawn_dirs_in_a_missing_base_fail_to_create() {
         let base = tempfile::TempDir::new().expect("tempdir");
         assert!(SpawnDirs::create(&base.path().join("missing")).is_err());
+    }
+
+    // ─── the rule's cwd root ──────────────────────────────
+
+    /// A cap over `/bin/pwd` whose one rule declares `rule_cwd`, for a
+    /// gadget laid out below `root` (home at `root/home`).
+    fn pwd_cap(root: &std::path::Path, rule_cwd: Option<&str>) -> CommandCap {
+        let paths = gadget_paths(root, "pwd");
+        let rule = CommandPermissionDef {
+            binary: "/bin/pwd".into(),
+            argv: vec![],
+            cwd: rule_cwd.map(str::to_string),
+            timeout_ms_max: None,
+            max_output_bytes: None,
+            max_stdin_bytes: None,
+        };
+        CommandCap::new(&[rule], &paths, paths.gadget_data.clone()).expect("rule compiles")
+    }
+
+    fn with_cwd(cwd: &std::path::Path) -> CommandOptions {
+        let mut opts = options(&[]);
+        opts.cwd = Some(cwd.to_string_lossy().into_owned());
+        opts
+    }
+
+    /// `root/home/projects`, created, as the rule root
+    /// `${home}/projects` resolves it.
+    fn projects(root: &std::path::Path) -> PathBuf {
+        let projects = root.join("home/projects");
+        std::fs::create_dir_all(&projects).expect("projects dir");
+        projects
+    }
+
+    fn assert_denied(result: Result<CommandResult, CommandCapError>) {
+        assert!(
+            matches!(result, Err(CommandCapError::PermissionDenied(_))),
+            "expected PermissionDenied, got {result:?}"
+        );
+    }
+
+    fn assert_spawn_failed(result: Result<CommandResult, CommandCapError>) {
+        assert!(
+            matches!(result, Err(CommandCapError::SpawnFailed(_))),
+            "expected SpawnFailed, got {result:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_without_rule_cwd_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = pwd_cap(root.path(), None);
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(root.path())));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_outside_rule_root_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        projects(root.path());
+        let elsewhere = root.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).expect("elsewhere");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&elsewhere)));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_escaping_with_dotdot_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        std::fs::create_dir_all(root.path().join("home/elsewhere")).expect("elsewhere");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&projects.join("../elsewhere"))));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_with_dotdot_inside_root_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        std::fs::create_dir_all(projects.join("repo")).expect("repo");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&projects.join("repo/../repo"))));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_through_symlink_out_of_root_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        let elsewhere = root.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).expect("elsewhere");
+        std::os::unix::fs::symlink(&elsewhere, projects.join("link")).expect("symlink");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&projects.join("link"))));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_through_dangling_symlink_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        std::os::unix::fs::symlink(root.path().join("missing"), projects.join("link"))
+            .expect("symlink");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(&projects.join("link"))));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn relative_guest_cwd_is_denied() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        projects(root.path());
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_denied(cap.run("/bin/pwd", with_cwd(std::path::Path::new("."))));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn rule_cwd_is_the_default_cwd() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", options(&[])).expect("pwd runs"));
+
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            projects.canonicalize().expect("canonical projects")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn missing_rule_cwd_root_is_created_for_the_default() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        let result = cap.run("/bin/pwd", options(&[]));
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(root.path().join("home/projects").is_dir());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_inside_rule_root_is_used() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let repo = projects(root.path()).join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", with_cwd(&repo)).expect("pwd runs"));
+
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            repo.canonicalize().expect("canonical repo")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_equal_to_rule_root_is_used() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        let cwd = stdout_line(&cap.run("/bin/pwd", with_cwd(&projects)).expect("pwd runs"));
+
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            projects.canonicalize().expect("canonical projects")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn missing_guest_cwd_inside_root_fails_to_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let projects = projects(root.path());
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_spawn_failed(cap.run("/bin/pwd", with_cwd(&projects.join("missing"))));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_under_a_missing_rule_root_fails_to_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_spawn_failed(cap.run(
+            "/bin/pwd",
+            with_cwd(&root.path().join("home/projects/repo")),
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_rule_root_that_cannot_be_created_fails_to_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(root.path().join("home")).expect("home");
+        std::fs::write(root.path().join("home/projects"), b"a file").expect("file");
+        let cap = pwd_cap(root.path(), Some("${home}/projects/repo"));
+
+        assert_spawn_failed(cap.run("/bin/pwd", options(&[])));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_that_is_a_file_fails_to_spawn() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let file = projects(root.path()).join("file");
+        std::fs::write(&file, b"x").expect("file");
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        assert_spawn_failed(cap.run("/bin/pwd", with_cwd(&file)));
+    }
+
+    /// APFS volumes are case-insensitive by default, so a guest path in
+    /// other case names the same directory and stays inside the root.
+    #[cfg(target_os = "macos")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn guest_cwd_in_other_case_resolves_inside_root() {
+        let root = tempfile::TempDir::new().expect("tempdir");
+        let repo = projects(root.path()).join("Repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let other_case = repo.with_file_name("REPO");
+        if !other_case.exists() {
+            // A case-sensitive volume has no such directory.
+            return;
+        }
+        let cap = pwd_cap(root.path(), Some("${home}/projects"));
+
+        let cwd = stdout_line(
+            &cap.run("/bin/pwd", with_cwd(&other_case))
+                .expect("pwd runs"),
+        );
+
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            repo.canonicalize().expect("canonical repo")
+        );
     }
 
     // ─── awake, the gadget that ships with a command grant ─

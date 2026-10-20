@@ -25,7 +25,7 @@ export type ArgvRule =
   | { kind: "rest"; constraint: ArgvRule };
 
 export type Permission =
-  | { kind: "command"; binary: string; argv: ArgvRule[] }
+  | { kind: "command"; binary: string; argv: ArgvRule[]; cwd: string | null }
   | { kind: "httpOrigin"; origin: string }
   | { kind: "openerOpenPath" }
   | { kind: "openerScheme"; scheme: string }

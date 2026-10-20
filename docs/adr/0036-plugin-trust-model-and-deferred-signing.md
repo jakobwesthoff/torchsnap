@@ -10,6 +10,8 @@ Amended by [42. Rename plugins to gadgets](0042-rename-plugins-to-gadgets.md)
 
 Amended by [51. Install gadgets through a review queue with staged copies](0051-install-gadgets-through-a-review-queue-with-staged-copies.md)
 
+Amended by [66. Bind command grants to what the install review shows](0066-bind-command-grants-to-what-the-install-review-shows.md)
+
 ## Context
 
 ADR 0035 ships a user-installable plugin flow: users drop a

@@ -85,9 +85,12 @@ impl CommandBuilder {
         self
     }
 
-    /// Set the child's working directory. When omitted, the
-    /// program runs in an empty directory the host creates for
-    /// this one call and removes afterwards.
+    /// Set the child's working directory: an absolute path
+    /// without `..` at or below the matching rule's `cwd` root.
+    /// A rule without `cwd` rejects every working directory with
+    /// [`CommandError::PermissionDenied`]. When omitted, the
+    /// program runs in the rule's `cwd` root, or without one in
+    /// an empty directory the host creates for this one call.
     pub fn cwd(mut self, cwd: impl Into<String>) -> Self {
         self.cwd = Some(cwd.into());
         self

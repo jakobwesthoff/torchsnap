@@ -31,5 +31,4 @@ Decided by Jakob on 2026-10-20:
 
 ## Relations
 
-- Relates to: [Guest-supplied command cwd is not confined and per-rule cwd is never enforced](01KWH4J9BPTRAYF451YZD2145E-guest-supplied-command-cwd-is-not-confined-and-per-rule-cwd-is-never.md), whose cwd confinement leaves this case open
 - Relates to: [Guest env overrides bypass the credential filter, and the env denylist leaks credentials](01KWH4J9BPTRAYF451YZD2145F-guest-env-overrides-bypass-the-credential-filter-and-the-env-denylist.md), whose declared env values must not point into gadget-writable areas

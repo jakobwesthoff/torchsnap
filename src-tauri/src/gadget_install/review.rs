@@ -32,13 +32,15 @@ use crate::wasm::source::GadgetSource;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Permission {
-    /// Run `binary` with arguments matching `argv`. Per-rule limits
-    /// (`cwd`, timeouts, output and stdin caps) are parsed from the
-    /// manifest but not enforced, so they are deliberately left out:
-    /// see `01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-cwd-timeout-output-and-stdin-are-parsed-but.md`.
+    /// Run `binary` with arguments matching `argv`, in `cwd` (the
+    /// rule's root, unresolved) or a directory below it. Per-rule
+    /// timeout, output and stdin limits are parsed from the manifest
+    /// but not enforced, so they are deliberately left out: see
+    /// `01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-timeout-output-and-stdin-are-parsed-but.md`.
     Command {
         binary: String,
         argv: Vec<ArgvRule>,
+        cwd: Option<String>,
     },
     HttpOrigin {
         origin: String,
@@ -134,6 +136,7 @@ fn permissions_of(manifest: &Manifest) -> Vec<Permission> {
         permissions.push(Permission::Command {
             binary: rule.binary.clone(),
             argv: rule.argv.iter().map(ArgvRule::from).collect(),
+            cwd: rule.cwd.clone(),
         });
     }
     if let Some(http) = &declared.http {
@@ -427,6 +430,7 @@ mod tests {
                         },
                         ArgvRule::AnyString,
                     ],
+                    cwd: None,
                 },
                 &Permission::HttpOrigin {
                     origin: "https://api.example.com".to_string()
@@ -497,8 +501,48 @@ mod tests {
                         constraint: Box::new(ArgvRule::AnyString)
                     },
                 ],
+                cwd: None,
             }]
         );
+    }
+
+    #[test]
+    fn command_items_carry_the_rule_cwd() {
+        let (items, _) = permission_items(
+            &manifest(
+                "1.0.0",
+                "[[permissions.command]]\nbinary = \"git\"\ncwd = \"${home}/projects\"\n",
+            ),
+            None,
+        );
+
+        assert_eq!(
+            kinds(&items),
+            vec![&Permission::Command {
+                binary: "git".to_string(),
+                argv: vec![],
+                cwd: Some("${home}/projects".to_string()),
+            }]
+        );
+    }
+
+    /// The working directory bounds what a call may do, so a version
+    /// that widens it asks for a new grant.
+    #[test]
+    fn a_changed_cwd_on_the_same_rule_is_one_removal_and_one_addition() {
+        let previous = manifest(
+            "1.0.0",
+            "[[permissions.command]]\nbinary = \"git\"\ncwd = \"${home}/projects\"\n",
+        );
+        let incoming = manifest(
+            "2.0.0",
+            "[[permissions.command]]\nbinary = \"git\"\ncwd = \"${home}\"\n",
+        );
+
+        let (items, removed) = permission_items(&incoming, Some(&previous));
+
+        assert_eq!(items[0].change, Change::Added);
+        assert_eq!(removed.len(), 1);
     }
 
     // =========================================================
@@ -512,6 +556,7 @@ mod tests {
                 Permission::Command {
                     binary: "ls".to_string(),
                     argv: vec![],
+                    cwd: None,
                 },
                 Severity::Warning,
             ),
@@ -640,8 +685,8 @@ mod tests {
         assert_eq!(removed.len(), 1);
     }
 
-    /// Per-rule command limits are parsed but not enforced, so the
-    /// review must not present them as guarantees.
+    /// Per-rule timeout, output and stdin limits are parsed but not
+    /// enforced, so the review must not present them as guarantees.
     #[test]
     fn command_items_carry_no_per_rule_limits() {
         let (items, _) = permission_items(&manifest("1.0.0", EVERYTHING), None);
@@ -706,7 +751,18 @@ mod tests {
         let previous = manifest("1.0.0", "[permissions]\nclipboard = true\n");
         let incoming = manifest(
             "1.1.0",
-            "[permissions]\nsettings = true\n[permissions.http]\norigins = [\"*\"]\n",
+            r#"
+            [permissions]
+            settings = true
+            [permissions.http]
+            origins = ["*"]
+            [[permissions.command]]
+            binary = "git"
+            argv = [{ kind = "literal", value = "log" }]
+            cwd = "${home}/projects"
+            [[permissions.command]]
+            binary = "osascript"
+            "#,
         );
         let decision = InstallDecision::Replace {
             previous: Box::new(previous),
@@ -737,6 +793,26 @@ mod tests {
                     "relation": "upgrade"
                 },
                 "permissions": [
+                    {
+                        "permission": {
+                            "kind": "command",
+                            "binary": "git",
+                            "argv": [{ "kind": "literal", "value": "log" }],
+                            "cwd": "${home}/projects"
+                        },
+                        "severity": "warning",
+                        "change": "added"
+                    },
+                    {
+                        "permission": {
+                            "kind": "command",
+                            "binary": "osascript",
+                            "argv": [],
+                            "cwd": null
+                        },
+                        "severity": "warning",
+                        "change": "added"
+                    },
                     {
                         "permission": { "kind": "httpOrigin", "origin": "*" },
                         "severity": "warning",

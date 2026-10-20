@@ -110,4 +110,4 @@ the only portable safe answer, since `Command`'s PATH search has
 documented Windows limitations plus implicit cwd and `.exe` semantics.
 
 ## Relations
-- Relates to: [Per-rule command limits for cwd, timeout, output and stdin are parsed but never enforced](01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-cwd-timeout-output-and-stdin-are-parsed-but.md), per-rule constraint fields dropped at compile
+- Relates to: [Per-rule command limits for timeout, output and stdin are parsed but never enforced](01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-timeout-output-and-stdin-are-parsed-but.md), per-rule constraint fields dropped at compile

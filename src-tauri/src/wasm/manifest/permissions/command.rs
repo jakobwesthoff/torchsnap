@@ -33,9 +33,10 @@ use crate::paths::{ParseTimeResolver, PathResolver};
 /// the trailing position.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CommandPermissionDef {
-    /// The binary the rule grants. Absolute path or
-    /// PATH-resolved name. Validated at manifest parse
-    /// time (no NUL bytes, not in opener-class denylist).
+    /// The binary the rule grants: an absolute path, or a bare
+    /// name looked up on the child's `PATH`. Validated at
+    /// manifest parse time (non-empty, no NUL bytes, no relative
+    /// path with a separator).
     pub binary: String,
 
     /// Per-position argv constraints. Empty means the
@@ -43,10 +44,12 @@ pub struct CommandPermissionDef {
     #[serde(default)]
     pub argv: Vec<ArgvConstraint>,
 
-    /// Optional default working directory for invocations
-    /// matching this rule. Gadget can override per-call;
-    /// when omitted, the program runs in an empty directory
-    /// the host creates for that one spawn.
+    /// Root of the working directories this rule allows. A call
+    /// without a `cwd` runs in the root itself; a call with one
+    /// must name the root or a directory below it. Without a
+    /// rule `cwd`, a call cannot choose a working directory and
+    /// the program runs in an empty directory the host creates
+    /// for that one spawn.
     pub cwd: Option<String>,
 
     /// Hard ceiling on `command-options.timeout-ms` for
@@ -95,6 +98,18 @@ impl CommandPermissionDef {
         if self.binary.contains('\0') {
             anyhow::bail!("`[[permissions.command]]` rule {index} `binary` contains a NUL byte");
         }
+        // A relative path such as `bin/tool` would be resolved against
+        // the working directory, which the guest may choose, so it could
+        // pick which program runs.
+        let is_bare_name =
+            !self.binary.contains(['/', '\\']) && self.binary != "." && self.binary != "..";
+        if !(self.binary.starts_with('/') || is_bare_name) {
+            anyhow::bail!(
+                "`[[permissions.command]]` rule {index} `binary` `{}` must be an absolute \
+                 path or a bare program name",
+                self.binary
+            );
+        }
 
         let mut saw_rest = false;
         for (argv_index, constraint) in self.argv.iter().enumerate() {
@@ -112,9 +127,7 @@ impl CommandPermissionDef {
         }
 
         if let Some(cwd) = &self.cwd {
-            ParseTimeResolver
-                .validate_variable_references(cwd)
-                .map_err(|e| anyhow::anyhow!("rule {index} cwd: {e}"))?;
+            validate_rule_root(cwd, index, "cwd")?;
         }
 
         // A zero ceiling clamps every call to nothing: no time to run,
@@ -209,6 +222,35 @@ pub enum ArgvConstraint {
 // =========================================================
 // Internal validators
 // =========================================================
+
+/// Parse-time checks of a directory a rule names as a root: it must
+/// be non-empty, start with `/` or a `${...}` variable (every variable
+/// resolves to an absolute directory), and contain no `..` segment, so
+/// the root means the same before and after symlinks are resolved.
+///
+/// macOS-specific: only `/`-anchored paths with `/` separators are
+/// accepted. Other platforms need their own choice (todo
+/// `01M5DN71VBN0H0AVSQT2GMDK49-decide-how-command-confinement-works-on-linux-and-windows.md`).
+fn validate_rule_root(root: &str, rule_index: usize, field: &str) -> anyhow::Result<()> {
+    if root.is_empty() {
+        anyhow::bail!("`[[permissions.command]]` rule {rule_index} has an empty `{field}`");
+    }
+    if !(root.starts_with('/') || root.starts_with("${")) {
+        anyhow::bail!(
+            "`[[permissions.command]]` rule {rule_index} `{field}` is not absolute: `{root}`; \
+             start it with `/` or a `${{...}}` variable"
+        );
+    }
+    if root.split('/').any(|segment| segment == "..") {
+        anyhow::bail!(
+            "`[[permissions.command]]` rule {rule_index} `{field}` `{root}` contains a `..` \
+             segment"
+        );
+    }
+    ParseTimeResolver
+        .validate_variable_references(root)
+        .map_err(|e| anyhow::anyhow!("rule {rule_index} {field}: {e}"))
+}
 
 /// Reject any pair of rules for the same binary whose argv
 /// shapes could both accept the same call.
@@ -537,6 +579,82 @@ mod tests {
         ))
         .unwrap_err();
         assert!(err.to_string().contains("NUL byte"));
+    }
+
+    #[test]
+    fn reject_relative_binary_with_separator() {
+        for binary in [
+            "bin/tool",
+            "./run",
+            "node_modules/.bin/eslint",
+            "..",
+            ".",
+            "bin\\\\tool",
+        ] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"{binary}\""
+            )))
+            .expect_err(binary);
+            assert!(
+                err.to_string()
+                    .contains("absolute path or a bare program name"),
+                "{binary}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn accept_absolute_and_bare_binaries() {
+        for binary in ["/usr/bin/git", "git", "osascript", "zerotier-cli"] {
+            Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"{binary}\""
+            )))
+            .unwrap_or_else(|e| panic!("{binary}: {e}"));
+        }
+    }
+
+    #[test]
+    fn reject_empty_rule_cwd() {
+        let err = Manifest::parse(&minimal(
+            "[[permissions.command]]\nbinary = \"git\"\ncwd = \"\"",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("empty `cwd`"), "{err}");
+    }
+
+    #[test]
+    fn reject_relative_rule_cwd() {
+        for cwd in ["projects", "./projects", "home/${home}"] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"git\"\ncwd = \"{cwd}\""
+            )))
+            .expect_err(cwd);
+            assert!(
+                err.to_string().contains("`cwd` is not absolute"),
+                "{cwd}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn reject_rule_cwd_with_dotdot() {
+        for cwd in ["${home}/projects/..", "/Users/me/../other", "${home}/../x"] {
+            let err = Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"git\"\ncwd = \"{cwd}\""
+            )))
+            .expect_err(cwd);
+            assert!(err.to_string().contains("`..`"), "{cwd}: {err}");
+        }
+    }
+
+    #[test]
+    fn accept_anchored_rule_cwd() {
+        for cwd in ["${home}/projects", "/Volumes/Work", "${xdg-data}/notes"] {
+            Manifest::parse(&minimal(&format!(
+                "[[permissions.command]]\nbinary = \"git\"\ncwd = \"{cwd}\""
+            )))
+            .unwrap_or_else(|e| panic!("{cwd}: {e}"));
+        }
     }
 
     #[test]

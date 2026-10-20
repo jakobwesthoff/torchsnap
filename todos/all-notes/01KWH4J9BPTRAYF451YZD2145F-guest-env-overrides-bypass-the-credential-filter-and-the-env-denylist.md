@@ -336,4 +336,3 @@ credential and exec-enabling namespaces are unbounded.
 
 ## Relations
 - Relates to: [Command rule binary resolves through the attacker-controllable PATH at spawn](01KWH4J9BPTRAYF451YZD2145D-command-rule-binary-resolves-through-the-attacker-controllable-path-at.md), the PATH-override half of this escape
-- Relates to: [Guest-supplied command cwd is not confined and per-rule cwd is never enforced](01KWH4J9BPTRAYF451YZD2145E-guest-supplied-command-cwd-is-not-confined-and-per-rule-cwd-is-never.md), the other half of "a command grant is arbitrary code exec"

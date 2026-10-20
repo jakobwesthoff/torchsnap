@@ -106,11 +106,18 @@ function GroupView({ group, showChanges }: { group: PermissionGroup; showChanges
 function EntryView({ entry, showChanges }: { entry: GroupEntry; showChanges: boolean }) {
   const removed = entry.change === "removed";
   return (
-    <li className="flex flex-wrap items-center gap-x-1.5 text-text-tertiary">
-      <span className={cn("break-all", removed && "line-through")}>{entry.text}</span>
-      {entry.detail && <span>{entry.detail}</span>}
-      {showChanges && entry.change === "added" && <ChangeTag>New</ChangeTag>}
-      {showChanges && removed && <ChangeTag>Removed</ChangeTag>}
+    <li className="flex flex-col text-text-tertiary">
+      <div className="flex flex-wrap items-center gap-x-1.5">
+        <span className={cn("break-all", removed && "line-through")}>{entry.text}</span>
+        {entry.detail && <span>{entry.detail}</span>}
+        {showChanges && entry.change === "added" && <ChangeTag>New</ChangeTag>}
+        {showChanges && removed && <ChangeTag>Removed</ChangeTag>}
+      </div>
+      {entry.lines?.map((line) => (
+        <span key={line} className={cn("break-all pl-3", removed && "line-through")}>
+          {line}
+        </span>
+      ))}
     </li>
   );
 }

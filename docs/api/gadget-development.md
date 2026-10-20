@@ -783,12 +783,17 @@ argv   = [
     { kind = "literal", value = "log" },
     { kind = "rest",    constraint = { kind = "any-string" } },
 ]
+cwd    = "${home}/projects"
 ```
 
 The argv-constraint vocabulary (`literal`, `enum`, `glob`,
 `regex`, `path-under`, `any-string`, `rest`) is documented on the
 `ArgvConstraint` enum in
 `src-tauri/src/wasm/manifest/permissions/command.rs` and ADR 0040.
+`binary` is an absolute path or a bare program name; a relative
+path such as `bin/tool` is rejected. `cwd` is the root of the
+working directories a call may use (see the `command` section
+below); it starts with `/` or a variable and contains no `..`.
 `${gadget-data}`,
 `${gadget-archive}`, `${home}`, `${xdg-config}`, `${xdg-data}`
 substitution applies in both `[permissions.filesystem] read` patterns
@@ -1111,7 +1116,18 @@ The matcher is pure and the manifest validator rejects any pair
 of rules whose argv shapes could both accept the same call, so
 permission decisions never silently depend on rule ordering. No
 shell, no PTY, no streaming; the host's store mutex serializes
-calls. See ADR 0040 for the full trust model.
+calls. See ADR 0040 and ADR 0066 for the trust model.
+
+Where the program runs depends on the rule's `cwd`:
+
+- With a rule `cwd`, a call without `.cwd(...)` runs in that root
+  (created if missing). A call with `.cwd(path)` must pass an
+  absolute path without `..` that resolves to the root or a
+  directory below it; anything else fails with
+  `permission-denied`.
+- Without a rule `cwd`, `.cwd(...)` fails with
+  `permission-denied`, and the program runs in an empty directory
+  the host creates for that one call and removes afterwards.
 
 `opener`-class binaries (`open`, `xdg-open`, `start`, `cmd /c
 start`) are rejected at manifest parse time — gadgets that want

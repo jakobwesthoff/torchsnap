@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- A program a gadget runs without naming a working directory now runs in
-  an empty folder that exists only for that run, instead of a folder in
-  the gadget's data that the gadget's earlier runs could have written
-  to.
+- Command grants now bound what a gadget can do to what the install
+  review shows. A rule names its program by absolute path or by a bare
+  name; a relative path such as `bin/tool` is rejected. A gadget can
+  pass a working directory only inside the `cwd` its rule declares;
+  without one, the program runs in an empty folder that exists only for
+  that run. The install review shows each rule's folder.
 
 ### Fixed
 

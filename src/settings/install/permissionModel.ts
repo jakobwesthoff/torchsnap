@@ -26,6 +26,8 @@ export type GroupId = "programs" | "network" | "files" | "links" | "clipboard" |
 export interface GroupEntry {
   text: string;
   detail?: string;
+  /** Further conditions of a command rule, one line each. */
+  lines?: string[];
   change: PermissionChange;
   broad: boolean;
 }
@@ -92,6 +94,10 @@ function describe(item: PermissionItem): { group: GroupId; entry: GroupEntry; pa
             permission.argv.length === 0
               ? "without arguments"
               : `with ${permission.argv.map(describeArgv).join(", ")}`,
+          lines:
+            permission.cwd === null
+              ? []
+              : [`in ${shortenPath(permission.cwd)} or a folder inside it`],
         },
       };
     case "httpOrigin":

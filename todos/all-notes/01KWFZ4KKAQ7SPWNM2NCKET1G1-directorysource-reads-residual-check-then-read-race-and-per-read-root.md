@@ -17,7 +17,7 @@ Between `existing_under_root` canonicalizing the path and `fs::read(&canonical)`
 - `DirectorySource` backs dev gadgets and directory-form gadgets only. User gadgets installed in the app are `.torchsnap` archives (`ArchiveSource`, an exact zip lookup with no symlink following). The installer only writes archives, so a directory-form user gadget needs a same-user actor to place the directory.
 - No privilege boundary is crossed. Winning the race needs a concurrent same-user writer, which can already read anything the host could read. The only gain is handing outside bytes to a sandboxed guest.
 - The guest-side trigger is ungated: `assets::read` and `assets::exists` pass a guest-chosen path into `read_file` and `file_exists`.
-- A gadget with a file-creating command rule can plant the symlink in its own root, because the command `cwd` is unvalidated. A separate todo covers that unvalidated command `cwd`. The race still needs to be won, and still crosses no privilege boundary.
+- A gadget with a file-creating command rule whose arguments may name a path in its own root can plant the symlink there. The race still needs to be won, and still crosses no privilege boundary.
 
 Decide whether to accept this residual and record that, or close it with fd-relative opens.
 

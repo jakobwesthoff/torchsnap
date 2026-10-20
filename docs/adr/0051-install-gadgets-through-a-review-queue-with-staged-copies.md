@@ -10,6 +10,8 @@ Amends [35. Plugin distribution via bundled and user-installable archives](0035-
 
 Amends [36. Plugin trust model and deferred signing](0036-plugin-trust-model-and-deferred-signing.md)
 
+Amended by [66. Bind command grants to what the install review shows](0066-bind-command-grants-to-what-the-install-review-shows.md)
+
 ## Context
 
 ADR 35 installs a `.torchsnap` chosen in the file picker or dropped on

@@ -22,8 +22,8 @@ promises per-rule enforcement
   `max-output-bytes`."
 
 None of this is true today. The confirmed host-side finding, the todo
-Per-rule command limits (cwd, timeout, output, stdin) are parsed but never enforced,
-establishes that per-rule `cwd` / `timeout-ms-max` /
+Per-rule command limits for timeout, output and stdin are parsed but never enforced,
+establishes that per-rule `timeout-ms-max` /
 `max-output-bytes` / `max-stdin-bytes` are parsed but dropped at
 rule compilation, that only global ceilings apply, and that stdin
 has *no* size limit at all (there is also no host
@@ -51,4 +51,4 @@ in one place.
 
 ## Relations
 
-- Relates to: [Per-rule command limits for cwd, timeout, output and stdin are parsed but never enforced](01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-cwd-timeout-output-and-stdin-are-parsed-but.md), the host side. The decision to enforce or delete those fields sets the wording here.
+- Relates to: [Per-rule command limits for timeout, output and stdin are parsed but never enforced](01KWG1AJRVFSMXYJMM7BVCS04B-per-rule-command-limits-for-timeout-output-and-stdin-are-parsed-but.md), the host side. The decision to enforce or delete those fields sets the wording here.

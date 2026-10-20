@@ -7,8 +7,9 @@
 //
 // Shared helper for "is this candidate path inside this
 // declared root?" checks. Used by the argv matcher's
-// `path-under` constraint, by per-rule cwd validation in the
-// manifest parser, by `DirectorySource` for every file it
+// `path-under` constraint, by the command capability for a
+// call's working directory against the rule's `cwd` root, by
+// `DirectorySource` for every file it
 // reads from a gadget directory (`existing_under_root`), and
 // (future) by bundled-executable path resolution.
 //

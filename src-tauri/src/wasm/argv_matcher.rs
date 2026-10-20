@@ -65,6 +65,8 @@ pub enum CompiledArgvConstraint {
 pub struct CompiledCommandRule {
     pub binary: String,
     pub argv: Vec<CompiledArgvConstraint>,
+    /// The rule's `cwd` root with its variables resolved.
+    pub cwd: Option<PathBuf>,
 }
 
 // =========================================================
@@ -130,9 +132,25 @@ pub fn compile_rule(
         .map(|(argv_index, c)| compile_constraint(c, rule_index, argv_index, resolver))
         .collect::<Result<Vec<_>, _>>()?;
 
+    let cwd = raw
+        .cwd
+        .as_deref()
+        .map(|root| {
+            resolver
+                .substitute_variables(root)
+                .map(PathBuf::from)
+                .map_err(|e| CompileError::Resolve {
+                    rule_index,
+                    field: "cwd".to_string(),
+                    source: e,
+                })
+        })
+        .transpose()?;
+
     Ok(CompiledCommandRule {
         binary: raw.binary.clone(),
         argv,
+        cwd,
     })
 }
 
@@ -392,6 +410,32 @@ mod tests {
             }
             other => panic!("expected PathUnder, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn compile_resolves_rule_cwd_variables() {
+        let mut raw = rule("git", vec![]);
+        raw.cwd = Some("${home}/projects".to_string());
+
+        let compiled = compile_rule(&raw, 0, &default_ctx()).expect("compile");
+
+        assert_eq!(compiled.cwd, Some(PathBuf::from("/tmp/home/projects")));
+    }
+
+    #[test]
+    fn compile_keeps_an_absent_rule_cwd_absent() {
+        let compiled = compile_rule(&rule("git", vec![]), 0, &default_ctx()).expect("compile");
+        assert_eq!(compiled.cwd, None);
+    }
+
+    #[test]
+    fn compile_reports_an_unknown_variable_in_rule_cwd() {
+        let mut raw = rule("git", vec![]);
+        raw.cwd = Some("${nope}/projects".to_string());
+
+        let err = compile_rule(&raw, 3, &default_ctx()).unwrap_err();
+
+        assert!(err.to_string().contains("rule 3 cwd"), "{err}");
     }
 
     #[test]
