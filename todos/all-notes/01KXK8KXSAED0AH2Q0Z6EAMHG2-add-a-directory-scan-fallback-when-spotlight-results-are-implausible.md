@@ -9,7 +9,7 @@ origin: incident
 
 `MdfindDiscovery::discover()` relies exclusively on
 `mdfind "kMDItemContentType == 'com.apple.application-bundle'"`
-(`src-tauri/src/platform/macos/app_discovery.rs:107`). There is no
+(`MdfindDiscovery::discover` in `src-tauri/src/platform/macos/app_discovery.rs`). There is no
 filesystem fallback. If Spotlight's metadata store is missing entries,
 `mdfind` still exits 0, and `discover()` returns a successful but
 incomplete result.

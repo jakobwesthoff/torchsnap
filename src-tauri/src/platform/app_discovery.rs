@@ -61,6 +61,12 @@ pub trait AppDiscovery: Send + Sync {
     /// Apps without a Dock icon, such as menu-bar apps and background
     /// apps, are included, since users start them from the launcher on
     /// purpose.
+    ///
+    /// Implementations leave out bundles embedded in another
+    /// application as its parts, such as login items or helper
+    /// processes. An application shipped inside another one for users
+    /// to open, which macOS keeps in a folder named `Applications`
+    /// within it, is included.
     fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>>;
 
     /// Extract the icon for an application as a decoded image.

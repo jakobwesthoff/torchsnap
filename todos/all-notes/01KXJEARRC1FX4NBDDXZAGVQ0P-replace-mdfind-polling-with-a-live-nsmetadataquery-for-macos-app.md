@@ -21,7 +21,7 @@ first gathering results.
 ## Problem
 
 macOS app discovery is a one-shot `mdfind` subprocess call
-(`src-tauri/src/platform/macos/app_discovery.rs:107`, query
+(`MdfindDiscovery::discover` in `src-tauri/src/platform/macos/app_discovery.rs`, query
 `kMDItemContentType == 'com.apple.application-bundle'`), pulled by the
 app-launcher gadget at startup and then at most every 5 minutes,
 triggered only by searches
@@ -147,10 +147,19 @@ New file replacing the mdfind backend in
   - `NSPredicate` from
     `kMDItemContentType == 'com.apple.application-bundle'` (the same
     predicate as today's mdfind call).
-  - Search scope `NSMetadataQueryLocalComputerScope`. Keep the existing
-    Rust-side path filter (`is_in_applications_dir`, path contains
-    `/Applications/`), since scopes select volumes, not directories. Open
-    question: `IndexedLocalComputerScope` instead?
+  - Search scope `NSMetadataQueryLocalComputerScope`. Keep both existing
+    Rust-side path filters in `apps_from_bundle_paths`, since scopes
+    select volumes, not directories:
+    - `is_in_applications_dir` (path contains `/Applications/`). It also
+      admits Finder's AirDrop and the other Finder sub-apps through
+      `Finder.app/Contents/Applications/`, although Finder itself sits
+      outside an Applications folder, so anchoring it to fixed roots
+      would drop them.
+    - `is_embedded_helper`, which leaves out bundles nested in another
+      app unless they sit directly in a folder named `Applications`
+      (login items and helpers go, Xcode's Instruments stays).
+
+    Open question: `IndexedLocalComputerScope` instead?
   - Create a dedicated `NSOperationQueue` and `setOperationQueue:` so
     notifications arrive off the main thread without a run loop.
 - Register block-based `NSNotificationCenter` observers (via `block2`),
@@ -168,7 +177,7 @@ New file replacing the mdfind backend in
   metadata attributes (`NSMetadataItemDisplayNameKey`,
   `NSMetadataItemCFBundleIdentifierKey`), or keeping today's `Info.plist`
   parse with its name resolution order (`CFBundleDisplayName`, then
-  `CFBundleName`, then filename, `app_discovery.rs:74-83`). Note that
+  `CFBundleName`, then filename, `try_discover_app`). Note that
   `NSMetadataItemDisplayNameKey` values may carry the localized, `.app`-less
   display string. Whether it matches the current plist-derived names must
   be verified during implementation before choosing.

@@ -24,9 +24,10 @@ updates without polling.
 ## Problem
 
 macOS app discovery is a one-shot `mdfind` subprocess call
-(`src-tauri/src/platform/macos/app_discovery.rs:107`, query
+(`MdfindDiscovery::discover` in `src-tauri/src/platform/macos/app_discovery.rs`, query
 `kMDItemContentType == 'com.apple.application-bundle'`, plus a
-`/Applications/`-path filter and `Info.plist` parsing). The app-launcher
+`/Applications/`-path filter, an embedded-helper filter and `Info.plist`
+parsing). The app-launcher
 gadget runs it once at startup (`enable()`,
 `src-tauri/src/gadgets/app_launcher.rs:170`) and afterwards at most every
 `REFRESH_INTERVAL_SECS = 300` (`app_launcher.rs:44`). It is triggered

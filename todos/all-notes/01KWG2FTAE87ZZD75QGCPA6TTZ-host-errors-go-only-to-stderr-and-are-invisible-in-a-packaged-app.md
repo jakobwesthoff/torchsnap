@@ -17,7 +17,7 @@ Representative call sites:
 
 - `src-tauri/src/lib.rs` (19 sites): window creation, chrome hiding, launcher frame/show/hide/warm-up failures, event-emit failures, gadget-uninstall cleanup.
 - `src-tauri/src/gadget_host.rs` (10 sites): shortcut registration failures, layout races, emit failures.
-- `src-tauri/src/platform/macos/app_discovery.rs` (around line 127), `src-tauri/src/platform/macos/settings_discovery.rs` (around line 65), `src-tauri/src/platform/macos/launcher_panel.rs` (around line 142): discovery parse skips, panel retrieval failures inside main-thread closures.
+- `src-tauri/src/platform/macos/app_discovery.rs` (`apps_from_bundle_paths`), `src-tauri/src/platform/macos/settings_discovery.rs` (around line 65), `src-tauri/src/platform/macos/launcher_panel.rs` (around line 142): discovery parse skips, panel retrieval failures inside main-thread closures.
 - `src-tauri/src/network/website_metadata/favicon_store.rs` (around line 187), `src-tauri/src/network/website_metadata/fetch.rs` (around line 197), `src-tauri/src/icons/icon_cache.rs` (around lines 94, 105, 112), `src-tauri/src/gadgets/system_preferences.rs` (around line 119).
 
 The devtools log view shows gadget logs but none of these host events. That is misleading when triaging: "no errors in devtools" does not mean no errors.

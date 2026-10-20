@@ -21,7 +21,7 @@ memory (`cache: Arc<RwLock<Vec<DiscoveredApp>>>`,
 `src-tauri/src/gadgets/app_launcher.rs:48`). Every app start re-runs
 Spotlight discovery from scratch via
 `mdfind "kMDItemContentType == 'com.apple.application-bundle'"`
-(`src-tauri/src/platform/macos/app_discovery.rs:107`).
+(`MdfindDiscovery::discover` in `src-tauri/src/platform/macos/app_discovery.rs`).
 
 When torchsnap auto-starts right after login, Spotlight's Data-volume
 index may not be serving complete results yet. Observed on 2026-07-15

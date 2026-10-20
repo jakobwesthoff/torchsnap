@@ -13,10 +13,18 @@
 // menu-bar apps, stay in the list. Users launch them on
 // purpose, for example Alfred, Bartender or Screenshot.
 //
+// Spotlight also returns bundles nested inside other apps. A
+// nested bundle stays when it sits directly in a folder named
+// `Applications`, as Xcode's tools do in
+// `Contents/Applications/`. Any other nested bundle, such as a
+// login item or helper, is a part of its host app and is left
+// out.
+//
 // The Mdfind struct encapsulates the raw subprocess call so
 // the discovery logic stays focused on metadata extraction.
 // =========================================================
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -62,6 +70,32 @@ impl Mdfind {
 /// itself sits outside an Applications folder.
 fn is_in_applications_dir(path: &Path) -> bool {
     path.to_string_lossy().contains("/Applications/")
+}
+
+/// Whether a bundle is embedded in another app as one of its parts.
+///
+/// Each `.app` bundle below the outermost one must sit directly in
+/// a folder named `Applications`. A login item in
+/// `Contents/Library/LoginItems/` or a helper in
+/// `Contents/Frameworks/` fails that, and so does any app nested
+/// inside such a helper.
+///
+/// `path` ends in the bundle's own `.app` component, as the
+/// Spotlight content-type query returns.
+fn is_embedded_helper(path: &Path) -> bool {
+    let components: Vec<&OsStr> = path.components().map(|c| c.as_os_str()).collect();
+    let bundle_indices: Vec<usize> = components
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| Path::new(name).extension() == Some(OsStr::new("app")))
+        .map(|(index, _)| index)
+        .collect();
+
+    bundle_indices.windows(2).any(|pair| {
+        let (outer, inner) = (pair[0], pair[1]);
+        let parent = inner - 1;
+        parent == outer || components[parent] != "Applications"
+    })
 }
 
 /// Read an app bundle's `Contents/Info.plist` and build its
@@ -111,6 +145,13 @@ fn apps_from_bundle_paths(paths: &[PathBuf]) -> Vec<DiscoveredApp> {
         // This skips system agents in /System/Library/CoreServices/,
         // framework helpers, and other non-user-facing bundles.
         if !is_in_applications_dir(path) {
+            continue;
+        }
+
+        // A bundle nested in another app outside an Applications
+        // folder is a part of that app, such as a login item or
+        // helper.
+        if is_embedded_helper(path) {
             continue;
         }
 
@@ -293,5 +334,149 @@ mod tests {
         let apps = apps_from_bundle_paths(&[finder, airdrop]);
 
         assert_eq!(names(&apps), ["AirDrop"]);
+    }
+
+    // =========================================================
+    // Bundles nested in other apps
+    // =========================================================
+
+    /// Build a chain of nested bundles, each path relative to the
+    /// bundle before it (the first relative to a fresh temporary
+    /// directory), name each after its file stem, and return the
+    /// names `apps_from_bundle_paths` lists.
+    fn listed_names_of_chain(chain: &[&str]) -> Vec<String> {
+        let root = tempfile::tempdir().expect("temporary directory can be created");
+        let mut parent = root.path().to_owned();
+        let mut bundles = Vec::new();
+        for relative in chain {
+            let stem = Path::new(relative)
+                .file_stem()
+                .expect("chain entries name a bundle")
+                .to_string_lossy()
+                .into_owned();
+            let bundle = write_bundle(&parent, relative, plist_with_name(&stem));
+            bundles.push(bundle.clone());
+            parent = bundle;
+        }
+
+        apps_from_bundle_paths(&bundles)
+            .into_iter()
+            .map(|app| app.name)
+            .collect()
+    }
+
+    #[test]
+    fn a_login_item_inside_an_app_is_skipped() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Foo.app",
+            "Contents/Library/LoginItems/Foo Login.app",
+        ]);
+
+        assert_eq!(listed, ["Foo"], "helper listed");
+    }
+
+    #[test]
+    fn a_helper_inside_a_framework_in_an_app_is_skipped() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Foo.app",
+            "Contents/Frameworks/Foo Framework.framework/Versions/A/Helpers/Foo Helper.app",
+        ]);
+
+        assert_eq!(listed, ["Foo"], "helper listed");
+    }
+
+    #[test]
+    fn an_app_in_a_subfolder_of_contents_applications_is_skipped() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Foo.app",
+            "Contents/Applications/Extras/Bar.app",
+        ]);
+
+        assert_eq!(listed, ["Foo"], "helper listed");
+    }
+
+    #[test]
+    fn an_app_inside_a_helper_is_skipped() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Foo.app",
+            "Contents/Library/LoginItems/Bar.app",
+            "Contents/Applications/Baz.app",
+        ]);
+
+        assert_eq!(listed, ["Foo"], "helper listed");
+    }
+
+    #[test]
+    fn an_app_in_contents_applications_stays_listed() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Xcode.app",
+            "Contents/Applications/Instruments.app",
+        ]);
+
+        assert_eq!(listed, ["Xcode", "Instruments"]);
+    }
+
+    #[test]
+    fn an_app_in_contents_developer_applications_stays_listed() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Xcode.app",
+            "Contents/Developer/Applications/Simulator.app",
+        ]);
+
+        assert_eq!(listed, ["Xcode", "Simulator"]);
+    }
+
+    #[test]
+    fn an_app_nested_through_two_applications_folders_stays_listed() {
+        let listed = listed_names_of_chain(&[
+            "Applications/Outer.app",
+            "Contents/Applications/Middle.app",
+            "Contents/Applications/Inner.app",
+        ]);
+
+        assert_eq!(listed, ["Outer", "Middle", "Inner"]);
+    }
+
+    #[test]
+    fn a_top_level_app_is_no_embedded_helper() {
+        assert!(!is_embedded_helper(Path::new("/Applications/Safari.app")));
+    }
+
+    #[test]
+    fn a_folder_merely_named_like_an_app_is_no_host_bundle() {
+        assert!(!is_embedded_helper(Path::new(
+            "/Applications/Old.app.backup/Bar.app"
+        )));
+    }
+
+    #[test]
+    fn an_app_directly_in_contents_is_an_embedded_helper() {
+        assert!(is_embedded_helper(Path::new(
+            "/Applications/Foo.app/Contents/Bar.app"
+        )));
+    }
+
+    #[test]
+    fn an_app_directly_in_an_applications_folder_of_an_app_is_no_embedded_helper() {
+        assert!(!is_embedded_helper(Path::new(
+            "/Applications/Foo.app/Applications/Bar.app"
+        )));
+    }
+
+    #[test]
+    fn an_app_below_a_helper_is_an_embedded_helper() {
+        assert!(is_embedded_helper(Path::new(
+            "/Applications/Foo.app/Contents/Library/LoginItems/Bar.app/Contents/Applications/Baz.app"
+        )));
+    }
+
+    #[test]
+    fn a_helper_with_a_non_utf8_name_is_an_embedded_helper() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let path = Path::new("/Applications/Foo.app/Contents/Library/LoginItems")
+            .join(OsStr::from_bytes(b"\xff.app"));
+
+        assert!(is_embedded_helper(&path));
     }
 }

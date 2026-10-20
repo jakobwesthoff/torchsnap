@@ -10,7 +10,7 @@ App discovery reports its diagnostics with bare `eprintln!` to stderr. A release
 
 ## Affected call sites
 
-- `src-tauri/src/platform/macos/app_discovery.rs` (around line 127): `"skipping {}: {e:#}"`, a per-bundle Info.plist parse failure.
+- `src-tauri/src/platform/macos/app_discovery.rs` (`apps_from_bundle_paths`): `"skipping {}: {e:#}"`, a per-bundle Info.plist parse failure.
 - `src-tauri/src/gadgets/app_launcher.rs` (around line 188): `"initial app discovery failed: {e:#}"`.
 - `src-tauri/src/gadgets/app_launcher.rs` (around line 118): `"background app discovery failed: {e:#}"`.
 - `src-tauri/src/icons/icon_cache.rs` (around lines 94, 105, 112): icon extraction and cache write failures.
