@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-21
+
 ### Changed
 
 - Command grants now bound what a gadget can do to what the install
@@ -53,9 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clipboard gadget starts.
 - When a gadget fails to start, Settings say so under its switch, with
   the reason, and the switch stays on. A Retry button starts the gadget
-  again. Before, the gadget looked enabled but
-  did nothing, and a gadget that failed while Torchsnap started kept
-  its global shortcut.
+  again. Before, the gadget looked enabled but did nothing, and a gadget
+  that failed while Torchsnap started kept its global shortcut.
 - Gadget settings pages get the styles their gadget ships for them.
   Before, those styles applied to the gadget's row under Installed
   Gadgets instead.
@@ -752,6 +753,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.15.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.15.0
 [0.14.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.1
 [0.14.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.0
 [0.13.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.13.0
