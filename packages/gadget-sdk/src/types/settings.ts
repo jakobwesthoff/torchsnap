@@ -12,7 +12,7 @@
 // `gadgets.<id>.greeting` in the global settings store.
 //
 // This type decouples the SDK from the host's concrete
-// `createGadgetSettingHook` factory (src/hooks/useGadgetSetting.ts).
+// `useGadgetSetting` hook (src/contexts/useGadgetSetting.ts).
 // =========================================================
 
 export type UsePluginSetting = <T>(key: string) => [value: T, setValue: (v: T) => Promise<void>];
