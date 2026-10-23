@@ -2,14 +2,30 @@
 title: "Use a dedicated tray icon asset on Linux"
 kind: improvement
 component: platform
+status: needs-discussion
 ---
 
 # Use a dedicated tray icon asset on Linux
 
-The Linux tray icon is the full app icon: the mascot on an orange-to-amber
-torch gradient. That suits an application launcher icon but is wrong for
-a top-bar tray slot. Found while bringing the project up on Fedora 43 with
-GNOME.
+The Linux tray icon is the full app icon, a coloured square with the
+mascot, scaled down. That suits an application launcher icon but is
+wrong for a top-bar tray slot. Found while bringing the project up on
+Fedora 43 with GNOME, and seen again on Debian 13 with GNOME 48 and the
+AppIndicator extension (2026-10-23): a small coloured square with the
+owl in the dark top bar, unlike every other icon there and unlike the
+macOS menu bar icon.
+
+## Direction
+
+Jakob, 2026-10-23: the tray icon should most likely look the same as on
+macOS. Candidates: the template's SVG source
+`assets/snappy-tray-template-3.svg`, which GNOME and KDE can scale to
+any top-bar height, or a coloured version of it. Which one, and how it
+looks on light and dark top bars, is still open; decide by looking at
+the candidates on the Linux testbed (branch `linux-testbed` until it
+lands: `just testbed-tray on`,
+`just testbed-tray-icon` for the icon's rect, then
+`just testbed-screenshot NAME --area X,Y,W,H`).
 
 ## Getting an icon to appear on GNOME
 
