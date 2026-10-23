@@ -115,8 +115,9 @@ Things to know about these:
 
 The provision script has not been run on a freshly installed system: it
 was checked on a Pi first set up by hand with the same commands, by
-running it there, by undoing single steps and running it again, and by
-rebooting (self-test items 1, U and R).
+running it there, by undoing single steps or removing what they
+installed and running it again, and by rebooting (self-test items 1, U,
+P and R).
 
 A command run over SSH does not get the `PATH` entries these installers
 add to the shell profile, so the provision script puts `~/.cargo/bin`,
@@ -234,6 +235,7 @@ unknown item.
 | W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
+| P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 
 ## A visible terminal on the Pi

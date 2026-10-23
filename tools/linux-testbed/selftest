@@ -21,6 +21,8 @@
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
 #       `changed` for exactly that step (only when named)
+#   P   the installing steps install again when what they installed is
+#       gone (only when named; downloads and builds, about 10 minutes)
 
 # Items run by name (`item_$item`), which shellcheck cannot follow, and
 # command lines for the machine are single-quoted so they expand there.
@@ -209,6 +211,59 @@ item_U() {
         echo "  undone and restored: $step"
     done
     pass U
+}
+
+# Install paths: each entry removes or moves aside what one installing
+# step checks for, so provisioning runs that step's install again; the
+# moved-aside original is deleted afterwards, or put back when the run
+# failed. The fields: step, how to remove it, what to do afterwards on
+# success, what to do on failure.
+install_steps=(
+    'base-packages|sudo apt-get remove -y scdoc|true|sudo apt-get install -y scdoc'
+    'rustup|mv ~/.cargo/bin/rustup ~/.cargo/bin/rustup.aside|rm -f ~/.cargo/bin/rustup.aside|mv ~/.cargo/bin/rustup.aside ~/.cargo/bin/rustup'
+    'bun|mv ~/.bun ~/.bun.aside|rm -rf ~/.bun.aside|rm -rf ~/.bun && mv ~/.bun.aside ~/.bun'
+    'just|mv ~/.local/bin/just ~/.local/bin/just.aside|rm -f ~/.local/bin/just.aside|mv ~/.local/bin/just.aside ~/.local/bin/just'
+    'wasm-tools|mv ~/.cargo/bin/wasm-tools ~/.cargo/bin/wasm-tools.aside|rm -f ~/.cargo/bin/wasm-tools.aside|mv ~/.cargo/bin/wasm-tools.aside ~/.cargo/bin/wasm-tools'
+)
+
+# Removing any of GNOME's packages would take gnome-shell and gdm with
+# it, so the GNOME package step's install runs on the installed system
+# and must leave the package list and the display manager choice as they
+# were.
+readonly gnome_packages_state='dpkg-query -W -f="\${Package} \${Version} \${Status}\n" | md5sum; sudo debconf-show gdm3 lightdm | grep default-x-display-manager'
+readonly gnome_packages_apply='cd ~/torchsnap/tools/linux-testbed/provision && bash -c "set -euo pipefail; provision_dir=\$PWD; tree_dir=\$(cd ../../.. && pwd); monitor_spec=; source steps.sh; source base.sh; source desktop-gnome.sh; apply_gnome_packages"'
+
+item_P() {
+    local entry step undo cleanup restore output status changed before after
+    output="$("$testbed" provision)"
+    if ! grep -q '^provision: 0 changed' <<<"$output"; then
+        fail P "SETUP: the machine is not fully provisioned: $(grep '^provision:' <<<"$output")"
+        return
+    fi
+    for entry in "${install_steps[@]}"; do
+        IFS='|' read -r step undo cleanup restore <<<"$entry"
+        if ! on_machine "$undo" >/dev/null; then
+            fail P "SETUP: could not remove $step"
+            return
+        fi
+        output="$("$testbed" provision)"
+        status=$?
+        changed="$(grep '^changed ' <<<"$output" | tr '\n' ' ')"
+        if [ "$status" -ne 0 ] || [ "$changed" != "changed $step " ]; then
+            on_machine "$restore" >/dev/null
+            fail P "after removing $step: exit $status, ${changed:-nothing changed}"
+            return
+        fi
+        on_machine "$cleanup" >/dev/null
+        echo "  installed again: $step"
+    done
+
+    before="$(on_machine "$gnome_packages_state")"
+    on_machine "$gnome_packages_apply" >/dev/null || { fail P "the GNOME package install failed"; return; }
+    after="$(on_machine "$gnome_packages_state")"
+    [ "$before" = "$after" ] || { fail P "the GNOME package install changed packages or the display manager choice"; return; }
+    echo "  installed again on the installed system: gnome-packages"
+    pass P
 }
 
 # =========================================================

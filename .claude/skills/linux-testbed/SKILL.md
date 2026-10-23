@@ -63,8 +63,10 @@ is the full guide.
   printed as JSON. For desktop state the other recipes do not cover.
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
-  print `PASS`. Items R (reboot) and U (undo provision steps) run only
-  when named.
+  print `PASS`. Items 2 (build), R (reboot), U (undo provision steps)
+  and P (reinstall tools, about 10 minutes) run only when named. A
+  download step can fail on a DNS hiccup of the machine's Wi-Fi; rerun
+  once.
 
 ## The machine
 
