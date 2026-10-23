@@ -187,6 +187,19 @@ Report the current launcher state.
 | `visible` | boolean | Whether the launcher window is currently visible |
 | `focused` | boolean | Whether the launcher window has keyboard focus. Some desktops (for example GNOME on Wayland) can refuse focus to a window that just appeared, so read it a moment after `show` |
 | `ready` | boolean | Whether the launcher has reported its layout and its frontend is connected. Until then `show` fails and `query` and `dismiss` answer with error `-1` |
+| `targetMonitor` | object or null | The monitor Torchsnap last placed the launcher on, `null` before the first placement (see below) |
+
+`targetMonitor` has `name` (string or null), `x`, `y`, `width`,
+`height` (the monitor's rect in logical units) and `scaleFactor`. It is
+where Torchsnap aimed the window, which is the monitor under the mouse
+pointer, or the primary monitor when no monitor contains it. The name
+and scale factor are what the windowing toolkit reports: on Linux the
+name is the monitor's model string, which can be missing or the same
+for two identical monitors, and the scale factor is a whole number, not
+a fractional desktop scale. Match monitors by their rect. On Wayland
+Torchsnap does not learn where the pointer is, so the target is the
+monitor at (0,0), or the primary one, and the compositor decides where
+the window really appears.
 
 `ready` is the backend's view: it stays true while the launcher's page
 reloads, until the new page connects, and it turns true one render
@@ -196,7 +209,8 @@ launcher to have applied a command checks the result itself.
 **Example:**
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"status"}' | socat - UNIX-CONNECT:"$SOCK"
-# → {"jsonrpc":"2.0","id":1,"result":{"visible":false,"focused":false,"ready":true}}
+# → {"jsonrpc":"2.0","id":1,"result":{"visible":false,"focused":false,"ready":true,
+#    "targetMonitor":{"name":"Built-in Retina Display","x":0.0,"y":0.0,"width":1512.0,"height":982.0,"scaleFactor":2.0}}}
 ```
 
 ## Error Codes

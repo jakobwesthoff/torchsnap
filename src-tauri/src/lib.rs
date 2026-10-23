@@ -26,7 +26,7 @@ mod wasm;
 mod welcome;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Context;
 use tauri::{
@@ -38,7 +38,8 @@ use tauri::{
 use tauri::TitleBarStyle;
 
 use monitor_placement::{
-    PLATFORM_COORDINATE_SPACE, ReportedMonitor, centered_window_origin, monitor_index_under_cursor,
+    PLATFORM_COORDINATE_SPACE, ReportedMonitor, TargetMonitor, centered_window_origin,
+    launcher_window_origin, monitor_index_under_cursor,
 };
 use platform::{
     LauncherPanel as _, PlatformLauncherPanel, PlatformTray, PlatformWindowChrome, Tray as _,
@@ -78,9 +79,12 @@ struct LauncherLayout {
 /// exactly once. If a show was requested before the layout
 /// arrived, `show_pending` is set so that `launcher_set_layout`
 /// can trigger the show once the dimensions are available.
+/// `target_monitor` is the monitor the launcher was last placed on,
+/// for the control API's `status`.
 struct LauncherLayoutState {
     layout: OnceLock<LauncherLayout>,
     show_pending: AtomicBool,
+    target_monitor: Mutex<Option<TargetMonitor>>,
 }
 
 impl LauncherLayoutState {
@@ -88,7 +92,22 @@ impl LauncherLayoutState {
         Self {
             layout: OnceLock::new(),
             show_pending: AtomicBool::new(false),
+            target_monitor: Mutex::new(None),
         }
+    }
+
+    fn set_target_monitor(&self, target: TargetMonitor) {
+        *self
+            .target_monitor
+            .lock()
+            .expect("target monitor lock not poisoned") = Some(target);
+    }
+
+    fn target_monitor(&self) -> Option<TargetMonitor> {
+        self.target_monitor
+            .lock()
+            .expect("target monitor lock not poisoned")
+            .clone()
     }
 
     fn set(&self, layout: LauncherLayout) {
@@ -421,30 +440,26 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
 
 pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout: &LauncherLayout) {
     if let Some(monitor) = monitor_under_cursor(app) {
-        let size = monitor.size();
-        let pos = monitor.position();
-        let scale = monitor.scale_factor();
+        let target = TargetMonitor::of(
+            monitor.name().map(String::as_str),
+            &ReportedMonitor::of(&monitor),
+        );
+        let (win_x, win_y) =
+            launcher_window_origin(&target, layout.window_width, layout.card_top_offset);
 
-        let monitor_w = size.width as f64 / scale;
-        let monitor_h = size.height as f64 / scale;
-        let monitor_x = pos.x as f64 / scale;
-        let monitor_y = pos.y as f64 / scale;
-
-        // Center the launcher window horizontally on the monitor.
-        // Vertically, place the card at ~25% of monitor height by
-        // offsetting the window top so that the card (which sits at
-        // card_top_offset within the window) lands there.
-        let win_x = monitor_x + (monitor_w - layout.window_width) / 2.0;
-        let win_y = monitor_y + (0.25 * monitor_h) - layout.card_top_offset;
-
-        if let Err(e) = PlatformLauncherPanel::set_frame(
+        match PlatformLauncherPanel::set_frame(
             app,
             win_x,
             win_y,
             layout.window_width,
             layout.window_height,
         ) {
-            eprintln!("failed to set launcher frame: {e:#}");
+            // Without a frame the window stays where it was, so the
+            // target stays the previous one.
+            Ok(()) => app
+                .state::<LauncherLayoutState>()
+                .set_target_monitor(target),
+            Err(e) => eprintln!("failed to set launcher frame: {e:#}"),
         }
     }
 }
@@ -1721,6 +1736,27 @@ mod launcher_tests {
             layout_steps(false),
             [LayoutStep::Position, LayoutStep::WarmUp]
         );
+    }
+
+    fn target(name: &str) -> TargetMonitor {
+        TargetMonitor {
+            name: Some(name.into()),
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+            scale_factor: 1.0,
+        }
+    }
+
+    #[test]
+    fn the_launcher_target_is_the_last_one_set() {
+        let state = LauncherLayoutState::new();
+        assert_eq!(state.target_monitor(), None);
+        state.set_target_monitor(target("left"));
+        assert_eq!(state.target_monitor(), Some(target("left")));
+        state.set_target_monitor(target("right"));
+        assert_eq!(state.target_monitor(), Some(target("right")));
     }
 
     #[test]

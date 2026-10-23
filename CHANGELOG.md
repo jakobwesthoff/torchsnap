@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write test coverage reports for the Rust crate and the frontend to
   `target/coverage/`.
 - Control API: `status` reports `focused`, whether the launcher window
-  has keyboard focus, and `ready`, true once the launcher has sent its
+  has keyboard focus; `ready`, true once the launcher has sent its
   layout and its frontend is connected, so `show`, `query` and `dismiss`
-  work.
+  work; and `targetMonitor`, the monitor Torchsnap last placed the
+  launcher on.
 
 ### Changed
 

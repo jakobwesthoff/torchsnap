@@ -16,6 +16,7 @@
 //! inside another one. `CoordinateSpace::MacosPoints` turns everything
 //! back into points before comparing.
 
+use serde::Serialize;
 use tauri::{LogicalPosition, PhysicalPosition, PhysicalSize};
 
 /// A monitor's geometry as the windowing backend reports it.
@@ -117,6 +118,51 @@ pub(crate) fn centered_window_origin(
     let y = monitor.position.y as f64 / scale
         + (monitor.size.height as f64 / scale - window_size.height as f64 / window_scale) / 2.0;
     Some(LogicalPosition::new(x, y))
+}
+
+/// The monitor the launcher was last placed on, in the logical units
+/// the placement computes with: the reported position and size divided
+/// by the monitor's scale factor. `name` and `scale_factor` are the
+/// windowing toolkit's; on Linux the name is GTK's model string, which
+/// may be missing or repeat for identical panels.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TargetMonitor {
+    pub(crate) name: Option<String>,
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) scale_factor: f64,
+}
+
+impl TargetMonitor {
+    pub(crate) fn of(name: Option<&str>, monitor: &ReportedMonitor) -> Self {
+        let scale = monitor.scale_factor;
+        Self {
+            name: name.map(str::to_string),
+            x: monitor.position.x as f64 / scale,
+            y: monitor.position.y as f64 / scale,
+            width: monitor.size.width as f64 / scale,
+            height: monitor.size.height as f64 / scale,
+            scale_factor: scale,
+        }
+    }
+}
+
+/// Top-left origin of the launcher window on `target`: centred
+/// horizontally, and placed so that the card, which sits
+/// `card_top_offset` below the window's top, starts at a quarter of the
+/// monitor's height.
+pub(crate) fn launcher_window_origin(
+    target: &TargetMonitor,
+    window_width: f64,
+    card_top_offset: f64,
+) -> (f64, f64) {
+    (
+        target.x + (target.width - window_width) / 2.0,
+        target.y + (0.25 * target.height) - card_top_offset,
+    )
 }
 
 #[cfg(test)]
@@ -653,6 +699,61 @@ mod tests {
                 CoordinateSpace::MacosPoints
             ),
             None
+        );
+    }
+
+    // =========================================================
+    // Launcher target
+    // =========================================================
+
+    #[test]
+    fn target_monitor_is_the_logical_rect() {
+        let target = TargetMonitor::of(
+            Some("Built-in Retina Display"),
+            &monitor(2560, 0, 5120, 2880, 2.0),
+        );
+        assert_eq!(
+            target,
+            TargetMonitor {
+                name: Some("Built-in Retina Display".into()),
+                x: 1280.0,
+                y: 0.0,
+                width: 2560.0,
+                height: 1440.0,
+                scale_factor: 2.0,
+            }
+        );
+    }
+
+    #[test]
+    fn target_monitor_without_a_name() {
+        let target = TargetMonitor::of(None, &monitor(0, 0, 1920, 1080, 1.0));
+        assert_eq!(
+            serde_json::to_value(&target).expect("serializes"),
+            serde_json::json!({
+                "name": null,
+                "x": 0.0,
+                "y": 0.0,
+                "width": 1920.0,
+                "height": 1080.0,
+                "scaleFactor": 1.0,
+            })
+        );
+    }
+
+    #[test]
+    fn launcher_window_origin_centres_and_sits_at_a_quarter() {
+        let target = TargetMonitor {
+            name: None,
+            x: 1280.0,
+            y: 0.0,
+            width: 2560.0,
+            height: 1440.0,
+            scale_factor: 2.0,
+        };
+        assert_eq!(
+            launcher_window_origin(&target, 760.0, 120.0),
+            (2180.0, 240.0)
         );
     }
 }
