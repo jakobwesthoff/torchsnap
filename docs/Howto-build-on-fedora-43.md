@@ -100,7 +100,8 @@ On any non-GNOME desktop you can skip this section entirely.
 
 The `just assets` recipe regenerates icons and tray bitmaps;
 the WASM gadget pipeline uses `zip` to pack `.torchsnap` archives; and
-`shellcheck` gates the shell recipes during quality checks. On a
+`shellcheck` lints the shell scripts (`just doctor` checks that it is
+installed; no recipe runs it yet). On a
 default Fedora 43 Workstation install, `zip`, `ImageMagick`, and `jq`
 are usually already present — install anything missing.
 
