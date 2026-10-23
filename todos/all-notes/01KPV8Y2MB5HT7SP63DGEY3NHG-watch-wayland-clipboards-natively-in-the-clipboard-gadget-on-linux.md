@@ -77,8 +77,11 @@ quality as native GTK or Qt apps, and it has no process-management hazards.
   need a small refactor for the Wayland backend to slot in without disturbing
   macOS or Windows.
 - Feature detection and backend selection at gadget startup.
-- Testing on GNOME Wayland (Mutter 45+), KDE Wayland, sway, and classic X11
-  (e.g. `GDK_BACKEND=x11 just start` or an Xfce session).
+- Testing on GNOME Wayland (Mutter 45+), KDE Wayland, sway, labwc and
+  classic X11 (e.g. `GDK_BACKEND=x11 just start` or an Xfce session). The
+  claim above that Mutter ships `wlr-data-control` is not verified in this
+  project; check which data-control protocol each compositor advertises
+  (for example with `wayland-info`) before relying on it.
 
 ## Pointers
 

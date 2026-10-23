@@ -114,8 +114,21 @@ Concretely:
   section *Global Shortcuts* lists each app that called `bind_shortcuts` by
   its portal id.
 - KDE Plasma: System Settings → Shortcuts, listed per app.
-- Other Wayland compositors with portal backends (cosmic, hyprland, sway via
-  `xdg-desktop-portal-wlr`): their respective keyboard config UIs, if any.
+- Other Wayland compositors whose portal backend implements
+  `GlobalShortcuts`: their respective keyboard config UIs, if any.
+  `xdg-desktop-portal-wlr` does not implement it (see *labwc*).
+
+## labwc
+
+On Raspberry Pi OS (Debian 13) with labwc 0.20.2 and
+`xdg-desktop-portal-wlr` 0.7.1 as the preferred portal backend, the
+portal exposes no `org.freedesktop.portal.GlobalShortcuts` interface
+(`busctl --user introspect org.freedesktop.portal.Desktop
+/org/freedesktop/portal/desktop`, 2026-10-23). The portal path does not
+cover labwc. There the shortcut has to come from a `<keybind>` in
+`~/.config/labwc/rc.xml` that calls the control socket, like the
+documented GNOME workaround. Not checked: other wlroots compositors
+with a portal backend of their own.
 
 ## UX notes worth internalising before coding
 
@@ -137,8 +150,8 @@ Concretely:
 
 - Removing `tauri-plugin-global-shortcut` entirely. Keep it for Windows, macOS
   and X11-session Linux.
-- Supporting compositors without a portal backend. Minimal tiling setups
-  without `xdg-desktop-portal-wlr` or an equivalent are edge cases. They fall
+- Supporting compositors without a `GlobalShortcuts` portal backend, such
+  as labwc and other compositors on `xdg-desktop-portal-wlr`. They fall
   through to the X11 path and live with the same Control API workaround that
   is documented today.
 

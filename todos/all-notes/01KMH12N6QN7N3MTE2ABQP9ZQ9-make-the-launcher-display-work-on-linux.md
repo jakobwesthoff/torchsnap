@@ -22,7 +22,9 @@ needs testing and probably adjustments before it feels right.
   - X11: `_NET_WM_WINDOW_TYPE_DOCK` or override-redirect windows,
     `_NET_WM_STATE_ABOVE` for always-on-top.
 - Tray icon behavior varies by DE (GNOME removed tray, KDE has it, etc.).
-  It may need `libappindicator` or `StatusNotifierItem`.
+  It may need `libappindicator` or `StatusNotifierItem`. Raspberry Pi
+  OS's panel `wf-panel-pi` loads a `tray` widget in its default config
+  (read 2026-10-23, not tried with Torchsnap).
 - Global shortcut registration may need `XGrabKey` on X11 or
   portal-based shortcuts on Wayland.
 - No `ActivationPolicy::Accessory` equivalent, so the app appears in the
@@ -51,6 +53,9 @@ window's own scale factor (`linux/window.rs:457-461`).
 
 ## Testing targets
 
-- GNOME on Wayland (Ubuntu default)
+- GNOME on Wayland (Ubuntu default). Mutter has no layer-shell, so the
+  overlay approach above does not apply there.
+- labwc on Wayland (Raspberry Pi OS default). A wlroots compositor with
+  layer-shell.
 - KDE Plasma on Wayland
 - X11 fallback (any DE)
