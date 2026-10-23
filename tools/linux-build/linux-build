@@ -611,6 +611,117 @@ cmd_build() {
         "$image" /linux-build/in-container build "$profile"
 }
 
+# =========================================================================
+# Checks on a Linux machine
+# =========================================================================
+
+# Runs one command on `TORCHSNAP_LINUX_HOST`. Each argument is quoted
+# for the remote shell, so paths with spaces or quotes arrive intact.
+# `TORCHSNAP_LINUX_RUNNER` is an optional prefix on the remote side (for
+# example a script that runs the command in a terminal someone watches);
+# without it the command runs under `bash -c`.
+remote() {
+    local quoted="" arg
+    for arg in "$@"; do
+        quoted="$quoted $(printf '%q' "$arg")"
+    done
+    quoted=${quoted# }
+    # The command line is built here on purpose; the remote shell
+    # unquotes it once, so each argument arrives as it was given.
+    # shellcheck disable=SC2029
+    if [ -n "${TORCHSNAP_LINUX_RUNNER:-}" ]; then
+        ssh "$TORCHSNAP_LINUX_HOST" "$TORCHSNAP_LINUX_RUNNER $(printf '%q' "$quoted")"
+    else
+        ssh "$TORCHSNAP_LINUX_HOST" "bash -c $(printf '%q' "$quoted")"
+    fi
+}
+
+# The remote home, for absolute paths: a runner may run commands in a
+# directory other than the home and may print lines of its own, so the
+# last line counts and must be an absolute path.
+remote_home=""
+lookup_remote_home() {
+    remote_home=$(remote printenv HOME | tail -n 1)
+    case "$remote_home" in
+        /*) ;;
+        *)
+            echo "linux-build: could not read the home directory on $TORCHSNAP_LINUX_HOST (got '$remote_home')" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Copies the output into ~/linux-build-check/<profile>/ with rsync,
+# whose delta transfer sends only what changed. Plain ssh, no runner.
+copy_output() {
+    local profile="$1" start=$SECONDS
+    local out="$repo/target/linux-build/$profile"
+    if [ ! -f "$out/bin/torchsnap" ]; then
+        echo "linux-build: no build in target/linux-build/$profile; run just linux-build first" >&2
+        exit 1
+    fi
+    rsync -a --delete --stats "$out/" "$TORCHSNAP_LINUX_HOST:linux-build-check/$profile/" >/dev/null
+    echo "linux-build: copied target/linux-build/$profile to $TORCHSNAP_LINUX_HOST in $((SECONDS - start)) s"
+}
+
+cmd_check() {
+    local profile="$1" out="$repo/target/linux-build/$1" needs target_line has failed=0 line ldd_out ldd_rc
+    if [ ! -f "$out/bin/torchsnap" ]; then
+        echo "linux-build: no build in target/linux-build/$profile; run just linux-build first" >&2
+        exit 1
+    fi
+
+    # The highest glibc symbol version the binary needs, read by the
+    # image's objdump, since a Mac has none for Linux binaries.
+    needs=$(docker run --name torchsnap-linux-build-check --rm --network none --pull never \
+        --platform linux/arm64 \
+        --mount "type=bind,src=$out,dst=/out,readonly" \
+        --mount "type=bind,src=$script_dir,dst=/linux-build,readonly" \
+        "$image" /linux-build/in-container glibc /out/bin/torchsnap | tail -n 1)
+
+    copy_output "$profile"
+    lookup_remote_home
+
+    target_line=$(remote getconf GNU_LIBC_VERSION | tail -n 1)
+    has=${target_line##* }
+    if [ "$(printf '%s\n%s\n' "$needs" "$has" | sort -V | tail -n 1)" = "$has" ]; then
+        echo "PASS glibc: needs $needs, target has $has"
+    else
+        echo "FAIL glibc: needs $needs, newer than the target's $has"
+        failed=1
+    fi
+
+    # ldd reports a missing library as "lib => not found" and a missing
+    # symbol version as "version `X' not found"; any such line fails.
+    ldd_rc=0
+    ldd_out=$(remote ldd "$remote_home/linux-build-check/$profile/bin/torchsnap" 2>&1) || ldd_rc=$?
+    if grep -q 'not found' <<<"$ldd_out"; then
+        while read -r line; do
+            echo "FAIL ldd: $line"
+        done < <(grep 'not found' <<<"$ldd_out")
+        failed=1
+    elif [ "$ldd_rc" -ne 0 ]; then
+        echo "FAIL ldd: exit $ldd_rc: $(tail -n 1 <<<"$ldd_out")"
+        failed=1
+    else
+        echo "PASS ldd: all libraries found"
+    fi
+    return "$failed"
+}
+
+cmd_run_check() {
+    local profile="$1" revision
+    revision=$(sed -n 's/^pub const WELCOME_REVISION: u64 = \([0-9]*\);/\1/p' "$repo/src-tauri/src/welcome.rs")
+    if [ -z "$revision" ]; then
+        echo "linux-build: no WELCOME_REVISION in src-tauri/src/welcome.rs" >&2
+        exit 1
+    fi
+    copy_output "$profile"
+    rsync -a "$script_dir/target-run-check" "$TORCHSNAP_LINUX_HOST:linux-build-check/target-run-check"
+    lookup_remote_home
+    remote "$remote_home/linux-build-check/target-run-check" "$profile" "$revision"
+}
+
 # Removes one volume during clean; returns non-zero when it stays.
 clean_volume() {
     local i="$1"
@@ -705,6 +816,25 @@ case "$command" in
         done
         validate_limits
         cmd_build "$profile"
+        ;;
+    check | run-check)
+        profile=debug
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --release) profile=release ;;
+                *) usage ;;
+            esac
+            shift
+        done
+        if [ -z "${TORCHSNAP_LINUX_HOST:-}" ]; then
+            echo "linux-build: TORCHSNAP_LINUX_HOST is not set (example: user@pi.local)" >&2
+            exit 2
+        fi
+        if [ "$command" = check ]; then
+            cmd_check "$profile"
+        else
+            cmd_run_check "$profile"
+        fi
         ;;
     status)
         [ $# -eq 0 ] || usage

@@ -93,6 +93,60 @@ binary. The copies used Homebrew's rsync 3.5.1 on the Mac and rsync
 3.5.0 on the Pi, which both list zstd. macOS's own `/usr/bin/rsync` is
 openrsync and has no `--compress-choice`.
 
+## Check a build on a Linux machine
+
+```sh
+export TORCHSNAP_LINUX_HOST=user@pi.local
+just linux-build-check              # or --release
+just linux-build-run-check          # or --release
+```
+
+Both recipes reach the machine over ssh and copy the build with rsync
+to `~/linux-build-check/<profile>/` there; rsync sends only what
+changed. If `TORCHSNAP_LINUX_RUNNER` is set, every command on the
+machine runs through it as a prefix (for example a script that runs the
+command in a terminal someone watches); the copy itself is plain rsync.
+
+`just linux-build-check` passes when both hold:
+
+- glibc: the highest glibc symbol version the binary needs (read with
+  the image's `objdump`) is not newer than the machine's
+  (`getconf GNU_LIBC_VERSION`);
+- ldd: `ldd` on the machine reports no library and no symbol version as
+  `not found`.
+
+On a Raspberry Pi 5 with Raspberry Pi OS 13 the debug build needs glibc
+2.39, the Pi has 2.41, and ldd finds every library. The binary links
+WebKitGTK 4.1, GTK 3, libsoup 3 and JavaScriptCore; it loads
+`libayatana-appindicator3.so.1` for the tray icon only when it runs,
+so ldd does not list it and the machine needs the package that has it
+(`libayatana-appindicator3-1` on Debian).
+
+`just linux-build-run-check` starts the copied build and asks it for
+its status over its control socket. It passes when the build answers
+and its environment holds nothing of a desktop session the machine
+runs. The machine needs `labwc`, `dbus-run-session`, `socat` and a
+systemd user session. Everything runs in the transient user unit
+`linux-build-check`:
+
+- a headless labwc is the display server, so no window shows on the
+  machine's screen, and labwc starts its own Xwayland for X11 clients;
+  `labwc -C` with an empty directory keeps labwc from running the
+  system's autostart;
+- `dbus-run-session` gives the build its own session bus, so a
+  Torchsnap already running in the desktop session does not count as
+  the same instance;
+- its data, config and cache directories are
+  `~/linux-build-check/<profile>-home/`, with the control socket
+  switched on and the welcome window marked as seen;
+- the unit starts from an empty environment plus a short list of
+  variables, since a systemd user unit otherwise inherits the desktop
+  session's variables.
+
+The unit is stopped when the check ends, also when it fails; the
+build's output goes to `~/linux-build-check/<profile>-run.log`. Only
+files under `~/linux-build-check/` stay on the machine.
+
 ## Lint a checkout for Linux
 
 ```sh
@@ -213,3 +267,21 @@ use; that run then compiles from scratch.
 
 `target/linux-build/` of the checkout that runs the recipe is counted
 too, those of other checkouts are not.
+
+## Packaging (outline, not done)
+
+The recipes build without packaging. A `.deb`, AppImage or rpm would
+take at least these steps, none of which has been tried:
+
+- run `tauri build` with `bundle.active` and the Linux bundle targets
+  in the same container, and add whatever Tauri's bundler needs per
+  format to the image;
+- keep the resource layout: a binary in `/usr/bin` finds its resources
+  in `/usr/lib/Torchsnap/`, which is the layout `target/linux-build/`
+  copies;
+- declare the runtime packages in the package metadata, the libraries
+  the binary links (WebKitGTK 4.1, GTK 3, libsoup 3, JavaScriptCore)
+  plus the appindicator library it loads at runtime;
+- add a `.desktop` file and Linux icons, and decide on signing;
+- build for x86_64, which needs another image or emulation on an Apple
+  silicon Mac.

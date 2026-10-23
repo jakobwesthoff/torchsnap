@@ -17,6 +17,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -1168,6 +1169,325 @@ class Glibc(InContainerCase):
     def test_a_binary_without_glibc_symbols_exits_1(self):
         result = self.run_in_container("glibc", "/out/bin/torchsnap", STUB_OBJDUMP_OUT="nothing")
         self.assertEqual(result.returncode, 1)
+
+
+# =========================================================================
+# linux-build check and run-check (on a Linux machine over ssh)
+# =========================================================================
+
+# An ssh stub that evaluates the remote command the way the remote shell
+# would, with the runner or `bash -c`, so the test sees what arrives.
+SSH_EVAL = """#!/bin/bash
+{ printf 'ssh'; for a in "$@"; do printf '\\037%s' "$a"; done; printf '\\n'; } >> "$STUB_LOG"
+shift  # the host
+printf '%s\\n' "$*" >> "$SSH_REMOTE_LOG"
+# The target's own run check cannot run here; it answers from the env.
+case "$*" in *target-run-check*) printf '%s\\n' "$STUB_TARGET_OUT"; exit "${STUB_TARGET_RC:-0}" ;; esac
+eval "$*"
+"""
+
+# The runner the eval stub finds on PATH: records the command it got.
+RUNNER = """#!/bin/bash
+printf '%s\\n' "$*" >> "$RUNNER_LOG"
+eval "$*"
+"""
+
+HOST = {"TORCHSNAP_LINUX_HOST": "someone@target.local"}
+
+
+def remote_env(home="/home/someone", getconf="glibc 2.41", ldd="\tlinux-vdso.so.1 (0x0)\n\tlibc.so.6 => /lib/libc.so.6", ldd_rc="0"):
+    """Stub answers of a target machine, by remote command."""
+    return {
+        "REMOTE_HOME": home,
+        "REMOTE_GETCONF": getconf,
+        "REMOTE_LDD": ldd,
+        "REMOTE_LDD_RC": ldd_rc,
+    }
+
+
+class TargetCase(TreeCase):
+    """`check` and `run-check` against stubbed ssh and rsync."""
+
+    def setUp(self):
+        super().setUp()
+        out = self.tree.root / "target" / "linux-build" / "debug"
+        (out / "bin").mkdir(parents=True)
+        (out / "bin" / "torchsnap").write_text("ELF")
+        self.remote_log = pathlib.Path(self.tree._tmp.name) / "remote.log"
+        self.runner_log = pathlib.Path(self.tree._tmp.name) / "runner.log"
+        self.ldd_log = pathlib.Path(self.tree._tmp.name) / "ldd.log"
+        # Remote commands the eval stub runs, as tiny functions on PATH.
+        for name, body in {
+            "printenv": 'printf "%s\\n" "$REMOTE_HOME"',
+            "getconf": 'printf "%s\\n" "$REMOTE_GETCONF"',
+            "ldd": 'printf "%s\\n" "$1" >> "$LDD_ARG_LOG"; printf "%s\\n" "$REMOTE_LDD"; exit "${REMOTE_LDD_RC:-0}"',
+        }.items():
+            path = self.tree.bin / name
+            path.write_text(f"#!/bin/bash\n{body}\n")
+            path.chmod(0o755)
+        ssh = self.tree.bin / "ssh"
+        ssh.write_text(SSH_EVAL)
+        ssh.chmod(0o755)
+        runner = self.tree.bin / "test-runner"
+        runner.write_text(RUNNER)
+        runner.chmod(0o755)
+        self.env = dict(HOST, **remote_env(),
+                        SSH_REMOTE_LOG=str(self.remote_log), RUNNER_LOG=str(self.runner_log),
+                        LDD_ARG_LOG=str(self.ldd_log),
+                        **{stub_key("docker", "run", "--name", "torchsnap-linux-build-check") + "_OUT": "2.39"})
+
+    def check(self, *args, **extra):
+        return self.tree.run("linux-build", "check", *args, env=dict(self.env, **extra))
+
+
+class CheckArguments(TargetCase):
+    def test_no_host_exits_2_before_any_remote_call(self):
+        for value in (None, ""):
+            with self.subTest(value=value):
+                env = dict(self.env)
+                if value is None:
+                    env.pop("TORCHSNAP_LINUX_HOST")
+                else:
+                    env["TORCHSNAP_LINUX_HOST"] = value
+                for command in ("check", "run-check"):
+                    self.tree.log.unlink(missing_ok=True)
+                    result = self.tree.run("linux-build", command, env=env)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("TORCHSNAP_LINUX_HOST is not set", result.stderr)
+                    self.assertEqual(self.tree.calls("ssh") + self.tree.calls("rsync"), [])
+
+    def test_without_a_build_exits_1_naming_the_recipe(self):
+        shutil.rmtree(self.tree.root / "target" / "linux-build" / "debug")
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("just linux-build", result.stderr)
+        self.assertEqual(self.tree.calls("rsync"), [])
+
+
+class Check(TargetCase):
+    def test_passes_with_an_older_glibc_and_every_library_found(self):
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS glibc: needs 2.39, target has 2.41", result.stdout)
+        self.assertIn("PASS ldd: all libraries found", result.stdout)
+
+    def test_a_newer_glibc_fails(self):
+        result = self.check(**{stub_key("docker", "run", "--name", "torchsnap-linux-build-check") + "_OUT": "2.42"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL glibc: needs 2.42, newer than the target's 2.41", result.stdout)
+
+    def test_versions_compare_as_versions(self):
+        result = self.check(**{stub_key("docker", "run", "--name", "torchsnap-linux-build-check") + "_OUT": "2.9"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS glibc", result.stdout)
+
+    def test_a_missing_library_fails_with_its_line(self):
+        result = self.check(REMOTE_LDD="\tlibfoo.so.1 => not found")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL ldd: libfoo.so.1 => not found", result.stdout)
+
+    def test_a_missing_symbol_version_fails_with_its_line(self):
+        line = "/x/torchsnap: /lib/libstdc++.so.6: version `GLIBCXX_3.4.33' not found (required by /x/torchsnap)"
+        result = self.check(REMOTE_LDD=line)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"FAIL ldd: {line}", result.stdout)
+
+    def test_a_failing_ldd_fails(self):
+        result = self.check(REMOTE_LDD="not a dynamic executable", REMOTE_LDD_RC="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL ldd", result.stdout)
+
+    def test_copies_the_output_with_rsync_outside_the_runner(self):
+        result = self.check(TORCHSNAP_LINUX_RUNNER="test-runner")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = self.tree.root / "target" / "linux-build" / "debug"
+        self.assertEqual([row[1:] for row in self.tree.calls("rsync")],
+                         [["-a", "--delete", "--stats", f"{out}/", "someone@target.local:linux-build-check/debug/"]])
+        self.assertRegex(result.stdout, r"copied target/linux-build/debug to someone@target.local in \d+ s")
+        self.assertNotIn("rsync", self.runner_log.read_text())
+
+    def test_remote_commands_use_the_home_lookup_and_absolute_paths(self):
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        remote = self.remote_log.read_text()
+        self.assertIn("/home/someone/linux-build-check/debug/bin/torchsnap", remote)
+        self.assertNotIn("~", remote)
+
+    def test_a_home_that_is_not_absolute_exits_1(self):
+        result = self.check(REMOTE_HOME="welcome banner")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("home", result.stderr)
+
+    def test_without_a_runner_the_command_goes_through_bash_c(self):
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ssh_args = [row[2:] for row in self.tree.calls("ssh")]
+        self.assertTrue(all(args[0].startswith("bash -c ") for args in ssh_args), ssh_args)
+
+    def test_with_a_runner_every_command_goes_through_it(self):
+        result = self.check(TORCHSNAP_LINUX_RUNNER="test-runner")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ssh_args = [row[2:] for row in self.tree.calls("ssh")]
+        self.assertTrue(all(args[0].startswith("test-runner ") for args in ssh_args), ssh_args)
+
+    def test_arguments_with_spaces_and_quotes_arrive_intact(self):
+        home = "/home/some one/it's $here"
+        result = self.check(REMOTE_HOME=home, TORCHSNAP_LINUX_RUNNER="test-runner")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.ldd_log.read_text(), f"{home}/linux-build-check/debug/bin/torchsnap\n")
+
+
+class TargetRunCheck(TreeCase):
+    """`target-run-check` on the target, with systemd, socat and /proc stubbed."""
+
+    def setUp(self):
+        super().setUp()
+        base = pathlib.Path(self.tree._tmp.name)
+        self.home = base / "home"
+        build = self.home / "linux-build-check" / "debug" / "bin"
+        build.mkdir(parents=True)
+        (build / "torchsnap").write_text("ELF")
+        (build / "torchsnap").chmod(0o755)
+        self.proc = base / "proc"
+        (self.proc / "4242").mkdir(parents=True)
+        (self.proc / "4242" / "comm").write_text("torchsnap\n")
+        (self.proc / "4243").mkdir(parents=True)
+        (self.proc / "4243" / "comm").write_text("labwc\n")
+        self.cgroups = base / "cgroup"
+        unit_dir = self.cgroups / "user.slice" / "linux-build-check.service"
+        unit_dir.mkdir(parents=True)
+        (unit_dir / "cgroup.procs").write_text("4243\n4242\n")
+        self.app_environ("WAYLAND_DISPLAY=wayland-1", "DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-own",
+                         "XDG_CURRENT_DESKTOP=labwc:wlroots")
+        for name in ("systemctl", "systemd-run", "socat", "sleep", "dbus-run-session"):
+            path = self.tree.bin / name
+            path.write_text(STUB)
+            path.chmod(0o755)
+        self.env = {
+            "HOME": str(self.home),
+            "TARGET_RUN_CHECK_PROC": str(self.proc),
+            "TARGET_RUN_CHECK_CGROUP_ROOT": str(self.cgroups),
+            "TARGET_RUN_CHECK_TIMEOUT": "3",
+            stub_key("systemctl", "--user", "is-active") + "_RC": "3",
+            stub_key("systemctl", "--user", "show", "-p", "ControlGroup") + "_OUT": "/user.slice/linux-build-check.service",
+            stub_key("systemctl", "--user", "show-environment") + "_OUT":
+                "WAYLAND_DISPLAY=wayland-0\nDBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nXDG_CURRENT_DESKTOP=GNOME",
+            "STUB_SOCAT_OUT": '{"jsonrpc":"2.0","id":1,"result":{"visible":false}}',
+        }
+
+    def app_environ(self, *pairs):
+        (self.proc / "4242" / "environ").write_bytes(b"\0".join(p.encode() for p in pairs) + b"\0")
+
+    def run_check(self, **extra):
+        return self.tree.run("target-run-check", "debug", "1", env=dict(self.env, **extra), bash="bash")
+
+    def test_starts_the_build_isolated_and_gets_its_status(self):
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('PASS status: {"jsonrpc":"2.0","id":1,"result":{"visible":false}}', result.stdout)
+        self.assertIn("PASS isolation", result.stdout)
+        run = self.tree.calls("systemd-run")[0][1:]
+        self.assertEqual(run[:5], ["--user", "--unit", "linux-build-check", "--collect", "--quiet"])
+        command = run[run.index("--") + 1:]
+        self.assertEqual(command[:2], ["env", "-i"])
+        self.assertIn("WLR_BACKENDS=headless", command)
+        tail = command[command.index("dbus-run-session"):]
+        self.assertEqual(tail[:4], ["dbus-run-session", "--", "labwc", "-C"])
+        self.assertEqual(tail[-2:], ["-s", str(self.home / "linux-build-check" / "debug" / "bin" / "torchsnap")])
+        self.assertFalse(any(arg.startswith(("DISPLAY=", "WAYLAND_DISPLAY=", "DBUS_SESSION_BUS_ADDRESS="))
+                             for arg in command))
+
+    def test_writes_settings_with_flat_keys(self):
+        self.run_check()
+        settings = self.home / "linux-build-check" / "debug-home" / "data" / "app.torchsnap" / "settings.json"
+        self.assertEqual(json.loads(settings.read_text()), {"controlChannel.enabled": True, "welcome.seenRevision": 1})
+
+    def test_stops_and_resets_the_unit(self):
+        self.run_check()
+        calls = [row[1:] for row in self.tree.calls("systemctl")]
+        self.assertIn(["--user", "stop", "linux-build-check"], calls)
+        self.assertIn(["--user", "reset-failed", "linux-build-check"], calls)
+
+    def test_no_reply_fails_and_still_stops_the_unit(self):
+        result = self.run_check(STUB_SOCAT_OUT="")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL status: no reply within 3 s", result.stdout)
+        self.assertIn(["--user", "stop", "linux-build-check"], [row[1:] for row in self.tree.calls("systemctl")])
+
+    def test_a_running_check_is_not_started_twice(self):
+        result = self.run_check(**{stub_key("systemctl", "--user", "is-active") + "_RC": "0"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("already running", result.stderr)
+        self.assertEqual(self.tree.calls("systemd-run"), [])
+
+    def test_a_missing_binary_fails_before_starting(self):
+        (self.home / "linux-build-check" / "debug" / "bin" / "torchsnap").unlink()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.tree.calls("systemd-run"), [])
+
+    def test_the_desktop_sessions_display_is_a_leak(self):
+        self.app_environ("WAYLAND_DISPLAY=wayland-0", "DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-own")
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL isolation: WAYLAND_DISPLAY", result.stdout)
+
+    def test_the_desktop_sessions_bus_is_a_leak(self):
+        self.app_environ("WAYLAND_DISPLAY=wayland-1", "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus")
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL isolation: DBUS_SESSION_BUS_ADDRESS", result.stdout)
+
+    def test_a_gnome_desktop_name_is_a_leak(self):
+        self.app_environ("WAYLAND_DISPLAY=wayland-1", "XDG_CURRENT_DESKTOP=GNOME")
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL isolation: XDG_CURRENT_DESKTOP", result.stdout)
+
+    def test_no_torchsnap_process_fails(self):
+        (self.cgroups / "user.slice" / "linux-build-check.service" / "cgroup.procs").write_text("4243\n")
+        result = self.run_check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL isolation: no torchsnap process", result.stdout)
+
+
+class RunCheck(TargetCase):
+    def test_copies_build_and_script_then_runs_it_with_the_welcome_revision(self):
+        result = self.tree.run("linux-build", "run-check", env=dict(self.env, STUB_TARGET_OUT="PASS status: {}"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rsyncs = [row[1:] for row in self.tree.calls("rsync")]
+        out = self.tree.root / "target" / "linux-build" / "debug"
+        self.assertIn(["-a", "--delete", "--stats", f"{out}/", "someone@target.local:linux-build-check/debug/"], rsyncs)
+        self.assertIn([str(self.tree.root / "tools" / "linux-build" / "target-run-check"),
+                       "someone@target.local:linux-build-check/target-run-check"], [r[-2:] for r in rsyncs])
+        commands = [shlex.split(shlex.split(line)[2]) for line in self.remote_log.read_text().splitlines()]
+        self.assertIn(["/home/someone/linux-build-check/target-run-check", "debug", "1"], commands)
+
+    def test_a_failed_run_check_fails(self):
+        result = self.tree.run("linux-build", "run-check",
+                               env=dict(self.env, STUB_TARGET_OUT="FAIL status: no reply", STUB_TARGET_RC="1"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL status", result.stdout)
+
+
+@unittest.skipUnless(HAVE_JUST, "just is not installed")
+class TargetRecipes(unittest.TestCase):
+    def assert_runs(self, args, expected):
+        result = just_dry_run(*args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(expected, [line.strip() for line in result.stderr.splitlines()])
+
+    def test_check(self):
+        self.assert_runs(["linux-build-check"], "tools/linux-build/linux-build check")
+
+    def test_check_release(self):
+        self.assert_runs(["linux-build-check", "--release"], "tools/linux-build/linux-build check --release")
+
+    def test_run_check(self):
+        self.assert_runs(["linux-build-run-check"], "tools/linux-build/linux-build run-check")
+
+    def test_run_check_release(self):
+        self.assert_runs(["linux-build-run-check", "--release"], "tools/linux-build/linux-build run-check --release")
 
 
 if __name__ == "__main__":

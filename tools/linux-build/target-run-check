@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Runs on a Linux target machine, copied there by
+# `linux-build run-check`: starts a Linux build that `linux-build check`
+# copied to ~/linux-build-check/<profile>/ in a session of its own and
+# asks it for its status over the control socket.
+#
+# Usage: target-run-check PROFILE WELCOME_REVISION
+#
+# Nothing of the desktop session the machine may be running is used:
+#
+# - a headless labwc is the compositor, so no window appears on the
+#   screen, and labwc's own Xwayland serves X11 clients;
+# - `dbus-run-session` gives a session bus of its own, so Torchsnap's
+#   single-instance lock (a name on the session bus) does not see an
+#   instance running in the desktop session;
+# - data, config and cache dirs of its own give it its own settings and
+#   its own control socket;
+# - the unit starts from an empty environment with an allowlist, since
+#   a systemd user unit otherwise inherits the user manager's
+#   environment, which a desktop session fills (XDG_CURRENT_DESKTOP,
+#   GTK_MODULES, its display and bus addresses).
+#
+# Everything runs in the transient user unit `linux-build-check`, which
+# is stopped on every exit; only files under ~/linux-build-check/ stay.
+
+set -euo pipefail
+
+profile="${1:-}"
+revision="${2:-}"
+if [ -z "$profile" ] || [ -z "$revision" ]; then
+    echo "usage: target-run-check PROFILE WELCOME_REVISION" >&2
+    exit 2
+fi
+
+base="$HOME/linux-build-check"
+binary="$base/$profile/bin/torchsnap"
+home="$base/$profile-home"
+log="$base/$profile-run.log"
+unit=linux-build-check
+timeout="${TARGET_RUN_CHECK_TIMEOUT:-60}"
+# Test seams: where process environments and cgroups are read.
+proc="${TARGET_RUN_CHECK_PROC:-/proc}"
+cgroup_root="${TARGET_RUN_CHECK_CGROUP_ROOT:-/sys/fs/cgroup}"
+
+if [ ! -x "$binary" ]; then
+    echo "FAIL start: no binary at $binary; run linux-build check first" >&2
+    exit 1
+fi
+if systemctl --user is-active --quiet "$unit"; then
+    echo "FAIL start: unit $unit is already running" >&2
+    exit 1
+fi
+
+# The settings store keeps flat, dotted keys. The control socket opens
+# only with `controlChannel.enabled`, and a seen welcome revision keeps
+# the welcome window shut.
+rm -rf "$home"
+mkdir -p "$home/data/app.torchsnap" "$home/config" "$home/cache" "$home/labwc"
+printf '{"controlChannel.enabled": true, "welcome.seenRevision": %s}\n' "$revision" \
+    > "$home/data/app.torchsnap/settings.json"
+socket="$home/data/app.torchsnap/control.sock"
+: > "$log"
+
+cleanup() {
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# `labwc -C` with an empty directory: without it labwc runs the
+# system-wide autostart (on Raspberry Pi OS a panel, a file manager and
+# every XDG autostart entry of the desktop).
+systemd-run --user --unit "$unit" --collect --quiet \
+    -p "StandardOutput=append:$log" -p "StandardError=append:$log" \
+    -- env -i \
+    HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" PATH="/usr/local/bin:/usr/bin:/bin" \
+    LANG="${LANG:-C.UTF-8}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+    XDG_DATA_HOME="$home/data" XDG_CONFIG_HOME="$home/config" XDG_CACHE_HOME="$home/cache" \
+    WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
+    dbus-run-session -- labwc -C "$home/labwc" -s "$binary"
+
+reply=""
+for _ in $(seq 1 "$timeout"); do
+    reply=$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"status"}' \
+        | socat -t 2 - "UNIX-CONNECT:$socket" 2>/dev/null || true)
+    case "$reply" in *'"result"'*) break ;; esac
+    reply=""
+    sleep 1
+done
+if [ -z "$reply" ]; then
+    echo "FAIL status: no reply within $timeout s; last lines of $log:"
+    tail -n 30 "$log" || true
+    exit 1
+fi
+echo "PASS status: $reply"
+
+# The app must see only its own session. Its environment is read from
+# the process itself, found in the unit's cgroup (the unit's main
+# process is dbus-run-session).
+manager_env=$(systemctl --user show-environment 2>/dev/null || true)
+manager_value() { printf '%s\n' "$manager_env" | sed -n "s/^$1=//p"; }
+cgroup=$(systemctl --user show -p ControlGroup --value "$unit")
+app_env=""
+while read -r pid; do
+    [ -n "$pid" ] || continue
+    if [ "$(cat "$proc/$pid/comm" 2>/dev/null)" = torchsnap ]; then
+        app_env=$(tr '\0' '\n' < "$proc/$pid/environ")
+        break
+    fi
+done < "$cgroup_root$cgroup/cgroup.procs"
+if [ -z "$app_env" ]; then
+    echo "FAIL isolation: no torchsnap process in unit $unit"
+    exit 1
+fi
+app_value() { printf '%s\n' "$app_env" | sed -n "s/^$1=//p"; }
+
+leaks=()
+for name in WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS; do
+    if [ -n "$(manager_value "$name")" ] && [ "$(app_value "$name")" = "$(manager_value "$name")" ]; then
+        leaks+=("$name")
+    fi
+done
+case "$(app_value XDG_CURRENT_DESKTOP)" in *GNOME*) leaks+=(XDG_CURRENT_DESKTOP) ;; esac
+if [ ${#leaks[@]} -gt 0 ]; then
+    echo "FAIL isolation: ${leaks[*]} from the desktop session"
+    exit 1
+fi
+echo "PASS isolation: own display, bus and desktop"

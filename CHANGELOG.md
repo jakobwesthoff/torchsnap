@@ -39,8 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cargo check` and clippy for Linux on any checkout in the same
   container. `just linux-build-status` shows what its image, build cache
   and volumes take on disk, `just linux-build-clean [--all]` removes
-  them, and each build and lint keeps them within a budget. See
-  `docs/Howto-build-linux-on-macos.md`.
+  them, and each build and lint keeps them within a budget.
+  `just linux-build-check` copies a build to a Linux machine and checks
+  its glibc version and libraries there; `just linux-build-run-check`
+  starts it there in a session of its own and asks its status over the
+  control socket. See `docs/Howto-build-linux-on-macos.md`.
 
 ### Changed
 

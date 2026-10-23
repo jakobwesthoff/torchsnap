@@ -19,6 +19,19 @@ linux-build-image:
 linux-build profile="debug":
     tools/linux-build/linux-build build {{ if profile == "release" { "--release" } else { "" } }}
 
+# The checks copy a build to `~/linux-build-check/<profile>/` on the
+# machine `TORCHSNAP_LINUX_HOST` names, through ssh.
+
+# Copy a Linux build to TORCHSNAP_LINUX_HOST and check its glibc and libraries
+[arg('profile', long='release', value='release')]
+linux-build-check profile="debug":
+    tools/linux-build/linux-build check {{ if profile == "release" { "--release" } else { "" } }}
+
+# Start a Linux build on TORCHSNAP_LINUX_HOST in a session of its own and ask its status
+[arg('profile', long='release', value='release')]
+linux-build-run-check profile="debug":
+    tools/linux-build/linux-build run-check {{ if profile == "release" { "--release" } else { "" } }}
+
 # Recipes run from the repository root, so a relative path is taken
 # from the directory `just` was started in.
 
