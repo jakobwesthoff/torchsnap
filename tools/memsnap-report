@@ -152,8 +152,13 @@ echo
 # =========================================================
 
 if [[ -n "$SAMPLES_FILE" ]]; then
+    # The TOTAL row is the statistic of the per-sample totals: processes
+    # that start or end during the run count only in the samples they
+    # are in, so summing each process's own min, max, first and last
+    # would mix values from different moments.
     REPORT_DATA=$(jq -r '
         (.samples | length) as $num_samples |
+        [.samples[] | [.processes[].auxiliary.phys_footprint] | add // 0] as $sample_totals |
 
         [
             .samples[].processes[] | {
@@ -178,11 +183,11 @@ if [[ -n "$SAMPLES_FILE" ]]; then
                 }
             ] | sort_by(-.avg),
             totals: {
-                min: [$groups[] | [.[].footprint] | min] | add,
-                max: [$groups[] | [.[].footprint] | max] | add,
-                avg: [$groups[] | (([.[].footprint] | add) / length | round)] | add,
-                first: [$groups[] | .[0].footprint] | add,
-                last: [$groups[] | .[-1].footprint] | add
+                min: ($sample_totals | min),
+                max: ($sample_totals | max),
+                avg: (($sample_totals | add) / ($sample_totals | length) | round),
+                first: $sample_totals[0],
+                last: $sample_totals[-1]
             }
         } |
 
@@ -236,11 +241,12 @@ if [[ -n "$SNAPSHOTS_FILE" ]]; then
         # Header
         (["Phase"] + $short + ["TOTAL"] | join("\t")),
 
-        # Data rows
+        # Data rows. A cell holds every process of that name in the
+        # snapshot: WebKit can run several processes under one name.
         ($snaps | to_entries[] |
             .value as $snap |
             [$names[] as $n |
-                ($snap.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0)
+                ($snap.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0)
             ] as $vals |
             ([$vals[] | . / 1048576 | . * 10 | round / 10 | tostring + " MB"]) as $fmt |
             ($vals | add | . / 1048576 | . * 10 | round / 10 | tostring + " MB") as $t |
@@ -250,8 +256,8 @@ if [[ -n "$SNAPSHOTS_FILE" ]]; then
         # Delta row
         ($snaps[0] as $first | $snaps[-1] as $last |
             [$names[] as $n |
-                (($last.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0) -
-                 ($first.processes | map(select(.name == $n)) | .[0].auxiliary.phys_footprint // 0))
+                (($last.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0) -
+                 ($first.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0))
             ] as $d |
             ([$d[] | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB"]) as $fmt |
             ($d | add | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB") as $t |

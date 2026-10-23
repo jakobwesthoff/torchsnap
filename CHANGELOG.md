@@ -132,6 +132,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API's `query`, no longer puts the old prefix back in the input. After
   `=2+3`, a `query` with `!b2` showed `=b2`, typing `a` over the input
   showed `=`, and deleting the leading `=` showed `=+3`.
+- `tools/memsnap-report`: a phase cell holds every process of its name;
+  with several WebKit processes of one name it counted only the first.
+  The TOTAL row of the samples table is now the min, max, average, first
+  and last of the per-sample totals; it summed each process's own
+  values, so a process that started during the run was missing from the
+  total's change. Reports of runs with either case differ from earlier
+  ones in `memory-benchmark.log`.
 
 ## [0.15.0] - 2026-10-21
 
