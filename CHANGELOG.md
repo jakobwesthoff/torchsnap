@@ -45,7 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts it there in a session of its own and asks its status over the
   control socket. See `docs/Howto-build-linux-on-macos.md`.
 - A Linux testbed, driven from the Mac: `just testbed-sync` mirrors the
-  working tree to a test machine named by `TORCHSNAP_LINUX_HOST`. See
+  working tree to a Raspberry Pi named by `TORCHSNAP_LINUX_HOST`,
+  `just testbed-provision` installs the build tools and ydotool there,
+  and `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 
 ### Changed

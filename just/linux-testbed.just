@@ -11,3 +11,14 @@
 # Mirror the working tree to ~/torchsnap on the Linux testbed
 testbed-sync:
     tools/linux-testbed/testbed sync
+
+# Provisioning is idempotent: every step checks first and changes only
+# what is missing, so running it again reports `0 changed`.
+
+# Sync, then take the Linux testbed to the testbed state
+testbed-provision *ARGS:
+    tools/linux-testbed/testbed provision {{ ARGS }}
+
+# Run the testbed self-test against the Linux testbed (default items, or the given ones)
+testbed-selftest *ITEMS:
+    tools/linux-testbed/selftest {{ ITEMS }}

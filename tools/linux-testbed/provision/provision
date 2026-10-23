@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Takes a Raspberry Pi OS machine to the testbed state. Runs on the
+# machine, from the synced tree, as the login user (it calls sudo). Each
+# step checks first and changes only what is missing, so a second run
+# reports `0 changed`.
+#
+# Exit status: 0 when everything is in place, 1 when a step failed, 3
+# when steps that need the desktop session were deferred (run again
+# inside that session).
+
+# shellcheck source-path=SCRIPTDIR
+set -euo pipefail
+
+provision_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tree_dir="$(cd "$provision_dir/../../.." && pwd)"
+readonly provision_dir tree_dir
+
+# Commands run over SSH read no shell profile, so the tools installed in
+# the user's home are put on PATH here.
+export PATH="$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"
+
+source "$provision_dir/steps.sh"
+source "$provision_dir/base.sh"
+
+base_steps
+steps_summary

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Self-test of the Linux testbed: runs the testbed's acceptance items
+# against the machine named by TORCHSNAP_LINUX_HOST and checks their
+# results. Each item prints `PASS item N` or `FAIL item N: <what>`; the
+# run goes on after a failure and exits 1 if any item failed.
+#
+# Usage:
+#   selftest [ITEM...]   run the given items, or the default list
+#
+# Items:
+#   1   provisioning twice changes nothing on the second run
+
+# Items run by name (`item_$item`), which shellcheck cannot follow.
+# shellcheck disable=SC2329
+set -uo pipefail
+
+testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
+readonly testbed
+
+default_items=(1)
+
+pass() {
+    echo "PASS item $1"
+}
+
+# fail ITEM WHAT: reports a failed assertion and makes the item fail.
+fail() {
+    echo "FAIL item $1: $2"
+    return 1
+}
+
+# =========================================================
+# Items
+# =========================================================
+
+# The machine is provisioned already when the self-test runs, so a run
+# that is not the first must leave everything as it found it.
+item_1() {
+    local output status
+    if ! "$testbed" provision >/dev/null; then
+        fail 1 "first provision run did not exit 0"
+        return
+    fi
+    output="$("$testbed" provision)"
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        fail 1 "second provision run: expected exit 0, got $status"
+    elif ! grep -q '^provision: 0 changed' <<<"$output"; then
+        fail 1 "second provision run: expected '0 changed', got: $(grep '^provision:' <<<"$output")"
+    else
+        pass 1
+    fi
+}
+
+# =========================================================
+# Runner
+# =========================================================
+
+items=("$@")
+if [ ${#items[@]} -eq 0 ]; then
+    items=("${default_items[@]}")
+fi
+
+# Every item is checked before the first runs, so a typo does not cost a
+# partial run on the machine.
+for item in "${items[@]}"; do
+    if ! declare -F "item_$item" >/dev/null; then
+        echo "selftest: unknown item: $item" >&2
+        exit 2
+    fi
+done
+
+failed=0
+for item in "${items[@]}"; do
+    "item_$item" || failed=1
+done
+exit "$failed"

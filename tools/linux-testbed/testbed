@@ -10,7 +10,12 @@
 # synced tree. See docs/Howto-test-on-a-raspberry-pi.md.
 #
 # Usage:
-#   testbed sync    mirror the working tree to ~/torchsnap on the machine
+#   testbed sync              mirror the working tree to ~/torchsnap on the machine
+#   testbed provision [ARGS]  sync, then run the provision script there
+#
+# Commands on the machine run through `bash -c`, or, when
+# TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
+# terminal on the machine's screen that shows every command it runs).
 
 set -euo pipefail
 
@@ -36,6 +41,46 @@ require_host() {
 }
 
 # =========================================================
+# Running commands on the machine
+# =========================================================
+
+# run_remote COMMAND: runs one shell command line on the machine.
+#
+# ssh joins its arguments and the login shell on the machine parses them
+# once more, so the command line goes over as a single quoted word: the
+# far side then runs exactly COMMAND, through `bash -c` or after the
+# runner prefix. A runner such as testbed-run joins and evals its
+# arguments, which unwraps the quoting the same way.
+run_remote() {
+    local quoted
+    quoted="$(printf '%q' "$1")"
+    local status=0
+    # The command line is meant to be built here and sent finished.
+    # shellcheck disable=SC2029
+    if [ -n "${TORCHSNAP_LINUX_RUNNER:-}" ]; then
+        ssh "$TORCHSNAP_LINUX_HOST" "$TORCHSNAP_LINUX_RUNNER $quoted" || status=$?
+        # testbed-run, the runner this was written for, refuses with 75
+        # when the terminal pane it would use is still busy.
+        if [ "$status" -eq 75 ]; then
+            echo "testbed: runner refused (exit 75), its window is busy" >&2
+        fi
+    else
+        ssh "$TORCHSNAP_LINUX_HOST" "bash -c $quoted" || status=$?
+    fi
+    return "$status"
+}
+
+# shell_words WORD...: the words as one command line, each quoted.
+shell_words() {
+    local word
+    local line=""
+    for word in "$@"; do
+        line="$line $(printf '%q' "$word")"
+    done
+    printf '%s' "${line# }"
+}
+
+# =========================================================
 # sync
 # =========================================================
 
@@ -51,6 +96,22 @@ cmd_sync() {
 }
 
 # =========================================================
+# provision
+# =========================================================
+
+# The provision script runs from the synced tree, so the machine gets the
+# steps as they are in the working tree. `$HOME` expands on the machine.
+cmd_provision() {
+    cmd_sync
+    # shellcheck disable=SC2016
+    local command='"$HOME"/torchsnap/tools/linux-testbed/provision/provision'
+    if [ $# -gt 0 ]; then
+        command="$command $(shell_words "$@")"
+    fi
+    run_remote "$command"
+}
+
+# =========================================================
 # Dispatch
 # =========================================================
 
@@ -59,6 +120,10 @@ subcommand="$1"
 shift
 
 case "$subcommand" in
+    provision)
+        require_host
+        cmd_provision "$@"
+        ;;
     sync)
         require_host
         cmd_sync "$@"
