@@ -137,6 +137,12 @@ pressing Escape in the launcher.
 {"ok": true}
 ```
 
+When the launcher's frontend is not connected, `dismiss` answers with
+error `-1` ("launcher frontend is not connected") and leaves the
+launcher as it is; `hide` still hides it. `ok` means the reset was
+handed to the launcher's page; while that page reloads, a reset can
+still be lost.
+
 ---
 
 ### `query`
@@ -160,6 +166,11 @@ after the text is set, just as if the user had typed it.
 echo '{"jsonrpc":"2.0","id":1,"method":"query","params":{"text":"firefox"}}' \
   | socat - UNIX-CONNECT:"$SOCK"
 ```
+
+When the launcher's frontend is not connected (it has not loaded yet,
+or its page is gone), `query` answers with error `-1` ("launcher
+frontend is not connected"). `ok` means the text was handed to the
+launcher's page; while that page reloads, the text can still be lost.
 
 ---
 
@@ -199,7 +210,7 @@ These are returned by individual handlers.
 
 | Code | Meaning |
 |------|---------|
-| `-1` | Invalid state — a precondition is not met or a required parameter is missing/invalid |
+| `-1` | Invalid state — a precondition is not met (for example, the launcher's frontend is not connected) or a required parameter is missing/invalid |
 | `-3` | Internal error — an unexpected failure in the handler |
 
 ## Multiple Clients

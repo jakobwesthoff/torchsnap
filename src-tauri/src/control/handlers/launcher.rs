@@ -119,8 +119,11 @@ pub struct DismissHandler;
 
 impl Handler for DismissHandler {
     fn handle(&self, _params: Value, app: &tauri::AppHandle) -> Result<Value, ControlError> {
-        let channel_state = app.state::<crate::control::ControlChannelState>();
-        channel_state.send(ControlCommand::Dismiss);
+        // Without a frontend nothing would hide on Linux, where the
+        // frontend drives the hide, so the launcher is left as it is on
+        // every platform.
+        app.state::<crate::control::ControlChannelState>()
+            .deliver(ControlCommand::Dismiss)?;
 
         let handle = app.clone();
         on_main_thread(app, move || request_launcher_dismiss(&handle))?;

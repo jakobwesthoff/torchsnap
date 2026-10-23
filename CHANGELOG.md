@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write test coverage reports for the Rust crate and the frontend to
   `target/coverage/`.
 
+### Changed
+
+- Control API: `query` and `dismiss` answer with error `-1` when the
+  launcher's frontend is not connected, instead of reporting success
+  for a command it never received. `dismiss` then leaves the launcher
+  as it is; `hide` still hides it.
+
 ### Removed
 
 - The devcontainer for running Claude Code in isolation, with

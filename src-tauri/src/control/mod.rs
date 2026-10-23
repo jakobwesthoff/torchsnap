@@ -14,8 +14,8 @@
 // and starts/stops reactively when the setting changes.
 //
 // Frontend communication uses a Tauri Channel<ControlCommand>
-// rather than global events — typed, targeted, and lifecycle-
-// aware (the channel is cleared if the webview is destroyed).
+// rather than global events: typed, targeted at the launcher
+// webview, and failing once that webview is gone.
 // =========================================================
 
 pub mod handler;
@@ -31,7 +31,7 @@ use tauri::ipc::Channel;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::watch as tokio_watch;
 
-use handler::HandlerRegistry;
+use handler::{ControlError, HandlerRegistry};
 
 use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 
@@ -59,9 +59,10 @@ pub enum ControlCommand {
 /// `control_subscribe` command. Handlers push `ControlCommand`
 /// messages through this channel.
 ///
-/// Gracefully handles a closed channel (e.g., the webview was
-/// destroyed for memory optimization) by clearing the stale
-/// reference. The frontend re-subscribes when recreated.
+/// A send through a webview channel is a `webview.eval`, which fails
+/// only when the webview is gone; the channel is then forgotten until
+/// a new page subscribes. While a page reloads and before the new one
+/// subscribes, a send succeeds and the command is lost.
 pub struct ControlChannelState {
     channel: Mutex<Option<Channel<ControlCommand>>>,
 }
@@ -78,21 +79,46 @@ impl ControlChannelState {
         *self.channel.lock().expect("channel lock not poisoned") = Some(channel);
     }
 
-    /// Send a command to the frontend. If the channel is closed
-    /// (webview destroyed), the stale reference is cleared and the
-    /// send is silently skipped.
-    pub fn send(&self, command: ControlCommand) {
-        let mut guard = self.channel.lock().expect("channel lock not poisoned");
-        if let Some(ch) = guard.as_ref()
-            && ch.send(command).is_err()
-        {
-            // Channel closed — webview was destroyed. Clear the
-            // stale reference; the frontend will re-subscribe when
-            // the webview is recreated.
-            *guard = None;
+    /// Hand a command to the frontend's webview.
+    ///
+    /// `Channel::send` runs the channel's callback on this thread, so
+    /// the lock is not held while sending: a callback may call back into
+    /// this state.
+    fn send(&self, command: ControlCommand) -> Result<(), NotConnected> {
+        let channel = self
+            .channel
+            .lock()
+            .expect("channel lock not poisoned")
+            .clone()
+            .ok_or(NotConnected)?;
+        if channel.send(command).is_ok() {
+            return Ok(());
         }
+        // The webview is gone. A page that subscribed in the meantime
+        // keeps its channel.
+        let mut stored = self.channel.lock().expect("channel lock not poisoned");
+        if stored.as_ref().is_some_and(|c| c.id() == channel.id()) {
+            *stored = None;
+        }
+        Err(NotConnected)
+    }
+
+    /// Hand a command to the frontend, as a control method's answer:
+    /// `InvalidState` when no frontend could take it.
+    pub fn deliver(&self, command: ControlCommand) -> Result<(), ControlError> {
+        self.send(command)
+            .map_err(|NotConnected| ControlError::InvalidState {
+                message: NOT_CONNECTED.to_string(),
+            })
     }
 }
+
+/// No frontend could take a command: none has subscribed, or its
+/// webview is gone.
+#[derive(Debug, PartialEq, Eq)]
+pub struct NotConnected;
+
+const NOT_CONNECTED: &str = "launcher frontend is not connected";
 
 // =========================================================
 // ControlServer
@@ -392,6 +418,124 @@ pub fn start_control_server_reactor(
             s.stop();
         }
     });
+}
+
+#[cfg(test)]
+pub(crate) mod test_channels {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    use super::ControlCommand;
+
+    /// The JSON text of a message the backend sent through a channel.
+    pub(crate) fn body_json(body: InvokeResponseBody) -> String {
+        match body {
+            InvokeResponseBody::Json(json) => json,
+            InvokeResponseBody::Raw(_) => panic!("control commands are sent as JSON"),
+        }
+    }
+
+    /// A frontend stand-in that records every command it receives.
+    pub(crate) fn recording() -> (Channel<ControlCommand>, std::sync::Arc<Mutex<Vec<String>>>) {
+        let received = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&received);
+        let channel = Channel::new(move |body| {
+            sink.lock().expect("test lock").push(body_json(body));
+            Ok(())
+        });
+        (channel, received)
+    }
+
+    /// A channel whose webview is gone for the first send and answers
+    /// every later one, so a test can tell whether a failed channel was
+    /// kept.
+    pub(crate) fn failing_once() -> Channel<ControlCommand> {
+        let failed = AtomicBool::new(false);
+        Channel::new(move |_| {
+            if failed.swap(true, Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(tauri::Error::WebviewNotFound)
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod channel_tests {
+    use std::sync::Arc;
+
+    use tauri::ipc::Channel;
+
+    use super::test_channels::{failing_once, recording};
+    use super::*;
+
+    #[test]
+    fn send_without_a_subscriber_is_not_connected() {
+        let state = ControlChannelState::new();
+        assert_eq!(state.send(ControlCommand::Dismiss), Err(NotConnected));
+    }
+
+    #[test]
+    fn a_failing_send_is_not_connected_and_clears_the_channel() {
+        let state = ControlChannelState::new();
+        state.set(failing_once());
+        assert_eq!(state.send(ControlCommand::Dismiss), Err(NotConnected));
+        // The channel would answer this time; only a cleared one fails.
+        assert_eq!(state.send(ControlCommand::Dismiss), Err(NotConnected));
+    }
+
+    #[test]
+    fn a_channel_set_during_a_failing_send_survives() {
+        let state = Arc::new(ControlChannelState::new());
+        let (fresh, received) = recording();
+        let resubscriber = Arc::clone(&state);
+        let fresh = Mutex::new(Some(fresh));
+        // A page that reloads while a command to the old one is on its
+        // way: the new page subscribes before the old send fails.
+        state.set(Channel::new(move |_| {
+            if let Some(channel) = fresh.lock().expect("test lock").take() {
+                resubscriber.set(channel);
+            }
+            Err(tauri::Error::WebviewNotFound)
+        }));
+
+        assert_eq!(state.send(ControlCommand::Dismiss), Err(NotConnected));
+        assert_eq!(state.send(ControlCommand::Dismiss), Ok(()));
+        assert_eq!(
+            *received.lock().expect("test lock"),
+            vec![r#"{"type":"dismiss"}"#.to_string()]
+        );
+    }
+
+    #[test]
+    fn send_through_a_channel_delivers_the_command() {
+        let state = ControlChannelState::new();
+        let (channel, received) = recording();
+        state.set(channel);
+        assert_eq!(
+            state.send(ControlCommand::SetQuery {
+                text: "firefox".into()
+            }),
+            Ok(())
+        );
+        assert_eq!(
+            *received.lock().expect("test lock"),
+            vec![r#"{"type":"setQuery","text":"firefox"}"#.to_string()]
+        );
+    }
+
+    #[test]
+    fn deliver_maps_an_undelivered_command_to_invalid_state() {
+        let state = ControlChannelState::new();
+        let error = state
+            .deliver(ControlCommand::Dismiss)
+            .expect_err("no frontend is subscribed");
+        assert_eq!(error.code(), -1);
+        assert_eq!(error.message(), "launcher frontend is not connected");
+    }
 }
 
 #[cfg(test)]
