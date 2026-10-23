@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layout and its frontend is connected, so `show`, `query` and `dismiss`
   work; and `targetMonitor`, the monitor Torchsnap last placed the
   launcher on.
+- Control API: `windows` lists Torchsnap's open windows with their
+  label, title, visibility and focus.
 
 ### Changed
 

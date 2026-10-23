@@ -5,6 +5,7 @@
 mod launcher;
 mod query;
 mod status;
+mod windows;
 
 use super::handler::HandlerRegistry;
 
@@ -16,4 +17,5 @@ pub fn register_all(registry: &mut HandlerRegistry) {
     registry.register("dismiss", launcher::DismissHandler);
     registry.register("query", query::QueryHandler);
     registry.register("status", status::StatusHandler);
+    registry.register("windows", windows::WindowsHandler);
 }

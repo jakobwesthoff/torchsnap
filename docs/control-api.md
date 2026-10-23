@@ -213,6 +213,36 @@ echo '{"jsonrpc":"2.0","id":1,"method":"status"}' | socat - UNIX-CONNECT:"$SOCK"
 #    "targetMonitor":{"name":"Built-in Retina Display","x":0.0,"y":0.0,"width":1512.0,"height":982.0,"scaleFactor":2.0}}}
 ```
 
+---
+
+### `windows`
+
+List Torchsnap's open windows: the launcher (`main`) and whichever of
+the settings, developer tools, update and welcome windows are open.
+
+**Parameters:** none
+
+**Response:** `{"windows": [...]}`, sorted by label, one entry per
+window:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | The window's label: `main`, `settings`, `devtools`, `update` or `welcome` |
+| `title` | string | The window title (empty for the launcher) |
+| `visible` | boolean | Whether the window is visible |
+| `focused` | boolean | Whether the window has keyboard focus |
+
+The settings, developer tools, update and welcome windows exist only
+while they are open; the launcher always exists.
+
+**Example:**
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"windows"}' | socat - UNIX-CONNECT:"$SOCK"
+# → {"jsonrpc":"2.0","id":1,"result":{"windows":[
+#    {"label":"main","title":"","visible":false,"focused":false},
+#    {"label":"settings","title":"Torchsnap Settings","visible":true,"focused":true}]}}
+```
+
 ## Error Codes
 
 ### Protocol errors
