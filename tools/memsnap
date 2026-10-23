@@ -25,12 +25,23 @@
 # Both modes auto-discover the Torchsnap process and its
 # WebKit XPC child processes via macOS coalition groups.
 #
+# On Linux, memsnap hands its arguments to memsnap-linux next to
+# it, which measures PSS from /proc for Torchsnap and all its
+# descendants (WebKitGTK's processes), with the same commands and
+# options plus `--also PID` and `pids`.
+#
 # Prerequisites:
 #   - Torchsnap must be running
-#   - macOS (uses `footprint` and `lsappinfo`)
+#   - macOS (uses `footprint` and `lsappinfo`), or Linux with python3
 # =========================================================
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ "$(uname -s)" == Linux ]]; then
+    exec python3 "$SCRIPT_DIR/memsnap-linux" "$@"
+fi
 
 # =========================================================
 # Process discovery

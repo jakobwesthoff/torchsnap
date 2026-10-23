@@ -1,0 +1,413 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# =========================================================
+# memsnap-linux: memsnap's Linux side
+#
+# `tools/memsnap` runs this on Linux with its own arguments. It measures
+# Torchsnap and every process below it (WebKitGTK's web and network
+# processes, and anything those start) from /proc:
+#
+#   memsnap-linux sample [-i SEC] [-d SEC] [-o FILE] [-p PID] [--also PID]...
+#   memsnap-linux snapshot -l LABEL [-o FILE] [-p PID] [--also PID]...
+#   memsnap-linux pids [-p PID]
+#
+# The memory figure is PSS from /proc/<pid>/smaps_rollup: a shared page
+# counts in each process by the share it has, so the processes' figures
+# add up without counting shared libraries several times. RSS is kept
+# for reference. GPU buffers that a process does not map are not in PSS;
+# the DRM clients' memory from fdinfo and the dma-buf fds are recorded
+# next to it.
+#
+# The output has the shape memsnap-report reads: per process `name` and
+# `pid`, with `metric: "pss"` naming the field that holds the value.
+#
+# `--also PID` adds a process outside Torchsnap's tree, the compositor,
+# whose memory grows with the windows it shows. It is recorded apart
+# from Torchsnap's processes under `external`, in snapshots with every
+# field and in samples with its CPU time only, so the sampler does not
+# walk the compositor's page tables five times a second.
+#
+# MEMSNAP_PROC_ROOT replaces /proc, for the tests.
+# =========================================================
+
+import errno
+import json
+import os
+import signal
+import sys
+import time
+
+PROC = os.environ.get("MEMSNAP_PROC_ROOT", "/proc")
+CLOCK_TICKS = os.sysconf("SC_CLK_TCK")
+
+USAGE = """\
+Usage: memsnap <command> [OPTIONS]
+
+Commands:
+  sample     Continuously sample memory at a fixed interval
+  snapshot   Take a single labeled memory snapshot
+  pids       Print the measured processes, one PID per line
+
+Options:
+  -i, --interval <SEC>   sample: sampling interval [default: 0.5]
+  -d, --duration <SEC>   sample: stop after this many seconds, 0 = until SIGTERM [default: 0]
+  -l, --label <TEXT>     snapshot: phase label (required)
+  -o, --output <FILE>    output file [sample: memsnap-<timestamp>.json, snapshot: snapshots.jsonl]
+  -p, --pid <PID>        Torchsnap PID (found by its command name if omitted)
+  --also <PID>           also record this process, apart from Torchsnap's (repeatable)
+  -h, --help             Show this help
+"""
+
+
+class Failure(Exception):
+    """A reading that cannot be trusted; the message goes to stderr and
+    the tool exits 1."""
+
+
+# =========================================================
+# Processes
+# =========================================================
+
+
+def read_text(pid, name):
+    with open(os.path.join(PROC, str(pid), name), encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def read_stat(pid):
+    """`(comm, state, ppid, cpu seconds)` from /proc/<pid>/stat, or None
+    when the process is gone. The command name may contain spaces and
+    parentheses, so the fields are taken after the last `)`."""
+    try:
+        text = read_text(pid, "stat")
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+    comm = text[text.index("(") + 1:text.rindex(")")]
+    fields = text[text.rindex(")") + 1:].split()
+    utime, stime = int(fields[11]), int(fields[12])
+    return comm, fields[0], int(fields[1]), (utime + stime) / CLOCK_TICKS
+
+
+def all_pids():
+    return [int(entry) for entry in os.listdir(PROC) if entry.isdigit()]
+
+
+def find_torchsnap():
+    candidates = sorted(pid for pid in all_pids() if (read_stat(pid) or ("",))[0] == "torchsnap")
+    if not candidates:
+        raise Failure("Error: Torchsnap is not running.")
+    if len(candidates) > 1:
+        raise Failure(
+            "Error: several Torchsnap processes are running ("
+            + " ".join(map(str, candidates))
+            + "); name one with -p."
+        )
+    return candidates[0]
+
+
+def process_tree(root):
+    """The root and all its descendants, root first. Found again at every
+    reading, so web processes started later are included."""
+    children = {}
+    for pid in all_pids():
+        stat = read_stat(pid)
+        if stat:
+            children.setdefault(stat[2], []).append(pid)
+    tree, queue = [], [root]
+    while queue:
+        pid = queue.pop(0)
+        tree.append(pid)
+        queue.extend(sorted(children.get(pid, [])))
+    return tree
+
+
+def process_name(pid, comm):
+    """argv[0]'s base name: `comm` is cut at 15 characters
+    (`WebKitWebProces`). A process without a command line keeps `comm`."""
+    try:
+        argv0 = read_text(pid, "cmdline").split("\0")[0]
+    except (FileNotFoundError, ProcessLookupError):
+        argv0 = ""
+    return os.path.basename(argv0) if argv0 else comm
+
+
+# =========================================================
+# Memory and GPU of one process
+# =========================================================
+
+SMAPS_FIELDS = {
+    "Rss": "rss",
+    "Pss": "pss",
+    "Pss_Anon": "pss_anon",
+    "Pss_File": "pss_file",
+    "Pss_Shmem": "pss_shmem",
+    "SwapPss": "swap_pss",
+}
+
+DRM_MEMORY_PREFIXES = ("drm-total-", "drm-shared-", "drm-resident-", "drm-active-", "drm-purgeable-")
+UNITS = {"": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
+
+
+def read_smaps(pid):
+    """The PSS fields in bytes. Raises ProcessLookupError when the process
+    is gone or a zombie (the kernel answers ESRCH for a process without
+    memory)."""
+    try:
+        text = read_text(pid, "smaps_rollup")
+    except FileNotFoundError as error:
+        raise ProcessLookupError(pid) from error
+    except OSError as error:
+        if error.errno == errno.ESRCH:
+            raise ProcessLookupError(pid) from error
+        raise Failure(f"Error: cannot read the memory of PID {pid}: {error.strerror}") from error
+    values = {field: 0 for field in SMAPS_FIELDS.values()}
+    for line in text.splitlines():
+        key, _, rest = line.partition(":")
+        if key in SMAPS_FIELDS:
+            values[SMAPS_FIELDS[key]] = int(rest.split()[0]) * 1024
+    return values
+
+
+def to_bytes(value):
+    number, _, unit = value.strip().partition(" ")
+    return int(number) * UNITS[unit.strip()]
+
+
+def read_fds(pid):
+    """DRM clients and dma-bufs among the process's open files.
+
+    A DRM device's fdinfo names the driver and the client; several fds
+    can belong to one client and show the same numbers, so each client
+    counts once. A dma-buf counts once per buffer (its inode), however
+    many fds the process holds on it."""
+    fd_dir = os.path.join(PROC, str(pid), "fd")
+    try:
+        fds = os.listdir(fd_dir)
+    except (FileNotFoundError, ProcessLookupError):
+        return [], {"count": 0, "bytes": 0, "exp_names": {}}
+    except PermissionError as error:
+        raise Failure(f"Error: cannot read the open files of PID {pid}: {error.strerror}") from error
+
+    clients, buffers = {}, {}
+    for fd in sorted(fds, key=int):
+        try:
+            info = read_text(pid, os.path.join("fdinfo", fd))
+            link = os.readlink(os.path.join(fd_dir, fd))
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        fields = {}
+        for line in info.splitlines():
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+        if "drm-driver" in fields:
+            key = (fields["drm-driver"], fields.get("drm-client-id", ""))
+            clients[key] = {
+                "driver": key[0],
+                "client_id": key[1],
+                "memory": {k: to_bytes(v) for k, v in fields.items() if k.startswith(DRM_MEMORY_PREFIXES)},
+            }
+        if link == "anon_inode:dmabuf" and "ino" in fields:
+            buffers[fields["ino"]] = (int(fields.get("size", 0)), fields.get("exp_name", ""))
+
+    exp_names = {}
+    for _, exporter in buffers.values():
+        exp_names[exporter] = exp_names.get(exporter, 0) + 1
+    dmabuf = {"count": len(buffers), "bytes": sum(size for size, _ in buffers.values()), "exp_names": exp_names}
+    return list(clients.values()), dmabuf
+
+
+def measure(pid, stat):
+    comm, _, ppid, cpu_s = stat
+    record = {"name": process_name(pid, comm), "pid": pid, "ppid": ppid}
+    record.update(read_smaps(pid))
+    record["cpu_s"] = cpu_s
+    record["gpu"], record["dmabuf"] = read_fds(pid)
+    return record
+
+
+def measure_tree(root):
+    """One record per live process of the tree. A descendant that exited
+    or became a zombie while the tree was read is left out; the root
+    must be measurable."""
+    records = []
+    for pid in process_tree(root):
+        stat = read_stat(pid)
+        try:
+            if stat is None or stat[1] == "Z":
+                raise ProcessLookupError(pid)
+            records.append(measure(pid, stat))
+        except ProcessLookupError:
+            if pid == root:
+                raise Failure(f"Error: PID {pid} is not a running process.")
+    return records
+
+
+def measure_external(pid, full):
+    stat = read_stat(pid)
+    if stat is None or stat[1] == "Z":
+        return {"pid": pid, "gone": True}
+    if not full:
+        return {"pid": pid, "name": process_name(pid, stat[0]), "cpu_s": stat[3]}
+    try:
+        return measure(pid, stat)
+    except ProcessLookupError:
+        return {"pid": pid, "gone": True}
+
+
+MEMINFO_FIELDS = ("MemTotal", "MemAvailable", "Shmem", "CmaTotal", "CmaFree", "SwapTotal", "SwapFree")
+
+
+def read_system():
+    system = {}
+    for line in read_text("", "meminfo").splitlines():
+        key, _, rest = line.partition(":")
+        if key in MEMINFO_FIELDS:
+            system[key] = int(rest.split()[0]) * 1024
+    return system
+
+
+def resolve_root(pid):
+    if pid is None:
+        return find_torchsnap()
+    if read_stat(pid) is None:
+        raise Failure(f"Error: PID {pid} is not a running process.")
+    return pid
+
+
+def total_mb(records):
+    return sum(r["pss"] for r in records) / 1048576
+
+
+# =========================================================
+# Command line
+# =========================================================
+
+
+def parse(args):
+    options = {"interval": 0.5, "duration": 0.0, "output": None, "pid": None, "label": None, "also": []}
+    names = {
+        "-i": "interval", "--interval": "interval",
+        "-d": "duration", "--duration": "duration",
+        "-o": "output", "--output": "output",
+        "-p": "pid", "--pid": "pid",
+        "-l": "label", "--label": "label",
+    }
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            print(USAGE)
+            sys.exit(0)
+        if i + 1 >= len(args) or (arg not in names and arg != "--also"):
+            raise Failure(f"Unknown option: {arg}")
+        value = args[i + 1]
+        if arg == "--also":
+            options["also"].append(int(value))
+        elif names[arg] in ("interval", "duration"):
+            options[names[arg]] = float(value)
+        elif names[arg] == "pid":
+            options["pid"] = int(value)
+        else:
+            options[names[arg]] = value
+        i += 2
+    return options
+
+
+def open_output(path, mode):
+    try:
+        return open(path, mode, encoding="utf-8")
+    except OSError as error:
+        raise Failure(f"Error: cannot write {path}: {error.strerror}") from error
+
+
+def cmd_snapshot(options):
+    if not options["label"]:
+        raise Failure("Error: -l/--label is required.")
+    root = resolve_root(options["pid"])
+    line = {
+        "metric": "pss",
+        "t": time.time(),
+        "phase": options["label"],
+        "processes": measure_tree(root),
+        "external": [measure_external(pid, full=True) for pid in options["also"]],
+        "system": read_system(),
+    }
+    with open_output(options["output"] or "snapshots.jsonl", "a") as f:
+        f.write(json.dumps(line) + "\n")
+    print(f"  [{options['label']}] {total_mb(line['processes']):.1f} MB total (PSS)", file=sys.stderr)
+
+
+def cmd_sample(options):
+    root = resolve_root(options["pid"])
+    output = options["output"] or time.strftime("memsnap-%Y%m%d-%H%M%S.json")
+    # Fail on an unwritable output now, not after the run.
+    open_output(output, "a").close()
+
+    tree = process_tree(root)
+    print(f"Torchsnap PID: {root}", file=sys.stderr)
+    print(f"Tracking {len(tree)} process(es): {' '.join(map(str, tree))}", file=sys.stderr)
+    print(f"Output: {output}", file=sys.stderr)
+
+    # SIGTERM (from bench-memory once its scenario is done) and SIGINT end
+    # the loop; the samples so far are still written.
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(True))
+    signal.signal(signal.SIGINT, lambda *_: stop.append(True))
+
+    samples = []
+    start = time.monotonic()
+    while not stop:
+        tick = time.monotonic()
+        try:
+            processes = measure_tree(root)
+        except Failure:
+            # The app ended while it was being sampled.
+            if read_stat(root) is None:
+                break
+            raise
+        samples.append({
+            "t": time.time(),
+            "processes": processes,
+            "external": [measure_external(pid, full=False) for pid in options["also"]],
+        })
+        if options["duration"] and time.monotonic() - start >= options["duration"]:
+            break
+        time.sleep(max(0.0, options["interval"] - (time.monotonic() - tick)))
+
+    times = os.times()
+    data = {
+        "metric": "pss",
+        "interval": options["interval"],
+        "samples": samples,
+        "sampler_cpu_s": times.user + times.system,
+    }
+    with open_output(output, "w") as f:
+        json.dump(data, f)
+    print(f"{len(samples)} samples written to {output}", file=sys.stderr)
+
+
+def cmd_pids(options):
+    for pid in process_tree(resolve_root(options["pid"])):
+        print(pid)
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE, file=sys.stderr if not argv else sys.stdout)
+        return 1 if not argv else 0
+    commands = {"sample": cmd_sample, "snapshot": cmd_snapshot, "pids": cmd_pids}
+    try:
+        if argv[0] not in commands:
+            raise Failure(f"Unknown command: {argv[0]}")
+        commands[argv[0]](parse(argv[1:]))
+    except Failure as failure:
+        print(failure, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

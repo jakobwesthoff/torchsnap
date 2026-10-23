@@ -2,6 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+# On Linux memsnap measures PSS from /proc (tools/memsnap-linux) for
+# Torchsnap and every process below it, and takes `--also PID` for a
+# process recorded apart, such as the compositor.
+
 # Sample memory footprint of Torchsnap and its WebKit processes
 memsnap *ARGS:
     tools/memsnap {{ARGS}}

@@ -12,7 +12,9 @@
 # - Phase-by-phase memory breakdown (from labeled snapshots
 #   produced by `memsnap snapshot`)
 #
-# Either input can be omitted for a partial report.
+# Either input can be omitted for a partial report. Files from
+# macOS hold the physical footprint, files from Linux PSS; a report
+# of Linux files says so in a `Metric: PSS` line.
 #
 # Usage:
 #   memsnap-report -d "description" \
@@ -141,10 +143,26 @@ fi
 # Report header
 # =========================================================
 
+# memsnap on macOS records `footprint`'s physical footprint per process;
+# memsnap-linux records PSS and marks its files with `metric: "pss"`.
+# Every table reads the value through the jq function `value`.
+METRIC=""
+if [[ -n "$SAMPLES_FILE" ]]; then
+    METRIC=$(jq -r '.metric // ""' "$SAMPLES_FILE")
+fi
+if [[ -z "$METRIC" ]] && [[ -n "$SNAPSHOTS_FILE" ]]; then
+    METRIC=$(jq -rs '.[0].metric // ""' "$SNAPSHOTS_FILE")
+fi
+# shellcheck disable=SC2016 # $metric is a jq variable
+VALUE_DEF='def value: if $metric == "pss" then .pss else .auxiliary.phys_footprint end;'
+
 if [[ -n "$DESCRIPTION" ]]; then
     echo "  $DESCRIPTION"
 fi
 echo "  $(date +%Y-%m-%dT%H:%M:%S)"
+if [[ "$METRIC" == pss ]]; then
+    echo "  Metric: PSS"
+fi
 echo
 
 # =========================================================
@@ -156,15 +174,15 @@ if [[ -n "$SAMPLES_FILE" ]]; then
     # that start or end during the run count only in the samples they
     # are in, so summing each process's own min, max, first and last
     # would mix values from different moments.
-    REPORT_DATA=$(jq -r '
+    REPORT_DATA=$(jq -r --arg metric "$METRIC" "$VALUE_DEF"'
         (.samples | length) as $num_samples |
-        [.samples[] | [.processes[].auxiliary.phys_footprint] | add // 0] as $sample_totals |
+        [.samples[] | [.processes[] | value] | add // 0] as $sample_totals |
 
         [
             .samples[].processes[] | {
                 name: .name,
                 pid: .pid,
-                footprint: .auxiliary.phys_footprint
+                footprint: value
             }
         ] |
         group_by(.pid) |
@@ -229,10 +247,10 @@ fi
 if [[ -n "$SNAPSHOTS_FILE" ]]; then
     NUM_SNAPSHOTS=$(wc -l < "$SNAPSHOTS_FILE" | tr -d ' ')
 
-    PHASE_TABLE=$(jq -s -r '
+    PHASE_TABLE=$(jq -s -r --arg metric "$METRIC" "$VALUE_DEF"'
         . as $snaps |
         [.[] | .processes[]] | group_by(.name) |
-        sort_by(-([.[].auxiliary.phys_footprint] | add)) |
+        sort_by(-([.[] | value] | add)) |
         map(.[0].name) as $names |
 
         # Shorten: "com.apple.WebKit.WebContent" → "WebContent"
@@ -246,7 +264,7 @@ if [[ -n "$SNAPSHOTS_FILE" ]]; then
         ($snaps | to_entries[] |
             .value as $snap |
             [$names[] as $n |
-                ($snap.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0)
+                ($snap.processes | map(select(.name == $n) | value) | add // 0)
             ] as $vals |
             ([$vals[] | . / 1048576 | . * 10 | round / 10 | tostring + " MB"]) as $fmt |
             ($vals | add | . / 1048576 | . * 10 | round / 10 | tostring + " MB") as $t |
@@ -256,8 +274,8 @@ if [[ -n "$SNAPSHOTS_FILE" ]]; then
         # Delta row
         ($snaps[0] as $first | $snaps[-1] as $last |
             [$names[] as $n |
-                (($last.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0) -
-                 ($first.processes | map(select(.name == $n) | .auxiliary.phys_footprint) | add // 0))
+                (($last.processes | map(select(.name == $n) | value) | add // 0) -
+                 ($first.processes | map(select(.name == $n) | value) | add // 0))
             ] as $d |
             ([$d[] | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB"]) as $fmt |
             ($d | add | . / 1048576 | if . >= 0 then "+" else "" end + (. * 10 | round / 10 | tostring) + " MB") as $t |

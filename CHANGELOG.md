@@ -70,6 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pi's security for remote control, for example with an unencrypted
   default keyring; `docs/Howto-test-on-a-raspberry-pi.md` lists what it
   opens up.
+- `tools/memsnap` measures on Linux: PSS and RSS from `/proc` for
+  Torchsnap and every process below it, with each process's CPU time,
+  its DRM clients' GPU memory and its dma-buf count and size, and the
+  system's free memory. `--also PID` records another process apart from
+  Torchsnap's, such as the compositor, and `memsnap pids` lists the
+  measured processes. `tools/memsnap-report` reports such files in PSS.
 
 ### Changed
 
