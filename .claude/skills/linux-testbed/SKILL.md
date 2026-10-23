@@ -70,6 +70,9 @@ is the full guide.
   query, the second hides it.
 - `just testbed-pointer X Y`, `just testbed-click X Y [left|right|middle]`:
   logical pixels.
+- `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
+  the session clipboard. Setting it can close the launcher; set it
+  before opening the launcher.
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. Items 2 (build), R (reboot), U (undo provision steps)

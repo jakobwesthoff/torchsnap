@@ -29,6 +29,9 @@
 #   testbed pointer X Y       move the pointer (logical pixels)
 #   testbed click X Y [left|right|middle]
 #
+#   testbed clipboard-set TEXT
+#   testbed clipboard-get
+#
 #   type and key refuse (exit 4) unless the target has the keyboard.
 #
 # Commands on the machine run through `bash -c`, or, when
@@ -274,7 +277,7 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get)
         require_host
         run_pi "$subcommand" "$@"
         ;;

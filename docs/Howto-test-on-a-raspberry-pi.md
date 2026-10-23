@@ -248,7 +248,20 @@ provisioning, makes that distance exact. The top left corner is GNOME's
 hot corner (`enable-hot-corners` is on), which opens the overview. One
 input command runs at a time.
 
-## 8. Remote viewing over RDP
+## 8. Clipboard
+
+```sh
+just testbed-clipboard-set 'text with spaces'
+just testbed-clipboard-get
+```
+
+These use `wl-copy` and `wl-paste` in the Pi's GNOME session.
+`testbed-clipboard-set` takes the text as one argument and returns once
+`wl-copy` has, at most after 5 seconds. Setting the clipboard can close
+the launcher: on GNOME 48 it did in 4 of 8 tries, so set the clipboard
+before opening the launcher.
+
+## 9. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -257,7 +270,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 9. Self-test
+## 10. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -274,7 +287,8 @@ unknown item.
 | W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus. |
 | 4 | Opens the launcher through the control socket and checks that it has focus and changes the screen, types a query and checks that the launcher shows it, then presses Escape twice: the first clears the query, the second hides the launcher. |
 | L | Opens GNOME Shell's run dialog, types `yz-@[]` and reads the text back from the dialog; it must be exactly that, and the keyboard layout must be the one from before. |
-| E | Asks for the launcher state and the app's windows once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
+| E | Asks for the launcher state, the app's windows and the clipboard once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
+| 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |

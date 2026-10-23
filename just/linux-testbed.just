@@ -95,6 +95,14 @@ testbed-pointer X Y:
 testbed-click X Y BUTTON="left":
     tools/linux-testbed/testbed click {{ X }} {{ Y }} {{ BUTTON }}
 
+# Put text on the Linux testbed's clipboard
+testbed-clipboard-set TEXT:
+    tools/linux-testbed/testbed clipboard-set {{ quote(TEXT) }}
+
+# Print the text on the Linux testbed's clipboard
+testbed-clipboard-get:
+    tools/linux-testbed/testbed clipboard-get
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

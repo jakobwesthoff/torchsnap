@@ -23,6 +23,7 @@
 #       and the machine's layout is back afterwards
 #   E   machine-side commands answer the same with the runner's
 #       environment cleared
+#   6   text set on the clipboard through the recipe comes back unchanged
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -36,9 +37,10 @@
 set -uo pipefail
 
 testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
-readonly testbed
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly testbed repo_root
 
-default_items=(1 W 4 L E)
+default_items=(1 W 4 L E 6)
 
 pass() {
     echo "PASS item $1"
@@ -219,20 +221,38 @@ item_L() {
     pass L
 }
 
+# Text set on the machine's clipboard through the recipe comes back
+# unchanged, including characters a shell on either side would expand.
+item_6() {
+    local token got
+    token="testbed \$HOME \`id\` $RANDOM"
+    just --justfile "$repo_root/Justfile" testbed-clipboard-set "$token" >/dev/null 2>&1 \
+        || { fail 6 "testbed-clipboard-set failed"; return; }
+    got="$("$testbed" clipboard-get)" || { fail 6 "clipboard-get failed"; return; }
+    [ "$got" = "$token" ] || { fail 6 "set '$token', got '$got'"; return; }
+    pass 6
+}
+
 # The machine-side commands see the desktop session through the runner
 # and without it alike: a runner that clears the whole environment gets
 # the same answers.
 item_E() {
     local home with without
     app_up E || return
+    # Setting the clipboard can close the launcher (it did in 4 of 8 tries
+    # on GNOME 48), so it comes before the launcher opens.
+    "$testbed" clipboard-set "item E $RANDOM" || { fail E "SETUP: clipboard-set failed"; return; }
     "$testbed" control show >/dev/null || { fail E "SETUP: control show failed"; return; }
+    wait_until 10 launcher_is shown || { fail E "SETUP: the launcher is not shown with focus"; return; }
     home="$(on_machine 'echo $HOME')"
+    local cleared="env -i HOME=$home PATH=/usr/bin:/bin bash -c"
     with="$(TORCHSNAP_LINUX_RUNNER='' "$testbed" launcher-state; TORCHSNAP_LINUX_RUNNER='' "$testbed" windows)"
-    without="$(TORCHSNAP_LINUX_RUNNER="env -i HOME=$home PATH=/usr/bin:/bin bash -c" "$testbed" launcher-state; \
-        TORCHSNAP_LINUX_RUNNER="env -i HOME=$home PATH=/usr/bin:/bin bash -c" "$testbed" windows)"
+    without="$(TORCHSNAP_LINUX_RUNNER="$cleared" "$testbed" launcher-state; TORCHSNAP_LINUX_RUNNER="$cleared" "$testbed" windows)"
+    with="$with $(TORCHSNAP_LINUX_RUNNER='' "$testbed" clipboard-get)"
+    without="$without $(TORCHSNAP_LINUX_RUNNER="$cleared" "$testbed" clipboard-get)"
     "$testbed" control dismiss >/dev/null
     [ -n "$with" ] && [ "$with" = "$without" ] \
-        || { fail E "answers differ: plain ssh: $with / cleared environment: $without"; return; }
+        || { fail E "answers differ: plain ssh: $(tr '\n' ' ' <<<"$with") / cleared environment: $(tr '\n' ' ' <<<"$without")"; return; }
     pass E
 }
 

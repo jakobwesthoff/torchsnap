@@ -29,6 +29,8 @@
 #   testbed-pi pointer X Y            move the pointer to X,Y (logical pixels)
 #   testbed-pi click X Y [left|right|middle]
 #                                     move there and click
+#   testbed-pi clipboard-set TEXT     put TEXT on the clipboard
+#   testbed-pi clipboard-get          print the clipboard's text
 
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
@@ -570,6 +572,37 @@ cmd_click() {
 }
 
 # =========================================================
+# Clipboard
+# =========================================================
+
+readonly clipboard_timeout="${TORCHSNAP_TESTBED_CLIPBOARD_TIMEOUT:-5}"
+
+# wl-copy forks a process that serves the clipboard until something else
+# is copied, and that process keeps wl-copy's standard output and error.
+# A caller reading them (ssh, a pipe) would wait for that process to end,
+# so they go to /dev/null; and wl-copy's own exit is waited for with a
+# time limit.
+cmd_clipboard_set() {
+    [ $# -eq 1 ] || usage
+    printf '%s' "$1" | wl-copy >/dev/null 2>&1 &
+    local copier=$!
+    local deadline=$((SECONDS + clipboard_timeout))
+    while kill -0 "$copier" 2>/dev/null; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            kill "$copier" 2>/dev/null || true
+            echo "testbed-pi: wl-copy did not return within ${clipboard_timeout}s" >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+    wait "$copier"
+}
+
+cmd_clipboard_get() {
+    wl-paste --no-newline
+}
+
+# =========================================================
 # Dispatch
 # =========================================================
 
@@ -626,6 +659,8 @@ case "$subcommand" in
         load_desktop
         cmd_click "$@"
         ;;
+    clipboard-set) cmd_clipboard_set "$@" ;;
+    clipboard-get) cmd_clipboard_get ;;
     *)
         usage
         ;;

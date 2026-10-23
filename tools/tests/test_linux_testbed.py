@@ -240,6 +240,15 @@ class TestbedRecipes(unittest.TestCase):
         finally:
             stubs.cleanup()
 
+    def test_clipboard_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-clipboard-set", ["a b"], "tools/linux-testbed/testbed clipboard-set 'a b'"),
+            ("testbed-clipboard-get", [], "tools/linux-testbed/testbed clipboard-get"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_pointer_and_click_recipes_call_the_script(self):
         for recipe, args, expected in (
             ("testbed-pointer", ["10", "20"], "tools/linux-testbed/testbed pointer 10 20"),
@@ -1372,6 +1381,44 @@ class Input(unittest.TestCase):
         result = self.call_pi(["click", "10", "20", "right"], rules)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.ydotool_calls()[-1], ["click", "0xC1"])
+
+
+class Clipboard(unittest.TestCase):
+    def setUp(self):
+        self.stubs = Stubs(["systemctl", "wl-paste"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def wl_copy(self, body):
+        path = self.stubs.dir / "wl-copy"
+        path.write_text("#!/usr/bin/env bash\n" + body)
+        path.chmod(0o755)
+
+    def call_pi(self, args, env=None):
+        environment = {"STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT}
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def test_set_returns_although_wl_copy_leaves_a_server_behind(self):
+        # wl-copy forks a process that serves the clipboard and keeps the
+        # standard output it inherited.
+        self.wl_copy('cat >"$STUB_LOG.copied"\n(sleep 30) &\nexit 0\n')
+        result = self.call_pi(["clipboard-set", "a b $HOME `x`"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(pathlib.Path(str(self.stubs.log) + ".copied").read_text(), "a b $HOME `x`")
+
+    def test_set_gives_up_on_a_wl_copy_that_never_returns(self):
+        self.wl_copy("sleep 30\n")
+        result = self.call_pi(["clipboard-set", "x"], env={"TORCHSNAP_TESTBED_CLIPBOARD_TIMEOUT": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("wl-copy did not return", result.stderr)
+
+    def test_get_prints_the_clipboard(self):
+        result = self.call_pi(["clipboard-get"], env={"STUB_WL_PASTE_STDOUT": "a b"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "a b")
+        self.assertEqual(self.stubs.calls("wl-paste")[0][1:], ["--no-newline"])
 
 
 if __name__ == "__main__":

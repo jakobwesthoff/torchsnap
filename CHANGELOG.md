@@ -55,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control socket, `just testbed-screenshot`, `testbed-launcher-state`,
   `testbed-windows` and `testbed-eval` observe it, `just testbed-type`,
   `testbed-key`, `testbed-pointer` and `testbed-click` give it keyboard
-  and pointer input, and
+  and pointer input, `just testbed-clipboard-set` and
+  `testbed-clipboard-get` set and read the clipboard, and
   `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 
