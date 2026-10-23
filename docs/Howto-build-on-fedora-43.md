@@ -194,14 +194,16 @@ Starts Vite with HMR and spawns the Tauri dev window:
 just start
 ```
 
-### 8.2 Release bundle
+### 8.2 Bundles
 
-Builds the bundled gadgets, the frontend, and the native host, then
-invokes `tauri build` to produce the distributable bundle under
-`src-tauri/target/release/bundle/`.
+`just build` builds the bundled gadgets, the frontend, and the native
+host, then runs `tauri build --debug`, which writes debug bundles under
+`src-tauri/target/debug/bundle/`. With `--release` it makes the release
+bundles under `src-tauri/target/release/bundle/`.
 
 ```sh
 just build
+just build --release
 ```
 
 ## Troubleshooting
