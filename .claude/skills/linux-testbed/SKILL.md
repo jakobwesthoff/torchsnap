@@ -87,7 +87,9 @@ is the full guide.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
   the session clipboard. Setting it can close the launcher; set it
   before opening the launcher.
-- `just testbed-selftest [ITEM…]`: the testbed's own checks against the
+- `just testbed-stop-all`: stop the app, recordings and headless
+  sessions. Run it when a test is done.
+- `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. Items 2 (build), R (reboot), U (undo provision steps)
   and P (reinstall tools, about 10 minutes) run only when named. A

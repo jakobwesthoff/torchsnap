@@ -137,6 +137,10 @@ testbed-clipboard-set TEXT:
 testbed-clipboard-get:
     tools/linux-testbed/testbed clipboard-get
 
+# Stop the app, recordings and headless sessions on the Linux testbed
+testbed-stop-all:
+    tools/linux-testbed/testbed stop-all
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

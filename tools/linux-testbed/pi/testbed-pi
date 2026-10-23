@@ -39,6 +39,7 @@
 #   testbed-pi headless-start [WxH@SCALE...]
 #                                     start a headless GNOME session (default 1280x800@1 2560x1600@2)
 #   testbed-pi headless-stop          stop it and the app in it
+#   testbed-pi stop-all               stop every testbed unit, put the recorded tray state back
 #   testbed-pi record-start NAME      start recording the screen, print the file
 #   testbed-pi record-stop            stop it, print the file once it is complete
 #   testbed-pi clipboard-set TEXT     put TEXT on the clipboard
@@ -747,6 +748,34 @@ cmd_record_stop() {
 }
 
 # =========================================================
+# Everything back
+# =========================================================
+
+# The self-test records the desktop's state before its first item here
+# (`tray=on|off`, `monitors=<checksum of ~/.config/monitors.xml>`).
+readonly selftest_initial="$state_dir/selftest-initial"
+
+# Stops every testbed unit, the recording first so its file is complete,
+# and the app before the headless session it may run in; with a recorded
+# initial state, the tray support goes back to it.
+cmd_stop_all() {
+    local unit
+    for unit in "$record_unit" "$headless_app_unit" "$headless_unit" torchsnap-testbed-app; do
+        if systemctl --user is-active --quiet "$unit"; then
+            systemctl --user stop "$unit"
+        fi
+    done
+    rm -f "$headless_bus_file"
+    if [ -f "$selftest_initial" ]; then
+        local tray
+        tray="$(sed -n 's/^tray=//p' "$selftest_initial")"
+        case "$tray" in
+            on | off) desk_tray_switch "$tray" ;;
+        esac
+    fi
+}
+
+# =========================================================
 # Clipboard
 # =========================================================
 
@@ -809,6 +838,10 @@ case "$subcommand" in
         cmd_headless_start "$@"
         ;;
     headless-stop) cmd_headless_stop ;;
+    stop-all)
+        load_desktop
+        cmd_stop_all
+        ;;
     env)
         print_session_env
         ;;

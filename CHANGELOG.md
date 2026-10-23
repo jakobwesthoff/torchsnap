@@ -61,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support and use the app's tray icon, `just testbed-record-start` and
   `testbed-record-stop` record the screen, `just testbed-headless-start`
   and `testbed-headless-stop` run a headless GNOME session with virtual
-  monitors for the app, and
+  monitors for the app, `just testbed-stop-all` stops everything the
+  testbed started, and
   `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 

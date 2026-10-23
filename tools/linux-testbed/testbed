@@ -36,6 +36,7 @@
 #   testbed tray-click [left|right|middle]
 #   testbed headless-start [WxH@SCALE...]  a headless GNOME session with virtual monitors
 #   testbed headless-stop     stop it and the app in it
+#   testbed stop-all          stop the app, recordings and headless sessions
 #   testbed record-start NAME start recording the machine's screen
 #   testbed record-stop       stop, copy the recording to target/linux-testbed/
 #
@@ -293,7 +294,7 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start | headless-start | headless-stop)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start | headless-start | headless-stop | stop-all)
         require_host
         run_pi "$subcommand" "$@"
         ;;

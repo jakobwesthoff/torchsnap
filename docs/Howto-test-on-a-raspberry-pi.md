@@ -335,13 +335,19 @@ first provisioning. The TLS certificate is self-signed and lives in
 ## 13. Self-test
 
 ```sh
-just testbed-selftest        # the default items
-just testbed-selftest 1      # only item 1
+just testbed-selftest                  # the default items
+just testbed-selftest 1                # only item 1
+just testbed-selftest --repeat 5 4 L   # items 4 and L, five times each
+just testbed-stop-all
 ```
 
 runs the testbed's checks against the Pi and prints `PASS item N` or
 `FAIL item N: …` per item; it exits 1 if any item failed and 2 for an
-unknown item.
+unknown item. With `--repeat N` it runs each item N times and prints
+how often each passed. Before the first item it records the tray state
+and the monitor layout in `~/.cache/torchsnap-testbed/selftest-initial`
+on the Pi; `testbed-stop-all` stops the app, recordings and headless
+sessions and, with that record, switches the tray support back.
 
 | Item | Checks |
 |---|---|
@@ -355,6 +361,7 @@ unknown item.
 | 9 | Records the screen while the launcher opens and closes; the recording lasts at least a second, and in the launcher's area its middle frame is clearly lighter than its first (the light search field over the dark screen). The check depends on that light appearance: a dark theme for the launcher would need a measure that ignores colour. |
 | 8 | Starts a headless session with monitors at scale 1 and 2 and the app in it, shows the launcher there, and checks the size of a screenshot of each monitor (1280x800 and 2560x1600), that the launcher is among the headless session's windows and not among the desktop session's. |
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
+| 11 | Runs `testbed-stop-all` and checks that no testbed unit runs and that the tray state and the monitor layout are the ones recorded before the first item. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |

@@ -240,6 +240,11 @@ class TestbedRecipes(unittest.TestCase):
         finally:
             stubs.cleanup()
 
+    def test_testbed_stop_all_calls_the_script(self):
+        result = self.dry_run("testbed-stop-all")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed stop-all")
+
     def test_headless_recipes_call_the_script(self):
         for recipe, args, expected in (
             ("testbed-headless-start", ["1280x800@1"], "tools/linux-testbed/testbed headless-start 1280x800@1"),
@@ -1703,6 +1708,81 @@ class Headless(unittest.TestCase):
         stops = [c[-1] for c in self.stubs.calls("systemctl") if "stop" in c]
         self.assertEqual(stops, ["torchsnap-testbed-app-headless", "torchsnap-testbed-headless"])
         self.assertFalse(bus.exists())
+
+
+class StopAll(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.stubs = Stubs([])
+        path = self.stubs.dir / "systemctl"
+        path.write_text(SYSTEMCTL)
+        path.chmod(0o755)
+        extensions = self.stubs.dir / "gnome-extensions"
+        extensions.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "with open(os.environ['STUB_LOG'], 'a') as f:\n"
+            "    f.write(json.dumps(sys.argv) + '\\n')\n"
+            "if sys.argv[1] == 'info':\n"
+            "    print('  State: ' + os.environ.get('STUB_EXTENSION_STATE', 'ACTIVE'))\n"
+        )
+        extensions.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, env=None):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+            "STUB_ACTIVE_UNITS": "torchsnap-testbed-app,torchsnap-testbed-record",
+        }
+        environment.update(env or {})
+        return run(["stop-all"], self.stubs, env=environment, script=TESTBED_PI)
+
+    def test_stop_all_stops_every_testbed_unit(self):
+        result = self.call_pi()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stops = [c[-1] for c in self.stubs.calls("systemctl") if "stop" in c]
+        self.assertEqual(stops, ["torchsnap-testbed-record", "torchsnap-testbed-app"])
+
+    def test_stop_all_puts_the_recorded_tray_state_back(self):
+        state = self.home / ".cache" / "torchsnap-testbed" / "selftest-initial"
+        state.parent.mkdir(parents=True)
+        state.write_text("tray=off\nmonitors=abc\n")
+        self.call_pi(env={"STUB_EXTENSION_STATE": "INACTIVE"})
+        disables = [c for c in self.stubs.calls("gnome-extensions") if c[1] == "disable"]
+        self.assertEqual(len(disables), 1)
+
+    def test_stop_all_leaves_the_tray_alone_without_a_record(self):
+        result = self.call_pi()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [c for c in self.stubs.calls("gnome-extensions") if c[1] in ("enable", "disable")], []
+        )
+
+
+class SelftestRepeat(unittest.TestCase):
+    def setUp(self):
+        self.stubs = Stubs(["ssh", "rsync", "scp"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def test_repeat_counts_the_passes_per_item(self):
+        result = run(
+            ["--repeat", "2", "1"], self.stubs,
+            env={"TORCHSNAP_LINUX_HOST": "user@pi.local"}, script=SELFTEST,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("item 1: passed 0/2", result.stdout)
+
+    def test_the_initial_state_is_recorded_before_the_first_item(self):
+        run(["1"], self.stubs, env={"TORCHSNAP_LINUX_HOST": "user@pi.local"}, script=SELFTEST)
+        first_remote = " ".join(self.stubs.calls("ssh")[0][2:])
+        self.assertIn("selftest-initial", first_remote)
 
 
 class Clipboard(unittest.TestCase):

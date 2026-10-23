@@ -9,7 +9,8 @@
 # run goes on after a failure and exits 1 if any item failed.
 #
 # Usage:
-#   selftest [ITEM...]   run the given items, or the default list
+#   selftest [--repeat N] [ITEM...]   run the given items, or the default
+#                                     list, N times each
 #
 # Items:
 #   1   provisioning twice changes nothing on the second run
@@ -30,6 +31,8 @@
 #       closes it
 #   9   a screen recording shows the launcher opening
 #   8   a headless session with monitors at scale 1 and 2 runs the app
+#   11  stop-all leaves nothing of the testbed running and the desktop
+#       as the self-test found it
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -46,7 +49,7 @@ testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly testbed repo_root
 
-default_items=(1 W 4 L E 6 3 5 9 8)
+default_items=(1 W 4 L E 6 3 5 9 8 11)
 
 pass() {
     echo "PASS item $1"
@@ -389,6 +392,21 @@ elif any(w["title"] == "" for w in desktop):
     pass 8
 }
 
+# After stop-all nothing of the testbed runs, and the desktop is as the
+# self-test found it: the same tray support, the same monitor layout.
+item_11() {
+    local initial active now
+    initial="$(on_machine 'cat ~/.cache/torchsnap-testbed/selftest-initial')" \
+        || { fail 11 "SETUP: no recorded initial state"; return; }
+    "$testbed" stop-all >/dev/null || { fail 11 "stop-all failed"; return; }
+    active="$(on_machine 'systemctl --user list-units "torchsnap-testbed-*" --state=active --no-legend --plain')"
+    [ -z "$active" ] || { fail 11 "testbed units still active: $(tr '\n' ' ' <<<"$active")"; return; }
+    now="$(on_machine '{ echo "tray=$(gnome-extensions info ubuntu-appindicators@ubuntu.com | grep -q "State: ACTIVE" && echo on || echo off)"; echo "monitors=$(sha256sum < ~/.config/monitors.xml | cut -d" " -f1)"; }')"
+    [ "$now" = "$initial" ] \
+        || { fail 11 "desktop state differs: before $(tr '\n' ' ' <<<"$initial")/ now $(tr '\n' ' ' <<<"$now")"; return; }
+    pass 11
+}
+
 # Text set on the machine's clipboard through the recipe comes back
 # unchanged, including characters a shell on either side would expand.
 item_6() {
@@ -581,6 +599,13 @@ item_P() {
 # Runner
 # =========================================================
 
+repeat=1
+if [ "${1:-}" = "--repeat" ]; then
+    [ $# -ge 2 ] && [[ "$2" =~ ^[1-9][0-9]*$ ]] || { echo "selftest: --repeat needs a count" >&2; exit 2; }
+    repeat="$2"
+    shift 2
+fi
+
 items=("$@")
 if [ ${#items[@]} -eq 0 ]; then
     items=("${default_items[@]}")
@@ -595,8 +620,24 @@ for item in "${items[@]}"; do
     fi
 done
 
+# The desktop's state before the first item, for item 11 and stop-all to
+# compare with and to restore.
+on_machine 'mkdir -p ~/.cache/torchsnap-testbed && { echo "tray=$(gnome-extensions info ubuntu-appindicators@ubuntu.com | grep -q "State: ACTIVE" && echo on || echo off)"; echo "monitors=$(sha256sum < ~/.config/monitors.xml | cut -d" " -f1)"; } > ~/.cache/torchsnap-testbed/selftest-initial' >/dev/null
+
 failed=0
+summary=()
 for item in "${items[@]}"; do
-    "item_$item" || failed=1
+    passed=0
+    for ((run = 1; run <= repeat; run++)); do
+        if "item_$item"; then
+            passed=$((passed + 1))
+        else
+            failed=1
+        fi
+    done
+    summary+=("item $item: passed $passed/$repeat")
 done
+if [ "$repeat" -gt 1 ]; then
+    printf '%s\n' "${summary[@]}"
+fi
 exit "$failed"
