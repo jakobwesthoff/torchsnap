@@ -79,6 +79,15 @@ impl ControlChannelState {
         *self.channel.lock().expect("channel lock not poisoned") = Some(channel);
     }
 
+    /// Whether a frontend has subscribed and its webview was not found
+    /// gone by a send since. A page that is reloading still counts.
+    pub fn is_subscribed(&self) -> bool {
+        self.channel
+            .lock()
+            .expect("channel lock not poisoned")
+            .is_some()
+    }
+
     /// Hand a command to the frontend's webview.
     ///
     /// `Channel::send` runs the channel's callback on this thread, so
@@ -525,6 +534,16 @@ mod channel_tests {
             *received.lock().expect("test lock"),
             vec![r#"{"type":"setQuery","text":"firefox"}"#.to_string()]
         );
+    }
+
+    #[test]
+    fn is_subscribed_follows_set_and_a_failed_send() {
+        let state = ControlChannelState::new();
+        assert!(!state.is_subscribed());
+        state.set(failing_once());
+        assert!(state.is_subscribed());
+        let _ = state.send(ControlCommand::Dismiss);
+        assert!(!state.is_subscribed());
     }
 
     #[test]
