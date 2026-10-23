@@ -52,6 +52,7 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
+      "minimumSystemVersion": "10.13",
       "dmg": {
         "background": "../assets/dmg-background/dmg-background.tiff",
         "windowSize": { "width": 640, "height": 500 },

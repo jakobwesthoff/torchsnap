@@ -1,0 +1,24 @@
+# =========================================================
+# Host build environment
+#
+# `tauri build` runs cargo with MACOSX_DEPLOYMENT_TARGET set to
+# the bundle's minimum macOS version,
+# `bundle.macOS.minimumSystemVersion` in
+# `src-tauri/tauri.conf.json`. Plain cargo and `tauri dev` run
+# without it. Build scripts that compile C code through `cc`
+# rerun when the variable changes, so every switch between the
+# two recompiled those crates. With the same value set here,
+# all of them build in one environment. A value set in the
+# environment still takes precedence, which is how `tauri
+# build` passes its own; `tools/tests/test_build_environment.py`
+# checks that both values agree.
+#
+# Cargo reads this file from every directory below the
+# repository root: `src-tauri/`, where the Tauri CLI runs
+# cargo, the recipes that pass `--manifest-path` from the root,
+# and the gadget workspace, which builds for wasm32-wasip2 and
+# so leaves the variable unused.
+# =========================================================
+
+[env]
+MACOSX_DEPLOYMENT_TARGET = "10.13"

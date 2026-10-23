@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   volumes it created (`torchsnap-*`: shell history, Claude login, cargo
   and bun caches) stay on a machine until removed by hand.
 
+### Fixed
+
+- Switching between `just build` and plain `cargo` or `just start` no
+  longer recompiles the 64 crates that build C code. `.cargo/config.toml`
+  now gives cargo the same `MACOSX_DEPLOYMENT_TARGET` as `tauri build`.
+  On an Apple silicon Mac, `cargo build` after `just build` went from
+  about 25 s to 3 s, and the Tauri build after `cargo build` from about
+  29 s to 9 s.
+
 ## [0.15.0] - 2026-10-21
 
 ### Changed

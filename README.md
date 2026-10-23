@@ -109,6 +109,14 @@ staging flow and is gitignored. Cargo's own build outputs go to
 `src-tauri/target/` (host) and `gadgets/target/` (gadget
 workspace).
 
+`.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET` to
+`bundle.macOS.minimumSystemVersion` from `src-tauri/tauri.conf.json`,
+the value `tauri build` gives cargo. Plain `cargo`, `just start` and
+`just build` therefore build with the same environment, and switching
+between them does not recompile the crates that build C code. A new
+minimum macOS version goes into both files; `just test-tools` checks
+that they agree.
+
 ## Signing macOS builds
 
 `just build` leaves the macOS bundle unsigned unless the environment
