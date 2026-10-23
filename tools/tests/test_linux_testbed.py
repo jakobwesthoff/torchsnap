@@ -3020,5 +3020,218 @@ class Clipboard(unittest.TestCase):
         self.assertEqual(self.stubs.calls("wl-paste")[0][1:], ["--no-newline"])
 
 
+# =========================================================
+# The memory benchmark on the machine
+# =========================================================
+
+# systemctl for the benchmark: `show-environment` prints the desktop
+# session's variables, `is-active` answers from STUB_ACTIVE_UNITS, and
+# `show -p MainPID --value UNIT` prints STUB_MAINPID_DESKTOP for GNOME
+# Shell's unit and STUB_MAINPID_HEADLESS for the headless session's.
+BENCH_SYSTEMCTL = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    if "show-environment" in sys.argv:
+        sys.stdout.write(os.environ["STUB_SHOW_ENVIRONMENT"])
+    elif "is-active" in sys.argv:
+        sys.exit(0 if sys.argv[-1] in os.environ.get("STUB_ACTIVE_UNITS", "").split(",") else 3)
+    elif "MainPID" in sys.argv:
+        unit = sys.argv[-1]
+        key = "DESKTOP" if unit == "org.gnome.Shell@wayland.service" else "HEADLESS"
+        print(os.environ.get("STUB_MAINPID_" + key, "0"))
+    """
+)
+
+# `ps -o comm= -p PID` prints STUB_COMM_<PID>; `pgrep -P PID -x NAME`
+# prints STUB_CHILD_<PID> and fails when it is not set.
+BENCH_PS = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import os, sys
+    print(os.environ.get("STUB_COMM_" + sys.argv[sys.argv.index("-p") + 1], ""))
+    """
+)
+BENCH_PGREP = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import os, sys
+    child = os.environ.get("STUB_CHILD_" + sys.argv[sys.argv.index("-P") + 1])
+    if not child:
+        sys.exit(1)
+    print(child)
+    """
+)
+
+# A stand-in for tools/bench-memory in a copied tree: records its
+# arguments, working directory and the variables the app would inherit.
+FAKE_BENCH = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    names = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GDK_BACKEND", "DBUS_SESSION_BUS_ADDRESS",
+             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "G1_MAXIMIZE")
+    with open(os.path.join(os.environ["HOME"], "bench-call.json"), "w") as f:
+        json.dump({"argv": sys.argv[1:], "env": {n: os.environ.get(n) for n in names}}, f)
+    """
+)
+
+
+class TestbedPiBenchMemory(unittest.TestCase):
+    """`testbed-pi bench-memory`, run from a copy of the machine-side
+    scripts in a temporary tree whose tools/bench-memory is a stand-in."""
+
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.tree = self.home / "torchsnap"
+        shutil.copytree(TESTBED_PI.parent, self.tree / "tools" / "linux-testbed" / "pi")
+        bench = self.tree / "tools" / "bench-memory"
+        bench.write_text(FAKE_BENCH)
+        bench.chmod(0o755)
+        self.stubs = Stubs([])
+        for name, content in (("systemctl", BENCH_SYSTEMCTL), ("ps", BENCH_PS), ("pgrep", BENCH_PGREP)):
+            self.stubs.add(name, content)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call(self, *args, **env):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SHOW_ENVIRONMENT": SHOW_ENVIRONMENT,
+            "TORCHSNAP_TESTBED_APP_BINARY": "/opt/build/torchsnap",
+            "STUB_MAINPID_DESKTOP": "1666",
+            "STUB_COMM_1666": "gnome-shell",
+        }
+        environment.update(env)
+        result = run(list(args), self.stubs, env=environment,
+                     script=self.tree / "tools" / "linux-testbed" / "pi" / "testbed-pi")
+        record = self.home / "bench-call.json"
+        return result, json.loads(record.read_text()) if record.exists() else None
+
+    def test_runs_the_bench_with_the_build_the_compositor_and_its_own_files(self):
+        result, call = self.call("bench-memory", "-d", "M1 desktop A run1", "--cycles", "50", G1_MAXIMIZE="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = self.home / ".cache" / "torchsnap-testbed" / "bench-memory"
+        self.assertEqual(
+            call["argv"],
+            ["-d", "M1 desktop A run1", "--cycles", "50", "--app", "/opt/build/torchsnap",
+             "--output-dir", str(state), "--log", str(state / "memory-benchmark.log"),
+             "--compositor-pid", "1666"],
+        )
+        self.assertEqual(call["env"]["WAYLAND_DISPLAY"], "wayland-0")
+        self.assertEqual(call["env"]["G1_MAXIMIZE"], "1")
+        settings = json.loads((self.home / ".local" / "share" / "app.torchsnap" / "settings.json").read_text())
+        self.assertTrue(settings["controlChannel.enabled"])
+        self.assertIn("welcome.seenRevision", settings)
+
+    def test_headless_runs_in_the_headless_session_with_its_compositor(self):
+        headless = self.home / ".cache" / "torchsnap-testbed" / "headless"
+        headless.mkdir(parents=True)
+        (headless / "bus").write_text("unix:path=/tmp/headless-bus\n")
+        result, call = self.call(
+            "bench-memory", "-d", "x", "--headless",
+            STUB_ACTIVE_UNITS="torchsnap-testbed-headless",
+            STUB_MAINPID_HEADLESS="900", STUB_COMM_900="dbus-run-session", STUB_CHILD_900="901",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("--headless", call["argv"])
+        self.assertEqual(call["argv"][call["argv"].index("--compositor-pid") + 1], "901")
+        self.assertEqual(call["env"]["WAYLAND_DISPLAY"], "torchsnap-headless")
+        self.assertEqual(call["env"]["GDK_BACKEND"], "wayland")
+        self.assertIsNone(call["env"]["DISPLAY"])
+        self.assertIsNone(call["env"]["XAUTHORITY"])
+        self.assertEqual(call["env"]["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/tmp/headless-bus")
+        self.assertEqual(call["env"]["XDG_DATA_HOME"], str(headless / "app" / "data"))
+        self.assertTrue((headless / "app" / "data" / "app.torchsnap" / "settings.json").exists())
+
+    def test_refuses_without_a_compositor_process(self):
+        result, call = self.call("bench-memory", "-d", "x", STUB_MAINPID_DESKTOP="0")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no GNOME Shell process", result.stderr)
+        self.assertIsNone(call)
+
+    def test_refuses_without_a_current_build(self):
+        result, call = self.call("bench-memory", "-d", "x", TORCHSNAP_TESTBED_APP_BINARY="")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("run just testbed-build", result.stderr)
+        self.assertIsNone(call)
+
+
+class TestbedBenchMemoryForwarding(unittest.TestCase):
+    """`testbed bench-memory` on the Mac: runs the bench on the machine and
+    copies the data files the bench names."""
+
+    def setUp(self):
+        self.stubs = Stubs(["rsync", "scp"])
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="testbed-home-"))
+        ssh = self.stubs.dir / "ssh"
+        ssh.write_text(remote_ssh_stub(self.home))
+        ssh.chmod(0o755)
+        fake = self.home / "torchsnap" / "tools" / "linux-testbed" / "pi" / "testbed-pi"
+        fake.parent.mkdir(parents=True)
+        fake.write_text(
+            "#!/usr/bin/env bash\n"
+            "python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' \"$@\" >>\"$HOME/pi-calls.jsonl\"\n"
+            "printf '%s' \"${FAKE_PI_OUTPUT:-}\"\n"
+        )
+        fake.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def pi_calls(self):
+        path = self.home / "pi-calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_forwards_and_copies_the_named_data_files(self):
+        output = (
+            "Running scenario...\n"
+            "  Continuous samples: 3\n"
+            "Report appended to: /h/.cache/torchsnap-testbed/bench-memory/memory-benchmark.log\n"
+            "Continuous data: /h/.cache/torchsnap-testbed/bench-memory/bench-memory-1.json\n"
+            "Snapshot data: /h/.cache/torchsnap-testbed/bench-memory/bench-memory-1.snapshots.jsonl\n"
+            "Events data: /h/.cache/torchsnap-testbed/bench-memory/bench-memory-1.events.jsonl\n"
+            "Timing data: /h/.cache/torchsnap-testbed/bench-memory/bench-memory-1.timing.jsonl\n"
+        )
+        result = run(
+            ["bench-memory", "-d", "x", "--headless"],
+            self.stubs,
+            env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_LINUX_RUNNER": "", "FAKE_PI_OUTPUT": output},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.pi_calls(), [["bench-memory", "-d", "x", "--headless"]])
+        self.assertIn("Continuous samples: 3", result.stdout)
+        copied = [c[-2] for c in self.stubs.calls("scp")]
+        self.assertEqual(
+            copied,
+            [f"user@pi.local:/h/.cache/torchsnap-testbed/bench-memory/bench-memory-1.{suffix}"
+             for suffix in ("json", "snapshots.jsonl", "events.jsonl", "timing.jsonl")],
+        )
+
+    def test_the_recipe_keeps_the_description_one_argument(self):
+        if shutil.which("just") is None:
+            self.skipTest("just is not installed")
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "PATH": f"{self.stubs.dir}{os.pathsep}{os.environ['PATH']}",
+                "STUB_LOG": str(self.stubs.log),
+                "TORCHSNAP_LINUX_HOST": "user@pi.local",
+                "TORCHSNAP_LINUX_RUNNER": "",
+            }
+        )
+        result = subprocess.run(
+            ["just", "--justfile", str(REPO / "Justfile"), "testbed-bench-memory", "M1 a b $HOME 'q'", "--cycles", "2"],
+            capture_output=True, text=True, cwd=REPO, env=environment, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.pi_calls(), [["bench-memory", "-d", "M1 a b $HOME 'q'", "--cycles", "2"]])
+
+
 if __name__ == "__main__":
     unittest.main()

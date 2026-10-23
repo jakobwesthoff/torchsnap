@@ -139,6 +139,13 @@ testbed-clipboard-set TEXT:
 testbed-clipboard-get:
     tools/linux-testbed/testbed clipboard-get
 
+# tools/bench-memory's scenario against the current build; its data
+# files land in target/linux-testbed/.
+
+# Run the memory benchmark on the Linux testbed (takes --cycles N, --timing-cycles N, --headless)
+testbed-bench-memory DESCRIPTION *ARGS:
+    tools/linux-testbed/testbed bench-memory -d {{ quote(DESCRIPTION) }} {{ ARGS }}
+
 # Stop the app, a benchmark's app, recordings and headless sessions on the Linux testbed
 testbed-stop-all:
     tools/linux-testbed/testbed stop-all

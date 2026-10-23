@@ -87,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`tools/bench-memory-cycles`). `--output-dir` and `--log` work on both
   platforms. `just testbed-stop-all` also stops an app a benchmark left
   running.
+- `just testbed-bench-memory DESCRIPTION [--cycles N] [--timing-cycles N] [--headless]`
+  runs `tools/bench-memory` on the Linux testbed against its current
+  build, with GNOME Shell recorded apart, and copies the data files to
+  `target/linux-testbed/`.
 
 ### Changed
 

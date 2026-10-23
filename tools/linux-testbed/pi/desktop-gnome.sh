@@ -181,6 +181,29 @@ headless_scales_are() {
         | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin) == [float(s) for s in sys.argv[1:]] else 1)' "$@"
 }
 
+# The GNOME Shell process of the session this run works in. On the
+# desktop it is the main process of GNOME Shell's user unit; the
+# headless session's unit runs dbus-run-session, whose child it is.
+desk_compositor_pid() {
+    local unit="org.gnome.Shell@wayland.service"
+    if [ -n "$headless" ]; then
+        unit="$headless_unit"
+    fi
+    local main
+    main="$(systemctl --user show -p MainPID --value "$unit")"
+    if [ -n "$main" ] && [ "$main" != 0 ]; then
+        if [ "$(ps -o comm= -p "$main")" = gnome-shell ]; then
+            echo "$main"
+            return
+        fi
+        if pgrep -P "$main" -x gnome-shell; then
+            return
+        fi
+    fi
+    echo "testbed-pi: no GNOME Shell process in $unit" >&2
+    return 1
+}
+
 # =========================================================
 # Tray
 # =========================================================

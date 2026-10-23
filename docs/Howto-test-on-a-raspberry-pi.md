@@ -458,6 +458,32 @@ need a current build on the Pi; run `just testbed-build` first.
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 
+## 14. Memory benchmark
+
+```sh
+just testbed-bench-memory 'desktop, today'                        # the scenario of tools/bench-memory
+just testbed-bench-memory 'desktop' --cycles 50 --timing-cycles 10
+just testbed-bench-memory 'large monitor' --headless
+```
+
+runs `tools/bench-memory` on the Pi against the current build: the
+scenario macOS runs, through the app's control socket, with memory
+measured from `/proc` (PSS and RSS of the app and every process it
+starts, their GPU memory from the DRM drivers, GNOME Shell's memory
+apart). The bench starts the app itself, in the systemd user scope
+`torchsnap-bench-<time>`, so the testbed's app must not run; it refuses
+otherwise. `--cycles N` adds N measured show/dismiss cycles after the
+scenario, `--timing-cycles N` then N unmeasured ones that time `show`
+until the launcher's content is visible. With `--headless` it runs in
+the headless session.
+
+The report goes to `~/.cache/torchsnap-testbed/bench-memory/memory-benchmark.log`
+on the Pi and to the terminal; the data files next to it (samples,
+snapshots, the events file with each control request's time, the
+timing file) are copied to `target/linux-testbed/`, where
+`tools/memsnap-report` turns them into the report again. The current
+build is a debug build.
+
 ## A visible terminal on the Pi
 
 `TORCHSNAP_LINUX_RUNNER`, when set, is put in front of every command the

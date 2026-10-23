@@ -21,6 +21,8 @@
 #   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
 #   testbed-pi control METHOD [JSON]  one request to the app's control socket
 #   testbed-pi merge-app-settings     enable the control socket, skip the welcome
+#   testbed-pi bench-memory -d TEXT [--cycles N] [--timing-cycles N]
+#                                     run tools/bench-memory with the current build
 #   testbed-pi eval JS                print the value of JS evaluated in the desktop shell
 #   testbed-pi windows                the app's windows as JSON
 #   testbed-pi launcher-state         {"visible", "focused", "monitor"} of the launcher
@@ -34,8 +36,9 @@
 #   testbed-pi click X Y [left|right|middle]
 #                                     move there and click
 #
-#   app-start, app-stop, app-log, control, eval, windows, launcher-state
-#   and screenshot take --headless to work in the headless session.
+#   app-start, app-stop, app-log, control, eval, windows, launcher-state,
+#   screenshot and bench-memory take --headless to work in the headless
+#   session.
 #   testbed-pi tray on|off|status     switch or report the desktop's tray support
 #   testbed-pi tray-icon              {"x", "y", "width", "height", "menuOpen"} of the app's tray icon
 #   testbed-pi tray-click [left|right|middle]
@@ -862,6 +865,33 @@ cmd_stop_all() {
 }
 
 # =========================================================
+# Memory benchmark
+# =========================================================
+
+# tools/bench-memory runs the scenario against the current build and
+# starts the app itself, as a child that inherits this environment: the
+# desktop session's variables, or with --headless the headless
+# session's (with GDK_BACKEND=wayland and no X11 display, as app-start
+# gives the headless app). The compositor's PID lets the bench record
+# GNOME Shell's memory apart from the app's. Its data files and log stay
+# in the testbed's state directory, outside the synced tree.
+readonly bench_dir="$state_dir/bench-memory"
+
+cmd_bench_memory() {
+    local app_binary compositor
+    app_binary="$(current_app_binary)" || return 1
+    compositor="$(desk_compositor_pid)" || return 1
+    cmd_merge_app_settings
+    if [ -n "$headless" ]; then
+        export GDK_BACKEND=wayland
+    fi
+    mkdir -p "$bench_dir"
+    exec "$tree_dir/tools/bench-memory" "$@" --app "$app_binary" \
+        --output-dir "$bench_dir" --log "$bench_dir/memory-benchmark.log" \
+        --compositor-pid "$compositor"
+}
+
+# =========================================================
 # Clipboard
 # =========================================================
 
@@ -905,7 +935,7 @@ session_env
 # `--headless`, anywhere among the arguments of the subcommands that can
 # work in the headless session, switches them to it.
 case "$subcommand" in
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | screenshot | merge-app-settings)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | screenshot | merge-app-settings | bench-memory)
         arguments=()
         for argument in "$@"; do
             if [ "$argument" = "--headless" ]; then
@@ -927,6 +957,10 @@ case "$subcommand" in
     stop-all)
         load_desktop
         cmd_stop_all
+        ;;
+    bench-memory)
+        load_desktop
+        cmd_bench_memory "$@"
         ;;
     env)
         print_session_env

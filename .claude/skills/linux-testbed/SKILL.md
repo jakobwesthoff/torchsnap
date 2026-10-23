@@ -96,6 +96,10 @@ is the full guide.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
   the session clipboard. Setting it can close the launcher; set it
   before opening the launcher.
+- `just testbed-bench-memory 'DESCRIPTION' [--cycles N] [--timing-cycles N] [--headless]`:
+  `tools/bench-memory` on the machine against the current build (PSS
+  from `/proc`, GPU memory, GNOME Shell apart); stop the testbed's app
+  first. Data files land in `target/linux-testbed/`.
 - `just testbed-stop-all`: stop the app, a benchmark's app, recordings and headless
   sessions. Run it when a test is done.
 - `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the

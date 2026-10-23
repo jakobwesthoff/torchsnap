@@ -42,10 +42,14 @@
 #   testbed stop-all          stop the app, a benchmark's app, recordings and headless sessions
 #   testbed record-start NAME start recording the machine's screen
 #   testbed record-stop       stop, copy the recording to target/linux-testbed/
+#   testbed bench-memory -d TEXT [--cycles N] [--timing-cycles N]
+#                             run tools/bench-memory against the current build,
+#                             copy its data files to target/linux-testbed/
 #
 #   type and key refuse (exit 4) unless the target has the keyboard.
-#   app-start, app-stop, app-log, control, eval, windows, launcher-state
-#   and screenshot take --headless to work in the headless session.
+#   app-start, app-stop, app-log, control, eval, windows, launcher-state,
+#   screenshot and bench-memory take --headless to work in the headless
+#   session.
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -302,6 +306,27 @@ cmd_record_stop() {
     fetch "$(tail -n 1 <<<"$output")"
 }
 
+# The benchmark prints what it wrote in lines `Continuous data: PATH`,
+# `Snapshot data: PATH`, `Events data: PATH` and `Timing data: PATH`
+# (tools/bench-memory); each of those files comes to the Mac. Its output
+# also goes to the terminal while it runs, which takes minutes.
+cmd_bench_memory() {
+    local output
+    output="$(mktemp)"
+    local status=0
+    run_pi bench-memory "$@" | tee "$output" || status=$?
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            "Continuous data: "* | "Snapshot data: "* | "Events data: "* | "Timing data: "*)
+                fetch "${line#*: }"
+                ;;
+        esac
+    done <"$output"
+    rm -f "$output"
+    return "$status"
+}
+
 # =========================================================
 # reboot
 # =========================================================
@@ -386,6 +411,10 @@ case "$subcommand" in
     record-stop)
         require_host
         cmd_record_stop
+        ;;
+    bench-memory)
+        require_host
+        cmd_bench_memory "$@"
         ;;
     sync)
         require_host
