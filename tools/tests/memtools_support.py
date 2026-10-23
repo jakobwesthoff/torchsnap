@@ -11,8 +11,11 @@ import json
 import os
 import pathlib
 import shutil
+import socket
 import tempfile
 import textwrap
+import threading
+import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 TOOLS = REPO / "tools"
@@ -115,6 +118,104 @@ FOOTPRINT_STUB = textwrap.dedent(
 )
 
 
+# socat as bench-memory calls it (`socat [-T1] - UNIX-CONNECT:PATH`): it
+# reads the request from stdin, logs `["socat-request", method, params]`
+# and answers. `status` reports `ready: false` for the first
+# $STUB_SOCAT_NOT_READY calls (default 0), then `ready: true`; with
+# STUB_SOCAT_NEVER_READY set it never does. Every other method gets an
+# empty result.
+SOCAT_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    request = json.loads(sys.stdin.readline())
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    with log.open("a") as f:
+        f.write(json.dumps(["socat-request", request["method"], request.get("params")]) + "\\n")
+    result = {}
+    if request["method"] == "status":
+        counter = log.with_name("socat-status.count")
+        n = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(n + 1))
+        not_ready = int(os.environ.get("STUB_SOCAT_NOT_READY", "0"))
+        ready = n >= not_ready and not os.environ.get("STUB_SOCAT_NEVER_READY")
+        result = {"visible": False, "focused": False, "ready": ready}
+    elif request["method"] == "info":
+        result = {"pid": 0, "version": "0.0.0-test", "display": {"name": "wayland-0", "backend": "wayland"}}
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}))
+    """
+)
+
+# memsnap for the bench tests: logs its argv; `snapshot -o FILE -l
+# LABEL` appends a minimal line, `sample -o FILE` writes a samples file
+# when it gets SIGTERM or after `-d` seconds, `pids` prints
+# $STUB_MEMSNAP_PIDS.
+MEMSNAP_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, signal, sys, time
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(["memsnap"] + sys.argv[1:]) + "\\n")
+    command, args = sys.argv[1], sys.argv[2:]
+    def option(*names):
+        for i, a in enumerate(args):
+            if a in names:
+                return args[i + 1]
+        return None
+    process = {"name": "torchsnap", "pid": 1, "auxiliary": {"phys_footprint": 1048576}, "pss": 1048576}
+    if command == "snapshot":
+        with open(option("-o"), "a") as f:
+            f.write(json.dumps({"metric": "pss", "phase": option("-l"), "processes": [process]}) + "\\n")
+    elif command == "sample":
+        # Runs until SIGTERM; a fixed duration (macOS) is cut to 0.2 s so
+        # the tests do not wait for it.
+        stop = []
+        signal.signal(signal.SIGTERM, lambda *_: stop.append(True))
+        duration = min(float(option("-d") or 0), 0.2)
+        start = time.monotonic()
+        while not stop and not (duration and time.monotonic() - start >= duration):
+            time.sleep(0.05)
+        with open(option("-o"), "w") as f:
+            json.dump({"metric": "pss", "samples": [{"processes": [process]}]}, f)
+    elif command == "pids":
+        print(os.environ.get("STUB_MEMSNAP_PIDS", ""))
+    """
+)
+
+# A stand-in for the Torchsnap binary: writes its PID and environment to
+# $FAKE_APP_RECORD, prints a line to its log and waits for SIGTERM. With
+# FAKE_APP_EXIT set it exits at once with that status.
+FAKE_APP = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, signal, sys, time
+    with open(os.environ["FAKE_APP_RECORD"], "w") as f:
+        json.dump({"pid": os.getpid(), "env": dict(os.environ)}, f)
+    print("fake app started", flush=True)
+    if os.environ.get("FAKE_APP_EXIT"):
+        print("fake app gives up", flush=True)
+        sys.exit(int(os.environ["FAKE_APP_EXIT"]))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    while True:
+        time.sleep(0.1)
+    """
+)
+
+# systemd-run as bench-memory calls it in scope mode: logs its argv,
+# skips its options up to `--` and execs the command in place, as
+# `systemd-run --scope` does.
+SYSTEMD_RUN_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv) + "\\n")
+    command = sys.argv[sys.argv.index("--") + 1:]
+    os.execvp(command[0], command)
+    """
+)
+
+
 class Stubs:
     """A temporary directory of stub commands and the log they write."""
 
@@ -149,3 +250,51 @@ class Stubs:
     def cleanup(self):
         shutil.rmtree(self.dir)
 
+
+class MethodControlSocket:
+    """A control socket that answers each request by its method: the
+    answers for a method are taken in turn, the last one repeating; a
+    method without answers gets an empty result. Records each request
+    with the time it arrived."""
+
+    def __init__(self, path, answers=None):
+        self.path = str(path)
+        self.answers = {method: list(values) for method, values in (answers or {}).items()}
+        self.requests = []
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(self.path)
+        self.server.listen()
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+        self.thread.start()
+
+    def answer(self, method):
+        values = self.answers.get(method)
+        if not values:
+            return {"result": {}}
+        return values.pop(0) if len(values) > 1 else values[0]
+
+    def serve(self):
+        while True:
+            try:
+                connection, _ = self.server.accept()
+            except OSError:
+                return
+            with connection:
+                data = b""
+                while not data.endswith(b"\n"):
+                    chunk = connection.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+                if not data:
+                    continue
+                request = json.loads(data)
+                self.requests.append((time.time(), request))
+                response = dict(self.answer(request["method"]), jsonrpc="2.0", id=request["id"])
+                connection.sendall((json.dumps(response) + "\n").encode())
+
+    def methods(self):
+        return [request["method"] for _, request in self.requests]
+
+    def close(self):
+        self.server.close()

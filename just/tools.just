@@ -10,6 +10,9 @@
 memsnap *ARGS:
     tools/memsnap {{ARGS}}
 
+# On Linux bench-memory builds nothing and runs the binary named with
+# `--app`; `tools/bench-memory --help` lists the Linux options.
+
 # Run a full memory benchmark (build → launch → measure → report)
 bench-memory description *ARGS:
     tools/bench-memory -d "{{description}}" {{ARGS}}

@@ -96,7 +96,7 @@ is the full guide.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
   the session clipboard. Setting it can close the launcher; set it
   before opening the launcher.
-- `just testbed-stop-all`: stop the app, recordings and headless
+- `just testbed-stop-all`: stop the app, a benchmark's app, recordings and headless
   sessions. Run it when a test is done.
 - `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must

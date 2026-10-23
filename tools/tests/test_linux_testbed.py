@@ -2806,7 +2806,16 @@ class StopAll(unittest.TestCase):
         result = self.call_pi()
         self.assertEqual(result.returncode, 0, result.stderr)
         stops = [c[-1] for c in self.stubs.calls("systemctl") if "stop" in c]
-        self.assertEqual(stops, ["torchsnap-testbed-record", "torchsnap-testbed-app"])
+        self.assertEqual(stops, ["torchsnap-testbed-record", "torchsnap-testbed-app", "torchsnap-bench-*.scope"])
+
+    # bench-memory runs the app in a scope named torchsnap-bench-<time>; a
+    # bench that was killed hard leaves it running. The pattern matches
+    # only loaded units, so with none it stops nothing and succeeds.
+    def test_stop_all_stops_an_app_left_by_bench_memory(self):
+        result = self.call_pi(env={"STUB_ACTIVE_UNITS": ""})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stops = [c[1:] for c in self.stubs.calls("systemctl") if "stop" in c]
+        self.assertEqual(stops, [["--user", "stop", "torchsnap-bench-*.scope"]])
 
     def test_stop_all_puts_the_recorded_tray_state_back(self):
         state = self.home / ".cache" / "torchsnap-testbed" / "selftest-initial"

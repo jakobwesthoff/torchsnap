@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# =========================================================
+# bench-memory-cycles: show and dismiss the launcher N times
+#
+# Usage:
+#   bench-memory-cycles SOCKET N [--hold SEC] [--timing]
+#                       [--visible-timeout SEC] [-o FILE]
+#
+# bench-memory runs it after its scenario, in one of two modes:
+#
+# - Memory cycles (default): `show`, wait --hold seconds, `dismiss`,
+#   wait. Nothing else is asked, so the shown intervals that the memory
+#   sampler measures carry no extra requests. One line per cycle:
+#   {"cycle", "t_show", "t_dismiss", "ok"}.
+#
+# - Timing cycles (--timing): after `show`, ask `snapshot` every 20 ms
+#   until the page reports its content visible, which gives the time
+#   from `show` to visible content; after `dismiss`, ask `status` until
+#   the launcher is hidden. `snapshot` makes the page answer, so this
+#   polling loads the page while it is measured; bench-memory runs it
+#   with the memory sampler stopped. One line per cycle:
+#   {"cycle", "t_show", "show_ms", "t_visible", "t_hidden", "timeout"}.
+#
+# Times are seconds since the epoch, so they line up with the sampler's
+# and the snapshots' times. Lines go to standard output or to -o FILE
+# (appended).
+#
+# Each request uses its own connection and reads one response line: the
+# control socket keeps a connection open for further requests, so
+# waiting for it to close would wait for the client's own timeout.
+# =========================================================
+
+import argparse
+import json
+import socket
+import sys
+import time
+
+POLL_INTERVAL = 0.02
+
+
+def request(path, method):
+    """Sends one request; returns (result or None, error or None)."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(10)
+        connection.connect(path)
+        connection.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method}) + "\n").encode())
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = connection.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    response = json.loads(data)
+    return response.get("result"), response.get("error")
+
+
+def wait_until(path, method, accept, timeout):
+    """Asks METHOD every POLL_INTERVAL until ACCEPT(result) holds; returns
+    the time it did, or None after TIMEOUT seconds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result, _ = request(path, method)
+        if result is not None and accept(result):
+            return time.time()
+        time.sleep(POLL_INTERVAL)
+    return None
+
+
+def memory_cycle(path, hold):
+    t_show = time.time()
+    _, show_error = request(path, "show")
+    time.sleep(hold)
+    t_dismiss = time.time()
+    _, dismiss_error = request(path, "dismiss")
+    time.sleep(hold)
+    return {"t_show": t_show, "t_dismiss": t_dismiss, "ok": show_error is None and dismiss_error is None}
+
+
+def timing_cycle(path, hold, visible_timeout):
+    t_show = time.time()
+    request(path, "show")
+    t_visible = wait_until(path, "snapshot", lambda r: r.get("contentVisible") is True, visible_timeout)
+    time.sleep(hold)
+    request(path, "dismiss")
+    t_hidden = wait_until(path, "status", lambda r: r.get("visible") is False, visible_timeout)
+    time.sleep(hold)
+    return {
+        "t_show": t_show,
+        "show_ms": None if t_visible is None else (t_visible - t_show) * 1000,
+        "t_visible": t_visible,
+        "t_hidden": t_hidden,
+        "timeout": t_visible is None,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="bench-memory-cycles")
+    parser.add_argument("socket")
+    parser.add_argument("count", type=int)
+    parser.add_argument("--hold", type=float, default=0.5)
+    parser.add_argument("--timing", action="store_true")
+    parser.add_argument("--visible-timeout", type=float, default=5.0)
+    parser.add_argument("-o", "--output")
+    args = parser.parse_args()
+
+    output = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
+    with output:
+        for cycle in range(1, args.count + 1):
+            if args.timing:
+                line = timing_cycle(args.socket, args.hold, args.visible_timeout)
+            else:
+                line = memory_cycle(args.socket, args.hold)
+            output.write(json.dumps({"cycle": cycle, **line}) + "\n")
+            output.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

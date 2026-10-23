@@ -847,6 +847,10 @@ cmd_stop_all() {
             systemctl --user stop "$unit"
         fi
     done
+    # tools/bench-memory runs the app in a scope `torchsnap-bench-<time>`,
+    # which outlives a bench that was killed hard. The pattern matches
+    # loaded units only; with none, the stop does nothing and succeeds.
+    systemctl --user stop 'torchsnap-bench-*.scope'
     rm -f "$headless_bus_file"
     if [ -f "$selftest_initial" ]; then
         local tray

@@ -434,10 +434,11 @@ runs the testbed's checks against the Pi and prints `PASS item N` or
 unknown item. With `--repeat N` it runs each item N times and prints
 how often each passed. Before the first item it records the tray state
 and the monitor layout in `~/.cache/torchsnap-testbed/selftest-initial`
-on the Pi; `testbed-stop-all` stops the app, recordings and headless
-sessions and, with that record, switches the tray support back. The
-items that start the app (W, 4, E, 3, 5, 9 and 8) need a current build
-on the Pi; run `just testbed-build` first.
+on the Pi; `testbed-stop-all` stops the app, recordings, headless
+sessions and an app left running by `tools/bench-memory` (its scope
+`torchsnap-bench-<time>`), and, with that record, switches the tray
+support back. The items that start the app (W, 4, E, 3, 5, 9 and 8)
+need a current build on the Pi; run `just testbed-build` first.
 
 | Item | Checks |
 |---|---|

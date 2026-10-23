@@ -7,7 +7,7 @@
 # bench-memory — End-to-end memory benchmark for Torchsnap
 #
 # Performs a full benchmark cycle:
-# 1. Builds the release app (app bundle only, no DMG)
+# 1. Builds the release app (app bundle only, no DMG; macOS)
 # 2. Ensures the Control API is enabled in settings
 # 3. Launches the app
 # 4. Waits for the control socket to become available
@@ -20,21 +20,46 @@
 #
 # Usage:
 #   tools/bench-memory -d "baseline, no optimizations"
+#   tools/bench-memory -d "linux" --app src-tauri/target/debug/torchsnap
+#
+# On Linux the bench builds nothing: it starts the binary given
+# with --app (in a systemd user scope when systemd-run exists),
+# with the caller's environment, and measures PSS through
+# memsnap's Linux path. It waits until the launcher has reported
+# its layout (`status.ready`), since Linux builds the launcher
+# visible and a dismiss before then is refused. It writes an
+# events file with every control request and its time, and can
+# add show/dismiss cycles after the scenario (--cycles, measured)
+# and a timing pass (--timing-cycles, time from show to visible
+# content, not measured).
 #
 # Prerequisites:
 #   - socat (brew install socat)
 #   - jq (brew install jq)
+#   - Linux: python3
 # =========================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLATFORM="$(uname -s)"
 APP_BUNDLE="$PROJECT_DIR/src-tauri/target/release/bundle/macos/Torchsnap.app"
-SETTINGS_DIR="$HOME/Library/Application Support/app.torchsnap"
+if [[ "$PLATFORM" == Linux ]]; then
+    SETTINGS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/app.torchsnap"
+else
+    SETTINGS_DIR="$HOME/Library/Application Support/app.torchsnap"
+fi
 SETTINGS_FILE="$SETTINGS_DIR/settings.json"
 SOCK="$SETTINGS_DIR/control.sock"
 LOG_FILE="$PROJECT_DIR/memory-benchmark.log"
+
+# Waits on Linux, in seconds (the tests shorten them): until the
+# launcher is ready after the start (a debug build on a Raspberry Pi
+# takes tens of seconds), and until every measured process has exited
+# after the stop.
+READY_TIMEOUT="${BENCH_MEMORY_READY_TIMEOUT:-60}"
+STOP_TIMEOUT="${BENCH_MEMORY_STOP_TIMEOUT:-10}"
 
 # ---------------------------------------------------------
 # CLI
@@ -42,6 +67,11 @@ LOG_FILE="$PROJECT_DIR/memory-benchmark.log"
 
 DESCRIPTION=""
 SKIP_BUILD=false
+APP=""
+COMPOSITOR_PID=""
+OUTPUT_DIR=""
+CYCLES=0
+TIMING_CYCLES=0
 
 usage() {
     cat <<'EOF'
@@ -51,9 +81,26 @@ Run a full memory benchmark cycle (build → launch → measure → report).
 
 Options:
   -d, --description <TEXT>   Description for the log entry (required)
-  --skip-build               Skip the release build step
+  --skip-build               Skip the release build step (macOS)
+  --output-dir <DIR>         Write the data files to DIR [default: current directory]
+  --log <FILE>               Append the report to FILE [default: memory-benchmark.log in the project]
   -h, --help                 Show this help
+
+Linux only:
+  --app <PATH>               The Torchsnap binary to run (required on Linux)
+  --compositor-pid <PID>     Also record this process (the compositor), apart from Torchsnap's
+  --cycles <N>               After the scenario, N measured show/dismiss cycles [default: 0]
+  --timing-cycles <N>        Then N unmeasured cycles timing show → visible content [default: 0]
 EOF
+}
+
+# Options that only the Linux path has are refused on macOS, so a macOS
+# run cannot silently ignore them.
+linux_only() {
+    if [[ "$PLATFORM" != Linux ]]; then
+        echo "Error: $1 is Linux only." >&2
+        exit 1
+    fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +112,24 @@ while [[ $# -gt 0 ]]; do
     --skip-build)
         SKIP_BUILD=true
         shift
+        ;;
+    --output-dir)
+        OUTPUT_DIR="$2"
+        shift 2
+        ;;
+    --log)
+        LOG_FILE="$2"
+        shift 2
+        ;;
+    --app | --compositor-pid | --cycles | --timing-cycles)
+        linux_only "$1"
+        case "$1" in
+        --app) APP="$2" ;;
+        --compositor-pid) COMPOSITOR_PID="$2" ;;
+        --cycles) CYCLES="$2" ;;
+        --timing-cycles) TIMING_CYCLES="$2" ;;
+        esac
+        shift 2
         ;;
     -h | --help)
         usage
@@ -84,6 +149,11 @@ if [[ -z "$DESCRIPTION" ]]; then
     exit 1
 fi
 
+if [[ "$PLATFORM" == Linux ]] && [[ -z "$APP" ]]; then
+    echo "Error: --app is required on Linux." >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------
 # Prerequisites
 # ---------------------------------------------------------
@@ -96,8 +166,41 @@ for cmd in socat jq; do
 done
 
 # ---------------------------------------------------------
-# Control API helper
+# Output files
+#
+# Without --output-dir the data files are bare names in the
+# current directory.
 # ---------------------------------------------------------
+
+OUT_PREFIX=""
+if [[ -n "$OUTPUT_DIR" ]]; then
+    mkdir -p "$OUTPUT_DIR"
+    OUT_PREFIX="$OUTPUT_DIR/"
+fi
+mkdir -p "$(dirname "$LOG_FILE")"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+SAMPLES_FILE="${OUT_PREFIX}bench-memory-$STAMP.json"
+SNAPSHOTS_FILE="${OUT_PREFIX}bench-memory-$STAMP.snapshots.jsonl"
+EVENTS_FILE="${OUT_PREFIX}bench-memory-$STAMP.events.jsonl"
+TIMING_FILE="${OUT_PREFIX}bench-memory-$STAMP.timing.jsonl"
+APP_LOG="${OUT_PREFIX}bench-memory-$STAMP.app.log"
+
+# ---------------------------------------------------------
+# Control API helper
+#
+# On Linux each request goes into the events file with the
+# time it was sent, so the analysis can line up shows and
+# dismisses with the memory and CPU samples.
+# ---------------------------------------------------------
+
+now() {
+    # bash 5 has EPOCHREALTIME; the stock macOS bash 3.2 falls back to
+    # whole seconds, which only the tests see. EPOCHREALTIME uses the
+    # locale's decimal separator, JSON a point.
+    local t="${EPOCHREALTIME:-$(date +%s)}"
+    echo "${t/,/.}"
+}
 
 LAST_ID=0
 send() {
@@ -112,6 +215,8 @@ send() {
         request="{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\"}"
     fi
 
+    local sent_at
+    sent_at="$(now)"
     local response
     response=$(echo "$request" | socat - UNIX-CONNECT:"$SOCK")
 
@@ -119,6 +224,12 @@ send() {
     error=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null)
     if [[ -n "$error" ]]; then
         echo "  Warning: $method returned error: $error" >&2
+    fi
+
+    if [[ "$PLATFORM" == Linux ]]; then
+        jq -cn --argjson t "$sent_at" --arg method "$method" --argjson params "${params:-null}" \
+            --argjson ok "$([[ -z "$error" ]] && echo true || echo false)" \
+            '{t: $t, method: $method, params: $params, ok: $ok}' >>"$EVENTS_FILE"
     fi
 }
 
@@ -136,8 +247,12 @@ cleanup() {
     fi
     if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
         echo "Stopping Torchsnap (PID $APP_PID)..."
-        kill "$APP_PID" 2>/dev/null || true
-        wait "$APP_PID" 2>/dev/null || true
+        if [[ "$PLATFORM" == Linux ]]; then
+            stop_app_linux
+        else
+            kill "$APP_PID" 2>/dev/null || true
+            wait "$APP_PID" 2>/dev/null || true
+        fi
     fi
 }
 trap cleanup EXIT
@@ -146,18 +261,133 @@ trap cleanup EXIT
 # Snapshot helper — delegates to `memsnap snapshot`
 # ---------------------------------------------------------
 
-SAMPLES_FILE="bench-memory-$(date +%Y%m%d-%H%M%S).json"
-SNAPSHOTS_FILE="bench-memory-$(date +%Y%m%d-%H%M%S).snapshots.jsonl"
+# On Linux memsnap measures the app's own PID and records the
+# compositor apart (`--also`).
+MEMSNAP_TARGET=()
 
 snap() {
-    "$SCRIPT_DIR/memsnap" snapshot -l "$1" -o "$SNAPSHOTS_FILE"
+    "$SCRIPT_DIR/memsnap" snapshot -l "$1" -o "$SNAPSHOTS_FILE" ${MEMSNAP_TARGET[@]+"${MEMSNAP_TARGET[@]}"}
 }
+
+# =========================================================
+# Linux: start, wait and stop
+#
+# The Linux path starts the binary itself (there is no bundle to
+# `open`), waits for the launcher's layout, and stops the app and
+# every process it started, so no web process of one run shares
+# pages with the next run.
+# =========================================================
+
+# Whether PID is a running process. `kill -0` also succeeds for a child
+# of this script that has exited but not been waited for yet (a zombie),
+# so the process state decides.
+running() {
+    local state
+    state=$(ps -o stat= -p "$1" 2>/dev/null) || return 1
+    [[ -n "$state" ]] && [[ "$state" != Z* ]]
+}
+
+launch_app_linux() {
+    local running
+    running="$(pgrep -x torchsnap 2>/dev/null | tr '\n' ' ' || true)"
+    running="${running% }"
+    if [[ -n "$running" ]]; then
+        echo "Error: Torchsnap is already running (PID $running). Stop it first; on the testbed with" \
+            "just testbed-app-stop, or just testbed-stop-all for an earlier benchmark's app." >&2
+        exit 1
+    fi
+
+    # In scope mode systemd-run moves itself into a new scope and execs
+    # the command, so $! is the app's own PID and the app runs in a unit
+    # of its own that `systemctl --user stop` can end.
+    echo "Launching $APP..."
+    if command -v systemd-run &>/dev/null; then
+        systemd-run --user --scope --collect --quiet --unit "torchsnap-bench-$STAMP" -- "$APP" >"$APP_LOG" 2>&1 &
+    else
+        "$APP" >"$APP_LOG" 2>&1 &
+    fi
+    APP_PID=$!
+    echo "Torchsnap PID: $APP_PID"
+}
+
+wait_ready_linux() {
+    echo "Waiting for the launcher to be ready..."
+    local deadline=$((SECONDS + READY_TIMEOUT))
+    while true; do
+        if ! running "$APP_PID"; then
+            echo "Error: Torchsnap exited before it got ready. Its last output:" >&2
+            tail -n 20 "$APP_LOG" >&2
+            APP_PID=""
+            exit 1
+        fi
+        local ready
+        ready=$(echo '{"jsonrpc":"2.0","id":0,"method":"status"}' |
+            socat -T1 - UNIX-CONNECT:"$SOCK" 2>/dev/null |
+            jq -r '.result.ready // false' 2>/dev/null || echo false)
+        if [[ "$ready" == true ]]; then
+            break
+        fi
+        if [[ "$SECONDS" -ge "$deadline" ]]; then
+            echo "Error: the launcher did not become ready within ${READY_TIMEOUT} s." >&2
+            exit 1
+        fi
+        sleep 0.2
+    done
+    echo "Control API ready."
+}
+
+# The run's context for the analysis: the app's version and display
+# from `info`, and the environment variables that change how WebKitGTK,
+# GTK or the experiment switches behave. The app inherits this script's
+# environment, so these are the app's values.
+record_context_linux() {
+    local info
+    info=$(echo '{"jsonrpc":"2.0","id":0,"method":"info"}' | socat - UNIX-CONNECT:"$SOCK")
+    echo "$info" | jq -c '{event: "info", info: .result}' >>"$EVENTS_FILE"
+    { env | grep -E '^(WEBKIT_|GDK_|G1_)' || true; } |
+        jq -Rcs '{event: "environment", variables: (split("\n") | map(select(length > 0) | capture("^(?<k>[^=]+)=(?<v>.*)$")) | map({(.k): .v}) | add // {})}' \
+            >>"$EVENTS_FILE"
+}
+
+stop_app_linux() {
+    local pids
+    pids="$("$SCRIPT_DIR/memsnap" pids -p "$APP_PID" 2>/dev/null || true)"
+    kill "$APP_PID" 2>/dev/null || true
+    local deadline=$((SECONDS + STOP_TIMEOUT))
+    local left pid
+    while true; do
+        left=""
+        for pid in $APP_PID $pids; do
+            if running "$pid"; then
+                left="$left $pid"
+            fi
+        done
+        if [[ -z "$left" ]] || [[ "$SECONDS" -ge "$deadline" ]]; then
+            break
+        fi
+        sleep 0.2
+    done
+    if [[ -n "$left" ]]; then
+        echo "  Warning: still running ${STOP_TIMEOUT} s after the stop, killed:$left" >&2
+        # shellcheck disable=SC2086 # one word per PID
+        kill -9 $left 2>/dev/null || true
+    fi
+    wait "$APP_PID" 2>/dev/null || true
+    APP_PID=""
+}
+
+if [[ "$PLATFORM" == Linux ]]; then
+    # A signal ends the run through the EXIT trap, which stops the app.
+    trap 'exit 130' INT TERM HUP
+fi
 
 # =========================================================
 # Step 1: Build release app
 # =========================================================
 
-if [[ "$SKIP_BUILD" == true ]]; then
+if [[ "$PLATFORM" == Linux ]]; then
+    echo "Using $APP (no build on Linux)."
+elif [[ "$SKIP_BUILD" == true ]]; then
     echo "Skipping build (--skip-build)."
     if [[ ! -d "$APP_BUNDLE" ]]; then
         echo "Error: App bundle not found at $APP_BUNDLE" >&2
@@ -188,59 +418,74 @@ else
     echo '{"controlChannel.enabled": true}' >"$SETTINGS_FILE"
 fi
 
-# =========================================================
-# Step 3: Kill any existing Torchsnap instance
-# =========================================================
+if [[ "$PLATFORM" == Linux ]]; then
+    # =====================================================
+    # Steps 3 to 5 on Linux: refuse a running instance,
+    # launch, wait until ready
+    # =====================================================
 
-if pgrep -x torchsnap &>/dev/null; then
-    echo "Stopping existing Torchsnap instance..."
-    pkill -x torchsnap
-    sleep 1
-fi
-
-# =========================================================
-# Step 4: Launch the app
-# =========================================================
-
-echo "Launching Torchsnap..."
-open "$APP_BUNDLE"
-
-for _ in $(seq 1 30); do
-    APP_PID=$(pgrep -x torchsnap 2>/dev/null || true)
-    if [[ -n "$APP_PID" ]]; then break; fi
-    sleep 0.2
-done
-
-if [[ -z "$APP_PID" ]]; then
-    echo "Error: Torchsnap did not start within 6 seconds." >&2
-    exit 1
-fi
-
-echo "Torchsnap PID: $APP_PID"
-
-# =========================================================
-# Step 5: Wait for the control socket
-# =========================================================
-
-echo "Waiting for control socket..."
-CONTROL_READY=false
-for _ in $(seq 1 50); do
-    if [[ -S "$SOCK" ]]; then
-        if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' |
-            socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
-            CONTROL_READY=true
-            break
-        fi
+    launch_app_linux
+    wait_ready_linux
+    record_context_linux
+    MEMSNAP_TARGET=(-p "$APP_PID")
+    if [[ -n "$COMPOSITOR_PID" ]]; then
+        MEMSNAP_TARGET+=(--also "$COMPOSITOR_PID")
     fi
-    sleep 0.2
-done
+else
+    # =====================================================
+    # Step 3: Kill any existing Torchsnap instance
+    # =====================================================
 
-if [[ "$CONTROL_READY" != true ]]; then
-    echo "Error: Control API did not become ready within 10 seconds." >&2
-    exit 1
+    if pgrep -x torchsnap &>/dev/null; then
+        echo "Stopping existing Torchsnap instance..."
+        pkill -x torchsnap
+        sleep 1
+    fi
+
+    # =====================================================
+    # Step 4: Launch the app
+    # =====================================================
+
+    echo "Launching Torchsnap..."
+    open "$APP_BUNDLE"
+
+    for _ in $(seq 1 30); do
+        APP_PID=$(pgrep -x torchsnap 2>/dev/null || true)
+        if [[ -n "$APP_PID" ]]; then break; fi
+        sleep 0.2
+    done
+
+    if [[ -z "$APP_PID" ]]; then
+        echo "Error: Torchsnap did not start within 6 seconds." >&2
+        exit 1
+    fi
+
+    echo "Torchsnap PID: $APP_PID"
+
+    # =====================================================
+    # Step 5: Wait for the control socket
+    # =====================================================
+
+    echo "Waiting for control socket..."
+    CONTROL_READY=false
+    for _ in $(seq 1 50); do
+        if [[ -S "$SOCK" ]]; then
+            if echo '{"jsonrpc":"2.0","id":0,"method":"status"}' |
+                socat -T1 - UNIX-CONNECT:"$SOCK" &>/dev/null; then
+                CONTROL_READY=true
+                break
+            fi
+        fi
+        sleep 0.2
+    done
+
+    if [[ "$CONTROL_READY" != true ]]; then
+        echo "Error: Control API did not become ready within 10 seconds." >&2
+        exit 1
+    fi
+
+    echo "Control API ready."
 fi
-
-echo "Control API ready."
 
 # =========================================================
 # Step 6: Start continuous sampler (background)
@@ -257,11 +502,23 @@ sleep 0.5
 
 SCENARIO_DURATION=55
 
-echo "Starting background sampler (${SCENARIO_DURATION}s, 200ms interval)..."
-"$SCRIPT_DIR/memsnap" sample \
-    -i 0.2 \
-    -d "$SCENARIO_DURATION" \
-    -o "$SAMPLES_FILE" &
+# On macOS the sampler runs for the scenario's length. On Linux it runs
+# until it is stopped after the last snapshot, so it also covers the
+# cycles after the scenario.
+if [[ "$PLATFORM" == Linux ]]; then
+    echo "Starting background sampler (until the last snapshot, 200ms interval)..."
+    "$SCRIPT_DIR/memsnap" sample \
+        -i 0.2 \
+        -d 0 \
+        -o "$SAMPLES_FILE" \
+        "${MEMSNAP_TARGET[@]}" &
+else
+    echo "Starting background sampler (${SCENARIO_DURATION}s, 200ms interval)..."
+    "$SCRIPT_DIR/memsnap" sample \
+        -i 0.2 \
+        -d "$SCENARIO_DURATION" \
+        -o "$SAMPLES_FILE" &
+fi
 MEMSNAP_PID=$!
 sleep 1
 
@@ -345,6 +602,14 @@ send "dismiss"
 sleep 5
 snap "final idle"
 
+# --- Linux: measured show/dismiss cycles ---
+if [[ "$CYCLES" -gt 0 ]]; then
+    echo "Running $CYCLES show/dismiss cycles..."
+    python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$CYCLES" >>"$EVENTS_FILE"
+    sleep 2
+    snap "after $CYCLES cycles"
+fi
+
 echo
 echo "Scenario complete. Waiting for sampler..."
 
@@ -352,17 +617,30 @@ echo "Scenario complete. Waiting for sampler..."
 # Step 8: Collect results
 # =========================================================
 
+if [[ "$PLATFORM" == Linux ]]; then
+    kill -TERM "$MEMSNAP_PID" 2>/dev/null || true
+fi
 wait "$MEMSNAP_PID" 2>/dev/null || true
 MEMSNAP_PID=""
+
+# --- Linux: timing pass, with the sampler stopped ---
+if [[ "$TIMING_CYCLES" -gt 0 ]]; then
+    echo "Running $TIMING_CYCLES timing cycles..."
+    python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$TIMING_CYCLES" --timing -o "$TIMING_FILE"
+fi
 
 # =========================================================
 # Step 9: Stop the app
 # =========================================================
 
 echo "Stopping Torchsnap..."
-kill "$APP_PID" 2>/dev/null || true
-wait "$APP_PID" 2>/dev/null || true
-APP_PID=""
+if [[ "$PLATFORM" == Linux ]]; then
+    stop_app_linux
+else
+    kill "$APP_PID" 2>/dev/null || true
+    wait "$APP_PID" 2>/dev/null || true
+    APP_PID=""
+fi
 
 # =========================================================
 # Step 10: Generate and append report
@@ -386,3 +664,9 @@ echo
 echo "Report appended to: $LOG_FILE"
 echo "Continuous data: $SAMPLES_FILE"
 echo "Snapshot data: $SNAPSHOTS_FILE"
+if [[ "$PLATFORM" == Linux ]]; then
+    echo "Events data: $EVENTS_FILE"
+fi
+if [[ "$TIMING_CYCLES" -gt 0 ]]; then
+    echo "Timing data: $TIMING_FILE"
+fi

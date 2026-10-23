@@ -39,7 +39,7 @@
 #   testbed tray-click [left|right|middle]
 #   testbed headless-start [WxH@SCALE...]  a headless GNOME session with virtual monitors
 #   testbed headless-stop     stop it and the app in it
-#   testbed stop-all          stop the app, recordings and headless sessions
+#   testbed stop-all          stop the app, a benchmark's app, recordings and headless sessions
 #   testbed record-start NAME start recording the machine's screen
 #   testbed record-stop       stop, copy the recording to target/linux-testbed/
 #

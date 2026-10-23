@@ -76,6 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   system's free memory. `--also PID` records another process apart from
   Torchsnap's, such as the compositor, and `memsnap pids` lists the
   measured processes. `tools/memsnap-report` reports such files in PSS.
+- `tools/bench-memory` runs on Linux: `--app PATH` names the binary to
+  start (no build), in a systemd user scope when `systemd-run` exists;
+  it waits until the launcher is ready, runs the same scenario, and
+  writes an events file with each control request's time, the app's
+  `info` and its `WEBKIT_*`, `GDK_*` and `G1_*` variables.
+  `--compositor-pid` records the compositor apart, `--cycles N` adds N
+  measured show/dismiss cycles, `--timing-cycles N` adds N unmeasured
+  ones that time `show` until the content is visible
+  (`tools/bench-memory-cycles`). `--output-dir` and `--log` work on both
+  platforms. `just testbed-stop-all` also stops an app a benchmark left
+  running.
 
 ### Changed
 
