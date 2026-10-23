@@ -13,6 +13,15 @@ fn main() {
 
     println!("cargo:rustc-env=GIT_HASH={git_hash}");
 
+    // Release builds rerun this script when HEAD moves, so they always
+    // carry the current hash. Debug builds do not watch git: every rerun
+    // recompiles the app, so their hash can lag behind commits.
+    if std::env::var("PROFILE").as_deref() == Ok("release") {
+        for path in git_head_paths() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
+
     // Cargo caches proc macro expansions based on input tokens,
     // not external files the macro reads. Both wasmtime's
     // bindgen! (host side) and wit_bindgen's generate! (gadget
@@ -53,4 +62,43 @@ fn main() {
     }
 
     tauri_build::build()
+}
+
+/// The files git changes when HEAD of this checkout moves: `HEAD`, the
+/// branch ref it names, `packed-refs`, and this worktree's reflog
+/// `logs/HEAD`. Git appends to the reflog on every commit, reset and
+/// checkout here, also when a commit turns a ref that lived only in
+/// `packed-refs` into a loose file, which was not there to be watched.
+///
+/// Only existing files are returned, because cargo reruns a build
+/// script on every build while one of its `rerun-if-changed` paths is
+/// missing. Without a working git the list is empty.
+fn git_head_paths() -> Vec<std::path::PathBuf> {
+    let git = |args: &[&str]| -> Option<String> {
+        let output = std::process::Command::new("git").args(args).output().ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+
+    let mut names = vec![
+        "HEAD".to_string(),
+        "packed-refs".to_string(),
+        "logs/HEAD".to_string(),
+    ];
+    // A detached HEAD names no branch; HEAD itself then holds the commit.
+    if let Some(branch) = git(&["symbolic-ref", "-q", "HEAD"]) {
+        names.push(branch);
+    }
+
+    // `--git-path` answers relative to the working directory, which cargo
+    // sets to the manifest directory; an absolute answer stays as it is.
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    names
+        .iter()
+        .filter_map(|name| git(&["rev-parse", "--git-path", name]))
+        .map(|path| manifest_dir.join(path))
+        .filter(|path| path.exists())
+        .collect()
 }
