@@ -12,7 +12,7 @@
 # timestamp; every other archive is copied over it. The host build
 # script and tauri-build watch the stage, and cargo compares
 # timestamps, so an untouched stage lets cargo skip recompiling the
-# app.
+# app (ADR 68).
 #
 # Content means the entry names and each entry's decompressed bytes.
 # The archives are not byte-reproducible: `zip` stores every entry's

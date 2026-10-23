@@ -164,7 +164,7 @@ package-gadget name:
 # exactly the listed archives, so a gadget removed from `bundled.toml`
 # is also removed from the next bundle. It keeps a staged archive whose
 # content did not change, with its timestamp, so cargo does not
-# recompile the app for a gadget build that changed nothing.
+# recompile the app for a gadget build that changed nothing (ADR 68).
 
 # Stage whitelisted gadgets into target/bundled-gadgets/ for Tauri bundling
 stage-bundled-gadgets:

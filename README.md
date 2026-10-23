@@ -119,6 +119,14 @@ between them does not recompile the crates that build C code. A new
 minimum macOS version goes into both files; `just test-tools` checks
 that they agree.
 
+A build in which neither the frontend nor a bundled gadget changed does
+not recompile the app (ADR 68). `vite build` gives every file in `dist/`
+whose content did not change its previous timestamps back, as long as
+the build produced the same set of files (`vite/keep-mtimes.ts`), and
+`just stage-bundled-gadgets` keeps a staged archive whose content did
+not change (`tools/stage-bundled-archives`). Cargo compares timestamps,
+so it then finds nothing new to embed.
+
 ## Signing macOS builds
 
 `just build` leaves the macOS bundle unsigned unless the environment

@@ -15,7 +15,7 @@ fn main() {
 
     // Release builds rerun this script when HEAD moves, so they always
     // carry the current hash. Debug builds do not watch git: every rerun
-    // recompiles the app, so their hash can lag behind commits.
+    // recompiles the app, so their hash can lag behind commits (ADR 68).
     if std::env::var("PROFILE").as_deref() == Ok("release") {
         for path in git_head_paths() {
             println!("cargo:rerun-if-changed={}", path.display());

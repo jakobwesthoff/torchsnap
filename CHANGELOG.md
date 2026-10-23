@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   On an Apple silicon Mac, `cargo build` after `just build` went from
   about 25 s to 3 s, and the Tauri build after `cargo build` from about
   29 s to 9 s.
+- A `just build` in which neither the frontend nor a bundled gadget
+  changed no longer recompiles the app to embed them again; on an Apple
+  silicon Mac a debug build went from about 15 s to 9 s. `vite build`
+  keeps the timestamps of files in `dist/` whose content did not change,
+  and staging keeps gadget archives whose content did not change.
 
 ## [0.15.0] - 2026-10-21
 
