@@ -119,6 +119,10 @@ cmd_assemble() {
     lib="$dest/lib/$name"
     mkdir -p "$lib"
 
+    if [ "$profile" = debug ]; then
+        export_dev_gadgets "$dest/dev-gadgets"
+    fi
+
     [ "$kind" = object ] || return 0
     while IFS=$'\t' read -r source target; do
         case "$source" in
@@ -147,6 +151,34 @@ cmd_assemble() {
                 ;;
         esac
     done < <(jq -r '.bundle.resources | to_entries[] | "\(.key)\t\(.value)"' "$conf")
+}
+
+# A debug binary also loads gadgets from `gadgets/` of the tree it was
+# built in (`CARGO_MANIFEST_DIR/../gadgets`), as the archives
+# `just build` leaves there. A caller that builds at the path of a tree
+# on another machine copies `dev-gadgets/` into that tree's `gadgets/`.
+# Only the gadgets `gadgets/bundled.toml` does not list go there: the
+# listed ones come from `lib/<productName>/gadgets`, which the loader
+# reads first. The loop runs over the gadget directories, not over the
+# archives, since the work volume keeps the archives of gadgets the
+# checkout no longer has.
+export_dev_gadgets() {
+    local dir="$1" listed manifest id archive
+    mkdir -p "$dir"
+    listed=$(cd "$work" && tools/list-bundled-gadgets gadgets/bundled.toml)
+    for manifest in "$work"/gadgets/*/manifest.toml; do
+        [ -f "$manifest" ] || continue
+        id=$(basename "$(dirname "$manifest")")
+        if grep -qxF "$id" <<<"$listed"; then
+            continue
+        fi
+        archive="$work/gadgets/$id.torchsnap"
+        if [ ! -f "$archive" ]; then
+            echo "in-container: no archive gadgets/$id.torchsnap for the gadget in gadgets/$id" >&2
+            exit 1
+        fi
+        cp -p "$archive" "$dir/"
+    done
 }
 
 cmd_glibc() {

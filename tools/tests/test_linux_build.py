@@ -1040,6 +1040,31 @@ def fake_work_tree(work, profile="debug"):
     staged.mkdir(parents=True)
     (staged / "a.torchsnap").write_text("a")
     (staged / "b.torchsnap").write_text("b")
+    add_gadgets(work)
+
+
+def add_gadgets(work, listed=(), unlisted=(), without_archive=(), stale_archives=()):
+    """Gadget sources and the archives `just build` leaves next to them
+    in `gadgets/`. `listed` ids are in `bundled.toml`, which a fake
+    `tools/list-bundled-gadgets` prints; `without_archive` gadgets have
+    a manifest but no archive; `stale_archives` are archives without a
+    gadget directory. Each archive's mtime is set to a fixed past time,
+    so a copy that keeps it is told from one that does not."""
+    gadgets = work / "gadgets"
+    gadgets.mkdir(exist_ok=True)
+    for gadget in (*listed, *unlisted, *without_archive):
+        (gadgets / gadget).mkdir()
+        (gadgets / gadget / "manifest.toml").write_text(f'[gadget]\nid = "{gadget}"\n')
+    for archive in (*listed, *unlisted, *stale_archives):
+        path = gadgets / f"{archive}.torchsnap"
+        path.write_text(archive)
+        os.utime(path, (1_600_000_000, 1_600_000_000))
+    (gadgets / "bundled.toml").write_text(
+        "gadgets = [\n" + "".join(f'    "{gadget}",\n' for gadget in listed) + "]\n")
+    lister = work / "tools" / "list-bundled-gadgets"
+    lister.parent.mkdir(exist_ok=True)
+    lister.write_text("#!/bin/bash\n" + "".join(f"echo {gadget}\n" for gadget in listed))
+    lister.chmod(0o755)
 
 
 class InContainerCase(TreeCase):
@@ -1117,6 +1142,38 @@ class Assemble(InContainerCase):
             "lib/Torchsnap/gadgets/a.torchsnap",
             "lib/Torchsnap/gadgets/b.torchsnap",
         ])
+
+    def test_a_debug_build_carries_the_archives_of_the_unlisted_gadgets(self):
+        fake_work_tree(self.work)
+        add_gadgets(self.work, listed=["calculator"], unlisted=["hello-world", "zerotier"],
+                    stale_archives=["removed-gadget"])
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dev = self.out / "dev-gadgets"
+        self.assertEqual(sorted(p.name for p in dev.iterdir()), ["hello-world.torchsnap", "zerotier.torchsnap"])
+        self.assertEqual((dev / "hello-world.torchsnap").read_text(), "hello-world")
+        self.assertEqual((dev / "hello-world.torchsnap").stat().st_mtime, 1_600_000_000)
+
+    def test_a_debug_build_without_unlisted_gadgets_has_an_empty_dev_gadgets_dir(self):
+        fake_work_tree(self.work)
+        add_gadgets(self.work, listed=["calculator"])
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list((self.out / "dev-gadgets").iterdir()), [])
+
+    def test_a_release_build_has_no_dev_gadgets(self):
+        fake_work_tree(self.work, "release")
+        add_gadgets(self.work, unlisted=["hello-world"])
+        result = self.run_in_container("assemble", "release", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.out / "dev-gadgets").exists())
+
+    def test_an_unlisted_gadget_without_its_archive_exits_1_naming_it(self):
+        fake_work_tree(self.work)
+        add_gadgets(self.work, unlisted=["hello-world"], without_archive=["zerotier"])
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("gadgets/zerotier.torchsnap", result.stderr)
 
     def test_a_missing_binary_exits_1_naming_it(self):
         fake_work_tree(self.work)

@@ -38,6 +38,7 @@ target/linux-build/debug/
   lib/Torchsnap/gadgets/<id>.torchsnap   one per entry of gadgets/bundled.toml
   lib/Torchsnap/gadget-document.icns     the other bundle resources, unused on Linux
   lib/Torchsnap/Assets.car
+  dev-gadgets/<id>.torchsnap             debug only: one per gadget bundled.toml does not list
   build-packages.txt                     the image's Debian packages and versions
 ```
 
@@ -52,12 +53,14 @@ The binary knows the commit it was built from: the recipe mounts the
 checkout's git directory read-only into the container. Outside a git
 checkout the commit shows as `unknown`.
 
-A debug binary also loads the gadgets under `<work path>/gadgets`, the
-source tree's path inside the container, which only exists there. Set
-`TORCHSNAP_LINUX_BUILD_WORKDIR` (default `/work`) to the absolute path
-where the same tree sits on the target machine, and the debug binary
-finds the unlisted gadgets there as well. Changing the path makes the
-next build compile from scratch.
+A debug binary also loads the gadget archives in `<work path>/gadgets`,
+the source tree's path inside the container, which only exists there.
+Set `TORCHSNAP_LINUX_BUILD_WORKDIR` (default `/work`) to the absolute
+path where the same tree sits on the target machine and copy
+`dev-gadgets/` into that tree's `gadgets/`, and the debug binary finds
+the gadgets `gadgets/bundled.toml` does not list there as well; the
+listed ones come from `lib/Torchsnap/gadgets/`, which it reads first.
+Changing the path makes the next build compile from scratch.
 
 Only one build runs at a time: a second one fails at `docker run`
 because the container name `torchsnap-linux-build` is taken.

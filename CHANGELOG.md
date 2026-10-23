@@ -35,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `just linux-build [--release]` builds Torchsnap for Linux arm64
   (Debian 13) in a Docker container on an Apple silicon Mac, without
   packaging; the binary and its bundled gadgets land in
-  `target/linux-build/`. `just linux-build-lint [path]` runs
+  `target/linux-build/`, and a debug build also holds the archives of
+  the gadgets `gadgets/bundled.toml` does not list, for the debug app's
+  development gadget folder. `just linux-build-lint [path]` runs
   `cargo check` and clippy for Linux on any checkout in the same
   container. `just linux-build-status` shows what its image, build cache
   and volumes take on disk, `just linux-build-clean [--all]` removes
