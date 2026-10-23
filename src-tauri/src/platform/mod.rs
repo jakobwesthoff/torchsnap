@@ -157,16 +157,29 @@ pub trait Tray {
     /// devtools, quit) without the platform module knowing about those
     /// concepts.
     ///
-    /// Returns the "Check for Updates..." item, whose text the updater
-    /// changes to name an update the user postponed.
     fn build(
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
         on_check_updates: fn(&tauri::AppHandle),
-    ) -> anyhow::Result<tauri::menu::MenuItem<tauri::Wry>>;
+    ) -> anyhow::Result<BuiltTray>;
 }
+
+/// What `Tray::build` hands back to `setup()`.
+pub struct BuiltTray {
+    /// The "Check for Updates..." item, whose text the updater changes
+    /// to name an update the user postponed.
+    pub check_updates_item: tauri::menu::MenuItem<tauri::Wry>,
+    /// The id the tray icon was built with. Tauri keeps no public list
+    /// of its trays, so this is the one place the id can be read.
+    pub id: tauri::tray::TrayIconId,
+}
+
+/// The tray icon's id, kept in managed state for the control API's
+/// `info`. The tray keeps Tauri's default id, `{pid}-{counter}`; on
+/// Linux the AppIndicator is named after it.
+pub struct TrayId(pub String);
 
 /// Abstraction over hiding a window's native title-bar controls so
 /// the frontend can render its own title bar.

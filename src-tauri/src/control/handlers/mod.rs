@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod info;
 mod launcher;
 mod query;
 mod status;
@@ -18,4 +19,5 @@ pub fn register_all(registry: &mut HandlerRegistry) {
     registry.register("query", query::QueryHandler);
     registry.register("status", status::StatusHandler);
     registry.register("windows", windows::WindowsHandler);
+    registry.register("info", info::InfoHandler);
 }

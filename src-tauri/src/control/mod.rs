@@ -361,7 +361,7 @@ fn json_rpc_error(id: Value, code: i64, message: &str) -> Value {
 // Socket path
 // =========================================================
 
-fn socket_path(app: &tauri::AppHandle) -> PathBuf {
+fn socket_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     app.path()
         .app_data_dir()
         .expect("resolve app data dir")

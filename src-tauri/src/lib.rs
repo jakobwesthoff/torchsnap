@@ -708,13 +708,26 @@ fn close_request_action(
 // Frecency Commands
 // =========================================================
 
-/// Both values are embedded at compile time via `env!()`.
+/// The version and git hash of this build, for the frontend's
+/// `build_info` and the control API's `info`. Both values are embedded
+/// at compile time via `env!()`.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BuildInfo {
+    version: &'static str,
+    git_hash: &'static str,
+}
+
+impl BuildInfo {
+    pub(crate) const CURRENT: BuildInfo = BuildInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        git_hash: env!("GIT_HASH"),
+    };
+}
+
 #[tauri::command]
-fn build_info() -> serde_json::Value {
-    serde_json::json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "gitHash": env!("GIT_HASH"),
-    })
+fn build_info() -> BuildInfo {
+    BuildInfo::CURRENT
 }
 
 #[tauri::command]
@@ -1348,7 +1361,7 @@ pub fn run() {
             // =========================================================
             // Tray icon with context menu
             // =========================================================
-            let updates_item = PlatformTray::build(
+            let tray = PlatformTray::build(
                 app,
                 toggle_launcher_window,
                 show_settings_window,
@@ -1357,7 +1370,8 @@ pub fn run() {
             )
             .context("build platform tray")?;
             app.state::<updates::UpdateState>()
-                .set_tray_item(updates_item);
+                .set_tray_item(tray.check_updates_item);
+            app.manage(platform::TrayId(tray.id.as_ref().to_string()));
 
             // =========================================================
             // Preload windows
@@ -1747,6 +1761,17 @@ mod launcher_tests {
             height: 1080.0,
             scale_factor: 1.0,
         }
+    }
+
+    #[test]
+    fn build_info_names_the_version_and_git_hash() {
+        assert_eq!(
+            serde_json::to_value(build_info()).expect("serializes"),
+            serde_json::json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "gitHash": env!("GIT_HASH"),
+            })
+        );
     }
 
     #[test]

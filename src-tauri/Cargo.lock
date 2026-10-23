@@ -6009,6 +6009,7 @@ dependencies = [
  "clipboard-rs",
  "cron",
  "evalexpr",
+ "gdk",
  "globset",
  "httpmock",
  "image",

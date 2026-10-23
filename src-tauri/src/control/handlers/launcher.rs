@@ -27,8 +27,9 @@ use crate::{hide_launcher, request_launcher_dismiss, show_launcher};
 /// returning its result. Needed because AppKit/NSPanel calls must
 /// happen on the main thread, but control handlers execute on a
 /// blocking-pool thread.
-pub(super) fn on_main_thread<F, R>(app: &tauri::AppHandle, f: F) -> Result<R, ControlError>
+pub(super) fn on_main_thread<Rt, F, R>(app: &tauri::AppHandle<Rt>, f: F) -> Result<R, ControlError>
 where
+    Rt: tauri::Runtime,
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
@@ -129,5 +130,20 @@ impl Handler for DismissHandler {
         on_main_thread(app, move || request_launcher_dismiss(&handle))?;
 
         Ok(serde_json::json!({ "ok": true }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    use super::*;
+
+    #[test]
+    fn on_main_thread_returns_the_closure_result() {
+        let app = mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("mock app builds");
+        assert_eq!(on_main_thread(app.handle(), || 42).expect("dispatched"), 42);
     }
 }

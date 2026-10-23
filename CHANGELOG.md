@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launcher on.
 - Control API: `windows` lists Torchsnap's open windows with their
   label, title, visibility and focus.
+- Control API: `info` reports the process id, version, git hash, data
+  folder, socket path, the tray icon's id and, on Linux, the display
+  Torchsnap is connected to and its backend (Wayland or X11).
 
 ### Changed
 

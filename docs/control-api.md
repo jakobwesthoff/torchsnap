@@ -243,6 +243,38 @@ echo '{"jsonrpc":"2.0","id":1,"method":"windows"}' | socat - UNIX-CONNECT:"$SOCK
 #    {"label":"settings","title":"Torchsnap Settings","visible":true,"focused":true}]}}
 ```
 
+---
+
+### `info`
+
+Identify the running Torchsnap: its process, build, folders, tray icon
+and, on Linux, the display it is connected to. With two instances
+running side by side, each with its own data folder, the answers tell
+them apart.
+
+**Parameters:** none
+
+**Response:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pid` | number | The process id |
+| `version` | string | The app version |
+| `gitHash` | string | The short git hash the app was built from |
+| `dataDir` | string | The app data folder |
+| `socketPath` | string | The control socket's path, in the data folder |
+| `trayId` | string | The tray icon's id, `<pid>-1`. On Linux the tray's AppIndicator is named `tray-icon tray app <trayId>` |
+| `display` | object or null | On Linux, the display Torchsnap's windows are on: `backend` (`wayland` or `x11`) and `name` (for example `wayland-0` or `:0`). `null` on other platforms |
+
+**Example:**
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"info"}' | socat - UNIX-CONNECT:"$SOCK"
+# → {"jsonrpc":"2.0","id":1,"result":{"pid":4242,"version":"0.15.0","gitHash":"1d9cc637",
+#    "dataDir":"/home/pi/.local/share/app.torchsnap",
+#    "socketPath":"/home/pi/.local/share/app.torchsnap/control.sock",
+#    "trayId":"4242-1","display":{"backend":"wayland","name":"wayland-0"}}}
+```
+
 ## Error Codes
 
 ### Protocol errors

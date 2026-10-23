@@ -15,7 +15,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-use crate::platform::Tray;
+use crate::platform::{BuiltTray, Tray};
 
 pub struct MacosTray;
 
@@ -26,7 +26,7 @@ impl Tray for MacosTray {
         on_settings: fn(&tauri::AppHandle),
         on_devtools: fn(&tauri::AppHandle),
         on_check_updates: fn(&tauri::AppHandle),
-    ) -> anyhow::Result<MenuItem<tauri::Wry>> {
+    ) -> anyhow::Result<BuiltTray> {
         // Opening this menu blurs the launcher, which dismisses it, so
         // by the time the item is clicked the toggle always shows it.
         let launcher_item = MenuItem::with_id(app, "launcher", "Open Launcher", true, None::<&str>)
@@ -68,7 +68,7 @@ impl Tray for MacosTray {
         let tray_icon = Image::from_bytes(include_bytes!("../../../icons/tray-icon-template.png"))
             .context("load tray icon")?;
 
-        TrayIconBuilder::new()
+        let tray = TrayIconBuilder::new()
             .icon(tray_icon)
             .icon_as_template(true)
             .tooltip("Torchsnap")
@@ -95,6 +95,9 @@ impl Tray for MacosTray {
             .build(app)
             .context("build tray icon")?;
 
-        Ok(updates_item)
+        Ok(BuiltTray {
+            check_updates_item: updates_item,
+            id: tray.id().clone(),
+        })
     }
 }
