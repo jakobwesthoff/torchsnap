@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Mac side of the Linux testbed: every `just testbed-*` recipe calls this
+# script with a subcommand. It finds the test machine through
+# TORCHSNAP_LINUX_HOST and moves code and results between the Mac and the
+# machine; the work on the machine itself is done by scripts in the
+# synced tree. See docs/Howto-test-on-a-raspberry-pi.md.
+#
+# Usage:
+#   testbed sync    mirror the working tree to ~/torchsnap on the machine
+
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly repo_root
+
+# The tree lives in the login user's home on the machine. rsync resolves
+# a relative remote path against that home.
+readonly remote_tree="torchsnap"
+
+usage() {
+    sed -n '/^# Usage:/,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+
+# The repository never names a machine, so every subcommand that talks to
+# one needs the variable.
+require_host() {
+    if [ -z "${TORCHSNAP_LINUX_HOST:-}" ]; then
+        echo "testbed: TORCHSNAP_LINUX_HOST is not set (example: user@pi.local)" >&2
+        exit 2
+    fi
+}
+
+# =========================================================
+# sync
+# =========================================================
+
+# The machine builds from a copy of the working tree, including changes
+# not yet committed. Files that .gitignore names (target/, node_modules/,
+# built gadgets) stay out, so the machine builds its own. --delete removes
+# files deleted on the Mac but keeps ignored files on the machine, since
+# rsync protects excluded paths from deletion; the machine's build output
+# survives a sync.
+cmd_sync() {
+    rsync -a --delete --filter=':- .gitignore' --exclude=.git \
+        "$repo_root/" "$TORCHSNAP_LINUX_HOST:$remote_tree/"
+}
+
+# =========================================================
+# Dispatch
+# =========================================================
+
+[ $# -gt 0 ] || usage
+subcommand="$1"
+shift
+
+case "$subcommand" in
+    sync)
+        require_host
+        cmd_sync "$@"
+        ;;
+    *)
+        usage
+        ;;
+esac

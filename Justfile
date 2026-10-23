@@ -17,6 +17,7 @@ import 'just/doctor.just'
 import 'just/maintenance.just'
 import 'just/tools.just'
 import 'just/linux-build.just'
+import 'just/linux-testbed.just'
 
 # Show available recipes
 default:
