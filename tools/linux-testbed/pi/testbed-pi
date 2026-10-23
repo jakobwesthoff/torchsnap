@@ -21,7 +21,7 @@
 #   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
 #   testbed-pi control METHOD [JSON]  one request to the app's control socket
 #   testbed-pi merge-app-settings     enable the control socket, skip the welcome
-#   testbed-pi bench-memory -d TEXT [--cycles N] [--timing-cycles N]
+#   testbed-pi bench-memory -d TEXT [--cycles N] [--timing-cycles N] [--env-prefix PREFIX]
 #                                     run tools/bench-memory with the current build
 #   testbed-pi eval JS                print the value of JS evaluated in the desktop shell
 #   testbed-pi windows                the app's windows as JSON

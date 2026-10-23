@@ -28,7 +28,8 @@
 # memsnap's Linux path. It waits until the launcher has reported
 # its layout (`status.ready`), since Linux builds the launcher
 # visible and a dismiss before then is refused. It writes an
-# events file with every control request and its time, and can
+# events file with every control request and its time and the
+# app's WEBKIT_* and GDK_* variables (--env-prefix adds more), and can
 # add show/dismiss cycles after the scenario (--cycles, measured)
 # and a timing pass (--timing-cycles, time from show to visible
 # content, not measured).
@@ -72,6 +73,10 @@ COMPOSITOR_PID=""
 OUTPUT_DIR=""
 CYCLES=0
 TIMING_CYCLES=0
+# Prefixes of the environment variables the events file records:
+# WebKitGTK's and GDK's switches, plus whatever --env-prefix adds (an
+# experiment's own switches, for example).
+ENV_PREFIXES=(WEBKIT_ GDK_)
 
 usage() {
     cat <<'EOF'
@@ -91,6 +96,8 @@ Linux only:
   --compositor-pid <PID>     Also record this process (the compositor), apart from Torchsnap's
   --cycles <N>               After the scenario, N measured show/dismiss cycles [default: 0]
   --timing-cycles <N>        Then N unmeasured cycles timing show → visible content [default: 0]
+  --env-prefix <PREFIX>      Also record the app's variables starting with PREFIX in the
+                             events file, besides WEBKIT_ and GDK_ (repeatable)
 EOF
 }
 
@@ -121,13 +128,14 @@ while [[ $# -gt 0 ]]; do
         LOG_FILE="$2"
         shift 2
         ;;
-    --app | --compositor-pid | --cycles | --timing-cycles)
+    --app | --compositor-pid | --cycles | --timing-cycles | --env-prefix)
         linux_only "$1"
         case "$1" in
         --app) APP="$2" ;;
         --compositor-pid) COMPOSITOR_PID="$2" ;;
         --cycles) CYCLES="$2" ;;
         --timing-cycles) TIMING_CYCLES="$2" ;;
+        --env-prefix) ENV_PREFIXES+=("$2") ;;
         esac
         shift 2
         ;;
@@ -337,16 +345,23 @@ wait_ready_linux() {
 }
 
 # The run's context for the analysis: the app's version and display
-# from `info`, and the environment variables that change how WebKitGTK,
-# GTK or the experiment switches behave. The app inherits this script's
-# environment, so these are the app's values.
+# from `info`, and the environment variables starting with one of
+# ENV_PREFIXES, which change how WebKitGTK, GDK or an experiment's
+# switches behave. The app inherits this script's environment, so these
+# are the app's values. The prefixes are compared as plain text, not as
+# patterns.
 record_context_linux() {
     local info
     info=$(echo '{"jsonrpc":"2.0","id":0,"method":"info"}' | socat - UNIX-CONNECT:"$SOCK")
     echo "$info" | jq -c '{event: "info", info: .result}' >>"$EVENTS_FILE"
-    { env | grep -E '^(WEBKIT_|GDK_|G1_)' || true; } |
-        jq -Rcs '{event: "environment", variables: (split("\n") | map(select(length > 0) | capture("^(?<k>[^=]+)=(?<v>.*)$")) | map({(.k): .v}) | add // {})}' \
-            >>"$EVENTS_FILE"
+    local prefixes
+    prefixes=$(printf '%s\n' "${ENV_PREFIXES[@]}" | jq -Rcs 'split("\n") | map(select(length > 0))')
+    env | jq -Rcs --argjson prefixes "$prefixes" '
+        {event: "environment", variables: (
+            split("\n")
+            | map(select(length > 0) | capture("^(?<k>[^=]+)=(?<v>.*)$"))
+            | map(select(.k as $k | any($prefixes[]; . as $p | $k | startswith($p))))
+            | map({(.k): .v}) | add // {})}' >>"$EVENTS_FILE"
 }
 
 stop_app_linux() {

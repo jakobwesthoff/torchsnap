@@ -186,13 +186,14 @@ class BenchMemoryLinux(BenchCase):
         result = self.bench(
             "-d", "linux run", "--app", self.tree.app, "--compositor-pid", "4242",
             "--output-dir", self.tree.out, "--log", self.tree.out / "bench.log",
-            STUB_SOCAT_NOT_READY="2", G1_MAXIMIZE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1",
+            "--env-prefix", "EXPERIMENT_",
+            STUB_SOCAT_NOT_READY="2", EXPERIMENT_MAXIMIZE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1",
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         app_pid = self.tree.app_pid()
 
         # The caller's environment reaches the app.
-        self.assertEqual(self.tree.app_env().get("G1_MAXIMIZE"), "1")
+        self.assertEqual(self.tree.app_env().get("EXPERIMENT_MAXIMIZE"), "1")
 
         # `dismiss` goes out only once `status` reports ready.
         methods = self.socat_methods()
@@ -219,7 +220,7 @@ class BenchMemoryLinux(BenchCase):
 
         records = [json.loads(line) for line in events.read_text().splitlines()]
         environment = next(r for r in records if r.get("event") == "environment")
-        self.assertEqual(environment["variables"]["G1_MAXIMIZE"], "1")
+        self.assertEqual(environment["variables"]["EXPERIMENT_MAXIMIZE"], "1")
         self.assertEqual(environment["variables"]["WEBKIT_DISABLE_DMABUF_RENDERER"], "1")
         info = next(r for r in records if r.get("event") == "info")
         self.assertEqual(info["info"]["version"], "0.0.0-test")
@@ -230,6 +231,32 @@ class BenchMemoryLinux(BenchCase):
 
         self.assertTrue(wait_gone(app_pid), "the app still runs")
         self.assertNotIn("Warning", result.stderr)
+
+    def environment_record(self, result):
+        events = self.printed_path(result.stdout, "Events data: ")
+        records = [json.loads(line) for line in events.read_text().splitlines()]
+        return next(r for r in records if r.get("event") == "environment")["variables"]
+
+    # Only WEBKIT_ and GDK_ variables and the prefixes named with
+    # --env-prefix go into the events file; the app still gets every
+    # variable.
+    def test_only_listed_prefixes_are_recorded(self):
+        result = self.bench(
+            "-d", "x", "--app", self.tree.app, "--output-dir", self.tree.out,
+            GDK_SCALE="2", EXPERIMENT_MAXIMIZE="1", OTHER_SWITCH="1",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.environment_record(result), {"GDK_SCALE": "2"})
+        self.assertEqual(self.tree.app_env().get("EXPERIMENT_MAXIMIZE"), "1")
+
+    def test_env_prefix_can_be_given_several_times(self):
+        result = self.bench(
+            "-d", "x", "--app", self.tree.app, "--output-dir", self.tree.out,
+            "--env-prefix", "EXPERIMENT_", "--env-prefix", "L1_",
+            EXPERIMENT_MAXIMIZE="1", L1_SWITCH="on", OTHER_SWITCH="1",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.environment_record(result), {"EXPERIMENT_MAXIMIZE": "1", "L1_SWITCH": "on"})
 
     def test_the_app_runs_in_a_user_scope_when_systemd_run_is_there(self):
         self.stubs.add("systemd-run", SYSTEMD_RUN_STUB)
@@ -375,7 +402,7 @@ class BenchMemoryMacOS(BenchCase):
             self.assertTrue(path.exists(), path)
 
     def test_linux_options_are_refused(self):
-        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--cycles", "2"), ("--timing-cycles", "2")):
+        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--cycles", "2"), ("--timing-cycles", "2"), ("--env-prefix", "EXPERIMENT_")):
             result = self.bench("-d", "x", option, value)
             self.assertEqual(result.returncode, 1, option)
             self.assertIn(f"{option} is Linux only", result.stderr)

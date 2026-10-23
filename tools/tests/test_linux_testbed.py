@@ -3072,7 +3072,7 @@ FAKE_BENCH = textwrap.dedent(
     #!/usr/bin/env python3
     import json, os, sys
     names = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GDK_BACKEND", "DBUS_SESSION_BUS_ADDRESS",
-             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "G1_MAXIMIZE")
+             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "EXPERIMENT_MAXIMIZE")
     with open(os.path.join(os.environ["HOME"], "bench-call.json"), "w") as f:
         json.dump({"argv": sys.argv[1:], "env": {n: os.environ.get(n) for n in names}}, f)
     """
@@ -3113,17 +3113,18 @@ class TestbedPiBenchMemory(unittest.TestCase):
         return result, json.loads(record.read_text()) if record.exists() else None
 
     def test_runs_the_bench_with_the_build_the_compositor_and_its_own_files(self):
-        result, call = self.call("bench-memory", "-d", "M1 desktop A run1", "--cycles", "50", G1_MAXIMIZE="1")
+        result, call = self.call("bench-memory", "-d", "M1 desktop A run1", "--cycles", "50", "--env-prefix", "EXPERIMENT_",
+                                 EXPERIMENT_MAXIMIZE="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         state = self.home / ".cache" / "torchsnap-testbed" / "bench-memory"
         self.assertEqual(
             call["argv"],
-            ["-d", "M1 desktop A run1", "--cycles", "50", "--app", "/opt/build/torchsnap",
+            ["-d", "M1 desktop A run1", "--cycles", "50", "--env-prefix", "EXPERIMENT_", "--app", "/opt/build/torchsnap",
              "--output-dir", str(state), "--log", str(state / "memory-benchmark.log"),
              "--compositor-pid", "1666"],
         )
         self.assertEqual(call["env"]["WAYLAND_DISPLAY"], "wayland-0")
-        self.assertEqual(call["env"]["G1_MAXIMIZE"], "1")
+        self.assertEqual(call["env"]["EXPERIMENT_MAXIMIZE"], "1")
         settings = json.loads((self.home / ".local" / "share" / "app.torchsnap" / "settings.json").read_text())
         self.assertTrue(settings["controlChannel.enabled"])
         self.assertIn("welcome.seenRevision", settings)

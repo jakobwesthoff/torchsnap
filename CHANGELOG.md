@@ -80,14 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   start (no build), in a systemd user scope when `systemd-run` exists;
   it waits until the launcher is ready, runs the same scenario, and
   writes an events file with each control request's time, the app's
-  `info` and its `WEBKIT_*`, `GDK_*` and `G1_*` variables.
+  `info` and its `WEBKIT_*` and `GDK_*` variables; `--env-prefix PREFIX`
+  (repeatable) records the variables with that prefix as well.
   `--compositor-pid` records the compositor apart, `--cycles N` adds N
   measured show/dismiss cycles, `--timing-cycles N` adds N unmeasured
   ones that time `show` until the content is visible
   (`tools/bench-memory-cycles`). `--output-dir` and `--log` work on both
   platforms. `just testbed-stop-all` also stops an app a benchmark left
   running.
-- `just testbed-bench-memory DESCRIPTION [--cycles N] [--timing-cycles N] [--headless]`
+- `just testbed-bench-memory DESCRIPTION [--cycles N] [--timing-cycles N] [--env-prefix PREFIX] [--headless]`
   runs `tools/bench-memory` on the Linux testbed against its current
   build, with GNOME Shell recorded apart, and copies the data files to
   `target/linux-testbed/`.

@@ -474,8 +474,12 @@ apart). The bench starts the app itself, in the systemd user scope
 `torchsnap-bench-<time>`, so the testbed's app must not run; it refuses
 otherwise. `--cycles N` adds N measured show/dismiss cycles after the
 scenario, `--timing-cycles N` then N unmeasured ones that time `show`
-until the launcher's content is visible. With `--headless` it runs in
-the headless session.
+until the launcher's content is visible. The events file holds the
+app's `WEBKIT_*` and `GDK_*` variables; `--env-prefix PREFIX` (repeatable)
+adds the variables with that prefix, for example an experiment's
+switches. The app inherits the environment of the command that runs the
+bench, so on the Pi such a variable goes in front of `testbed-pi`. With
+`--headless` it runs in the headless session.
 
 The report goes to `~/.cache/torchsnap-testbed/bench-memory/memory-benchmark.log`
 on the Pi and to the terminal; the data files next to it (samples,

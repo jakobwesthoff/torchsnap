@@ -42,7 +42,7 @@
 #   testbed stop-all          stop the app, a benchmark's app, recordings and headless sessions
 #   testbed record-start NAME start recording the machine's screen
 #   testbed record-stop       stop, copy the recording to target/linux-testbed/
-#   testbed bench-memory -d TEXT [--cycles N] [--timing-cycles N]
+#   testbed bench-memory -d TEXT [--cycles N] [--timing-cycles N] [--env-prefix PREFIX]
 #                             run tools/bench-memory against the current build,
 #                             copy its data files to target/linux-testbed/
 #
