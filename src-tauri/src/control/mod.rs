@@ -143,7 +143,7 @@ impl ControlServer {
                                 let registry = Arc::clone(&registry);
                                 let app = app_handle.clone();
                                 tokio::spawn(async move {
-                                    handle_connection(stream, &registry, &app).await;
+                                    handle_connection(stream, registry, app).await;
                                 });
                             }
                             Err(e) => {
@@ -217,8 +217,8 @@ where
 /// writes newline-delimited JSON-RPC responses.
 async fn handle_connection(
     stream: tokio::net::UnixStream,
-    registry: &HandlerRegistry,
-    app: &tauri::AppHandle,
+    registry: Arc<HandlerRegistry>,
+    app: tauri::AppHandle,
 ) {
     let (reader, mut writer) = stream.into_split();
     let mut reader = tokio::io::BufReader::new(reader);
@@ -242,7 +242,22 @@ async fn handle_connection(
                 break;
             }
             Ok(RequestLine::Line(line)) => {
-                let response = process_request(&line, registry, app);
+                // Handlers are synchronous and may block: on the main
+                // thread (`on_main_thread`) or while waiting for an
+                // answer. On the blocking pool such a wait holds none of
+                // the runtime's workers, which async commands such as the
+                // launcher's search run on.
+                let registry = Arc::clone(&registry);
+                let app = app.clone();
+                let dispatched = tauri::async_runtime::spawn_blocking(move || {
+                    process_request(&line, &registry, &app)
+                })
+                .await;
+                // A handler that panicked ends the connection without a
+                // response, as the panic did when it ran on this task.
+                let Ok(response) = dispatched else {
+                    break;
+                };
                 let mut response_bytes =
                     serde_json::to_vec(&response).expect("serializing JSON-RPC response");
                 response_bytes.push(b'\n');

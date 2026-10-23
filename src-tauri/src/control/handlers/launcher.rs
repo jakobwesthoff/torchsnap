@@ -9,10 +9,10 @@
 // show, hide, toggle, and dismiss.
 //
 // All platform panel operations (show, hide, is_visible) must
-// run on the main thread on macOS. Since the control server
-// runs in a tokio task, we dispatch through
-// `app.run_on_main_thread()` and block on a oneshot channel
-// to get the result back.
+// run on the main thread on macOS. Control handlers run on a
+// blocking-pool thread, so we dispatch through
+// `app.run_on_main_thread()` and block on a channel to get the
+// result back.
 // =========================================================
 
 use serde_json::Value;
@@ -25,8 +25,8 @@ use crate::{hide_launcher, request_launcher_dismiss, show_launcher};
 
 /// Run a closure on the main thread and block until it completes,
 /// returning its result. Needed because AppKit/NSPanel calls must
-/// happen on the main thread, but control handlers execute in a
-/// tokio task.
+/// happen on the main thread, but control handlers execute on a
+/// blocking-pool thread.
 pub(super) fn on_main_thread<F, R>(app: &tauri::AppHandle, f: F) -> Result<R, ControlError>
 where
     F: FnOnce() -> R + Send + 'static,
