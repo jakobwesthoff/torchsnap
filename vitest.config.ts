@@ -43,6 +43,21 @@ export default defineConfig(async (env) =>
         "packages/*/src/**/*.test.{ts,tsx}",
       ],
       setupFiles: ["src/test/setup.ts"],
+      // Collected only when a run asks for it (`--coverage`, which
+      // `just coverage-frontend` passes). The reports land in the
+      // repo-root `target/`, which is gitignored.
+      coverage: {
+        provider: "v8",
+        reportsDirectory: "target/coverage/frontend",
+        reporter: ["text-summary", "html", "lcov"],
+        include: [
+          "src/**/*.{ts,tsx}",
+          "vite/**/*.ts",
+          "gadgets/*/frontend/src/**/*.{ts,tsx}",
+          "packages/*/src/**/*.{ts,tsx}",
+        ],
+        exclude: ["**/*.test.{ts,tsx}", "**/*.d.ts"],
+      },
     },
   }),
 );

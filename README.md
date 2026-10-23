@@ -97,6 +97,12 @@ Common recipes (run `just --list` for the full set):
   `gadgets/<name>/` and repackage it as `<name>.torchsnap`.
 - `just check-gadgets` / `just check-wit` — fast workspace and WIT
   validation.
+- `just coverage`: runs the `src-tauri/` and frontend test suites with
+  coverage and writes HTML and `lcov.info` reports to
+  `target/coverage/crates/` and `target/coverage/frontend/`
+  (`just coverage-crates` and `just coverage-frontend` run one each).
+  The Rust side needs cargo-llvm-cov and rustup's `llvm-tools`;
+  `just doctor` checks for both.
 
 The repo-root `target/` directory is owned by the bundled-gadget
 staging flow and is gitignored. Cargo's own build outputs go to

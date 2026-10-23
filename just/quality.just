@@ -48,6 +48,28 @@ test-gadgets:
 test-frontend:
     bun run test
 
+# The coverage recipes run the same suites as `test-crates` and
+# `test-frontend` with instrumentation and write their reports to the
+# gitignored `target/coverage/`: an HTML report to browse and an
+# `lcov.info` per suite for tools that check single lines. They stay
+# out of `fullcycle`. `coverage-crates` needs cargo-llvm-cov and the
+# `llvm-tools` rustup component (`just doctor` checks both); it covers
+# `src-tauri/` only, not the gadget workspace.
+
+# Write test coverage reports for the Rust crate and the frontend
+coverage: coverage-crates coverage-frontend
+
+# Write test coverage reports for the src-tauri Rust crate
+coverage-crates:
+    cargo llvm-cov --manifest-path src-tauri/Cargo.toml --no-report
+    cargo llvm-cov report --manifest-path src-tauri/Cargo.toml --summary-only
+    cargo llvm-cov report --manifest-path src-tauri/Cargo.toml --html --output-dir target/coverage/crates
+    cargo llvm-cov report --manifest-path src-tauri/Cargo.toml --lcov --output-path target/coverage/crates/lcov.info
+
+# Write test coverage reports for the frontend
+coverage-frontend:
+    bun run test --coverage
+
 # Check compilation (Rust + WIT + WASM gadgets) and types (TypeScript)
 check: check-crates check-wit check-gadgets check-types
 

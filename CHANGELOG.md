@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `just coverage`, `just coverage-crates` and `just coverage-frontend`
+  write test coverage reports for the Rust crate and the frontend to
+  `target/coverage/`.
+
 ### Removed
 
 - The devcontainer for running Claude Code in isolation, with

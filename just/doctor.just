@@ -20,7 +20,7 @@ doctor:
             for flag in --version -version -V; do
                 candidate=$("$cmd" $flag 2>&1 | head -1 || true)
                 case "$candidate" in
-                    *[Uu]sage*|*[Uu]nknown*|*[Ii]nvalid*|"") continue ;;
+                    *[Uu]sage*|*[Uu]nknown*|*[Ii]nvalid*|error:*|"") continue ;;
                 esac
                 version="$candidate"
                 break
@@ -84,6 +84,19 @@ doctor:
     echo "Optional:"
     check shellcheck  "shell script linting"        "brew install shellcheck"
     check cargo-audit "check Cargo lockfiles in \`just audit\`" "cargo install cargo-audit --locked"
+    check cargo-llvm-cov "Rust coverage reports in \`just coverage-crates\`" "cargo install cargo-llvm-cov --locked"
+
+    # cargo-llvm-cov reads the profiles with rustup's llvm-tools, which
+    # `rust-toolchain.toml` does not list, so checkouts and CI that never
+    # run the coverage recipe do not download it.
+    if rustup component list --installed 2>/dev/null | grep -q '^llvm-tools'; then
+        printf "  ${green}✓${reset}  %-14s installed\n" "llvm-tools"
+        ok=$((ok + 1))
+    else
+        printf "  ${red}✗${reset}  %-14s missing — rustup component for \`just coverage-crates\`\n" "llvm-tools"
+        printf "     %-14s install: %s\n" "" "rustup component add llvm-tools"
+        missing=$((missing + 1))
+    fi
 
     echo ""
     bg_green=$'\033[42;30m' bg_red=$'\033[41;37m'
