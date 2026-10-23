@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Prints {"duration": SECONDS, "white_first": SHARE, "white_middle": SHARE}
+# for a recording: its length, and the share of near-white pixels in its
+# first frame and in the frame in its middle, within the area CROP
+# (X,Y,WIDTH,HEIGHT in the video's pixels) when given. The launcher's
+# light search field over the dark terminal raises that share, while text
+# scrolling in the terminal barely moves it; a plain pixel difference
+# counts the scrolling text as well.
+#
+# Usage: video-check FILE [CROP]
+
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+
+def white_share(picture):
+    """The share of pixels within 15% of white."""
+    return float(
+        subprocess.run(
+            ["magick", str(picture), "-fuzz", "15%", "-fill", "black", "+opaque", "white",
+             "-colorspace", "gray", "-format", "%[fx:mean]", "info:"],
+            check=True, capture_output=True, text=True,
+        ).stdout
+    )
+
+
+def main():
+    if len(sys.argv) not in (2, 3):
+        print("usage: video-check FILE [X,Y,WIDTH,HEIGHT]", file=sys.stderr)
+        return 2
+    video = sys.argv[1]
+    crop = []
+    if len(sys.argv) == 3:
+        x, y, width, height = sys.argv[2].split(",")
+        crop = ["-vf", f"crop={width}:{height}:{x}:{y}"]
+    duration = float(
+        subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
+            check=True, capture_output=True, text=True,
+        ).stdout
+    )
+    with tempfile.TemporaryDirectory() as work:
+        first = pathlib.Path(work) / "first.png"
+        middle = pathlib.Path(work) / "middle.png"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", video, *crop, "-frames:v", "1", str(first)], check=True
+        )
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-ss", str(duration / 2), "-i", video, *crop, "-frames:v", "1", str(middle)],
+            check=True,
+        )
+        white = [white_share(frame) for frame in (first, middle)]
+    print(json.dumps({"duration": duration, "white_first": white[0], "white_middle": white[1]}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

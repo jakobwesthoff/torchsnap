@@ -28,6 +28,7 @@
 #       only with GNOME's AppIndicator extension
 #   5   needs the tray on: clicking the tray icon opens its menu, Escape
 #       closes it
+#   9   a screen recording shows the launcher opening
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -44,7 +45,7 @@ testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly testbed repo_root
 
-default_items=(1 W 4 L E 6 3 5)
+default_items=(1 W 4 L E 6 3 5 9)
 
 pass() {
     echo "PASS item $1"
@@ -287,6 +288,56 @@ item_5() {
     differ "$before" "$after" || { fail 5 "the screen looks the same with the menu open"; return; }
     [ "$closed" -eq 0 ] || { fail 5 "Escape did not close the tray menu"; return; }
     pass 5
+}
+
+# A recording of the launcher opening and closing is a video of at least
+# a second whose first and last frames differ from a frame in between.
+# The frames are compared on the machine, which has ffmpeg and
+# ImageMagick from provisioning.
+item_9() {
+    local local_file remote_file check crop
+    app_up 9 || return
+    # The launcher's area in the video's pixels: its logical rectangle
+    # times the monitor's scale. Only that area is compared, since other
+    # windows (a terminal on the screen) may change as well.
+    "$testbed" control show >/dev/null
+    wait_until 10 launcher_is shown || { fail 9 "SETUP: the launcher did not show"; return; }
+    crop="$(python3 -c '
+import json, sys
+w = next(w for w in json.loads(sys.argv[1]) if w["title"] == "")
+r, s = w["rect"], int(float(sys.argv[2]))
+print("%d,%d,%d,%d" % (r["x"] * s, r["y"] * s, r["width"] * s, r["height"] * s))
+' "$("$testbed" windows)" "$("$testbed" eval 'Main.layoutManager.primaryMonitor.geometry_scale')")" \
+        || { fail 9 "SETUP: no launcher window"; return; }
+    "$testbed" control dismiss >/dev/null
+    wait_until 10 launcher_is hidden || { fail 9 "SETUP: the launcher did not hide"; return; }
+    "$testbed" record-start item9 >/dev/null || { fail 9 "record-start failed"; return; }
+    sleep 1 # a still second before the launcher opens, so the video shows the change
+    "$testbed" control show >/dev/null
+    wait_until 10 launcher_is shown
+    sleep 1
+    "$testbed" control dismiss >/dev/null
+    wait_until 10 launcher_is hidden
+    local_file="$("$testbed" record-stop | tail -n 1)" || { fail 9 "record-stop failed"; return; }
+    remote_file="\$HOME/.cache/torchsnap-testbed/recordings/$(basename "$local_file")"
+    check="$(on_machine "\"\$HOME/torchsnap/tools/linux-testbed/pi/video-check\" \"$remote_file\" $crop" | tail -n 1)" \
+        || { fail 9 "could not read the recording"; return; }
+    local problem
+    problem="$(python3 -c '
+import json, sys
+try:
+    check = json.loads(sys.argv[1])
+except ValueError:
+    print("video-check answered: " + sys.argv[1])
+    sys.exit()
+if check["duration"] < 1:
+    print("recording shorter than a second: %s s" % check["duration"])
+elif check["white_middle"] - check["white_first"] < 0.03:
+    print("the launcher does not show in the recording (light share %.3f at the start, %.3f in the middle)"
+          % (check["white_first"], check["white_middle"]))
+' "$check")"
+    [ -z "$problem" ] || { fail 9 "$problem"; return; }
+    pass 9
 }
 
 # Text set on the machine's clipboard through the recipe comes back

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Records the screen through GNOME Shell's Screencast D-Bus method until
+# it gets SIGTERM.
+#
+# Usage: gnome-record FILE_WITHOUT_EXTENSION
+#
+# GNOME Shell stops a screencast as soon as the D-Bus connection that
+# started it closes, so a one-shot call (gdbus) records nothing; this
+# process keeps its connection open for the length of the recording.
+# GNOME Shell picks the format and adds the extension; the path it
+# writes is printed as `started PATH`, and `stopped` once the recording
+# is finished.
+
+import signal
+import sys
+
+from gi.repository import Gio, GLib
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: gnome-record FILE_WITHOUT_EXTENSION", file=sys.stderr)
+        return 2
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    screencast = Gio.DBusProxy.new_sync(
+        bus,
+        Gio.DBusProxyFlags.NONE,
+        None,
+        "org.gnome.Shell.Screencast",
+        "/org/gnome/Shell/Screencast",
+        "org.gnome.Shell.Screencast",
+        None,
+    )
+    started, path = screencast.call_sync(
+        "Screencast",
+        GLib.Variant("(sa{sv})", (sys.argv[1], {})),
+        Gio.DBusCallFlags.NONE,
+        -1,
+        None,
+    ).unpack()
+    if not started:
+        print("gnome-record: GNOME Shell did not start the screencast", file=sys.stderr)
+        return 1
+    print(f"started {path}", flush=True)
+
+    loop = GLib.MainLoop()
+
+    def stop():
+        screencast.call_sync("StopScreencast", None, Gio.DBusCallFlags.NONE, -1, None)
+        print("stopped", flush=True)
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, stop)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, stop)
+    loop.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

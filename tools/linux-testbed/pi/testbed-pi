@@ -33,6 +33,8 @@
 #   testbed-pi tray-icon              {"x", "y", "width", "height", "menuOpen"} of the app's tray icon
 #   testbed-pi tray-click [left|right|middle]
 #                                     click the app's tray icon
+#   testbed-pi record-start NAME      start recording the screen, print the file
+#   testbed-pi record-stop            stop it, print the file once it is complete
 #   testbed-pi clipboard-set TEXT     put TEXT on the clipboard
 #   testbed-pi clipboard-get          print the clipboard's text
 
@@ -602,6 +604,65 @@ print(i["x"] + i["width"] // 2, i["y"] + i["height"] // 2)
 }
 
 # =========================================================
+# Recording
+# =========================================================
+
+readonly record_unit="torchsnap-testbed-record"
+readonly record_log="$state_dir/record.log"
+readonly recordings_dir="$state_dir/recordings"
+readonly record_timeout="${TORCHSNAP_TESTBED_RECORD_TIMEOUT:-10}"
+
+recording() {
+    systemctl --user is-active --quiet "$record_unit"
+}
+
+# The path of the current recording, from gnome-record's `started` line.
+recorded_file() {
+    sed -n 's/^started //p' "$record_log" 2>/dev/null | tail -n 1
+}
+
+cmd_record_start() {
+    [ $# -eq 1 ] || usage
+    if recording; then
+        echo "testbed-pi: already recording ($record_unit)" >&2
+        return 1
+    fi
+    mkdir -p "$recordings_dir"
+    : >"$record_log"
+    systemd-run --user --unit "$record_unit" --collect --quiet \
+        -p "StandardOutput=append:$record_log" -p "StandardError=append:$record_log" \
+        python3 "$pi_dir/gnome-record" "$recordings_dir/$1"
+    local deadline=$((SECONDS + record_timeout))
+    until [ -n "$(recorded_file)" ]; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            echo "testbed-pi: the recording did not start within ${record_timeout}s:" >&2
+            cat "$record_log" >&2
+            return 1
+        fi
+        sleep "$poll_interval"
+    done
+    recorded_file
+}
+
+# The recording file is complete once ffprobe can read its duration.
+has_duration() {
+    ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" | grep -q '^[0-9]'
+}
+
+cmd_record_stop() {
+    if ! recording; then
+        echo "testbed-pi: no recording is running" >&2
+        return 1
+    fi
+    local file
+    file="$(recorded_file)"
+    systemctl --user stop "$record_unit"
+    wait_for 30 has_duration "$file" \
+        || { echo "testbed-pi: the recording $file is not readable" >&2; return 1; }
+    echo "$file"
+}
+
+# =========================================================
 # Clipboard
 # =========================================================
 
@@ -701,6 +762,8 @@ case "$subcommand" in
         load_desktop
         cmd_tray_click "$@"
         ;;
+    record-start) cmd_record_start "$@" ;;
+    record-stop) cmd_record_stop ;;
     clipboard-set) cmd_clipboard_set "$@" ;;
     clipboard-get) cmd_clipboard_get ;;
     *)

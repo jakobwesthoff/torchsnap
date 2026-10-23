@@ -58,7 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and pointer input, `just testbed-clipboard-set` and
   `testbed-clipboard-get` set and read the clipboard, `just testbed-tray`,
   `testbed-tray-icon` and `testbed-tray-click` switch GNOME's tray
-  support and use the app's tray icon, and
+  support and use the app's tray icon, `just testbed-record-start` and
+  `testbed-record-stop` record the screen, and
   `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 

@@ -278,7 +278,23 @@ whether its menu is open; it fails when there is no icon.
 `testbed-tray-click` clicks the icon's centre. Self-test items 3 and 5
 switch the extension on for themselves and back to what they found.
 
-## 10. Remote viewing over RDP
+## 10. Screen recording
+
+```sh
+just testbed-record-start opening
+just testbed-control show
+just testbed-record-stop    # copies it to target/linux-testbed/opening.mp4
+```
+
+The recording comes from GNOME Shell's screencast method, which stops
+as soon as the process that started it disconnects from D-Bus. So
+`testbed-record-start` runs `tools/linux-testbed/pi/gnome-record` as the
+systemd user unit `torchsnap-testbed-record`, which holds the
+connection until `testbed-record-stop` stops it. GNOME Shell writes an
+H.264 MP4 at the screen's physical size; a recording of a still 4K
+screen had 1.35 frames per second.
+
+## 11. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -287,7 +303,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 11. Self-test
+## 12. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -307,6 +323,7 @@ unknown item.
 | E | Asks for the launcher state, the app's windows and the clipboard once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
 | 3 | Needs the tray on, then off: with the AppIndicator extension on, the app's icon is in the top bar; with it off, there is no icon and its area looks different. |
 | 5 | Needs the tray on: a click on the app's tray icon opens its menu and changes the screen, Escape closes the menu. |
+| 9 | Records the screen while the launcher opens and closes; the recording lasts at least a second, and in the launcher's area its middle frame is clearly lighter than its first (the light search field over the dark screen). |
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |

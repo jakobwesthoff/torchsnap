@@ -34,6 +34,8 @@
 #   testbed tray on|off|status  the desktop's tray support (GNOME: AppIndicator extension)
 #   testbed tray-icon         position of the app's tray icon, and whether its menu is open
 #   testbed tray-click [left|right|middle]
+#   testbed record-start NAME start recording the machine's screen
+#   testbed record-stop       stop, copy the recording to target/linux-testbed/
 #
 #   type and key refuse (exit 4) unless the target has the keyboard.
 #
@@ -206,6 +208,13 @@ cmd_screenshot() {
     fetch "$(tail -n 1 <<<"$output")"
 }
 
+# The machine prints the finished recording's path last.
+cmd_record_stop() {
+    local output
+    output="$(run_pi record-stop)" || { echo "$output"; return 1; }
+    fetch "$(tail -n 1 <<<"$output")"
+}
+
 # =========================================================
 # reboot
 # =========================================================
@@ -280,13 +289,17 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start)
         require_host
         run_pi "$subcommand" "$@"
         ;;
     screenshot)
         require_host
         cmd_screenshot "$@"
+        ;;
+    record-stop)
+        require_host
+        cmd_record_stop
         ;;
     sync)
         require_host

@@ -110,6 +110,14 @@ testbed-tray-icon:
 testbed-tray-click BUTTON="left":
     tools/linux-testbed/testbed tray-click {{ BUTTON }}
 
+# Start recording the Linux testbed's screen (GNOME Shell screencast)
+testbed-record-start NAME:
+    tools/linux-testbed/testbed record-start {{ NAME }}
+
+# Stop the recording and copy it to target/linux-testbed/
+testbed-record-stop:
+    tools/linux-testbed/testbed record-stop
+
 # Put text on the Linux testbed's clipboard
 testbed-clipboard-set TEXT:
     tools/linux-testbed/testbed clipboard-set {{ quote(TEXT) }}

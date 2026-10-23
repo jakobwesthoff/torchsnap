@@ -240,6 +240,15 @@ class TestbedRecipes(unittest.TestCase):
         finally:
             stubs.cleanup()
 
+    def test_recording_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-record-start", ["opening"], "tools/linux-testbed/testbed record-start opening"),
+            ("testbed-record-stop", [], "tools/linux-testbed/testbed record-stop"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_tray_recipes_call_the_script(self):
         for recipe, args, expected in (
             ("testbed-tray", ["on"], "tools/linux-testbed/testbed tray on"),
@@ -1475,6 +1484,86 @@ class Tray(unittest.TestCase):
                 ["click", "0xC0"],
             ],
         )
+
+
+# systemctl that answers `is-active` with STUB_ACTIVE_EXIT (default 3:
+# inactive) and everything else with the user manager's environment.
+SYSTEMCTL = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    if "is-active" in sys.argv:
+        sys.exit(int(os.environ.get("STUB_ACTIVE_EXIT", "3")))
+    sys.stdout.write(os.environ.get("STUB_SYSTEMCTL_STDOUT", ""))
+    """
+)
+
+# systemd-run that, like gnome-record, writes "started FILE" to the unit's
+# log when STUB_RECORD_STARTS is set; FILE is the last argument + ".mp4".
+SYSTEMD_RUN = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    log = next(a.split("append:", 1)[1] for a in sys.argv if a.startswith("StandardOutput=append:"))
+    if os.environ.get("STUB_RECORD_STARTS"):
+        with open(log, "a") as f:
+            f.write("started " + sys.argv[-1] + ".mp4\\n")
+    """
+)
+
+
+class Recording(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.stubs = Stubs([])
+        for name, text in (("systemctl", SYSTEMCTL), ("systemd-run", SYSTEMD_RUN)):
+            path = self.stubs.dir / name
+            path.write_text(text)
+            path.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, args, env=None):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+            "TORCHSNAP_TESTBED_RECORD_TIMEOUT": "1",
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def test_record_start_runs_gnome_record_as_a_unit(self):
+        result = self.call_pi(["record-start", "opening"], env={"STUB_RECORD_STARTS": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = f"{self.home}/.cache/torchsnap-testbed/recordings/opening"
+        self.assertEqual(result.stdout.strip(), expected + ".mp4")
+        run_call = self.stubs.calls("systemd-run")[0]
+        self.assertIn("torchsnap-testbed-record", run_call)
+        self.assertTrue(run_call[-2].endswith("gnome-record"))
+        self.assertEqual(run_call[-1], expected)
+
+    def test_record_start_refuses_while_recording(self):
+        result = self.call_pi(["record-start", "x"], env={"STUB_ACTIVE_EXIT": "0"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("already recording", result.stderr)
+        self.assertEqual(self.stubs.calls("systemd-run"), [])
+
+    def test_record_start_fails_when_the_recording_does_not_start(self):
+        result = self.call_pi(["record-start", "x"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not start", result.stderr)
+
+    def test_record_stop_without_a_recording(self):
+        result = self.call_pi(["record-stop"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no recording", result.stderr)
 
 
 class Clipboard(unittest.TestCase):

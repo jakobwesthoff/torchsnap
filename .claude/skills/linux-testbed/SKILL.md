@@ -75,6 +75,8 @@ is the full guide.
   GNOME; test the app both ways and switch back to what you found.
   `just testbed-tray-icon` (position, menu open) and
   `just testbed-tray-click [button]`.
+- `just testbed-record-start NAME` / `just testbed-record-stop`: a
+  screen recording, copied to `target/linux-testbed/NAME.mp4`.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
   the session clipboard. Setting it can close the launcher; set it
   before opening the launcher.
