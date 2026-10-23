@@ -30,6 +30,9 @@ pub enum ControlError {
     InvalidState { message: String },
     /// An unexpected internal failure.
     Internal { message: String },
+    /// The launcher frontend did not answer a request in time, or its
+    /// page reloaded before it did. A retry can succeed.
+    Unanswered { message: String },
 }
 
 impl ControlError {
@@ -37,12 +40,15 @@ impl ControlError {
         match self {
             ControlError::InvalidState { .. } => -1,
             ControlError::Internal { .. } => -3,
+            ControlError::Unanswered { .. } => -4,
         }
     }
 
     pub fn message(&self) -> &str {
         match self {
-            ControlError::InvalidState { message } | ControlError::Internal { message } => message,
+            ControlError::InvalidState { message }
+            | ControlError::Internal { message }
+            | ControlError::Unanswered { message } => message,
         }
     }
 

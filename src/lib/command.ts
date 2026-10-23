@@ -25,6 +25,7 @@ import type {
   ActionSlot,
   ControlCommand,
   FrecencyStats,
+  LauncherSnapshot,
   PostAction,
   SearchMessage,
 } from "../types";
@@ -61,6 +62,10 @@ export interface CommandMap {
   };
   control_subscribe: {
     params: { channel: Channel<ControlCommand> };
+    result: void;
+  };
+  control_report_snapshot: {
+    params: { requestId: number; snapshot: LauncherSnapshot };
     result: void;
   };
   gadget_message: {

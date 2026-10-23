@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Control API: `info` reports the process id, version, git hash, data
   folder, socket path, the tray icon's id and, on Linux, the display
   Torchsnap is connected to and its backend (Wayland or X11).
+- Control API: `snapshot` reports what the launcher shows: the query,
+  whether its search is still running, the results, the selected
+  result, the active gadget view, whether the content is visible and
+  whether the search input is the active element. It answers with error
+  `-4` when the launcher does not reply within two seconds or reloads
+  before replying.
 
 ### Changed
 

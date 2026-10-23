@@ -5,6 +5,7 @@
 mod info;
 mod launcher;
 mod query;
+mod snapshot;
 mod status;
 mod windows;
 
@@ -20,4 +21,5 @@ pub fn register_all(registry: &mut HandlerRegistry) {
     registry.register("status", status::StatusHandler);
     registry.register("windows", windows::WindowsHandler);
     registry.register("info", info::InfoHandler);
+    registry.register("snapshot", snapshot::SnapshotHandler);
 }

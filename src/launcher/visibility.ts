@@ -106,6 +106,15 @@ export async function dismissLauncher(): Promise<void> {
   await command("launcher_hide");
 }
 
+/**
+ * Whether the launcher's content can be seen: false while the Linux
+ * choreography above has `#root` blanked. Nothing blanks it on macOS or
+ * Windows, so there it is always true.
+ */
+export function isContentVisible(): boolean {
+  return document.getElementById("root")?.style.visibility !== "hidden";
+}
+
 export async function setupLauncherVisibilityChoreography(): Promise<void> {
   // The blanking dance below exists only to compensate for
   // WebKitGTK's unmap-drops-compositing behaviour. On macOS,

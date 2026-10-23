@@ -20,8 +20,11 @@
 
 pub mod handler;
 mod handlers;
+pub mod snapshot;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -35,6 +38,9 @@ use handler::{ControlError, HandlerRegistry};
 
 use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 
+use snapshot::PendingSnapshot;
+pub use snapshot::SNAPSHOT_TIMEOUT;
+
 // =========================================================
 // ControlCommand — typed messages pushed to the frontend
 // =========================================================
@@ -43,12 +49,18 @@ use crate::settings::notifier::{SettingsNotifier, SettingsWatch};
 /// through a Tauri `Channel`. The frontend's `useControlChannel`
 /// hook dispatches these to the appropriate state setters.
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ControlCommand {
     /// Reset the launcher UI state (query, selection, gadget view).
     Dismiss,
     /// Set the search input text.
     SetQuery { text: String },
+    /// Answer with `control_report_snapshot` and this `request_id`.
+    ReportSnapshot { request_id: u64 },
 }
 
 // =========================================================
@@ -63,20 +75,41 @@ pub enum ControlCommand {
 /// only when the webview is gone; the channel is then forgotten until
 /// a new page subscribes. While a page reloads and before the new one
 /// subscribes, a send succeeds and the command is lost.
+///
+/// `pending` holds the requests waiting for the frontend's answer
+/// (`snapshot.rs`), each with the id of the channel it went out on.
+/// Lock order: `pending` is locked alone or while `channel` is held,
+/// never the other way round, and no lock is held while sending.
 pub struct ControlChannelState {
     channel: Mutex<Option<Channel<ControlCommand>>>,
+    pending: Mutex<HashMap<u64, PendingSnapshot>>,
+    next_request_id: AtomicU64,
 }
 
 impl ControlChannelState {
     pub fn new() -> Self {
         Self {
             channel: Mutex::new(None),
+            pending: Mutex::new(HashMap::new()),
+            next_request_id: AtomicU64::new(1),
         }
     }
 
     /// Store a new channel from a `control_subscribe` invocation.
+    ///
+    /// The page behind the old channel is gone, so requests sent on it
+    /// will not be answered: dropping their senders wakes their waiters
+    /// at once. The swap and this cleanup happen under one `channel`
+    /// lock, so a request took either the old channel before it (and is
+    /// dropped here) or the new one after it (and is kept).
     pub fn set(&self, channel: Channel<ControlCommand>) {
-        *self.channel.lock().expect("channel lock not poisoned") = Some(channel);
+        let mut stored = self.channel.lock().expect("channel lock not poisoned");
+        let new_id = channel.id();
+        *stored = Some(channel);
+        self.pending
+            .lock()
+            .expect("pending lock not poisoned")
+            .retain(|_, pending| pending.channel_id == new_id);
     }
 
     /// Whether a frontend has subscribed and its webview was not found
@@ -100,6 +133,16 @@ impl ControlChannelState {
             .expect("channel lock not poisoned")
             .clone()
             .ok_or(NotConnected)?;
+        self.send_on(&channel, command)
+    }
+
+    /// Send on a channel taken out of the state earlier, forgetting it
+    /// when its webview is gone.
+    fn send_on(
+        &self,
+        channel: &Channel<ControlCommand>,
+        command: ControlCommand,
+    ) -> Result<(), NotConnected> {
         if channel.send(command).is_ok() {
             return Ok(());
         }
@@ -281,7 +324,7 @@ async fn handle_connection(
                 // thread (`on_main_thread`) or while waiting for an
                 // answer. On the blocking pool such a wait holds none of
                 // the runtime's workers, which async commands such as the
-                // launcher's search run on.
+                // launcher's search run on (ADR 69).
                 let registry = Arc::clone(&registry);
                 let app = app.clone();
                 let dispatched = tauri::async_runtime::spawn_blocking(move || {

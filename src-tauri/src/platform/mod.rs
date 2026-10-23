@@ -156,7 +156,6 @@ pub trait Tray {
     /// (toggle launcher, check for updates, show settings, show
     /// devtools, quit) without the platform module knowing about those
     /// concepts.
-    ///
     fn build(
         app: &tauri::App,
         on_toggle: fn(&tauri::AppHandle),

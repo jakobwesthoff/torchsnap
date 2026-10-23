@@ -877,6 +877,7 @@ pub fn run() {
             commands::search_execute,
             commands::gadget_message,
             control_subscribe,
+            control::snapshot::control_report_snapshot,
             launcher_hide,
             gadget_open_settings,
             launcher_set_layout,

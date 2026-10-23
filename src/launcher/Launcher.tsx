@@ -33,6 +33,8 @@ import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { openGadgetSettings } from "./openGadgetSettings";
 import { CARD_TOP_OFFSET } from "./layout";
+import { buildLauncherSnapshot } from "./snapshot";
+import { isContentVisible } from "./visibility";
 import { actionsToFooterState, hasSlot } from "./actionSlots";
 import type { ActionSlot, FooterState, GadgetViewRef, SourcedEntry } from "../types";
 
@@ -236,11 +238,6 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
   });
 
   // =========================================================
-  // Control API — external command channel
-  // =========================================================
-  useControlChannel({ resetState, setQuery });
-
-  // =========================================================
   // Gadget activation via global shortcut
   //
   // The backend emits `activate-gadget-custom-ui` when a gadget
@@ -277,6 +274,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     customGadgetView: searchGadgetView,
     inlineGadgetView,
     matchedPrefix,
+    loading: searching,
   } = useSearch(searchQuery);
 
   // Resolve the active custom gadget view. Both execute-triggered
@@ -401,6 +399,39 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   const inlineSelected = activeInlineView != null && selectedIndex === 0;
   const listSelectedIndex = activeInlineView != null ? selectedIndex - 1 : selectedIndex;
+
+  // =========================================================
+  // Control API — external command channel
+  //
+  // `getSnapshot` answers the control API's `snapshot` from the
+  // state above; the hook only forwards it.
+  // =========================================================
+
+  const getSnapshot = useCallback(
+    () =>
+      buildLauncherSnapshot({
+        displayQuery,
+        searching,
+        results,
+        listSelectedIndex,
+        inlineSelected,
+        gadgetView: customGadgetView,
+        inlineView: activeInlineView,
+        contentVisible: isContentVisible(),
+        inputFocused: inputRef.current !== null && document.activeElement === inputRef.current,
+      }),
+    [
+      displayQuery,
+      searching,
+      results,
+      listSelectedIndex,
+      inlineSelected,
+      customGadgetView,
+      activeInlineView,
+    ],
+  );
+
+  useControlChannel({ resetState, setQuery, getSnapshot });
 
   // Footer priority: gadget footer (custom UI) > inline footer
   // (when inline slot is selected) > entry actions (list mode).

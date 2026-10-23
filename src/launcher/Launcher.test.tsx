@@ -18,7 +18,7 @@ import { KeyBindingProvider } from "../keybindings/KeyBindingProvider";
 import { registerGadget, unregisterGadget } from "../gadgets/registry";
 import { useLauncher } from "../contexts/useLauncher";
 import { mockCommands } from "../test/tauri";
-import type { GadgetViewRef, SourcedEntry } from "../types";
+import type { GadgetViewRef, LauncherSnapshot, SourcedEntry } from "../types";
 import type { useSearch } from "./hooks/useSearch";
 import { Launcher } from "./Launcher";
 
@@ -34,6 +34,7 @@ const state = vi.hoisted(() => ({
   } as UseSearchResult,
   dismiss: vi.fn(),
   resetState: (() => {}) as () => void,
+  getSnapshot: null as (() => LauncherSnapshot) | null,
 }));
 
 vi.mock("./hooks/useSearch", () => ({ useSearch: () => state.search }));
@@ -43,7 +44,12 @@ vi.mock("./hooks/useWindowLifecycle", () => ({
     return { hide: state.dismiss, dismiss: state.dismiss };
   },
 }));
-vi.mock("./hooks/useControlChannel", () => ({ useControlChannel: () => {} }));
+vi.mock("./hooks/useControlChannel", () => ({
+  useControlChannel: ({ getSnapshot }: { getSnapshot: () => LauncherSnapshot }) => {
+    state.getSnapshot = getSnapshot;
+  },
+}));
+vi.mock("./visibility", () => ({ isContentVisible: () => true }));
 vi.mock("./hooks/useLauncherMascotPlacement", () => ({ useLauncherMascotPlacement: () => null }));
 vi.mock("../mascot", () => ({
   MascotDebugPanel: () => null,
@@ -240,5 +246,55 @@ describe("Launcher action errors", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Copying the result failed: clipboard busy");
+  });
+});
+
+// =========================================================
+// The control API's snapshot (ADR 69)
+// =========================================================
+
+describe("Launcher snapshot", () => {
+  afterEach(async () => {
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    state.getSnapshot = null;
+    state.search = {
+      results: [],
+      customGadgetView: null,
+      inlineGadgetView: null,
+      matchedPrefix: null,
+      loading: false,
+    };
+  });
+
+  it("reports the typed query, the results and the selection", () => {
+    mockCommands({});
+    state.search = { ...state.search, results: [EJECT], loading: true };
+    renderLauncher();
+
+    fireEvent.change(input(), { target: { value: "eject" } });
+
+    expect(state.getSnapshot?.()).toEqual({
+      query: "eject",
+      searching: true,
+      results: [
+        { source: "system-commands", id: "eject-disc", title: "Eject Disc", subtitle: null },
+      ],
+      selectedIndex: 0,
+      inlineView: null,
+      inlineViewSelected: false,
+      gadgetView: null,
+      contentVisible: true,
+      inputFocused: false,
+    });
+  });
+
+  it("reports the input as focused when it is the active element", () => {
+    mockCommands({});
+    renderLauncher();
+
+    input().focus();
+
+    expect(state.getSnapshot?.().inputFocused).toBe(true);
   });
 });

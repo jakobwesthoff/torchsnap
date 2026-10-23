@@ -134,10 +134,43 @@ export type SearchMessage =
 // =========================================================
 // Control Channel
 //
-// Mirrors `ControlCommand` in `src-tauri/src/control/mod.rs`.
+// Mirrors `ControlCommand` in `src-tauri/src/control/mod.rs` and
+// `LauncherSnapshot` in `src-tauri/src/control/snapshot.rs`.
 // =========================================================
 
-export type ControlCommand = { type: "dismiss" } | { type: "setQuery"; text: string };
+export type ControlCommand =
+  | { type: "dismiss" }
+  | { type: "setQuery"; text: string }
+  | { type: "reportSnapshot"; requestId: number };
+
+/** What the launcher shows, as the control API's `snapshot` reports it. */
+export interface LauncherSnapshot {
+  /** Text in the search input. */
+  query: string;
+  /** The last search started has not finished. */
+  searching: boolean;
+  /** The result list on screen; empty while a gadget view replaces it. */
+  results: SnapshotEntry[];
+  /** Index into `results`, or null when no result is selected. */
+  selectedIndex: number | null;
+  inlineView: SnapshotView | null;
+  inlineViewSelected: boolean;
+  gadgetView: SnapshotView | null;
+  contentVisible: boolean;
+  inputFocused: boolean;
+}
+
+export interface SnapshotEntry {
+  source: string;
+  id: string;
+  title: string;
+  subtitle: string | null;
+}
+
+export interface SnapshotView {
+  gadgetId: string;
+  view: string;
+}
 
 // =========================================================
 // Frecency

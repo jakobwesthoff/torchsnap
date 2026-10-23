@@ -171,6 +171,7 @@ When the launcher's frontend is not connected (it has not loaded yet,
 or its page is gone), `query` answers with error `-1` ("launcher
 frontend is not connected"). `ok` means the text was handed to the
 launcher's page; while that page reloads, the text can still be lost.
+`snapshot` shows whether it arrived.
 
 ---
 
@@ -204,7 +205,7 @@ the window really appears.
 `ready` is the backend's view: it stays true while the launcher's page
 reloads, until the new page connects, and it turns true one render
 before the launcher shows real content. A script that needs the
-launcher to have applied a command checks the result itself.
+launcher to have applied a command checks with `snapshot`.
 
 **Example:**
 ```bash
@@ -275,6 +276,50 @@ echo '{"jsonrpc":"2.0","id":1,"method":"info"}' | socat - UNIX-CONNECT:"$SOCK"
 #    "trayId":"4242-1","display":{"backend":"wayland","name":"wayland-0"}}}
 ```
 
+---
+
+### `snapshot`
+
+Report what the launcher shows: the query, the results, the selection,
+the gadget views, whether its content is visible and whether the search
+input is the active element. Unlike `status`, Torchsnap asks the
+launcher's frontend for these, so the answer can take up to two seconds.
+
+**Parameters:** none
+
+**Response:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | Text in the search input. A gadget can change it without a new search, so it can differ from the text the results belong to |
+| `searching` | boolean | The last search started has not finished |
+| `results` | array | The result list on screen, in display order: `source`, `id`, `title`, `subtitle` (string or null). Empty while a gadget view replaces the list |
+| `selectedIndex` | number or null | Index into `results`; `null` when no list is shown, the inline view holds the selection, or nothing is selected |
+| `inlineView` | object or null | The inline gadget view above the list: `gadgetId`, `view` |
+| `inlineViewSelected` | boolean | The inline view holds the selection |
+| `gadgetView` | object or null | The gadget view that replaces the list: `gadgetId`, `view` |
+| `contentVisible` | boolean | The launcher's content is not blanked. On Linux the launcher blanks it while hiding and shows it again after showing; elsewhere it is always `true` |
+| `inputFocused` | boolean | The search input is the page's active element. It stays `true` while the window is hidden or unfocused, so combine it with `status.visible` and `status.focused` |
+
+The answer is the launcher's last rendered state. Right after `query`,
+`searching` can still be `true`, or the results can still belong to the
+previous text; poll until `searching` is `false` and `query` matches.
+`ready` turns true one render before the launcher shows real content,
+so a script waits for the state it expects here, not on `ready` alone.
+
+Errors: `-1` when the launcher's frontend is not connected, `-4` when it
+does not answer within two seconds or its page reloads first, `-3` when
+its answer is malformed.
+
+**Example:**
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"snapshot"}' | socat - UNIX-CONNECT:"$SOCK"
+# → {"jsonrpc":"2.0","id":1,"result":{"query":"fire","searching":false,
+#    "results":[{"source":"app-launcher","id":"/Applications/Firefox.app","title":"Firefox","subtitle":"/Applications/Firefox.app"}],
+#    "selectedIndex":0,"inlineView":null,"inlineViewSelected":false,"gadgetView":null,
+#    "contentVisible":true,"inputFocused":true}}
+```
+
 ## Error Codes
 
 ### Protocol errors
@@ -294,7 +339,8 @@ These are returned by individual handlers.
 | Code | Meaning |
 |------|---------|
 | `-1` | Invalid state — a precondition is not met (for example, the launcher's frontend is not connected) or a required parameter is missing/invalid |
-| `-3` | Internal error — an unexpected failure in the handler |
+| `-3` | Internal error — an unexpected failure in the handler, or a malformed answer from the launcher's frontend |
+| `-4` | Unanswered — the launcher's frontend did not answer in time, or its page reloaded before it did; a retry can succeed |
 
 ## Multiple Clients
 
