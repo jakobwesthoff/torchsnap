@@ -160,9 +160,11 @@ package-gadget name:
 # - Listed gadget id that does not exist under `gadgets/` →
 #   hard error with the offending id in the message.
 #
-# The staging directory is wiped before each run so a
-# previously-bundled gadget removed from `bundled.toml` is also removed
-# from the next bundle.
+# `tools/stage-bundled-archives` leaves the staging directory holding
+# exactly the listed archives, so a gadget removed from `bundled.toml`
+# is also removed from the next bundle. It keeps a staged archive whose
+# content did not change, with its timestamp, so cargo does not
+# recompile the app for a gadget build that changed nothing.
 
 # Stage whitelisted gadgets into target/bundled-gadgets/ for Tauri bundling
 stage-bundled-gadgets:
@@ -170,19 +172,18 @@ stage-bundled-gadgets:
     set -euo pipefail
 
     stage="{{ BUNDLED_DIR }}"
-    # `tauri.conf.json` bundles every file in this directory, so
-    # it starts empty on each run: a gadget removed from
-    # `bundled.toml`, or any stray file, never reaches the app.
-    rm -rf "$stage"
-    mkdir -p "$stage"
 
     # list-bundled-gadgets handles the missing-file and empty-list
     # cases gracefully (warnings to stderr, empty stdout, exit 0).
     # Under `set -e`, a non-zero exit (duplicate id) propagates
     # immediately. The empty-string guard is needed because
-    # `mapfile <<< ""` yields a one-element array of empty strings.
+    # `mapfile <<< ""` yields a one-element array of empty strings;
+    # with no archive given, the staging tool empties the directory.
     ids_output=$(tools/list-bundled-gadgets gadgets/bundled.toml)
-    [ -z "$ids_output" ] && exit 0
+    if [ -z "$ids_output" ]; then
+        tools/stage-bundled-archives "$stage"
+        exit 0
+    fi
     mapfile -t ids <<< "$ids_output"
 
     # Existence guard: fail early if `bundled.toml` names a
@@ -194,14 +195,15 @@ stage-bundled-gadgets:
         fi
     done
 
-    # Build + copy each listed gadget's archive into the
-    # staging dir. `build-gadget` is idempotent and handles
-    # frontend + WASM + packaging.
+    # Build each listed gadget, then stage the archives.
+    # `build-gadget` is idempotent and handles frontend + WASM +
+    # packaging.
+    archives=()
     for id in "${ids[@]}"; do
         just build-gadget "$id"
-        cp "gadgets/$id.torchsnap" "$stage/$id.torchsnap"
-        echo "Staged → $stage/$id.torchsnap"
+        archives+=("gadgets/$id.torchsnap")
     done
+    tools/stage-bundled-archives "$stage" "${archives[@]}"
 
 # Cargo resolves the workspace from the `gadgets/` directory and
 # `gadgets/.cargo/config.toml` supplies the wasm32-wasip2 target by

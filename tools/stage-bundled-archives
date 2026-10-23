@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Stage the bundled gadget archives in the directory `tauri.conf.json`
+# bundles (`target/bundled-gadgets/`), touching only what changed.
+#
+# The stage ends up holding exactly the given archives. A staged copy
+# whose content equals the new archive stays as it is, file and
+# timestamp; every other archive is copied over it. The host build
+# script and tauri-build watch the stage, and cargo compares
+# timestamps, so an untouched stage lets cargo skip recompiling the
+# app.
+#
+# Content means the entry names and each entry's decompressed bytes.
+# The archives are not byte-reproducible: `zip` stores every entry's
+# mtime, and each gadget build rewrites its files. The host reads
+# entries only by name and content.
+#
+# Usage:
+#   tools/stage-bundled-archives <stage-dir> [archive...]
+#
+
+import pathlib
+import shutil
+import sys
+import zipfile
+
+
+def same_content(new, staged):
+    """True when both archives hold the same entries with the same bytes.
+
+    Reading every entry also checks its CRC-32 against the data, so a
+    damaged entry raises instead of comparing equal. Any failure to read
+    either archive counts as different: the new archive is then copied,
+    which is what staging did before it compared anything.
+    """
+    try:
+        with zipfile.ZipFile(new) as a, zipfile.ZipFile(staged) as b:
+            names = sorted(a.namelist())
+            if names != sorted(b.namelist()):
+                return False
+            return all(a.read(name) == b.read(name) for name in names)
+    except Exception:
+        return False
+
+
+def remove(path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def main(argv):
+    stage = pathlib.Path(argv[0])
+    archives = [pathlib.Path(arg) for arg in argv[1:]]
+    stage.mkdir(parents=True, exist_ok=True)
+
+    # Whatever the stage holds besides the given archives would ship in
+    # the app: a gadget dropped from `bundled.toml`, or a stray file.
+    wanted = {archive.name for archive in archives}
+    for entry in sorted(stage.iterdir()):
+        if entry.name not in wanted:
+            remove(entry)
+            print(f"Removed {entry}")
+
+    for archive in archives:
+        target = stage / archive.name
+        if target.is_file() and same_content(archive, target):
+            print(f"Unchanged → {target}")
+            continue
+        shutil.copyfile(archive, target)
+        print(f"Staged → {target}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
