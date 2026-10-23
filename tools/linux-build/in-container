@@ -6,15 +6,20 @@
 # The part of the Linux build that runs inside the container that
 # `linux-build` starts. The checkout is mounted read-only at
 # `LINUX_BUILD_SRC` and synced into the work volume at
-# `LINUX_BUILD_WORK`, where every build step writes.
+# `LINUX_BUILD_WORK`, where every build step writes; a build's result
+# goes to `LINUX_BUILD_OUT`, a directory of the Mac's checkout.
 #
 # Commands:
-#   lint    cargo check and clippy of src-tauri/ (the repo's own recipes)
+#   lint                 cargo check and clippy of src-tauri/ (the repo's own recipes)
+#   build PROFILE        `just build` without bundling, then assemble into the output
+#   assemble PROFILE OUT lay out a built binary and its resources in OUT
+#   glibc BINARY         the highest glibc symbol version BINARY needs
 
 set -euo pipefail
 
 src="${LINUX_BUILD_SRC:-/src}"
 work="${LINUX_BUILD_WORK:-/work}"
+out="${LINUX_BUILD_OUT:-/out}"
 
 # The container must never write into the Mac's checkout: `bun install`
 # would put Linux binaries into its `node_modules/`, and the build
@@ -33,10 +38,23 @@ sync_tree() {
         "$src/" "$work/"
 }
 
-cmd_lint() {
-    # `linux-build` evicts least recently used work volumes when it has
-    # to free space; this file is how a volume records its last use.
+# `linux-build` evicts least recently used work volumes when it has to
+# free space; this file is how a volume records its last use.
+mark_used() {
     touch "$work/.linux-build-last-use"
+}
+
+# Runs one step and reports how long it took, so a build's time splits
+# into its phases.
+phase() {
+    local name="$1" start=$SECONDS
+    shift
+    "$@"
+    echo "linux-build: $name $((SECONDS - start)) s" >&2
+}
+
+cmd_lint() {
+    mark_used
     sync_tree
     cd "$work"
     # tauri-build needs the generated, gitignored resources and icons
@@ -47,10 +65,108 @@ cmd_lint() {
     just lint-crates
 }
 
+cmd_build() {
+    local profile="$1" release=()
+    case "$profile" in
+        debug) ;;
+        release) release=(--release) ;;
+        *)
+            echo "in-container: profile must be debug or release, not '$profile'" >&2
+            exit 2
+            ;;
+    esac
+    mark_used
+    phase sync sync_tree
+    cd "$work"
+    phase install just install
+    phase build just build "${release[@]+"${release[@]}"}" --config '{"bundle":{"active":false}}'
+    phase assemble cmd_assemble "$profile" "$out"
+
+    # The image takes its packages from the live trixie archive, so each
+    # output records the versions it was built against.
+    dpkg-query -W -f '${Package} ${Version}\n' > "$out/build-packages.txt"
+}
+
+# Lays out the binary and every resource of `bundle.resources` the way
+# Tauri's Debian package does, `bin/torchsnap` next to
+# `lib/<productName>/`. A Linux binary outside a cargo target dir finds
+# its resources at `<exe dir>/../lib/<productName>` (tauri-utils'
+# `resource_dir`), so the output runs from wherever it is copied.
+cmd_assemble() {
+    local profile="$1" dest="$2"
+    local conf="$work/src-tauri/tauri.conf.json"
+    local binary="$work/src-tauri/target/$profile/torchsnap"
+    local name kind source target path lib
+
+    if [ ! -f "$binary" ]; then
+        echo "in-container: no binary at $binary" >&2
+        exit 1
+    fi
+    name=$(jq -r .productName "$conf")
+    kind=$(jq -r '.bundle.resources | type' "$conf")
+    case "$kind" in
+        object | null) ;;
+        *)
+            echo "in-container: unsupported bundle.resources form ($kind); only a map of files and directories" >&2
+            exit 1
+            ;;
+    esac
+
+    # The output dir is a mount point, so its contents go, not the dir.
+    find "$dest" -mindepth 1 -delete
+    mkdir -p "$dest/bin"
+    cp "$binary" "$dest/bin/torchsnap"
+    lib="$dest/lib/$name"
+    mkdir -p "$lib"
+
+    [ "$kind" = object ] || return 0
+    while IFS=$'\t' read -r source target; do
+        case "$source" in
+            *'*'* | *'?'* | *'['*)
+                echo "in-container: unsupported glob in bundle.resources: $source" >&2
+                exit 1
+                ;;
+        esac
+        path="$work/src-tauri/$source"
+        case "$source" in
+            */)
+                if [ ! -d "$path" ]; then
+                    echo "in-container: resource directory $source is missing" >&2
+                    exit 1
+                fi
+                mkdir -p "$lib/$target"
+                cp -R "$path/." "$lib/$target"
+                ;;
+            *)
+                if [ ! -f "$path" ]; then
+                    echo "in-container: resource $source is missing" >&2
+                    exit 1
+                fi
+                mkdir -p "$(dirname "$lib/$target")"
+                cp "$path" "$lib/$target"
+                ;;
+        esac
+    done < <(jq -r '.bundle.resources | to_entries[] | "\(.key)\t\(.value)"' "$conf")
+}
+
+cmd_glibc() {
+    local binary="$1" version
+    version=$(objdump -T "$binary" | { grep -o 'GLIBC_[0-9][0-9.]*' || true; } \
+        | sed 's/^GLIBC_//' | sort -u -V | tail -n 1)
+    if [ -z "$version" ]; then
+        echo "in-container: no GLIBC_ symbol versions in $binary" >&2
+        exit 1
+    fi
+    echo "$version"
+}
+
 case "${1:-}" in
     lint) cmd_lint ;;
+    build) cmd_build "${2:-}" ;;
+    assemble) cmd_assemble "${2:-}" "${3:-}" ;;
+    glibc) cmd_glibc "${2:-}" ;;
     *)
-        echo "usage: in-container lint" >&2
+        echo "usage: in-container lint | build PROFILE | assemble PROFILE OUT | glibc BINARY" >&2
         exit 2
         ;;
 esac

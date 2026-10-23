@@ -10,6 +10,15 @@
 linux-build-image:
     tools/linux-build/linux-build image
 
+# The output, `target/linux-build/<profile>/`, holds `bin/torchsnap`
+# and `lib/Torchsnap/` with the bundled gadgets; it runs from wherever
+# the whole directory is copied.
+
+# Build Torchsnap for Linux arm64 in a container, without packaging
+[arg('profile', long='release', value='release')]
+linux-build profile="debug":
+    tools/linux-build/linux-build build {{ if profile == "release" { "--release" } else { "" } }}
+
 # Recipes run from the repository root, so a relative path is taken
 # from the directory `just` was started in.
 

@@ -373,7 +373,20 @@ oldest_other_lint() {
     printf '%s' "$best"
 }
 
-# Runs before every lint, with `own` the volume that lint will use.
+# The build work volume's index when a run with volume `own` may evict
+# it: it exists, it is not `own`, and no build container runs.
+build_volume_index() {
+    local own="$1" i
+    [ "$own" != "$build_volume" ] || return 0
+    [ -z "$(docker ps -q --filter "name=^torchsnap-linux-build$")" ] || return 0
+    for i in "${!vol_names[@]}"; do
+        if [ "${vol_names[$i]}" = "$build_volume" ] && [ "${vol_state[$i]}" = alive ]; then
+            printf '%s' "$i"
+        fi
+    done
+}
+
+# Runs before every lint and build, with `own` the volume that run uses.
 # Without the image there is no way to read last uses, so nothing is
 # evicted then.
 enforce_limits() {
@@ -393,7 +406,8 @@ enforce_limits() {
     done
 
     # 2. At most `max_lint` lint volumes, this run's included.
-    count=1
+    count=0
+    is_lint_volume "$own" && count=1
     for i in "${!vol_names[@]}"; do
         if is_lint_volume "${vol_names[$i]}" && [ "${vol_names[$i]}" != "$own" ] \
             && [ "${vol_state[$i]}" != gone ]; then
@@ -408,8 +422,10 @@ enforce_limits() {
     done
 
     # 3. The budget: other lint volumes first, oldest first, then the
-    # build cache. The image and the cargo and bun caches make every
-    # later run cheap and are never evicted here.
+    # build cache, then the build's work volume, which costs a full
+    # build to refill. A build never evicts its own volume, and a lint
+    # leaves it alone while a build runs. The image and the cargo and
+    # bun caches make every later run cheap and are never evicted here.
     budget=$((budget_gb * 1000000000))
     if ! measure_cache; then
         echo "linux-build: cannot measure the build cache, not pruning it" >&2
@@ -430,6 +446,9 @@ enforce_limits() {
             if prune_cache "over budget"; then
                 used=$((used - freed))
             fi
+        elif victim=$(build_volume_index "$own") && [ -n "$victim" ]; then
+            evict_volume "$victim" "over budget"
+            [ "${vol_state[$victim]}" = gone ] && used=$((used - vol_sizes[victim]))
         else
             echo "linux-build: warning: the Linux build uses $(human "$used"), over the budget of $budget_gb GB," \
                 "and nothing more is evicted automatically (linux-build clean --all removes the rest)" >&2
@@ -537,6 +556,61 @@ cmd_lint() {
         "$image" /linux-build/in-container lint
 }
 
+cmd_build() {
+    local profile="$1"
+
+    # The work tree's path inside the container. A debug binary looks for
+    # unlisted gadgets at `<work path>/gadgets` (`CARGO_MANIFEST_DIR` at
+    # compile time), so a caller that syncs the tree to a target can
+    # build at that tree's path and the binary finds them there too.
+    local workdir="${TORCHSNAP_LINUX_BUILD_WORKDIR-/work}"
+    case "$workdir" in
+        / | /src | /out | /linux-build | /src/* | /out/* | /linux-build/*)
+            echo "linux-build: TORCHSNAP_LINUX_BUILD_WORKDIR cannot be $workdir, the container uses it" >&2
+            exit 2
+            ;;
+        /*) ;;
+        *)
+            echo "linux-build: TORCHSNAP_LINUX_BUILD_WORKDIR must be an absolute path, not '$workdir'" >&2
+            exit 2
+            ;;
+    esac
+
+    # `src-tauri/build.rs` asks git for the commit. The synced tree has no
+    # `.git`, so the checkout's git dir comes in read-only at its own
+    # path, with `GIT_DIR` naming it (a worktree's git dir points into
+    # the common dir by absolute path). Outside a git checkout the build
+    # records `unknown`.
+    local git_args=() git_info git_dir common_dir
+    if git_info=$(git -C "$repo" rev-parse --path-format=absolute --git-dir --git-common-dir 2>/dev/null); then
+        git_dir=$(printf '%s\n' "$git_info" | sed -n 1p)
+        common_dir=$(printf '%s\n' "$git_info" | sed -n 2p)
+        if [ -n "$git_dir" ] && [ -n "$common_dir" ]; then
+            git_args=(--mount "type=bind,src=$common_dir,dst=$common_dir,readonly" -e "GIT_DIR=$git_dir")
+        fi
+    fi
+
+    local out="$repo/target/linux-build/$profile"
+    mkdir -p "$out"
+
+    cmd_image
+    enforce_limits "$build_volume"
+    ensure_volume "$build_volume"
+    ensure_volume "$cargo_volume"
+    ensure_volume "$bun_volume"
+
+    # The fixed name also keeps a second build from starting while one
+    # runs: both would write into the same work volume.
+    docker run --name torchsnap-linux-build --rm --init --platform linux/arm64 \
+        --mount "type=bind,src=$repo,dst=/src,readonly" \
+        --mount "type=volume,src=$build_volume,dst=$workdir" \
+        "${common_mounts[@]}" \
+        --mount "type=bind,src=$out,dst=/out" \
+        -e "LINUX_BUILD_WORK=$workdir" \
+        "${git_args[@]+"${git_args[@]}"}" \
+        "$image" /linux-build/in-container build "$profile"
+}
+
 # Removes one volume during clean; returns non-zero when it stays.
 clean_volume() {
     local i="$1"
@@ -619,6 +693,18 @@ case "$command" in
         done
         validate_limits
         cmd_lint "$path"
+        ;;
+    build)
+        profile=debug
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --release) profile=release ;;
+                *) usage ;;
+            esac
+            shift
+        done
+        validate_limits
+        cmd_build "$profile"
         ;;
     status)
         [ $# -eq 0 ] || usage

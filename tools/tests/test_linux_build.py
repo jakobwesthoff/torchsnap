@@ -13,6 +13,7 @@
 # shell it meets on a Mac and on CI's macOS runner.
 
 import hashlib
+import json
 import os
 import pathlib
 import re
@@ -190,6 +191,19 @@ class Recipes(unittest.TestCase):
     def test_status(self):
         self.assert_runs(["linux-build-status"], "tools/linux-build/linux-build status")
 
+    def test_build_debug(self):
+        self.assert_runs(["linux-build"], "tools/linux-build/linux-build build")
+
+    def test_build_release(self):
+        self.assert_runs(["linux-build", "--release"], "tools/linux-build/linux-build build --release")
+
+    def test_build_takes_the_profile_only_as_a_flag(self):
+        # `profile` is a `--release` flag, so a misspelt profile is read as
+        # a recipe name and nothing runs.
+        result = just_dry_run("linux-build", "relase")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("tools/linux-build/linux-build", result.stderr)
+
     def test_clean(self):
         self.assert_runs(["linux-build-clean"], "tools/linux-build/linux-build clean")
 
@@ -215,6 +229,12 @@ class Arguments(TreeCase):
 
     def test_unknown_option_prints_usage_and_exits_2(self):
         result = self.tree.run("linux-build", "clean", "--bogus")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage: linux-build", result.stderr)
+        self.assertEqual(self.tree.calls("docker"), [])
+
+    def test_build_takes_only_release(self):
+        result = self.tree.run("linux-build", "build", "--bogus")
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage: linux-build", result.stderr)
         self.assertEqual(self.tree.calls("docker"), [])
@@ -437,6 +457,89 @@ class Lint(TreeCase):
 
 
 # =========================================================================
+# linux-build build
+# =========================================================================
+
+class Build(TreeCase):
+    def build_run(self):
+        runs = [run for run in self.tree.docker("run") if run[1:3] == ["--name", "torchsnap-linux-build"]]
+        self.assertEqual(len(runs), 1)
+        return runs[0]
+
+    def test_runs_the_build_container_on_this_checkout(self):
+        result = self.tree.run("linux-build", "build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.build_run()
+        root = self.tree.root
+        out = root / "target" / "linux-build" / "debug"
+        for expected in (
+            ["--platform", "linux/arm64"],
+            ["--mount", f"type=bind,src={root},dst=/src,readonly"],
+            ["--mount", f"type=bind,src={root}/tools/linux-build,dst=/linux-build,readonly"],
+            ["--mount", "type=volume,src=torchsnap-linux-build-work,dst=/work"],
+            ["--mount", "type=volume,src=torchsnap-linux-build-cargo,dst=/usr/local/cargo/registry"],
+            ["--mount", "type=volume,src=torchsnap-linux-build-bun,dst=/var/cache/bun"],
+            ["--mount", f"type=bind,src={out},dst=/out"],
+            ["-e", "LINUX_BUILD_WORK=/work"],
+        ):
+            self.assertTrue(contains_run(run, expected), f"{expected} not in {run}")
+        self.assertIn("--rm", run)
+        self.assertIn("--init", run)
+        self.assertEqual(run[-4:], ["torchsnap-linux-build:latest", "/linux-build/in-container", "build", "debug"])
+        self.assertTrue(out.is_dir())
+
+    def test_release(self):
+        result = self.tree.run("linux-build", "build", "--release")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.build_run()
+        self.assertIn(f"type=bind,src={self.tree.root}/target/linux-build/release,dst=/out", run)
+        self.assertEqual(run[-2:], ["build", "release"])
+
+    def test_creates_the_work_volume_with_the_label(self):
+        result = self.tree.run("linux-build", "build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(["volume", "create", "--label", "org.torchsnap.linux-build=1", "torchsnap-linux-build-work"],
+                      [row for row in self.tree.docker("volume") if row[1] == "create"])
+
+    def test_a_failed_image_build_stops_before_the_container(self):
+        result = self.tree.run("linux-build", "build", env={"STUB_DOCKER_BUILDX_BUILD_RC": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.tree.docker("run"), [])
+
+    def test_mounts_the_git_dir_so_the_build_knows_its_commit(self):
+        git_out = "/Users/someone/repo/.git/worktrees/w\n/Users/someone/repo/.git"
+        result = self.tree.run("linux-build", "build", env={"STUB_GIT_OUT": git_out})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.build_run()
+        self.assertTrue(contains_run(run, ["--mount", "type=bind,src=/Users/someone/repo/.git,dst=/Users/someone/repo/.git,readonly"]))
+        self.assertTrue(contains_run(run, ["-e", "GIT_DIR=/Users/someone/repo/.git/worktrees/w"]))
+        self.assertIn(["-C", str(self.tree.root), "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"],
+                      [row[1:] for row in self.tree.calls("git")])
+
+    def test_builds_without_git_outside_a_checkout(self):
+        result = self.tree.run("linux-build", "build", env={"STUB_GIT_RC": "128"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.build_run()
+        self.assertFalse(any(arg.startswith("GIT_DIR=") for arg in run))
+
+    def test_the_work_path_can_be_set(self):
+        result = self.tree.run("linux-build", "build", env={"TORCHSNAP_LINUX_BUILD_WORKDIR": "/home/someone/tree"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = self.build_run()
+        self.assertTrue(contains_run(run, ["--mount", "type=volume,src=torchsnap-linux-build-work,dst=/home/someone/tree"]))
+        self.assertTrue(contains_run(run, ["-e", "LINUX_BUILD_WORK=/home/someone/tree"]))
+
+    def test_a_relative_or_reserved_work_path_exits_2_before_docker(self):
+        for value in ("rel/path", "", "/", "/src", "/out", "/linux-build"):
+            with self.subTest(value=value):
+                self.tree.log.unlink(missing_ok=True)
+                result = self.tree.run("linux-build", "build", env={"TORCHSNAP_LINUX_BUILD_WORKDIR": value})
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("TORCHSNAP_LINUX_BUILD_WORKDIR", result.stderr)
+                self.assertEqual(self.tree.calls("docker"), [])
+
+
+# =========================================================================
 # Disk use: what the Linux build owns, status, limits, clean
 # =========================================================================
 
@@ -644,6 +747,45 @@ class Limits(TreeCase):
         self.assertIn("(over budget)", result.stderr)
         self.assertEqual(removed(self.tree, "image"), [])
 
+    def test_a_lint_evicts_the_build_work_volume_last(self):
+        self.docker.cache("1GB")
+        self.docker.volume("torchsnap-linux-build-work", "8GB", 50)
+        self.docker.volume("torchsnap-linux-build-lint-0a1b2c3d", "2GB", 100, checkout=self.docker.checkout("a"))
+        # 13 GB against 3 GB: lint volume, cache, then the build's volume.
+        result = self.lint(TORCHSNAP_LINUX_BUILD_BUDGET_GB="3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(removed(self.tree, "volume"),
+                         ["torchsnap-linux-build-lint-0a1b2c3d", "torchsnap-linux-build-work"])
+        self.assertEqual(len(cache_prunes(self.tree)), 1)
+        calls = [row[1:3] for row in self.tree.calls("docker")]
+        prune = calls.index(["buildx", "prune"])
+        work_rm = [i for i, row in enumerate(self.tree.calls("docker"))
+                   if row[1:4] == ["volume", "rm", "torchsnap-linux-build-work"]][0]
+        self.assertLess(prune, work_rm)
+
+    def test_a_lint_keeps_the_build_work_volume_while_a_build_runs(self):
+        self.docker.volume("torchsnap-linux-build-work", "8GB", 50)
+        result = self.lint(TORCHSNAP_LINUX_BUILD_BUDGET_GB="3", STUB_DOCKER_PS_OUT="c0ffee")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("torchsnap-linux-build-work", removed(self.tree, "volume"))
+        self.assertIn("warning", result.stderr)
+
+    def test_a_build_never_evicts_its_own_work_volume(self):
+        self.docker.cache("1GB")
+        self.docker.volume("torchsnap-linux-build-work", "8GB", 50)
+        self.docker.volume("torchsnap-linux-build-lint-0a1b2c3d", "2GB", 100, checkout=self.docker.checkout("a"))
+        env = self.docker.build()
+        env["TORCHSNAP_LINUX_BUILD_BUDGET_GB"] = "3"
+        result = self.tree.run("linux-build", "build", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(removed(self.tree, "volume"), ["torchsnap-linux-build-lint-0a1b2c3d"])
+        self.assertEqual(len(cache_prunes(self.tree)), 1)
+        self.assertIn("warning", result.stderr)
+        calls = self.tree.calls("docker")
+        rm_index = next(i for i, row in enumerate(calls) if row[1:3] == ["volume", "rm"])
+        run_index = next(i for i, row in enumerate(calls) if row[1:4] == ["run", "--name", "torchsnap-linux-build"])
+        self.assertLess(rm_index, run_index)
+
     def test_stops_evicting_once_within_budget(self):
         self.docker.cache("3GB")
         self.docker.volume("torchsnap-linux-build-lint-0a1b2c3d", "4GB", 500, checkout=self.docker.checkout("a"))
@@ -797,7 +939,8 @@ class Guard(TreeCase):
         (checkout / "src-tauri").mkdir(parents=True)
         (checkout / "src-tauri" / "Cargo.toml").write_text("[package]\n")
         env = self.foreign_env()
-        for argv in (["image"], ["status"], ["lint", "--path", str(checkout)], ["clean"], ["clean", "--all"]):
+        for argv in (["image"], ["status"], ["lint", "--path", str(checkout)], ["build"],
+                     ["clean"], ["clean", "--all"]):
             self.tree.run("linux-build", *argv, env=env)
         calls = [row[1:] for row in self.tree.calls("docker")]
         self.assertTrue(calls)
@@ -876,6 +1019,155 @@ class InContainerLint(TreeCase):
     def test_unknown_command_exits_2(self):
         result = self.tree.run("in-container", "bogus", env=self.env, bash="bash")
         self.assertEqual(result.returncode, 2)
+
+
+# =========================================================================
+# in-container build, assemble, glibc
+# =========================================================================
+
+def fake_work_tree(work, profile="debug"):
+    """A work tree as `just build` leaves it: the binary, the staged
+    gadgets and the resources `tauri.conf.json` names."""
+    tauri = work / "src-tauri"
+    (tauri / "target" / profile).mkdir(parents=True)
+    (tauri / "target" / profile / "torchsnap").write_text("ELF")
+    (tauri / "icons").mkdir()
+    (tauri / "icons" / "gadget-document.icns").write_text("icns")
+    (tauri / "icons" / "Assets.car").write_text("car")
+    shutil.copy(REPO / "src-tauri" / "tauri.conf.json", tauri)
+    staged = work / "target" / "bundled-gadgets"
+    staged.mkdir(parents=True)
+    (staged / "a.torchsnap").write_text("a")
+    (staged / "b.torchsnap").write_text("b")
+
+
+class InContainerCase(TreeCase):
+    def setUp(self):
+        super().setUp()
+        base = pathlib.Path(self.tree._tmp.name)
+        self.src = base / "src"
+        self.work = base / "work"
+        self.out = base / "out"
+        for path in (self.src, self.work, self.out):
+            path.mkdir()
+        self.env = {"LINUX_BUILD_SRC": str(self.src), "LINUX_BUILD_WORK": str(self.work),
+                    "LINUX_BUILD_OUT": str(self.out)}
+
+    def run_in_container(self, *args, **extra):
+        return self.tree.run("in-container", *args, env=dict(self.env, **extra), bash="bash")
+
+
+@unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+class InContainerBuild(InContainerCase):
+    def test_syncs_installs_builds_without_bundling_and_assembles(self):
+        fake_work_tree(self.work)
+        result = self.run_in_container("build", "debug", STUB_DPKG_QUERY_OUT="libc6 2.41-12")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([row[1:] for row in self.tree.calls() if row[0] in ("rsync", "just")], [
+            ["-a", "--delete", "--filter=:- .gitignore", "--exclude=/.git", "--exclude=/.claude",
+             "--exclude=/target", "--exclude=/.linux-build-last-use", f"{self.src}/", f"{self.work}/"],
+            ["install"],
+            ["build", "--config", '{"bundle":{"active":false}}'],
+        ])
+        self.assertEqual(set(self.tree.cwds("just")), {str(self.work)})
+        self.assertTrue((self.out / "bin" / "torchsnap").is_file())
+        self.assertTrue((self.work / ".linux-build-last-use").is_file())
+        for phase in ("sync", "install", "build", "assemble"):
+            self.assertRegex(result.stderr, rf"linux-build: {phase} \d+ s")
+
+    def test_release_builds_the_release_profile(self):
+        fake_work_tree(self.work, "release")
+        result = self.run_in_container("build", "release")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(["build", "--release", "--config", '{"bundle":{"active":false}}'],
+                      [row[1:] for row in self.tree.calls("just")])
+        self.assertTrue((self.out / "bin" / "torchsnap").is_file())
+
+    def test_records_the_image_packages_next_to_the_binary(self):
+        fake_work_tree(self.work)
+        result = self.run_in_container("build", "debug", STUB_DPKG_QUERY_OUT="libc6 2.41-12\nlibgtk-3-0t64 3.24.49-3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.out / "build-packages.txt").read_text(), "libc6 2.41-12\nlibgtk-3-0t64 3.24.49-3\n")
+        self.assertIn(["-W", "-f", "${Package} ${Version}\\n"], [row[1:] for row in self.tree.calls("dpkg-query")])
+
+    def test_a_failed_install_stops_before_the_build(self):
+        result = self.run_in_container("build", "debug", STUB_JUST_INSTALL_RC="5")
+        self.assertEqual(result.returncode, 5)
+        self.assertNotIn("build", [row[1] for row in self.tree.calls("just")])
+
+    def test_an_unknown_profile_exits_2(self):
+        result = self.run_in_container("build", "fast")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.tree.calls("rsync"), [])
+
+
+@unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+class Assemble(InContainerCase):
+    def test_lays_out_binary_and_resources_like_the_deb(self):
+        fake_work_tree(self.work)
+        (self.out / "stale-from-before").write_text("old")
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        files = sorted(str(p.relative_to(self.out)) for p in self.out.rglob("*") if p.is_file())
+        self.assertEqual(files, [
+            "bin/torchsnap",
+            "lib/Torchsnap/Assets.car",
+            "lib/Torchsnap/gadget-document.icns",
+            "lib/Torchsnap/gadgets/a.torchsnap",
+            "lib/Torchsnap/gadgets/b.torchsnap",
+        ])
+
+    def test_a_missing_binary_exits_1_naming_it(self):
+        fake_work_tree(self.work)
+        (self.work / "src-tauri" / "target" / "debug" / "torchsnap").unlink()
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("src-tauri/target/debug/torchsnap", result.stderr)
+
+    def test_a_missing_resource_exits_1_naming_it(self):
+        fake_work_tree(self.work)
+        (self.work / "src-tauri" / "icons" / "Assets.car").unlink()
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("icons/Assets.car", result.stderr)
+
+    def test_resources_as_a_list_are_unsupported(self):
+        fake_work_tree(self.work)
+        conf = self.work / "src-tauri" / "tauri.conf.json"
+        data = json.loads(conf.read_text())
+        data["bundle"]["resources"] = ["icons/Assets.car"]
+        conf.write_text(json.dumps(data))
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unsupported", result.stderr)
+
+    def test_a_glob_resource_is_unsupported(self):
+        fake_work_tree(self.work)
+        conf = self.work / "src-tauri" / "tauri.conf.json"
+        data = json.loads(conf.read_text())
+        data["bundle"]["resources"] = {"icons/*.car": "icons/"}
+        conf.write_text(json.dumps(data))
+        result = self.run_in_container("assemble", "debug", str(self.out))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unsupported", result.stderr)
+
+
+class Glibc(InContainerCase):
+    def test_prints_the_highest_glibc_version_the_binary_needs(self):
+        objdump = "\n".join([
+            "0000 DF *UND* 0000 (GLIBC_2.17) memcpy",
+            "0000 DF *UND* 0000 (GLIBC_2.34) pthread_create",
+            "0000 DF *UND* 0000 (GLIBC_2.9) pipe2",
+            "0000 DF *UND* 0000 (GLIBC_PRIVATE) __libc_x",
+        ])
+        result = self.run_in_container("glibc", "/out/bin/torchsnap", STUB_OBJDUMP_OUT=objdump)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "2.34")
+        self.assertIn(["-T", "/out/bin/torchsnap"], [row[1:] for row in self.tree.calls("objdump")])
+
+    def test_a_binary_without_glibc_symbols_exits_1(self):
+        result = self.run_in_container("glibc", "/out/bin/torchsnap", STUB_OBJDUMP_OUT="nothing")
+        self.assertEqual(result.returncode, 1)
 
 
 if __name__ == "__main__":
