@@ -164,11 +164,13 @@ apply_accountsservice_session() {
 
 # set_accountsservice_session FILE: sets `Session=gnome` in the `[User]`
 # group and keeps every other line, including `XSession`, which lightdm
-# reads.
+# reads. A file it creates is readable by root only, as the existing
+# ones are; an existing file keeps its mode.
 set_accountsservice_session() {
     local file="$1"
     if ! sudo test -f "$file"; then
-        printf '[User]\nSession=gnome\n' | sudo tee "$file" >/dev/null
+        sudo install -m 0600 /dev/null "$file"
+        printf '[User]\nSession=gnome\n' | sudo tee -a "$file" >/dev/null
     elif sudo grep -q '^Session=' "$file"; then
         sudo sed -i.bak 's/^Session=.*/Session=gnome/' "$file"
         sudo rm -f "$file.bak"
@@ -192,13 +194,19 @@ Session=gnome
 # password is stored unencrypted and unlocks without a prompt; it becomes
 # the default keyring, where the credentials go.
 readonly keyring_path="/org/freedesktop/secrets/collection/testbed"
+# The default keyring before the step changed it, for undoing the step:
+# a collection's object path, or "/" for none.
+readonly previous_default_keyring="$HOME/.config/torchsnap-testbed/previous-default-keyring"
 
 secret_service() {
     busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service "$@"
 }
 
-keyring_locked() {
-    busctl --user get-property org.freedesktop.secrets "$keyring_path" org.freedesktop.Secret.Collection Locked
+# Whether gnome-keyring has read the testbed keyring's file.
+keyring_loaded() {
+    local collections
+    collections="$(busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service Collections)" \
+        && grep -qF "\"$keyring_path\"" <<<"$collections"
 }
 
 # The keyring is locked again after every login. What counts is that it
@@ -217,11 +225,20 @@ apply_keyring() {
         install -m 0600 "$gnome_dir/testbed.keyring" "$file"
     fi
     # gnome-keyring reads new keyring files only when it starts.
-    if ! keyring_locked >/dev/null 2>&1; then
+    if ! keyring_loaded; then
         systemctl --user restart gnome-keyring-daemon.service
-        wait_for 10 1 keyring_locked
+        wait_for 10 1 keyring_loaded
     fi
     secret_service Unlock ao 1 "$keyring_path" >/dev/null
+    # ReadAlias answers `o "PATH"`.
+    local previous
+    previous="$(secret_service ReadAlias s default)"
+    previous="${previous#o \"}"
+    previous="${previous%\"}"
+    if [ "$previous" != "$keyring_path" ]; then
+        install -d -m 0700 "$(dirname "$previous_default_keyring")"
+        echo "$previous" >"$previous_default_keyring"
+    fi
     secret_service SetAlias so default "$keyring_path"
 }
 

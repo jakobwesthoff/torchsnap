@@ -10,6 +10,10 @@
 # which makes a second provision run change nothing. After an apply the
 # same check runs again, so a step that claims success but leaves the
 # machine unchanged fails the run instead of passing silently.
+#
+# An apply runs in a subshell with errexit on and fails at its first
+# failing command. Variables it sets stay in that subshell; what it
+# changes is the machine.
 
 steps_changed=0
 steps_ok=0
@@ -43,7 +47,23 @@ step() {
         return 0
     fi
 
-    if ! "$apply"; then
+    # Bash turns errexit off for everything an `if`, `!`, `&&` or `||`
+    # tests, down into the functions and subshells it calls, so an apply
+    # run there would fail only when its last command does. Run as a
+    # plain command with errexit off around it, the subshell's own
+    # `set -e` holds.
+    local status errexit_was_on=false
+    [[ $- == *e* ]] && errexit_was_on=true
+    set +e
+    (
+        set -e
+        "$apply"
+    )
+    status=$?
+    if "$errexit_was_on"; then
+        set -e
+    fi
+    if [ "$status" -ne 0 ]; then
         echo "failed $name (apply failed)" >&2
         exit 1
     fi

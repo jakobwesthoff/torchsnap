@@ -510,9 +510,9 @@ undo_steps=(
     'accountsservice-session|sudo sed -i "s/^Session=gnome$/Session=/" "/var/lib/AccountsService/users/$USER"'
     'uinput|sudo rm /etc/modules-load.d/torchsnap-testbed-uinput.conf && sudo chmod 600 /dev/uinput'
     'ydotool-service|systemctl --user disable --now ydotool.service'
-    'sleep-masked|sudo systemctl unmask hybrid-sleep.target'
+    'sleep-masked|sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target'
     'user-settings|gsettings reset org.gnome.desktop.input-sources sources'
-    'keyring|busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service SetAlias so default /org/freedesktop/secrets/collection/login'
+    'keyring|previous="$(cat ~/.config/torchsnap-testbed/previous-default-keyring)" && busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service SetAlias so default "$previous"'
     'rdp|grdctl rdp disable'
 )
 

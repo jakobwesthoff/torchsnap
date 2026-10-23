@@ -104,3 +104,14 @@ is the full guide.
 - Remote viewing: RDP on port 3389, user `testbed`, password in
   `~/.config/torchsnap-testbed/rdp-password` on the machine. Do not
   print the password into chat or files.
+- Provisioning weakens the machine on purpose; the howto's "What
+  provisioning opens up" has the list. In short: `Eval` runs any
+  JavaScript in GNOME Shell for every process of the login user; the
+  default keyring is the unencrypted `testbed` keyring; the RDP password
+  is a plain file and reaches `grdctl` on its command line; RDP listens
+  on all interfaces with control of keyboard and pointer; the whole
+  `input` group can write to `/dev/uinput`; `/etc/gdm3/daemon.conf` is
+  replaced as a whole; the dconf default for enabled extensions holds
+  only the testbed extension; the rustup, Bun and just install scripts
+  come unpinned from the network and run in a shell. Do not provision a
+  machine that holds anything worth protecting.

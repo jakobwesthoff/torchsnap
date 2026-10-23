@@ -70,7 +70,7 @@ portrait at scale 2; `gdctl show` on the Pi lists the connectors.
 | `bun` | Bun 1.4.4 in `~/.bun` |
 | `just` | just 1.58.0 in `~/.local/bin` |
 | `wasm-tools` | wasm-tools 1.246.2, the version `just check-wit` and `just fmt-wit` run with on the Mac |
-| `ydotool` | ydotool v1.0.4, built from source into `/usr/local` (Debian 13 has no package) |
+| `ydotool` | ydotool v1.0.4, built from source into `/usr/local` (Debian 13 has no package); the step stops before the build when the tag does not point to the commit the provision script names |
 | `uinput` | loads the `uinput` kernel module at boot and gives the `input` group access to `/dev/uinput`, which ydotool writes to |
 | `ydotool-service` | ydotool's daemon as an enabled systemd user service |
 | `sleep-masked` | masks `sleep`, `suspend`, `hibernate` and `hybrid-sleep`, so the Pi never suspends |
@@ -98,9 +98,10 @@ Things to know about these:
   (`Eval`, `Screenshot`, `Screencast`) only for a few of its own
   programs, unless it runs in "unsafe mode". GNOME Shell 48 has no
   switch for that mode, so the testbed's extension turns it on. Every
-  local process can then call these methods. GNOME Shell announces the
-  switch with a notification whose banner covers the top of the screen;
-  the extension removes that notification again. It also closes the
+  process of the login user can then call these methods (see "What
+  provisioning opens up" below). GNOME Shell announces the switch with
+  a notification whose banner covers the top of the screen; the
+  extension removes that notification again. It also closes the
   overview GNOME opens after login, which otherwise takes every key
   typed.
 - **Keyring.** With automatic login, nobody types the password that
@@ -109,9 +110,54 @@ Things to know about these:
   password: it is stored unencrypted in
   `~/.local/share/keyrings/testbed.keyring` and holds the RDP password.
   It is locked again after each login and unlocks without a prompt on
-  first use.
+  first use. The step records the default keyring it replaced in
+  `~/.config/torchsnap-testbed/previous-default-keyring`; self-test
+  item U makes that one the default again when it undoes the step.
 - **Unattended.** Screen lock, blanking and suspend are off, and the Pi
   logs in by itself after every boot.
+
+### What provisioning opens up
+
+The testbed trades the Pi's security for being driven remotely. Use a
+Pi that holds nothing worth protecting, on a network you trust.
+
+- **JavaScript in GNOME Shell.** In unsafe mode, GNOME Shell's `Eval`
+  runs any JavaScript it gets inside GNOME Shell, with the login
+  user's rights, for every process of that user. `testbed-eval` is
+  built on it.
+- **Unencrypted secrets.** The `testbed` keyring is the default keyring,
+  so every secret an app stores in the default keyring through the
+  Secret Service lands unencrypted in
+  `~/.local/share/keyrings/testbed.keyring`, the RDP credentials
+  among them.
+- **RDP password.** The password is a plain file,
+  `~/.config/torchsnap-testbed/rdp-password` (mode 0600). Provisioning
+  passes it to `grdctl rdp set-credentials` as a command-line argument,
+  so other users on the Pi can read it in the process list while that
+  command runs. `grdctl` 48 crashes when it reads the credentials from
+  a pipe instead.
+- **RDP control.** View-only is off, so an RDP client controls the
+  keyboard and pointer, and gnome-remote-desktop listens on port 3389
+  on all network interfaces. Anyone on the network with the password
+  takes over the session.
+- **Input device.** Every member of the `input` group can write to
+  `/dev/uinput` and so type and click in the session that has the
+  keyboard. On the Pi the testbed was built on, that group holds the
+  login user and `lightdm`.
+- **gdm's configuration.** The `gdm` step writes
+  `/etc/gdm3/daemon.conf` as a whole from the repository's template;
+  settings made there before are lost.
+- **Enabled extensions.** The dconf default for `enabled-extensions`
+  is a complete list that holds only the testbed extension. It replaces
+  the system's default list for every user who has not set their own.
+- **Installers from the network.** The install scripts for rustup, Bun
+  and just are downloaded from `sh.rustup.rs`, `bun.sh` and
+  `just.systems` at provisioning time, without a pinned version or a
+  checksum of the script, and piped to a shell. The scripts get Bun's
+  and just's versions as arguments; rustup is whatever its script
+  installs. ydotool is cloned by its tag, which must point to the
+  commit the provision script names, and then built and installed as
+  root.
 
 The provision script has not been run on a freshly installed system: it
 was checked on a Pi first set up by hand with the same commands, by
@@ -330,7 +376,8 @@ an RDP client sees and controls the Pi's screen. Connect to the Pi on
 port 3389 as user `testbed`; the password is in
 `~/.config/torchsnap-testbed/rdp-password` on the Pi, generated at the
 first provisioning. The TLS certificate is self-signed and lives in
-`~/.local/share/gnome-remote-desktop/` on the Pi.
+`~/.local/share/gnome-remote-desktop/` on the Pi. Section 3, "What
+provisioning opens up", lists what this exposes.
 
 ## 13. Self-test
 
@@ -365,7 +412,7 @@ sessions and, with that record, switches the tray support back.
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
-| U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
+| U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 
 ## A visible terminal on the Pi
 

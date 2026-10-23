@@ -15,6 +15,7 @@ import pathlib
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import tempfile
 import textwrap
@@ -27,8 +28,14 @@ SELFTEST = REPO / "tools" / "linux-testbed" / "selftest"
 PROVISION_DIR = REPO / "tools" / "linux-testbed" / "provision"
 TESTBED_PI = REPO / "tools" / "linux-testbed" / "pi" / "testbed-pi"
 
+# Tests that stub `bash` itself start their shell by this path, found on
+# the PATH the tests run with.
+BASH = shutil.which("bash")
+
 # A stub reads STUB_<NAME>_STDOUT and STUB_<NAME>_EXIT, with NAME the
-# command name in upper case and `-` replaced by `_`.
+# command name in upper case and `-` replaced by `_`. With
+# STUB_<NAME>_FAIL_ON set, a call whose arguments contain that text exits
+# 1 instead.
 STUB = textwrap.dedent(
     """\
     #!/usr/bin/env python3
@@ -38,7 +45,61 @@ STUB = textwrap.dedent(
     with open(os.environ["STUB_LOG"], "a") as log:
         log.write(json.dumps(sys.argv) + "\\n")
     sys.stdout.write(os.environ.get(f"STUB_{key}_STDOUT", ""))
+    fail_on = os.environ.get(f"STUB_{key}_FAIL_ON")
+    if fail_on and fail_on in " ".join(sys.argv[1:]):
+        sys.exit(1)
     sys.exit(int(os.environ.get(f"STUB_{key}_EXIT", "0")))
+    """
+)
+
+# sudo for tests of steps that change system files: it runs nothing. It
+# logs its argv like STUB and, for the commands that get a file's content
+# on stdin, that content as a last element `stdin:<content>`.
+# STUB_SUDO_FAIL_ON works as in STUB.
+SUDO_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    entry = ["sudo", *args]
+    if args and args[0] in ("tee", "debconf-set-selections"):
+        entry.append("stdin:" + sys.stdin.read())
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(entry) + "\\n")
+    fail_on = os.environ.get("STUB_SUDO_FAIL_ON")
+    sys.exit(1 if fail_on and fail_on in " ".join(args) else 0)
+    """
+)
+
+# busctl for the Secret Service. A call or get-property is answered by
+# its method or property name (the sixth argument after `busctl`) from
+# STUB_BUSCTL_<NAME>: answers separated by `|`, one per call, the last
+# one repeating.
+BUSCTL_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    with log.open("a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    name = sys.argv[6].upper()
+    answers = os.environ.get(f"STUB_BUSCTL_{name}", "").split("|")
+    counter = log.with_name(f"busctl-{name}.count")
+    n = int(counter.read_text()) if counter.exists() else 0
+    counter.write_text(str(n + 1))
+    print(answers[min(n, len(answers) - 1)])
+    """
+)
+
+# gsettings: `get SCHEMA KEY` prints STUB_GSETTINGS_<KEY>.
+GSETTINGS_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv) + "\\n")
+    if sys.argv[1] == "get":
+        print(os.environ["STUB_GSETTINGS_" + sys.argv[3].upper().replace("-", "_")])
     """
 )
 
@@ -50,9 +111,12 @@ class Stubs:
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix="testbed-stubs-"))
         self.log = self.dir / "calls.jsonl"
         for name in names:
-            path = self.dir / name
-            path.write_text(STUB)
-            path.chmod(0o755)
+            self.add(name, STUB)
+
+    def add(self, name, content):
+        path = self.dir / name
+        path.write_text(content)
+        path.chmod(0o755)
 
     def calls(self, name=None):
         if not self.log.exists():
@@ -416,13 +480,24 @@ class ProvisionSteps(unittest.TestCase):
         self.assertIn("provision: 0 changed, 1 ok, 0 deferred", result.stdout)
 
     def test_a_check_that_passes_after_apply_is_changed(self):
+        # An apply runs in a subshell; what it changes is the machine, here
+        # a file.
         result = with_steps(
-            "state=0; check() { [ $state = 1 ]; }; apply() { state=1; }; "
-            "step demo check apply; steps_summary"
+            'marker="$(mktemp -u)"; check() { [ -e "$marker" ]; }; apply() { touch "$marker"; }; '
+            'step demo check apply; steps_summary; rm "$marker"'
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("changed demo", result.stdout)
         self.assertIn("provision: 1 changed, 0 ok, 0 deferred", result.stdout)
+
+    def test_an_apply_stops_at_its_first_failing_command(self):
+        result = with_steps(
+            'marker="$(mktemp -u)"; check() { [ -e "$marker" ]; }; '
+            'apply() { false; touch "$marker"; }; step demo check apply; echo after'
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("failed demo (apply failed)", result.stderr)
+        self.assertNotIn("after", result.stdout)
 
     def test_a_check_that_still_fails_after_apply_stops_the_run(self):
         result = with_steps("step demo false true; echo after")
@@ -479,6 +554,81 @@ class SelftestRunner(unittest.TestCase):
         result = self.selftest(["1"])
         self.assertEqual(result.returncode, 1)
         self.assertIn("FAIL item 1", result.stdout)
+
+
+# An ssh stub for item U. It logs the command line that would run on the
+# machine. Provision runs answer like a provisioned machine: the first
+# with `0 changed`, each later one with `changed` for the next step in
+# STUB_UNDONE_STEPS, the step item U has just undone.
+UNDO_SSH = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, shlex, sys
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    args = sys.argv[1:]
+    while args and args[0] == "-o":
+        args = args[2:]
+    command = shlex.split(" ".join(args[1:]))[-1]
+    with log.open("a") as f:
+        f.write(json.dumps(["ssh", command]) + "\\n")
+    if "provision/provision" in command:
+        counter = log.with_name("provision.count")
+        n = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(n + 1))
+        if n == 0:
+            print("provision: 0 changed, 18 ok, 0 deferred")
+        else:
+            print("changed " + os.environ["STUB_UNDONE_STEPS"].split(",")[n - 1])
+            print("provision: 1 changed, 17 ok, 0 deferred")
+    """
+)
+
+
+class SelftestUndo(unittest.TestCase):
+    STEPS = [
+        "testbed-extension",
+        "dconf-defaults",
+        "gdm",
+        "accountsservice-session",
+        "uinput",
+        "ydotool-service",
+        "sleep-masked",
+        "user-settings",
+        "keyring",
+        "rdp",
+    ]
+
+    def setUp(self):
+        self.stubs = Stubs(["rsync", "scp"])
+        self.stubs.add("ssh", UNDO_SSH)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def undo_commands(self):
+        result = run(
+            ["U"],
+            self.stubs,
+            env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "STUB_UNDONE_STEPS": ",".join(self.STEPS)},
+            unset=["TORCHSNAP_LINUX_RUNNER"],
+            script=SELFTEST,
+        )
+        self.assertIn("PASS item U", result.stdout, result.stdout + result.stderr)
+        commands = [call[1] for call in self.stubs.calls("ssh") if "provision/provision" not in call[1]]
+        # The first command records the desktop's state before the items.
+        return dict(zip(self.STEPS, commands[1:], strict=True))
+
+    def test_the_sleep_undo_unmasks_every_masked_target(self):
+        undo = self.undo_commands()["sleep-masked"].split()
+        self.assertIn("unmask", undo)
+        for target in ("sleep.target", "suspend.target", "hibernate.target", "hybrid-sleep.target"):
+            self.assertIn(target, undo)
+
+    def test_the_keyring_undo_restores_the_recorded_default(self):
+        undo = self.undo_commands()["keyring"]
+        self.assertIn("~/.config/torchsnap-testbed/previous-default-keyring", undo)
+        self.assertIn("SetAlias", undo)
+        self.assertNotIn("collection/login", undo)
 
 
 # An ssh stub for the reboot and the provision orchestration. It answers by
@@ -643,7 +793,7 @@ class ProvisionGnome(unittest.TestCase):
         shutil.rmtree(self.dir)
 
     def set_session(self, content):
-        path = self.dir / "jakob"
+        path = self.dir / "testuser"
         if content is not None:
             path.write_text(content)
         result = with_gnome_steps(f"set_accountsservice_session '{path}'", self.stubs)
@@ -652,6 +802,8 @@ class ProvisionGnome(unittest.TestCase):
 
     def test_session_in_a_missing_file(self):
         self.assertEqual(self.set_session(None), "[User]\nSession=gnome\n")
+        # AccountsService keeps these files readable by root only.
+        self.assertEqual(stat.S_IMODE((self.dir / "testuser").stat().st_mode), 0o600)
 
     def test_session_added_to_a_user_group_without_one(self):
         self.assertEqual(
@@ -730,6 +882,511 @@ class ProvisionGnome(unittest.TestCase):
         groups = [line for line in template.splitlines() if line.startswith("[")]
         self.assertEqual(groups, ["[keyring]"])
         self.assertNotIn("secret", template)
+
+
+YDOTOOL_COMMIT = "57ba7d0af525e82da2de0e275d169477f293b197"
+TESTBED_KEYRING = "/org/freedesktop/secrets/collection/testbed"
+LOGIN_KEYRING = "/org/freedesktop/secrets/collection/login"
+
+
+class ProvisionApplies(unittest.TestCase):
+    """The commands each provision step's apply runs, and the order of the
+    steps. Every command that would change this machine is stubbed, sudo
+    runs nothing, and HOME is a temporary directory."""
+
+    def setUp(self):
+        self.stubs = Stubs(
+            ["git", "cmake", "curl", "sh", "bash", "cargo", "systemctl", "grdctl", "openssl", "gdctl"]
+        )
+        self.stubs.add("sudo", SUDO_STUB)
+        self.stubs.add("busctl", BUSCTL_STUB)
+        self.stubs.add("gsettings", GSETTINGS_STUB)
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="testbed-home-"))
+        self.tree = pathlib.Path(tempfile.mkdtemp(prefix="testbed-tree-"))
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+        shutil.rmtree(self.tree)
+
+    def shell(self, snippet, env=None, monitor_spec=""):
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "PATH": f"{self.stubs.dir}{os.pathsep}{os.environ['PATH']}",
+                "STUB_LOG": str(self.stubs.log),
+                "HOME": str(self.home),
+                "USER": "testuser",
+            }
+        )
+        environment.update(env or {})
+        return subprocess.run(
+            [
+                BASH,
+                "-c",
+                f"set -euo pipefail; provision_dir='{PROVISION_DIR}'; tree_dir='{self.tree}'; "
+                f"monitor_spec='{monitor_spec}'; source '{PROVISION_DIR / 'steps.sh'}'; "
+                f"source '{PROVISION_DIR / 'base.sh'}'; source '{PROVISION_DIR / 'desktop-gnome.sh'}'; "
+                f"{snippet}",
+            ],
+            capture_output=True,
+            text=True,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            timeout=60,
+        )
+
+    def calls(self, name):
+        return [call[1:] for call in self.stubs.calls(name)]
+
+    # =========================================================
+    # Desktop-independent steps
+    # =========================================================
+
+    def test_base_packages_are_installed_after_an_update(self):
+        result = self.shell("apply_base_packages")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        update, install = self.calls("sudo")
+        self.assertEqual(update, ["apt-get", "update"])
+        self.assertEqual(install[:4], ["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y"])
+        self.assertIn("libwebkit2gtk-4.1-dev", install)
+        self.assertIn("scdoc", install)
+
+    def test_rustup_installs_without_a_default_toolchain(self):
+        result = self.shell("apply_rustup")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("https://sh.rustup.rs", self.calls("curl")[0])
+        self.assertEqual(
+            self.calls("sh"), [["-s", "--", "-y", "--default-toolchain", "none", "--profile", "minimal"]]
+        )
+
+    def test_bun_installs_its_pinned_version(self):
+        result = self.shell("apply_bun")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("https://bun.sh/install", self.calls("curl")[0])
+        self.assertEqual(self.calls("bash"), [["-s", "bun-v1.4.4"]])
+
+    def test_just_installs_its_pinned_version_into_local_bin(self):
+        result = self.shell("apply_just")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("https://just.systems/install.sh", self.calls("curl")[0])
+        self.assertEqual(
+            self.calls("bash"),
+            [["-s", "--", "--tag", "1.58.0", "--to", f"{self.home}/.local/bin", "--force"]],
+        )
+        self.assertTrue((self.home / ".local" / "bin").is_dir())
+
+    def test_wasm_tools_installs_its_pinned_version(self):
+        result = self.shell("apply_wasm_tools")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("cargo"), [["install", "wasm-tools", "--version", "1.246.2", "--locked", "--force"]]
+        )
+
+    def wasm_tools_check(self, version_line):
+        tool = self.home / ".cargo" / "bin" / "wasm-tools"
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text(f"#!/bin/sh\necho '{version_line}'\n")
+        tool.chmod(0o755)
+        return self.shell("check_wasm_tools").returncode
+
+    def test_the_wasm_tools_check_needs_the_exact_version(self):
+        self.assertEqual(self.wasm_tools_check("wasm-tools 1.246.2"), 0)
+        self.assertNotEqual(self.wasm_tools_check("wasm-tools 1.246.20"), 0)
+        self.assertNotEqual(self.wasm_tools_check("wasm-tools 1.246.1"), 0)
+
+    def test_ydotool_is_built_from_the_pinned_commit(self):
+        result = self.shell("apply_ydotool", env={"STUB_GIT_STDOUT": YDOTOOL_COMMIT + "\n"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        src = f"{self.home}/.cache/torchsnap-testbed/ydotool-src"
+        self.assertEqual(
+            self.calls("git"),
+            [
+                ["clone", "--depth", "1", "--branch", "v1.0.4", "https://github.com/ReimuNotMoe/ydotool", src],
+                ["-C", src, "rev-parse", "HEAD"],
+            ],
+        )
+        self.assertEqual(
+            self.calls("cmake"),
+            [["-S", src, "-B", f"{src}/build", "-DCMAKE_BUILD_TYPE=Release"], ["--build", f"{src}/build", "-j4"]],
+        )
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                ["cmake", "--install", f"{src}/build"],
+                ["mkdir", "-p", "/usr/local/share/torchsnap-testbed"],
+                ["touch", "/usr/local/share/torchsnap-testbed/ydotool-v1.0.4"],
+            ],
+        )
+
+    def test_ydotool_from_another_commit_is_not_built(self):
+        result = self.shell("apply_ydotool", env={"STUB_GIT_STDOUT": "0" * 40 + "\n"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls("cmake"), [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_a_failing_build_leaves_ydotool_without_its_stamp(self):
+        result = self.shell(
+            "step ydotool false apply_ydotool",
+            env={"STUB_GIT_STDOUT": YDOTOOL_COMMIT + "\n", "STUB_CMAKE_FAIL_ON": "--build"},
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("failed ydotool (apply failed)", result.stderr)
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_uinput_rule_and_module_are_installed_and_applied(self):
+        result = self.shell("apply_uinput")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        base = PROVISION_DIR / "base"
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                [
+                    "install",
+                    "-m",
+                    "0644",
+                    f"{base}/60-torchsnap-testbed-uinput.rules",
+                    "/etc/udev/rules.d/60-torchsnap-testbed-uinput.rules",
+                ],
+                [
+                    "install",
+                    "-m",
+                    "0644",
+                    f"{base}/torchsnap-testbed-uinput.conf",
+                    "/etc/modules-load.d/torchsnap-testbed-uinput.conf",
+                ],
+                ["udevadm", "control", "--reload"],
+                ["modprobe", "uinput"],
+                ["udevadm", "trigger", "--action=add", "--subsystem-match=misc", "--sysname-match=uinput"],
+                ["udevadm", "settle"],
+            ],
+        )
+
+    def test_ydotool_service_is_enabled_and_restarted(self):
+        result = self.shell("apply_ydotool_service")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("systemctl"),
+            [
+                ["--user", "daemon-reload"],
+                ["--user", "reset-failed", "ydotool.service"],
+                ["--user", "enable", "--now", "ydotool.service"],
+                ["--user", "restart", "ydotool.service"],
+            ],
+        )
+
+    def test_all_four_sleep_targets_are_masked(self):
+        result = self.shell("apply_sleep_masked")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("sudo"),
+            [["systemctl", "mask", "sleep.target", "suspend.target", "hibernate.target", "hybrid-sleep.target"]],
+        )
+
+    # =========================================================
+    # GNOME steps
+    # =========================================================
+
+    def test_gnome_packages_keep_the_current_display_manager(self):
+        marker = pathlib.Path("/etc/X11/default-display-manager")
+        current = os.path.basename(marker.read_text().strip()) if marker.exists() else "lightdm"
+        result = self.shell("apply_gnome_packages")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                ["debconf-set-selections", f"stdin:gdm3 shared/default-x-display-manager select {current}\n"],
+                [
+                    "debconf-set-selections",
+                    f"stdin:{current} shared/default-x-display-manager select {current}\n",
+                ],
+                ["apt-get", "update"],
+                [
+                    "DEBIAN_FRONTEND=noninteractive",
+                    "apt-get",
+                    "install",
+                    "-y",
+                    "task-gnome-desktop",
+                    "gnome-shell-extension-appindicator",
+                    "gstreamer1.0-pipewire",
+                ],
+            ],
+        )
+
+    def test_the_extension_is_installed_system_wide_and_the_user_copy_removed(self):
+        uuid = "unsafe-mode@testbed.torchsnap.app"
+        user_copy = self.home / ".local" / "share" / "gnome-shell" / "extensions" / uuid
+        user_copy.mkdir(parents=True)
+        (user_copy / "extension.js").write_text("// an older copy\n")
+        result = self.shell("apply_extension")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        source = PROVISION_DIR / "gnome" / uuid
+        target = f"/usr/local/share/gnome-shell/extensions/{uuid}"
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                ["install", "-d", target],
+                ["install", "-m", "0644", f"{source}/metadata.json", f"{source}/extension.js", f"{target}/"],
+            ],
+        )
+        self.assertFalse(user_copy.exists())
+
+    def test_dconf_defaults_are_installed_and_compiled(self):
+        result = self.shell("apply_dconf_defaults")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                [
+                    "install",
+                    "-m",
+                    "0644",
+                    f"{PROVISION_DIR}/gnome/50-torchsnap-testbed",
+                    "/etc/dconf/db/local.d/50-torchsnap-testbed",
+                ],
+                ["dconf", "update"],
+            ],
+        )
+
+    def test_gdm_logs_the_user_in_and_becomes_the_display_manager(self):
+        result = self.shell("apply_gdm")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        daemon_conf = (PROVISION_DIR / "gnome" / "daemon.conf").read_text().replace("@USER@", "testuser")
+        self.assertIn("AutomaticLogin=testuser\n", daemon_conf)
+        self.assertEqual(
+            self.calls("sudo"),
+            [
+                ["tee", "/etc/gdm3/daemon.conf", "stdin:" + daemon_conf],
+                ["tee", "/etc/X11/default-display-manager", "stdin:/usr/sbin/gdm3\n"],
+                ["ln", "-sf", "/usr/lib/systemd/system/gdm.service", "/etc/systemd/system/display-manager.service"],
+                ["systemctl", "daemon-reload"],
+            ],
+        )
+
+    def test_a_failing_daemon_conf_write_leaves_the_display_manager(self):
+        result = self.shell("step gdm false apply_gdm", env={"STUB_SUDO_FAIL_ON": "tee /etc/gdm3/daemon.conf"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("failed gdm (apply failed)", result.stderr)
+        self.assertEqual([call[:2] for call in self.calls("sudo")], [["tee", "/etc/gdm3/daemon.conf"]])
+
+    def test_user_settings_append_the_extension_and_the_us_layout(self):
+        result = self.shell(
+            "apply_user_settings",
+            env={"STUB_GSETTINGS_ENABLED_EXTENSIONS": "@as []", "STUB_GSETTINGS_SOURCES": "[('xkb', 'de')]"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [call for call in self.calls("gsettings") if call[0] == "set"],
+            [
+                ["set", "org.gnome.shell", "enabled-extensions", "['unsafe-mode@testbed.torchsnap.app']"],
+                ["set", "org.gnome.desktop.input-sources", "sources", "[('xkb', 'de'), ('xkb', 'us')]"],
+            ],
+        )
+
+    def test_user_settings_in_place_are_not_written(self):
+        result = self.shell(
+            "apply_user_settings",
+            env={
+                "STUB_GSETTINGS_ENABLED_EXTENSIONS": "['unsafe-mode@testbed.torchsnap.app']",
+                "STUB_GSETTINGS_SOURCES": "[('xkb', 'de'), ('xkb', 'us')]",
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call for call in self.calls("gsettings") if call[0] == "set"], [])
+
+    def secret_service_requests(self):
+        # `--user call|get-property DEST PATH INTERFACE NAME ARGS...`
+        return [[call[1], *call[5:]] for call in self.calls("busctl")]
+
+    def previous_default_keyring(self):
+        return self.home / ".config" / "torchsnap-testbed" / "previous-default-keyring"
+
+    def test_the_keyring_is_installed_and_made_the_default(self):
+        result = self.shell(
+            "apply_keyring",
+            env={
+                "STUB_BUSCTL_COLLECTIONS": f'ao 2 "{LOGIN_KEYRING}" "{TESTBED_KEYRING}"',
+                "STUB_BUSCTL_READALIAS": f'o "{LOGIN_KEYRING}"',
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        keyrings = self.home / ".local" / "share" / "keyrings"
+        installed = keyrings / "testbed.keyring"
+        self.assertEqual(installed.read_text(), (PROVISION_DIR / "gnome" / "testbed.keyring").read_text())
+        self.assertEqual(stat.S_IMODE(installed.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(keyrings.stat().st_mode), 0o700)
+        self.assertEqual(
+            self.secret_service_requests(),
+            [
+                ["get-property", "Collections"],
+                ["call", "Unlock", "ao", "1", TESTBED_KEYRING],
+                ["call", "ReadAlias", "s", "default"],
+                ["call", "SetAlias", "so", "default", TESTBED_KEYRING],
+            ],
+        )
+        self.assertEqual(self.previous_default_keyring().read_text(), LOGIN_KEYRING + "\n")
+        self.assertEqual(self.calls("systemctl"), [])
+
+    def test_the_keyring_daemon_restarts_until_it_knows_the_keyring(self):
+        result = self.shell(
+            "apply_keyring",
+            env={
+                "STUB_BUSCTL_COLLECTIONS": f'ao 1 "{LOGIN_KEYRING}"|ao 2 "{LOGIN_KEYRING}" "{TESTBED_KEYRING}"',
+                "STUB_BUSCTL_READALIAS": f'o "{LOGIN_KEYRING}"',
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls("systemctl"), [["--user", "restart", "gnome-keyring-daemon.service"]])
+
+    def test_the_recorded_default_survives_a_second_apply(self):
+        record = self.previous_default_keyring()
+        record.parent.mkdir(parents=True)
+        record.write_text(LOGIN_KEYRING + "\n")
+        result = self.shell(
+            "apply_keyring",
+            env={
+                "STUB_BUSCTL_COLLECTIONS": f'ao 2 "{LOGIN_KEYRING}" "{TESTBED_KEYRING}"',
+                "STUB_BUSCTL_READALIAS": f'o "{TESTBED_KEYRING}"',
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(record.read_text(), LOGIN_KEYRING + "\n")
+
+    def test_no_default_keyring_before_is_recorded_as_none(self):
+        # The Secret Service names no collection with "/", which SetAlias
+        # takes to remove the alias again.
+        result = self.shell(
+            "apply_keyring",
+            env={
+                "STUB_BUSCTL_COLLECTIONS": f'ao 1 "{TESTBED_KEYRING}"',
+                "STUB_BUSCTL_READALIAS": 'o "/"',
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.previous_default_keyring().read_text(), "/\n")
+
+    def rdp_in_place(self):
+        password = self.home / ".config" / "torchsnap-testbed" / "rdp-password"
+        password.parent.mkdir(parents=True)
+        password.write_text("password-for-tests")
+        rdp_dir = self.home / ".local" / "share" / "gnome-remote-desktop"
+        rdp_dir.mkdir(parents=True)
+        (rdp_dir / "rdp-tls.key").write_text("")
+        (rdp_dir / "rdp-tls.crt").write_text("")
+        return rdp_dir
+
+    def test_rdp_is_configured_and_started(self):
+        rdp_dir = self.rdp_in_place()
+        result = self.shell("apply_rdp")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("grdctl"),
+            [
+                ["rdp", "set-tls-cert", f"{rdp_dir}/rdp-tls.crt"],
+                ["rdp", "set-tls-key", f"{rdp_dir}/rdp-tls.key"],
+                ["rdp", "set-credentials", "testbed", "password-for-tests"],
+                ["rdp", "disable-view-only"],
+                ["rdp", "enable"],
+            ],
+        )
+        self.assertEqual(self.calls("systemctl"), [["--user", "enable", "--now", "gnome-remote-desktop.service"]])
+        self.assertEqual(self.calls("openssl"), [])
+
+    def test_rdp_generates_its_password_and_certificate(self):
+        result = self.shell("apply_rdp", env={"STUB_OPENSSL_STDOUT": "ab/c+d=e\n"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        password = self.home / ".config" / "torchsnap-testbed" / "rdp-password"
+        self.assertEqual(password.read_text(), "abcde")
+        self.assertEqual(stat.S_IMODE(password.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(password.parent.stat().st_mode), 0o700)
+        rdp_dir = self.home / ".local" / "share" / "gnome-remote-desktop"
+        self.assertEqual(stat.S_IMODE(rdp_dir.stat().st_mode), 0o700)
+        self.assertEqual(
+            self.calls("openssl"),
+            [
+                ["rand", "-base64", "18"],
+                [
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-nodes",
+                    "-days",
+                    "3650",
+                    "-subj",
+                    "/CN=torchsnap-testbed",
+                    "-keyout",
+                    f"{rdp_dir}/rdp-tls.key",
+                    "-out",
+                    f"{rdp_dir}/rdp-tls.crt",
+                ],
+            ],
+        )
+
+    def test_failing_credentials_leave_rdp_off(self):
+        self.rdp_in_place()
+        result = self.shell("step rdp false apply_rdp", env={"STUB_GRDCTL_FAIL_ON": "set-credentials"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("failed rdp (apply failed)", result.stderr)
+        self.assertEqual(self.calls("grdctl")[-1][:2], ["rdp", "set-credentials"])
+        self.assertEqual(self.calls("systemctl"), [])
+
+    def test_the_monitor_layout_is_stored(self):
+        result = self.shell("apply_monitor", monitor_spec="HDMI-1:90:2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls("gdctl"),
+            [
+                [
+                    "set",
+                    "--persistent",
+                    "--logical-monitor",
+                    "--primary",
+                    "--scale",
+                    "2",
+                    "--transform",
+                    "90",
+                    "--monitor",
+                    "HDMI-1",
+                ]
+            ],
+        )
+
+    # =========================================================
+    # Order
+    # =========================================================
+
+    def test_the_steps_run_in_order(self):
+        result = self.shell('step() { echo "$1${4:+ $4}"; }; base_steps; desktop_steps', monitor_spec="HDMI-1:90:2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines(),
+            [
+                "base-packages",
+                "rustup",
+                "bun",
+                "just",
+                "wasm-tools",
+                "ydotool",
+                "uinput",
+                "ydotool-service",
+                "sleep-masked",
+                "gnome-packages",
+                "testbed-extension",
+                "dconf-defaults",
+                "gdm",
+                "accountsservice-session",
+                "user-settings session",
+                "keyring session",
+                "rdp session",
+                "monitor session",
+            ],
+        )
+
+    def test_the_monitor_step_needs_the_option(self):
+        result = self.shell('step() { echo "$1"; }; desktop_steps')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("monitor", result.stdout.splitlines())
 
 
 class ProvisionOptions(unittest.TestCase):

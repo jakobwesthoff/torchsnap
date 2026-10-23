@@ -85,10 +85,7 @@ apply_just() {
 readonly wasm_tools_version="1.246.2"
 
 check_wasm_tools() {
-    case "$("$HOME/.cargo/bin/wasm-tools" --version 2>/dev/null)" in
-        "wasm-tools $wasm_tools_version"*) return 0 ;;
-        *) return 1 ;;
-    esac
+    [ "$("$HOME/.cargo/bin/wasm-tools" --version 2>/dev/null)" = "wasm-tools $wasm_tools_version" ]
 }
 
 apply_wasm_tools() {
@@ -105,6 +102,9 @@ apply_wasm_tools() {
 # uinput device, which ydotool's daemon writes to.
 readonly ydotool_tag="v1.0.4"
 readonly ydotool_stamp="/usr/local/share/torchsnap-testbed/ydotool-$ydotool_tag"
+# The build is installed as root, so a tag moved to other code upstream
+# must not get that far.
+readonly ydotool_commit="57ba7d0af525e82da2de0e275d169477f293b197"
 
 check_ydotool() {
     [ -x /usr/local/bin/ydotoold ] && [ -x /usr/local/bin/ydotool ] && [ -f "$ydotool_stamp" ]
@@ -115,6 +115,12 @@ apply_ydotool() {
     rm -rf "$src"
     mkdir -p "$(dirname "$src")"
     git clone --depth 1 --branch "$ydotool_tag" https://github.com/ReimuNotMoe/ydotool "$src"
+    local commit
+    commit="$(git -C "$src" rev-parse HEAD)"
+    if [ "$commit" != "$ydotool_commit" ]; then
+        echo "ydotool $ydotool_tag is commit $commit, expected $ydotool_commit" >&2
+        return 1
+    fi
     cmake -S "$src" -B "$src/build" -DCMAKE_BUILD_TYPE=Release
     cmake --build "$src/build" -j4
     sudo cmake --install "$src/build"
