@@ -9,14 +9,27 @@
 # script, chosen by the session's XDG_CURRENT_DESKTOP.
 #
 # Usage:
-#   testbed-pi env             print the session variables the testbed uses
-#   testbed-pi session-ready   exit 0 once the desktop session takes input
+#   testbed-pi env                    print the session variables the testbed uses
+#   testbed-pi session-ready          exit 0 once the desktop session takes input
+#   testbed-pi build                  install dependencies, build gadgets and a debug app
+#   testbed-pi app-start              start the debug app in the desktop session
+#   testbed-pi app-stop               stop it
+#   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
+#   testbed-pi control METHOD [JSON]  one request to the app's control socket
+#   testbed-pi merge-app-settings     enable the control socket, skip the welcome
 
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 pi_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly pi_dir
+tree_dir="$(cd "$pi_dir/../../.." && pwd)"
+readonly pi_dir tree_dir
+
+# Runtime files of the testbed: logs, screenshots, recordings.
+readonly state_dir="$HOME/.cache/torchsnap-testbed"
+
+# How often waits poll, in seconds; the tests shorten it.
+readonly poll_interval="${TORCHSNAP_TESTBED_POLL_INTERVAL:-1}"
 
 usage() {
     sed -n '/^# Usage:/,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
@@ -69,6 +82,133 @@ load_desktop() {
     esac
 }
 
+# wait_for TIMEOUT COMMAND...: runs COMMAND every poll_interval seconds
+# until it succeeds; fails after TIMEOUT seconds.
+wait_for() {
+    local deadline=$((SECONDS + $1))
+    shift
+    until "$@" >/dev/null 2>&1; do
+        [ "$SECONDS" -lt "$deadline" ] || return 1
+        sleep "$poll_interval"
+    done
+}
+
+# =========================================================
+# Build
+# =========================================================
+
+# One function for the whole build, so a different way of building (for
+# example on another machine) can take its place. `just install` runs
+# every time: after a lockfile change the build needs the new packages.
+cmd_build() {
+    cd "$tree_dir"
+    just install
+    just build --config '{"bundle":{"active":false}}'
+}
+
+# =========================================================
+# The app
+# =========================================================
+
+readonly app_unit="torchsnap-testbed-app"
+readonly app_binary="$tree_dir/src-tauri/target/debug/torchsnap"
+readonly app_log="$state_dir/app.log"
+
+# Tauri keeps the app's data under the identifier from tauri.conf.json
+# in the XDG data directory.
+app_data_dir() {
+    echo "${XDG_DATA_HOME:-$HOME/.local/share}/app.torchsnap"
+}
+
+control_socket() {
+    echo "$(app_data_dir)/control.sock"
+}
+
+# The app's settings store keeps each setting under a flat key with dots
+# in it (src-tauri/src/lib.rs, `.ensure("controlChannel.enabled", ...)`),
+# not as nested objects. The control socket is off by default and the
+# welcome window covers the launcher on a first start; these two keys
+# switch the socket on and mark the welcome as seen. Every other setting
+# stays as it is.
+readonly welcome_revision=1 # WELCOME_REVISION in src-tauri/src/welcome.rs
+
+cmd_merge_app_settings() {
+    local file
+    file="$(app_data_dir)/settings.json"
+    mkdir -p "$(dirname "$file")"
+    [ -s "$file" ] || echo '{}' >"$file"
+    jq --argjson revision "$welcome_revision" \
+        '. + {"controlChannel.enabled": true, "welcome.seenRevision": $revision}' \
+        "$file" >"$file.tmp"
+    mv "$file.tmp" "$file"
+}
+
+app_running() {
+    systemctl --user is-active --quiet "$app_unit"
+}
+
+# The app runs as a transient systemd user unit: it outlives the SSH call
+# that started it, it gets the desktop session's environment from the
+# user manager, and stopping the unit ends every process it started.
+cmd_app_start() {
+    if app_running; then
+        echo "testbed-pi: the app is already running ($app_unit)" >&2
+        return 1
+    fi
+    [ -x "$app_binary" ] || { echo "testbed-pi: no debug build at $app_binary; run just testbed-build" >&2; return 1; }
+    cmd_merge_app_settings
+    mkdir -p "$state_dir"
+    echo "=== app-start $(date '+%F %T')" >>"$app_log"
+    systemd-run --user --unit "$app_unit" --collect --quiet \
+        -p "StandardOutput=append:$app_log" -p "StandardError=append:$app_log" \
+        "$app_binary"
+    if ! wait_for 60 control_request status; then
+        echo "testbed-pi: the app's control socket did not answer within 60s; last log lines:" >&2
+        tail -n 20 "$app_log" >&2
+        return 1
+    fi
+}
+
+cmd_app_stop() {
+    if app_running; then
+        systemctl --user stop "$app_unit"
+    fi
+    wait_for 30 bash -c "! systemctl --user is-active --quiet $app_unit"
+}
+
+cmd_app_log() {
+    tail -n "${1:-100}" "$app_log"
+}
+
+# =========================================================
+# Control socket
+# =========================================================
+
+control_request() {
+    "$pi_dir/control-request" "$(control_socket)" "$@"
+}
+
+# The first `show` after a start fails until the launcher's frontend has
+# reported its layout (src-tauri/src/control/handlers/launcher.rs); only
+# that error is waited out.
+readonly layout_not_ready="launcher layout not yet received from frontend"
+
+cmd_control() {
+    [ $# -ge 1 ] || usage
+    local response status=0
+    response="$(control_request "$@")" || status=$?
+    if [ "$1" = "show" ]; then
+        local deadline=$((SECONDS + 60))
+        while [ "$status" -eq 1 ] && [[ "$response" == *"$layout_not_ready"* ]] && [ "$SECONDS" -lt "$deadline" ]; do
+            sleep "$poll_interval"
+            status=0
+            response="$(control_request "$@")" || status=$?
+        done
+    fi
+    echo "$response"
+    return "$status"
+}
+
 # =========================================================
 # Dispatch
 # =========================================================
@@ -87,6 +227,12 @@ case "$subcommand" in
         load_desktop
         desk_session_ready
         ;;
+    build) cmd_build ;;
+    app-start) cmd_app_start ;;
+    app-stop) cmd_app_stop ;;
+    app-log) cmd_app_log "$@" ;;
+    control) cmd_control "$@" ;;
+    merge-app-settings) cmd_merge_app_settings ;;
     *)
         usage
         ;;

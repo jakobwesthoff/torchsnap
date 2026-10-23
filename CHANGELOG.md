@@ -48,8 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working tree to a Raspberry Pi named by `TORCHSNAP_LINUX_HOST`,
   `just testbed-provision` installs the build tools, ydotool and GNOME
   with automatic login and RDP access there, `just testbed-reboot` and
-  `just testbed-exec` reboot it and run commands on it, and
-  `just testbed-selftest` checks the testbed. See
+  `just testbed-exec` reboot it and run commands on it,
+  `just testbed-build` builds a debug app there,
+  `just testbed-app-start`, `testbed-app-stop` and `testbed-app-log` run
+  it in the GNOME session, `just testbed-control` drives it through its
+  control socket, and `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 
 ### Changed

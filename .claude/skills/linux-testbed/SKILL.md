@@ -21,7 +21,11 @@ is the full guide.
   `TORCHSNAP_LINUX_RUNNER` to its command prefix, for example
   `'~/.local/bin/testbed-run --'`. Every recipe command then runs there.
   Exit status 75 means the runner refused because it was busy; wait and
-  retry. Ask the user whether such a terminal exists.
+  retry. Ask the user whether such a terminal exists. With testbed-run,
+  follow a long-running unit's log in its own pane so it ends with the
+  unit, and close the pane afterwards:
+  `testbed-run -w app-log -d -- 'tail -F --pid=$(systemctl --user show -p MainPID --value torchsnap-testbed-app) ~/.cache/torchsnap-testbed/app.log'`,
+  then `testbed-run --close app-log`.
 
 ## Recipes
 
@@ -38,6 +42,17 @@ is the full guide.
   screen.
 - `just testbed-exec 'COMMAND'`: run one shell command line on the
   machine (through the runner when set).
+- `just testbed-build`: sync, then `just install` and a debug build on
+  the machine (about 2 minutes, even for a one-line change).
+- `just testbed-app-start` / `just testbed-app-stop`: run or stop the
+  debug app in the machine's GNOME session (unit
+  `torchsnap-testbed-app`, log `~/.cache/torchsnap-testbed/app.log`).
+  Start merges `controlChannel.enabled` and `welcome.seenRevision` into
+  the app's settings file there.
+- `just testbed-app-log [LINES]`: the end of the app's output.
+- `just testbed-control METHOD ['JSON']`: one control-socket request
+  (`show`, `hide`, `toggle`, `dismiss`, `query '{"text": "…"}'`,
+  `status`); exits 1 on an error response.
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. Items R (reboot) and U (undo provision steps) run only

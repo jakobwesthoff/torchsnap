@@ -12,10 +12,13 @@
 import json
 import os
 import pathlib
+import re
 import shutil
+import socket
 import subprocess
 import tempfile
 import textwrap
+import threading
 import unittest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -184,6 +187,18 @@ class TestbedRecipes(unittest.TestCase):
         result = self.dry_run("testbed-exec", "ls -la ~")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed exec 'ls -la ~'")
+
+    def test_testbed_build_calls_the_script(self):
+        result = self.dry_run("testbed-build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed build")
+
+    def test_testbed_control_passes_json_as_one_argument(self):
+        result = self.dry_run("testbed-control", "query", '{"text": "a b"}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stderr.strip(), "tools/linux-testbed/testbed control query '{\"text\": \"a b\"}'"
+        )
 
     def test_testbed_selftest_passes_its_items(self):
         result = self.dry_run("testbed-selftest", "1")
@@ -714,6 +729,232 @@ class TestbedPi(unittest.TestCase):
     def test_session_not_ready_without_eval(self):
         result = self.call_pi(["session-ready"], env={"STUB_GDBUS_STDOUT": "(false, '')\n"})
         self.assertEqual(result.returncode, 1)
+
+
+CONTROL_REQUEST = REPO / "tools" / "linux-testbed" / "pi" / "control-request"
+WELCOME_RS = REPO / "src-tauri" / "src" / "welcome.rs"
+LAYOUT_ERROR = "launcher layout not yet received from frontend"
+
+
+class FakeControlSocket:
+    """A Unix socket that answers each request line with the next of the
+    given responses (the last one repeating) and records the requests."""
+
+    def __init__(self, path, responses):
+        self.path = str(path)
+        self.responses = responses
+        self.requests = []
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(self.path)
+        self.server.listen()
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+        self.thread.start()
+
+    def serve(self):
+        while True:
+            try:
+                connection, _ = self.server.accept()
+            except OSError:
+                return
+            with connection:
+                data = b""
+                while not data.endswith(b"\n"):
+                    chunk = connection.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+                if not data:
+                    continue
+                request = json.loads(data)
+                self.requests.append(request)
+                index = min(len(self.requests) - 1, len(self.responses) - 1)
+                response = dict(self.responses[index], jsonrpc="2.0", id=request["id"])
+                connection.sendall((json.dumps(response) + "\n").encode())
+
+    def close(self):
+        self.server.close()
+
+
+class TestbedForwarding(unittest.TestCase):
+    """Subcommands that run on the machine go to testbed-pi in the synced
+    tree, through the runner."""
+
+    def setUp(self):
+        self.stubs = Stubs(["rsync", "scp"])
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="testbed-home-"))
+        ssh = self.stubs.dir / "ssh"
+        ssh.write_text(remote_ssh_stub(self.home))
+        ssh.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def install_fake_pi(self):
+        fake = self.home / "torchsnap" / "tools" / "linux-testbed" / "pi" / "testbed-pi"
+        fake.parent.mkdir(parents=True)
+        fake.write_text(
+            "#!/usr/bin/env bash\n"
+            "python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' \"$@\" >>\"$HOME/pi-calls.jsonl\"\n"
+        )
+        fake.chmod(0o755)
+
+    def pi_calls(self):
+        path = self.home / "pi-calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def call(self, *args):
+        return run(
+            list(args),
+            self.stubs,
+            env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_LINUX_RUNNER": ""},
+        )
+
+    def test_build_syncs_then_builds_on_the_machine(self):
+        self.install_fake_pi()
+        result = self.call("build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([os.path.basename(c[0]) for c in self.stubs.calls()], ["rsync", "ssh"])
+        self.assertEqual(self.pi_calls(), [["build"]])
+
+    def test_app_and_control_subcommands_pass_their_arguments(self):
+        self.install_fake_pi()
+        for args in (
+            ["app-start"],
+            ["app-stop"],
+            ["app-log", "50"],
+            ["control", "query", '{"text": "a b"}'],
+        ):
+            result = self.call(*args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.pi_calls(),
+            [["app-start"], ["app-stop"], ["app-log", "50"], ["control", "query", '{"text": "a b"}']],
+        )
+
+    def test_a_missing_tree_asks_for_a_sync(self):
+        result = self.call("app-start")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("run just testbed-sync first", result.stderr)
+
+
+class ControlRequests(unittest.TestCase):
+    def setUp(self):
+        # A Unix socket path has to stay short (104 bytes on macOS), and
+        # the per-user temporary directory there is long.
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.data = self.home / ".local" / "share" / "app.torchsnap"
+        self.data.mkdir(parents=True)
+        self.stubs = Stubs(["systemctl", "gdbus"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def control(self, responses, *args):
+        fake = FakeControlSocket(self.data / "control.sock", responses)
+        try:
+            result = run(
+                ["control", *args],
+                self.stubs,
+                env={"HOME": str(self.home), "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+                     "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.2"},
+                script=TESTBED_PI,
+            )
+        finally:
+            fake.close()
+        return result, fake.requests
+
+    def test_a_result_is_printed_and_exits_0(self):
+        result, requests = self.control([{"result": {"visible": False}}], "status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["result"], {"visible": False})
+        self.assertEqual(requests[0]["method"], "status")
+
+    def test_params_are_sent_as_json(self):
+        result, requests = self.control([{"result": {"ok": True}}], "query", '{"text": "a b"}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(requests[0]["params"], {"text": "a b"})
+
+    def test_an_error_member_exits_1(self):
+        result, _ = self.control([{"error": {"code": -32601, "message": "Method not found: x"}}], "x")
+        self.assertEqual(result.returncode, 1)
+
+    def test_show_waits_for_the_launcher_layout(self):
+        layout_error = {"error": {"code": -3, "message": LAYOUT_ERROR}}
+        result, requests = self.control([layout_error, layout_error, {"result": {"ok": True}}], "show")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(requests), 3)
+
+    def test_show_fails_at_once_on_another_error(self):
+        result, requests = self.control([{"error": {"code": -3, "message": "boom"}}], "show")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(requests), 1)
+
+    def test_no_socket_exits_2(self):
+        result = run(
+            ["control", "status"],
+            self.stubs,
+            env={"HOME": str(self.home), "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT},
+            script=TESTBED_PI,
+        )
+        self.assertEqual(result.returncode, 2)
+
+
+class AppSettings(unittest.TestCase):
+    """app-start enables the control socket and skips the welcome by
+    merging two flat keys into the app's settings.json."""
+
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="testbed-home-"))
+        self.settings = self.home / ".local" / "share" / "app.torchsnap" / "settings.json"
+        self.stubs = Stubs(["systemctl", "systemd-run", "gdbus"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def merge(self):
+        return run(
+            ["merge-app-settings"],
+            self.stubs,
+            env={"HOME": str(self.home), "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT},
+            script=TESTBED_PI,
+        )
+
+    def test_the_merge_creates_the_file(self):
+        result = self.merge()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = json.loads(self.settings.read_text())
+        self.assertIs(settings["controlChannel.enabled"], True)
+        self.assertNotIn("controlChannel", settings)
+
+    def test_the_merge_keeps_other_keys(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text(json.dumps({"mascotMode": "corner", "controlChannel.enabled": False}))
+        result = self.merge()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = json.loads(self.settings.read_text())
+        self.assertEqual(settings["mascotMode"], "corner")
+        self.assertIs(settings["controlChannel.enabled"], True)
+
+    def test_the_welcome_revision_matches_the_app(self):
+        revision = int(re.search(r"pub const WELCOME_REVISION: u64 = (\d+);", WELCOME_RS.read_text()).group(1))
+        self.merge()
+        settings = json.loads(self.settings.read_text())
+        self.assertEqual(settings["welcome.seenRevision"], revision)
+
+    def test_app_start_refuses_while_the_app_runs(self):
+        # The stub systemctl exits 0, so `is-active` says the unit runs.
+        result = run(
+            ["app-start"],
+            self.stubs,
+            env={"HOME": str(self.home), "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT},
+            script=TESTBED_PI,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("already running", result.stderr)
+        self.assertEqual(self.stubs.calls("systemd-run"), [])
 
 
 if __name__ == "__main__":

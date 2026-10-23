@@ -30,6 +30,30 @@ testbed-reboot:
 testbed-exec COMMAND:
     tools/linux-testbed/testbed exec {{ quote(COMMAND) }}
 
+# The build installs dependencies, builds every gadget and a debug app
+# without bundling: `just install`, then `just build` with
+# `bundle.active` off.
+
+# Sync, then build gadgets and a debug app on the Linux testbed
+testbed-build:
+    tools/linux-testbed/testbed build
+
+# Start the debug app in the Linux testbed's desktop session (control socket on)
+testbed-app-start:
+    tools/linux-testbed/testbed app-start
+
+# Stop the debug app on the Linux testbed
+testbed-app-stop:
+    tools/linux-testbed/testbed app-stop
+
+# Print the end of the debug app's output on the Linux testbed
+testbed-app-log *LINES:
+    tools/linux-testbed/testbed app-log {{ LINES }}
+
+# Send one request to the app's control socket on the Linux testbed
+testbed-control METHOD *PARAMS:
+    tools/linux-testbed/testbed control {{ METHOD }} {{ if PARAMS == "" { "" } else { quote(PARAMS) } }}
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

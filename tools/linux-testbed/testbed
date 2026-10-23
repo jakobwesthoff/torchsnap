@@ -14,6 +14,11 @@
 #   testbed provision [ARGS]  sync, then run the provision script there
 #   testbed reboot            reboot the machine, wait until its session is ready
 #   testbed exec COMMAND      run one shell command line on the machine
+#   testbed build             sync, then build gadgets and a debug app there
+#   testbed app-start         start the debug app in the machine's desktop session
+#   testbed app-stop          stop it
+#   testbed app-log [LINES]   print the end of its output
+#   testbed control METHOD [JSON]  one request to the app's control socket
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -144,6 +149,21 @@ cmd_provision() {
 }
 
 # =========================================================
+# Subcommands that run in the synced tree
+# =========================================================
+
+# run_pi SUBCOMMAND [ARGS...]: runs testbed-pi on the machine, after
+# checking that the tree is there. The command line is single-quoted, so
+# `$HOME` and `$pi` expand on the machine.
+# shellcheck disable=SC2016
+run_pi() {
+    local command='pi="$HOME/torchsnap/tools/linux-testbed/pi/testbed-pi"; '
+    command="$command"'if [ ! -x "$pi" ]; then echo "testbed: no synced tree on the machine; run just testbed-sync first" >&2; exit 2; fi; '
+    command="$command"'exec "$pi" '"$(shell_words "$@")"
+    run_remote "$command"
+}
+
+# =========================================================
 # reboot
 # =========================================================
 
@@ -211,6 +231,15 @@ case "$subcommand" in
         require_host
         [ $# -eq 1 ] || usage
         run_remote "$1"
+        ;;
+    build)
+        require_host
+        cmd_sync
+        run_pi build
+        ;;
+    app-start | app-stop | app-log | control)
+        require_host
+        run_pi "$subcommand" "$@"
         ;;
     sync)
         require_host

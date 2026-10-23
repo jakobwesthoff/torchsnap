@@ -138,7 +138,48 @@ just testbed-exec 'systemctl --user status ydotool.service'
 
 runs one shell command line on the Pi.
 
-## 5. Remote viewing over RDP
+## 5. Building and running the app
+
+```sh
+just testbed-build
+```
+
+syncs the working tree, then runs `just install` and
+`just build --config '{"bundle":{"active":false}}'` on the Pi: all
+gadgets and a debug app, without bundling, at
+`src-tauri/target/debug/torchsnap` (788 MB). Measured on a Raspberry Pi
+5: the first build took 96 s for `just install` and 802 s for the build;
+after that a build takes 102 to 113 s, whether nothing, one Rust line or
+one frontend line changed. Each build rebuilds the frontend and then
+compiles the `torchsnap` crate again (about 54 s) and links the binary
+(about 32 s).
+
+```sh
+just testbed-app-start
+just testbed-control show
+just testbed-control query '{"text": "calc"}'
+just testbed-control status
+just testbed-app-log 50
+just testbed-app-stop
+```
+
+`testbed-app-start` runs the debug app in the Pi's GNOME session as the
+systemd user unit `torchsnap-testbed-app`, with its output in
+`~/.cache/torchsnap-testbed/app.log`, and returns once the app's control
+socket answers. Before the start it sets two keys in the app's real
+settings file, `~/.local/share/app.torchsnap/settings.json`, and leaves
+every other key as it is: `controlChannel.enabled` to `true`, so the
+control socket is open, and `welcome.seenRevision`, so the welcome window
+does not open. The welcome is where the app asks about automatic update
+checks, so that setting keeps its default.
+
+`testbed-control METHOD [JSON]` sends one request to the control socket
+([Control API](control-api.md)) and prints the response; it exits 1 when
+the response is an error. Right after a start, `show` fails until the
+launcher's frontend has reported its layout; `testbed-control show`
+waits up to 60 s for that. Parameters go in quotes as one argument.
+
+## 6. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -147,7 +188,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 6. Self-test
+## 7. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -161,6 +202,7 @@ unknown item.
 | Item | Checks |
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
+| 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, and provisioning reporting `0 changed`. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 

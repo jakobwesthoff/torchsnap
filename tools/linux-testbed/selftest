@@ -13,6 +13,8 @@
 #
 # Items:
 #   1   provisioning twice changes nothing on the second run
+#   2   sync and build: a debug binary newer than the build's start
+#       (only when named)
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -69,6 +71,24 @@ item_1() {
     else
         pass 1
     fi
+}
+
+# A build after a sync has to leave a debug binary written by this build.
+item_2() {
+    local started built
+    if ! started="$(on_machine 'date +%s')"; then
+        fail 2 "SETUP: could not read the machine's clock"
+        return
+    fi
+    if ! "$testbed" build; then
+        fail 2 "the build failed (see above)"
+        return
+    fi
+    built="$(on_machine 'stat -c %Y "$HOME/torchsnap/src-tauri/target/debug/torchsnap"')" \
+        || { fail 2 "no debug binary after the build"; return; }
+    [ "$built" -ge "$started" ] \
+        || { fail 2 "the debug binary is older than the build ($built < $started)"; return; }
+    pass 2
 }
 
 # Nobody is at the machine after a reboot, so everything the recipes need
