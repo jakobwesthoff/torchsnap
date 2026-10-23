@@ -181,7 +181,34 @@ the response is an error. Right after a start, `show` fails until the
 launcher's frontend has reported its layout; `testbed-control show`
 waits up to 60 s for that. Parameters go in quotes as one argument.
 
-## 6. Remote viewing over RDP
+## 6. Observing the app
+
+```sh
+just testbed-screenshot launcher --window '^$'   # one window, by title or WM class
+just testbed-screenshot top --area 0,0,1080,40   # an area, in logical pixels
+just testbed-screenshot screen                    # the whole screen
+just testbed-screenshot right --monitor 1         # one monitor
+just testbed-launcher-state
+just testbed-windows
+just testbed-eval 'Main.overview.visible'
+```
+
+`testbed-screenshot NAME` takes the screenshot through GNOME Shell and
+copies it to `target/linux-testbed/NAME.png` in the repository. Areas
+and window rectangles are in logical pixels; the picture has the
+screen's physical pixels, so on a monitor at scale 2 it is twice as
+large.
+
+`testbed-launcher-state` prints `{"visible", "focused", "monitor"}`:
+`visible` comes from the app's control socket (`status`), `focused` and
+`monitor` from GNOME Shell's view of the launcher window, the app's
+window with an empty title. A hidden launcher has no window, so
+`monitor` is `null` then. `testbed-windows` lists the app's windows
+(WM class `torchsnap`) with title, rectangle, monitor and focus.
+`testbed-eval JS` prints the value of a JavaScript expression evaluated
+inside GNOME Shell, as JSON; it exits 1 when the expression throws.
+
+## 7. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -190,7 +217,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 7. Self-test
+## 8. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -204,6 +231,7 @@ unknown item.
 | Item | Checks |
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
+| W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |

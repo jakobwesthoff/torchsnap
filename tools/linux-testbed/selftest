@@ -15,6 +15,8 @@
 #   1   provisioning twice changes nothing on the second run
 #   2   sync and build: a debug binary newer than the build's start
 #       (only when named)
+#   W   the launcher, shown through the control socket, is among the
+#       app's windows, with a size and keyboard focus
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -28,7 +30,7 @@ set -uo pipefail
 testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 readonly testbed
 
-default_items=(1)
+default_items=(1 W)
 
 pass() {
     echo "PASS item $1"
@@ -74,6 +76,39 @@ item_1() {
     else
         pass 1
     fi
+}
+
+# app_up ITEM: starts the app unless it runs; reports a setup failure.
+app_up() {
+    if on_machine 'systemctl --user is-active --quiet torchsnap-testbed-app'; then
+        return 0
+    fi
+    "$testbed" app-start >/dev/null || { fail "$1" "SETUP: app-start failed"; return 1; }
+}
+
+# The launcher, shown through the control socket, is among the app's
+# windows with its WM class, a size and keyboard focus.
+item_W() {
+    local windows problem
+    app_up W || return
+    "$testbed" control show >/dev/null || { fail W "SETUP: control show failed"; return; }
+    windows="$("$testbed" windows)" || { fail W "windows failed"; return; }
+    problem="$(python3 -c '
+import json, sys
+launcher = next((w for w in json.loads(sys.argv[1]) if w["title"] == ""), None)
+if launcher is None:
+    print("no launcher window in: " + sys.argv[1])
+elif launcher["wm_class"] != "torchsnap" or launcher["rect"]["width"] <= 0 or launcher["rect"]["height"] <= 0:
+    print("unexpected launcher window: " + json.dumps(launcher))
+elif not launcher["focused"]:
+    print("the launcher does not have keyboard focus")
+' "$windows")"
+    "$testbed" control dismiss >/dev/null
+    if [ -n "$problem" ]; then
+        fail W "$problem"
+        return
+    fi
+    pass W
 }
 
 # A build after a sync has to leave a debug binary written by this build.

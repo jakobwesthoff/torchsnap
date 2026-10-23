@@ -17,6 +17,11 @@
 #   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
 #   testbed-pi control METHOD [JSON]  one request to the app's control socket
 #   testbed-pi merge-app-settings     enable the control socket, skip the welcome
+#   testbed-pi eval JS                print the value of JS evaluated in the desktop shell
+#   testbed-pi windows                the app's windows as JSON
+#   testbed-pi launcher-state         {"visible", "focused", "monitor"} of the launcher
+#   testbed-pi screenshot NAME [--monitor N | --window REGEX | --area X,Y,W,H]
+#                                     take a screenshot, print its path
 
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
@@ -210,6 +215,71 @@ cmd_control() {
 }
 
 # =========================================================
+# Observing
+# =========================================================
+
+# The launcher's state from two places: whether it is shown, from the app
+# (control `status`); whether it has keyboard focus and on which monitor
+# it is, from the desktop. When the control API learns to report the
+# latter two, this is the one place that changes.
+cmd_launcher_state() {
+    local status windows
+    status="$(control_request status)" || { echo "$status" >&2; return 1; }
+    windows="$(desk_app_windows)" || return 1
+    python3 -c '
+import json, sys
+status = json.loads(sys.argv[1])["result"]
+launcher = next((w for w in json.loads(sys.argv[2]) if w["title"] == ""), None)
+print(json.dumps({
+    "visible": status["visible"],
+    "focused": bool(launcher and launcher["focused"]),
+    "monitor": launcher["monitor"] if launcher else None,
+}))
+' "$status" "$windows"
+}
+
+readonly shots_dir="$state_dir/shots"
+
+cmd_screenshot() {
+    [ $# -ge 1 ] || usage
+    local name="$1"
+    shift
+    local mode="${1:-}"
+    local area=()
+    case "$mode" in
+        "") ;;
+        --monitor)
+            [ $# -eq 2 ] || usage
+            read -r -a area < <(desk_monitor_rect "$2")
+            ;;
+        --window)
+            [ $# -eq 2 ] || usage
+            read -r -a area < <(desk_window_rect "$2")
+            ;;
+        --area)
+            if [ $# -ne 2 ] || ! [[ "$2" =~ ^[0-9]+,[0-9]+,[0-9]+,[0-9]+$ ]]; then
+                echo "testbed-pi: --area expects X,Y,WIDTH,HEIGHT" >&2
+                exit 2
+            fi
+            IFS=, read -r -a area <<<"$2"
+            ;;
+        *) usage ;;
+    esac
+    if [ -n "$mode" ] && [ ${#area[@]} -ne 4 ]; then
+        echo "testbed-pi: could not find the area for $*" >&2
+        return 1
+    fi
+    mkdir -p "$shots_dir"
+    local file="$shots_dir/$name.png"
+    rm -f "$file"
+    # `${area[@]+...}`: an empty array counts as unset under `set -u` in
+    # bash before 4.4, such as the bash 3.2 macOS ships, where the tests
+    # of this script can run.
+    desk_screenshot "$file" ${area[@]+"${area[@]}"} || return 1
+    echo "$file"
+}
+
+# =========================================================
 # Dispatch
 # =========================================================
 
@@ -233,6 +303,23 @@ case "$subcommand" in
     app-log) cmd_app_log "$@" ;;
     control) cmd_control "$@" ;;
     merge-app-settings) cmd_merge_app_settings ;;
+    eval)
+        [ $# -eq 1 ] || usage
+        load_desktop
+        desk_eval "$1"
+        ;;
+    windows)
+        load_desktop
+        desk_app_windows
+        ;;
+    launcher-state)
+        load_desktop
+        cmd_launcher_state
+        ;;
+    screenshot)
+        load_desktop
+        cmd_screenshot "$@"
+        ;;
     *)
         usage
         ;;

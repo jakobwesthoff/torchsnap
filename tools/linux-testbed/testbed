@@ -19,6 +19,11 @@
 #   testbed app-stop          stop it
 #   testbed app-log [LINES]   print the end of its output
 #   testbed control METHOD [JSON]  one request to the app's control socket
+#   testbed eval JS           print the value of JS evaluated in the desktop shell
+#   testbed windows           the app's windows on the machine, as JSON
+#   testbed launcher-state    whether the launcher is visible and focused, and its monitor
+#   testbed screenshot NAME [--monitor N | --window REGEX | --area X,Y,W,H]
+#                             take a screenshot, copy it to target/linux-testbed/NAME.png
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -164,6 +169,32 @@ run_pi() {
 }
 
 # =========================================================
+# Files from the machine
+# =========================================================
+
+# Screenshots and recordings land next to the repository's other build
+# output, which git ignores.
+readonly local_results="$repo_root/target/linux-testbed"
+
+# fetch REMOTE_PATH: copies a file from the machine and prints the local
+# path.
+fetch() {
+    local remote_path="$1"
+    mkdir -p "$local_results"
+    local local_path
+    local_path="$local_results/$(basename "$remote_path")"
+    scp -q "$TORCHSNAP_LINUX_HOST:$remote_path" "$local_path"
+    echo "$local_path"
+}
+
+# The machine prints the screenshot's path as the last line of its output.
+cmd_screenshot() {
+    local output
+    output="$(run_pi screenshot "$@")" || { echo "$output"; return 1; }
+    fetch "$(tail -n 1 <<<"$output")"
+}
+
+# =========================================================
 # reboot
 # =========================================================
 
@@ -237,9 +268,13 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state)
         require_host
         run_pi "$subcommand" "$@"
+        ;;
+    screenshot)
+        require_host
+        cmd_screenshot "$@"
         ;;
     sync)
         require_host

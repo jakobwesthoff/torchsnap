@@ -52,7 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `just testbed-build` builds a debug app there,
   `just testbed-app-start`, `testbed-app-stop` and `testbed-app-log` run
   it in the GNOME session, `just testbed-control` drives it through its
-  control socket, and `just testbed-selftest` checks the testbed. See
+  control socket, `just testbed-screenshot`, `testbed-launcher-state`,
+  `testbed-windows` and `testbed-eval` observe it, and
+  `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 
 ### Changed

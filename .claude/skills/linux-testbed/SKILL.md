@@ -53,6 +53,14 @@ is the full guide.
 - `just testbed-control METHOD ['JSON']`: one control-socket request
   (`show`, `hide`, `toggle`, `dismiss`, `query '{"text": "…"}'`,
   `status`); exits 1 on an error response.
+- `just testbed-screenshot NAME [--window REGEX | --area X,Y,W,H | --monitor N]`:
+  a screenshot, copied to `target/linux-testbed/NAME.png`. Look at it
+  (Read the PNG) before drawing conclusions; scale it down first, the
+  monitor is 4K.
+- `just testbed-launcher-state`: `{"visible", "focused", "monitor"}` of
+  the launcher. `just testbed-windows`: the app's windows as JSON.
+- `just testbed-eval 'JS'`: evaluate JavaScript in GNOME Shell, value
+  printed as JSON. For desktop state the other recipes do not cover.
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. Items R (reboot) and U (undo provision steps) run only

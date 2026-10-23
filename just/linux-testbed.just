@@ -54,6 +54,22 @@ testbed-app-log *LINES:
 testbed-control METHOD *PARAMS:
     tools/linux-testbed/testbed control {{ METHOD }} {{ if PARAMS == "" { "" } else { quote(PARAMS) } }}
 
+# Take a screenshot on the Linux testbed into target/linux-testbed/NAME.png
+testbed-screenshot NAME *OPTIONS:
+    tools/linux-testbed/testbed screenshot {{ NAME }} {{ OPTIONS }}
+
+# List the app's windows on the Linux testbed as JSON
+testbed-windows:
+    tools/linux-testbed/testbed windows
+
+# Print whether the launcher is visible and focused on the Linux testbed, and its monitor
+testbed-launcher-state:
+    tools/linux-testbed/testbed launcher-state
+
+# Evaluate JavaScript in the Linux testbed's GNOME Shell and print the value
+testbed-eval JS:
+    tools/linux-testbed/testbed eval {{ quote(JS) }}
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

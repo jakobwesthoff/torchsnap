@@ -200,6 +200,17 @@ class TestbedRecipes(unittest.TestCase):
             result.stderr.strip(), "tools/linux-testbed/testbed control query '{\"text\": \"a b\"}'"
         )
 
+    def test_observation_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-screenshot", ["shot", "--monitor", "0"], "tools/linux-testbed/testbed screenshot shot --monitor 0"),
+            ("testbed-windows", [], "tools/linux-testbed/testbed windows"),
+            ("testbed-launcher-state", [], "tools/linux-testbed/testbed launcher-state"),
+            ("testbed-eval", ["Main.overview.visible"], "tools/linux-testbed/testbed eval 'Main.overview.visible'"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_testbed_selftest_passes_its_items(self):
         result = self.dry_run("testbed-selftest", "1")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -957,6 +968,161 @@ class AppSettings(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("already running", result.stderr)
         self.assertEqual(self.stubs.calls("systemd-run"), [])
+
+
+def eval_answer(value):
+    """GNOME Shell's Eval answer for a value, as gdbus prints it: the
+    value as JSON inside a GVariant string."""
+    text = json.dumps(value).replace("\\", "\\\\").replace("'", "\\'")
+    return f"(true, '{text}')\n"
+
+
+# Two windows of the app (the launcher has an empty title) and one other.
+WINDOWS = [
+    {"title": "", "wm_class": "torchsnap", "rect": {"x": 140, "y": 677, "width": 808, "height": 860}, "monitor": 0, "focused": True},
+    {"title": "Torchsnap Settings", "wm_class": "torchsnap", "rect": {"x": 0, "y": 0, "width": 900, "height": 700}, "monitor": 0, "focused": False},
+]
+
+
+class Observation(unittest.TestCase):
+    """Screenshots and window state through GNOME Shell, with gdbus
+    stubbed."""
+
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.stubs = Stubs(["systemctl"])
+        # gdbus answers Eval calls with STUB_GDBUS_EVAL_STDOUT when set,
+        # every other call with STUB_GDBUS_STDOUT.
+        gdbus = self.stubs.dir / "gdbus"
+        gdbus.write_text(
+            STUB.replace(
+                'sys.stdout.write(os.environ.get(f"STUB_{key}_STDOUT", ""))',
+                'is_eval = "org.gnome.Shell.Eval" in sys.argv\n'
+                'default = os.environ.get("STUB_GDBUS_STDOUT", "")\n'
+                'sys.stdout.write(os.environ.get("STUB_GDBUS_EVAL_STDOUT", default) if is_eval else default)',
+            )
+        )
+        gdbus.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, args, gdbus_stdout="", env=None):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "STUB_GDBUS_STDOUT": gdbus_stdout,
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def gdbus_calls(self):
+        return [c[1:] for c in self.stubs.calls("gdbus")]
+
+    def test_eval_prints_the_value(self):
+        result = self.call_pi(["eval", "global.context.unsafe_mode"], eval_answer(True))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), True)
+        self.assertEqual(self.gdbus_calls()[0][-1], "global.context.unsafe_mode")
+
+    def test_eval_decodes_quotes_and_backslashes(self):
+        value = {"title": "it's \"quoted\" \\ here"}
+        result = self.call_pi(["eval", "x"], eval_answer(value))
+        self.assertEqual(json.loads(result.stdout), value)
+
+    def test_eval_fails_when_the_shell_refuses(self):
+        result = self.call_pi(["eval", "x"], "(false, '')\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("GNOME Shell refused Eval", result.stderr)
+
+    def test_windows_lists_the_apps_windows(self):
+        result = self.call_pi(["windows"], eval_answer(WINDOWS))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), WINDOWS)
+        self.assertIn("torchsnap", self.gdbus_calls()[0][-1])
+
+    def test_launcher_state_combines_status_and_the_launcher_window(self):
+        data = self.home / ".local" / "share" / "app.torchsnap"
+        data.mkdir(parents=True)
+        fake = FakeControlSocket(data / "control.sock", [{"result": {"visible": True}}])
+        try:
+            result = self.call_pi(["launcher-state"], eval_answer(WINDOWS))
+        finally:
+            fake.close()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"visible": True, "focused": True, "monitor": 0})
+
+    def test_launcher_state_without_a_launcher_window(self):
+        data = self.home / ".local" / "share" / "app.torchsnap"
+        data.mkdir(parents=True)
+        fake = FakeControlSocket(data / "control.sock", [{"result": {"visible": False}}])
+        try:
+            result = self.call_pi(["launcher-state"], eval_answer(WINDOWS[1:]))
+        finally:
+            fake.close()
+        self.assertEqual(json.loads(result.stdout), {"visible": False, "focused": False, "monitor": None})
+
+    def screenshot_call(self, *args):
+        answer = f"(true, '{self.home}/.cache/torchsnap-testbed/shots/x.png')\n"
+        result = self.call_pi(["screenshot", "x", *args], answer)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), f"{self.home}/.cache/torchsnap-testbed/shots/x.png")
+        return self.gdbus_calls()
+
+    def test_a_full_screenshot(self):
+        calls = self.screenshot_call()
+        self.assertIn("org.gnome.Shell.Screenshot.Screenshot", calls[-1])
+        self.assertEqual(calls[-1][-3:], ["false", "false", f"{self.home}/.cache/torchsnap-testbed/shots/x.png"])
+
+    def test_an_area_screenshot(self):
+        calls = self.screenshot_call("--area", "10,20,300,400")
+        self.assertIn("org.gnome.Shell.Screenshot.ScreenshotArea", calls[-1])
+        self.assertEqual(calls[-1][-6:-1], ["10", "20", "300", "400", "false"])
+
+    def test_a_monitor_screenshot_takes_the_monitors_rect(self):
+        answer = f"(true, '{self.home}/.cache/torchsnap-testbed/shots/x.png')\n"
+        result = self.call_pi(
+            ["screenshot", "x", "--monitor", "1"],
+            answer,
+            env={"STUB_GDBUS_EVAL_STDOUT": eval_answer({"x": 1080, "y": 0, "width": 1280, "height": 800})},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.gdbus_calls()
+        self.assertIn("Main.layoutManager.monitors[1]", calls[0][-1])
+        self.assertIn("org.gnome.Shell.Screenshot.ScreenshotArea", calls[-1])
+        self.assertEqual(calls[-1][-6:-1], ["1080", "0", "1280", "800", "false"])
+
+    def test_a_bad_option_is_refused(self):
+        result = self.call_pi(["screenshot", "x", "--area", "1,2,3"])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--area expects X,Y,WIDTH,HEIGHT", result.stderr)
+
+
+class ScreenshotCopy(unittest.TestCase):
+    """The Mac side copies a screenshot into target/linux-testbed/."""
+
+    def setUp(self):
+        self.stubs = Stubs(["ssh", "rsync", "scp"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def test_the_screenshot_is_copied_next_to_the_repository(self):
+        result = run(
+            ["screenshot", "launcher", "--area", "0,0,10,10"],
+            self.stubs,
+            env={
+                "TORCHSNAP_LINUX_HOST": "user@pi.local",
+                "TORCHSNAP_LINUX_RUNNER": "",
+                "STUB_SSH_STDOUT": "/home/u/.cache/torchsnap-testbed/shots/launcher.png\n",
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        scp = self.stubs.calls("scp")[-1]
+        self.assertEqual(scp[-2], "user@pi.local:/home/u/.cache/torchsnap-testbed/shots/launcher.png")
+        self.assertEqual(scp[-1], str(REPO / "target" / "linux-testbed" / "launcher.png"))
+        self.assertEqual(result.stdout.strip(), str(REPO / "target" / "linux-testbed" / "launcher.png"))
 
 
 if __name__ == "__main__":
