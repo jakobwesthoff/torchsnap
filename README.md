@@ -90,7 +90,9 @@ Common recipes (run `just --list` for the full set):
   gadgets from `gadgets/bundled.toml` into `target/bundled-gadgets/`,
   builds every in-tree gadget, then runs `tauri build`.
 - `just build` — the same flow as a debug build
-  (`tauri build --debug`). Debug is the default.
+  (`tauri build --debug`). Debug is the default. On macOS it makes
+  `Torchsnap.app` but no DMG (`--bundles app`); with `--sign` it makes
+  the DMG too, since `just notarize-dmg` needs it.
 - `just build --release --sign` — release build with a code-signed
   macOS bundle; see [Signing macOS builds](#signing-macos-builds).
 - `just build-gadget <name>` — rebuild a single gadget under
@@ -133,7 +135,7 @@ reports a downloaded copy as damaged. Keep local builds unsigned when you
 want to attach lldb to the bundled app: lldb cannot attach to a signed
 bundle (ADR 0047).
 
-The build writes `src-tauri/target/release/bundle/macos/Torchsnap.app` and
+A release build writes `src-tauri/target/release/bundle/macos/Torchsnap.app` and
 `src-tauri/target/release/bundle/dmg/Torchsnap_<version>_<arch>.dmg`.
 
 ### Ad-hoc signing

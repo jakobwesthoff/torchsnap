@@ -24,6 +24,13 @@
 # updater archive and its signature, which need the updater signing
 # key and so stay off in everyday builds.
 
+# On macOS a debug build without `--sign` passes `--bundles app`, so
+# Tauri makes `Torchsnap.app` and no DMG. No recipe reads the DMG of
+# such a build (`verify-bundle` reads the `.app`). Making it takes about
+# half a minute, and its Finder/osascript step that styles the DMG
+# window can hang. A `--sign` build keeps the DMG because
+# `notarize-dmg` needs it.
+
 # Build the Tauri app (gadgets + frontend + Rust)
 [arg('profile', long='release', value='release')]
 [arg('sign', long='sign', value='sign')]
@@ -31,7 +38,7 @@
 build profile="debug" sign="" config="":
     just stage-bundled-gadgets
     just build-gadgets
-    {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else { "--debug" } }} {{ if config != "" { "--config " + quote(config) } else { "" } }}
+    {{ if sign == "sign" { "APPLE_SIGNING_IDENTITY=\"${APPLE_SIGNING_IDENTITY:--}\"" } else { "" } }} bun run tauri build {{ if profile == "release" { "" } else if sign == "sign" { "--debug" } else if os() == "macos" { "--debug --bundles app" } else { "--debug" } }} {{ if config != "" { "--config " + quote(config) } else { "" } }}
     {{ if sign == "sign" { "just notarize-dmg " + profile } else { "" } }}
 
 # `fullcycle` never builds a bundle, so the `.torchsnap` registration

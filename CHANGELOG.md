@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launcher's frontend is not connected, instead of reporting success
   for a command it never received. `dismiss` then leaves the launcher
   as it is; `hide` still hides it.
+- On macOS, `just build` without `--release` and `--sign` makes only
+  `Torchsnap.app`, no DMG. No recipe reads the DMG of such a build.
+  Making it took about half a minute, and its Finder step could hang.
+  A `just build` with nothing changed went from about 50 s to 15 s.
+  Release builds and `--sign` builds still make the DMG.
 
 ### Removed
 
