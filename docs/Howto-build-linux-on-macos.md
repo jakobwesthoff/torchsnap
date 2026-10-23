@@ -82,15 +82,19 @@ recipes only ever remove objects they created and marked:
 | Object | Name | Marked by |
 |---|---|---|
 | image | `torchsnap-linux-build:latest` | label `org.torchsnap.linux-build=1` |
-| build cache | records of that image's build | every `RUN` names `TORCHSNAP_LINUX_BUILD=1`, which BuildKit copies into the record's description |
+| build cache | records of that image's build | every `RUN` runs through `/usr/bin/env TORCHSNAP_LINUX_BUILD=1 /bin/sh -c`, which BuildKit copies into the record's description |
 | cargo registry | volume `torchsnap-linux-build-cargo` | label |
 | bun cache | volume `torchsnap-linux-build-bun` | label |
 | lint work volume | `torchsnap-linux-build-lint-<hash>`, one per checkout | label, plus a label naming the checkout |
 
 Each removal checks the exact name as well. Nothing runs a global
-prune. A rebuilt image's predecessor is removed once no container of
-these recipes runs. An object that a running container uses is kept and
-reported as `in use, kept`.
+prune, and the build cache is pruned only after a listing of its marked
+records worked. When a rebuild changes the image, exactly the image it
+replaced is removed, once no container of these recipes runs. An image
+someone builds `FROM torchsnap-linux-build` inherits the label; while
+untagged, it shows up in `just linux-build-status`, and
+`just linux-build-clean --all` removes it. An object that a running
+container uses is kept and reported as `in use, kept`.
 
 Measured on 2026-10-23 after linting this repository twice:
 
@@ -118,6 +122,7 @@ each step removed and how much it freed:
 
 With the sizes above, the image, the build cache, the two download
 caches and three lint work volumes take 16.1 GB of the default 40 GB.
+Both variables take a whole number from 1 to 99999.
 
 `status` reads the last use of each work volume with a short container
 from the image, so without the image it shows sizes only and the limits

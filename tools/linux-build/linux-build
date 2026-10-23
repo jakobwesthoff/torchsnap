@@ -12,8 +12,8 @@
 # Commands:
 #   image                 build the image (cached layers make this cheap)
 #   lint [--path DIR]     cargo check and clippy of DIR's src-tauri/ for Linux
-#   status                what B1's Docker objects and outputs take on disk
-#   clean [--all]         remove build output (--all: everything B1 owns)
+#   status                what the Docker objects and outputs take on disk
+#   clean [--all]         remove build output (--all: everything listed by status)
 #
 # Environment:
 #   TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES   lint work volumes kept (default 3)
@@ -41,7 +41,7 @@ build_volume=torchsnap-linux-build-work
 lint_volume_prefix=torchsnap-linux-build-lint-
 
 # =========================================================================
-# What B1 owns
+# What this tool owns
 # =========================================================================
 
 # The same Docker serves other projects, so nothing here is selected by
@@ -51,15 +51,18 @@ lint_volume_prefix=torchsnap-linux-build-lint-
 #
 # - volumes are created with `owned_label` (lint volumes also with the
 #   checkout they belong to) and must match `owned_volume_re`;
-# - the image's untagged leftovers carry `owned_label` from the
-#   Dockerfile's LABEL;
-# - every RUN of the Dockerfile goes through a SHELL that names
-#   TORCHSNAP_LINUX_BUILD=1, which BuildKit copies into the description
-#   of each build cache record, so `cache_filter` selects exactly those.
+# - untagged images carry `owned_label` from the Dockerfile's LABEL;
+#   an image someone builds FROM this one inherits it, which is why a
+#   rebuild removes only the exact image it replaced, and only
+#   `clean --all` removes every untagged image with the label;
+# - every RUN of the Dockerfile goes through the Dockerfile's SHELL,
+#   whose whole command line BuildKit copies into the description of
+#   each build cache record; `cache_filter` matches that command line,
+#   quoted because the filter parser splits on spaces.
 owned_label=org.torchsnap.linux-build=1
 checkout_label=org.torchsnap.linux-build.checkout
 owned_volume_re='^torchsnap-linux-build-(work|cargo|bun|lint-[0-9a-f]{8})$'
-cache_filter='description~=TORCHSNAP_LINUX_BUILD=1'
+cache_filter='description~="from exec /usr/bin/env TORCHSNAP_LINUX_BUILD=1 /bin/sh -c "'
 helper=torchsnap-linux-build-helper
 
 # The limits. `-` rather than `:-`, so a variable set to an empty
@@ -74,9 +77,11 @@ validate_limits() {
             *MAX_LINT*) value=$max_lint ;;
             *) value=$budget_gb ;;
         esac
+        # Five digits at most: the budget becomes bytes in shell
+        # arithmetic, which a longer number would overflow.
         case "$value" in
-            '' | 0* | *[!0-9]*)
-                echo "linux-build: $name must be a positive whole number, not '$value'" >&2
+            '' | 0* | *[!0-9]* | ??????*)
+                echo "linux-build: $name must be a whole number from 1 to 99999, not '$value'" >&2
                 exit 2
                 ;;
         esac
@@ -146,16 +151,49 @@ image_present() {
     [ -n "$image_bytes" ]
 }
 
-cache_bytes() {
-    local size total=0
-    for size in $(docker buildx du --builder "$(current_builder)" --filter "$cache_filter" \
-        --format '{{.Size}}' 2>/dev/null || true); do
-        total=$((total + $(to_bytes "$size")))
-    done
-    printf '%s' "$total"
+# Measures the marked build cache into `cache_bytes` and `cache_records`.
+# Fails when `buildx du` fails, so that nothing is pruned on a listing
+# that cannot be trusted.
+cache_bytes=0
+cache_records=0
+measure_cache() {
+    local listing id size
+    cache_bytes=0
+    cache_records=0
+    listing=$(docker buildx du --builder "$(current_builder)" --filter "$cache_filter" \
+        --format '{{.ID}} {{.Size}}' 2>/dev/null) || return 1
+    while read -r id size; do
+        [ -n "$id" ] || continue
+        cache_records=$((cache_records + 1))
+        cache_bytes=$((cache_bytes + $(to_bytes "$size")))
+    done <<<"$listing"
 }
 
-# Parallel arrays describing B1's volumes: name, checkout (lint volumes),
+# Removes the marked build cache, only after a listing that worked and
+# found records. Prints what happened; fails when nothing could be
+# removed for a reason other than "nothing there".
+prune_cache() {
+    local reason="$1"
+    if ! measure_cache; then
+        echo "linux-build: cannot measure the build cache, not pruning it" >&2
+        return 1
+    fi
+    [ "$cache_records" -gt 0 ] || return 0
+    if docker buildx prune -f --all --builder "$(current_builder)" --filter "$cache_filter" >/dev/null 2>&1; then
+        echo "linux-build: removed the build cache ($reason), freed $(human "$cache_bytes")" >&2
+    else
+        echo "linux-build: build cache in use, kept" >&2
+        return 1
+    fi
+}
+
+# Untagged images with the label: "ID SIZE" lines.
+dangling_images() {
+    docker image ls --no-trunc --filter dangling=true --filter "label=$owned_label" \
+        --format '{{.ID}} {{.Size}}'
+}
+
+# Parallel arrays describing this tool's volumes: name, checkout (lint volumes),
 # size in bytes, last use (epoch seconds, empty when unknown) and state
 # (`alive`, `gone` after removal, `kept` when removal failed).
 vol_names=()
@@ -205,7 +243,7 @@ load_volumes() {
 }
 
 # `in-container` touches `.linux-build-last-use` in its work volume on
-# every run. Reading it needs a container; it runs from B1's own image,
+# every run. Reading it needs a container; it runs from this tool's image,
 # offline, and only with the volumes just listed, since mounting a
 # volume that no longer exists would create it.
 load_last_use() {
@@ -255,17 +293,26 @@ describe_last_use() {
 }
 
 cmd_status() {
-    local total=0 cache i line dir kib
-    echo "B1 Docker objects and outputs (outputs in other checkouts are not counted):"
+    local total=0 i line dir kib id size
+    echo "Linux build: Docker objects and outputs (outputs in other checkouts are not counted):"
     if image_present; then
         printf '  %-7s %-48s %10s\n' image "$image" "$(human "$image_bytes")"
         total=$((total + image_bytes))
     else
         printf '  %-7s %-48s %10s\n' image "$image" "absent"
     fi
-    cache=$(cache_bytes)
-    printf '  %-7s %-48s %10s\n' cache "build cache records marked TORCHSNAP_LINUX_BUILD=1" "$(human "$cache")"
-    total=$((total + cache))
+    while read -r id size; do
+        [ -n "$id" ] || continue
+        size=$(to_bytes "$size")
+        printf '  %-7s %-48s %10s  untagged, removed by clean --all\n' image "$id" "$(human "$size")"
+        total=$((total + size))
+    done <<<"$(dangling_images)"
+    if measure_cache; then
+        printf '  %-7s %-48s %10s\n' cache "build cache records of the image build" "$(human "$cache_bytes")"
+        total=$((total + cache_bytes))
+    else
+        printf '  %-7s %-48s %10s\n' cache "build cache records of the image build" "unknown"
+    fi
 
     load_volumes
     if [ -n "$image_bytes" ]; then
@@ -327,10 +374,10 @@ oldest_other_lint() {
 }
 
 # Runs before every lint, with `own` the volume that lint will use.
-# Without B1's image there is no way to read last uses, so nothing is
+# Without the image there is no way to read last uses, so nothing is
 # evicted then.
 enforce_limits() {
-    local own="$1" i count used cache budget victim cache_pruned=no
+    local own="$1" i count used budget victim cache_tried=no cache_known=yes
 
     image_present || return 0
     load_volumes
@@ -364,8 +411,11 @@ enforce_limits() {
     # build cache. The image and the cargo and bun caches make every
     # later run cheap and are never evicted here.
     budget=$((budget_gb * 1000000000))
-    cache=$(cache_bytes)
-    used=$((image_bytes + cache))
+    if ! measure_cache; then
+        echo "linux-build: cannot measure the build cache, not pruning it" >&2
+        cache_known=no
+    fi
+    used=$((image_bytes + cache_bytes))
     for i in "${!vol_names[@]}"; do
         [ "${vol_state[$i]}" = gone ] || used=$((used + vol_sizes[i]))
     done
@@ -374,16 +424,14 @@ enforce_limits() {
         if [ -n "$victim" ]; then
             evict_volume "$victim" "over budget"
             [ "${vol_state[$victim]}" = gone ] && used=$((used - vol_sizes[victim]))
-        elif [ "$cache_pruned" = no ] && [ "$cache" -gt 0 ]; then
-            cache_pruned=yes
-            if docker buildx prune -f --all --builder "$(current_builder)" --filter "$cache_filter" >/dev/null 2>&1; then
-                echo "linux-build: evicted the build cache (over budget), freed $(human "$cache")" >&2
-                used=$((used - cache))
-            else
-                echo "linux-build: build cache in use, kept" >&2
+        elif [ "$cache_tried" = no ] && [ "$cache_known" = yes ] && [ "$cache_records" -gt 0 ]; then
+            cache_tried=yes
+            local freed=$cache_bytes
+            if prune_cache "over budget"; then
+                used=$((used - freed))
             fi
         else
-            echo "linux-build: warning: B1 uses $(human "$used"), over the budget of $budget_gb GB," \
+            echo "linux-build: warning: the Linux build uses $(human "$used"), over the budget of $budget_gb GB," \
                 "and nothing more is evicted automatically (linux-build clean --all removes the rest)" >&2
             break
         fi
@@ -395,27 +443,30 @@ enforce_limits() {
 # =========================================================================
 
 cmd_image() {
-    local channel id
+    local channel previous id size
     channel=$(pinned_channel)
+    previous=$(docker image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)
     docker buildx build --builder "$(current_builder)" --platform linux/arm64 --load \
         --build-arg "RUST_TOOLCHAIN=$channel" \
         -t "$image" \
         -f "$script_dir/Dockerfile" "$script_dir"
 
-    # A rebuild leaves the previous image untagged. It is removed once no
-    # B1 container runs, since a running one may still use it.
-    if [ -z "$(docker ps -q --filter "name=^torchsnap-linux-build")" ]; then
-        for id in $(docker image ls -q --filter dangling=true --filter "label=$owned_label"); do
-            if docker image rm "$id" >/dev/null 2>&1; then
-                echo "linux-build: removed superseded image $id" >&2
-            else
-                echo "linux-build: $id in use, kept" >&2
-            fi
-        done
-    fi
+    # A rebuild that changed the image leaves the previous one untagged.
+    # Exactly that image is removed, once no container of this tool
+    # runs, since a running one may still use it.
+    [ -n "$previous" ] || return 0
+    [ -z "$(docker ps -q --filter "name=^torchsnap-linux-build")" ] || return 0
+    while read -r id size; do
+        [ "$id" = "$previous" ] || continue
+        if docker image rm "$id" >/dev/null 2>&1; then
+            echo "linux-build: removed the replaced image $id, freed $size" >&2
+        else
+            echo "linux-build: $id in use, kept" >&2
+        fi
+    done <<<"$(dangling_images)"
 }
 
-# Creates a volume with B1's label unless it exists already.
+# Creates a volume with this tool's label unless it exists already.
 ensure_volume() {
     local name="$1" checkout="${2:-}"
     docker volume inspect "$name" >/dev/null 2>&1 && return 0
@@ -498,7 +549,7 @@ clean_volume() {
 }
 
 cmd_clean() {
-    local all="$1" failed=0 i cache
+    local all="$1" failed=0 i id size
 
     cmd_status
     load_volumes
@@ -516,13 +567,7 @@ cmd_clean() {
                 "$cargo_volume" | "$bun_volume") clean_volume "$i" || failed=1 ;;
             esac
         done
-        cache=$(cache_bytes)
-        if docker buildx prune -f --all --builder "$(current_builder)" --filter "$cache_filter" >/dev/null 2>&1; then
-            echo "linux-build: removed the build cache, freed $(human "$cache")" >&2
-        else
-            echo "linux-build: build cache in use, kept" >&2
-            failed=1
-        fi
+        prune_cache "clean --all" || failed=1
         if image_present; then
             if docker image rm "$image" >/dev/null 2>&1; then
                 echo "linux-build: removed $image, freed $(human "$image_bytes")" >&2
@@ -531,6 +576,17 @@ cmd_clean() {
                 failed=1
             fi
         fi
+        # Untagged predecessors left by rebuilds whose removal failed, and
+        # untagged images built FROM this one, which inherit its label.
+        while read -r id size; do
+            [ -n "$id" ] || continue
+            if docker image rm "$id" >/dev/null 2>&1; then
+                echo "linux-build: removed $id, freed $size" >&2
+            else
+                echo "linux-build: $id in use, kept" >&2
+                failed=1
+            fi
+        done <<<"$(dangling_images)"
     fi
     rm -rf "$repo/target/linux-build"
     return "$failed"

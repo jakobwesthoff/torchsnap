@@ -12,12 +12,12 @@
 # Raspberry Pi OS machine updates from.
 FROM debian:trixie-20261020@sha256:4c25275446ca371766b8b093c696782eabce06263fccacb8d5d813b3dc44b308
 
-# The Docker on the Mac is shared with other projects, so B1 marks what
-# it creates: the label lets `linux-build` find this image's untagged
-# predecessors, and every RUN below goes through a shell command line
-# naming TORCHSNAP_LINUX_BUILD=1, which BuildKit copies into the
+# The Docker on the Mac is shared with other projects, so this image
+# marks what it creates: the label lets `linux-build` find untagged
+# images of this tool, and every RUN below goes through a shell command
+# line naming TORCHSNAP_LINUX_BUILD=1, which BuildKit copies into the
 # description of each build cache record. `linux-build` measures and
-# prunes the cache by that description and touches no other record.
+# prunes the cache by that command line and touches no other record.
 LABEL org.torchsnap.linux-build=1
 SHELL ["/usr/bin/env", "TORCHSNAP_LINUX_BUILD=1", "/bin/sh", "-c"]
 

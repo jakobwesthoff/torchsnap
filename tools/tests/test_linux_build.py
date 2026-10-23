@@ -37,7 +37,7 @@ def pinned_channel():
 # the ASCII unit separator, which no argument here contains.
 SEP = "\x1f"
 
-# Stubs answer from `STUB_<NAME>_<ARG1>_…_<ARG4>_OUT`/`_RC`, trying the
+# Stubs answer from `STUB_<NAME>_<ARG1>_…_<ARG5>_OUT`/`_RC`, trying the
 # longest prefix of the arguments first and ending with `STUB_<NAME>_…`;
 # names and arguments are upper-cased and reduced to letters, digits
 # and `_` (`stub_key` builds the same names). So one `docker` stub can
@@ -53,7 +53,7 @@ prefixes=("$key")
 n=0
 for a in "$@"; do
     n=$((n + 1))
-    [ "$n" -gt 4 ] && break
+    [ "$n" -gt 5 ] && break
     key="${key}_$(norm "$a")"
     prefixes=("$key" "${prefixes[@]}")
 done
@@ -74,7 +74,7 @@ def stub_key(*argv):
     def norm(value):
         value = value.upper().replace("-", "_")
         return "".join(c for c in value if c.isalnum() or c == "_")
-    return "STUB_" + "_".join(norm(a) for a in argv[:5])
+    return "STUB_" + "_".join(norm(a) for a in argv[:6])
 
 
 STUBBED = ["docker", "git", "rsync", "just", "objdump", "dpkg-query"]
@@ -108,7 +108,7 @@ class Tree:
             "HOME": self._tmp.name,
             "STUB_LOG": str(self.log),
             "STUB_CWD_LOG": str(self.cwd_log),
-            # By default Docker holds none of B1's objects: no image, no
+            # By default Docker holds none of the Linux build's objects: no image, no
             # volume, no container. Cases add what they need.
             "STUB_DOCKER_CONTEXT_SHOW_OUT": "testctx",
             "STUB_DOCKER_VOLUME_INSPECT_RC": "1",
@@ -220,13 +220,17 @@ class Arguments(TreeCase):
         self.assertEqual(self.tree.calls("docker"), [])
 
 
-DANGLING = ["image", "ls", "-q", "--filter", "dangling=true",
-            "--filter", "label=org.torchsnap.linux-build=1"]
+DANGLING = ["image", "ls", "--no-trunc", "--filter", "dangling=true",
+            "--filter", "label=org.torchsnap.linux-build=1", "--format", "{{.ID}} {{.Size}}"]
+IMAGE_ID = stub_key("docker", "image", "inspect", "torchsnap-linux-build:latest", "--format", "{{.Id}}")
 
 
 class Image(TreeCase):
     def builds(self):
         return [row for row in self.tree.docker("buildx") if row[1] == "build"]
+
+    def image_removals(self):
+        return [row[1:] for row in self.tree.calls("docker") if row[1:3] == ["image", "rm"]]
 
     def test_builds_the_arm64_image_with_the_pinned_toolchain(self):
         result = self.tree.run("linux-build", "image")
@@ -239,33 +243,58 @@ class Image(TreeCase):
             "-f", f"{tools}/Dockerfile", tools,
         ]])
 
-    def test_removes_its_own_superseded_images_after_a_build(self):
-        result = self.tree.run("linux-build", "image", env={stub_key(*["docker"] + DANGLING[:4]) + "_OUT":
-                                                            "sha256:old1\nsha256:old2"})
+    def test_removes_exactly_the_image_it_replaced(self):
+        # Another dangling image with the label, built FROM this one by
+        # someone else, inherits the label; it stays.
+        result = self.tree.run("linux-build", "image", env={
+            IMAGE_ID + "_OUT": "sha256:old1",
+            "STUB_DOCKER_IMAGE_LS_OUT": "sha256:other 1GB\nsha256:old1 2GB",
+        })
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(DANGLING, [row[1:] for row in self.tree.calls("docker")])
-        self.assertEqual([row[1:] for row in self.tree.calls("docker") if row[1:3] == ["image", "rm"]],
-                         [["image", "rm", "sha256:old1"], ["image", "rm", "sha256:old2"]])
+        self.assertEqual(self.image_removals(), [["image", "rm", "sha256:old1"]])
+        inspect = next(i for i, row in enumerate(self.tree.calls("docker"))
+                       if row[1:3] == ["image", "inspect"] and "{{.Id}}" in row)
+        build = next(i for i, row in enumerate(self.tree.calls("docker")) if row[1:3] == ["buildx", "build"])
+        self.assertLess(inspect, build)
 
-    def test_keeps_superseded_images_while_a_b1_container_runs(self):
+    def test_an_unchanged_image_is_not_removed(self):
+        # The rebuild produced the same image, so it is still tagged and
+        # not in the dangling list.
         result = self.tree.run("linux-build", "image", env={
-            stub_key(*["docker"] + DANGLING[:4]) + "_OUT": "sha256:old1",
+            IMAGE_ID + "_OUT": "sha256:same",
+            "STUB_DOCKER_IMAGE_LS_OUT": "sha256:other 1GB",
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.image_removals(), [])
+
+    def test_a_first_build_removes_nothing(self):
+        result = self.tree.run("linux-build", "image", env={"STUB_DOCKER_IMAGE_LS_OUT": "sha256:other 1GB"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.image_removals(), [])
+
+    def test_keeps_the_predecessor_while_a_container_of_this_tool_runs(self):
+        result = self.tree.run("linux-build", "image", env={
+            IMAGE_ID + "_OUT": "sha256:old1",
+            "STUB_DOCKER_IMAGE_LS_OUT": "sha256:old1 2GB",
             "STUB_DOCKER_PS_OUT": "c0ffee",
         })
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual([row for row in self.tree.calls("docker") if row[1:3] == ["image", "rm"]], [])
+        self.assertEqual(self.image_removals(), [])
 
     def test_keeps_everything_after_a_failed_build(self):
         result = self.tree.run("linux-build", "image", env={
             "STUB_DOCKER_BUILDX_BUILD_RC": "1",
-            stub_key(*["docker"] + DANGLING[:4]) + "_OUT": "sha256:old1",
+            IMAGE_ID + "_OUT": "sha256:old1",
+            "STUB_DOCKER_IMAGE_LS_OUT": "sha256:old1 2GB",
         })
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual([row for row in self.tree.calls("docker") if row[1:3] == ["image", "rm"]], [])
+        self.assertEqual(self.image_removals(), [])
 
     def test_an_image_still_in_use_is_kept_and_reported(self):
         result = self.tree.run("linux-build", "image", env={
-            stub_key(*["docker"] + DANGLING[:4]) + "_OUT": "sha256:old1",
+            IMAGE_ID + "_OUT": "sha256:old1",
+            "STUB_DOCKER_IMAGE_LS_OUT": "sha256:old1 2GB",
             "STUB_DOCKER_IMAGE_RM_RC": "1",
         })
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -408,13 +437,17 @@ class Lint(TreeCase):
 
 
 # =========================================================================
-# Disk use: what B1 owns, status, limits, clean
+# Disk use: what the Linux build owns, status, limits, clean
 # =========================================================================
 
 HELPER = stub_key("docker", "run", "--name", "torchsnap-linux-build-helper") + "_OUT"
-IMAGE_SIZE = stub_key("docker", "image", "inspect", "torchsnap-linux-build:latest") + "_OUT"
+IMAGE_SIZE = stub_key("docker", "image", "inspect", "torchsnap-linux-build:latest", "--format", "{{.Size}}") + "_OUT"
 OWNED_LABEL = "org.torchsnap.linux-build=1"
-CACHE_FILTER = "description~=TORCHSNAP_LINUX_BUILD=1"
+# The whole command line the Dockerfile's SHELL puts into each record's
+# description, so a record that merely contains the variable name does
+# not match.
+CACHE_FILTER = 'description~="from exec /usr/bin/env TORCHSNAP_LINUX_BUILD=1 /bin/sh -c "'
+CACHE_DU = ["buildx", "du", "--builder", "testctx", "--filter", CACHE_FILTER, "--format", "{{.ID}} {{.Size}}"]
 
 # Every Docker subcommand the scripts may run. Anything else, a prune
 # of everything for example, fails the guard.
@@ -428,8 +461,8 @@ OWNED_VOLUME = re.compile(r"^torchsnap-linux-build-(work|cargo|bun|lint-[0-9a-f]
 
 
 class Docker:
-    """Builds the stub environment for a Docker that holds some of B1's
-    objects, and some of other projects'."""
+    """Builds the stub environment for a Docker that holds some of the
+    Linux build's objects, and some of other projects'."""
 
     def __init__(self, tmp):
         self.tmp = pathlib.Path(tmp)
@@ -440,11 +473,14 @@ class Docker:
 
     def image(self, size_bytes):
         self.env[IMAGE_SIZE] = str(size_bytes)
-        self.env[stub_key("docker", "image", "inspect", "torchsnap-linux-build:latest") + "_RC"] = "0"
         return self
 
     def cache(self, *sizes):
-        self.env["STUB_DOCKER_BUILDX_DU_OUT"] = "\n".join(sizes)
+        self.env["STUB_DOCKER_BUILDX_DU_OUT"] = "\n".join(f"rec{i} {size}" for i, size in enumerate(sizes))
+        return self
+
+    def dangling(self, *lines):
+        self.env["STUB_DOCKER_IMAGE_LS_OUT"] = "\n".join(lines)
         return self
 
     def volume(self, name, size, last_use, checkout=None, labelled=True):
@@ -499,6 +535,16 @@ class Status(TreeCase):
         self.assertRegex(out, r"total\s+8\.86 GB")          # 2.26 + 2.10 + 0.5 + 3 + 1, output dirs empty
         self.assertIn("budget 20 GB", out)
         self.assertIn("outputs in other checkouts are not counted", out)
+        self.assertIn(CACHE_DU, [row[1:] for row in self.tree.calls("docker")])
+        self.assertNotIn("B1", out)
+
+    def test_counts_untagged_predecessors_of_the_image(self):
+        docker = Docker(self.tree._tmp.name).image(2_000_000_000).dangling("sha256:old1 1.5GB")
+        result = self.tree.run("linux-build", "status", env=docker.build())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("sha256:old1", result.stdout)
+        self.assertRegex(result.stdout, r"total\s+3\.50 GB")
+        self.assertIn(DANGLING, [row[1:] for row in self.tree.calls("docker")])
 
     def test_shows_when_each_work_volume_was_last_used(self):
         docker = Docker(self.tree._tmp.name)
@@ -608,6 +654,20 @@ class Limits(TreeCase):
         self.assertEqual(removed(self.tree, "volume"), ["torchsnap-linux-build-lint-1b2c3d4e"])
         self.assertEqual(cache_prunes(self.tree), [])
 
+    def test_a_failed_cache_listing_does_not_prune(self):
+        self.docker.cache("3GB")
+        result = self.lint(TORCHSNAP_LINUX_BUILD_BUDGET_GB="1", STUB_DOCKER_BUILDX_DU_RC="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(cache_prunes(self.tree), [])
+        self.assertIn("cannot measure the build cache", result.stderr)
+        self.main_run_index()
+
+    def test_an_empty_cache_listing_does_not_prune(self):
+        self.docker.volume("torchsnap-linux-build-cargo", "30GB", 1)
+        result = self.lint(TORCHSNAP_LINUX_BUILD_BUDGET_GB="1", STUB_DOCKER_BUILDX_DU_OUT="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(cache_prunes(self.tree), [])
+
     def test_within_budget_evicts_nothing(self):
         self.docker.cache("1GB")
         self.docker.volume("torchsnap-linux-build-lint-0a1b2c3d", "1GB", 100, checkout=self.docker.checkout("a"))
@@ -641,7 +701,7 @@ class Limits(TreeCase):
 
     def test_invalid_limits_exit_2_before_docker(self):
         for name in ("TORCHSNAP_LINUX_BUILD_BUDGET_GB", "TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES"):
-            for value in ("0", "-1", "1.5", "lots", ""):
+            for value in ("0", "-1", "1.5", "lots", "", "100000", "99999999999"):
                 with self.subTest(name=name, value=value):
                     self.tree.log.unlink(missing_ok=True)
                     result = self.tree.run("linux-build", "lint", "--path", str(self.checkout), env={name: value})
@@ -682,6 +742,20 @@ class Clean(TreeCase):
                                                     "--filter", CACHE_FILTER]])
         self.assertEqual(removed(self.tree, "image"), ["torchsnap-linux-build:latest"])
 
+    def test_all_also_removes_untagged_predecessors_with_the_label(self):
+        env = self.docker.dangling("sha256:old1 1GB", "sha256:old2 1GB").build()
+        result = self.tree.run("linux-build", "clean", "--all", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(removed(self.tree, "image"), ["torchsnap-linux-build:latest", "sha256:old1", "sha256:old2"])
+
+    def test_all_does_not_prune_when_the_cache_listing_fails(self):
+        env = self.docker.build()
+        env["STUB_DOCKER_BUILDX_DU_RC"] = "1"
+        result = self.tree.run("linux-build", "clean", "--all", env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(cache_prunes(self.tree), [])
+        self.assertIn("cannot measure the build cache", result.stderr)
+
     def test_adopts_unlabelled_volumes_only_by_their_exact_names(self):
         docker = Docker(self.tree._tmp.name)
         docker.volume("torchsnap-linux-build-work", "1GB", 1, labelled=False)
@@ -700,7 +774,7 @@ class Clean(TreeCase):
 
 
 class Guard(TreeCase):
-    """Only B1's own Docker objects are ever removed."""
+    """Only the Linux build's own Docker objects are ever removed."""
 
     def foreign_env(self):
         docker = Docker(self.tree._tmp.name).image(1_000_000_000).cache("1GB")
@@ -712,7 +786,8 @@ class Guard(TreeCase):
                                             "\nother-project-data\t/gone")
         env["STUB_DOCKER_SYSTEM_DF_OUT"] += "\nother-project-data 50GB\nmy-torchsnap-linux-build-lint-x 50GB"
         env[HELPER] += "\nother-project-data 1\nmy-torchsnap-linux-build-lint-x 1"
-        env[stub_key(*["docker"] + DANGLING[:4]) + "_OUT"] = "sha256:mine"
+        env["STUB_DOCKER_IMAGE_LS_OUT"] = "sha256:mine 1GB"
+        env[IMAGE_ID + "_OUT"] = "sha256:mine"
         env["TORCHSNAP_LINUX_BUILD_BUDGET_GB"] = "1"
         env["TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES"] = "1"
         return env
@@ -736,12 +811,16 @@ class Guard(TreeCase):
                 self.assertEqual(len(call), 3, call)
             if call[:2] == ["buildx", "prune"]:
                 self.assertEqual(call[-2:], ["--filter", CACHE_FILTER])
+            if call[:2] == ["buildx", "du"]:
+                self.assertEqual(call, CACHE_DU)
             if call[:2] == ["volume", "ls"]:
                 self.assertIn(f"label={OWNED_LABEL}", call)
 
     def test_the_scripts_contain_no_unfiltered_removal(self):
         for script in ("linux-build", "in-container"):
-            text = (TOOL_DIR / script).read_text()
+            # A command split over lines with a trailing backslash is
+            # checked as one line.
+            text = (TOOL_DIR / script).read_text().replace("\\\n", " ")
             for forbidden in ("system prune", "volume prune", "container prune", "image prune",
                               "builder prune", "docker rmi", " rm -f", "volume rm -f", "image rm -f"):
                 self.assertNotIn(forbidden, text, f"{script} contains {forbidden!r}")
