@@ -50,6 +50,9 @@ on_machine() {
 readonly keyring_unlock='busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service Unlock ao 1 /org/freedesktop/secrets/collection/testbed'
 readonly keyring_unlocked='aoo 1 "/org/freedesktop/secrets/collection/testbed" "/"'
 
+# Whether a notification about unsafe mode is in GNOME Shell's message tray.
+readonly unsafe_mode_notification='gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval "Main.messageTray.getSources().some(s => s.notifications.some(n => n.title.includes(\"unsafe mode\")))"'
+
 # =========================================================
 # Items
 # =========================================================
@@ -117,6 +120,10 @@ item_R() {
         || { fail R "gnome-remote-desktop is not listening on 3389"; return; }
     [ "$(on_machine "$keyring_unlock")" = "$keyring_unlocked" ] \
         || { fail R "the testbed keyring does not unlock without a prompt"; return; }
+    # GNOME Shell announces unsafe mode with a banner over the top of the
+    # screen, which would show in screenshots; the extension removes it.
+    [ "$(on_machine "$unsafe_mode_notification")" = "(true, 'false')" ] \
+        || { fail R "GNOME Shell shows the unsafe-mode notification"; return; }
 
     output="$("$testbed" provision)"
     status=$?

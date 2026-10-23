@@ -9,11 +9,22 @@
 // record the screen and read window state.
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 export default class TestbedExtension extends Extension {
     enable() {
+        // Switching unsafe mode on makes GNOME Shell post a notification
+        // about it at once, whose banner would cover the top of the screen
+        // in the testbed's screenshots. The notification posted by this
+        // switch is removed again.
+        const source = MessageTray.getSystemSource();
+        const earlier = new Set(source.notifications);
         global.context.unsafe_mode = true;
+        for (const notification of [...source.notifications]) {
+            if (!earlier.has(notification))
+                notification.destroy();
+        }
 
         // GNOME Shell opens the overview after login, and its search entry
         // takes every key typed until it closes. Enabling the extension

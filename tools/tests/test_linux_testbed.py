@@ -899,6 +899,8 @@ class ControlRequests(unittest.TestCase):
             script=TESTBED_PI,
         )
         self.assertEqual(result.returncode, 2)
+        self.assertIn("control.sock", result.stderr)
+        self.assertNotIn("Usage", result.stderr)
 
 
 class AppSettings(unittest.TestCase):

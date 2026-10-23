@@ -98,8 +98,10 @@ Things to know about these:
   (`Eval`, `Screenshot`, `Screencast`) only for a few of its own
   programs, unless it runs in "unsafe mode". GNOME Shell 48 has no
   switch for that mode, so the testbed's extension turns it on. Every
-  local process can then call these methods. The extension also closes
-  the overview GNOME opens after login, which otherwise takes every key
+  local process can then call these methods. GNOME Shell announces the
+  switch with a notification whose banner covers the top of the screen;
+  the extension removes that notification again. It also closes the
+  overview GNOME opens after login, which otherwise takes every key
   typed.
 - **Keyring.** With automatic login, nobody types the password that
   unlocks the login keyring, and gnome-remote-desktop cannot read its
@@ -203,7 +205,7 @@ unknown item.
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
-| R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, and provisioning reporting `0 changed`. |
+| R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 
 ## A visible terminal on the Pi
