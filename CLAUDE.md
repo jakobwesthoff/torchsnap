@@ -86,9 +86,6 @@ WIT: same text with `///` prefix.
 No header: `.json`, `.toml`, `.lock`, `.md`, images, other non-source
 config.
 
-`.devcontainer/` is not MPL-licensed (adapted third-party files, see
-`.devcontainer/NOTICE.md`). Never add MPL headers there.
-
 ## Gadgets
 
 - Build with plain `cargo build --release` in `gadgets/`;

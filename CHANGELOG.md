@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The devcontainer for running Claude Code in isolation, with
+  `just devcontainer` and `just devcontainer-reset-caches`. The Docker
+  volumes it created (`torchsnap-*`: shell history, Claude login, cargo
+  and bun caches) stay on a machine until removed by hand.
+
 ## [0.15.0] - 2026-10-21
 
 ### Changed
