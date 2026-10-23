@@ -24,6 +24,12 @@
 #   testbed launcher-state    whether the launcher is visible and focused, and its monitor
 #   testbed screenshot NAME [--monitor N | --window REGEX | --area X,Y,W,H]
 #                             take a screenshot, copy it to target/linux-testbed/NAME.png
+#   testbed type (--window REGEX | --shell-modal) TEXT    type into that target
+#   testbed key (--window REGEX | --shell-modal) KEY...   press keys (Escape, ctrl+u, ...)
+#   testbed pointer X Y       move the pointer (logical pixels)
+#   testbed click X Y [left|right|middle]
+#
+#   type and key refuse (exit 4) unless the target has the keyboard.
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -268,7 +274,7 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click)
         require_host
         run_pi "$subcommand" "$@"
         ;;

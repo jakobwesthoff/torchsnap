@@ -70,6 +70,31 @@ testbed-launcher-state:
 testbed-eval JS:
     tools/linux-testbed/testbed eval {{ quote(JS) }}
 
+# `type` and `key` need a target, `--window REGEX` (title or WM class of
+# the focused window) or `--shell-modal` (a GNOME Shell dialog or menu),
+# and refuse with exit 4 when the target does not have the keyboard.
+
+# The arguments go on as they were given (positional arguments), so text
+# with spaces stays one argument.
+
+# Type text on the Linux testbed: testbed-type --window REGEX 'text'
+[positional-arguments]
+testbed-type *ARGS:
+    tools/linux-testbed/testbed type "$@"
+
+# Press keys on the Linux testbed: testbed-key --window REGEX Escape ctrl+u
+[positional-arguments]
+testbed-key *ARGS:
+    tools/linux-testbed/testbed key "$@"
+
+# Move the pointer on the Linux testbed to X Y (logical pixels)
+testbed-pointer X Y:
+    tools/linux-testbed/testbed pointer {{ X }} {{ Y }}
+
+# Click on the Linux testbed at X Y (left, right or middle button)
+testbed-click X Y BUTTON="left":
+    tools/linux-testbed/testbed click {{ X }} {{ Y }} {{ BUTTON }}
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

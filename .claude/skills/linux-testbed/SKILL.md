@@ -61,6 +61,15 @@ is the full guide.
   the launcher. `just testbed-windows`: the app's windows as JSON.
 - `just testbed-eval 'JS'`: evaluate JavaScript in GNOME Shell, value
   printed as JSON. For desktop state the other recipes do not cover.
+- `just testbed-type --window '^torchsnap$' 'text'`,
+  `just testbed-key --window '^torchsnap$' Escape ctrl+u`: keyboard
+  input. Always name the target (`--window REGEX` on the focused
+  window's title or WM class, or `--shell-modal` for a GNOME Shell
+  dialog or menu); exit 4 means the target does not have the keyboard,
+  so nothing was typed. In the launcher the first Escape clears the
+  query, the second hides it.
+- `just testbed-pointer X Y`, `just testbed-click X Y [left|right|middle]`:
+  logical pixels.
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. Items 2 (build), R (reboot), U (undo provision steps)

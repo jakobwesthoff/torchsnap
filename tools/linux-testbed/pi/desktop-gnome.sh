@@ -84,6 +84,48 @@ desk_screenshot() {
     esac
 }
 
+# =========================================================
+# Input support
+# =========================================================
+
+# Each Eval below starts with a comment naming what it asks, which keeps
+# them apart in the tests' stubs.
+
+# The focused window as {"title", "wm_class"}, or null.
+desk_focused_window() {
+    desk_eval '/*focus*/ (w => w ? {title: w.get_title(), wm_class: w.get_wm_class()} : null)(global.display.focus_window)'
+}
+
+# Whether a GNOME Shell dialog or menu holds the keyboard: Shell UI that
+# takes keys does so modally, with a stage actor in key focus, and no
+# window is the target then.
+desk_shell_modal() {
+    [ "$(desk_eval '/*modal*/ Main.modalCount > 0 && global.stage.get_key_focus() !== null')" = "true" ]
+}
+
+# The keyboard layouts live in GNOME Shell's input source manager. It is
+# not public API: the keyboard indicator in the top bar holds it
+# (GNOME Shell 48).
+readonly input_sources='Main.panel.statusArea.keyboard._inputSourceManager'
+
+# {"current": INDEX, "us": INDEX or null}
+desk_layouts() {
+    desk_eval "/*layouts*/ (m => ({current: m.currentSource.index, us: (Object.values(m.inputSources).find(s => s.id === \"us\") || {index: null}).index}))($input_sources)"
+}
+
+desk_current_layout() {
+    desk_eval "/*current*/ $input_sources.currentSource.index"
+}
+
+desk_activate_layout() {
+    desk_eval "/*activate*/ $input_sources.inputSources[$1].activate(false)" >/dev/null
+}
+
+# The pointer position in logical pixels, as [x, y].
+desk_pointer() {
+    desk_eval '/*pointer*/ global.get_pointer().slice(0, 2)'
+}
+
 # The session takes input once GNOME Shell has finished starting and the
 # overview it opens after login is closed again (the testbed extension
 # closes it). An open overview would take every typed key into its search.

@@ -22,6 +22,13 @@
 #   testbed-pi launcher-state         {"visible", "focused", "monitor"} of the launcher
 #   testbed-pi screenshot NAME [--monitor N | --window REGEX | --area X,Y,W,H]
 #                                     take a screenshot, print its path
+#   testbed-pi type (--window REGEX | --shell-modal) TEXT
+#                                     type TEXT into the named target
+#   testbed-pi key (--window REGEX | --shell-modal) KEY...
+#                                     press keys or combinations (Escape, ctrl+u, ...)
+#   testbed-pi pointer X Y            move the pointer to X,Y (logical pixels)
+#   testbed-pi click X Y [left|right|middle]
+#                                     move there and click
 
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
@@ -280,6 +287,289 @@ cmd_screenshot() {
 }
 
 # =========================================================
+# Input
+# =========================================================
+
+# ydotool writes to the kernel's uinput device, so its keys and clicks go
+# to whatever the desktop has in focus: the visible terminal as much as
+# the app. Every keyboard command therefore names its target first.
+
+readonly input_timeout="${TORCHSNAP_TESTBED_INPUT_TIMEOUT:-3}"
+readonly lock_timeout="${TORCHSNAP_TESTBED_LOCK_TIMEOUT:-10}"
+
+# One input command at a time: a second one would read the first one's
+# temporary `us` layout as the layout to go back to. The lock lives in
+# the runtime directory, which a reboot empties, and names its owner, so
+# a lock left by a killed process is taken over.
+input_lock() {
+    echo "${TORCHSNAP_TESTBED_RUNTIME_DIR:-$XDG_RUNTIME_DIR}/torchsnap-testbed/input.lock"
+}
+
+take_input_lock() {
+    local lock owner
+    lock="$(input_lock)"
+    mkdir -p "$(dirname "$lock")"
+    local deadline=$((SECONDS + lock_timeout))
+    until mkdir "$lock" 2>/dev/null; do
+        owner="$(cat "$lock/pid" 2>/dev/null || true)"
+        if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+            rm -rf "$lock"
+            continue
+        fi
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            echo "testbed-pi: input is in use by process ${owner:-?}" >&2
+            return 1
+        fi
+        sleep "$poll_interval"
+    done
+    echo "$$" >"$lock/pid"
+    input_locked=1
+}
+
+# parse_guard ARGS...: reads `--window REGEX` or `--shell-modal` into
+# guard_mode and guard_regex; guard_shift is how many arguments it took.
+parse_guard() {
+    case "${1:-}" in
+        --window)
+            [ $# -ge 2 ] || usage
+            guard_mode="window"
+            guard_regex="$2"
+            guard_shift=2
+            ;;
+        --shell-modal)
+            guard_mode="modal"
+            guard_shift=1
+            ;;
+        *)
+            echo "testbed-pi: keyboard input needs --window REGEX or --shell-modal, so keys reach the intended target" >&2
+            exit 2
+            ;;
+    esac
+}
+
+check_guard() {
+    if [ "$guard_mode" = "modal" ]; then
+        desk_shell_modal || { echo "testbed-pi: no Shell dialog or menu holds the keyboard" >&2; exit 4; }
+        return
+    fi
+    local focused
+    focused="$(desk_focused_window)" || exit 1
+    python3 -c '
+import json, re, sys
+window = json.loads(sys.argv[1])
+pattern = re.compile(sys.argv[2])
+if window is None:
+    sys.exit("testbed-pi: no window has focus, expected " + sys.argv[2])
+if not (pattern.search(window["title"] or "") or pattern.search(window["wm_class"] or "")):
+    sys.exit("testbed-pi: focused window is %s (%s), expected %s" % (window["title"], window["wm_class"], sys.argv[2]))
+' "$focused" "$guard_regex" || exit 4
+}
+
+# The testbed types US key codes: ydotool maps characters to the keys of
+# a US keyboard, while the machine's own layout may differ. So typing
+# switches to the `us` layout and back afterwards; the trap switches back
+# also when typing fails or the connection drops.
+layout_to_restore=""
+input_locked=""
+
+finish_input() {
+    if [ -n "$layout_to_restore" ]; then
+        desk_activate_layout "$layout_to_restore" || true
+        wait_for "$input_timeout" current_layout_is "$layout_to_restore" || true
+        layout_to_restore=""
+    fi
+    if [ -n "$input_locked" ]; then
+        rm -rf "$(input_lock)"
+        input_locked=""
+    fi
+}
+
+current_layout_is() {
+    [ "$(desk_current_layout)" = "$1" ]
+}
+
+# begin_keys: lock, guard, `us` layout. end_keys: wait until the desktop
+# has handled the keys, then everything back.
+begin_keys() {
+    trap finish_input EXIT
+    trap 'finish_input; exit 130' INT TERM HUP
+    take_input_lock || exit 1
+    check_guard
+    local layouts current us
+    layouts="$(desk_layouts)" || exit 1
+    current="$(python3 -c 'import json, sys; print(json.loads(sys.argv[1])["current"])' "$layouts")"
+    us="$(python3 -c 'import json, sys; v = json.loads(sys.argv[1])["us"]; print("" if v is None else v)' "$layouts")"
+    if [ -z "$us" ]; then
+        echo "testbed-pi: the desktop has no 'us' keyboard layout; run just testbed-provision" >&2
+        exit 1
+    fi
+    if [ "$current" != "$us" ]; then
+        layout_to_restore="$current"
+        desk_activate_layout "$us"
+        wait_for "$input_timeout" current_layout_is "$us" \
+            || { echo "testbed-pi: could not switch to the 'us' layout" >&2; exit 1; }
+    fi
+    park_pointer
+}
+
+# The barrier in end_keys moves the pointer. Over the launcher, a moving
+# pointer can change the hovered or selected result, so the pointer waits
+# in the bottom left corner, outside every window of the app.
+park_pointer() {
+    local y
+    y="$(home_pointer)" || exit 1
+    python3 -c '
+import json, sys
+x, y = 0, int(sys.argv[2])
+for w in json.loads(sys.argv[1]) or []:
+    r = w["rect"]
+    if r["x"] <= x < r["x"] + r["width"] and r["y"] <= y < r["y"] + r["height"]:
+        sys.exit("testbed-pi: an app window covers the bottom left corner, where the pointer waits while typing: " + json.dumps(w))
+' "$(desk_app_windows)" "$y" || exit 1
+}
+
+# ydotool returns once its events are written to the uinput device; the
+# desktop handles them later. Keys and pointer moves come from the same
+# device, and the desktop handles that device's events in order, so after
+# the keys the pointer, parked at the left edge, moves one pixel to the
+# right and back: once the desktop reports the pointer moved, it has
+# handled every key sent before. Switching the layout back any earlier
+# could turn the last keys into those of the other layout.
+pointer_x_is() {
+    [ "$(desk_pointer | python3 -c 'import json, sys; print(json.load(sys.stdin)[0])')" = "$1" ]
+}
+
+end_keys() {
+    ydotool mousemove -x 1 -y 0
+    wait_for "$input_timeout" pointer_x_is 1 \
+        || { echo "testbed-pi: the typed keys did not arrive within ${input_timeout}s" >&2; exit 1; }
+    ydotool mousemove -x -1 -y 0
+    wait_for "$input_timeout" pointer_x_is 0 || true
+}
+
+cmd_type() {
+    parse_guard "$@"
+    shift "$guard_shift"
+    [ $# -eq 1 ] || usage
+    begin_keys
+    # From standard input, so ydotool reads no option or escape out of
+    # the text.
+    printf '%s' "$1" | ydotool type -f -
+    end_keys
+}
+
+# key_code NAME: the evdev code of a key on a US keyboard.
+key_code() {
+    case "$1" in
+        Escape) echo 1 ;; Return | Enter) echo 28 ;; Tab) echo 15 ;; BackSpace) echo 14 ;;
+        space) echo 57 ;; Delete) echo 111 ;; Home) echo 102 ;; End) echo 107 ;;
+        Up) echo 103 ;; Down) echo 108 ;; Left) echo 105 ;; Right) echo 106 ;;
+        PageUp) echo 104 ;; PageDown) echo 109 ;;
+        ctrl) echo 29 ;; shift) echo 42 ;; alt) echo 56 ;; super) echo 125 ;;
+        q) echo 16 ;; w) echo 17 ;; e) echo 18 ;; r) echo 19 ;; t) echo 20 ;; y) echo 21 ;;
+        u) echo 22 ;; i) echo 23 ;; o) echo 24 ;; p) echo 25 ;; a) echo 30 ;; s) echo 31 ;;
+        d) echo 32 ;; f) echo 33 ;; g) echo 34 ;; h) echo 35 ;; j) echo 36 ;; k) echo 37 ;;
+        l) echo 38 ;; z) echo 44 ;; x) echo 45 ;; c) echo 46 ;; v) echo 47 ;; b) echo 48 ;;
+        n) echo 49 ;; m) echo 50 ;;
+        1) echo 2 ;; 2) echo 3 ;; 3) echo 4 ;; 4) echo 5 ;; 5) echo 6 ;;
+        6) echo 7 ;; 7) echo 8 ;; 8) echo 9 ;; 9) echo 10 ;; 0) echo 11 ;;
+        *) return 1 ;;
+    esac
+}
+
+# key_events COMBINATION: `ctrl+shift+t` presses ctrl, shift and t in
+# order and releases them the other way round.
+key_events() {
+    local part code
+    local codes=()
+    local IFS=+
+    for part in $1; do
+        code="$(key_code "$part")" || { echo "testbed-pi: unknown key: $part" >&2; exit 2; }
+        codes+=("$code")
+    done
+    local i
+    for ((i = 0; i < ${#codes[@]}; i++)); do
+        printf '%s:1 ' "${codes[$i]}"
+    done
+    for ((i = ${#codes[@]} - 1; i >= 0; i--)); do
+        printf '%s:0 ' "${codes[$i]}"
+    done
+}
+
+cmd_key() {
+    parse_guard "$@"
+    shift "$guard_shift"
+    [ $# -ge 1 ] || usage
+    local events="" name
+    for name in "$@"; do
+        events="$events$(key_events "$name")"
+    done
+    begin_keys
+    # shellcheck disable=SC2086 # one word per key event
+    ydotool key $events
+    end_keys
+}
+
+# ydotool's absolute move leaves the X position at 0 (v1.0.4), so the
+# pointer is moved far to the bottom left first, where the screen edges
+# stop it, and from there by the distance to the target. With flat pointer
+# acceleration (provisioned) a relative move covers exactly that many
+# logical pixels. The bottom left, not the top left: GNOME opens the
+# overview when the pointer hits the top left corner.
+pointer_at() {
+    desk_pointer | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin) == [int(sys.argv[1]), int(sys.argv[2])] else 1)' "$1" "$2"
+}
+
+pointer_y() {
+    desk_pointer | python3 -c 'import json, sys; print(json.load(sys.stdin)[1])'
+}
+
+# home_pointer: moves the pointer to the bottom left corner and prints its
+# Y position there.
+home_pointer() {
+    ydotool mousemove -x -100000 -y 100000
+    wait_for "$input_timeout" pointer_x_is 0 \
+        || { echo "testbed-pi: the pointer did not reach the left edge" >&2; return 1; }
+    pointer_y
+}
+
+# A move with both an X and a Y part right after the homing move lost its
+# X part on GNOME 48, so each axis moves on its own.
+move_pointer() {
+    local home_y
+    home_y="$(home_pointer)" || return 1
+    ydotool mousemove -x "$1" -y 0
+    wait_for "$input_timeout" pointer_x_is "$1" || true
+    ydotool mousemove -x 0 -y "$(($2 - home_y))"
+    if ! wait_for "$input_timeout" pointer_at "$1" "$2"; then
+        echo "testbed-pi: pointer at $(desk_pointer | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)))'), expected [$1, $2]" >&2
+        return 1
+    fi
+}
+
+cmd_pointer() {
+    [ $# -eq 2 ] || usage
+    trap finish_input EXIT
+    take_input_lock || exit 1
+    move_pointer "$1" "$2" || exit 1
+}
+
+cmd_click() {
+    [ $# -ge 2 ] && [ $# -le 3 ] || usage
+    local button
+    case "${3:-left}" in
+        left) button=0xC0 ;;
+        right) button=0xC1 ;;
+        middle) button=0xC2 ;;
+        *) usage ;;
+    esac
+    trap finish_input EXIT
+    take_input_lock || exit 1
+    move_pointer "$1" "$2" || exit 1
+    ydotool click "$button"
+}
+
+# =========================================================
 # Dispatch
 # =========================================================
 
@@ -319,6 +609,22 @@ case "$subcommand" in
     screenshot)
         load_desktop
         cmd_screenshot "$@"
+        ;;
+    type)
+        load_desktop
+        cmd_type "$@"
+        ;;
+    key)
+        load_desktop
+        cmd_key "$@"
+        ;;
+    pointer)
+        load_desktop
+        cmd_pointer "$@"
+        ;;
+    click)
+        load_desktop
+        cmd_click "$@"
         ;;
     *)
         usage

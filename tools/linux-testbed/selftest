@@ -17,6 +17,12 @@
 #       (only when named)
 #   W   the launcher, shown through the control socket, is among the
 #       app's windows, with a size and keyboard focus
+#   4   the launcher opens through the control socket with focus, shows
+#       a typed query, and closes with Escape
+#   L   typing produces exactly the characters asked for (`us` layout),
+#       and the machine's layout is back afterwards
+#   E   machine-side commands answer the same with the runner's
+#       environment cleared
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -32,7 +38,7 @@ set -uo pipefail
 testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 readonly testbed
 
-default_items=(1 W)
+default_items=(1 W 4 L E)
 
 pass() {
     echo "PASS item $1"
@@ -111,6 +117,123 @@ elif not launcher["focused"]:
         return
     fi
     pass W
+}
+
+# wait_until TIMEOUT COMMAND...: polls COMMAND every half second.
+wait_until() {
+    local deadline=$((SECONDS + $1))
+    shift
+    until "$@" >/dev/null 2>&1; do
+        [ "$SECONDS" -lt "$deadline" ] || return 1
+        sleep 0.5
+    done
+}
+
+launcher_is() {
+    local state
+    state="$("$testbed" launcher-state)" || return 1
+    python3 -c '
+import json, sys
+state = json.loads(sys.argv[1])
+want = sys.argv[2]
+ok = {"shown": state["visible"] and state["focused"], "hidden": not state["visible"]}[want]
+sys.exit(0 if ok else 1)
+' "$state" "$1"
+}
+
+# differ A B: whether two pictures differ in more than a few pixels
+# (ImageMagick's absolute error count).
+differ() {
+    local count
+    count="$(magick compare -metric AE "$1" "$2" null: 2>&1 | awk '{print $1}')"
+    [ "${count%.*}" -gt 100 ] 2>/dev/null
+}
+
+shot() {
+    "$testbed" screenshot "$@" | tail -n 1
+}
+
+# The launcher, opened through the control socket, takes focus, shows
+# what is typed into it, and closes with Escape: the first Escape clears
+# the query, the second hides the launcher
+# (src/launcher/hooks/useKeyboardNavigation.ts).
+readonly launcher_query="enough"
+
+item_4() {
+    local rect hidden shown typed cleared
+    app_up 4 || return
+    "$testbed" control show >/dev/null || { fail 4 "SETUP: control show failed"; return; }
+    wait_until 10 launcher_is shown || { fail 4 "the launcher is not shown with focus after control show"; return; }
+    rect="$("$testbed" windows | python3 -c '
+import json, sys
+w = next(w for w in json.load(sys.stdin) if w["title"] == "")
+r = w["rect"]
+print("%d,%d,%d,%d" % (r["x"], r["y"], r["width"], r["height"]))
+')" || { fail 4 "no launcher window"; return; }
+
+    # The same area with the launcher hidden is the baseline.
+    "$testbed" control dismiss >/dev/null
+    wait_until 10 launcher_is hidden || { fail 4 "the launcher did not hide after dismiss"; return; }
+    hidden="$(shot item4-hidden --area "$rect")"
+    "$testbed" control show >/dev/null
+    wait_until 10 launcher_is shown || { fail 4 "the launcher is not shown with focus after control show"; return; }
+    shown="$(shot item4-shown --area "$rect")"
+    differ "$hidden" "$shown" || { fail 4 "the launcher area looks the same shown and hidden"; return; }
+
+    "$testbed" type --window '^torchsnap$' "$launcher_query" || { fail 4 "typing into the launcher failed"; return; }
+    typed_differs() { typed="$(shot item4-typed --area "$rect")" && differ "$shown" "$typed"; }
+    wait_until 10 typed_differs || { fail 4 "the launcher looks the same after typing '$launcher_query'"; return; }
+    typed="$(shot item4-typed --area "$rect")"
+
+    "$testbed" key --window '^torchsnap$' Escape || { fail 4 "the first Escape failed"; return; }
+    cleared_differs() { cleared="$(shot item4-cleared --area "$rect")" && differ "$typed" "$cleared"; }
+    wait_until 10 cleared_differs || { fail 4 "the first Escape did not clear the query"; return; }
+    launcher_is shown || { fail 4 "the first Escape closed the launcher instead of clearing the query"; return; }
+
+    "$testbed" key --window '^torchsnap$' Escape || { fail 4 "the second Escape failed"; return; }
+    wait_until 10 launcher_is hidden || { fail 4 "the launcher is still visible after the second Escape"; return; }
+    pass 4
+}
+
+# GNOME Shell's run dialog is a Shell entry whose text Eval can read, so
+# it shows exactly which characters the testbed's typing produces,
+# independent of the app. Typing switches to the `us` layout and back.
+item_L() {
+    local layout_before layout_after text
+    layout_before="$("$testbed" eval 'Main.panel.statusArea.keyboard._inputSourceManager.currentSource.id')" \
+        || { fail L "SETUP: could not read the keyboard layout"; return; }
+    "$testbed" eval 'Main.openRunDialog()' >/dev/null || { fail L "SETUP: could not open the run dialog"; return; }
+    modal_open() { [ "$("$testbed" eval 'Main.modalCount > 0')" = "true" ]; }
+    wait_until 10 modal_open || { fail L "SETUP: the run dialog did not open"; return; }
+    if ! "$testbed" type --shell-modal 'yz-@[]'; then
+        "$testbed" key --shell-modal Escape >/dev/null
+        fail L "typing into the run dialog failed"
+        return
+    fi
+    text="$("$testbed" eval 'global.stage.get_key_focus().get_text()')"
+    "$testbed" key --shell-modal Escape >/dev/null
+    layout_after="$("$testbed" eval 'Main.panel.statusArea.keyboard._inputSourceManager.currentSource.id')"
+    [ "$text" = '"yz-@[]"' ] || { fail L "typed 'yz-@[]', the dialog shows $text"; return; }
+    [ "$layout_after" = "$layout_before" ] \
+        || { fail L "the layout is $layout_after after typing, was $layout_before"; return; }
+    pass L
+}
+
+# The machine-side commands see the desktop session through the runner
+# and without it alike: a runner that clears the whole environment gets
+# the same answers.
+item_E() {
+    local home with without
+    app_up E || return
+    "$testbed" control show >/dev/null || { fail E "SETUP: control show failed"; return; }
+    home="$(on_machine 'echo $HOME')"
+    with="$(TORCHSNAP_LINUX_RUNNER='' "$testbed" launcher-state; TORCHSNAP_LINUX_RUNNER='' "$testbed" windows)"
+    without="$(TORCHSNAP_LINUX_RUNNER="env -i HOME=$home PATH=/usr/bin:/bin bash -c" "$testbed" launcher-state; \
+        TORCHSNAP_LINUX_RUNNER="env -i HOME=$home PATH=/usr/bin:/bin bash -c" "$testbed" windows)"
+    "$testbed" control dismiss >/dev/null
+    [ -n "$with" ] && [ "$with" = "$without" ] \
+        || { fail E "answers differ: plain ssh: $with / cleared environment: $without"; return; }
+    pass E
 }
 
 # A build after a sync has to leave a debug binary written by this build.

@@ -209,7 +209,46 @@ window with an empty title. A hidden launcher has no window, so
 `testbed-eval JS` prints the value of a JavaScript expression evaluated
 inside GNOME Shell, as JSON; it exits 1 when the expression throws.
 
-## 7. Remote viewing over RDP
+## 7. Keyboard and pointer
+
+```sh
+just testbed-type --window '^torchsnap$' 'firefox'
+just testbed-key --window '^torchsnap$' Escape
+just testbed-key --shell-modal ctrl+a BackSpace
+just testbed-pointer 540 960
+just testbed-click 540 960 right
+```
+
+Input goes through ydotool, which writes to the kernel's uinput device,
+so keys go to whatever has the keyboard: the app, a GNOME Shell dialog,
+or a terminal on the Pi's screen. `testbed-type` and `testbed-key`
+therefore name their target and refuse with exit status 4 when it does
+not have the keyboard: `--window REGEX` matches the focused window's
+title or WM class (the launcher has the WM class `torchsnap` and an
+empty title), `--shell-modal` requires a GNOME Shell dialog or menu to
+hold the keyboard. Text with spaces goes in quotes.
+
+ydotool types the keys of a US keyboard. Typing therefore switches GNOME
+to the `us` layout, which provisioning adds, and back to the layout that
+was active before, also when typing fails. The switch back waits until
+GNOME has handled every key: after the keys the pointer moves by one
+pixel and back, and GNOME reports that move only after the keys before
+it. While typing, the pointer waits in the bottom left corner, so that
+move does not change what the pointer hovers in the app; typing refuses
+when an app window covers that corner. Key names for `testbed-key`: `Escape`, `Return`, `Tab`,
+`BackSpace`, `space`, `Delete`, `Home`, `End`, `Up`, `Down`, `Left`,
+`Right`, `PageUp`, `PageDown`, letters and digits, combined with `ctrl+`,
+`shift+`, `alt+`, `super+`.
+
+`testbed-pointer` and `testbed-click` take logical pixels. ydotool's
+absolute move does not work on GNOME 48 (the X position stays 0), so the
+pointer first moves to the bottom left corner and from there by the
+distance, one axis at a time; flat pointer acceleration, set by
+provisioning, makes that distance exact. The top left corner is GNOME's
+hot corner (`enable-hot-corners` is on), which opens the overview. One
+input command runs at a time.
+
+## 8. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -218,7 +257,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 8. Self-test
+## 9. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -233,6 +272,9 @@ unknown item.
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
 | W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus. |
+| 4 | Opens the launcher through the control socket and checks that it has focus and changes the screen, types a query and checks that the launcher shows it, then presses Escape twice: the first clears the query, the second hides the launcher. |
+| L | Opens GNOME Shell's run dialog, types `yz-@[]` and reads the text back from the dialog; it must be exactly that, and the keyboard layout must be the one from before. |
+| E | Asks for the launcher state and the app's windows once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |

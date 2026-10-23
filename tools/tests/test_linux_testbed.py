@@ -211,6 +211,44 @@ class TestbedRecipes(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stderr.strip(), expected)
 
+    def test_input_recipes_keep_text_with_spaces_together(self):
+        if shutil.which("just") is None:
+            self.skipTest("just is not installed")
+        stubs = Stubs(["ssh"])
+        try:
+            environment = dict(os.environ)
+            environment.update(
+                {
+                    "PATH": f"{stubs.dir}{os.pathsep}{os.environ['PATH']}",
+                    "STUB_LOG": str(stubs.log),
+                    "TORCHSNAP_LINUX_HOST": "user@pi.local",
+                    "TORCHSNAP_LINUX_RUNNER": "",
+                }
+            )
+            for recipe, args in (
+                ("testbed-type", ["--window", "^torchsnap$", "a b $HOME"]),
+                ("testbed-key", ["--shell-modal", "ctrl+u"]),
+            ):
+                result = subprocess.run(
+                    ["just", "--justfile", str(REPO / "Justfile"), recipe, *args],
+                    capture_output=True, text=True, cwd=REPO, env=environment, timeout=60,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+            remote = [c[-1] for c in stubs.calls("ssh")]
+            self.assertIn(r"a\\\ b\\\ \\\$HOME", remote[0])
+            self.assertIn("--shell-modal", remote[1])
+        finally:
+            stubs.cleanup()
+
+    def test_pointer_and_click_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-pointer", ["10", "20"], "tools/linux-testbed/testbed pointer 10 20"),
+            ("testbed-click", ["10", "20"], "tools/linux-testbed/testbed click 10 20 left"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_testbed_selftest_passes_its_items(self):
         result = self.dry_run("testbed-selftest", "1")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1123,6 +1161,217 @@ class ScreenshotCopy(unittest.TestCase):
         self.assertEqual(scp[-2], "user@pi.local:/home/u/.cache/torchsnap-testbed/shots/launcher.png")
         self.assertEqual(scp[-1], str(REPO / "target" / "linux-testbed" / "launcher.png"))
         self.assertEqual(result.stdout.strip(), str(REPO / "target" / "linux-testbed" / "launcher.png"))
+
+# gdbus answering Eval calls by rules: STUB_EVAL_RULES is a JSON list of
+# [substring, [answer, ...]]; the first rule whose substring is in the
+# JavaScript answers with its next answer (the last one repeating).
+# Other gdbus calls answer "(true, '')".
+RULE_GDBUS = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    with log.open("a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    if "org.gnome.Shell.Eval" not in sys.argv:
+        print("(true, '')")
+        sys.exit(0)
+    js = sys.argv[-1]
+    for n, (needle, answers) in enumerate(json.loads(os.environ.get("STUB_EVAL_RULES", "[]"))):
+        if needle in js:
+            counter = log.with_name(f"rule{n}.count")
+            i = int(counter.read_text()) if counter.exists() else 0
+            counter.write_text(str(i + 1))
+            value = answers[min(i, len(answers) - 1)]
+            text = json.dumps(value).replace("\\\\", "\\\\\\\\").replace("'", "\\\\'")
+            print(f"(true, '{text}')")
+            sys.exit(0)
+    print("(true, 'null')")
+    """
+)
+
+# ydotool that logs its argv and, for `type -f -`, what it read.
+YDOTOOL = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    argv = sys.argv[1:]
+    stdin = sys.stdin.read() if "-f" in argv and "-" in argv else None
+    with open(os.environ["STUB_LOG"], "a") as f:
+        f.write(json.dumps(["ydotool", *argv, *(["<stdin>", stdin] if stdin is not None else [])]) + "\\n")
+    sys.exit(int(os.environ.get("STUB_YDOTOOL_EXIT", "0")))
+    """
+)
+
+FOCUS_TERMINAL = {"title": "testbed", "wm_class": "testbed-terminal"}
+FOCUS_LAUNCHER = {"title": "", "wm_class": "torchsnap"}
+LAYOUTS = {"current": 0, "us": 1}
+
+
+# The machine-side script marks each kind of Eval with a comment such as
+# /*focus*/; the rules answer by those marks.
+# The pointer answers: parked in the bottom left corner (read twice: the
+# left edge reached, then its height), one pixel to the right for the
+# barrier, and back.
+PARKED = ([0, 1919], [0, 1919], [1, 1919], [0, 1919])
+
+
+def input_rules(focus=FOCUS_LAUNCHER, modal=False, current=(1, 0), pointer=PARKED, windows=()):
+    return json.dumps(
+        [
+            ["/*modal*/", [modal]],
+            ["/*focus*/", [focus]],
+            ["/*pointer*/", list(pointer)],
+            ["/*current*/", list(current)],
+            ["/*layouts*/", [LAYOUTS]],
+            ['get_wm_class() === "torchsnap"', [list(windows)]],
+        ]
+    )
+
+
+class Input(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.runtime = self.home / "run"
+        self.runtime.mkdir()
+        self.stubs = Stubs(["systemctl"])
+        for name, text in (("gdbus", RULE_GDBUS), ("ydotool", YDOTOOL), ("id", "#!/bin/sh\necho 1000\n")):
+            path = self.stubs.dir / name
+            path.write_text(text)
+            path.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, args, rules=None, env=None):
+        environment = {
+            "HOME": str(self.home),
+            "TORCHSNAP_TESTBED_RUNTIME_DIR": str(self.runtime),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "STUB_EVAL_RULES": rules or input_rules(),
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def ydotool_calls(self):
+        return [c[1:] for c in self.stubs.calls("ydotool")]
+
+    def eval_scripts(self):
+        return [c[-1] for c in self.stubs.calls("gdbus") if "org.gnome.Shell.Eval" in c]
+
+    def test_type_needs_a_guard(self):
+        result = self.call_pi(["type", "hello"])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--window REGEX or --shell-modal", result.stderr)
+        self.assertEqual(self.ydotool_calls(), [])
+
+    def test_type_refuses_when_the_wrong_window_has_focus(self):
+        result = self.call_pi(["type", "--window", "torchsnap", "hello"], input_rules(focus=FOCUS_TERMINAL))
+        self.assertEqual(result.returncode, 4)
+        self.assertIn("focused window is testbed (testbed-terminal)", result.stderr)
+        self.assertEqual(self.ydotool_calls(), [])
+
+    def test_type_refuses_without_a_shell_modal(self):
+        result = self.call_pi(["type", "--shell-modal", "hello"], input_rules(modal=False))
+        self.assertEqual(result.returncode, 4)
+        self.assertIn("no Shell dialog or menu holds the keyboard", result.stderr)
+
+    def test_type_switches_to_us_types_and_switches_back(self):
+        result = self.call_pi(["type", "--window", "^torchsnap$", "-yz @[]"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.ydotool_calls()
+        self.assertEqual(calls[1][:3], ["type", "-f", "-"])
+        self.assertEqual(calls[1][-1], "-yz @[]")
+        self.assertEqual(calls[0], ["mousemove", "-x", "-100000", "-y", "100000"])
+        self.assertEqual(calls[2:], [["mousemove", "-x", "1", "-y", "0"], ["mousemove", "-x", "-1", "-y", "0"]])
+        scripts = self.eval_scripts()
+        activations = [s for s in scripts if "activate(" in s]
+        self.assertIn("inputSources[1].activate", activations[0])
+        self.assertIn("inputSources[0].activate", activations[-1])
+        # The layout goes back only after the barrier saw the pointer move.
+        self.assertGreater(scripts.index(activations[-1]), max(i for i, s in enumerate(scripts) if "/*pointer*/" in s))
+
+    def test_type_with_a_shell_modal(self):
+        result = self.call_pi(["type", "--shell-modal", "abc"], input_rules(modal=True))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_the_layout_is_restored_when_typing_fails(self):
+        result = self.call_pi(["type", "--window", "torchsnap", "abc"], env={"STUB_YDOTOOL_EXIT": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        activations = [s for s in self.eval_scripts() if "activate(" in s]
+        self.assertIn("inputSources[0].activate", activations[-1])
+
+    def test_type_fails_when_the_keys_never_arrive(self):
+        result = self.call_pi(
+            ["type", "--window", "torchsnap", "abc"], input_rules(pointer=([0, 1919],)),
+            env={"TORCHSNAP_TESTBED_INPUT_TIMEOUT": "1"},
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not arrive", result.stderr)
+
+    def test_typing_refuses_while_an_app_window_covers_the_parking_corner(self):
+        covering = {"title": "Torchsnap Settings", "wm_class": "torchsnap", "rect": {"x": 0, "y": 1000, "width": 900, "height": 920}, "monitor": 0, "focused": False}
+        result = self.call_pi(["type", "--window", "torchsnap", "abc"], input_rules(windows=[covering]))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("covers the bottom left corner", result.stderr)
+        self.assertFalse(any(c[0] == "type" for c in self.ydotool_calls()))
+
+    def test_key_combinations_become_key_codes(self):
+        result = self.call_pi(["key", "--window", "torchsnap", "ctrl+u", "Escape"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        keys = [c for c in self.ydotool_calls() if c[0] == "key"]
+        self.assertEqual(keys, [["key", "29:1", "22:1", "22:0", "29:0", "1:1", "1:0"]])
+
+    def test_an_unknown_key_name_is_refused(self):
+        result = self.call_pi(["key", "--window", "torchsnap", "Hyper"])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("unknown key: Hyper", result.stderr)
+
+    def test_a_stale_input_lock_is_taken_over(self):
+        lock = self.runtime / "torchsnap-testbed" / "input.lock"
+        lock.mkdir(parents=True)
+        (lock / "pid").write_text("999999\n")
+        result = self.call_pi(["key", "--window", "torchsnap", "Escape"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(lock.exists())
+
+    def test_a_held_input_lock_is_waited_for_then_refused(self):
+        lock = self.runtime / "torchsnap-testbed" / "input.lock"
+        lock.mkdir(parents=True)
+        (lock / "pid").write_text(f"{os.getpid()}\n")
+        result = self.call_pi(
+            ["key", "--window", "torchsnap", "Escape"], env={"TORCHSNAP_TESTBED_LOCK_TIMEOUT": "1"}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("input is in use", result.stderr)
+        self.assertEqual(self.ydotool_calls(), [])
+
+    def test_pointer_homes_then_moves(self):
+        rules = json.dumps([["/*pointer*/", [[0, 1919], [0, 1919], [300, 1919], [300, 420]]]])
+        result = self.call_pi(["pointer", "300", "420"], rules)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.ydotool_calls(),
+            [
+                ["mousemove", "-x", "-100000", "-y", "100000"],
+                ["mousemove", "-x", "300", "-y", "0"],
+                ["mousemove", "-x", "0", "-y", "-1499"],
+            ],
+        )
+
+    def test_pointer_fails_when_it_does_not_land(self):
+        rules = json.dumps([["/*pointer*/", [[0, 1919], [0, 1919], [290, 1919], [290, 420]]]])
+        result = self.call_pi(["pointer", "300", "420"], rules, env={"TORCHSNAP_TESTBED_INPUT_TIMEOUT": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pointer at [290, 420]", result.stderr)
+
+    def test_click_presses_the_button_where_the_pointer_landed(self):
+        rules = json.dumps([["/*pointer*/", [[0, 1919], [0, 1919], [10, 1919], [10, 20]]]])
+        result = self.call_pi(["click", "10", "20", "right"], rules)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.ydotool_calls()[-1], ["click", "0xC1"])
 
 
 if __name__ == "__main__":
