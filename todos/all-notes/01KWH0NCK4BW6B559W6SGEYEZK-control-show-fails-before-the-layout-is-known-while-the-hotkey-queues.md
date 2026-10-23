@@ -30,6 +30,8 @@ Secondary nit: the error is classified as `Internal` (`-3`, documented as "unexp
 
 A script that starts Torchsnap and immediately calls `show` gets `-3` where the hotkey would have queued the show. Retry logic is pushed onto every client. The error-code taxonomy in the doc does not match what clients receive for this case.
 
+Since 2026-10-23 `status` reports `ready` (layout known and frontend connected), and `docs/control-api.md` says `show` fails until then, so a client can poll `status` instead of retrying `show`. The `-3` for `show` and the difference to the hotkey remain.
+
 ## Suggested fix
 
 Mirror the hotkey behavior: on a missing layout, call `request_show()` and return `{"ok": true}`. The show fires as soon as the frontend is ready. If erroring is preferred instead, return `-1` (invalid state) and document the startup precondition under the `show` method in `docs/control-api.md`.

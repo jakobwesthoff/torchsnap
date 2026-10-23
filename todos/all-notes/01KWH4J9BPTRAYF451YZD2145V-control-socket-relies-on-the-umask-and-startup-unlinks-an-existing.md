@@ -7,7 +7,7 @@ tags: [security]
 ---
 # Control socket relies on the umask and startup unlinks an existing socket
 
-The control server binds a Unix socket at `<app_data_dir>/control.sock` with no explicit mode, no peer-credential check, and an unconditional unlink before bind. Access today rests on the umask and the directory tree, and a second instance can take the socket over. Severity is low: the server is opt-in (`controlChannel.enabled`, default off), and its handler set has no execute capability.
+The control server binds a Unix socket at `<app_data_dir>/control.sock` with no explicit mode, no peer-credential check, and an unconditional unlink before bind. Access today rests on the umask and the directory tree, and a second instance can take the socket over. Severity is low: the server is opt-in (`controlChannel.enabled`, default off), and its handler set has no execute capability. Since 2026-10-23 a peer can also read the launcher's state back (`snapshot`), which widens what a peer outside the user would get on a Linux setup where the socket is reachable.
 
 ## Problem
 
@@ -35,13 +35,16 @@ Verdict: same-user-only access holds in practice on both platforms. On Linux it 
 
 ### Blast radius
 
-All six handlers were confirmed (`control/handlers/{launcher,query,status}.rs`). The set is complete (`handlers/mod.rs`), and none runs gadget actions, opens paths or executes commands:
+Nine handlers are registered (`register_all` in `control/handlers/mod.rs`, read 2026-10-23). None runs gadget actions, opens paths or executes commands:
 
 - `show`, `hide`, `toggle`, `dismiss`: window visibility only.
 - `query`: pushes `ControlCommand::SetQuery{text}` to the frontend channel. It does not execute results, but it drives the normal search path, so it is equivalent to typing into the search box. Gadget WASM `query` handlers run against attacker-chosen text, and URL-shaped results can trigger the host's website-metadata and favicon fetcher. So an unauthenticated peer gets a **weak network-beacon primitive** ("make the app fetch metadata for my URL"), not just cosmetics.
-- `status`: returns only `{"visible": bool}`. Query text and the selected result are deliberately excluded.
+- `status`: `visible`, `ready`, `focused` and `targetMonitor` (the monitor's name and rect).
+- `windows`: label, title, visibility and focus of each app window.
+- `info`: process id, version, git hash, data folder, socket path, tray id and, on Linux, the display and its backend.
+- `snapshot` (ADR 0069): the launcher's query, the results' sources, ids, titles and subtitles, the selection, the active gadget view, whether the content is visible and whether the input has focus.
 
-Realistic impact of an unauthenticated peer: UI manipulation (show, hide, toggle, dismiss, query injection with the beacon caveat) plus a visibility boolean. No secrets, no execution.
+`query` plus `snapshot` let a peer type a query and read back what the search providers return for it: app names and paths, and whatever the gadgets answer for that text. Realistic impact of an unauthenticated peer: UI manipulation (show, hide, toggle, dismiss, query injection with the beacon caveat) and reading the launcher's search results for queries of its choice, plus process and path details. No execution.
 
 ### Socket steal
 
@@ -54,14 +57,14 @@ This is same-user only, since the path lies inside the user's own data dir, so i
 
 ### Severity: low
 
-The server is opt-in and default-off, the handler set has no execute capability, `status` leaks one boolean, and the same-user boundary holds on macOS through platform defaults and on typical Linux through the umask-022 socket mode that the kernel enforces on connect. Residual exposure: (a) permissive-umask Linux setups leaking UI control and a fetch beacon to other local users; (b) same-user multi-instance silent takeover or DoS, if two instances still run despite the single-instance plugin.
+The server is opt-in and default-off, the handler set has no execute capability, and the same-user boundary holds on macOS through platform defaults and on typical Linux through the umask-022 socket mode that the kernel enforces on connect. Residual exposure: (a) permissive-umask Linux setups leaking UI control, a fetch beacon and read access to the launcher's search results to other local users; (b) same-user multi-instance silent takeover or DoS, if two instances still run despite the single-instance plugin.
 
 ## Suggested fix (in order of value)
 
 1. **Make the mode explicit.** Call `set_permissions(0600)` on the socket path right after bind (`std::os::unix::fs::PermissionsExt`), which removes the umask dependency. The bind-to-chmod window is theoretical, since pre-chmod 0755 grants no connect under any sane umask. For an airtight version, bind inside a freshly created 0700 subdirectory (`DirBuilderExt::mode(0o700)`). That is race-free and umask-independent, the tmux and ssh-agent pattern. On Linux the canonical location for such a socket is `$XDG_RUNTIME_DIR` (0700 tmpfs, per session, auto-cleaned). Sockets in persistent data dirs are an anti-pattern. Moving the path changes the documented client contract, so treat that as a separate decision.
-2. **Peer-credential same-uid check: not worth it as a security boundary, cheap as belt and braces.** A same-uid attacker already owns `settings.json`, the frecency SQLite database and the gadget code directory under `app_data_dir`, all far more powerful than this socket. (On macOS synthetic input is TCC-gated, so the socket is not strictly redundant with "can already send keystrokes". The data-dir write access is the stronger equivalence.) If added anyway, it is two syscalls (`SO_PEERCRED` on Linux, `getpeereid` or `LOCAL_PEERCRED` on macOS). A token handshake is overkill for this handler set. **Record the trigger: if execute-class methods (run a result, open a path) are ever added to the control API, authentication must be revisited before shipping them.**
+2. **Peer-credential same-uid check: not worth it as a security boundary, cheap as belt and braces.** A same-uid attacker already owns `settings.json`, the frecency SQLite database and the gadget code directory under `app_data_dir`, all far more powerful than this socket. (On macOS synthetic input is TCC-gated, so the socket is not strictly redundant with "can already send keystrokes". The data-dir write access is the stronger equivalence.) If added anyway, it is two syscalls (`SO_PEERCRED` on Linux, `getpeereid` or `LOCAL_PEERCRED` on macOS). A token handshake is overkill for this handler set. **Record the trigger: if execute-class methods (run a result, open a path) are ever added to the control API, authentication must be revisited before shipping them.** With `snapshot` reading search results back, fix 1 matters more than when this todo was written.
 3. **Steal fix.** Probe before unlink: `connect()` to the existing path. `ECONNREFUSED` or `ENOENT` means stale, which is safe to remove. Success means a live instance owns it, so log it and refuse to start the server or surface the conflict. Gate the unlink in `stop()` and the exit cleanup on still owning the file (compare `fstat` of the listener inode with `lstat` of the path), so a dying first instance does not clobber the second's socket. `tauri-plugin-single-instance` is in place (added for gadget install handoff). The probe and the ownership check remain a safeguard should two instances run anyway.
 
 ## Files
 
-`control/mod.rs` (bind around lines 116-128, unlink around lines 161 and 169-171, path around lines 265-270, default-off around lines 285-288), `control/handlers/{mod,launcher,query,status}.rs`, `lib.rs` (exit cleanup around lines 1001-1010), `Cargo.toml` (dependencies, including `tauri-plugin-single-instance`).
+`control/mod.rs` (`ControlServer::start` binds and unlinks, `stop` and the accept loop's cleanup unlink, `socket_path`), `control/handlers/*.rs`, `control/snapshot.rs`, `lib.rs` (exit cleanup around lines 1001-1010), `Cargo.toml` (dependencies, including `tauri-plugin-single-instance`).
