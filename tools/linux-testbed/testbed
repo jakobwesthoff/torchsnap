@@ -12,6 +12,8 @@
 # Usage:
 #   testbed sync              mirror the working tree to ~/torchsnap on the machine
 #   testbed provision [ARGS]  sync, then run the provision script there
+#   testbed reboot            reboot the machine, wait until its session is ready
+#   testbed exec COMMAND      run one shell command line on the machine
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -70,6 +72,18 @@ run_remote() {
     return "$status"
 }
 
+# run_direct COMMAND: runs a command line on the machine without the
+# runner. For the reboot and the checks around it: a runner that shows
+# commands in a terminal on the machine's screen goes down with the
+# desktop when the machine reboots.
+#
+# While the machine is down, a connection attempt would otherwise hang
+# for the system's TCP timeout instead of failing fast.
+run_direct() {
+    # shellcheck disable=SC2029
+    ssh -o ConnectTimeout=5 "$TORCHSNAP_LINUX_HOST" "bash -c $(printf '%q' "$1")"
+}
+
 # shell_words WORD...: the words as one command line, each quoted.
 shell_words() {
     local word
@@ -108,7 +122,72 @@ cmd_provision() {
     if [ $# -gt 0 ]; then
         command="$command $(shell_words "$@")"
     fi
-    run_remote "$command"
+
+    # Steps that need the desktop session are deferred while the machine
+    # still runs another session (exit 3). The desktop's display manager
+    # takes over at the next boot, and the second run inside its session
+    # does the rest.
+    local status=0
+    run_remote "$command" || status=$?
+    if [ "$status" -ne 3 ]; then
+        return "$status"
+    fi
+    echo "testbed: steps need the desktop session; rebooting into it"
+    cmd_reboot
+    status=0
+    run_remote "$command" || status=$?
+    if [ "$status" -eq 3 ]; then
+        echo "testbed: steps still deferred after the reboot; the desktop session did not start" >&2
+        return 1
+    fi
+    return "$status"
+}
+
+# =========================================================
+# reboot
+# =========================================================
+
+# The machine counts as back when its boot id has changed and the desktop
+# session is ready for input (testbed-pi session-ready).
+cmd_reboot() {
+    local timeout="${TORCHSNAP_LINUX_REBOOT_TIMEOUT:-300}"
+    local interval="${TORCHSNAP_LINUX_POLL_INTERVAL:-5}"
+    local boot_id_command='cat /proc/sys/kernel/random/boot_id'
+    # shellcheck disable=SC2016
+    local ready_command='"$HOME"/torchsnap/tools/linux-testbed/pi/testbed-pi session-ready'
+
+    local old_boot_id
+    old_boot_id="$(run_direct "$boot_id_command")"
+    # The machine may go down before the command returns; ssh then exits
+    # 255 for the closed connection, which counts as a reboot under way.
+    local status=0
+    run_direct 'sudo systemctl --no-block reboot' || status=$?
+    if [ "$status" -ne 0 ] && [ "$status" -ne 255 ]; then
+        echo "testbed: the reboot command failed (exit $status)" >&2
+        return 1
+    fi
+
+    local deadline=$((SECONDS + timeout))
+    local boot_id=""
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        sleep "$interval"
+        boot_id="$(run_direct "$boot_id_command" 2>/dev/null)" || continue
+        [ -n "$boot_id" ] && [ "$boot_id" != "$old_boot_id" ] && break
+    done
+    if [ -z "$boot_id" ] || [ "$boot_id" = "$old_boot_id" ]; then
+        echo "testbed: the machine did not come back within ${timeout}s" >&2
+        return 1
+    fi
+
+    until run_direct "$ready_command" >/dev/null 2>&1; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            echo "testbed: the machine is back, but its session not ready within ${timeout}s:" >&2
+            run_direct "$ready_command" >&2 || true
+            return 1
+        fi
+        sleep "$interval"
+    done
+    echo "testbed: the machine is back and its session is ready"
 }
 
 # =========================================================
@@ -123,6 +202,15 @@ case "$subcommand" in
     provision)
         require_host
         cmd_provision "$@"
+        ;;
+    reboot)
+        require_host
+        cmd_reboot
+        ;;
+    exec)
+        require_host
+        [ $# -eq 1 ] || usage
+        run_remote "$1"
         ;;
     sync)
         require_host

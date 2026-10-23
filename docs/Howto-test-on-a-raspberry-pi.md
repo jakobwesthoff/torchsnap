@@ -41,6 +41,7 @@ survives a sync.
 
 ```sh
 just testbed-provision
+just testbed-provision --monitor HDMI-1:90:2   # also set a monitor's layout
 ```
 
 syncs the working tree and runs `tools/linux-testbed/provision/provision`
@@ -50,7 +51,17 @@ second run reports `provision: 0 changed, …`. Each step prints `ok`,
 `changed` or `failed` with its name; a failed step stops the run with
 exit status 1.
 
-The steps:
+Some steps talk to the running GNOME session. While the Pi still runs
+another desktop, as a fresh Raspberry Pi OS does, they print `deferred`
+and the script exits with status 3. `just testbed-provision` then reboots
+the Pi into GNOME (gdm logs the user in), waits until the session is
+ready, and runs the script again.
+
+`--monitor CONNECTOR:TRANSFORM:SCALE` stores one monitor's layout in the
+GNOME session, for example `HDMI-1:90:2` for a monitor turned to
+portrait at scale 2; `gdctl show` on the Pi lists the connectors.
+
+### Desktop-independent steps
 
 | Step | What it sets up |
 |---|---|
@@ -64,15 +75,79 @@ The steps:
 | `ydotool-service` | ydotool's daemon as an enabled systemd user service |
 | `sleep-masked` | masks `sleep`, `suspend`, `hibernate` and `hybrid-sleep`, so the Pi never suspends |
 
+### GNOME steps
+
+GNOME comes from Debian and is installed next to the Pi's own desktop;
+lightdm and the labwc sessions stay installed.
+
+| Step | What it sets up |
+|---|---|
+| `gnome-packages` | `task-gnome-desktop` (GNOME 48), the AppIndicator extension (installed, disabled) and `gstreamer1.0-pipewire`. The install keeps the current display manager; the `gdm` step switches. |
+| `testbed-extension` | the testbed's GNOME Shell extension in `/usr/local/share/gnome-shell/extensions/` (see below) |
+| `dconf-defaults` | system-wide settings defaults in `/etc/dconf/db/local.d/50-torchsnap-testbed`: no screen blanking, no lock screen, no suspend on idle, no welcome tour, the testbed extension enabled, flat mouse acceleration |
+| `gdm` | gdm as the display manager from the next boot, with automatic login for the provisioning user |
+| `accountsservice-session` | GNOME as the session gdm starts for that user |
+| `user-settings` | the testbed extension in the user's own list of enabled extensions (switching the AppIndicator extension writes that list), and the `us` keyboard layout after the Pi's own layouts |
+| `keyring` | an unencrypted keyring named `testbed` as the default keyring (see below) |
+| `rdp` | remote desktop over RDP, see section 5 |
+
+Things to know about these:
+
+- **Shell extension.** GNOME Shell answers the D-Bus methods the testbed
+  uses for screenshots, screen recording and reading window state
+  (`Eval`, `Screenshot`, `Screencast`) only for a few of its own
+  programs, unless it runs in "unsafe mode". GNOME Shell 48 has no
+  switch for that mode, so the testbed's extension turns it on. Every
+  local process can then call these methods. The extension also closes
+  the overview GNOME opens after login, which otherwise takes every key
+  typed.
+- **Keyring.** With automatic login, nobody types the password that
+  unlocks the login keyring, and gnome-remote-desktop cannot read its
+  credentials from a locked keyring. The `testbed` keyring has no
+  password: it is stored unencrypted in
+  `~/.local/share/keyrings/testbed.keyring` and holds the RDP password.
+  It is locked again after each login and unlocks without a prompt on
+  first use.
+- **Unattended.** Screen lock, blanking and suspend are off, and the Pi
+  logs in by itself after every boot.
+
 The provision script has not been run on a freshly installed system: it
 was checked on a Pi first set up by hand with the same commands, by
-running it there.
+running it there, by undoing single steps and running it again, and by
+rebooting (self-test items 1, U and R).
 
 A command run over SSH does not get the `PATH` entries these installers
 add to the shell profile, so the provision script puts `~/.cargo/bin`,
 `~/.bun/bin` and `~/.local/bin` on `PATH` itself.
 
-## 4. Self-test
+## 4. Rebooting and running commands
+
+```sh
+just testbed-reboot
+```
+
+reboots the Pi and returns once it is back with a new boot id and its
+GNOME session takes input: GNOME Shell has finished starting and the
+overview is closed. It gives up after 300 seconds
+(`TORCHSNAP_LINUX_REBOOT_TIMEOUT`). The reboot goes over plain SSH, not
+through `TORCHSNAP_LINUX_RUNNER`.
+
+```sh
+just testbed-exec 'systemctl --user status ydotool.service'
+```
+
+runs one shell command line on the Pi.
+
+## 5. Remote viewing over RDP
+
+The `rdp` step turns on GNOME's remote desktop for the running session:
+an RDP client sees and controls the Pi's screen. Connect to the Pi on
+port 3389 as user `testbed`; the password is in
+`~/.config/torchsnap-testbed/rdp-password` on the Pi, generated at the
+first provisioning. The TLS certificate is self-signed and lives in
+`~/.local/share/gnome-remote-desktop/` on the Pi.
+
+## 6. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -86,6 +161,8 @@ unknown item.
 | Item | Checks |
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
+| R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, and provisioning reporting `0 changed`. |
+| U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, a sleep mask, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
 
 ## A visible terminal on the Pi
 

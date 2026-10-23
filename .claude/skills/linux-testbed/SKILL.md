@@ -32,6 +32,22 @@ is the full guide.
   machine. Idempotent; a run on a provisioned machine prints
   `provision: 0 changed`. Run it after changing anything under
   `tools/linux-testbed/provision/`.
+- `just testbed-reboot`: reboot the machine and wait until its GNOME
+  session takes input. Goes over plain SSH, never through the runner.
+  Tell the user before rebooting if someone watches the machine's
+  screen.
+- `just testbed-exec 'COMMAND'`: run one shell command line on the
+  machine (through the runner when set).
 - `just testbed-selftest [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
-  print `PASS`.
+  print `PASS`. Items R (reboot) and U (undo provision steps) run only
+  when named.
+
+## The machine
+
+- GNOME 48 from Debian with gdm autologin; the testbed's GNOME Shell
+  extension opens Shell's Eval, Screenshot and Screencast D-Bus methods
+  and closes the overview after login.
+- Remote viewing: RDP on port 3389, user `testbed`, password in
+  `~/.config/torchsnap-testbed/rdp-password` on the machine. Do not
+  print the password into chat or files.

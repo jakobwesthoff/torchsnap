@@ -1,0 +1,6 @@
+{
+  "uuid": "unsafe-mode@testbed.torchsnap.app",
+  "name": "Torchsnap testbed",
+  "description": "Opens GNOME Shell's restricted D-Bus methods (Eval, Screenshot, Screencast) to every local caller and closes the overview GNOME Shell opens after login. For the Torchsnap Linux testbed only.",
+  "shell-version": ["48"]
+}

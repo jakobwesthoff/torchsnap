@@ -8,9 +8,16 @@
 # step checks first and changes only what is missing, so a second run
 # reports `0 changed`.
 #
-# Exit status: 0 when everything is in place, 1 when a step failed, 3
-# when steps that need the desktop session were deferred (run again
-# inside that session).
+# Usage: provision [--desktop gnome] [--monitor CONNECTOR:TRANSFORM:SCALE]
+#
+# The desktop-independent steps live in base.sh, each desktop's in
+# desktop-<name>.sh. --monitor sets the layout of one monitor in the
+# desktop session, for example `HDMI-1:90:2` for a portrait monitor at
+# scale 2.
+#
+# Exit status: 0 when everything is in place, 1 when a step failed, 2 for
+# bad options, 3 when steps that need the desktop session were deferred
+# (run again inside that session).
 
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
@@ -19,12 +26,46 @@ provision_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tree_dir="$(cd "$provision_dir/../../.." && pwd)"
 readonly provision_dir tree_dir
 
-# Commands run over SSH read no shell profile, so the tools installed in
-# the user's home are put on PATH here.
+usage_error() {
+    echo "provision: $1" >&2
+    exit 2
+}
+
+desktop="gnome"
+monitor_spec=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --desktop)
+            desktop="${2:-}"
+            shift 2 || usage_error "--desktop needs a name"
+            ;;
+        --monitor)
+            monitor_spec="${2:-}"
+            shift 2 || usage_error "--monitor needs a value"
+            ;;
+        *)
+            usage_error "unknown option: $1"
+            ;;
+    esac
+done
+
+desktop_file="$provision_dir/desktop-$desktop.sh"
+[ -f "$desktop_file" ] || usage_error "no provision steps for desktop $desktop"
+if [ -n "$monitor_spec" ] && ! [[ "$monitor_spec" =~ ^[^:]+:[^:]+:[0-9.]+$ ]]; then
+    usage_error "--monitor expects CONNECTOR:TRANSFORM:SCALE, got $monitor_spec"
+fi
+readonly desktop monitor_spec
+
+# Commands run over SSH do not get the PATH entries the installers add to
+# the shell profile, so the tools installed in the user's home are put on
+# PATH here.
 export PATH="$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"
 
 source "$provision_dir/steps.sh"
 source "$provision_dir/base.sh"
+# shellcheck source=desktop-gnome.sh
+source "$desktop_file"
 
 base_steps
+desktop_steps
 steps_summary

@@ -22,6 +22,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 TESTBED = REPO / "tools" / "linux-testbed" / "testbed"
 SELFTEST = REPO / "tools" / "linux-testbed" / "selftest"
 PROVISION_DIR = REPO / "tools" / "linux-testbed" / "provision"
+TESTBED_PI = REPO / "tools" / "linux-testbed" / "pi" / "testbed-pi"
 
 # A stub reads STUB_<NAME>_STDOUT and STUB_<NAME>_EXIT, with NAME the
 # command name in upper case and `-` replaced by `_`.
@@ -174,6 +175,16 @@ class TestbedRecipes(unittest.TestCase):
             result.stderr.strip(), "tools/linux-testbed/testbed provision --monitor HDMI-1:90:2"
         )
 
+    def test_testbed_reboot_calls_the_script(self):
+        result = self.dry_run("testbed-reboot")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed reboot")
+
+    def test_testbed_exec_passes_the_command_as_one_argument(self):
+        result = self.dry_run("testbed-exec", "ls -la ~")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed exec 'ls -la ~'")
+
     def test_testbed_selftest_passes_its_items(self):
         result = self.dry_run("testbed-selftest", "1")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -266,6 +277,15 @@ class TestbedTransport(unittest.TestCase):
         self.assertEqual(result.returncode, 75)
         self.assertIn("runner refused (exit 75)", result.stderr)
 
+    def test_exec_runs_a_command_line_on_the_machine(self):
+        result = run(
+            ["exec", "printf '%s|' \"$HOME\" 'a b'"],
+            self.stubs,
+            env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_LINUX_RUNNER": "fake-runner --"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, f"{self.home}|a b|")
+
     def test_exit_75_without_runner_is_not_called_a_refusal(self):
         result = self.provision([], env={"FAKE_EXIT": "75"})
         self.assertEqual(result.returncode, 75)
@@ -353,6 +373,347 @@ class SelftestRunner(unittest.TestCase):
         result = self.selftest(["1"])
         self.assertEqual(result.returncode, 1)
         self.assertIn("FAIL item 1", result.stdout)
+
+
+# An ssh stub for the reboot and the provision orchestration. It answers by
+# what the remote command asks for: boot ids from STUB_BOOT_IDS (one per
+# call, the last one repeating), exit codes for provision runs from
+# STUB_PROVISION_EXITS (same), and STUB_READY_EXIT for session-ready.
+MACHINE_SSH = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    with log.open("a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    args = sys.argv[1:]
+    while args and args[0] == "-o":
+        args = args[2:]
+    command = " ".join(args[1:])
+
+    def next_of(name, default):
+        values = os.environ.get(name, default).split(",")
+        counter = log.with_name(name + ".count")
+        n = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(n + 1))
+        return values[min(n, len(values) - 1)]
+
+    if "boot_id" in command:
+        print(next_of("STUB_BOOT_IDS", "boot-a"))
+    elif "provision/provision" in command:
+        sys.exit(int(next_of("STUB_PROVISION_EXITS", "0")))
+    elif "session-ready" in command:
+        sys.exit(int(os.environ.get("STUB_READY_EXIT", "0")))
+    elif "reboot" in command:
+        sys.exit(int(os.environ.get("STUB_REBOOT_EXIT", "0")))
+    """
+)
+
+
+class TestbedReboot(unittest.TestCase):
+    def setUp(self):
+        self.stubs = Stubs(["rsync", "scp"])
+        ssh = self.stubs.dir / "ssh"
+        ssh.write_text(MACHINE_SSH)
+        ssh.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def call_testbed(self, args, env):
+        environment = {
+            "TORCHSNAP_LINUX_HOST": "user@pi.local",
+            "TORCHSNAP_LINUX_RUNNER": "fake-runner --",
+            "TORCHSNAP_LINUX_REBOOT_TIMEOUT": "3",
+            "TORCHSNAP_LINUX_POLL_INTERVAL": "1",
+        }
+        environment.update(env)
+        return run(args, self.stubs, env=environment)
+
+    def remote_commands(self):
+        commands = []
+        for call in self.stubs.calls("ssh"):
+            args = call[1:]
+            while args and args[0] == "-o":
+                args = args[2:]
+            commands.append(" ".join(args[1:]))
+        return commands
+
+    def test_reboot_waits_for_a_new_boot_and_a_ready_session(self):
+        result = self.call_testbed(["reboot"], {"STUB_BOOT_IDS": "boot-a,boot-a,boot-b"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.remote_commands()
+        self.assertEqual(sum("reboot" in c for c in commands), 1)
+        self.assertTrue(any("session-ready" in c for c in commands))
+
+    def test_reboot_never_goes_through_the_runner(self):
+        self.call_testbed(["reboot"], {"STUB_BOOT_IDS": "boot-a,boot-b"})
+        commands = self.remote_commands()
+        self.assertTrue(any("--no-block" in c and "reboot" in c for c in commands), commands)
+        for command in commands:
+            self.assertNotIn("fake-runner", command)
+
+    def test_reboot_survives_the_machine_closing_the_connection(self):
+        # ssh exits 255 when the machine goes down before the reboot
+        # command has returned.
+        result = self.call_testbed(
+            ["reboot"], {"STUB_BOOT_IDS": "boot-a,boot-b", "STUB_REBOOT_EXIT": "255"}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_closed_connection_without_a_reboot_still_fails(self):
+        # ssh also exits 255 when it cannot connect at all; without a new
+        # boot id that is no reboot.
+        result = self.call_testbed(["reboot"], {"STUB_BOOT_IDS": "boot-a", "STUB_REBOOT_EXIT": "255"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not come back", result.stderr)
+
+    def test_reboot_fails_when_the_reboot_command_fails(self):
+        result = self.call_testbed(
+            ["reboot"], {"STUB_BOOT_IDS": "boot-a,boot-b", "STUB_REBOOT_EXIT": "1"}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("reboot command failed", result.stderr)
+
+    def test_reboot_gives_up_when_the_machine_does_not_come_back(self):
+        result = self.call_testbed(["reboot"], {"STUB_BOOT_IDS": "boot-a"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not come back", result.stderr)
+
+    def test_reboot_gives_up_when_the_session_is_not_ready(self):
+        result = self.call_testbed(["reboot"], {"STUB_BOOT_IDS": "boot-a,boot-b", "STUB_READY_EXIT": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("session not ready", result.stderr)
+
+    def test_deferred_steps_get_a_reboot_and_a_second_run(self):
+        result = self.call_testbed(
+            ["provision"], {"STUB_PROVISION_EXITS": "3,0", "STUB_BOOT_IDS": "boot-a,boot-b"}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.remote_commands()
+        self.assertEqual(sum("provision/provision" in c for c in commands), 2)
+        self.assertEqual(sum("--no-block" in c and "reboot" in c for c in commands), 1)
+
+    def test_steps_deferred_twice_fail_the_run(self):
+        result = self.call_testbed(
+            ["provision"], {"STUB_PROVISION_EXITS": "3,3", "STUB_BOOT_IDS": "boot-a,boot-b"}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("still deferred", result.stderr)
+
+
+def with_gnome_steps(snippet, stubs):
+    """Runs a bash snippet with the GNOME provision steps sourced and the
+    stub directory first on PATH."""
+    environment = dict(os.environ)
+    environment["PATH"] = f"{stubs.dir}{os.pathsep}{os.environ['PATH']}"
+    environment["STUB_LOG"] = str(stubs.log)
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"set -euo pipefail; provision_dir='{PROVISION_DIR}'; monitor_spec=''; "
+            f"source '{PROVISION_DIR / 'steps.sh'}'; "
+            f"source '{PROVISION_DIR / 'desktop-gnome.sh'}'; {snippet}",
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=60,
+    )
+
+
+class ProvisionGnome(unittest.TestCase):
+    def setUp(self):
+        self.stubs = Stubs(["gdctl"])
+        # sudo runs its arguments as the test user.
+        sudo = self.stubs.dir / "sudo"
+        sudo.write_text('#!/usr/bin/env bash\nexec "$@"\n')
+        sudo.chmod(0o755)
+        self.dir = pathlib.Path(tempfile.mkdtemp(prefix="testbed-accounts-"))
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.dir)
+
+    def set_session(self, content):
+        path = self.dir / "jakob"
+        if content is not None:
+            path.write_text(content)
+        result = with_gnome_steps(f"set_accountsservice_session '{path}'", self.stubs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return path.read_text()
+
+    def test_session_in_a_missing_file(self):
+        self.assertEqual(self.set_session(None), "[User]\nSession=gnome\n")
+
+    def test_session_added_to_a_user_group_without_one(self):
+        self.assertEqual(
+            self.set_session("[User]\nXSession=rpd-labwc\nIcon=/x\n"),
+            "[User]\nSession=gnome\nXSession=rpd-labwc\nIcon=/x\n",
+        )
+
+    def test_session_replaced_and_other_keys_kept(self):
+        self.assertEqual(
+            self.set_session("[User]\nLanguages=en_GB.utf8;\nSession=\nXSession=rpd-labwc\n"),
+            "[User]\nLanguages=en_GB.utf8;\nSession=gnome\nXSession=rpd-labwc\n",
+        )
+
+    def test_session_already_set_stays(self):
+        self.assertEqual(self.set_session("[User]\nSession=gnome\n"), "[User]\nSession=gnome\n")
+
+    def test_session_in_a_file_without_user_group(self):
+        self.assertEqual(self.set_session("Other=1\n"), "Other=1\n[User]\nSession=gnome\n")
+
+    def append(self, value, item):
+        result = with_gnome_steps(f"append_to_gvariant_list \"{value}\" \"{item}\"", self.stubs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_append_to_an_empty_typed_list(self):
+        self.assertEqual(self.append("@as []", "'x'"), "['x']")
+
+    def test_append_to_an_empty_list(self):
+        self.assertEqual(self.append("[]", "'x'"), "['x']")
+
+    def test_append_to_a_list(self):
+        self.assertEqual(
+            self.append("[('xkb', 'de')]", "('xkb', 'us')"), "[('xkb', 'de'), ('xkb', 'us')]"
+        )
+
+    def test_logical_monitor_of_a_connector(self):
+        gdctl_show = textwrap.dedent(
+            """\
+            Monitors:
+            └──Monitor HDMI-1 (LG Electronics 32")
+               └──Current mode
+            Logical monitors:
+            ├──Logical monitor #1
+            │  ├──Scale: 1.0
+            │  ├──Transform: normal
+            │  └──Monitors: (1)
+            │      └──DP-1 (Other)
+            └──Logical monitor #2
+               ├──Scale: 2.0
+               ├──Transform: 90
+               └──Monitors: (1)
+                   └──HDMI-1 (LG Electronics 32")
+            """
+        )
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f"provision_dir='{PROVISION_DIR}'; source '{PROVISION_DIR / 'steps.sh'}'; "
+                f"source '{PROVISION_DIR / 'desktop-gnome.sh'}'; gdctl_logical_monitor HDMI-1",
+            ],
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "PATH": f"{self.stubs.dir}{os.pathsep}{os.environ['PATH']}",
+                "STUB_LOG": str(self.stubs.log),
+                "STUB_GDCTL_STDOUT": gdctl_show,
+            },
+            timeout=60,
+        )
+        self.assertEqual(result.stdout.strip(), "2.0 90", result.stderr)
+
+    def test_the_keyring_template_holds_no_secret(self):
+        template = (PROVISION_DIR / "gnome" / "testbed.keyring").read_text()
+        groups = [line for line in template.splitlines() if line.startswith("[")]
+        self.assertEqual(groups, ["[keyring]"])
+        self.assertNotIn("secret", template)
+
+
+class ProvisionOptions(unittest.TestCase):
+    def provision(self, *args):
+        return subprocess.run(
+            ["bash", str(PROVISION_DIR / "provision"), *args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_an_unknown_desktop_is_refused(self):
+        result = self.provision("--desktop", "nope")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no provision steps for desktop nope", result.stderr)
+
+    def test_a_malformed_monitor_is_refused(self):
+        result = self.provision("--monitor", "HDMI-1:90")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--monitor expects CONNECTOR:TRANSFORM:SCALE", result.stderr)
+
+    def test_an_unknown_option_is_refused(self):
+        result = self.provision("--frobnicate")
+        self.assertEqual(result.returncode, 2)
+
+
+SHOW_ENVIRONMENT = (
+    "HOME=/home/testuser\n"
+    "WAYLAND_DISPLAY=wayland-0\n"
+    "DISPLAY=:0\n"
+    "XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.ABC\n"
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\n"
+    "XDG_CURRENT_DESKTOP=GNOME\n"
+    "LANG=en_GB.UTF-8\n"
+)
+
+
+class TestbedPi(unittest.TestCase):
+    """The machine-side script, run here with systemctl and gdbus stubbed."""
+
+    def setUp(self):
+        self.stubs = Stubs(["systemctl", "gdbus"])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+
+    def call_pi(self, args, env=None, unset=()):
+        environment = {"STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT}
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, unset=unset, script=TESTBED_PI)
+
+    def test_session_env_takes_the_display_variables_from_the_user_manager(self):
+        result = self.call_pi(
+            ["env"], unset=["WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "XDG_CURRENT_DESKTOP"]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = set(result.stdout.splitlines())
+        self.assertIn("WAYLAND_DISPLAY=wayland-0", lines)
+        self.assertIn("DISPLAY=:0", lines)
+        self.assertIn("XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.ABC", lines)
+        self.assertIn("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus", lines)
+        self.assertIn("XDG_CURRENT_DESKTOP=GNOME", lines)
+        self.assertNotIn("LANG=en_GB.UTF-8", lines)
+
+    def test_another_desktop_is_refused(self):
+        result = self.call_pi(
+            ["session-ready"],
+            env={"STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT.replace("GNOME", "labwc:wlroots")},
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no testbed support for desktop labwc:wlroots", result.stderr)
+
+    def test_session_ready_when_startup_is_done_and_the_overview_closed(self):
+        result = self.call_pi(
+            ["session-ready"],
+            env={"STUB_GDBUS_STDOUT": "(true, '\"{\\\\\"startingUp\\\\\":false,\\\\\"overview\\\\\":false}\"')\n"},
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_session_not_ready_while_the_overview_is_open(self):
+        result = self.call_pi(
+            ["session-ready"],
+            env={"STUB_GDBUS_STDOUT": "(true, '\"{\\\\\"startingUp\\\\\":false,\\\\\"overview\\\\\":true}\"')\n"},
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("overview", result.stderr)
+
+    def test_session_not_ready_without_eval(self):
+        result = self.call_pi(["session-ready"], env={"STUB_GDBUS_STDOUT": "(false, '')\n"})
+        self.assertEqual(result.returncode, 1)
 
 
 if __name__ == "__main__":

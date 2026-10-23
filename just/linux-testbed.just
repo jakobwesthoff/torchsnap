@@ -19,6 +19,17 @@ testbed-sync:
 testbed-provision *ARGS:
     tools/linux-testbed/testbed provision {{ ARGS }}
 
+# The reboot goes over plain SSH, never through TORCHSNAP_LINUX_RUNNER:
+# a runner on the machine's screen goes down with the desktop.
+
+# Reboot the Linux testbed and wait until its desktop session takes input
+testbed-reboot:
+    tools/linux-testbed/testbed reboot
+
+# Run one shell command line on the Linux testbed
+testbed-exec COMMAND:
+    tools/linux-testbed/testbed exec {{ quote(COMMAND) }}
+
 # Run the testbed self-test against the Linux testbed (default items, or the given ones)
 testbed-selftest *ITEMS:
     tools/linux-testbed/selftest {{ ITEMS }}

@@ -13,9 +13,14 @@
 #
 # Items:
 #   1   provisioning twice changes nothing on the second run
+#   R   after a reboot the machine is back in its desktop session with
+#       everything the testbed needs (only when named)
+#   U   undoing one provision step at a time, provisioning reports
+#       `changed` for exactly that step (only when named)
 
-# Items run by name (`item_$item`), which shellcheck cannot follow.
-# shellcheck disable=SC2329
+# Items run by name (`item_$item`), which shellcheck cannot follow, and
+# command lines for the machine are single-quoted so they expand there.
+# shellcheck disable=SC2329,SC2016
 set -uo pipefail
 
 testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
@@ -32,6 +37,16 @@ fail() {
     echo "FAIL item $1: $2"
     return 1
 }
+
+# on_machine COMMAND: runs a shell command line on the machine.
+on_machine() {
+    "$testbed" exec "$1"
+}
+
+# The provision steps' own check for the keyring: an Unlock that needs no
+# prompt answers with the prompt path "/".
+readonly keyring_unlock='busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service Unlock ao 1 /org/freedesktop/secrets/collection/testbed'
+readonly keyring_unlocked='aoo 1 "/org/freedesktop/secrets/collection/testbed" "/"'
 
 # =========================================================
 # Items
@@ -54,6 +69,84 @@ item_1() {
     else
         pass 1
     fi
+}
+
+# Nobody is at the machine after a reboot, so everything the recipes need
+# has to come back on its own.
+item_R() {
+    local before after env status output
+    if ! before="$(on_machine 'cat /proc/sys/kernel/random/boot_id')"; then
+        fail R "SETUP: could not read the boot id"
+        return
+    fi
+    if ! "$testbed" reboot; then
+        fail R "the reboot did not finish (see above)"
+        return
+    fi
+    after="$(on_machine 'cat /proc/sys/kernel/random/boot_id')"
+    [ "$after" != "$before" ] || { fail R "boot id unchanged: $after"; return; }
+
+    env="$(on_machine '"$HOME"/torchsnap/tools/linux-testbed/pi/testbed-pi env')"
+    grep -qx 'XDG_CURRENT_DESKTOP=GNOME' <<<"$env" \
+        || { fail R "session is not GNOME: $(grep XDG_CURRENT_DESKTOP <<<"$env")"; return; }
+    on_machine 'systemctl --user is-active --quiet ydotool.service' \
+        || { fail R "ydotool.service is not active"; return; }
+    on_machine 'test "$(stat -c %G:%a /dev/uinput)" = input:660' \
+        || { fail R "/dev/uinput is not group input, mode 660"; return; }
+    on_machine 'systemctl --user is-active --quiet gnome-remote-desktop.service && ss -ltn | grep -q ":3389 "' \
+        || { fail R "gnome-remote-desktop is not listening on 3389"; return; }
+    [ "$(on_machine "$keyring_unlock")" = "$keyring_unlocked" ] \
+        || { fail R "the testbed keyring does not unlock without a prompt"; return; }
+
+    output="$("$testbed" provision)"
+    status=$?
+    if [ "$status" -ne 0 ] || ! grep -q '^provision: 0 changed' <<<"$output"; then
+        fail R "provision after the reboot: exit $status, $(grep '^provision:' <<<"$output")"
+        return
+    fi
+    pass R
+}
+
+# Each entry: a provision step and a command that undoes it. These are the
+# steps that can be undone without reinstalling packages or toolchains
+# and without taking the desktop away.
+undo_steps=(
+    'testbed-extension|sudo rm -rf /usr/local/share/gnome-shell/extensions/unsafe-mode@testbed.torchsnap.app'
+    'dconf-defaults|sudo rm /etc/dconf/db/local.d/50-torchsnap-testbed && sudo dconf update'
+    'gdm|echo /usr/sbin/lightdm | sudo tee /etc/X11/default-display-manager >/dev/null'
+    'accountsservice-session|sudo sed -i "s/^Session=gnome$/Session=/" "/var/lib/AccountsService/users/$USER"'
+    'uinput|sudo rm /etc/modules-load.d/torchsnap-testbed-uinput.conf && sudo chmod 600 /dev/uinput'
+    'ydotool-service|systemctl --user disable --now ydotool.service'
+    'sleep-masked|sudo systemctl unmask hybrid-sleep.target'
+    'user-settings|gsettings reset org.gnome.desktop.input-sources sources'
+    'keyring|busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service SetAlias so default /org/freedesktop/secrets/collection/login'
+    'rdp|grdctl rdp disable'
+)
+
+item_U() {
+    local entry step undo output status changed
+    output="$("$testbed" provision)"
+    if ! grep -q '^provision: 0 changed' <<<"$output"; then
+        fail U "SETUP: the machine is not fully provisioned: $(grep '^provision:' <<<"$output")"
+        return
+    fi
+    for entry in "${undo_steps[@]}"; do
+        step="${entry%%|*}"
+        undo="${entry#*|}"
+        if ! on_machine "$undo" >/dev/null; then
+            fail U "SETUP: could not undo $step"
+            return
+        fi
+        output="$("$testbed" provision)"
+        status=$?
+        changed="$(grep '^changed ' <<<"$output" | tr '\n' ' ')"
+        if [ "$status" -ne 0 ] || [ "$changed" != "changed $step " ]; then
+            fail U "after undoing $step: exit $status, ${changed:-nothing changed}"
+            return
+        fi
+        echo "  undone and restored: $step"
+    done
+    pass U
 }
 
 # =========================================================

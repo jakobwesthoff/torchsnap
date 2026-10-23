@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Machine side of the Linux testbed: runs on the test machine from the
+# synced tree and does the work the Mac-side `testbed` script asks for.
+# What differs between desktops lives in desktop-<name>.sh next to this
+# script, chosen by the session's XDG_CURRENT_DESKTOP.
+#
+# Usage:
+#   testbed-pi env             print the session variables the testbed uses
+#   testbed-pi session-ready   exit 0 once the desktop session takes input
+
+# shellcheck source-path=SCRIPTDIR
+set -euo pipefail
+
+pi_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly pi_dir
+
+usage() {
+    sed -n '/^# Usage:/,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+
+# Commands run over SSH do not get the PATH entries the installers add to
+# the shell profile.
+export PATH="$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"
+
+# =========================================================
+# The desktop session's environment
+# =========================================================
+
+# A command run over SSH has the session bus but not the display: no
+# WAYLAND_DISPLAY, DISPLAY, XAUTHORITY or XDG_CURRENT_DESKTOP. The desktop
+# session hands those to the systemd user manager, so they are read from
+# there; a command through a runner and one through plain SSH then see
+# the same session.
+session_env() {
+    XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export XDG_RUNTIME_DIR
+    local line name
+    while IFS= read -r line; do
+        name="${line%%=*}"
+        case "$name" in
+            WAYLAND_DISPLAY | DISPLAY | XAUTHORITY | DBUS_SESSION_BUS_ADDRESS | XDG_CURRENT_DESKTOP)
+                export "$name=${line#*=}"
+                ;;
+        esac
+    done < <(systemctl --user show-environment)
+}
+
+print_session_env() {
+    local name
+    for name in WAYLAND_DISPLAY DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS XDG_CURRENT_DESKTOP; do
+        echo "$name=${!name:-}"
+    done
+}
+
+load_desktop() {
+    case "${XDG_CURRENT_DESKTOP:-}" in
+        GNOME)
+            source "$pi_dir/desktop-gnome.sh"
+            ;;
+        *)
+            echo "testbed-pi: no testbed support for desktop ${XDG_CURRENT_DESKTOP:-(none)} yet" >&2
+            exit 2
+            ;;
+    esac
+}
+
+# =========================================================
+# Dispatch
+# =========================================================
+
+[ $# -gt 0 ] || usage
+subcommand="$1"
+shift
+
+session_env
+
+case "$subcommand" in
+    env)
+        print_session_env
+        ;;
+    session-ready)
+        load_desktop
+        desk_session_ready
+        ;;
+    *)
+        usage
+        ;;
+esac
