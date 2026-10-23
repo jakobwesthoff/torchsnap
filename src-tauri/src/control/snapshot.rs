@@ -57,12 +57,15 @@ pub struct SnapshotView {
     pub view: String,
 }
 
+/// The frontend's answer: the snapshot, or the parse error of a
+/// malformed one.
+type Answer = Result<LauncherSnapshot, String>;
+
 /// A request waiting for the frontend's answer: the channel it was sent
-/// on, and where its answer goes. A malformed answer arrives as `Err`
-/// with the parse error.
+/// on, and where its answer goes.
 pub(super) struct PendingSnapshot {
     pub(super) channel_id: u32,
-    answer: mpsc::SyncSender<Result<LauncherSnapshot, String>>,
+    answer: mpsc::SyncSender<Answer>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -98,6 +101,15 @@ impl From<SnapshotError> for ControlError {
 impl ControlChannelState {
     /// Ask the frontend for a snapshot and wait up to `timeout` for it.
     pub fn request_snapshot(&self, timeout: Duration) -> Result<LauncherSnapshot, SnapshotError> {
+        let (request_id, answered) = self.send_snapshot_request()?;
+        self.collect_snapshot(request_id, &answered, |answered| {
+            answered.recv_timeout(timeout)
+        })
+    }
+
+    /// Register a request and send it to the frontend. Returns its id
+    /// and the receiver its answer arrives on.
+    fn send_snapshot_request(&self) -> Result<(u64, mpsc::Receiver<Answer>), SnapshotError> {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let (answer, answered) = mpsc::sync_channel(1);
 
@@ -123,27 +135,49 @@ impl ControlChannelState {
         if let Err(NotConnected) =
             self.send_on(&channel, ControlCommand::ReportSnapshot { request_id })
         {
-            self.forget(request_id);
-            return Err(SnapshotError::NotConnected);
+            // A request no longer in `pending` was dropped by a `set`:
+            // a new page subscribed while this send was failing.
+            return Err(if self.forget(request_id) {
+                SnapshotError::NotConnected
+            } else {
+                SnapshotError::Reloaded
+            });
         }
+        Ok((request_id, answered))
+    }
 
-        match answered.recv_timeout(timeout) {
-            Ok(Ok(snapshot)) => Ok(snapshot),
-            Ok(Err(parse_error)) => Err(SnapshotError::Malformed(parse_error)),
+    /// Wait for a request's answer. `wait` is `recv_timeout` in
+    /// production; tests use it to act in the moment after a timeout.
+    fn collect_snapshot(
+        &self,
+        request_id: u64,
+        answered: &mpsc::Receiver<Answer>,
+        wait: impl FnOnce(&mpsc::Receiver<Answer>) -> Result<Answer, mpsc::RecvTimeoutError>,
+    ) -> Result<LauncherSnapshot, SnapshotError> {
+        match wait(answered) {
+            Ok(answer) => answer.map_err(SnapshotError::Malformed),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 self.forget(request_id);
-                Err(SnapshotError::Unanswered)
+                // An answer that `complete_snapshot` took out of
+                // `pending` before `forget` is already in the buffer.
+                match answered.try_recv() {
+                    Ok(answer) => answer.map_err(SnapshotError::Malformed),
+                    Err(_) => Err(SnapshotError::Unanswered),
+                }
             }
             // `set` dropped the request: its page was replaced.
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(SnapshotError::Reloaded),
         }
     }
 
-    fn forget(&self, request_id: u64) {
+    /// Remove a request from `pending`; false when it was no longer
+    /// there.
+    fn forget(&self, request_id: u64) -> bool {
         self.pending
             .lock()
             .expect("pending lock not poisoned")
-            .remove(&request_id);
+            .remove(&request_id)
+            .is_some()
     }
 
     /// Hand the frontend's answer to the request waiting for it. False
@@ -332,7 +366,55 @@ mod tests {
     #[test]
     fn late_reply_is_dropped() {
         let state = ControlChannelState::new();
-        assert!(!state.complete_snapshot(99, Ok(sample("late"))));
+        let (sent_tx, sent) = mpsc::channel();
+        let sent_tx = Mutex::new(sent_tx);
+        state.set(Channel::new(move |body| {
+            let _ = sent_tx.lock().expect("test lock").send(request_id(body));
+            Ok(())
+        }));
+
+        assert_eq!(
+            state.request_snapshot(Duration::ZERO),
+            Err(SnapshotError::Unanswered)
+        );
+        let timed_out = sent.recv_timeout(HANG).expect("request sent");
+
+        assert!(!state.complete_snapshot(timed_out, Ok(sample("late"))));
+        assert_eq!(pending_count(&state), 0);
+    }
+
+    #[test]
+    fn an_answer_arriving_as_the_wait_times_out_is_kept() {
+        let state = ControlChannelState::new();
+        state.set(Channel::new(|_| Ok(())));
+        let (request_id, answered) = state.send_snapshot_request().expect("request sent");
+
+        // The answer lands after the wait gave up and before the
+        // request is removed from `pending`.
+        let result = state.collect_snapshot(request_id, &answered, |_| {
+            assert!(state.complete_snapshot(request_id, Ok(sample("just in time"))));
+            Err(mpsc::RecvTimeoutError::Timeout)
+        });
+
+        assert_eq!(result, Ok(sample("just in time")));
+        assert_eq!(pending_count(&state), 0);
+    }
+
+    #[test]
+    fn a_new_page_during_a_failing_send_is_a_reload() {
+        let state = Arc::new(ControlChannelState::new());
+        // A new webview subscribes while the request goes to the old
+        // one, whose send then fails.
+        let resubscriber = Arc::downgrade(&state);
+        state.set(Channel::new(move |_| {
+            if let Some(state) = resubscriber.upgrade() {
+                state.set(Channel::new(|_| Ok(())));
+            }
+            Err(tauri::Error::WebviewNotFound)
+        }));
+
+        assert_eq!(state.request_snapshot(HANG), Err(SnapshotError::Reloaded));
+        assert!(state.is_subscribed());
         assert_eq!(pending_count(&state), 0);
     }
 

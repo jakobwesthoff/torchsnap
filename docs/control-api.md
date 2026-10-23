@@ -301,7 +301,9 @@ launcher's frontend for these, so the answer can take up to two seconds.
 | `contentVisible` | boolean | The launcher's content is not blanked. On Linux the launcher blanks it while hiding and shows it again after showing; elsewhere it is always `true` |
 | `inputFocused` | boolean | The search input is the page's active element. It stays `true` while the window is hidden or unfocused, so combine it with `status.visible` and `status.focused` |
 
-The answer is the launcher's last rendered state. Right after `query`,
+The answer comes from the launcher's last render, except
+`contentVisible` and `inputFocused`, which are read from the page when
+the request arrives. Right after `query`,
 `searching` can still be `true`, or the results can still belong to the
 previous text; poll until `searching` is `false` and `query` matches.
 `ready` turns true one render before the launcher shows real content,

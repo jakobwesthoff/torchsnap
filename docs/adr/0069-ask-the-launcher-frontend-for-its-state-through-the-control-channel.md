@@ -44,7 +44,8 @@ and answers with the frontend's reply.
 ## Consequences
 
 - The app has one more Tauri command, `control_report_snapshot`.
-- A `snapshot` answer is the frontend's state at the moment it handles
-  the request, from its last committed render.
+- A `snapshot` answer comes from the launcher's last render, except
+  `contentVisible` and `inputFocused`, which the frontend reads from the
+  page when it handles the request.
 - A waiting `snapshot` holds one blocking-pool thread for up to two
   seconds.
