@@ -16,6 +16,9 @@ is the full guide.
   do not write it into any file in the repository.
 - Recipes stop with `TORCHSNAP_LINUX_HOST is not set` when it is
   missing.
+- The recipes use SSH without prompts, so the SSH key for the host must
+  be unlocked. If SSH answers "Permission denied (publickey)", ask the
+  user to unlock it and do work that needs no machine meanwhile.
 - If the machine has a terminal on its screen that runs commands for
   someone to watch (in this project's sessions: `testbed-run`), set
   `TORCHSNAP_LINUX_RUNNER` to its command prefix, for example
