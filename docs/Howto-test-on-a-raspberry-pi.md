@@ -13,7 +13,13 @@ that recipes on the Mac work with.
 - SSH login to the Pi with a key, without a password prompt.
 - `sudo` without a password for the login user on the Pi, since the
   provision script installs packages and changes system files.
-- `rsync` on the Mac and on the Pi.
+- `rsync` on the Mac and on the Pi, with zstd on both for the default
+  `just testbed-build` (`rsync --version` lists it under "Compress
+  list"). macOS's own `/usr/bin/rsync` has none; Homebrew's rsync has
+  it. The recipe takes the first rsync on `PATH` that has it.
+- For the default `just testbed-build`, Docker on the Mac as
+  [How to build Torchsnap for Linux on a Mac](Howto-build-linux-on-macos.md)
+  describes.
 - The environment variable `TORCHSNAP_LINUX_HOST` on the Mac, set to the
   SSH target, for example:
 
@@ -190,18 +196,53 @@ runs one shell command line on the Pi.
 ## 5. Building and running the app
 
 ```sh
-just testbed-build
+just testbed-build                # build in the Mac's Linux container, copy to the Pi
+just testbed-build --on-machine   # build on the Pi
 ```
 
-syncs the working tree, then runs `just install` and
-`just build --config '{"bundle":{"active":false}}'` on the Pi: all
-gadgets and a debug app, without bundling, at
+`just testbed-build` syncs the working tree, builds a debug app with
+the container build of `just linux-build` on the Mac, and copies
+`target/linux-build/debug/` with rsync and zstd compression to
+`~/torchsnap/target/linux-build/debug/` on the Pi. The container builds
+at the path of the Pi's tree (`TORCHSNAP_LINUX_BUILD_WORKDIR`, which the
+recipe sets), and the archives of the gadgets that
+`gadgets/bundled.toml` does not list go to `~/torchsnap/gadgets/`,
+where the debug app looks for development gadgets; the listed gadgets
+come from the build's `lib/Torchsnap/gadgets/`. Alternating
+`just testbed-build` with `just linux-build`, which builds at `/work`,
+compiles from scratch whenever the path changes. The first build at the
+Pi's path took 107 s in the container and 13 s to copy.
+
+`just testbed-build --on-machine` syncs the working tree, then runs
+`just install` and `just build --config '{"bundle":{"active":false}}'`
+on the Pi: all gadgets and a debug app, without bundling, at
 `src-tauri/target/debug/torchsnap` (788 MB). Measured on a Raspberry Pi
 5: the first build took 96 s for `just install` and 802 s for the build;
 after that a build takes 102 to 113 s, whether nothing, one Rust line or
 one frontend line changed. Each build rebuilds the frontend and then
 compiles the `torchsnap` crate again (about 54 s) and links the binary
 (about 32 s).
+
+A one-line change in `src-tauri/src/lib.rs`, from the start of
+`just testbed-build` until `just testbed-app-stop` and
+`just testbed-app-start` have the app running on the Pi again, measured
+on 2026-10-23 with an Apple M4 Pro and a Raspberry Pi 5 on Wi-Fi:
+
+| Path | Build and copy | App running |
+|---|---|---|
+| container (default) | 52.1 s, 49.9 s, 47.4 s | 54.9 s, 52.1 s, 49.6 s |
+| `--on-machine` | 123.2 s, 120.1 s, 118.2 s | 126.6 s, 122.7 s, 121.0 s |
+
+Of a container run, the container's `just build` took 39 to 42 s and
+the copy 2 to 5 s.
+
+`testbed-app-start` runs the build that the last successful
+`testbed-build` finished, which the Pi records in
+`~/.cache/torchsnap-testbed/current-build`. Each build clears the
+record before it changes anything and writes it once it has succeeded,
+so after a failed build, or before the first one, `testbed-app-start`
+refuses instead of running an older build. An app that runs while a
+build finishes keeps running its old binary until it is restarted.
 
 ```sh
 just testbed-app-start
@@ -394,7 +435,9 @@ unknown item. With `--repeat N` it runs each item N times and prints
 how often each passed. Before the first item it records the tray state
 and the monitor layout in `~/.cache/torchsnap-testbed/selftest-initial`
 on the Pi; `testbed-stop-all` stops the app, recordings and headless
-sessions and, with that record, switches the tray support back.
+sessions and, with that record, switches the tray support back. The
+items that start the app (W, 4, E, 3, 5, 9 and 8) need a current build
+on the Pi; run `just testbed-build` first.
 
 | Item | Checks |
 |---|---|
@@ -409,7 +452,7 @@ sessions and, with that record, switches the tray support back.
 | 8 | Starts a headless session with monitors at scale 1 and 2 and the app in it, shows the launcher there, and checks the size of a screenshot of each monitor (1280x800 and 2560x1600), that the launcher is among the headless session's windows and not among the desktop session's. |
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 11 | Runs `testbed-stop-all` and checks that no testbed unit runs and that the tray state and the monitor layout are the ones recorded before the first item. |
-| 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
+| 2 | Only when named. Builds in the Mac's container and checks that the Mac's binary was written by this build, that the Pi got the same binary (size and modification time) and the same development gadget archives and records the build as current, that the app started afterwards runs that binary, and that it opens the calculator, a bundled gadget, for `=2+3` and hello-world, from `~/torchsnap/gadgets/`, for `!b2`. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |

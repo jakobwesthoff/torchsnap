@@ -14,7 +14,10 @@
 #   testbed provision [ARGS]  sync, then run the provision script there
 #   testbed reboot            reboot the machine, wait until its session is ready
 #   testbed exec COMMAND      run one shell command line on the machine
-#   testbed build             sync, then build gadgets and a debug app there
+#   testbed build [--on-machine]
+#                             sync, build a debug app in the Mac's Linux
+#                             container and copy it there (--on-machine:
+#                             build gadgets and a debug app there)
 #   testbed app-start         start the debug app in the machine's desktop session
 #   testbed app-stop          stop it
 #   testbed app-log [LINES]   print the end of its output
@@ -133,8 +136,13 @@ shell_words() {
 # files deleted on the Mac but keeps ignored files on the machine, since
 # rsync protects excluded paths from deletion; the machine's build output
 # survives a sync.
+#
+# `rsync_command` is the rsync on PATH unless a build in the container
+# has picked one with zstd, which then copies the tree as well.
+rsync_command=rsync
+
 cmd_sync() {
-    rsync -a --delete --filter=':- .gitignore' --exclude=.git \
+    "$rsync_command" -a --delete --filter=':- .gitignore' --exclude=.git \
         "$repo_root/" "$TORCHSNAP_LINUX_HOST:$remote_tree/"
 }
 
@@ -185,6 +193,80 @@ run_pi() {
     command="$command"'if [ ! -x "$pi" ]; then echo "testbed: no synced tree on the machine; run just testbed-sync first" >&2; exit 2; fi; '
     command="$command"'exec "$pi" '"$(shell_words "$@")"
     run_remote "$command"
+}
+
+# =========================================================
+# build
+# =========================================================
+
+# The container build's output on the Mac (tools/linux-build) and where
+# it goes in the machine's tree: next to the synced sources, under the
+# gitignored `target/`, which a sync leaves alone.
+readonly deploy_path="target/linux-build/debug"
+
+# find_zstd_rsync: prints the first rsync on PATH whose `--version` lists
+# zstd among its compressions. macOS's own /usr/bin/rsync is openrsync,
+# which has no `--compress-choice`. The output is read whole before it is
+# searched: a grep that stops early would end rsync with SIGPIPE, which
+# pipefail turns into a failure.
+find_zstd_rsync() {
+    local candidate version
+    while IFS= read -r candidate; do
+        version="$("$candidate" --version 2>/dev/null)" || continue
+        if grep -qw zstd <<<"$version"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done < <(type -a -P rsync)
+    return 1
+}
+
+# The container on the Mac builds and copies a one-line change in less
+# than half the time the machine takes to build it, so it is the default
+# (docs/Howto-test-on-a-raspberry-pi.md has the measurements). The build runs at the path of the machine's
+# tree, which a debug binary looks in for development gadgets
+# (`CARGO_MANIFEST_DIR/../gadgets`). The machine clears its record of the
+# current build before anything changes and writes it once the copy is
+# complete, so `app-start` never runs a build that failed or is half
+# copied.
+cmd_build_in_container() {
+    if ! rsync_command="$(find_zstd_rsync)"; then
+        echo "testbed: no rsync with zstd compression on PATH (macOS's /usr/bin/rsync is openrsync, which has none);" \
+            "install rsync 3, for example with Homebrew, or build on the machine with just testbed-build --on-machine" >&2
+        exit 2
+    fi
+    cmd_sync
+
+    # A runner may print lines of its own, so the last line counts.
+    local output tree
+    output="$(run_pi deploy-start)"
+    tree="$(tail -n 1 <<<"$output")"
+    case "$tree" in
+        /*) ;;
+        *)
+            echo "testbed: the machine did not report its tree's path; it answered: $output" >&2
+            return 1
+            ;;
+    esac
+
+    TORCHSNAP_LINUX_BUILD_WORKDIR="$tree" "$repo_root/tools/linux-build/linux-build" build
+
+    local start=$SECONDS
+    "$rsync_command" -a --delete --compress --compress-choice=zstd \
+        "$repo_root/$deploy_path/" "$TORCHSNAP_LINUX_HOST:$remote_tree/$deploy_path/"
+    echo "testbed: copied $deploy_path to the machine in $((SECONDS - start)) s"
+    run_pi deploy-finish
+}
+
+cmd_build() {
+    case "$*" in
+        "") cmd_build_in_container ;;
+        --on-machine)
+            cmd_sync
+            run_pi build
+            ;;
+        *) usage ;;
+    esac
 }
 
 # =========================================================
@@ -291,8 +373,7 @@ case "$subcommand" in
         ;;
     build)
         require_host
-        cmd_sync
-        run_pi build
+        cmd_build "$@"
         ;;
     app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start | headless-start | headless-stop | stop-all)
         require_host

@@ -45,11 +45,17 @@ is the full guide.
   screen.
 - `just testbed-exec 'COMMAND'`: run one shell command line on the
   machine (through the runner when set).
-- `just testbed-build`: sync, then `just install` and a debug build on
-  the machine (about 2 minutes, even for a one-line change).
+- `just testbed-build`: sync, build a debug app in the Mac's Linux
+  container and copy it to the machine (about 50 s for a one-line Rust
+  change; needs Docker and an rsync with zstd, such as Homebrew's, on
+  the Mac). `just testbed-build --on-machine`: sync, then
+  `just install` and a debug build on the machine (about 2 minutes,
+  even for a one-line change).
 - `just testbed-app-start` / `just testbed-app-stop`: run or stop the
-  debug app in the machine's GNOME session (unit
-  `torchsnap-testbed-app`, log `~/.cache/torchsnap-testbed/app.log`).
+  build that the last successful `testbed-build` finished; start
+  refuses after a failed build. A running app keeps its old binary, so
+  restart it after a build. The app runs in the machine's GNOME session
+  (unit `torchsnap-testbed-app`, log `~/.cache/torchsnap-testbed/app.log`).
   Start merges `controlChannel.enabled` and `welcome.seenRevision` into
   the app's settings file there.
 - `just testbed-app-log [LINES]`: the end of the app's output.
@@ -94,7 +100,8 @@ is the full guide.
   sessions. Run it when a test is done.
 - `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
-  print `PASS`. Items 2 (build), R (reboot), U (undo provision steps)
+  print `PASS`. The items that start the app need a current build
+  (`just testbed-build`). Items 2 (build), R (reboot), U (undo provision steps)
   and P (reinstall tools, about 10 minutes) run only when named. A
   download step can fail on a DNS hiccup of the machine's Wi-Fi; rerun
   once.

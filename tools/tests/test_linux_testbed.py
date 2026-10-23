@@ -186,6 +186,12 @@ class TestbedHostCheck(unittest.TestCase):
     def test_provision_refuses_without_host(self):
         self.assert_host_refused(run(["provision"], self.stubs, unset=["TORCHSNAP_LINUX_HOST"]))
 
+    def test_build_refuses_without_host_before_building(self):
+        for args in (["build"], ["build", "--on-machine"]):
+            with self.subTest(args=args):
+                self.assert_host_refused(run(args, self.stubs, unset=["TORCHSNAP_LINUX_HOST"]))
+                self.assert_host_refused(run(args, self.stubs, env={"TORCHSNAP_LINUX_HOST": ""}))
+
 
 class TestbedSync(unittest.TestCase):
     def setUp(self):
@@ -256,6 +262,11 @@ class TestbedRecipes(unittest.TestCase):
         result = self.dry_run("testbed-build")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed build")
+
+    def test_testbed_build_on_the_machine_passes_the_flag(self):
+        result = self.dry_run("testbed-build", "--on-machine")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed build --on-machine")
 
     def test_testbed_control_passes_json_as_one_argument(self):
         result = self.dry_run("testbed-control", "query", '{"text": "a b"}')
@@ -1558,9 +1569,9 @@ class TestbedForwarding(unittest.TestCase):
             env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_LINUX_RUNNER": ""},
         )
 
-    def test_build_syncs_then_builds_on_the_machine(self):
+    def test_build_on_the_machine_syncs_then_builds_there(self):
         self.install_fake_pi()
-        result = self.call("build")
+        result = self.call("build", "--on-machine")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([os.path.basename(c[0]) for c in self.stubs.calls()], ["rsync", "ssh"])
         self.assertEqual(self.pi_calls(), [["build"]])
@@ -1584,6 +1595,214 @@ class TestbedForwarding(unittest.TestCase):
         result = self.call("app-start")
         self.assertEqual(result.returncode, 2)
         self.assertIn("run just testbed-sync first", result.stderr)
+
+
+# rsync 3 as Homebrew installs it: `--version` lists zstd on the line
+# after "Compress list:". Other calls log their argv and answer with
+# STUB_RSYNC_EXIT, or 1 when STUB_RSYNC_FAIL_ON is among the arguments.
+RSYNC3_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv) + "\\n")
+    if sys.argv[1:] == ["--version"]:
+        print("rsync  version 3.5.1  protocol version 33")
+        print("Capabilities:")
+        print("    64-bit files, 64-bit inums, symlinks, hardlinks")
+        print("Compress list:")
+        print("    zstd lz4 zlibx zlib none")
+        sys.exit(0)
+    fail_on = os.environ.get("STUB_RSYNC_FAIL_ON")
+    if fail_on and fail_on in sys.argv[1:]:
+        sys.exit(1)
+    sys.exit(int(os.environ.get("STUB_RSYNC_EXIT", "0")))
+    """
+)
+
+# macOS's /usr/bin/rsync, openrsync: no compress list.
+OPENRSYNC_STUB = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv) + "\\n")
+    if sys.argv[1:] == ["--version"]:
+        print("openrsync: protocol version 29")
+        print("rsync version 2.6.9 compatible")
+    """
+)
+
+# The container build: logs its argv and the work path it was given,
+# leaves a binary in the checkout's output and exits with
+# FAKE_BUILD_EXIT.
+FAKE_LINUX_BUILD = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv + ["WORKDIR=" + os.environ.get("TORCHSNAP_LINUX_BUILD_WORKDIR", "")]) + "\\n")
+    out = pathlib.Path(sys.argv[0]).resolve().parents[2] / "target" / "linux-build" / "debug" / "bin"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "torchsnap").write_text("ELF")
+    sys.exit(int(os.environ.get("FAKE_BUILD_EXIT", "0")))
+    """
+)
+
+# testbed-pi on the far end: logs its argv; `deploy-start` prints a line
+# of its own, as a runner may, and then FAKE_TREE_LINE (default: the
+# tree's path), and exits with FAKE_DEPLOY_START_EXIT.
+FAKE_PI = textwrap.dedent(
+    """\
+    #!/usr/bin/env bash
+    python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$HOME/pi-calls.jsonl"
+    if [ "$1" = deploy-start ]; then
+        echo "runner: running deploy-start"
+        echo "${FAKE_TREE_LINE:-$HOME/torchsnap}"
+        exit "${FAKE_DEPLOY_START_EXIT:-0}"
+    fi
+    """
+)
+
+
+class TestbedContainerBuild(unittest.TestCase):
+    """`testbed build` builds in the Mac's container and copies the
+    result to the machine; `--on-machine` builds on the machine."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="testbed-build-"))
+        self.repo = self.tmp / "repo"
+        (self.repo / "tools" / "linux-testbed").mkdir(parents=True)
+        shutil.copy(TESTBED, self.repo / "tools" / "linux-testbed" / "testbed")
+        fake_build = self.repo / "tools" / "linux-build" / "linux-build"
+        fake_build.parent.mkdir(parents=True)
+        fake_build.write_text(FAKE_LINUX_BUILD)
+        fake_build.chmod(0o755)
+        self.mac_home = self.tmp / "mac-home"
+        self.mac_home.mkdir()
+        self.remote_home = self.tmp / "remote-home"
+        pi = self.remote_home / "torchsnap" / "tools" / "linux-testbed" / "pi" / "testbed-pi"
+        pi.parent.mkdir(parents=True)
+        pi.write_text(FAKE_PI)
+        pi.chmod(0o755)
+        # Two PATH directories: an openrsync first, an rsync 3 after it.
+        self.stubs = Stubs([])
+        self.stubs.add("ssh", remote_ssh_stub(self.remote_home))
+        self.stubs.add("rsync", RSYNC3_STUB)
+        self.old_rsync_dir = self.tmp / "old-rsync"
+        self.old_rsync_dir.mkdir()
+        (self.old_rsync_dir / "rsync").write_text(OPENRSYNC_STUB)
+        (self.old_rsync_dir / "rsync").chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.tmp)
+
+    def environment(self, path, env=None):
+        environment = dict(os.environ)
+        environment.update({
+            "PATH": path,
+            "HOME": str(self.mac_home),
+            "STUB_LOG": str(self.stubs.log),
+            "TORCHSNAP_LINUX_HOST": "user@pi.local",
+            "TORCHSNAP_LINUX_RUNNER": "",
+        })
+        environment.update(env or {})
+        return environment
+
+    def build(self, *args, env=None, path=None):
+        path = path or f"{self.stubs.dir}{os.pathsep}{os.environ['PATH']}"
+        return subprocess.run(
+            [BASH, str(self.repo / "tools" / "linux-testbed" / "testbed"), "build", *args],
+            capture_output=True, text=True, env=self.environment(path, env), timeout=60,
+        )
+
+    def steps(self):
+        """Each logged call as a short name: rsync --version, rsync
+        (a transfer), ssh <testbed-pi subcommand>, linux-build."""
+        steps = []
+        for call in self.stubs.calls():
+            name = os.path.basename(call[0])
+            if name == "rsync":
+                steps.append("rsync --version" if call[1:] == ["--version"] else "rsync")
+            elif name == "ssh":
+                steps.append("ssh " + call[-1].rsplit(" ", 1)[-1])
+            else:
+                steps.append(name)
+        return steps
+
+    def pi_calls(self):
+        path = self.remote_home / "pi-calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_builds_in_the_container_at_the_machines_tree_path_and_copies_the_output(self):
+        result = self.build()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.steps(), [
+            "rsync --version", "rsync", "ssh deploy-start", "linux-build", "rsync", "ssh deploy-finish",
+        ])
+        calls = self.stubs.calls()
+        self.assertEqual(calls[3][1:], ["build", f"WORKDIR={self.remote_home}/torchsnap"])
+        self.assertEqual(calls[4][1:], [
+            "-a", "--delete", "--compress", "--compress-choice=zstd",
+            f"{self.repo}/target/linux-build/debug/", "user@pi.local:torchsnap/target/linux-build/debug/",
+        ])
+        self.assertEqual(self.pi_calls(), [["deploy-start"], ["deploy-finish"]])
+
+    def test_takes_the_first_rsync_with_zstd_for_the_sync_and_the_copy(self):
+        path = f"{self.old_rsync_dir}{os.pathsep}{self.stubs.dir}{os.pathsep}{os.environ['PATH']}"
+        result = self.build(path=path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        transfers = [c[0] for c in self.stubs.calls() if os.path.basename(c[0]) == "rsync" and c[1:] != ["--version"]]
+        self.assertEqual(transfers, [str(self.stubs.dir / "rsync")] * 2)
+
+    def test_without_an_rsync_with_zstd_it_stops_before_anything_runs(self):
+        # Only openrsync on PATH, next to the few tools the script needs
+        # before it looks for rsync.
+        tools = self.tmp / "tools"
+        tools.mkdir()
+        for name in ("dirname", "python3", "grep"):
+            os.symlink(shutil.which(name), tools / name)
+        result = self.build(path=f"{self.old_rsync_dir}{os.pathsep}{tools}")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("zstd", result.stderr)
+        self.assertIn("--on-machine", result.stderr)
+        self.assertEqual([s for s in self.steps() if s != "rsync --version"], [])
+
+    def test_a_failed_container_build_copies_nothing(self):
+        result = self.build(env={"FAKE_BUILD_EXIT": "3"})
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(self.steps(), ["rsync --version", "rsync", "ssh deploy-start", "linux-build"])
+
+    def test_a_failed_copy_does_not_finish_the_deploy(self):
+        result = self.build(env={"STUB_RSYNC_FAIL_ON": "--compress-choice=zstd"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("ssh deploy-finish", self.steps())
+        self.assertEqual(self.pi_calls(), [["deploy-start"]])
+
+    def test_a_tree_path_that_is_not_absolute_stops_before_the_build(self):
+        result = self.build(env={"FAKE_TREE_LINE": "welcome to the machine"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("welcome to the machine", result.stderr)
+        self.assertNotIn("linux-build", self.steps())
+
+    def test_a_failed_deploy_start_stops_before_the_build(self):
+        result = self.build(env={"FAKE_DEPLOY_START_EXIT": "3"})
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(self.steps(), ["rsync --version", "rsync", "ssh deploy-start"])
+
+    def test_on_the_machine_syncs_and_builds_there_with_any_rsync(self):
+        path = f"{self.old_rsync_dir}{os.pathsep}{self.stubs.dir}{os.pathsep}{os.environ['PATH']}"
+        result = self.build("--on-machine", path=path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("linux-build", self.steps())
+        self.assertEqual(self.pi_calls(), [["build"]])
+
+    def test_an_unknown_option_prints_usage_and_runs_nothing(self):
+        result = self.build("--bogus")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr.lower())
+        self.assertEqual(self.stubs.calls(), [])
 
 
 class ControlRequests(unittest.TestCase):
@@ -1705,6 +1924,190 @@ class AppSettings(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("already running", result.stderr)
         self.assertEqual(self.stubs.calls("systemd-run"), [])
+
+
+# just for the machine's build: logs its argv and whether the
+# current-build record exists while it runs; fails when
+# STUB_JUST_FAIL_ON is in its arguments.
+RECORD_JUST = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    record = os.path.join(os.environ["HOME"], ".cache", "torchsnap-testbed", "current-build")
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(sys.argv + ["record=" + ("yes" if os.path.exists(record) else "no")]) + "\\n")
+    fail_on = os.environ.get("STUB_JUST_FAIL_ON")
+    sys.exit(1 if fail_on and fail_on in " ".join(sys.argv[1:]) else 0)
+    """
+)
+
+
+class TestbedPiBuilds(unittest.TestCase):
+    """The machine records which build is current, the one built there or
+    the one the Mac deployed, and app-start runs only that one. The
+    machine-side scripts run from a copy in a temporary tree, so the
+    tree's build paths are temporary too."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.tree = self.tmp / "tree"
+        shutil.copytree(TESTBED_PI.parent, self.tree / "tools" / "linux-testbed" / "pi")
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.record = self.home / ".cache" / "torchsnap-testbed" / "current-build"
+        self.deploy = self.tree / "target" / "linux-build" / "debug"
+        self.container_binary = self.deploy / "bin" / "torchsnap"
+        self.machine_binary = self.tree / "src-tauri" / "target" / "debug" / "torchsnap"
+        self.stubs = Stubs([])
+        for name, text in (("systemctl", SYSTEMCTL), ("systemd-run", SYSTEMD_RUN), ("just", RECORD_JUST)):
+            self.stubs.add(name, text)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.tmp)
+
+    def call_pi(self, args, env=None):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "TORCHSNAP_TESTBED_APP_TIMEOUT": "1",
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment,
+                   script=self.tree / "tools" / "linux-testbed" / "pi" / "testbed-pi")
+
+    def write_record(self, kind):
+        self.record.parent.mkdir(parents=True, exist_ok=True)
+        self.record.write_text(kind + "\n")
+
+    def make_binary(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\n")
+        path.chmod(0o755)
+
+    def started_binary(self):
+        runs = self.stubs.calls("systemd-run")
+        return runs[0][-1] if runs else None
+
+    # app-start
+
+    def test_app_start_without_a_current_build_refuses(self):
+        self.make_binary(self.machine_binary)
+        result = self.call_pi(["app-start"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no current build on the machine; run just testbed-build", result.stderr)
+        self.assertIsNone(self.started_binary())
+
+    def test_app_start_runs_the_deployed_build_when_it_is_current(self):
+        self.make_binary(self.machine_binary)
+        self.make_binary(self.container_binary)
+        self.write_record("container")
+        self.call_pi(["app-start"])
+        self.assertEqual(self.started_binary(), str(self.container_binary))
+
+    def test_app_start_runs_the_machines_build_when_it_is_current(self):
+        self.make_binary(self.container_binary)
+        self.make_binary(self.machine_binary)
+        self.write_record("machine")
+        self.call_pi(["app-start"])
+        self.assertEqual(self.started_binary(), str(self.machine_binary))
+
+    def test_app_start_refuses_when_the_current_build_is_missing(self):
+        self.make_binary(self.machine_binary)
+        self.write_record("container")
+        result = self.call_pi(["app-start"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"the current build (container) is missing at {self.container_binary}", result.stderr)
+        self.assertIsNone(self.started_binary())
+
+    def test_app_start_refuses_an_unknown_record(self):
+        self.make_binary(self.machine_binary)
+        self.write_record("elsewhere")
+        result = self.call_pi(["app-start"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("elsewhere", result.stderr)
+        self.assertIsNone(self.started_binary())
+
+    def test_an_explicit_binary_wins_over_the_record(self):
+        explicit = self.tmp / "bin" / "torchsnap"
+        self.make_binary(explicit)
+        self.make_binary(self.container_binary)
+        self.write_record("container")
+        self.call_pi(["app-start"], env={"TORCHSNAP_TESTBED_APP_BINARY": str(explicit)})
+        self.assertEqual(self.started_binary(), str(explicit))
+
+    # build on the machine
+
+    def test_a_build_on_the_machine_clears_the_record_first_and_records_itself(self):
+        self.write_record("container")
+        result = self.call_pi(["build"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c[1:] for c in self.stubs.calls("just")], [
+            ["install", "record=no"],
+            ["build", "--config", '{"bundle":{"active":false}}', "record=no"],
+        ])
+        self.assertEqual(self.record.read_text().strip(), "machine")
+
+    def test_a_failed_build_on_the_machine_leaves_no_current_build(self):
+        self.write_record("container")
+        result = self.call_pi(["build"], env={"STUB_JUST_FAIL_ON": "build"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.record.exists())
+
+    # deploy from the Mac
+
+    def test_deploy_start_clears_the_record_and_prints_the_tree(self):
+        self.write_record("machine")
+        result = self.call_pi(["deploy-start"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], str(self.tree))
+        self.assertFalse(self.record.exists())
+        self.assertTrue((self.tree / "target" / "linux-build").is_dir())
+
+    def deployed(self, *archives):
+        self.make_binary(self.container_binary)
+        (self.deploy / "dev-gadgets").mkdir(parents=True)
+        for name in archives:
+            path = self.deploy / "dev-gadgets" / f"{name}.torchsnap"
+            path.write_text(name)
+            os.utime(path, (1_600_000_000, 1_600_000_000))
+
+    def tree_archives(self, *names):
+        gadgets = self.tree / "gadgets"
+        gadgets.mkdir(exist_ok=True)
+        for name in names:
+            (gadgets / f"{name}.torchsnap").write_text("old")
+
+    def test_deploy_finish_replaces_the_trees_gadget_archives_and_records_the_deploy(self):
+        self.deployed("hello-world", "zerotier")
+        self.tree_archives("hello-world", "calculator")
+        (self.tree / "gadgets" / "calculator").mkdir()
+        result = self.call_pi(["deploy-finish"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gadgets = self.tree / "gadgets"
+        self.assertEqual(sorted(p.name for p in gadgets.glob("*.torchsnap")),
+                         ["hello-world.torchsnap", "zerotier.torchsnap"])
+        self.assertEqual((gadgets / "hello-world.torchsnap").read_text(), "hello-world")
+        self.assertEqual((gadgets / "hello-world.torchsnap").stat().st_mtime, 1_600_000_000)
+        self.assertTrue((gadgets / "calculator").is_dir())
+        self.assertEqual(self.record.read_text().strip(), "container")
+
+    def test_deploy_finish_refuses_an_incomplete_deploy(self):
+        for missing in ("binary", "dev-gadgets"):
+            with self.subTest(missing=missing):
+                shutil.rmtree(self.tree / "target", ignore_errors=True)
+                self.deployed("hello-world")
+                if missing == "binary":
+                    self.container_binary.unlink()
+                else:
+                    shutil.rmtree(self.deploy / "dev-gadgets")
+                self.tree_archives("calculator")
+                result = self.call_pi(["deploy-finish"])
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("incomplete deploy", result.stderr)
+                self.assertFalse(self.record.exists())
+                self.assertTrue((self.tree / "gadgets" / "calculator.torchsnap").exists())
 
 
 def eval_answer(value):
@@ -2440,6 +2843,134 @@ class SelftestRepeat(unittest.TestCase):
         run(["1"], self.stubs, env={"TORCHSNAP_LINUX_HOST": "user@pi.local"}, script=SELFTEST)
         first_remote = " ".join(self.stubs.calls("ssh")[0][2:])
         self.assertIn("selftest-initial", first_remote)
+
+
+# The Mac-side testbed for self-test item 2, answering like a machine
+# that got the Mac's build. It logs every call. `build` refreshes the
+# Mac's binary unless FAKE_STALE is set and exits with FAKE_BUILD_EXIT.
+# `exec` answers the item's machine commands from the Mac's output:
+# the record (FAKE_RECORD), the deployed binary's size and mtime
+# (FAKE_MACHINE_STAT), the tree's gadget archives, and the running app's
+# binary next to the deployed one (FAKE_RUNNING_BINARY). `control`
+# answers `info` and, for the last `query`, a `snapshot` whose gadget
+# view belongs to the query's gadget unless FAKE_NO_VIEW names it.
+FAKE_SELFTEST_TESTBED = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys, time
+    here = pathlib.Path(sys.argv[0]).resolve().parent
+    out = here.parents[1] / "target" / "linux-build" / "debug"
+    state = pathlib.Path(os.environ["STUB_LOG"]).with_name("last-query")
+    deployed = "/home/someone/torchsnap/target/linux-build/debug/bin/torchsnap"
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(["testbed", *sys.argv[1:]]) + "\\n")
+    command, args = sys.argv[1], sys.argv[2:]
+    if command == "build":
+        if not os.environ.get("FAKE_STALE"):
+            os.utime(out / "bin" / "torchsnap")
+        sys.exit(int(os.environ.get("FAKE_BUILD_EXIT", "0")))
+    if command == "exec":
+        line = args[0]
+        if "is-active" in line:
+            sys.exit(3)
+        if "current-build" in line:
+            print(os.environ.get("FAKE_RECORD", "container"))
+        elif "/proc/" in line:
+            print(os.environ.get("FAKE_RUNNING_BINARY", deployed))
+            print(deployed)
+        elif "bin/torchsnap" in line:
+            st = (out / "bin" / "torchsnap").stat()
+            print(os.environ.get("FAKE_MACHINE_STAT", "%d %d" % (st.st_size, int(st.st_mtime))))
+        elif "gadgets" in line:
+            for p in sorted((out / "dev-gadgets").glob("*.torchsnap")):
+                print("%s %d" % (p.name, p.stat().st_size))
+        sys.exit(0)
+    if command == "control":
+        method = args[0]
+        if method == "info":
+            print(json.dumps({"result": {"pid": 4242}}))
+        elif method == "query":
+            state.write_text(json.loads(args[1])["text"])
+            print(json.dumps({"result": {"ok": True}}))
+        elif method == "snapshot":
+            query = state.read_text() if state.exists() else ""
+            gadget = {"=2+3": "calculator", "!b2": "hello-world"}.get(query)
+            view = None if gadget is None or gadget == os.environ.get("FAKE_NO_VIEW") else {"gadgetId": gadget, "view": "v"}
+            print(json.dumps({"result": {"query": query, "searching": False, "gadgetView": view}}))
+        else:
+            print(json.dumps({"result": {"ok": True}}))
+    """
+)
+
+
+class SelftestBuildItem(unittest.TestCase):
+    """Self-test item 2 against a fake testbed: it passes only when the
+    machine got the Mac's fresh build, records it as current, runs it,
+    and its app finds a bundled and a development gadget."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="testbed-item2-"))
+        scripts = self.tmp / "tools" / "linux-testbed"
+        scripts.mkdir(parents=True)
+        shutil.copy(SELFTEST, scripts / "selftest")
+        (scripts / "testbed").write_text(FAKE_SELFTEST_TESTBED)
+        (scripts / "testbed").chmod(0o755)
+        out = self.tmp / "target" / "linux-build" / "debug"
+        (out / "bin").mkdir(parents=True)
+        (out / "bin" / "torchsnap").write_text("ELF")
+        # Older than any run, so only a build that writes it again
+        # passes.
+        os.utime(out / "bin" / "torchsnap", (1_600_000_000, 1_600_000_000))
+        (out / "dev-gadgets").mkdir()
+        (out / "dev-gadgets" / "hello-world.torchsnap").write_text("hw")
+        self.stubs = Stubs([])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.tmp)
+
+    def item_2(self, **env):
+        environment = {"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_SELFTEST_VIEW_TIMEOUT": "1"}
+        environment.update(env)
+        return run(["2"], self.stubs, env=environment, script=self.tmp / "tools" / "linux-testbed" / "selftest")
+
+    def test_passes_when_the_machine_runs_the_fresh_deployed_build(self):
+        result = self.item_2()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS item 2", result.stdout)
+        # The first call records the desktop's state for the whole run.
+        calls = [c[1:] for c in self.stubs.calls("testbed")][1:]
+        self.assertEqual(calls[0], ["build"])
+        self.assertIn(["app-start"], calls)
+        queries = [c[2] for c in calls if c[:2] == ["control", "query"]]
+        self.assertEqual(queries, ['{"text": ""}', '{"text": "=2+3"}', '{"text": ""}', '{"text": "!b2"}', '{"text": ""}'])
+        # The app did not run before, so the item stops it again.
+        self.assertEqual(calls[-1], ["app-stop"])
+
+    def assert_fails(self, result, text):
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL item 2", result.stdout)
+        self.assertIn(text, result.stdout)
+
+    def test_a_failed_build_fails(self):
+        self.assert_fails(self.item_2(FAKE_BUILD_EXIT="1"), "the build failed")
+
+    def test_a_build_older_than_the_run_fails(self):
+        self.assert_fails(self.item_2(FAKE_STALE="1"), "older than the build's start")
+
+    def test_a_deployed_binary_that_differs_fails(self):
+        self.assert_fails(self.item_2(FAKE_MACHINE_STAT="1 2"), "differs from the Mac's")
+
+    def test_another_current_build_fails(self):
+        self.assert_fails(self.item_2(FAKE_RECORD="machine"), "current build is 'machine'")
+
+    def test_an_app_running_another_binary_fails(self):
+        self.assert_fails(self.item_2(FAKE_RUNNING_BINARY="/elsewhere/torchsnap"), "/elsewhere/torchsnap")
+
+    def test_a_gadget_the_app_does_not_open_fails(self):
+        for gadget in ("calculator", "hello-world"):
+            with self.subTest(gadget=gadget):
+                self.assert_fails(self.item_2(FAKE_NO_VIEW=gadget), gadget)
 
 
 class Clipboard(unittest.TestCase):

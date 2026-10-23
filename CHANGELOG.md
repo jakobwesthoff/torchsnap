@@ -51,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `just testbed-provision` installs the build tools, ydotool and GNOME
   with automatic login and RDP access there, `just testbed-reboot` and
   `just testbed-exec` reboot it and run commands on it,
-  `just testbed-build` builds a debug app there,
+  `just testbed-build` builds a debug app in the Mac's Linux container
+  and copies it there (`--on-machine`: builds it there),
   `just testbed-app-start`, `testbed-app-stop` and `testbed-app-log` run
   it in the GNOME session, `just testbed-control` drives it through its
   control socket, `just testbed-screenshot`, `testbed-launcher-state`,

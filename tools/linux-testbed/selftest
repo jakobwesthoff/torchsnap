@@ -14,8 +14,9 @@
 #
 # Items:
 #   1   provisioning twice changes nothing on the second run
-#   2   sync and build: a debug binary newer than the build's start
-#       (only when named)
+#   2   a build in the Mac's container reaches the machine as the current
+#       build, and the app started from it opens a bundled and a
+#       development gadget (only when named)
 #   W   the launcher, shown through the control socket, is among the
 #       app's windows, with a size and keyboard focus
 #   4   the launcher opens through the control socket with focus, shows
@@ -442,21 +443,86 @@ item_E() {
     pass E
 }
 
-# A build after a sync has to leave a debug binary written by this build.
+# The build in the Mac's container has to reach the machine as the
+# current build: the Mac's output written by this build, the same binary
+# (size and modification time, which rsync keeps) and the same
+# development gadget archives on the machine, and an app started
+# afterwards that runs that binary and opens a bundled gadget
+# (calculator, from the build's lib/) and a development one
+# (hello-world, from the tree's gadgets/). Both answer a prefix with a
+# gadget view: `=` the calculator's, `!` hello-world's.
+readonly mac_build="$repo_root/target/linux-build/debug"
+readonly view_timeout="${TORCHSNAP_SELFTEST_VIEW_TIMEOUT:-15}"
+
+# gadget_view_is TEXT GADGET: the launcher's snapshot shows GADGET's
+# view for the finished search for TEXT.
+gadget_view_is() {
+    local snapshot
+    snapshot="$("$testbed" control snapshot)" || return 1
+    python3 -c '
+import json, sys
+s = json.loads(sys.argv[1])["result"]
+view = s.get("gadgetView") or {}
+sys.exit(0 if not s["searching"] and s["query"] == sys.argv[2] and view.get("gadgetId") == sys.argv[3] else 1)
+' "$snapshot" "$1" "$2"
+}
+
 item_2() {
-    local started built
-    if ! started="$(on_machine 'date +%s')"; then
-        fail 2 "SETUP: could not read the machine's clock"
-        return
-    fi
+    local started mac_stat machine_stat record mac_archives machine_archives was_running pid exes text gadget problem=""
+    started="$(date +%s)"
     if ! "$testbed" build; then
         fail 2 "the build failed (see above)"
         return
     fi
-    built="$(on_machine 'stat -c %Y "$HOME/torchsnap/src-tauri/target/debug/torchsnap"')" \
-        || { fail 2 "no debug binary after the build"; return; }
-    [ "$built" -ge "$started" ] \
-        || { fail 2 "the debug binary is older than the build ($built < $started)"; return; }
+    mac_stat="$(python3 -c 'import os, sys; s = os.stat(sys.argv[1]); print("%d %d" % (s.st_size, int(s.st_mtime)))' "$mac_build/bin/torchsnap")" \
+        || { fail 2 "no binary in target/linux-build/debug after the build"; return; }
+    [ "${mac_stat#* }" -ge "$started" ] \
+        || { fail 2 "the Mac's binary is older than the build's start (${mac_stat#* } < $started)"; return; }
+
+    record="$(on_machine 'cat ~/.cache/torchsnap-testbed/current-build')"
+    [ "$record" = container ] || { fail 2 "the machine's current build is '$record', not container"; return; }
+    machine_stat="$(on_machine 'stat -c "%s %Y" "$HOME/torchsnap/target/linux-build/debug/bin/torchsnap"')"
+    [ "$machine_stat" = "$mac_stat" ] \
+        || { fail 2 "the machine's binary ($machine_stat) differs from the Mac's ($mac_stat)"; return; }
+    mac_archives="$(python3 -c '
+import pathlib, sys
+for p in sorted(pathlib.Path(sys.argv[1]).glob("*.torchsnap")):
+    print("%s %d" % (p.name, p.stat().st_size))
+' "$mac_build/dev-gadgets")"
+    machine_archives="$(on_machine 'cd "$HOME/torchsnap/gadgets" && for f in *.torchsnap; do [ -f "$f" ] && stat -c "%n %s" "$f"; done | LC_ALL=C sort')"
+    [ "$machine_archives" = "$mac_archives" ] \
+        || { fail 2 "the machine's gadget archives ($(tr '\n' ' ' <<<"$machine_archives")) differ from the Mac's ($(tr '\n' ' ' <<<"$mac_archives"))"; return; }
+
+    # The app runs the new build only after a restart.
+    was_running=no
+    on_machine 'systemctl --user is-active --quiet torchsnap-testbed-app' && was_running=yes
+    "$testbed" app-stop >/dev/null
+    "$testbed" app-start >/dev/null || { fail 2 "app-start failed"; return; }
+    pid="$("$testbed" control info | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["pid"])')"
+    exes="$(on_machine "readlink /proc/$pid/exe; readlink -f \"\$HOME/torchsnap/target/linux-build/debug/bin/torchsnap\"")"
+    if [ "$(sed -n 1p <<<"$exes")" != "$(sed -n 2p <<<"$exes")" ]; then
+        problem="the app runs $(sed -n 1p <<<"$exes"), not $(sed -n 2p <<<"$exes")"
+    else
+        "$testbed" control show >/dev/null
+        for text in "=2+3 calculator" "!b2 hello-world"; do
+            gadget="${text#* }"
+            text="${text%% *}"
+            # A query that replaces one in another gadget's prefix mode
+            # reaches the new gadget, but the launcher's input keeps the
+            # old prefix (`!b2` after `=2+3` shows `=b2`), so each query
+            # starts from an empty input.
+            "$testbed" control query '{"text": ""}' >/dev/null
+            "$testbed" control query "{\"text\": \"$text\"}" >/dev/null
+            if ! wait_until "$view_timeout" gadget_view_is "$text" "$gadget"; then
+                problem="the app does not open $gadget for '$text' within ${view_timeout}s"
+                break
+            fi
+        done
+        "$testbed" control query '{"text": ""}' >/dev/null
+        "$testbed" control dismiss >/dev/null
+    fi
+    [ "$was_running" = yes ] || "$testbed" app-stop >/dev/null
+    [ -z "$problem" ] || { fail 2 "$problem"; return; }
     pass 2
 }
 

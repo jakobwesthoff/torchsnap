@@ -30,13 +30,15 @@ testbed-reboot:
 testbed-exec COMMAND:
     tools/linux-testbed/testbed exec {{ quote(COMMAND) }}
 
-# The build installs dependencies, builds every gadget and a debug app
-# without bundling: `just install`, then `just build` with
-# `bundle.active` off.
+# The build runs `just linux-build` in the Mac's Linux container and
+# copies the debug app to the testbed. `--on-machine` builds there
+# instead: `just install`, then `just build` with `bundle.active` off.
+# `testbed-app-start` runs whichever of the two finished last.
 
-# Sync, then build gadgets and a debug app on the Linux testbed
-testbed-build:
-    tools/linux-testbed/testbed build
+# Sync, build a debug app in the Mac's Linux container and copy it to the Linux testbed (--on-machine: build there)
+[arg('where', long='on-machine', value='on-machine')]
+testbed-build where="container":
+    tools/linux-testbed/testbed build {{ if where == "on-machine" { "--on-machine" } else { "" } }}
 
 # Start the debug app in the Linux testbed's desktop session (control socket on)
 testbed-app-start:

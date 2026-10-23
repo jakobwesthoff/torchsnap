@@ -11,8 +11,12 @@
 # Usage:
 #   testbed-pi env                    print the session variables the testbed uses
 #   testbed-pi session-ready          exit 0 once the desktop session takes input
-#   testbed-pi build                  install dependencies, build gadgets and a debug app
-#   testbed-pi app-start              start the debug app in the desktop session
+#   testbed-pi build                  install dependencies, build gadgets and a debug app,
+#                                     record it as the current build
+#   testbed-pi deploy-start           forget the current build before the Mac copies
+#                                     its build here; print the tree's path
+#   testbed-pi deploy-finish          take the copied build's gadgets, record it as current
+#   testbed-pi app-start              start the current build in the desktop session
 #   testbed-pi app-stop               stop it
 #   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
 #   testbed-pi control METHOD [JSON]  one request to the app's control socket
@@ -124,21 +128,97 @@ wait_for() {
 # Build
 # =========================================================
 
-# One function for the whole build, so a different way of building (for
-# example on another machine) can take its place. `just install` runs
-# every time: after a lockfile change the build needs the new packages.
+# Two builds can be on the machine: one built here (`build`) and one the
+# Mac built in its Linux container and copied into the tree's `target/`
+# (`deploy-start`, the copy, `deploy-finish`). The record names the one
+# that finished last, and `app-start` runs only that one. Every build
+# removes the record before it changes anything and writes it once it
+# has succeeded, so after a failed or interrupted build there is no
+# current build and `app-start` refuses instead of running an older one.
+readonly current_build_record="$state_dir/current-build"
+readonly deploy_dir="$tree_dir/target/linux-build/debug"
+
+# build_binary KIND: the binary of the build the record names.
+build_binary() {
+    case "$1" in
+        container) echo "$deploy_dir/bin/torchsnap" ;;
+        machine) echo "$tree_dir/src-tauri/target/debug/torchsnap" ;;
+        *) return 1 ;;
+    esac
+}
+
+record_build() {
+    mkdir -p "$state_dir"
+    echo "$1" >"$current_build_record"
+}
+
+# `just install` runs every time: after a lockfile change the build
+# needs the new packages.
 cmd_build() {
+    rm -f "$current_build_record"
     cd "$tree_dir"
     just install
     just build --config '{"bundle":{"active":false}}'
+    record_build machine
+}
+
+# The Mac builds at the path this prints and then copies its output to
+# `deploy_dir`.
+cmd_deploy_start() {
+    rm -f "$current_build_record"
+    mkdir -p "$(dirname "$deploy_dir")"
+    echo "$tree_dir"
+}
+
+# A debug binary loads development gadgets from the tree's `gadgets/`, as
+# the archives a build leaves there. The copied build brings those of
+# the gadgets `gadgets/bundled.toml` does not list; the listed ones are
+# in its `lib/`, which the app reads first. Archives from an earlier
+# build go, so the tree holds exactly the copied build's.
+cmd_deploy_finish() {
+    if [ ! -x "$deploy_dir/bin/torchsnap" ] || [ ! -d "$deploy_dir/dev-gadgets" ]; then
+        echo "testbed-pi: incomplete deploy in $deploy_dir (needs bin/torchsnap and dev-gadgets/); run just testbed-build" >&2
+        return 1
+    fi
+    mkdir -p "$tree_dir/gadgets"
+    rm -f "$tree_dir"/gadgets/*.torchsnap
+    local archive
+    for archive in "$deploy_dir"/dev-gadgets/*.torchsnap; do
+        [ -f "$archive" ] || continue
+        cp -p "$archive" "$tree_dir/gadgets/"
+    done
+    record_build container
 }
 
 # =========================================================
 # The app
 # =========================================================
 
-readonly app_binary="${TORCHSNAP_TESTBED_APP_BINARY:-$tree_dir/src-tauri/target/debug/torchsnap}"
 readonly app_timeout="${TORCHSNAP_TESTBED_APP_TIMEOUT:-60}"
+
+# The binary app-start runs: the current build, or
+# TORCHSNAP_TESTBED_APP_BINARY when set (the tests use it).
+current_app_binary() {
+    if [ -n "${TORCHSNAP_TESTBED_APP_BINARY:-}" ]; then
+        echo "$TORCHSNAP_TESTBED_APP_BINARY"
+        return
+    fi
+    if [ ! -s "$current_build_record" ]; then
+        echo "testbed-pi: no current build on the machine; run just testbed-build" >&2
+        return 1
+    fi
+    local kind binary
+    kind="$(cat "$current_build_record")"
+    if ! binary="$(build_binary "$kind")"; then
+        echo "testbed-pi: unknown build '$kind' in $current_build_record; run just testbed-build" >&2
+        return 1
+    fi
+    if [ ! -x "$binary" ]; then
+        echo "testbed-pi: the current build ($kind) is missing at $binary; run just testbed-build" >&2
+        return 1
+    fi
+    echo "$binary"
+}
 
 # The app in the desktop session, or in the headless session (--headless;
 # see `use_headless_session`, which also points XDG_DATA_HOME at the
@@ -187,6 +267,8 @@ cmd_app_start() {
         echo "testbed-pi: the app is already running ($app_unit)" >&2
         return 1
     fi
+    local app_binary
+    app_binary="$(current_app_binary)" || return 1
     [ -x "$app_binary" ] || { echo "testbed-pi: no debug build at $app_binary; run just testbed-build" >&2; return 1; }
     cmd_merge_app_settings
     mkdir -p "$state_dir"
@@ -850,6 +932,8 @@ case "$subcommand" in
         desk_session_ready
         ;;
     build) cmd_build ;;
+    deploy-start) cmd_deploy_start ;;
+    deploy-finish) cmd_deploy_finish ;;
     app-start) cmd_app_start ;;
     app-stop) cmd_app_stop ;;
     app-log) cmd_app_log "$@" ;;

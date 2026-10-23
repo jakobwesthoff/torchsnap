@@ -61,6 +61,11 @@ path where the same tree sits on the target machine and copy
 the gadgets `gadgets/bundled.toml` does not list there as well; the
 listed ones come from `lib/Torchsnap/gadgets/`, which it reads first.
 Changing the path makes the next build compile from scratch.
+`just testbed-build` does both for the Linux testbed: it builds at the
+path of the testbed's tree, copies the output into that tree's
+`target/linux-build/debug/` and the archives of `dev-gadgets/` into its
+`gadgets/`
+([How to test Torchsnap on a Raspberry Pi](Howto-test-on-a-raspberry-pi.md)).
 
 Only one build runs at a time: a second one fails at `docker run`
 because the container name `torchsnap-linux-build` is taken.
