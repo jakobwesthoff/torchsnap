@@ -86,6 +86,18 @@ WIT: same text with `///` prefix.
 No header: `.json`, `.toml`, `.lock`, `.md`, images, other non-source
 config.
 
+## Linux support
+
+- Linux support is built one desktop environment at a time, in this
+  order: GNOME, labwc, X11, KDE. On each, first how the app looks, how
+  it is invoked and how it renders, then app discovery, settings
+  discovery and the remaining features; then the next desktop. Refactor
+  when a later desktop needs it. Once all are done, test all of them
+  again.
+- When work on one desktop finds something another Linux desktop needs
+  in order to work, file a todo for it right away, naming the desktops
+  it affects.
+
 ## Gadgets
 
 - Build with plain `cargo build --release` in `gadgets/`;
