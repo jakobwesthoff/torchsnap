@@ -29,4 +29,4 @@ Release builds take roughly twice the gadget-build time they need to; no correct
 
 ## Suggested fix
 
-Invert the order and make staging a pure copy step: run `build-gadgets` first (builds *everything* once), then have `stage-bundled-gadgets` only validate the list and `cp` the already-produced archives instead of calling `build-gadget` again. That preserves the standalone behavior of `just stage-bundled-gadgets` less strictly. If standalone freshness matters, keep the build call there and have `build-gadgets` accept an exclude list instead.
+Invert the order and make staging a pure copy step: run `build-gadgets` first (builds *everything* once), then have `stage-bundled-gadgets` only validate the list and hand the already-produced archives to `tools/stage-bundled-archives` instead of calling `build-gadget` again. That preserves the standalone behavior of `just stage-bundled-gadgets` less strictly. If standalone freshness matters, keep the build call there and have `build-gadgets` accept an exclude list instead.
