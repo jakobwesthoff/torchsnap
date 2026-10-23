@@ -126,6 +126,54 @@ desk_pointer() {
     desk_eval '/*pointer*/ global.get_pointer().slice(0, 2)'
 }
 
+# =========================================================
+# Tray
+# =========================================================
+
+# GNOME Shell shows tray icons (StatusNotifierItems) only with the
+# AppIndicator extension, which Debian ships as this uuid.
+readonly appindicator_uuid="ubuntu-appindicators@ubuntu.com"
+
+desk_tray_state() {
+    gnome-extensions info "$appindicator_uuid" | sed -n 's/^ *State: //p'
+}
+
+desk_tray_switch() {
+    local want="$1"
+    if [ "$want" = "on" ]; then
+        gnome-extensions enable "$appindicator_uuid"
+        wait_for 10 tray_state_is ACTIVE \
+            || { echo "testbed-pi: the AppIndicator extension did not become ACTIVE" >&2; return 1; }
+    else
+        gnome-extensions disable "$appindicator_uuid"
+        wait_for 10 tray_state_is INACTIVE \
+            || { echo "testbed-pi: the AppIndicator extension did not become INACTIVE" >&2; return 1; }
+    fi
+}
+
+tray_state_is() {
+    [ "$(desk_tray_state)" = "$1" ]
+}
+
+# The extension adds one item per tray icon to the top bar's status area,
+# keyed `appindicator-…`; Torchsnap's carries the title `torchsnap`. The
+# item's `_indicator` is the extension's internal object (extension 59).
+desk_tray_items() {
+    desk_eval '/*tray*/ Object.entries(Main.panel.statusArea).filter(([k]) => k.startsWith("appindicator")).map(([k, v]) => { const [x, y] = v.get_transformed_position(); const [w, h] = v.get_transformed_size(); return {key: k, title: v._indicator ? v._indicator.title : null, x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h), menuOpen: v.menu ? v.menu.isOpen : false}; })'
+}
+
+# Prints {"x", "y", "width", "height", "menuOpen"} of Torchsnap's tray
+# icon in logical pixels.
+desk_tray_icon() {
+    desk_tray_items | python3 -c '
+import json, sys
+item = next((i for i in json.load(sys.stdin) or [] if i["title"] == "torchsnap"), None)
+if item is None:
+    sys.exit("testbed-pi: no Torchsnap tray icon in the top bar")
+print(json.dumps({k: item[k] for k in ("x", "y", "width", "height", "menuOpen")}))
+'
+}
+
 # The session takes input once GNOME Shell has finished starting and the
 # overview it opens after login is closed again (the testbed extension
 # closes it). An open overview would take every typed key into its search.

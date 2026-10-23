@@ -56,7 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `testbed-windows` and `testbed-eval` observe it, `just testbed-type`,
   `testbed-key`, `testbed-pointer` and `testbed-click` give it keyboard
   and pointer input, `just testbed-clipboard-set` and
-  `testbed-clipboard-get` set and read the clipboard, and
+  `testbed-clipboard-get` set and read the clipboard, `just testbed-tray`,
+  `testbed-tray-icon` and `testbed-tray-click` switch GNOME's tray
+  support and use the app's tray icon, and
   `just testbed-selftest` checks the testbed. See
   `docs/Howto-test-on-a-raspberry-pi.md`.
 

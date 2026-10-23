@@ -240,6 +240,16 @@ class TestbedRecipes(unittest.TestCase):
         finally:
             stubs.cleanup()
 
+    def test_tray_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-tray", ["on"], "tools/linux-testbed/testbed tray on"),
+            ("testbed-tray-icon", [], "tools/linux-testbed/testbed tray-icon"),
+            ("testbed-tray-click", [], "tools/linux-testbed/testbed tray-click left"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_clipboard_recipes_call_the_script(self):
         for recipe, args, expected in (
             ("testbed-clipboard-set", ["a b"], "tools/linux-testbed/testbed clipboard-set 'a b'"),
@@ -1381,6 +1391,90 @@ class Input(unittest.TestCase):
         result = self.call_pi(["click", "10", "20", "right"], rules)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.ydotool_calls()[-1], ["click", "0xC1"])
+
+
+TRAY_ITEMS = [
+    {"key": "appindicator-:1.9@/org/ayatana/NotificationItem/other", "title": "nm-applet", "x": 700, "y": 0, "width": 48, "height": 35, "menuOpen": False},
+    {"key": "appindicator-:1.113@/org/ayatana/NotificationItem/tray_icon_tray_app_4892_1", "title": "torchsnap", "x": 785, "y": 0, "width": 48, "height": 35, "menuOpen": False},
+]
+
+
+class Tray(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.stubs = Stubs(["systemctl"])
+        for name, text in (("gdbus", RULE_GDBUS), ("ydotool", YDOTOOL)):
+            path = self.stubs.dir / name
+            path.write_text(text)
+            path.chmod(0o755)
+        # gnome-extensions reports the state STUB_EXTENSION_STATE.
+        extensions = self.stubs.dir / "gnome-extensions"
+        extensions.write_text(
+            STUB.replace(
+                'sys.stdout.write(os.environ.get(f"STUB_{key}_STDOUT", ""))',
+                'sys.stdout.write("  State: " + os.environ.get("STUB_EXTENSION_STATE", "ACTIVE") + "\\n" if sys.argv[1] == "info" else "")',
+            )
+        )
+        extensions.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, args, rules="[]", env=None):
+        environment = {
+            "HOME": str(self.home),
+            "TORCHSNAP_TESTBED_RUNTIME_DIR": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "STUB_EVAL_RULES": rules,
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+            "TORCHSNAP_TESTBED_INPUT_TIMEOUT": "1",
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def test_tray_on_enables_the_extension(self):
+        result = self.call_pi(["tray", "on"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.stubs.calls("gnome-extensions")[0][1:], ["enable", "ubuntu-appindicators@ubuntu.com"])
+
+    def test_tray_off_waits_for_the_extension_to_stop(self):
+        result = self.call_pi(["tray", "off"], env={"STUB_EXTENSION_STATE": "ACTIVE"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not become INACTIVE", result.stderr)
+
+    def test_tray_status(self):
+        result = self.call_pi(["tray", "status"], env={"STUB_EXTENSION_STATE": "INACTIVE"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "off")
+
+    def test_tray_icon_finds_torchsnaps_item(self):
+        result = self.call_pi(["tray-icon"], json.dumps([["/*tray*/", [TRAY_ITEMS]]]))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout), {"x": 785, "y": 0, "width": 48, "height": 35, "menuOpen": False}
+        )
+
+    def test_no_tray_icon(self):
+        result = self.call_pi(["tray-icon"], json.dumps([["/*tray*/", [TRAY_ITEMS[:1]]]]))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no Torchsnap tray icon", result.stderr)
+
+    def test_tray_click_clicks_the_icons_centre(self):
+        rules = json.dumps(
+            [["/*tray*/", [TRAY_ITEMS]], ["/*pointer*/", [[0, 1919], [0, 1919], [809, 1919], [809, 17]]]]
+        )
+        result = self.call_pi(["tray-click"], rules)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [c[1:] for c in self.stubs.calls("ydotool")],
+            [
+                ["mousemove", "-x", "-100000", "-y", "100000"],
+                ["mousemove", "-x", "809", "-y", "0"],
+                ["mousemove", "-x", "0", "-y", "-1902"],
+                ["click", "0xC0"],
+            ],
+        )
 
 
 class Clipboard(unittest.TestCase):

@@ -261,7 +261,24 @@ These use `wl-copy` and `wl-paste` in the Pi's GNOME session.
 the launcher: on GNOME 48 it did in 4 of 8 tries, so set the clipboard
 before opening the launcher.
 
-## 9. Remote viewing over RDP
+## 9. Tray
+
+```sh
+just testbed-tray on          # or off, or status
+just testbed-tray-icon
+just testbed-tray-click       # or right, middle
+```
+
+GNOME shows tray icons only with its AppIndicator extension. Debian's
+GNOME, like Fedora's, does not turn it on; Ubuntu ships it on.
+Provisioning installs it and leaves it off, and `testbed-tray` switches
+it, so the app can be tested both ways. `testbed-tray-icon` prints the
+position of the app's icon in the top bar, in logical pixels, and
+whether its menu is open; it fails when there is no icon.
+`testbed-tray-click` clicks the icon's centre. Self-test items 3 and 5
+switch the extension on for themselves and back to what they found.
+
+## 10. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -270,7 +287,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 10. Self-test
+## 11. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -288,6 +305,8 @@ unknown item.
 | 4 | Opens the launcher through the control socket and checks that it has focus and changes the screen, types a query and checks that the launcher shows it, then presses Escape twice: the first clears the query, the second hides the launcher. |
 | L | Opens GNOME Shell's run dialog, types `yz-@[]` and reads the text back from the dialog; it must be exactly that, and the keyboard layout must be the one from before. |
 | E | Asks for the launcher state, the app's windows and the clipboard once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
+| 3 | Needs the tray on, then off: with the AppIndicator extension on, the app's icon is in the top bar; with it off, there is no icon and its area looks different. |
+| 5 | Needs the tray on: a click on the app's tray icon opens its menu and changes the screen, Escape closes the menu. |
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |

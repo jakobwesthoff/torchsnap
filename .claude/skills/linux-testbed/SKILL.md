@@ -70,6 +70,11 @@ is the full guide.
   query, the second hides it.
 - `just testbed-pointer X Y`, `just testbed-click X Y [left|right|middle]`:
   logical pixels.
+- `just testbed-tray on|off|status`: GNOME's AppIndicator extension,
+  without which GNOME shows no tray icons. Off by default, as on stock
+  GNOME; test the app both ways and switch back to what you found.
+  `just testbed-tray-icon` (position, menu open) and
+  `just testbed-tray-click [button]`.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:
   the session clipboard. Setting it can close the launcher; set it
   before opening the launcher.

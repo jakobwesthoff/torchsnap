@@ -95,6 +95,21 @@ testbed-pointer X Y:
 testbed-click X Y BUTTON="left":
     tools/linux-testbed/testbed click {{ X }} {{ Y }} {{ BUTTON }}
 
+# GNOME shows tray icons only with its AppIndicator extension, which
+# provisioning installs but leaves off, as stock GNOME has it.
+
+# Switch the Linux testbed's tray support on or off, or print its state (on, off, status)
+testbed-tray STATE:
+    tools/linux-testbed/testbed tray {{ STATE }}
+
+# Print the position of the app's tray icon on the Linux testbed and whether its menu is open
+testbed-tray-icon:
+    tools/linux-testbed/testbed tray-icon
+
+# Click the app's tray icon on the Linux testbed
+testbed-tray-click BUTTON="left":
+    tools/linux-testbed/testbed tray-click {{ BUTTON }}
+
 # Put text on the Linux testbed's clipboard
 testbed-clipboard-set TEXT:
     tools/linux-testbed/testbed clipboard-set {{ quote(TEXT) }}

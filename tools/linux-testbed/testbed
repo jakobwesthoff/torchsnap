@@ -31,6 +31,9 @@
 #
 #   testbed clipboard-set TEXT
 #   testbed clipboard-get
+#   testbed tray on|off|status  the desktop's tray support (GNOME: AppIndicator extension)
+#   testbed tray-icon         position of the app's tray icon, and whether its menu is open
+#   testbed tray-click [left|right|middle]
 #
 #   type and key refuse (exit 4) unless the target has the keyboard.
 #
@@ -277,7 +280,7 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click)
         require_host
         run_pi "$subcommand" "$@"
         ;;

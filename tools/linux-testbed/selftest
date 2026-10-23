@@ -24,6 +24,10 @@
 #   E   machine-side commands answer the same with the runner's
 #       environment cleared
 #   6   text set on the clipboard through the recipe comes back unchanged
+#   3   needs the tray on, then off: the app's tray icon is in the top bar
+#       only with GNOME's AppIndicator extension
+#   5   needs the tray on: clicking the tray icon opens its menu, Escape
+#       closes it
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -40,7 +44,7 @@ testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly testbed repo_root
 
-default_items=(1 W 4 L E 6)
+default_items=(1 W 4 L E 6 3 5)
 
 pass() {
     echo "PASS item $1"
@@ -219,6 +223,70 @@ item_L() {
     [ "$layout_after" = "$layout_before" ] \
         || { fail L "the layout is $layout_after after typing, was $layout_before"; return; }
     pass L
+}
+
+# tray_needed ITEM STATE: switches the desktop's tray support to STATE for
+# an item and remembers what to switch back to in tray_restore.
+tray_needed() {
+    tray_before="$("$testbed" tray status)" || { fail "$1" "SETUP: tray status failed"; return 1; }
+    "$testbed" tray "$2" >/dev/null || { fail "$1" "SETUP: tray $2 failed"; return 1; }
+}
+
+tray_restore() {
+    [ -n "${tray_before:-}" ] && "$testbed" tray "$tray_before" >/dev/null
+    tray_before=""
+}
+
+tray_icon_shown() {
+    "$testbed" tray-icon >/dev/null 2>&1
+}
+
+# Needs tray support on, then checks it off: with the AppIndicator
+# extension the app's icon is in the top bar; without it (stock GNOME)
+# there is none, and the icon's area looks different.
+item_3() {
+    local icon area with_icon without_icon
+    tray_needed 3 on || return
+    app_up 3 || { tray_restore; return; }
+    wait_until 15 tray_icon_shown || { tray_restore; fail 3 "no tray icon with the AppIndicator extension on"; return; }
+    icon="$("$testbed" tray-icon)"
+    area="$(python3 -c 'import json, sys; i = json.loads(sys.argv[1]); print("%d,%d,%d,%d" % (i["x"], i["y"], i["width"], i["height"]))' "$icon")"
+    shot item3-topbar --area "0,0,$("$testbed" eval 'Main.layoutManager.primaryMonitor.width'),$("$testbed" eval 'Main.panel.height')" >/dev/null
+    with_icon="$(shot item3-icon --area "$area")"
+    "$testbed" tray off >/dev/null || { tray_restore; fail 3 "tray off failed"; return; }
+    without_icon="$(shot item3-no-icon --area "$area")"
+    tray_shown_after_off=0
+    tray_icon_shown && tray_shown_after_off=1
+    tray_restore
+    [ "$tray_shown_after_off" -eq 0 ] || { fail 3 "a tray icon is reported with the extension off"; return; }
+    differ "$with_icon" "$without_icon" || { fail 3 "the icon's area looks the same with and without the extension"; return; }
+    pass 3
+}
+
+# Needs tray support on: a click on the app's tray icon opens its menu,
+# Escape closes it.
+item_5() {
+    local before after
+    tray_needed 5 on || return
+    app_up 5 || { tray_restore; return; }
+    wait_until 15 tray_icon_shown || { tray_restore; fail 5 "SETUP: no tray icon"; return; }
+    menu_open() { "$testbed" tray-icon | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["menuOpen"] else 1)'; }
+    menu_closed() { ! menu_open; }
+    before="$(shot item5-before)"
+    "$testbed" tray-click >/dev/null || { tray_restore; fail 5 "tray-click failed"; return; }
+    if ! wait_until 10 menu_open; then
+        tray_restore
+        fail 5 "the tray menu did not open"
+        return
+    fi
+    after="$(shot item5-menu)"
+    "$testbed" key --shell-modal Escape >/dev/null
+    wait_until 10 menu_closed
+    local closed=$?
+    tray_restore
+    differ "$before" "$after" || { fail 5 "the screen looks the same with the menu open"; return; }
+    [ "$closed" -eq 0 ] || { fail 5 "Escape did not close the tray menu"; return; }
+    pass 5
 }
 
 # Text set on the machine's clipboard through the recipe comes back

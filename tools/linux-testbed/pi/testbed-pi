@@ -29,6 +29,10 @@
 #   testbed-pi pointer X Y            move the pointer to X,Y (logical pixels)
 #   testbed-pi click X Y [left|right|middle]
 #                                     move there and click
+#   testbed-pi tray on|off|status     switch or report the desktop's tray support
+#   testbed-pi tray-icon              {"x", "y", "width", "height", "menuOpen"} of the app's tray icon
+#   testbed-pi tray-click [left|right|middle]
+#                                     click the app's tray icon
 #   testbed-pi clipboard-set TEXT     put TEXT on the clipboard
 #   testbed-pi clipboard-get          print the clipboard's text
 
@@ -572,6 +576,32 @@ cmd_click() {
 }
 
 # =========================================================
+# Tray
+# =========================================================
+
+cmd_tray() {
+    case "${1:-}" in
+        on | off) desk_tray_switch "$1" ;;
+        status)
+            if tray_state_is ACTIVE; then echo on; else echo off; fi
+            ;;
+        *) usage ;;
+    esac
+}
+
+cmd_tray_click() {
+    local icon center
+    icon="$(desk_tray_icon)" || exit 1
+    center="$(python3 -c '
+import json, sys
+i = json.loads(sys.argv[1])
+print(i["x"] + i["width"] // 2, i["y"] + i["height"] // 2)
+' "$icon")"
+    # shellcheck disable=SC2086 # "X Y"
+    cmd_click $center "${1:-left}"
+}
+
+# =========================================================
 # Clipboard
 # =========================================================
 
@@ -658,6 +688,18 @@ case "$subcommand" in
     click)
         load_desktop
         cmd_click "$@"
+        ;;
+    tray)
+        load_desktop
+        cmd_tray "$@"
+        ;;
+    tray-icon)
+        load_desktop
+        desk_tray_icon
+        ;;
+    tray-click)
+        load_desktop
+        cmd_tray_click "$@"
         ;;
     clipboard-set) cmd_clipboard_set "$@" ;;
     clipboard-get) cmd_clipboard_get ;;
