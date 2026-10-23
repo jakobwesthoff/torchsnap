@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Builds and checks Torchsnap for Linux arm64 in a Docker container on
+# an Apple silicon Mac. This script runs on the Mac and only drives
+# Docker; the work inside the container is `in-container`, mounted from
+# this directory at `/linux-build`, so changing it needs no image
+# rebuild.
+#
+# Commands:
+#   image                 build the image (cached layers make this cheap)
+#   lint [--path DIR]     cargo check and clippy of DIR's src-tauri/ for Linux
+#   status                what B1's Docker objects and outputs take on disk
+#   clean [--all]         remove build output (--all: everything B1 owns)
+#
+# Environment:
+#   TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES   lint work volumes kept (default 3)
+#   TORCHSNAP_LINUX_BUILD_BUDGET_GB          disk budget in GB (default 40)
+#
+# This script runs under the bash 3.2 that macOS ships: no `mapfile`,
+# no associative arrays, and every possibly empty array is expanded as
+# "${arr[@]+"${arr[@]}"}" because bash 3.2 treats an empty "${arr[@]}"
+# as unset under `set -u`.
+
+set -euo pipefail
+
+usage() {
+    echo "usage: linux-build image | lint [--path DIR] | status | clean [--all]" >&2
+    exit 2
+}
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+repo=$(cd "$script_dir/../.." && pwd -P)
+
+image=torchsnap-linux-build:latest
+cargo_volume=torchsnap-linux-build-cargo
+bun_volume=torchsnap-linux-build-bun
+build_volume=torchsnap-linux-build-work
+lint_volume_prefix=torchsnap-linux-build-lint-
+
+# =========================================================================
+# What B1 owns
+# =========================================================================
+
+# The same Docker serves other projects, so nothing here is selected by
+# a global prune or by a loose name match. Every object carries a mark
+# the Dockerfile or this script put on it, and every removal checks the
+# exact name as well:
+#
+# - volumes are created with `owned_label` (lint volumes also with the
+#   checkout they belong to) and must match `owned_volume_re`;
+# - the image's untagged leftovers carry `owned_label` from the
+#   Dockerfile's LABEL;
+# - every RUN of the Dockerfile goes through a SHELL that names
+#   TORCHSNAP_LINUX_BUILD=1, which BuildKit copies into the description
+#   of each build cache record, so `cache_filter` selects exactly those.
+owned_label=org.torchsnap.linux-build=1
+checkout_label=org.torchsnap.linux-build.checkout
+owned_volume_re='^torchsnap-linux-build-(work|cargo|bun|lint-[0-9a-f]{8})$'
+cache_filter='description~=TORCHSNAP_LINUX_BUILD=1'
+helper=torchsnap-linux-build-helper
+
+# The limits. `-` rather than `:-`, so a variable set to an empty
+# string is rejected instead of silently replaced by the default.
+max_lint=${TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES-3}
+budget_gb=${TORCHSNAP_LINUX_BUILD_BUDGET_GB-40}
+
+validate_limits() {
+    local name value
+    for name in TORCHSNAP_LINUX_BUILD_MAX_LINT_VOLUMES TORCHSNAP_LINUX_BUILD_BUDGET_GB; do
+        case "$name" in
+            *MAX_LINT*) value=$max_lint ;;
+            *) value=$budget_gb ;;
+        esac
+        case "$value" in
+            '' | 0* | *[!0-9]*)
+                echo "linux-build: $name must be a positive whole number, not '$value'" >&2
+                exit 2
+                ;;
+        esac
+    done
+}
+
+# =========================================================================
+# Toolchain pin
+# =========================================================================
+
+# The image carries exactly the Rust release `rust-toolchain.toml` pins.
+# Only that file's single-line `channel = "…"` key is read, with sed,
+# so the Mac needs neither a TOML parser nor `node_modules` for
+# `tools/toml-get`.
+toolchain_channel() {
+    local file="$1"
+    sed -n 's/^channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$file" | head -n 1
+}
+
+pinned_channel() {
+    local channel
+    channel=$(toolchain_channel "$repo/rust-toolchain.toml")
+    if [ -z "$channel" ]; then
+        echo "linux-build: no channel = \"…\" line in $repo/rust-toolchain.toml" >&2
+        exit 1
+    fi
+    printf '%s' "$channel"
+}
+
+# =========================================================================
+# Sizes
+# =========================================================================
+
+# Docker reports sizes in decimal units ("664.5MB"); everything here is
+# kept in bytes and shown in the same decimal units.
+to_bytes() {
+    awk -v s="$1" 'BEGIN {
+        n = s + 0; u = s; sub(/^[0-9.]+/, "", u)
+        f["B"] = 1; f["kB"] = 1e3; f["KB"] = 1e3; f["MB"] = 1e6; f["GB"] = 1e9; f["TB"] = 1e12
+        printf "%.0f", n * ((u in f) ? f[u] : 1)
+    }'
+}
+
+human() {
+    awk -v b="$1" 'BEGIN {
+        if (b >= 1e9) printf "%.2f GB", b / 1e9
+        else if (b >= 1e6) printf "%.1f MB", b / 1e6
+        else if (b >= 1e3) printf "%.1f kB", b / 1e3
+        else printf "%d B", b
+    }'
+}
+
+builder=""
+current_builder() {
+    # The image build, `buildx du` and `buildx prune` must talk to the
+    # same BuildKit, so all three name the current context's builder
+    # instead of whatever `docker buildx use` last selected.
+    if [ -z "$builder" ]; then
+        builder=$(docker context show)
+    fi
+    printf '%s' "$builder"
+}
+
+image_bytes=""
+image_present() {
+    image_bytes=$(docker image inspect "$image" --format '{{.Size}}' 2>/dev/null) || return 1
+    [ -n "$image_bytes" ]
+}
+
+cache_bytes() {
+    local size total=0
+    for size in $(docker buildx du --builder "$(current_builder)" --filter "$cache_filter" \
+        --format '{{.Size}}' 2>/dev/null || true); do
+        total=$((total + $(to_bytes "$size")))
+    done
+    printf '%s' "$total"
+}
+
+# Parallel arrays describing B1's volumes: name, checkout (lint volumes),
+# size in bytes, last use (epoch seconds, empty when unknown) and state
+# (`alive`, `gone` after removal, `kept` when removal failed).
+vol_names=()
+vol_checkouts=()
+vol_sizes=()
+vol_last=()
+vol_state=()
+
+load_volumes() {
+    local name checkout fixed known df size i
+    vol_names=()
+    vol_checkouts=()
+    while IFS=$'\t' read -r name checkout; do
+        [ -n "$name" ] || continue
+        [[ $name =~ $owned_volume_re ]] || continue
+        vol_names+=("$name")
+        vol_checkouts+=("$checkout")
+    done < <(docker volume ls --filter "label=$owned_label" \
+        --format "{{.Name}}\t{{.Label \"$checkout_label\"}}")
+
+    # Volumes from before the label existed are adopted by their exact
+    # fixed names only, never lint volumes, whose names are a pattern.
+    for fixed in "$build_volume" "$cargo_volume" "$bun_volume"; do
+        known=no
+        for name in "${vol_names[@]+"${vol_names[@]}"}"; do
+            [ "$name" = "$fixed" ] && known=yes
+        done
+        if [ "$known" = no ] && docker volume inspect "$fixed" >/dev/null 2>&1; then
+            vol_names+=("$fixed")
+            vol_checkouts+=("")
+        fi
+    done
+
+    vol_sizes=()
+    vol_last=()
+    vol_state=()
+    [ ${#vol_names[@]} -gt 0 ] || return 0
+    # Docker's template parser rejects a quoted "\n" here; println ends
+    # each line instead.
+    df=$(docker system df -v --format '{{range .Volumes}}{{.Name}} {{.Size}}{{println}}{{end}}')
+    for i in "${!vol_names[@]}"; do
+        size=$(printf '%s\n' "$df" | awk -v n="${vol_names[$i]}" '$1 == n { print $2; exit }')
+        vol_sizes+=("$(to_bytes "${size:-0B}")")
+        vol_last+=("")
+        vol_state+=(alive)
+    done
+}
+
+# `in-container` touches `.linux-build-last-use` in its work volume on
+# every run. Reading it needs a container; it runs from B1's own image,
+# offline, and only with the volumes just listed, since mounting a
+# volume that no longer exists would create it.
+load_last_use() {
+    local mounts=() out i
+    [ ${#vol_names[@]} -gt 0 ] || return 0
+    for i in "${!vol_names[@]}"; do
+        mounts+=(--mount "type=volume,src=${vol_names[$i]},dst=/v/${vol_names[$i]},readonly")
+    done
+    # shellcheck disable=SC2016 # expanded by the container's shell
+    out=$(docker run --name "$helper" --rm --network none --pull never "${mounts[@]}" "$image" \
+        sh -c 'for d in /v/*; do printf "%s %s\n" "${d#/v/}" "$(stat -c %Y "$d/.linux-build-last-use" 2>/dev/null || echo 0)"; done' \
+        2>/dev/null) || return 0
+    for i in "${!vol_names[@]}"; do
+        vol_last[i]=$(printf '%s\n' "$out" | awk -v n="${vol_names[$i]}" '$1 == n { print $2; exit }')
+    done
+}
+
+is_lint_volume() {
+    case "$1" in
+        "$lint_volume_prefix"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# =========================================================================
+# Status
+# =========================================================================
+
+describe_last_use() {
+    local name="$1" epoch="$2" when
+    case "$name" in
+        "$cargo_volume" | "$bun_volume")
+            printf 'download cache, shared by all runs'
+            return
+            ;;
+    esac
+    case "$epoch" in
+        '') printf 'last use unknown' ;;
+        0) printf 'last use never' ;;
+        *)
+            # GNU date (Homebrew's coreutils, often first on PATH) reads
+            # `-d @epoch`; macOS's own date reads `-r epoch`.
+            when=$(date -d "@$epoch" '+%Y-%m-%d %H:%M' 2>/dev/null || date -r "$epoch" '+%Y-%m-%d %H:%M')
+            printf 'last use %s' "$when"
+            ;;
+    esac
+}
+
+cmd_status() {
+    local total=0 cache i line dir kib
+    echo "B1 Docker objects and outputs (outputs in other checkouts are not counted):"
+    if image_present; then
+        printf '  %-7s %-48s %10s\n' image "$image" "$(human "$image_bytes")"
+        total=$((total + image_bytes))
+    else
+        printf '  %-7s %-48s %10s\n' image "$image" "absent"
+    fi
+    cache=$(cache_bytes)
+    printf '  %-7s %-48s %10s\n' cache "build cache records marked TORCHSNAP_LINUX_BUILD=1" "$(human "$cache")"
+    total=$((total + cache))
+
+    load_volumes
+    if [ -n "$image_bytes" ]; then
+        load_last_use
+    fi
+    for i in "${!vol_names[@]}"; do
+        line=$(describe_last_use "${vol_names[$i]}" "${vol_last[$i]}")
+        if [ -n "${vol_checkouts[$i]}" ]; then
+            if [ -d "${vol_checkouts[$i]}" ]; then
+                line="$line, checkout ${vol_checkouts[$i]} (exists)"
+            else
+                line="$line, checkout ${vol_checkouts[$i]} (gone)"
+            fi
+        fi
+        printf '  %-7s %-48s %10s  %s\n' volume "${vol_names[$i]}" "$(human "${vol_sizes[$i]}")" "$line"
+        total=$((total + vol_sizes[i]))
+    done
+
+    for dir in "$repo"/target/linux-build/*/; do
+        [ -d "$dir" ] || continue
+        kib=$(du -sk "$dir" | awk '{ print $1 }')
+        printf '  %-7s %-48s %10s\n' output "target/linux-build/$(basename "$dir")" "$(human $((kib * 1024)))"
+        total=$((total + kib * 1024))
+    done
+    printf '  %-56s %10s  budget %s GB\n' total "$(human "$total")" "$budget_gb"
+}
+
+# =========================================================================
+# Limits
+# =========================================================================
+
+# Removes one volume during eviction. A volume a running container
+# mounts cannot be removed; it stays and the run goes on.
+evict_volume() {
+    local i="$1" reason="$2"
+    if docker volume rm "${vol_names[$i]}" >/dev/null 2>&1; then
+        echo "linux-build: evicted ${vol_names[$i]} ($reason), freed $(human "${vol_sizes[$i]}")" >&2
+        vol_state[i]=gone
+    else
+        echo "linux-build: ${vol_names[$i]} in use, kept" >&2
+        vol_state[i]=kept
+    fi
+}
+
+# The least recently used lint volume that is still there and is not
+# `own`; empty when there is none.
+oldest_other_lint() {
+    local own="$1" i best="" best_last=""
+    for i in "${!vol_names[@]}"; do
+        [ "${vol_state[$i]}" = alive ] || continue
+        is_lint_volume "${vol_names[$i]}" || continue
+        [ "${vol_names[$i]}" != "$own" ] || continue
+        if [ -z "$best" ] || [ "${vol_last[$i]:-0}" -lt "$best_last" ]; then
+            best=$i
+            best_last=${vol_last[$i]:-0}
+        fi
+    done
+    printf '%s' "$best"
+}
+
+# Runs before every lint, with `own` the volume that lint will use.
+# Without B1's image there is no way to read last uses, so nothing is
+# evicted then.
+enforce_limits() {
+    local own="$1" i count used cache budget victim cache_pruned=no
+
+    image_present || return 0
+    load_volumes
+    load_last_use
+
+    # 1. Lint volumes of checkouts that no longer exist.
+    for i in "${!vol_names[@]}"; do
+        is_lint_volume "${vol_names[$i]}" || continue
+        [ "${vol_names[$i]}" != "$own" ] || continue
+        if [ -n "${vol_checkouts[$i]}" ] && [ ! -d "${vol_checkouts[$i]}" ]; then
+            evict_volume "$i" "checkout gone"
+        fi
+    done
+
+    # 2. At most `max_lint` lint volumes, this run's included.
+    count=1
+    for i in "${!vol_names[@]}"; do
+        if is_lint_volume "${vol_names[$i]}" && [ "${vol_names[$i]}" != "$own" ] \
+            && [ "${vol_state[$i]}" != gone ]; then
+            count=$((count + 1))
+        fi
+    done
+    while [ "$count" -gt "$max_lint" ]; do
+        victim=$(oldest_other_lint "$own")
+        [ -n "$victim" ] || break
+        evict_volume "$victim" "more than $max_lint lint volumes"
+        [ "${vol_state[$victim]}" = gone ] && count=$((count - 1))
+    done
+
+    # 3. The budget: other lint volumes first, oldest first, then the
+    # build cache. The image and the cargo and bun caches make every
+    # later run cheap and are never evicted here.
+    budget=$((budget_gb * 1000000000))
+    cache=$(cache_bytes)
+    used=$((image_bytes + cache))
+    for i in "${!vol_names[@]}"; do
+        [ "${vol_state[$i]}" = gone ] || used=$((used + vol_sizes[i]))
+    done
+    while [ "$used" -gt "$budget" ]; do
+        victim=$(oldest_other_lint "$own")
+        if [ -n "$victim" ]; then
+            evict_volume "$victim" "over budget"
+            [ "${vol_state[$victim]}" = gone ] && used=$((used - vol_sizes[victim]))
+        elif [ "$cache_pruned" = no ] && [ "$cache" -gt 0 ]; then
+            cache_pruned=yes
+            if docker buildx prune -f --all --builder "$(current_builder)" --filter "$cache_filter" >/dev/null 2>&1; then
+                echo "linux-build: evicted the build cache (over budget), freed $(human "$cache")" >&2
+                used=$((used - cache))
+            else
+                echo "linux-build: build cache in use, kept" >&2
+            fi
+        else
+            echo "linux-build: warning: B1 uses $(human "$used"), over the budget of $budget_gb GB," \
+                "and nothing more is evicted automatically (linux-build clean --all removes the rest)" >&2
+            break
+        fi
+    done
+}
+
+# =========================================================================
+# Commands
+# =========================================================================
+
+cmd_image() {
+    local channel id
+    channel=$(pinned_channel)
+    docker buildx build --builder "$(current_builder)" --platform linux/arm64 --load \
+        --build-arg "RUST_TOOLCHAIN=$channel" \
+        -t "$image" \
+        -f "$script_dir/Dockerfile" "$script_dir"
+
+    # A rebuild leaves the previous image untagged. It is removed once no
+    # B1 container runs, since a running one may still use it.
+    if [ -z "$(docker ps -q --filter "name=^torchsnap-linux-build")" ]; then
+        for id in $(docker image ls -q --filter dangling=true --filter "label=$owned_label"); do
+            if docker image rm "$id" >/dev/null 2>&1; then
+                echo "linux-build: removed superseded image $id" >&2
+            else
+                echo "linux-build: $id in use, kept" >&2
+            fi
+        done
+    fi
+}
+
+# Creates a volume with B1's label unless it exists already.
+ensure_volume() {
+    local name="$1" checkout="${2:-}"
+    docker volume inspect "$name" >/dev/null 2>&1 && return 0
+    if [ -n "$checkout" ]; then
+        docker volume create --label "$owned_label" --label "$checkout_label=$checkout" "$name" >/dev/null
+    else
+        docker volume create --label "$owned_label" "$name" >/dev/null
+    fi
+}
+
+# Mounts every container run shares: the scripts of this checkout and
+# the download caches, which stay warm across builds and lints.
+common_mounts=(
+    --mount "type=bind,src=$script_dir,dst=/linux-build,readonly"
+    --mount "type=volume,src=$cargo_volume,dst=/usr/local/cargo/registry"
+    --mount "type=volume,src=$bun_volume,dst=/var/cache/bun"
+)
+
+cmd_lint() {
+    local path="$1"
+    if [ ! -d "$path" ]; then
+        echo "linux-build: $path is not a directory" >&2
+        exit 2
+    fi
+    local checkout
+    checkout=$(cd "$path" && pwd -P)
+    if [ ! -f "$checkout/src-tauri/Cargo.toml" ]; then
+        echo "linux-build: $checkout has no src-tauri/Cargo.toml" >&2
+        exit 2
+    fi
+
+    # The container runs cargo inside the checkout, where rustup obeys
+    # the checkout's own `rust-toolchain.toml`. A different channel
+    # would be downloaded into the throwaway container on every run, so
+    # it is refused here instead.
+    local channel theirs
+    channel=$(pinned_channel)
+    if [ -f "$checkout/rust-toolchain.toml" ]; then
+        theirs=$(toolchain_channel "$checkout/rust-toolchain.toml")
+        if [ -n "$theirs" ] && [ "$theirs" != "$channel" ]; then
+            echo "linux-build: $checkout pins Rust $theirs, the image has $channel" >&2
+            exit 2
+        fi
+    fi
+
+    # One work volume per checkout keeps each checkout's target dir
+    # warm when lints alternate between checkouts. The name comes from
+    # the checkout's physical path, so every way of reaching the same
+    # directory lands in the same volume.
+    local digest volume
+    digest=$(printf '%s' "$checkout" | shasum -a 256 | cut -c1-8)
+    volume="$lint_volume_prefix$digest"
+
+    cmd_image
+    enforce_limits "$volume"
+    ensure_volume "$volume" "$checkout"
+    ensure_volume "$cargo_volume"
+    ensure_volume "$bun_volume"
+
+    # `--init`: PID 1 in a container ignores SIGINT and SIGTERM unless
+    # it installs handlers, which the bash script does not, so Ctrl-C on
+    # `docker run` would not stop it. Docker's init forwards the signal.
+    docker run --name torchsnap-linux-build-lint --rm --init --platform linux/arm64 \
+        --mount "type=bind,src=$checkout,dst=/src,readonly" \
+        --mount "type=volume,src=$volume,dst=/work" \
+        "${common_mounts[@]}" \
+        -e LINUX_BUILD_WORK=/work \
+        "$image" /linux-build/in-container lint
+}
+
+# Removes one volume during clean; returns non-zero when it stays.
+clean_volume() {
+    local i="$1"
+    if docker volume rm "${vol_names[$i]}" >/dev/null 2>&1; then
+        echo "linux-build: removed ${vol_names[$i]}, freed $(human "${vol_sizes[$i]}")" >&2
+    else
+        echo "linux-build: ${vol_names[$i]} in use, kept" >&2
+        return 1
+    fi
+}
+
+cmd_clean() {
+    local all="$1" failed=0 i cache
+
+    cmd_status
+    load_volumes
+
+    # Build output first: the build and lint work volumes. The download
+    # caches, the build cache and the image stay unless `--all`.
+    for i in "${!vol_names[@]}"; do
+        case "${vol_names[$i]}" in
+            "$build_volume" | "$lint_volume_prefix"*) clean_volume "$i" || failed=1 ;;
+        esac
+    done
+    if [ "$all" = yes ]; then
+        for i in "${!vol_names[@]}"; do
+            case "${vol_names[$i]}" in
+                "$cargo_volume" | "$bun_volume") clean_volume "$i" || failed=1 ;;
+            esac
+        done
+        cache=$(cache_bytes)
+        if docker buildx prune -f --all --builder "$(current_builder)" --filter "$cache_filter" >/dev/null 2>&1; then
+            echo "linux-build: removed the build cache, freed $(human "$cache")" >&2
+        else
+            echo "linux-build: build cache in use, kept" >&2
+            failed=1
+        fi
+        if image_present; then
+            if docker image rm "$image" >/dev/null 2>&1; then
+                echo "linux-build: removed $image, freed $(human "$image_bytes")" >&2
+            else
+                echo "linux-build: $image in use, kept" >&2
+                failed=1
+            fi
+        fi
+    fi
+    rm -rf "$repo/target/linux-build"
+    return "$failed"
+}
+
+# =========================================================================
+# Arguments
+# =========================================================================
+
+command="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$command" in
+    image)
+        [ $# -eq 0 ] || usage
+        validate_limits
+        cmd_image
+        ;;
+    lint)
+        path="$repo"
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --path)
+                    [ $# -ge 2 ] || usage
+                    path="$2"
+                    shift 2
+                    ;;
+                *) usage ;;
+            esac
+        done
+        validate_limits
+        cmd_lint "$path"
+        ;;
+    status)
+        [ $# -eq 0 ] || usage
+        validate_limits
+        cmd_status
+        ;;
+    clean)
+        all=no
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --all) all=yes ;;
+                *) usage ;;
+            esac
+            shift
+        done
+        validate_limits
+        cmd_clean "$all"
+        ;;
+    *) usage ;;
+esac

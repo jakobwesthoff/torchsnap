@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository, found by file extension and shebang. `just lint`, and so
   `just fullcycle`, runs it. Shell recipes inside the justfiles are not
   checked.
+- `just linux-build-lint [path]` runs `cargo check` and clippy for Linux
+  arm64 (Debian 13) on any checkout, in a Docker container on an Apple
+  silicon Mac. `just linux-build-status` shows what its image, build
+  cache and volumes take on disk, `just linux-build-clean [--all]`
+  removes them, and each lint keeps them within a budget. See
+  `docs/Howto-build-linux-on-macos.md`.
 
 ### Changed
 
