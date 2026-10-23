@@ -127,6 +127,61 @@ desk_pointer() {
 }
 
 # =========================================================
+# Headless sessions
+# =========================================================
+
+# A second gnome-shell without a screen, with virtual monitors, on a D-Bus
+# session bus of its own (dbus-run-session) and with XDG directories of
+# its own, so it shares no settings or state with the desktop session.
+# The testbed extension is installed system-wide, so it runs there too.
+# The variables of the desktop session the user manager hands down are
+# removed first; with them the new shell would connect to the desktop's
+# display. Without Xwayland (--no-x11), the app's X11-backed clipboard
+# gadget does not start in it.
+desk_headless_start() {
+    local monitors="" gdctl_args=() index=0 spec previous=""
+    local scales=()
+    for spec in "$@"; do
+        monitors="$monitors --virtual-monitor ${spec%@*}"
+        scales+=("${spec#*@}")
+        if [ "$index" -eq 0 ]; then
+            gdctl_args+=(--logical-monitor --primary --scale "${spec#*@}" --monitor "Meta-$index")
+        else
+            gdctl_args+=(--logical-monitor --scale "${spec#*@}" --right-of "$previous" --monitor "Meta-$index")
+        fi
+        previous="Meta-$index"
+        index=$((index + 1))
+    done
+    local shell_dir="$headless_dir/shell"
+    mkdir -p "$shell_dir"/{config,data,cache,state}
+    systemd-run --user --unit "$headless_unit" --collect --quiet \
+        -p "StandardOutput=append:$headless_dir/shell.log" -p "StandardError=append:$headless_dir/shell.log" \
+        env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY \
+        "XDG_CONFIG_HOME=$shell_dir/config" "XDG_DATA_HOME=$shell_dir/data" \
+        "XDG_CACHE_HOME=$shell_dir/cache" "XDG_STATE_HOME=$shell_dir/state" \
+        dbus-run-session -- bash -c "echo \"\$DBUS_SESSION_BUS_ADDRESS\" >'$headless_bus_file'; exec gnome-shell --headless --wayland --no-x11 --wayland-display $headless_display$monitors"
+
+    wait_for "$headless_timeout" test -s "$headless_bus_file" \
+        || { echo "testbed-pi: the headless session did not start; see $headless_dir/shell.log" >&2; return 1; }
+    DBUS_SESSION_BUS_ADDRESS="$(cat "$headless_bus_file")"
+    export DBUS_SESSION_BUS_ADDRESS
+    wait_for "$headless_timeout" headless_shell_answers \
+        || { echo "testbed-pi: the headless GNOME Shell does not answer" >&2; return 1; }
+    gdctl set "${gdctl_args[@]}"
+    wait_for "$headless_timeout" headless_scales_are "${scales[@]}" \
+        || { echo "testbed-pi: the headless monitors did not get the scales ${scales[*]}" >&2; return 1; }
+}
+
+headless_shell_answers() {
+    [ "$(desk_eval '/*ready*/ true')" = "true" ]
+}
+
+headless_scales_are() {
+    desk_eval '/*scales*/ Main.layoutManager.monitors.map(m => m.geometry_scale)' \
+        | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin) == [float(s) for s in sys.argv[1:]] else 1)' "$@"
+}
+
+# =========================================================
 # Tray
 # =========================================================
 

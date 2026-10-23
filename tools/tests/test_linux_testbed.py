@@ -240,6 +240,15 @@ class TestbedRecipes(unittest.TestCase):
         finally:
             stubs.cleanup()
 
+    def test_headless_recipes_call_the_script(self):
+        for recipe, args, expected in (
+            ("testbed-headless-start", ["1280x800@1"], "tools/linux-testbed/testbed headless-start 1280x800@1"),
+            ("testbed-headless-stop", [], "tools/linux-testbed/testbed headless-stop"),
+        ):
+            result = self.dry_run(recipe, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr.strip(), expected)
+
     def test_recording_recipes_call_the_script(self):
         for recipe, args, expected in (
             ("testbed-record-start", ["opening"], "tools/linux-testbed/testbed record-start opening"),
@@ -1495,6 +1504,9 @@ SYSTEMCTL = textwrap.dedent(
     with open(os.environ["STUB_LOG"], "a") as f:
         f.write(json.dumps(sys.argv) + "\\n")
     if "is-active" in sys.argv:
+        units = os.environ.get("STUB_ACTIVE_UNITS")
+        if units is not None:
+            sys.exit(0 if sys.argv[-1] in units.split(",") else 3)
         sys.exit(int(os.environ.get("STUB_ACTIVE_EXIT", "3")))
     sys.stdout.write(os.environ.get("STUB_SYSTEMCTL_STDOUT", ""))
     """
@@ -1564,6 +1576,133 @@ class Recording(unittest.TestCase):
         result = self.call_pi(["record-stop"])
         self.assertEqual(result.returncode, 1)
         self.assertIn("no recording", result.stderr)
+
+
+# systemd-run for headless sessions: for the shell's unit it writes a bus
+# address into the bus file, as the session's inner script does.
+HEADLESS_SYSTEMD_RUN = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    if "torchsnap-testbed-headless" in sys.argv:
+        path = os.path.join(os.environ["HOME"], ".cache/torchsnap-testbed/headless/bus")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("unix:path=/run/user/1000/headless-bus\\n")
+    """
+)
+
+
+class Headless(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
+        self.stubs = Stubs([])
+        # gdctl that also logs which bus it would talk to.
+        gdctl = (
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "with open(os.environ['STUB_LOG'], 'a') as f:\n"
+            "    f.write(json.dumps(sys.argv + ['bus=' + os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')]) + '\\n')\n"
+        )
+        for name, text in (
+            ("systemctl", SYSTEMCTL), ("systemd-run", HEADLESS_SYSTEMD_RUN), ("gdbus", RULE_GDBUS), ("gdctl", gdctl),
+        ):
+            path = self.stubs.dir / name
+            path.write_text(text)
+            path.chmod(0o755)
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.home)
+
+    def call_pi(self, args, env=None):
+        environment = {
+            "HOME": str(self.home),
+            "STUB_SYSTEMCTL_STDOUT": SHOW_ENVIRONMENT,
+            "TORCHSNAP_TESTBED_POLL_INTERVAL": "0.1",
+            "TORCHSNAP_TESTBED_HEADLESS_TIMEOUT": "2",
+            "TORCHSNAP_TESTBED_APP_TIMEOUT": "1",
+            "STUB_EVAL_RULES": json.dumps([["/*scales*/", [[1, 2]]], ["/*ready*/", [True]]]),
+        }
+        environment.update(env or {})
+        return run(args, self.stubs, env=environment, script=TESTBED_PI)
+
+    def test_headless_start_runs_gnome_shell_with_the_monitors_and_scales(self):
+        result = self.call_pi(["headless-start", "1280x800@1", "2560x1600@2"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run_call = " ".join(self.stubs.calls("systemd-run")[0])
+        self.assertIn("torchsnap-testbed-headless", run_call)
+        self.assertIn("env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY", run_call)
+        self.assertIn("--virtual-monitor 1280x800 --virtual-monitor 2560x1600", run_call)
+        self.assertIn("--no-x11", run_call)
+        self.assertEqual(
+            self.stubs.calls("gdctl")[0][1:],
+            ["set", "--logical-monitor", "--primary", "--scale", "1", "--monitor", "Meta-0",
+             "--logical-monitor", "--scale", "2", "--right-of", "Meta-0", "--monitor", "Meta-1",
+             # gdctl talks to the headless session's bus.
+             "bus=unix:path=/run/user/1000/headless-bus"],
+        )
+
+    def test_headless_start_defaults_to_two_monitors_at_scale_1_and_2(self):
+        result = self.call_pi(["headless-start"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--virtual-monitor 1280x800 --virtual-monitor 2560x1600", " ".join(self.stubs.calls("systemd-run")[0]))
+
+    def test_a_malformed_monitor_spec_is_refused(self):
+        result = self.call_pi(["headless-start", "1280x800"])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("WIDTHxHEIGHT@SCALE", result.stderr)
+        self.assertEqual(self.stubs.calls("systemd-run"), [])
+
+    def test_headless_start_refuses_while_a_session_runs(self):
+        result = self.call_pi(["headless-start"], env={"STUB_ACTIVE_UNITS": "torchsnap-testbed-headless"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("already running", result.stderr)
+
+    def test_headless_commands_need_a_session(self):
+        result = self.call_pi(["control", "--headless", "status"], env={"STUB_ACTIVE_UNITS": ""})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no headless session", result.stderr)
+
+    def test_the_headless_app_gets_the_headless_session_and_its_own_data(self):
+        bus = self.home / ".cache" / "torchsnap-testbed" / "headless" / "bus"
+        bus.parent.mkdir(parents=True)
+        bus.write_text("unix:path=/run/user/1000/headless-bus\n")
+        binary = self.home / "bin" / "torchsnap"
+        binary.parent.mkdir()
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+        result = self.call_pi(
+            ["app-start", "--headless"],
+            env={"STUB_ACTIVE_UNITS": "torchsnap-testbed-headless", "TORCHSNAP_TESTBED_APP_BINARY": str(binary)},
+        )
+        run_call = self.stubs.calls("systemd-run")[0]
+        self.assertIn("torchsnap-testbed-app-headless", run_call)
+        joined = " ".join(run_call)
+        self.assertIn("env -u DISPLAY -u XAUTHORITY", joined)
+        self.assertIn("WAYLAND_DISPLAY=torchsnap-headless", joined)
+        self.assertIn("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/headless-bus", joined)
+        data = self.home / ".cache" / "torchsnap-testbed" / "headless" / "app" / "data"
+        self.assertIn(f"XDG_DATA_HOME={data}", joined)
+        settings = json.loads((data / "app.torchsnap" / "settings.json").read_text())
+        self.assertIs(settings["controlChannel.enabled"], True)
+        # No app answers in the test, so the start times out.
+        self.assertEqual(result.returncode, 1)
+
+    def test_headless_stop_stops_both_units_and_forgets_the_bus(self):
+        bus = self.home / ".cache" / "torchsnap-testbed" / "headless" / "bus"
+        bus.parent.mkdir(parents=True)
+        bus.write_text("x\n")
+        result = self.call_pi(
+            ["headless-stop"],
+            env={"STUB_ACTIVE_UNITS": "torchsnap-testbed-headless,torchsnap-testbed-app-headless"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stops = [c[-1] for c in self.stubs.calls("systemctl") if "stop" in c]
+        self.assertEqual(stops, ["torchsnap-testbed-app-headless", "torchsnap-testbed-headless"])
+        self.assertFalse(bus.exists())
 
 
 class Clipboard(unittest.TestCase):

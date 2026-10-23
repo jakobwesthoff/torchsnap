@@ -29,6 +29,7 @@
 #   5   needs the tray on: clicking the tray icon opens its menu, Escape
 #       closes it
 #   9   a screen recording shows the launcher opening
+#   8   a headless session with monitors at scale 1 and 2 runs the app
 #   R   after a reboot the machine is back in its desktop session with
 #       everything the testbed needs (only when named)
 #   U   undoing one provision step at a time, provisioning reports
@@ -45,7 +46,7 @@ testbed="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/testbed"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly testbed repo_root
 
-default_items=(1 W 4 L E 6 3 5 9)
+default_items=(1 W 4 L E 6 3 5 9 8)
 
 pass() {
     echo "PASS item $1"
@@ -291,8 +292,10 @@ item_5() {
 }
 
 # A recording of the launcher opening and closing is a video of at least
-# a second whose first and last frames differ from a frame in between.
-# The frames are compared on the machine, which has ffmpeg and
+# a second in which the launcher's area gets lighter: the launcher's
+# light search field over the dark screen. A dark launcher theme would
+# break this check; it would then need a measure that ignores colour.
+# The frames are measured on the machine, which has ffmpeg and
 # ImageMagick from provisioning.
 item_9() {
     local local_file remote_file check crop
@@ -338,6 +341,52 @@ elif check["white_middle"] - check["white_first"] < 0.03:
 ' "$check")"
     [ -z "$problem" ] || { fail 9 "$problem"; return; }
     pass 9
+}
+
+# A headless GNOME session with two virtual monitors at scale 1 and 2
+# runs the app; screenshots of each monitor have the monitor's physical
+# size, the launcher is in the headless session and not in the desktop
+# session.
+headless_launcher_visible() {
+    "$testbed" launcher-state --headless | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["visible"] else 1)'
+}
+
+item_8() {
+    local monitor0 monitor1 sizes headless_windows desktop_windows problem
+    "$testbed" headless-stop >/dev/null
+    if on_machine 'systemctl --user is-active --quiet torchsnap-testbed-app'; then
+        "$testbed" control dismiss >/dev/null
+        wait_until 10 launcher_is hidden || { fail 8 "SETUP: the desktop launcher did not hide"; return; }
+    fi
+    "$testbed" headless-start >/dev/null || { fail 8 "SETUP: headless-start failed"; return; }
+    if ! "$testbed" app-start --headless >/dev/null; then
+        "$testbed" headless-stop >/dev/null
+        fail 8 "SETUP: app-start --headless failed"
+        return
+    fi
+    "$testbed" control --headless show >/dev/null
+    if ! wait_until 15 headless_launcher_visible; then
+        "$testbed" headless-stop >/dev/null
+        fail 8 "the headless launcher is not visible after control show"
+        return
+    fi
+    monitor0="$(shot item8-monitor0 --headless --monitor 0)"
+    monitor1="$(shot item8-monitor1 --headless --monitor 1)"
+    headless_windows="$("$testbed" windows --headless)"
+    desktop_windows="$("$testbed" windows)"
+    "$testbed" headless-stop >/dev/null
+    sizes="$(magick identify -format '%wx%h ' "$monitor0" "$monitor1")"
+    [ "$sizes" = "1280x800 2560x1600 " ] || { fail 8 "monitor screenshots are $sizes, expected 1280x800 2560x1600"; return; }
+    problem="$(python3 -c '
+import json, sys
+headless, desktop = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if not any(w["title"] == "" for w in headless):
+    print("no launcher window in the headless session: " + sys.argv[1])
+elif any(w["title"] == "" for w in desktop):
+    print("a launcher window is in the desktop session too: " + sys.argv[2])
+' "$headless_windows" "$desktop_windows")"
+    [ -z "$problem" ] || { fail 8 "$problem"; return; }
+    pass 8
 }
 
 # Text set on the machine's clipboard through the recipe comes back

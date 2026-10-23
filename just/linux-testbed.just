@@ -110,6 +110,17 @@ testbed-tray-icon:
 testbed-tray-click BUTTON="left":
     tools/linux-testbed/testbed tray-click {{ BUTTON }}
 
+# Recipes that take `*ARGS` also take `--headless` to work in the
+# headless session instead of the desktop session.
+
+# Start a headless GNOME session on the Linux testbed (monitors as WIDTHxHEIGHT@SCALE)
+testbed-headless-start *MONITORS:
+    tools/linux-testbed/testbed headless-start {{ MONITORS }}
+
+# Stop the headless session on the Linux testbed and the app in it
+testbed-headless-stop:
+    tools/linux-testbed/testbed headless-stop
+
 # Start recording the Linux testbed's screen (GNOME Shell screencast)
 testbed-record-start NAME:
     tools/linux-testbed/testbed record-start {{ NAME }}

@@ -294,7 +294,36 @@ connection until `testbed-record-stop` stops it. GNOME Shell writes an
 H.264 MP4 at the screen's physical size; a recording of a still 4K
 screen had 1.35 frames per second.
 
-## 11. Remote viewing over RDP
+## 11. Headless sessions
+
+```sh
+just testbed-headless-start                         # 1280x800@1 and 2560x1600@2
+just testbed-headless-start 1920x1080@1 1280x800@2  # monitors as WIDTHxHEIGHT@SCALE
+just testbed-app-start --headless
+just testbed-control --headless show
+just testbed-screenshot right --headless --monitor 1
+just testbed-headless-stop
+```
+
+A headless session is a second GNOME Shell without a screen, with
+virtual monitors side by side at the given scales, run as the systemd
+user unit `torchsnap-testbed-headless`. It has its own D-Bus session bus
+and its own XDG directories, and the app in it (`torchsnap-testbed-app-headless`)
+keeps its data, settings and control socket under
+`~/.cache/torchsnap-testbed/headless/app/`, apart from the app in the
+desktop session. A scale of 2 needs a monitor of at least 2560x1600:
+GNOME refuses it for 1280x800.
+
+`testbed-app-start`, `testbed-app-stop`, `testbed-app-log`,
+`testbed-control`, `testbed-eval`, `testbed-windows`,
+`testbed-launcher-state` and `testbed-screenshot` take `--headless`.
+Keyboard and pointer input reach only the desktop session (ydotool's
+device belongs to it), so the headless app is driven through its
+control socket. The headless session has no Xwayland, and the app's
+clipboard gadget, which uses X11, does not start there (todo
+`01KPV8Y2MB5HT7SP63DGEY3NHG-watch-wayland-clipboards-natively-in-the-clipboard-gadget-on-linux.md`).
+
+## 12. Remote viewing over RDP
 
 The `rdp` step turns on GNOME's remote desktop for the running session:
 an RDP client sees and controls the Pi's screen. Connect to the Pi on
@@ -303,7 +332,7 @@ port 3389 as user `testbed`; the password is in
 first provisioning. The TLS certificate is self-signed and lives in
 `~/.local/share/gnome-remote-desktop/` on the Pi.
 
-## 12. Self-test
+## 13. Self-test
 
 ```sh
 just testbed-selftest        # the default items
@@ -323,7 +352,8 @@ unknown item.
 | E | Asks for the launcher state, the app's windows and the clipboard once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
 | 3 | Needs the tray on, then off: with the AppIndicator extension on, the app's icon is in the top bar; with it off, there is no icon and its area looks different. |
 | 5 | Needs the tray on: a click on the app's tray icon opens its menu and changes the screen, Escape closes the menu. |
-| 9 | Records the screen while the launcher opens and closes; the recording lasts at least a second, and in the launcher's area its middle frame is clearly lighter than its first (the light search field over the dark screen). |
+| 9 | Records the screen while the launcher opens and closes; the recording lasts at least a second, and in the launcher's area its middle frame is clearly lighter than its first (the light search field over the dark screen). The check depends on that light appearance: a dark theme for the launcher would need a measure that ignores colour. |
+| 8 | Starts a headless session with monitors at scale 1 and 2 and the app in it, shows the launcher there, and checks the size of a screenshot of each monitor (1280x800 and 2560x1600), that the launcher is among the headless session's windows and not among the desktop session's. |
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 2 | Only when named. Sync and build: the build exits 0 and leaves a debug binary written after the build started. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |

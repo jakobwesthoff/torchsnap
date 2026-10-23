@@ -75,6 +75,13 @@ is the full guide.
   GNOME; test the app both ways and switch back to what you found.
   `just testbed-tray-icon` (position, menu open) and
   `just testbed-tray-click [button]`.
+- `just testbed-headless-start [WxH@SCALE…]` / `just testbed-headless-stop`:
+  a second, headless GNOME session with virtual monitors (default
+  1280x800@1 and 2560x1600@2). `app-start`, `app-stop`, `app-log`,
+  `control`, `eval`, `windows`, `launcher-state` and `screenshot` take
+  `--headless`. Keyboard and pointer do not reach it; drive the app
+  there through `testbed-control --headless`. No Xwayland there, so the
+  clipboard gadget is off.
 - `just testbed-record-start NAME` / `just testbed-record-stop`: a
   screen recording, copied to `target/linux-testbed/NAME.mp4`.
 - `just testbed-clipboard-set 'text'`, `just testbed-clipboard-get`:

@@ -34,10 +34,14 @@
 #   testbed tray on|off|status  the desktop's tray support (GNOME: AppIndicator extension)
 #   testbed tray-icon         position of the app's tray icon, and whether its menu is open
 #   testbed tray-click [left|right|middle]
+#   testbed headless-start [WxH@SCALE...]  a headless GNOME session with virtual monitors
+#   testbed headless-stop     stop it and the app in it
 #   testbed record-start NAME start recording the machine's screen
 #   testbed record-stop       stop, copy the recording to target/linux-testbed/
 #
 #   type and key refuse (exit 4) unless the target has the keyboard.
+#   app-start, app-stop, app-log, control, eval, windows, launcher-state
+#   and screenshot take --headless to work in the headless session.
 #
 # Commands on the machine run through `bash -c`, or, when
 # TORCHSNAP_LINUX_RUNNER is set, after that prefix (for example a
@@ -289,7 +293,7 @@ case "$subcommand" in
         cmd_sync
         run_pi build
         ;;
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | type | key | pointer | click | clipboard-set | clipboard-get | tray | tray-icon | tray-click | record-start | headless-start | headless-stop)
         require_host
         run_pi "$subcommand" "$@"
         ;;

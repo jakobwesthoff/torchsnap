@@ -29,10 +29,16 @@
 #   testbed-pi pointer X Y            move the pointer to X,Y (logical pixels)
 #   testbed-pi click X Y [left|right|middle]
 #                                     move there and click
+#
+#   app-start, app-stop, app-log, control, eval, windows, launcher-state
+#   and screenshot take --headless to work in the headless session.
 #   testbed-pi tray on|off|status     switch or report the desktop's tray support
 #   testbed-pi tray-icon              {"x", "y", "width", "height", "menuOpen"} of the app's tray icon
 #   testbed-pi tray-click [left|right|middle]
 #                                     click the app's tray icon
+#   testbed-pi headless-start [WxH@SCALE...]
+#                                     start a headless GNOME session (default 1280x800@1 2560x1600@2)
+#   testbed-pi headless-stop          stop it and the app in it
 #   testbed-pi record-start NAME      start recording the screen, print the file
 #   testbed-pi record-stop            stop it, print the file once it is complete
 #   testbed-pi clipboard-set TEXT     put TEXT on the clipboard
@@ -130,9 +136,14 @@ cmd_build() {
 # The app
 # =========================================================
 
-readonly app_unit="torchsnap-testbed-app"
-readonly app_binary="$tree_dir/src-tauri/target/debug/torchsnap"
-readonly app_log="$state_dir/app.log"
+readonly app_binary="${TORCHSNAP_TESTBED_APP_BINARY:-$tree_dir/src-tauri/target/debug/torchsnap}"
+readonly app_timeout="${TORCHSNAP_TESTBED_APP_TIMEOUT:-60}"
+
+# The app in the desktop session, or in the headless session (--headless;
+# see `use_headless_session`, which also points XDG_DATA_HOME at the
+# headless app's own data directory).
+app_unit="torchsnap-testbed-app"
+app_log="$state_dir/app.log"
 
 # Tauri keeps the app's data under the identifier from tauri.conf.json
 # in the XDG data directory.
@@ -179,11 +190,21 @@ cmd_app_start() {
     cmd_merge_app_settings
     mkdir -p "$state_dir"
     echo "=== app-start $(date '+%F %T')" >>"$app_log"
+    local session=()
+    if [ -n "$headless" ]; then
+        # The user manager's environment points at the desktop session;
+        # the headless app gets the headless session's display and bus
+        # and its own data, settings and cache instead.
+        session=(env -u DISPLAY -u XAUTHORITY
+            "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" GDK_BACKEND=wayland
+            "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+            "XDG_DATA_HOME=$XDG_DATA_HOME" "XDG_CONFIG_HOME=$XDG_CONFIG_HOME" "XDG_CACHE_HOME=$XDG_CACHE_HOME")
+    fi
     systemd-run --user --unit "$app_unit" --collect --quiet \
         -p "StandardOutput=append:$app_log" -p "StandardError=append:$app_log" \
-        "$app_binary"
-    if ! wait_for 60 control_request status; then
-        echo "testbed-pi: the app's control socket did not answer within 60s; last log lines:" >&2
+        ${session[@]+"${session[@]}"} "$app_binary"
+    if ! wait_for "$app_timeout" control_request status; then
+        echo "testbed-pi: the app's control socket did not answer within ${app_timeout}s; last log lines:" >&2
         tail -n 20 "$app_log" >&2
         return 1
     fi
@@ -578,6 +599,69 @@ cmd_click() {
 }
 
 # =========================================================
+# Headless sessions
+# =========================================================
+
+readonly headless_unit="torchsnap-testbed-headless"
+readonly headless_app_unit="torchsnap-testbed-app-headless"
+readonly headless_dir="$state_dir/headless"
+readonly headless_bus_file="$headless_dir/bus"
+readonly headless_display="torchsnap-headless"
+readonly headless_timeout="${TORCHSNAP_TESTBED_HEADLESS_TIMEOUT:-60}"
+headless=""
+
+# --headless points the rest of this run at the headless session: its
+# Wayland display and D-Bus bus, and the headless app's own data
+# directories (so it has its own control socket and settings).
+use_headless_session() {
+    if ! systemctl --user is-active --quiet "$headless_unit"; then
+        echo "testbed-pi: no headless session; start one with just testbed-headless-start" >&2
+        exit 1
+    fi
+    headless=1
+    unset DISPLAY XAUTHORITY
+    export WAYLAND_DISPLAY="$headless_display"
+    DBUS_SESSION_BUS_ADDRESS="$(cat "$headless_bus_file")"
+    export DBUS_SESSION_BUS_ADDRESS
+    export XDG_DATA_HOME="$headless_dir/app/data"
+    export XDG_CONFIG_HOME="$headless_dir/app/config"
+    export XDG_CACHE_HOME="$headless_dir/app/cache"
+    app_unit="$headless_app_unit"
+    app_log="$state_dir/app-headless.log"
+}
+
+# Monitor specs are WIDTHxHEIGHT@SCALE, one per virtual monitor, placed
+# side by side.
+cmd_headless_start() {
+    local specs=("$@")
+    [ ${#specs[@]} -gt 0 ] || specs=(1280x800@1 2560x1600@2)
+    local spec
+    for spec in "${specs[@]}"; do
+        if ! [[ "$spec" =~ ^[0-9]+x[0-9]+@[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "testbed-pi: monitor spec '$spec' is not WIDTHxHEIGHT@SCALE" >&2
+            exit 2
+        fi
+    done
+    if systemctl --user is-active --quiet "$headless_unit"; then
+        echo "testbed-pi: a headless session is already running ($headless_unit)" >&2
+        return 1
+    fi
+    rm -f "$headless_bus_file"
+    mkdir -p "$headless_dir"
+    desk_headless_start "${specs[@]}" || return 1
+}
+
+cmd_headless_stop() {
+    local unit
+    for unit in "$headless_app_unit" "$headless_unit"; do
+        if systemctl --user is-active --quiet "$unit"; then
+            systemctl --user stop "$unit"
+        fi
+    done
+    rm -f "$headless_bus_file"
+}
+
+# =========================================================
 # Tray
 # =========================================================
 
@@ -703,7 +787,28 @@ shift
 
 session_env
 
+# `--headless`, anywhere among the arguments of the subcommands that can
+# work in the headless session, switches them to it.
 case "$subcommand" in
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | screenshot | merge-app-settings)
+        arguments=()
+        for argument in "$@"; do
+            if [ "$argument" = "--headless" ]; then
+                use_headless_session
+            else
+                arguments+=("$argument")
+            fi
+        done
+        set -- ${arguments[@]+"${arguments[@]}"}
+        ;;
+esac
+
+case "$subcommand" in
+    headless-start)
+        load_desktop
+        cmd_headless_start "$@"
+        ;;
+    headless-stop) cmd_headless_stop ;;
     env)
         print_session_env
         ;;
