@@ -97,6 +97,13 @@ config.
 - When work on one desktop finds something another Linux desktop needs
   in order to work, file a todo for it right away, naming the desktops
   it affects.
+- Run and test Torchsnap on Linux through the testbed: the
+  `linux-testbed` skill and `docs/Howto-test-on-a-raspberry-pi.md`
+  (`just testbed-*` recipes: sync, build, start, control, screenshots,
+  input, self-test). Build and lint for Linux arm64 on the Mac in a
+  container: `docs/Howto-build-linux-on-macos.md` (`just linux-build*`).
+- Prefer the control API (`docs/control-api.md`: `status`, `windows`,
+  `info`, `snapshot`) over screenshots when checking what the app does.
 
 ## Gadgets
 
