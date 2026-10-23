@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silicon Mac a debug build went from about 15 s to 9 s. `vite build`
   keeps the timestamps of files in `dist/` whose content did not change,
   and staging keeps gadget archives whose content did not change.
+- Control API: the socket file has mode `0600` from the moment it
+  appears. Its mode came from the umask, so on a Linux system with a
+  permissive umask and a home folder other users can enter, they could
+  connect to it.
 
 ## [0.15.0] - 2026-10-21
 

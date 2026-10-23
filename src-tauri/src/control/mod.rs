@@ -23,6 +23,7 @@ mod handlers;
 pub mod snapshot;
 
 use std::collections::HashMap;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
@@ -197,10 +198,10 @@ impl ControlServer {
         // Remove any stale socket file from a previous run.
         let _ = std::fs::remove_file(&path);
 
-        let listener = match tokio::net::UnixListener::bind(&path) {
+        let listener = match bind_restricted(&path, restrict_to_owner) {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("control: failed to bind {}: {e}", path.display());
+                eprintln!("control: failed to open {}: {e}", path.display());
                 return;
             }
         };
@@ -401,7 +402,7 @@ fn json_rpc_error(id: Value, code: i64, message: &str) -> Value {
 }
 
 // =========================================================
-// Socket path
+// Socket path and permissions
 // =========================================================
 
 fn socket_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
@@ -409,6 +410,55 @@ fn socket_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
         .app_data_dir()
         .expect("resolve app data dir")
         .join("control.sock")
+}
+
+/// Open the control socket at `path` so that its mode, not the umask,
+/// decides who can connect.
+///
+/// The socket is bound inside a private 0700 directory next to `path`,
+/// given its final mode there by `restrict`, and only then renamed to
+/// `path`. Other users cannot reach it inside the directory, and the
+/// rename makes it reachable only once it has its final mode. The
+/// directory is removed afterwards, also when a step fails; the rename
+/// is the last step, so a failure leaves `path` as it was.
+fn bind_restricted(
+    path: &std::path::Path,
+    restrict: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+) -> std::io::Result<tokio::net::UnixListener> {
+    let private_dir = private_dir(path);
+    // A run that crashed under the same pid may have left it behind.
+    let _ = std::fs::remove_dir_all(&private_dir);
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&private_dir)?;
+    let result = bind_and_move(&private_dir.join("control.sock"), path, restrict);
+    let _ = std::fs::remove_dir_all(&private_dir);
+    result
+}
+
+fn bind_and_move(
+    private: &std::path::Path,
+    path: &std::path::Path,
+    restrict: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+) -> std::io::Result<tokio::net::UnixListener> {
+    let listener = tokio::net::UnixListener::bind(private)?;
+    restrict(private)?;
+    std::fs::rename(private, path)?;
+    Ok(listener)
+}
+
+/// The private directory `bind_restricted` creates the socket in. The
+/// pid keeps it apart from another running instance's.
+fn private_dir(path: &std::path::Path) -> PathBuf {
+    path.with_file_name(format!(".control-{}.tmp", std::process::id()))
+}
+
+/// Connect needs write permission on the socket file on Linux and
+/// macOS, so mode 0600 leaves the socket to its owner. On macOS an
+/// inherited ACL entry survives the chmod
+/// (`01KWH4J9BPTRAYF451YZD2145V-control-socket-has-no-peer-check-and-startup-unlinks-an-existing-socket.md`).
+fn restrict_to_owner(path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
 }
 
 // =========================================================
@@ -678,5 +728,154 @@ mod tests {
     async fn rejects_invalid_utf8() {
         let lines = read_all(b"\xff\xfe\n").await;
         assert!(lines[0].is_err());
+    }
+}
+
+#[cfg(test)]
+mod socket_tests {
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    use std::path::Path;
+
+    use super::*;
+
+    // The tests run under whatever umask the test runner has and never
+    // change it: the umask is process-wide and tests run in parallel.
+
+    /// The names in `dir`, sorted.
+    fn entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .expect("test dir is readable")
+            .map(|entry| {
+                entry
+                    .expect("test dir entry is readable")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The permission bits of `path`, in octal.
+    fn mode(path: &Path) -> String {
+        let mode = std::fs::metadata(path)
+            .expect("path exists")
+            .permissions()
+            .mode();
+        format!("{:o}", mode & 0o777)
+    }
+
+    #[tokio::test]
+    async fn opens_a_0600_socket_at_the_path_and_leaves_no_private_dir() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("control.sock");
+
+        let listener = bind_restricted(&path, restrict_to_owner).expect("socket opens");
+
+        assert_eq!(mode(&path), "600");
+        let file_type = std::fs::metadata(&path).expect("socket exists").file_type();
+        assert!(file_type.is_socket());
+        assert_eq!(entries(dir.path()), vec!["control.sock"]);
+        let _client = tokio::net::UnixStream::connect(&path)
+            .await
+            .expect("the owner connects");
+        listener.accept().await.expect("the server accepts");
+    }
+
+    #[tokio::test]
+    async fn restricts_the_socket_in_a_private_dir_before_it_appears_at_the_path() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("control.sock");
+        let mut private_dir_mode = None;
+
+        let _listener = bind_restricted(&path, |private| {
+            assert!(
+                !path.exists(),
+                "the socket is at the path before its mode is set"
+            );
+            assert_ne!(private, path.as_path());
+            private_dir_mode = Some(mode(private.parent().expect("socket has a parent")));
+            restrict_to_owner(private)
+        })
+        .expect("socket opens");
+
+        assert_eq!(private_dir_mode.as_deref(), Some("700"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_restriction_removes_the_socket_and_its_private_dir() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("control.sock");
+
+        let error = bind_restricted(&path, |_| Err(std::io::Error::other("refused")))
+            .expect_err("restriction fails");
+
+        assert_eq!(error.to_string(), "refused");
+        assert_eq!(entries(dir.path()), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn a_failed_bind_removes_the_private_dir() {
+        // A data dir whose `control.sock` fits a socket address (104 bytes
+        // on macOS, 108 on Linux, with the terminating NUL) while the
+        // private path below it does not, so the bind fails after the
+        // private dir exists.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = dir.path().as_os_str().len();
+        let padding = 100usize
+            .checked_sub(base + "/".len() + "/control.sock".len())
+            .expect("temp dir path leaves room for padding");
+        let data_dir = dir.path().join("d".repeat(padding));
+        std::fs::create_dir_all(&data_dir).expect("padded data dir");
+        let path = data_dir.join("control.sock");
+        let private = private_dir(&path).join("control.sock");
+        assert!(path.as_os_str().len() < 104, "{}", path.display());
+        assert!(private.as_os_str().len() > 108, "{}", private.display());
+
+        let error = bind_restricted(&path, restrict_to_owner).expect_err("bind fails");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(entries(&data_dir), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn a_failed_rename_removes_the_socket_and_its_private_dir() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("control.sock");
+        std::fs::create_dir(&path).expect("directory in the socket's place");
+        std::fs::write(path.join("keep"), "kept").expect("file in that directory");
+
+        bind_restricted(&path, restrict_to_owner).expect_err("rename onto a directory fails");
+
+        assert_eq!(entries(dir.path()), vec!["control.sock"]);
+        assert_eq!(
+            std::fs::read_to_string(path.join("keep")).expect("file is still there"),
+            "kept"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_leftover_private_dir_does_not_block_the_start() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("control.sock");
+        let leftover = private_dir(&path);
+        std::fs::create_dir(&leftover).expect("leftover private dir");
+        std::fs::write(leftover.join("control.sock"), "").expect("leftover file");
+
+        let _listener = bind_restricted(&path, restrict_to_owner).expect("socket opens");
+
+        assert_eq!(entries(dir.path()), vec!["control.sock"]);
+    }
+
+    #[tokio::test]
+    async fn a_missing_data_dir_fails_without_creating_anything() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("missing").join("control.sock");
+
+        let error = bind_restricted(&path, restrict_to_owner).expect_err("no data dir");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(entries(dir.path()), Vec::<String>::new());
     }
 }

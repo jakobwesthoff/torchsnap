@@ -26,6 +26,9 @@ The socket is located in the Torchsnap application data directory:
 | macOS | `~/Library/Application Support/app.torchsnap/control.sock` |
 | Linux | `~/.local/share/app.torchsnap/control.sock` (XDG default) |
 
+The socket file has mode `0600`, read and write for your user only, from
+the moment it appears at this path, whatever the umask.
+
 Connect with any tool that speaks Unix sockets. Examples use `socat`, which
 is available via Homebrew (`brew install socat`) or most Linux package
 managers.
