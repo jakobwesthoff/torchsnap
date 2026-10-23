@@ -6,11 +6,15 @@ authors = ["Jakob Westhoff <jakob@westhoffswelt.de> (https://westhoffswelt.de)"]
 edition = "2024"
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# The `_lib` suffix keeps the lib name apart from the bin name, which
+# matters should `cdylib` come back: on windows-msvc a lib built as
+# `cdylib` next to a bin of the same name collides with it in the
+# output, see https://github.com/rust-lang/cargo/issues/8519.
+# `src/main.rs` calls the library by this name.
 name = "torchsnap_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# The desktop builds link `src/main.rs` against the rlib. Tauri's mobile
+# targets need `staticlib` (iOS) and `cdylib` (Android), see ADR 0070.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

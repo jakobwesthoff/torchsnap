@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Making it took about half a minute, and its Finder step could hang.
   A `just build` with nothing changed went from about 50 s to 15 s.
   Release builds and `--sign` builds still make the DMG.
+- The host library is built only as an `rlib`, no longer also as a
+  static and a dynamic library. On an Apple silicon Mac, `cargo build`
+  after a one-line change went from about 2.95 s to 2.31 s and
+  `cargo test --no-run` from about 3.04 s to 2.54 s.
 
 ### Removed
 
