@@ -84,6 +84,22 @@ pub trait LauncherPanel {
     /// Whether the launcher panel is currently visible.
     fn is_visible(app: &tauri::AppHandle) -> anyhow::Result<bool>;
 
+    /// Whether the launcher panel has keyboard focus.
+    ///
+    /// Reads Tauri's window state, which fits every platform: on macOS
+    /// tauri-nspanel turns the launcher window into the panel by
+    /// changing the class of the same `NSWindow`, and tao answers with
+    /// that window's `isKeyWindow`; on Linux tao answers with
+    /// `gtk::Window::is_active`.
+    fn is_focused(app: &tauri::AppHandle) -> anyhow::Result<bool> {
+        use anyhow::Context;
+        use tauri::Manager;
+        app.get_webview_window("main")
+            .context("get launcher window")?
+            .is_focused()
+            .context("read launcher focus")
+    }
+
     /// Force the webview to composite its first frame while the
     /// panel remains visually hidden.
     ///

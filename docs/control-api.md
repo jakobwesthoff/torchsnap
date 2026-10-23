@@ -185,6 +185,7 @@ Report the current launcher state.
 | Field | Type | Description |
 |-------|------|-------------|
 | `visible` | boolean | Whether the launcher window is currently visible |
+| `focused` | boolean | Whether the launcher window has keyboard focus. Some desktops (for example GNOME on Wayland) can refuse focus to a window that just appeared, so read it a moment after `show` |
 | `ready` | boolean | Whether the launcher has reported its layout and its frontend is connected. Until then `show` fails and `query` and `dismiss` answer with error `-1` |
 
 `ready` is the backend's view: it stays true while the launcher's page
@@ -195,7 +196,7 @@ launcher to have applied a command checks the result itself.
 **Example:**
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"status"}' | socat - UNIX-CONNECT:"$SOCK"
-# → {"jsonrpc":"2.0","id":1,"result":{"visible":false,"ready":true}}
+# → {"jsonrpc":"2.0","id":1,"result":{"visible":false,"focused":false,"ready":true}}
 ```
 
 ## Error Codes
