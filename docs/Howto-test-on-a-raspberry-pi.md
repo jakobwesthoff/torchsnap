@@ -186,8 +186,9 @@ just testbed-reboot
 ```
 
 reboots the Pi and returns once it is back with a new boot id and its
-GNOME session takes input: GNOME Shell has finished starting and the
-overview is closed. It gives up after 300 seconds
+GNOME session takes input: no screen shield is up (see section 6),
+GNOME Shell has finished starting and the overview is closed. It gives
+up after 300 seconds
 (`TORCHSNAP_LINUX_REBOOT_TIMEOUT`). The reboot goes over plain SSH, not
 through `TORCHSNAP_LINUX_RUNNER`.
 
@@ -311,6 +312,32 @@ window with an empty title. A hidden launcher has no window, so
 (WM class `torchsnap`) with title, rectangle, monitor and focus.
 `testbed-eval JS` prints the value of a JavaScript expression evaluated
 inside GNOME Shell, as JSON; it exits 1 when the expression throws.
+
+GNOME's screen shield can come up although provisioning turns screen
+lock and idle blanking off. While it is up, the screen shows the shield
+instead of the app, and GNOME Shell turns the testbed extension off, so
+`Eval` answers nothing. The recipes that use GNOME Shell or the screen
+(`testbed-eval`, `testbed-windows`, `testbed-launcher-state`,
+`testbed-screenshot`, `testbed-type`, `testbed-key`, `testbed-pointer`,
+`testbed-click`, the tray recipes, `testbed-record-start`,
+`testbed-bench-memory`, and `testbed-reboot`'s wait for the session)
+first ask GNOME's `org.gnome.ScreenSaver` interface whether the shield
+is up. If it is, they move the pointer one pixel and back, which lifts a
+shield that does not lock, print `GNOME's screen shield was up; a
+pointer move lifted it` and go on. A shield that stays up for 5 seconds
+(`TORCHSNAP_TESTBED_SHIELD_TIMEOUT`) has locked the screen, which
+happens when provisioning's settings defaults are missing: with them
+gone, GNOME's idle delay is 300 seconds again and the lock is on, and
+after a longer idle phase the shield comes up locked within seconds.
+The recipes then stop with exit status 1 instead of unlocking. To
+recover, restore the defaults with `just testbed-provision` and unlock
+the session on the Pi:
+
+```sh
+loginctl unlock-session "$(loginctl show-user "$USER" -p Display --value)"
+```
+
+The headless session is not checked.
 
 ## 7. Keyboard and pointer
 
@@ -476,9 +503,9 @@ need a current build on the Pi; run `just testbed-build` first.
 | 2 | Only when named. Builds in the Mac's container and checks that the Mac's binary was written by this build, that the Pi got the same binary (size and modification time) and the same development gadget archives and records the build as current, that the app started afterwards runs that binary, and that it opens the calculator, a bundled gadget, for `=2+3` and hello-world, from `~/torchsnap/gadgets/`, for `!b2`. |
 | 2R | Only when named. Item 2 for `just testbed-build --release`: the Pi records the build as `container-release`, and the app runs that binary and opens the calculator for `=2+3`; a release build has no development gadgets to check. |
 | S | Only when named; three container builds. Builds in the container, then copies the working tree to a second checkout under `target/linux-testbed/selftest-checkout/` (modification times kept), changes `src-tauri/src/main.rs` there with a marker string and a modification time older than any build output, and builds from that checkout: the binary on the Pi must contain the marker. A build back in this checkout must drop it again. The second checkout is removed afterwards; when the item stops between the two builds, it builds from this checkout again, so the Pi never keeps the second checkout's build. |
-| R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
+| R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, no screen shield, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
-| U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |
+| U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. Undoing the settings defaults brings back GNOME's idle delay of 300 seconds and idle activation until provisioning restores them, so every undo starts with a pointer move of one pixel and back, which resets the idle time, and after every provision run the screen shield must be down. That check means something only after the Pi has been idle for longer than 300 seconds. |
 
 ## 14. Memory benchmark
 

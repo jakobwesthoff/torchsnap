@@ -121,6 +121,12 @@ is the full guide.
 - GNOME 48 from Debian with gdm autologin; the testbed's GNOME Shell
   extension opens Shell's Eval, Screenshot and Screencast D-Bus methods
   and closes the overview after login.
+- GNOME's screen shield can come up by itself. The recipes that use
+  Shell or the screen lift it with a pointer move first and say so on
+  stderr. A locked shield (provisioning's settings defaults missing)
+  stops them with exit 1 and the recovery: `just testbed-provision`,
+  then `loginctl unlock-session` on the machine (the error has the
+  full command).
 - Remote viewing: RDP on port 3389, user `testbed`, password in
   `~/.config/torchsnap-testbed/rdp-password` on the machine. Do not
   print the password into chat or files.

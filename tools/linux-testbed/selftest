@@ -43,9 +43,11 @@
 #   11  stop-all leaves nothing of the testbed running and the desktop
 #       as the self-test found it
 #   R   after a reboot the machine is back in its desktop session with
-#       everything the testbed needs (only when named)
+#       everything the testbed needs and no screen shield (only when named)
 #   U   undoing one provision step at a time, provisioning reports
-#       `changed` for exactly that step (only when named)
+#       `changed` for exactly that step, and the screen shield stays
+#       down; meaningful after an idle phase longer than 300 s (only when
+#       named)
 #   P   the installing steps install again when what they installed is
 #       gone (only when named; downloads and builds, about 10 minutes)
 
@@ -675,6 +677,8 @@ item_R() {
     # screen, which would show in screenshots; the extension removes it.
     [ "$(on_machine "$unsafe_mode_notification")" = "(true, 'false')" ] \
         || { fail R "GNOME Shell shows the unsafe-mode notification"; return; }
+    [ "$(on_machine "$shield_state" | tail -n 1)" = "(false,)" ] \
+        || { fail R "GNOME's screen shield is up after the reboot"; return; }
 
     output="$("$testbed" provision)"
     status=$?
@@ -701,8 +705,17 @@ undo_steps=(
     'rdp|grdctl rdp disable'
 )
 
+# Undoing `dconf-defaults` brings back GNOME's idle delay (300 s) and
+# idle activation until provisioning restores them; after a longer idle
+# phase, that is when the screen shield can come up. So every undo starts
+# with a pointer move of one pixel and back, which sets the idle time to
+# zero, and after every provision run the shield must be down. A pass
+# shows that only after an idle phase longer than 300 s.
+readonly idle_reset='ydotool mousemove -x 1 -y 0 && ydotool mousemove -x -1 -y 0'
+readonly shield_state='gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.GetActive'
+
 item_U() {
-    local entry step undo output status changed
+    local entry step undo output status changed shield
     output="$("$testbed" provision)"
     if ! grep -q '^provision: 0 changed' <<<"$output"; then
         fail U "SETUP: the machine is not fully provisioned: $(grep '^provision:' <<<"$output")"
@@ -711,7 +724,7 @@ item_U() {
     for entry in "${undo_steps[@]}"; do
         step="${entry%%|*}"
         undo="${entry#*|}"
-        if ! on_machine "$undo" >/dev/null; then
+        if ! on_machine "$idle_reset && $undo" >/dev/null; then
             fail U "SETUP: could not undo $step"
             return
         fi
@@ -720,6 +733,11 @@ item_U() {
         changed="$(grep '^changed ' <<<"$output" | tr '\n' ' ')"
         if [ "$status" -ne 0 ] || [ "$changed" != "changed $step " ]; then
             fail U "after undoing $step: exit $status, ${changed:-nothing changed}"
+            return
+        fi
+        shield="$(on_machine "$shield_state" | tail -n 1)"
+        if [ "$shield" != "(false,)" ]; then
+            fail U "GNOME's screen shield is up after undoing and restoring $step (GetActive: ${shield:-no answer})"
             return
         fi
         echo "  undone and restored: $step"

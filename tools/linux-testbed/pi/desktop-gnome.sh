@@ -127,6 +127,25 @@ desk_pointer() {
     desk_eval '/*pointer*/ global.get_pointer().slice(0, 2)'
 }
 
+# Whether GNOME's screen shield (the lock screen, or the shield over a
+# blanked screen) is up: prints true or false. It is asked through
+# org.gnome.ScreenSaver, not Eval: while the shield is up, GNOME Shell
+# runs in its unlock-dialog mode, where the testbed extension, which
+# opens Eval, is off.
+desk_screen_shield_active() {
+    local answer
+    answer="$(gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver \
+        --method org.gnome.ScreenSaver.GetActive 2>/dev/null)" || answer=""
+    case "$answer" in
+        "(true,)") echo true ;;
+        "(false,)") echo false ;;
+        *)
+            echo "testbed-pi: GNOME Shell's ScreenSaver interface does not answer${answer:+ (it said: $answer)}" >&2
+            return 1
+            ;;
+    esac
+}
+
 # desk_pointer_target X Y: the app window that would get the pointer at
 # X,Y (logical pixels) as {"title", "wm_class"}, or null for another
 # window, Shell's own actors or nothing. Mutter finds the pointer's

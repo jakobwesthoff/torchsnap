@@ -42,7 +42,10 @@
 #
 #   app-start, app-stop, app-log, control, eval, windows, launcher-state,
 #   screenshot and bench-memory take --headless to work in the headless
-#   session.
+#   session. In the desktop session, session-ready, eval, windows,
+#   launcher-state, screenshot, type, key, pointer, click, pointer-target,
+#   the tray subcommands, record-start and bench-memory first lift GNOME's
+#   screen shield with a pointer move, or stop when it stays up.
 #   testbed-pi tray on|off|status     switch or report the desktop's tray support
 #   testbed-pi tray-icon              {"x", "y", "width", "height", "menuOpen"} of the app's tray icon
 #   testbed-pi tray-click [left|right|middle]
@@ -108,7 +111,13 @@ print_session_env() {
     done
 }
 
+# Loads the desktop's part once: the screen-shield check loads it before
+# the subcommand does, and the part's readonly variables cannot be set a
+# second time.
+desktop_loaded=""
 load_desktop() {
+    [ -z "$desktop_loaded" ] || return 0
+    desktop_loaded=1
     case "${XDG_CURRENT_DESKTOP:-}" in
         GNOME)
             source "$pi_dir/desktop-gnome.sh"
@@ -597,6 +606,39 @@ park_pointer() {
     done
 }
 
+# GNOME's screen shield can come up although provisioning turns idle
+# blanking and the lock off; while it is up, Shell's Eval is closed and
+# the screen shows the shield, not the app. A pointer move lifts a shield
+# that does not lock. Only the desktop session has a screen and the
+# uinput device; the headless session is left alone.
+readonly shield_timeout="${TORCHSNAP_TESTBED_SHIELD_TIMEOUT:-5}"
+
+shield_down() {
+    [ "$(desk_screen_shield_active)" = false ]
+}
+
+wake_screen() {
+    [ -z "$headless" ] || return 0
+    local active
+    active="$(desk_screen_shield_active)" || exit 1
+    [ "$active" = true ] || return 0
+    take_input_lock || exit 1
+    ydotool mousemove -x 1 -y 0
+    ydotool mousemove -x -1 -y 0
+    finish_input
+    if ! wait_for "$shield_timeout" shield_down; then
+        # A shield that a pointer move does not lift locks the screen,
+        # which provisioning turns off; so the settings defaults are
+        # missing, and the recipe stops instead of unlocking past that.
+        # shellcheck disable=SC2016 # the command is printed for the reader to run
+        echo "testbed-pi: GNOME's screen shield is up and a pointer move did not lift it, so the screen is locked" \
+            "and provisioning's settings defaults are missing. Restore them with just testbed-provision, then unlock" \
+            'the session on the machine with: loginctl unlock-session "$(loginctl show-user "$USER" -p Display --value)"' >&2
+        exit 1
+    fi
+    echo "testbed-pi: GNOME's screen shield was up; a pointer move lifted it" >&2
+}
+
 cmd_pointer_target() {
     [ $# -eq 2 ] && [[ "$1" =~ ^[0-9]+$ ]] && [[ "$2" =~ ^[0-9]+$ ]] || usage
     desk_pointer_target "$1" "$2"
@@ -1004,6 +1046,15 @@ case "$subcommand" in
             fi
         done
         set -- ${arguments[@]+"${arguments[@]}"}
+        ;;
+esac
+
+# The subcommands that need GNOME Shell or the screen lift a screen
+# shield first.
+case "$subcommand" in
+    session-ready | eval | windows | launcher-state | screenshot | type | key | pointer | click | pointer-target | tray | tray-icon | tray-click | record-start | bench-memory)
+        load_desktop
+        wake_screen
         ;;
 esac
 

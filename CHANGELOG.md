@@ -67,7 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `testbed-headless-stop` run a headless GNOME session with virtual
   monitors for the app, `just testbed-stop-all` stops everything the
   testbed started, and
-  `just testbed-selftest` checks the testbed. Provisioning lowers the
+  `just testbed-selftest` checks the testbed. The recipes that use
+  GNOME Shell or the screen lift GNOME's screen shield with a pointer
+  move first, or stop with a message when it stays up. Provisioning lowers the
   Pi's security for remote control, for example with an unencrypted
   default keyring; `docs/Howto-test-on-a-raspberry-pi.md` lists what it
   opens up.

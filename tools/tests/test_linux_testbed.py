@@ -35,7 +35,25 @@ BASH = shutil.which("bash")
 # A stub reads STUB_<NAME>_STDOUT and STUB_<NAME>_EXIT, with NAME the
 # command name in upper case and `-` replaced by `_`. With
 # STUB_<NAME>_FAIL_ON set, a call whose arguments contain that text exits
-# 1 instead.
+# 1 instead. As gdbus, it answers GNOME's ScreenSaver.GetActive apart
+# from every other call (see SCREENSAVER_BRANCH).
+#
+# SCREENSAVER_BRANCH answers each GetActive call with the next of
+# STUB_SCREENSAVER_ANSWERS (a JSON list, the last one repeating; null
+# fails the call), by default the shield being down: `(false,)`.
+SCREENSAVER_BRANCH = """\
+    if name == "gdbus" and "org.gnome.ScreenSaver.GetActive" in sys.argv:
+        answers = json.loads(os.environ.get("STUB_SCREENSAVER_ANSWERS", '["(false,)"]'))
+        counter = os.path.join(os.path.dirname(os.environ["STUB_LOG"]), "screensaver.count")
+        i = int(open(counter).read()) if os.path.exists(counter) else 0
+        open(counter, "w").write(str(i + 1))
+        answer = answers[min(i, len(answers) - 1)]
+        if answer is None:
+            sys.exit(1)
+        print(answer)
+        sys.exit(0)
+"""
+
 STUB = textwrap.dedent(
     """\
     #!/usr/bin/env python3
@@ -44,6 +62,7 @@ STUB = textwrap.dedent(
     key = name.upper().replace("-", "_")
     with open(os.environ["STUB_LOG"], "a") as log:
         log.write(json.dumps(sys.argv) + "\\n")
+""" + SCREENSAVER_BRANCH + """\
     sys.stdout.write(os.environ.get(f"STUB_{key}_STDOUT", ""))
     fail_on = os.environ.get(f"STUB_{key}_FAIL_ON")
     if fail_on and fail_on in " ".join(sys.argv[1:]):
@@ -605,6 +624,12 @@ UNDO_SSH = textwrap.dedent(
     command = shlex.split(" ".join(args[1:]))[-1]
     with log.open("a") as f:
         f.write(json.dumps(["ssh", command]) + "\\n")
+    if "ScreenSaver.GetActive" in command:
+        counter = log.with_name("shield.count")
+        n = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(n + 1))
+        answers = os.environ.get("STUB_SHIELD_ANSWERS", "(false,)").split(";")
+        print(answers[min(n, len(answers) - 1)])
     if "provision/provision" in command:
         counter = log.with_name("provision.count")
         n = int(counter.read_text()) if counter.exists() else 0
@@ -639,18 +664,43 @@ class SelftestUndo(unittest.TestCase):
     def tearDown(self):
         self.stubs.cleanup()
 
+    def item_u(self, **env):
+        environment = {"TORCHSNAP_LINUX_HOST": "user@pi.local", "STUB_UNDONE_STEPS": ",".join(self.STEPS)}
+        environment.update(env)
+        return run(["U"], self.stubs, env=environment, unset=["TORCHSNAP_LINUX_RUNNER"], script=SELFTEST)
+
     def undo_commands(self):
-        result = run(
-            ["U"],
-            self.stubs,
-            env={"TORCHSNAP_LINUX_HOST": "user@pi.local", "STUB_UNDONE_STEPS": ",".join(self.STEPS)},
-            unset=["TORCHSNAP_LINUX_RUNNER"],
-            script=SELFTEST,
-        )
+        result = self.item_u()
         self.assertIn("PASS item U", result.stdout, result.stdout + result.stderr)
-        commands = [call[1] for call in self.stubs.calls("ssh") if "provision/provision" not in call[1]]
+        commands = [call[1] for call in self.stubs.calls("ssh")
+                    if "provision/provision" not in call[1] and "ScreenSaver.GetActive" not in call[1]]
         # The first command records the desktop's state before the items.
         return dict(zip(self.STEPS, commands[1:], strict=True))
+
+    def test_every_undo_first_resets_the_idle_time_with_a_pointer_move(self):
+        for step, command in self.undo_commands().items():
+            with self.subTest(step=step):
+                self.assertTrue(
+                    command.startswith("ydotool mousemove -x 1 -y 0 && ydotool mousemove -x -1 -y 0 && "), command)
+
+    def test_the_shield_is_checked_after_every_provision_run(self):
+        self.undo_commands()
+        calls = [c[1] for c in self.stubs.calls("ssh")]
+        provisions = [i for i, c in enumerate(calls) if "provision/provision" in c][1:]
+        for i in provisions:
+            self.assertIn("org.gnome.ScreenSaver.GetActive", calls[i + 1])
+
+    def test_a_shield_up_after_a_step_fails_the_item_naming_the_step(self):
+        result = self.item_u(STUB_SHIELD_ANSWERS="(false,);(true,)")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL item U: GNOME's screen shield is up after undoing and restoring dconf-defaults", result.stdout)
+        self.assertNotIn("undone and restored: dconf-defaults", result.stdout)
+
+    def test_a_shield_up_after_the_last_step_fails_the_item(self):
+        answers = ";".join(["(false,)"] * (len(self.STEPS) - 1) + ["(true,)"])
+        result = self.item_u(STUB_SHIELD_ANSWERS=answers)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("after undoing and restoring rdp", result.stdout)
 
     def test_the_sleep_undo_unmasks_every_masked_target(self):
         undo = self.undo_commands()["sleep-masked"].split()
@@ -2262,7 +2312,9 @@ class Observation(unittest.TestCase):
         return run(args, self.stubs, env=environment, script=TESTBED_PI)
 
     def gdbus_calls(self):
-        return [c[1:] for c in self.stubs.calls("gdbus")]
+        """The calls to GNOME Shell, without the screen-shield check
+        before them."""
+        return [c[1:] for c in self.stubs.calls("gdbus") if "org.gnome.ScreenSaver.GetActive" not in c]
 
     def test_eval_prints_the_value(self):
         result = self.call_pi(["eval", "global.context.unsafe_mode"], eval_answer(True))
@@ -2379,6 +2431,8 @@ RULE_GDBUS = textwrap.dedent(
     log = pathlib.Path(os.environ["STUB_LOG"])
     with log.open("a") as f:
         f.write(json.dumps(sys.argv) + "\\n")
+    name = "gdbus"
+""" + SCREENSAVER_BRANCH + """\
     if "org.gnome.Shell.Eval" not in sys.argv:
         print("(true, '')")
         sys.exit(0)
@@ -2618,6 +2672,94 @@ class Input(unittest.TestCase):
         self.assertEqual(self.ydotool_calls()[-1], ["click", "0xC1"])
 
 
+class ScreenShield(unittest.TestCase):
+    """The desktop-session subcommands that use GNOME Shell or the screen
+    ask GNOME's ScreenSaver whether the shield is up first, and lift it
+    with a pointer move or stop."""
+
+    setUp = Input.setUp
+    tearDown = Input.tearDown
+    call_pi = Input.call_pi
+    ydotool_calls = Input.ydotool_calls
+    eval_scripts = Input.eval_scripts
+
+    def gdbus_calls(self):
+        return [c for c in self.stubs.calls("gdbus")]
+
+    def asked_shield(self):
+        return any("org.gnome.ScreenSaver.GetActive" in c for c in self.gdbus_calls())
+
+    def test_with_the_shield_down_eval_runs_without_moving_the_pointer(self):
+        result = self.call_pi(["eval", "1 + 1"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.asked_shield())
+        self.assertEqual(self.ydotool_calls(), [])
+        self.assertEqual(len(self.eval_scripts()), 1)
+
+    def test_a_shield_that_a_pointer_move_lifts_is_lifted_first(self):
+        result = self.call_pi(["eval", "1 + 1"], env={"STUB_SCREENSAVER_ANSWERS": '["(true,)", "(false,)"]'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.ydotool_calls(), [["mousemove", "-x", "1", "-y", "0"], ["mousemove", "-x", "-1", "-y", "0"]])
+        self.assertIn("GNOME's screen shield was up; a pointer move lifted it", result.stderr)
+        calls = self.gdbus_calls()
+        self.assertIn("org.gnome.ScreenSaver.GetActive", calls[0])
+        self.assertIn("org.gnome.Shell.Eval", calls[-1])
+
+    def test_a_shield_that_stays_up_stops_before_shell_is_asked(self):
+        result = self.call_pi(["eval", "1 + 1"], env={
+            "STUB_SCREENSAVER_ANSWERS": '["(true,)"]', "TORCHSNAP_TESTBED_SHIELD_TIMEOUT": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("screen shield is up and a pointer move did not lift it, so the screen is locked", result.stderr)
+        # The recovery: the provisioning step that restores the settings
+        # defaults, then logind's unlock of the session.
+        self.assertIn("just testbed-provision", result.stderr)
+        self.assertIn('loginctl unlock-session "$(loginctl show-user "$USER" -p Display --value)"', result.stderr)
+        self.assertEqual(self.eval_scripts(), [])
+        self.assertFalse((self.runtime / "torchsnap-testbed" / "input.lock").exists())
+
+    def test_a_screensaver_that_does_not_answer_stops(self):
+        for answers in ('[null]', '["(nope)"]'):
+            with self.subTest(answers=answers):
+                self.stubs.log.unlink(missing_ok=True)
+                (self.stubs.dir / "screensaver.count").unlink(missing_ok=True)
+                result = self.call_pi(["eval", "1 + 1"], env={"STUB_SCREENSAVER_ANSWERS": answers})
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("GNOME Shell's ScreenSaver interface does not answer", result.stderr)
+                self.assertEqual(self.eval_scripts(), [])
+
+    def test_every_subcommand_that_uses_shell_or_the_screen_asks(self):
+        for args in (["session-ready"], ["eval", "x"], ["windows"], ["launcher-state"], ["screenshot", "x"],
+                     ["type", "--window", "torchsnap", "a"], ["key", "--window", "torchsnap", "Escape"],
+                     ["pointer", "1", "2"], ["click", "1", "2"], ["pointer-target", "1", "2"],
+                     ["tray", "status"], ["tray-icon"], ["tray-click"], ["record-start", "x"],
+                     ["bench-memory", "-d", "x"]):
+            with self.subTest(args=args):
+                self.stubs.log.unlink(missing_ok=True)
+                self.call_pi(args, env={"TORCHSNAP_TESTBED_INPUT_TIMEOUT": "1", "TORCHSNAP_TESTBED_RECORD_TIMEOUT": "1"})
+                self.assertTrue(self.asked_shield())
+
+    def test_subcommands_that_do_not_touch_shell_do_not_ask(self):
+        for args in (["app-start"], ["app-log"], ["control", "status"], ["merge-app-settings"], ["env"]):
+            with self.subTest(args=args):
+                self.stubs.log.unlink(missing_ok=True)
+                self.call_pi(args)
+                self.assertFalse(self.asked_shield())
+
+    def test_the_headless_session_is_not_asked(self):
+        headless = self.home / ".cache" / "torchsnap-testbed" / "headless"
+        headless.mkdir(parents=True)
+        (headless / "bus").write_text("unix:path=/tmp/headless-bus\n")
+        result = self.call_pi(["eval", "--headless", "1 + 1"], env={"STUB_SCREENSAVER_ANSWERS": '["(true,)"]'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.asked_shield())
+
+    def test_session_ready_lifts_the_shield_before_asking_shell(self):
+        self.call_pi(["session-ready"], env={"STUB_SCREENSAVER_ANSWERS": '["(true,)", "(false,)"]'})
+        self.assertEqual(self.ydotool_calls()[:2], [["mousemove", "-x", "1", "-y", "0"], ["mousemove", "-x", "-1", "-y", "0"]])
+        calls = self.gdbus_calls()
+        self.assertIn("org.gnome.ScreenSaver.GetActive", calls[0])
+
+
 TRAY_ITEMS = [
     {"key": "appindicator-:1.9@/org/ayatana/NotificationItem/other", "title": "nm-applet", "x": 700, "y": 0, "width": 48, "height": 35, "menuOpen": False},
     {"key": "appindicator-:1.113@/org/ayatana/NotificationItem/tray_icon_tray_app_4892_1", "title": "torchsnap", "x": 785, "y": 0, "width": 48, "height": 35, "menuOpen": False},
@@ -2738,7 +2880,8 @@ SYSTEMD_RUN = textwrap.dedent(
 class Recording(unittest.TestCase):
     def setUp(self):
         self.home = pathlib.Path(tempfile.mkdtemp(prefix="tb-", dir="/tmp"))
-        self.stubs = Stubs([])
+        # gdbus answers the screen-shield check before a recording starts.
+        self.stubs = Stubs(["gdbus"])
         for name, text in (("systemctl", SYSTEMCTL), ("systemd-run", SYSTEMD_RUN)):
             path = self.stubs.dir / name
             path.write_text(text)
@@ -3474,7 +3617,8 @@ class TestbedPiBenchMemory(unittest.TestCase):
         bench.write_text(FAKE_BENCH)
         bench.chmod(0o755)
         self.stubs = Stubs([])
-        for name, content in (("systemctl", BENCH_SYSTEMCTL), ("ps", BENCH_PS), ("pgrep", BENCH_PGREP)):
+        for name, content in (("systemctl", BENCH_SYSTEMCTL), ("ps", BENCH_PS), ("pgrep", BENCH_PGREP),
+                              ("gdbus", STUB)):
             self.stubs.add(name, content)
 
     def tearDown(self):
