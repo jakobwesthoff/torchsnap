@@ -8,7 +8,7 @@ tags: [linux]
 ---
 # Add system commands on Linux
 
-The system-commands gadget offers lock, sleep, restart, shut down, log out and further commands on macOS. On Linux it registers with no commands: the non-macOS `system_commands()` factory in `src-tauri/src/gadgets/system_commands/` returns `vec![]`. Its shared helper `run_on_enter` therefore has no caller in the Linux build, which is one of the warnings there. Found on 2026-10-24 while analysing the warnings of the Linux build.
+The system-commands gadget offers lock, sleep, restart, shut down, log out and further commands on macOS. On Linux it registers with no commands: the non-macOS `system_commands()` factory in `src-tauri/src/gadgets/system_commands/` returns `vec![]`. Its shared helper `run_on_enter` therefore has no caller in the Linux build; a `cfg_attr(..., expect(dead_code))` with a TODO on it keeps the Linux lint clean until then. The first Linux command that calls the helper makes that expectation fail the Linux lint, and the attribute and its TODO are removed in that commit. Found on 2026-10-24 while analysing the warnings of the Linux build.
 
 ## Proposal
 

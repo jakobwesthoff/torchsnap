@@ -99,6 +99,22 @@ impl SystemCommandsGadget {
 pub struct RunCommand(pub String);
 
 /// The actions of a system command entry: Enter runs it.
+//
+// TODO: REMOVE the `expect` below as soon as Linux has system
+// commands (todo `01M5Q6BWVG919KRWNQXR2T033N-add-system-commands-on-linux.md`).
+// The non-macOS `system_commands()` returns no commands yet, so this
+// shared helper has no caller there and the Linux build reports it as
+// dead code. It is an `expect`, not an `allow`: the first Linux
+// command that calls it turns the expectation into an
+// "unfulfilled lint expectation" error, so it cannot outlive the gap.
+// Test builds call it from the unit tests, hence `not(test)`.
+#[cfg_attr(
+    not(any(target_os = "macos", test)),
+    expect(
+        dead_code,
+        reason = "no system commands on this platform yet; see the TODO above"
+    )
+)]
 pub(crate) fn run_on_enter(id: &str, label: &str) -> EntryActions<RunCommand> {
     EntryActions::new().primary(label, RunCommand(id.to_string()))
 }
