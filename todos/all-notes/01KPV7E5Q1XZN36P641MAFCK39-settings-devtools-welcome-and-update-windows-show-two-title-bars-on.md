@@ -1,17 +1,34 @@
 ---
-title: "Settings and devtools windows show double title bars on Linux"
+title: "Settings, devtools, welcome and update windows show two title bars on Linux"
 kind: bug
 component: platform
 status: needs-discussion
+impact: high
+horizon: next
 ---
 
-# Settings and devtools windows show double title bars on Linux
+# Settings, devtools, welcome and update windows show two title bars on Linux
 
 On Fedora 43 with GNOME, the settings and devtools windows show GNOME's
 native title bar and the in-webview `<TitleBar />` at the same time. The
 React layout also reserves its own strip, so the window has two title
 strips. The launcher window is unaffected because it is built with
 `.transparent(true).decorations(false)`.
+
+Seen again on 2026-10-24 on the Raspberry Pi testbed (Raspberry Pi OS,
+GNOME): the windows carry the desktop's own title bar while the page
+paints the macOS-style one. The maintainer: a way must be found so these
+windows look right on Linux too, and this must be done before the first
+Linux release.
+
+All four auxiliary windows are affected, since all four are built with
+`hide_native_chrome: true` and render `<TitleBar />`: settings
+(`src/settings/SettingsPanel.tsx`), developer tools
+(`src/devtools/DevToolsPanel.tsx`), welcome (`src/welcome/WelcomeWindow.tsx`,
+`closable={false}`) and software update (`src/update/UpdateWindow.tsx`).
+Under option B below the welcome window would get the desktop's close
+button, which its `closable={false}` withholds today; that needs a
+decision of its own.
 
 ## Why it happens
 
