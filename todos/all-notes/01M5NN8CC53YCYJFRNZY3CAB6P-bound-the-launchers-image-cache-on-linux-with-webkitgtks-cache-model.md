@@ -16,6 +16,8 @@ Linux memory investigation, 2026-10-24, debug and release builds behaving the sa
 - today: web anon +38.0 MiB, web GPU +30.4 MiB at 500 cycles, show to visible content 72 ms median;
 - with the launcher's web context set to `CacheModel::DocumentViewer`: web anon +2.5 MiB, web GPU +2.7 MiB at 500 cycles, 75 ms median (one first show of 545 ms in ten).
 
+On 2026-10-24 a release build with the cache model set rendered the card, the emoji grid and a different mascot on three consecutive shows (screenshots): the cache model does not stop the launcher from painting.
+
 Clearing WebKit's memory cache on every hide bounded the GPU part but not the anon part (+25.9 MiB anon at 200 cycles). A web-process memory limit needs a wry change and made shows slower.
 
 ## Suggested change
@@ -24,7 +26,6 @@ After the launcher window is built, set the cache model through `with_webview`: 
 
 ## Before it lands
 
-- The measurement never looked at the screen. In the follow-up memory review, two other WebKit switches (hardware acceleration off) saved a lot of memory only because the launcher no longer painted at all, while the control API and the page's content-visible state reported a normal show. Confirm with screenshots that the card and a new mascot render on consecutive shows with the cache model set, before trusting the figures above.
 - tauri-runtime-wry shares one web context among all webviews without a data directory, so the settings and welcome windows lose their memory cache too. Check that they still load and behave as before.
 - A test that the launcher's context gets the cache model.
 - A measurement on the Linux testbed after the change (`just testbed-bench-memory --cycles`).
