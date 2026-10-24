@@ -14,6 +14,6 @@ pub use app_discovery::FallbackDiscovery;
 pub use app_resolver::{app_path_for_identifier, icon_image_for_path};
 pub use clipboard::FallbackClipboard;
 pub use launcher_panel::FallbackLauncherPanel;
-pub use settings_discovery::FallbackSettingsDiscovery;
+pub use settings_discovery::{FallbackPaneIcon, FallbackSettingsDiscovery};
 pub use tray::FallbackTray;
 pub use window_chrome::FallbackWindowChrome;

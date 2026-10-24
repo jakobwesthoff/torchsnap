@@ -16,7 +16,7 @@
 // =========================================================
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
@@ -28,11 +28,12 @@ const EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
 
 pub struct MacosSettingsDiscovery;
 
-impl MacosSettingsDiscovery {
-    /// Format the System Settings deep-link URL for a pane.
-    pub fn pane_url(pane_id: &str) -> String {
-        format!("x-apple.systempreferences:{pane_id}")
-    }
+/// Where to get a pane's icon: the `.appex` bundle that
+/// `NSWorkspace.iconForFile` renders it from. `Default` carries no
+/// bundle and so no icon.
+#[derive(Debug, Clone, Default)]
+pub struct MacosPaneIcon {
+    appex_path: Option<PathBuf>,
 }
 
 impl SettingsDiscovery for MacosSettingsDiscovery {
@@ -70,11 +71,15 @@ impl SettingsDiscovery for MacosSettingsDiscovery {
         Ok(panes)
     }
 
-    fn icon(&self, pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>> {
-        match &pane.bundle_path {
-            Some(path) => nsworkspace_icon_for_file(path),
+    fn icon(&self, source: &MacosPaneIcon) -> anyhow::Result<Option<image::DynamicImage>> {
+        match &source.appex_path {
+            Some(path) => nsworkspace_icon_for_file(&path.to_string_lossy()),
             None => Ok(None),
         }
+    }
+
+    fn pane_url(&self, pane_id: &str) -> anyhow::Result<String> {
+        Ok(format!("x-apple.systempreferences:{pane_id}"))
     }
 }
 
@@ -134,7 +139,9 @@ fn try_discover_pane(appex_path: &Path, system_lang: &str) -> anyhow::Result<Opt
     Ok(Some(SettingsPane {
         id: bundle_id,
         name,
-        bundle_path: Some(appex_path.to_string_lossy().into_owned()),
+        icon_source: MacosPaneIcon {
+            appex_path: Some(appex_path.to_path_buf()),
+        },
         icon_path: None,
     }))
 }
@@ -211,4 +218,30 @@ fn resolve_system_language() -> String {
     // BCP-47 tags look like "de-DE" or "en-US". We only need
     // the language subtag for loctable lookup.
     locale.split('-').next().unwrap_or("en").to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pane_opens_through_the_system_settings_url_scheme() {
+        let url = MacosSettingsDiscovery
+            .pane_url("com.apple.Wi-Fi-Settings.extension")
+            .expect("macOS opens every pane it discovers");
+
+        assert_eq!(
+            url,
+            "x-apple.systempreferences:com.apple.Wi-Fi-Settings.extension"
+        );
+    }
+
+    #[test]
+    fn a_pane_without_a_bundle_has_no_icon() {
+        let icon = MacosSettingsDiscovery
+            .icon(&MacosPaneIcon::default())
+            .expect("no bundle means no lookup that can fail");
+
+        assert!(icon.is_none());
+    }
 }

@@ -16,7 +16,7 @@
 //   - AppDiscovery: installed application scanning, icon
 //     extraction, and launching
 //   - SettingsDiscovery: system settings pane scanning, icon
-//     rendering, and opening
+//     rendering, and what to open for a pane
 //   - WindowChrome: hiding the native title bar controls so
 //     the frontend can render its own (see ADR 0034)
 // =========================================================
@@ -31,6 +31,8 @@ pub(crate) mod macos;
 pub use macos::MacosClipboard as PlatformClipboard;
 #[cfg(target_os = "macos")]
 pub use macos::MacosLauncherPanel as PlatformLauncherPanel;
+#[cfg(target_os = "macos")]
+pub use macos::MacosPaneIcon as PlatformPaneIcon;
 #[cfg(target_os = "macos")]
 pub use macos::MacosSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(target_os = "macos")]
@@ -52,6 +54,8 @@ pub use fallback::FallbackClipboard as PlatformClipboard;
 pub use fallback::FallbackDiscovery as PlatformAppDiscovery;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackLauncherPanel as PlatformLauncherPanel;
+#[cfg(not(target_os = "macos"))]
+pub use fallback::FallbackPaneIcon as PlatformPaneIcon;
 #[cfg(not(target_os = "macos"))]
 pub use fallback::FallbackSettingsDiscovery as PlatformSettingsDiscovery;
 #[cfg(not(target_os = "macos"))]

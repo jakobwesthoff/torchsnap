@@ -5,11 +5,17 @@
 // =========================================================
 // Settings Discovery (Fallback)
 //
-// Stub implementation. Returns an empty list until platform-
-// specific discovery is implemented for Linux and Windows.
+// Stub implementation. Returns an empty list, and opens nothing,
+// until platform-specific discovery is implemented for Linux and
+// Windows.
 // =========================================================
 
 use crate::platform::settings_discovery::{SettingsDiscovery, SettingsPane};
+
+/// The stub finds no panes, so there is no icon data to carry. A unit
+/// type alias rather than a struct: a struct nobody constructs would
+/// be reported as dead code.
+pub type FallbackPaneIcon = ();
 
 pub struct FallbackSettingsDiscovery;
 
@@ -20,7 +26,35 @@ impl SettingsDiscovery for FallbackSettingsDiscovery {
         Ok(Vec::new())
     }
 
-    fn icon(&self, _pane: &SettingsPane) -> anyhow::Result<Option<image::DynamicImage>> {
+    fn icon(&self, _source: &FallbackPaneIcon) -> anyhow::Result<Option<image::DynamicImage>> {
         Ok(None)
+    }
+
+    fn pane_url(&self, _pane_id: &str) -> anyhow::Result<String> {
+        anyhow::bail!("system-preferences open not implemented on this platform")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_a_pane_is_not_supported() {
+        let error = FallbackSettingsDiscovery
+            .pane_url("gnome-network-panel")
+            .expect_err("the stub opens nothing");
+
+        assert!(error.to_string().contains("not implemented"));
+    }
+
+    #[test]
+    fn the_stub_discovers_no_panes() {
+        assert!(
+            FallbackSettingsDiscovery
+                .discover()
+                .expect("discovery cannot fail")
+                .is_empty()
+        );
     }
 }

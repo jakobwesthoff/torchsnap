@@ -10,10 +10,10 @@
 // via the platform's `SettingsDiscovery` implementation.
 //
 // Icons are rendered via `SettingsDiscovery::icon` and cached
-// on disk as WebP. Opening a pane uses `OpenerCap::open_url`
-// with a platform-specific deep-link URL. Discovery behavior
-// is encapsulated in the discovery trait so this gadget stays
-// fully platform-agnostic.
+// on disk as WebP. Opening a pane asks `SettingsDiscovery::pane_url`
+// for the pane's URL and hands that to the opener capability. Discovery
+// behavior is encapsulated in the discovery trait so this gadget
+// stays fully platform-agnostic.
 //
 // No background refresh is needed — the set of settings panes
 // only changes on OS updates.
@@ -81,7 +81,7 @@ fn cache_pane_icons(
             "system-preferences",
             &key,
             None, // System icons don't change between OS updates.
-            || discovery.icon(pane),
+            || discovery.icon(&pane.icon_source),
         ) {
             pane.icon_path = Some(path);
         }
@@ -159,23 +159,16 @@ impl Search for SystemPreferencesGadget {
     }
 
     fn execute(&self, command: Command) -> anyhow::Result<PostAction> {
-        let opener = self.caps.opener();
         let Command::OpenPane(pane_id) = command;
-
-        #[cfg(target_os = "macos")]
-        {
-            let url = crate::platform::macos::MacosSettingsDiscovery::pane_url(&pane_id);
-            opener
-                .open_url(&url)
-                .map_err(|e| anyhow::anyhow!(e))
-                .context("open settings pane")?;
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = (opener, pane_id);
-            anyhow::bail!("system-preferences open not implemented on this platform");
-        }
-
+        let url = self
+            .discovery
+            .pane_url(&pane_id)
+            .context("find the URL of the settings pane")?;
+        self.caps
+            .opener()
+            .open_url(&url)
+            .map_err(|e| anyhow::anyhow!(e))
+            .context("open settings pane")?;
         Ok(PostAction::Dismiss)
     }
 }
@@ -183,7 +176,11 @@ impl Search for SystemPreferencesGadget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    use crate::caps::OpenerCap;
     use crate::commands::types::Action;
+    use crate::platform::PlatformPaneIcon;
 
     #[test]
     fn pane_opens_on_enter() {
@@ -196,5 +193,95 @@ mod tests {
             ))
         );
         assert_eq!(actions.iter().count(), 1);
+    }
+
+    /// Discovery stand-in: every pane opens as `fake:<id>` unless it
+    /// is told to fail.
+    struct FakeDiscovery {
+        opens: bool,
+    }
+
+    impl SettingsDiscovery for FakeDiscovery {
+        fn discover(&self) -> anyhow::Result<Vec<SettingsPane>> {
+            Ok(Vec::new())
+        }
+
+        fn icon(&self, _source: &PlatformPaneIcon) -> anyhow::Result<Option<image::DynamicImage>> {
+            Ok(None)
+        }
+
+        fn pane_url(&self, pane_id: &str) -> anyhow::Result<String> {
+            if self.opens {
+                Ok(format!("fake:{pane_id}"))
+            } else {
+                anyhow::bail!("cannot open {pane_id}")
+            }
+        }
+    }
+
+    /// A gadget whose opener records the URLs it is asked to open.
+    fn gadget_with(discovery: FakeDiscovery) -> (SystemPreferencesGadget, Arc<Mutex<Vec<String>>>) {
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let recorder = Arc::clone(&opened);
+        let opener = OpenerCap::from_closures(
+            OpenerPermissions {
+                schemes: vec!["*".into()],
+                open_path: false,
+                reveal_path: false,
+            },
+            Box::new(move |url: &str| {
+                recorder
+                    .lock()
+                    .expect("recorder not poisoned")
+                    .push(url.to_string());
+                Ok(())
+            }),
+            Box::new(|_| Err("open_path unused".into())),
+            Box::new(|_| Err("reveal_path unused".into())),
+        );
+        let caps = ProvisionedCaps {
+            opener: Some(Arc::new(opener)),
+            http: None,
+            filesystem: None,
+            command: None,
+            clipboard: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: None,
+            settings: None,
+            frecency: None,
+            path_resolver: None,
+        };
+        (
+            SystemPreferencesGadget::new(Arc::new(caps), discovery),
+            opened,
+        )
+    }
+
+    #[test]
+    fn executing_opens_the_url_the_platform_names() {
+        let (gadget, opened) = gadget_with(FakeDiscovery { opens: true });
+
+        let post_action = gadget
+            .execute(Command::OpenPane("network".into()))
+            .expect("the pane opens");
+
+        assert!(matches!(post_action, PostAction::Dismiss));
+        assert_eq!(
+            *opened.lock().expect("recorder not poisoned"),
+            ["fake:network"]
+        );
+    }
+
+    #[test]
+    fn a_pane_the_platform_cannot_open_fails_without_opening_anything() {
+        let (gadget, opened) = gadget_with(FakeDiscovery { opens: false });
+
+        let error = gadget
+            .execute(Command::OpenPane("network".into()))
+            .expect_err("the platform refuses the pane");
+
+        assert!(format!("{error:#}").contains("cannot open network"));
+        assert!(opened.lock().expect("recorder not poisoned").is_empty());
     }
 }

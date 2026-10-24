@@ -16,7 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::InstalledGadgetInfo;
-use super::intake::InstallOrigin;
+pub use super::intake::InstallOrigin;
 use super::queue::{InstallQueue, InstallRequestView, RequestId, Submitted};
 
 pub const QUEUE_CHANGED_EVENT: &str = "install-queue-changed";
@@ -54,17 +54,24 @@ impl Submission {
     }
 }
 
-/// Queue the files macOS asks the app to open (Finder double-click,
-/// "Open With"). Anything that is not a `file://` URL to a
-/// `.torchsnap` archive is ignored by the queue with a log line.
-pub fn submit_opened_urls(queue: &InstallQueue, urls: &[url::Url]) -> Submission {
+/// Queue every `.torchsnap` archive among `inputs`, the one intake all
+/// OS entry points share. An input is a path or a `file://` URL;
+/// relative paths resolve against `cwd`, and anything else is ignored
+/// by the queue with a log line. `origin` is what the review shows as
+/// the source of the request.
+pub fn submit_inputs<I>(
+    queue: &InstallQueue,
+    inputs: I,
+    cwd: &Path,
+    origin: InstallOrigin,
+) -> Submission
+where
+    I: IntoIterator,
+    I::Item: AsRef<OsStr>,
+{
     let mut submission = Submission::default();
-    for url in urls {
-        submission.record(queue.submit(
-            OsStr::new(url.as_str()),
-            Path::new("/"),
-            InstallOrigin::OsOpenFile,
-        ));
+    for input in inputs {
+        submission.record(queue.submit(input.as_ref(), cwd, origin));
     }
     submission
 }
@@ -79,14 +86,11 @@ pub fn submit_command_line(
     args: impl IntoIterator<Item = std::ffi::OsString>,
     cwd: &Path,
 ) -> Submission {
-    let mut submission = Submission::default();
-    for arg in args.into_iter().skip(1) {
-        if arg.as_encoded_bytes().starts_with(b"-") {
-            continue;
-        }
-        submission.record(queue.submit(&arg, cwd, InstallOrigin::CommandLine));
-    }
-    submission
+    let files = args
+        .into_iter()
+        .skip(1)
+        .filter(|arg| !arg.as_encoded_bytes().starts_with(b"-"));
+    submit_inputs(queue, files, cwd, InstallOrigin::CommandLine)
 }
 
 #[tauri::command]
@@ -359,12 +363,6 @@ mod tests {
     // Files opened by the OS
     // =========================================================
 
-    fn opened(urls: &[&str]) -> Vec<url::Url> {
-        urls.iter()
-            .map(|url| url::Url::parse(url).expect("valid test url"))
-            .collect()
-    }
-
     #[test]
     fn opened_archive_urls_are_queued() {
         let test = TestApp::new();
@@ -372,7 +370,12 @@ mod tests {
         let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
         let file_url = url::Url::from_file_path(&archive).expect("absolute path");
 
-        let submitted = submit_opened_urls(&queue, &[file_url]);
+        let submitted = submit_inputs(
+            &queue,
+            [file_url.as_str()],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
 
         assert_eq!(submitted.queued.len(), 1);
         assert_eq!(submitted.buffered, 0);
@@ -383,16 +386,17 @@ mod tests {
     fn opened_urls_that_are_not_archives_are_ignored() {
         let queue = Arc::new(InstallQueue::new());
 
-        let submitted = submit_opened_urls(
+        let submitted = submit_inputs(
             &queue,
-            &opened(&[
+            [
                 "https://example.com/weather.torchsnap",
                 "file:///tmp/notes.txt",
-            ]),
+            ],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
         );
 
-        assert!(submitted.queued.is_empty());
-        assert_eq!(submitted.buffered, 0);
+        assert!(submitted.is_empty());
     }
 
     /// Before `setup` starts the queue, opened files are held back;
@@ -401,10 +405,128 @@ mod tests {
     fn opened_files_before_start_are_buffered() {
         let queue = Arc::new(InstallQueue::new());
 
-        let submitted = submit_opened_urls(&queue, &opened(&["file:///tmp/weather.torchsnap"]));
+        let submitted = submit_inputs(
+            &queue,
+            ["file:///tmp/weather.torchsnap"],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
 
         assert!(submitted.queued.is_empty());
         assert_eq!(submitted.buffered, 1);
+    }
+
+    // =========================================================
+    // Shared intake
+    // =========================================================
+
+    #[test]
+    fn inputs_keep_the_origin_of_their_channel() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
+
+        submit_inputs(
+            &queue,
+            [archive.as_os_str()],
+            Path::new("/"),
+            InstallOrigin::CommandLine,
+        );
+
+        assert_eq!(queue.snapshot()[0].origin, InstallOrigin::CommandLine);
+    }
+
+    #[test]
+    fn the_first_input_is_an_input_not_a_program_name() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
+
+        let submitted = submit_inputs(
+            &queue,
+            [archive.as_os_str()],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
+
+        assert_eq!(submitted.queued.len(), 1);
+    }
+
+    /// Flags are the command line's business; the intake itself takes a
+    /// file name that starts with a dash as the file it is.
+    #[test]
+    fn a_dash_prefixed_archive_name_is_queued() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (src, _archive) = archive_with_manifest("weather", "1.0.0", "");
+        let dashed = src.path().join("-weather.torchsnap");
+        std::fs::write(&dashed, b"not read until processing").expect("write archive stand-in");
+
+        let submitted = submit_inputs(
+            &queue,
+            [dashed.as_os_str()],
+            Path::new("/"),
+            InstallOrigin::CommandLine,
+        );
+
+        assert_eq!(submitted.queued.len(), 1);
+    }
+
+    #[test]
+    fn the_same_archive_twice_is_queued_once() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src, archive) = archive_with_manifest("weather", "1.0.0", "");
+
+        let submitted = submit_inputs(
+            &queue,
+            [archive.as_os_str(), archive.as_os_str()],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
+
+        assert_eq!(submitted.queued.len(), 1);
+        assert_eq!(queue.snapshot().len(), 1);
+    }
+
+    #[test]
+    fn inputs_queue_in_order_and_skip_what_is_not_an_archive() {
+        let test = TestApp::new();
+        let queue = Arc::clone(test.app.state::<Arc<InstallQueue>>().inner());
+        let (_src_a, first) = archive_with_manifest("weather", "1.0.0", "");
+        let (_src_b, second) = archive_with_manifest("clock", "1.0.0", "");
+        let first_url = url::Url::from_file_path(&first).expect("absolute path");
+        let second_url = url::Url::from_file_path(&second).expect("absolute path");
+
+        let submitted = submit_inputs(
+            &queue,
+            [
+                first_url.as_str(),
+                "file:///tmp/notes.txt",
+                second_url.as_str(),
+            ],
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
+
+        assert_eq!(submitted.queued.len(), 2);
+        let snapshot = queue.snapshot();
+        assert_eq!(snapshot[0].source_path, first.display().to_string());
+        assert_eq!(snapshot[1].source_path, second.display().to_string());
+    }
+
+    #[test]
+    fn no_inputs_submit_nothing() {
+        let queue = Arc::new(InstallQueue::new());
+
+        let submitted = submit_inputs(
+            &queue,
+            Vec::<&OsStr>::new(),
+            Path::new("/"),
+            InstallOrigin::OsOpenFile,
+        );
+
+        assert!(submitted.is_empty());
     }
 
     // =========================================================

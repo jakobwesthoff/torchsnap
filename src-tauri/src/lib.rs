@@ -1460,7 +1460,12 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         RunEvent::Opened { urls } => {
             let queue = app.state::<Arc<gadget_install::InstallQueue>>();
-            let submission = gadget_install::submit_opened_urls(&queue, urls);
+            let submission = gadget_install::commands::submit_inputs(
+                &queue,
+                urls.iter().map(url::Url::as_str),
+                std::path::Path::new("/"),
+                gadget_install::commands::InstallOrigin::OsOpenFile,
+            );
             if !submission.queued.is_empty() {
                 gadget_install::process_in_background(queue.inner(), submission.queued);
                 show_settings_window(app);
