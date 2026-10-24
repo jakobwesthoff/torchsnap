@@ -2952,7 +2952,7 @@ class SelftestBuildItem(unittest.TestCase):
         self.assertEqual(calls[0], ["build"])
         self.assertIn(["app-start"], calls)
         queries = [c[2] for c in calls if c[:2] == ["control", "query"]]
-        self.assertEqual(queries, ['{"text": ""}', '{"text": "=2+3"}', '{"text": ""}', '{"text": "!b2"}', '{"text": ""}'])
+        self.assertEqual(queries, ['{"text": "=2+3"}', '{"text": "!b2"}', '{"text": ""}'])
         # The app did not run before, so the item stops it again.
         self.assertEqual(calls[-1], ["app-stop"])
 

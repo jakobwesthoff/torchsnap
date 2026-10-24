@@ -507,11 +507,6 @@ for p in sorted(pathlib.Path(sys.argv[1]).glob("*.torchsnap")):
         for text in "=2+3 calculator" "!b2 hello-world"; do
             gadget="${text#* }"
             text="${text%% *}"
-            # A query that replaces one in another gadget's prefix mode
-            # reaches the new gadget, but the launcher's input keeps the
-            # old prefix (`!b2` after `=2+3` shows `=b2`), so each query
-            # starts from an empty input.
-            "$testbed" control query '{"text": ""}' >/dev/null
             "$testbed" control query "{\"text\": \"$text\"}" >/dev/null
             if ! wait_until "$view_timeout" gadget_view_is "$text" "$gadget"; then
                 problem="the app does not open $gadget for '$text' within ${view_timeout}s"
