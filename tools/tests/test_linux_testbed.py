@@ -206,12 +206,24 @@ class TestbedSync(unittest.TestCase):
         calls = self.stubs.calls("rsync")
         self.assertEqual(len(calls), 1)
         argv = calls[0][1:]
-        self.assertIn("-a", argv)
         self.assertIn("--delete", argv)
         self.assertIn("--filter=:- .gitignore", argv)
         self.assertIn("--exclude=.git", argv)
         self.assertEqual(argv[-2], f"{REPO}/")
         self.assertEqual(argv[-1], "user@pi.local:torchsnap/")
+
+    def test_sync_compares_content_and_gives_changed_files_the_time_of_the_copy(self):
+        # The machine's build of `--on-machine` decides by mtime, and
+        # another checkout's file may be older than that build's
+        # output: so content decides what is copied (`--checksum`), and
+        # mtimes are not kept (`-a` without `-t`).
+        result = run(["sync"], self.stubs, env={"TORCHSNAP_LINUX_HOST": "user@pi.local"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.stubs.calls("rsync")[0][1:]
+        self.assertIn("-rlpgoD", argv)
+        self.assertIn("--checksum", argv)
+        self.assertNotIn("-a", argv)
+        self.assertFalse(any(a in ("-t", "--times") for a in argv))
 
     def test_sync_passes_an_rsync_failure_through(self):
         result = run(
@@ -2980,6 +2992,135 @@ class SelftestBuildItem(unittest.TestCase):
         for gadget in ("calculator", "hello-world"):
             with self.subTest(gadget=gadget):
                 self.assert_fails(self.item_2(FAKE_NO_VIEW=gadget), gadget)
+
+
+# The Mac-side testbed for self-test item S, in this checkout (A) and in
+# the copy the item makes (B). `build` logs which checkout ran it and
+# "deploys" that checkout's `src-tauri/src/main.rs` as the machine's
+# binary, unless FAKE_STALE_ON names the build (`b1` for B's, `a2` for
+# A's second) that keeps the old binary, as the stale build did; it
+# logs the mtime and content of the `main.rs` it built from.
+# FAKE_TERM_ON names a build after which the item is interrupted.
+# `exec` answers the item's `grep -c` for its marker from that binary.
+FAKE_STALE_TESTBED = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, re, signal, sys
+    root = pathlib.Path(sys.argv[0]).resolve().parents[2]
+    which = "b" if "selftest-checkout" in str(root) else "a"
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    machine = log.with_name("machine-binary")
+    command, args = sys.argv[1], sys.argv[2:]
+    if command == "build":
+        builds = [json.loads(l) for l in log.read_text().splitlines()] if log.exists() else []
+        name = which + str(1 + sum(1 for b in builds if b[:2] == ["testbed", which]))
+        main = root / "src-tauri" / "src" / "main.rs"
+        with log.open("a") as f:
+            f.write(json.dumps(["testbed", which, "build", name, int(main.stat().st_mtime), main.read_text()]) + "\\n")
+        if os.environ.get("FAKE_STALE_ON") != name:
+            machine.write_text(main.read_text())
+        if os.environ.get("FAKE_TERM_ON") == name:
+            os.kill(os.getppid(), signal.SIGTERM)
+        sys.exit(0)
+    if command == "exec":
+        match = re.search(r"grep -c -a -F '([^']*)'", args[0])
+        if match:
+            text = machine.read_text() if machine.exists() else ""
+            print(text.count(match.group(1)))
+    """
+)
+
+
+class SelftestStaleItem(unittest.TestCase):
+    """Self-test item S against a fake testbed: a build from a second
+    checkout must carry its change, the build back in this checkout must
+    drop it, and the machine never keeps the second checkout's build."""
+
+    MAIN = "fn main() {\n    torchsnap_lib::run()\n}\n"
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="testbed-itemS-"))
+        scripts = self.tmp / "tools" / "linux-testbed"
+        scripts.mkdir(parents=True)
+        shutil.copy(SELFTEST, scripts / "selftest")
+        (scripts / "testbed").write_text(FAKE_STALE_TESTBED)
+        (scripts / "testbed").chmod(0o755)
+        self.main = self.tmp / "src-tauri" / "src" / "main.rs"
+        self.main.parent.mkdir(parents=True)
+        self.main.write_text(self.MAIN)
+        os.utime(self.main, (1_600_000_000, 1_600_000_000))
+        (self.tmp / ".gitignore").write_text("/target/\n")
+        subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
+        self.stubs = Stubs([])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.tmp)
+
+    def item_s(self, **env):
+        environment = {"TORCHSNAP_LINUX_HOST": "user@pi.local"}
+        environment.update(env)
+        return run(["S"], self.stubs, env=environment, script=self.tmp / "tools" / "linux-testbed" / "selftest")
+
+    def builds(self):
+        return [c[3] for c in self.stubs.calls("testbed") if c[2:3] == ["build"]]
+
+    def assert_clean(self):
+        self.assertFalse((self.tmp / "target" / "linux-testbed" / "selftest-checkout").exists())
+        self.assertEqual(self.main.read_text(), self.MAIN)
+        self.assertEqual(self.main.stat().st_mtime, 1_600_000_000)
+
+    def test_passes_when_each_build_carries_its_checkouts_main(self):
+        result = self.item_s()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS item S", result.stdout)
+        self.assertEqual(self.builds(), ["a1", "b1", "a2"])
+        self.assert_clean()
+
+    def test_the_second_checkout_builds_a_changed_main_older_than_any_build(self):
+        self.item_s()
+        b1 = next(c for c in self.stubs.calls("testbed") if c[3:4] == ["b1"])
+        self.assertEqual(b1[4], 978_307_200)
+        self.assertRegex(b1[5], r'std::hint::black_box\("testbed-selftest-stale-\d+"\); torchsnap_lib::run\(\)')
+
+    def test_an_interruption_during_the_second_checkouts_build_rebuilds_from_this_one(self):
+        result = self.item_s(FAKE_TERM_ON="b1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.builds(), ["a1", "b1", "a2"])
+        self.assertIn("rebuilding from this checkout", result.stdout)
+        self.assert_clean()
+
+    def test_a_stale_build_from_the_second_checkout_fails_and_rebuilds_from_this_one(self):
+        result = self.item_s(FAKE_STALE_ON="b1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL item S: the build from a second checkout lacks its change", result.stdout)
+        self.assertEqual(self.builds(), ["a1", "b1", "a2"])
+        self.assertIn("rebuilding from this checkout", result.stdout)
+        self.assert_clean()
+
+    def test_a_stale_build_back_in_this_checkout_fails(self):
+        result = self.item_s(FAKE_STALE_ON="a2")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL item S: the build back in this checkout still carries", result.stdout)
+        self.assertEqual(self.builds(), ["a1", "b1", "a2"])
+        self.assertNotIn("rebuilding from this checkout", result.stdout)
+        self.assert_clean()
+
+    def test_an_interruption_during_the_build_back_rebuilds_from_this_checkout(self):
+        result = self.item_s(FAKE_TERM_ON="a2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.builds(), ["a1", "b1", "a2", "a3"])
+        self.assertIn("rebuilding from this checkout", result.stdout)
+        self.assert_clean()
+
+    def test_without_the_run_call_in_main_it_is_a_setup_failure(self):
+        self.main.write_text("fn main() {}\n")
+        os.utime(self.main, (1_600_000_000, 1_600_000_000))
+        result = self.item_s()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL item S: SETUP: src-tauri/src/main.rs does not call torchsnap_lib::run()", result.stdout)
+        self.assertEqual(self.builds(), ["a1"])
+        self.assertFalse((self.tmp / "target" / "linux-testbed" / "selftest-checkout").exists())
 
 
 class Clipboard(unittest.TestCase):

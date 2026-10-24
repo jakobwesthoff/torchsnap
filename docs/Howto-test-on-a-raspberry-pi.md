@@ -41,7 +41,11 @@ mirrors the working tree to `~/torchsnap` on the Pi, including changes
 that are not committed yet. Files that `.gitignore` names, such as
 `target/` and `node_modules/`, and the `.git` directory stay on the Mac.
 Files deleted on the Mac are deleted on the Pi; build output on the Pi
-survives a sync.
+survives a sync. The sync compares content, not modification times: a
+file whose content differs from the Pi's copy gets the time of the
+copy, so a build on the Pi rebuilds it even when another checkout
+changed it before the Pi's last build; a file with the same content
+keeps its time on the Pi.
 
 ## 3. Provisioning
 
@@ -454,6 +458,7 @@ need a current build on the Pi; run `just testbed-build` first.
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 11 | Runs `testbed-stop-all` and checks that no testbed unit runs and that the tray state and the monitor layout are the ones recorded before the first item. |
 | 2 | Only when named. Builds in the Mac's container and checks that the Mac's binary was written by this build, that the Pi got the same binary (size and modification time) and the same development gadget archives and records the build as current, that the app started afterwards runs that binary, and that it opens the calculator, a bundled gadget, for `=2+3` and hello-world, from `~/torchsnap/gadgets/`, for `!b2`. |
+| S | Only when named; three container builds. Builds in the container, then copies the working tree to a second checkout under `target/linux-testbed/selftest-checkout/` (modification times kept), changes `src-tauri/src/main.rs` there with a marker string and a modification time older than any build output, and builds from that checkout: the binary on the Pi must contain the marker. A build back in this checkout must drop it again. The second checkout is removed afterwards; when the item stops between the two builds, it builds from this checkout again, so the Pi never keeps the second checkout's build. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
 | U | Only when named. Undoes one provision step at a time (the extension, the settings defaults, gdm, the AccountsService session, uinput, ydotool's service, the sleep masks, the user settings, the keyring, RDP) and checks that provisioning then reports `changed` for exactly that step. |

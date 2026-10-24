@@ -21,6 +21,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -997,7 +998,7 @@ class InContainerLint(TreeCase):
         result = self.tree.run("in-container", "lint", env=self.env, bash="bash")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([row[1:] for row in self.tree.calls() if row[0] in ("rsync", "just")], [
-            ["-a", "--delete", "--filter=:- .gitignore", "--exclude=/.git", "--exclude=/.claude",
+            ["-rlpgoD", "--checksum", "--delete", "--filter=:- .gitignore", "--exclude=/.git", "--exclude=/.claude",
              "--exclude=/target", "--exclude=/.linux-build-last-use", f"{self.src}/", f"{self.work}/"],
             ["install"],
             ["check-crates"],
@@ -1090,7 +1091,7 @@ class InContainerBuild(InContainerCase):
         result = self.run_in_container("build", "debug", STUB_DPKG_QUERY_OUT="libc6 2.41-12")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([row[1:] for row in self.tree.calls() if row[0] in ("rsync", "just")], [
-            ["-a", "--delete", "--filter=:- .gitignore", "--exclude=/.git", "--exclude=/.claude",
+            ["-rlpgoD", "--checksum", "--delete", "--filter=:- .gitignore", "--exclude=/.git", "--exclude=/.claude",
              "--exclude=/target", "--exclude=/.linux-build-last-use", f"{self.src}/", f"{self.work}/"],
             ["install"],
             ["build", "--config", '{"bundle":{"active":false}}'],
@@ -1125,6 +1126,87 @@ class InContainerBuild(InContainerCase):
         result = self.run_in_container("build", "fast")
         self.assertEqual(result.returncode, 2)
         self.assertEqual(self.tree.calls("rsync"), [])
+
+
+# A `just` that builds like cargo, for one source file: `build` writes
+# `src-tauri/src/main.rs`'s content into the debug binary only when the
+# binary is missing or older than `main.rs`, and then sets the binary's
+# mtime to FAKE_BUILD_MTIME, so the order of the mtimes never depends on
+# the clock's resolution. Every other recipe does nothing.
+CARGO_LIKE_JUST = """#!/usr/bin/env python3
+import os, pathlib, sys
+if sys.argv[1:2] == ["build"]:
+    source = pathlib.Path("src-tauri/src/main.rs")
+    binary = pathlib.Path("src-tauri/target/debug/torchsnap")
+    if not binary.exists() or binary.stat().st_mtime_ns < source.stat().st_mtime_ns:
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text(source.read_text())
+        mtime = int(os.environ["FAKE_BUILD_MTIME"])
+        os.utime(binary, (mtime, mtime))
+"""
+
+
+@unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+class InContainerTwoCheckouts(TreeCase):
+    """Builds from two checkouts in turn into one work volume, with the
+    real rsync and a `just` that rebuilds by mtime as cargo does."""
+
+    def setUp(self):
+        self.tree = Tree(stubs=[name for name in STUBBED if name not in ("rsync", "just")])
+        self.addCleanup(self.tree.close)
+        (self.tree.bin / "just").write_text(CARGO_LIKE_JUST)
+        (self.tree.bin / "just").chmod(0o755)
+        base = pathlib.Path(self.tree._tmp.name)
+        self.work = base / "work"
+        self.out = base / "out"
+        self.work.mkdir()
+        self.out.mkdir()
+        self.now = int(time.time())
+        self.a = self.checkout(base / "a")
+        self.b = self.checkout(base / "b")
+
+    def checkout(self, root):
+        """A checkout with what `build debug` needs to get through
+        `assemble`: a product name, no resources, no gadgets."""
+        (root / "src-tauri" / "src").mkdir(parents=True)
+        (root / ".gitignore").write_text("/src-tauri/target/\n")
+        (root / "src-tauri" / "tauri.conf.json").write_text(
+            json.dumps({"productName": "Torchsnap", "bundle": {"resources": None}}))
+        add_gadgets(root)
+        return root
+
+    def write(self, checkout, relative, text, age):
+        path = checkout / relative
+        path.write_text(text)
+        os.utime(path, (self.now - age, self.now - age))
+        return path
+
+    def build_from(self, checkout):
+        result = self.tree.run("in-container", "build", "debug", bash="bash", env={
+            "LINUX_BUILD_SRC": str(checkout), "LINUX_BUILD_WORK": str(self.work),
+            "LINUX_BUILD_OUT": str(self.out), "FAKE_BUILD_MTIME": str(self.now - 100),
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return (self.out / "bin" / "torchsnap").read_text()
+
+    def test_a_change_older_than_the_last_build_from_another_checkout_is_built(self):
+        self.write(self.a, "src-tauri/src/main.rs", "a", age=1000)
+        self.assertEqual(self.build_from(self.a), "a")
+        # B changed main.rs before A's build: its mtime is older than the
+        # binary in the work volume.
+        self.write(self.b, "src-tauri/src/main.rs", "b", age=500)
+        self.assertEqual(self.build_from(self.b), "b")
+        self.assertEqual(self.build_from(self.a), "a")
+
+    def test_an_unchanged_file_keeps_the_volumes_mtime(self):
+        for checkout, age in ((self.a, 1000), (self.b, 500)):
+            self.write(checkout, "src-tauri/src/main.rs", "same", age=age)
+            self.write(checkout, "src-tauri/src/lib.rs", "same", age=age)
+        copied = self.work / "src-tauri" / "src" / "lib.rs"
+        self.build_from(self.a)
+        after_a = copied.stat().st_mtime_ns
+        self.build_from(self.b)
+        self.assertEqual(copied.stat().st_mtime_ns, after_a)
 
 
 @unittest.skipUnless(shutil.which("jq"), "jq is not installed")

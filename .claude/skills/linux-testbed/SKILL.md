@@ -105,7 +105,8 @@ is the full guide.
 - `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. The items that start the app need a current build
-  (`just testbed-build`). Items 2 (build), R (reboot), U (undo provision steps)
+  (`just testbed-build`). Items 2 (build), S (builds from a second
+  checkout, three builds), R (reboot), U (undo provision steps)
   and P (reinstall tools, about 10 minutes) run only when named. A
   download step can fail on a DNS hiccup of the machine's Wi-Fi; rerun
   once.

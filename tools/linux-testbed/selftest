@@ -17,6 +17,9 @@
 #   2   a build in the Mac's container reaches the machine as the current
 #       build, and the app started from it opens a bundled and a
 #       development gadget (only when named)
+#   S   a build from a second checkout of a file changed before the last
+#       build carries the change, and a build back in this checkout
+#       drops it (only when named; three container builds)
 #   W   the launcher, shown through the control socket, is among the
 #       app's windows, with a size and keyboard focus
 #   4   the launcher opens through the control socket with focus, shows
@@ -520,6 +523,78 @@ for p in sorted(pathlib.Path(sys.argv[1]).glob("*.torchsnap")):
     [ -z "$problem" ] || { fail 2 "$problem"; return; }
     pass 2
 }
+
+# Every checkout builds in the container's one work volume, and cargo
+# decides by mtime. A second checkout B, copied from this one (A) with
+# mtimes kept, changes `src-tauri/src/main.rs` with an mtime older than
+# any build output; its build has to carry the change, and the build
+# back in A has to drop it again, although A's file is older than B's
+# build too. B lives under A's gitignored `target/`, so A's syncs never
+# see it, and inside A's repository, so git in `linux-build` and in the
+# build script resolves to A's repository: the commit both builds embed
+# is the same, and nothing but the changed file makes cargo rebuild.
+readonly second_checkout="$repo_root/target/linux-testbed/selftest-checkout"
+readonly deployed_debug_binary='$HOME/torchsnap/target/linux-build/debug/bin/torchsnap'
+
+deployed_marker_count() {
+    on_machine "grep -c -a -F '$1' \"$deployed_debug_binary\" || true" | tail -n 1
+}
+
+# The machine must never keep B's sources or a record naming B's build:
+# once B's build has started and the build back in A has not finished,
+# the cleanup builds from A again.
+stale_cleanup() {
+    rm -rf "$second_checkout"
+    if [ "$stale_stage" = second ]; then
+        echo "  the machine held the self-test's second checkout; rebuilding from this checkout"
+        "$testbed" build || echo "  the rebuild from this checkout failed; run just testbed-build"
+    fi
+}
+
+# A subshell, so the cleanup trap belongs to this item alone.
+item_S() (
+    local marker count
+    stale_stage=none
+    trap stale_cleanup EXIT
+    trap 'exit 130' INT TERM HUP
+    marker="testbed-selftest-stale-$RANDOM$RANDOM"
+
+    "$testbed" build || { fail S "SETUP: the build from this checkout failed"; exit 1; }
+    rm -rf "$second_checkout"
+    git -C "$repo_root" ls-files -z --cached --others --exclude-standard | python3 -c '
+import os, pathlib, shutil, sys
+source, target = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+for name in sys.stdin.buffer.read().decode().split("\0"):
+    if name and (source / name).is_file():
+        (target / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / name, target / name, follow_symlinks=False)
+' "$repo_root" "$second_checkout" || { fail S "SETUP: could not copy the checkout"; exit 1; }
+    python3 -c '
+import os, pathlib, sys
+main = pathlib.Path(sys.argv[1])
+text = main.read_text()
+call = "torchsnap_lib::run()"
+if call not in text:
+    sys.exit(1)
+main.write_text(text.replace(call, "std::hint::black_box(\"%s\"); %s" % (sys.argv[2], call), 1))
+# 2001-01-01, older than any build output.
+os.utime(main, (978307200, 978307200))
+' "$second_checkout/src-tauri/src/main.rs" "$marker" \
+        || { fail S "SETUP: src-tauri/src/main.rs does not call torchsnap_lib::run()"; exit 1; }
+
+    stale_stage=second
+    "$second_checkout/tools/linux-testbed/testbed" build \
+        || { fail S "the build from the second checkout failed"; exit 1; }
+    count="$(deployed_marker_count "$marker")"
+    [ "${count:-0}" -gt 0 ] 2>/dev/null \
+        || { fail S "the build from a second checkout lacks its change to main.rs, the binary is stale"; exit 1; }
+    "$testbed" build || { fail S "the build back in this checkout failed"; exit 1; }
+    stale_stage=back
+    count="$(deployed_marker_count "$marker")"
+    [ "$count" = 0 ] \
+        || { fail S "the build back in this checkout still carries the second checkout's main.rs"; exit 1; }
+    pass S
+)
 
 # Nobody is at the machine after a reboot, so everything the recipes need
 # has to come back on its own.

@@ -141,12 +141,19 @@ shell_words() {
 # rsync protects excluded paths from deletion; the machine's build output
 # survives a sync.
 #
+# A build on the machine rebuilds a file only when it is newer than the
+# last build's output, and a file another checkout changed before that
+# build carries an older mtime. So the copy keeps no mtimes (`-a`
+# without `-t`) and compares content (`--checksum`): a file whose
+# content differs gets the time of the copy, one whose content is the
+# same keeps the machine's mtime.
+#
 # `rsync_command` is the rsync on PATH unless a build in the container
 # has picked one with zstd, which then copies the tree as well.
 rsync_command=rsync
 
 cmd_sync() {
-    "$rsync_command" -a --delete --filter=':- .gitignore' --exclude=.git \
+    "$rsync_command" -rlpgoD --checksum --delete --filter=':- .gitignore' --exclude=.git \
         "$repo_root/" "$TORCHSNAP_LINUX_HOST:$remote_tree/"
 }
 

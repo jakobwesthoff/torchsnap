@@ -67,6 +67,15 @@ path of the testbed's tree, copies the output into that tree's
 `gadgets/`
 ([How to test Torchsnap on a Raspberry Pi](Howto-test-on-a-raspberry-pi.md)).
 
+Every checkout builds in the same work volume, and cargo rebuilds a
+source file only when it is newer than the last build's output. A file
+that another checkout changed before that build has an older mtime, so
+the recipe copies the checkout into the volume by content: a file whose
+content differs from the volume's copy is written anew with the time of
+the copy and gets rebuilt, and a file with the same content keeps the
+volume's mtime. Switching between checkouts rebuilds what differs
+between them, not more.
+
 Only one build runs at a time: a second one fails at `docker run`
 because the container name `torchsnap-linux-build` is taken.
 

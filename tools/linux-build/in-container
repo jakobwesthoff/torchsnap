@@ -26,14 +26,21 @@ out="${LINUX_BUILD_OUT:-/out}"
 # writes generated files into the tree. So the checkout is copied into
 # the work volume. rsync protects excluded paths on the receiver from
 # `--delete`, so the gitignored target dirs and `node_modules` there
-# survive from one run to the next, and `-a` keeps mtimes, so cargo
-# rebuilds only what changed. rsync reads `.gitignore` files only, not
-# `.git/info/exclude` or a global excludes file, hence the anchored
+# survive from one run to the next. rsync reads `.gitignore` files only,
+# not `.git/info/exclude` or a global excludes file, hence the anchored
 # excludes: `.claude/` holds agent worktrees of a whole other set of
 # checkouts, `target/` holds the Mac's build output, and the last-use
 # file belongs to the volume, not to the checkout.
+#
+# Every checkout builds in the same volume, and cargo rebuilds a file
+# only when it is newer than the last build's output. A file another
+# checkout changed before that build carries an older mtime, so the
+# copy keeps no mtimes (`-a` without `-t`) and compares content
+# (`--checksum`): a file whose content differs is written anew with the
+# time of the copy and gets rebuilt, a file whose content is the same
+# keeps the volume's mtime and stays built.
 sync_tree() {
-    rsync -a --delete --filter=':- .gitignore' \
+    rsync -rlpgoD --checksum --delete --filter=':- .gitignore' \
         --exclude=/.git --exclude=/.claude --exclude=/target --exclude=/.linux-build-last-use \
         "$src/" "$work/"
 }
