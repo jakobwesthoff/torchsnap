@@ -935,4 +935,84 @@ mod tests {
             }
         }
     }
+
+    // =====================================================
+    // Every gadget declares the permissions its code uses
+    // =====================================================
+
+    /// Concatenate the Rust source of a gadget, leaving out comment
+    /// lines, so a snippet shown only in a comment does not count as
+    /// use.
+    fn gadget_code(dir: &std::path::Path) -> String {
+        let mut code = String::new();
+        for entry in std::fs::read_dir(dir).expect("gadget source dir is readable") {
+            let path = entry.expect("dir entry is readable").path();
+            if path.is_dir() {
+                code.push_str(&gadget_code(&path));
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let text = std::fs::read_to_string(&path).expect("source is readable");
+                for line in text.lines().filter(|l| !l.trim_start().starts_with("//")) {
+                    code.push_str(line);
+                    code.push('\n');
+                }
+            }
+        }
+        code
+    }
+
+    /// The host refuses to enable a gadget whose component imports an
+    /// interface its manifest does not declare. The template is what
+    /// authors copy, so a mismatch there ships to every new gadget.
+    /// This checks the interfaces whose SDK module name appears in a
+    /// gadget's code against the manifest, without needing a built
+    /// component. `website_metadata` is left out because the template
+    /// carries it as unused example code.
+    #[test]
+    fn every_gadget_declares_the_permissions_its_code_uses() {
+        let gadgets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../gadgets");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&gadgets_dir).expect("gadgets dir is readable") {
+            let dir = entry.expect("dir entry is readable").path();
+            let manifest_path = dir.join("manifest.toml");
+            if !manifest_path.is_file() {
+                continue;
+            }
+            let id = dir.file_name().expect("dir has a name").to_string_lossy();
+            let source = std::fs::read_to_string(&manifest_path).expect("manifest is readable");
+            let manifest = Manifest::parse(&source).expect("manifest parses");
+            let granted =
+                |f: fn(&PermissionsDef) -> bool| manifest.permissions.as_ref().is_some_and(f);
+
+            let code = gadget_code(&dir.join("src"));
+            let uses = |module: &str| {
+                let needle = format!("{module}::");
+                code.match_indices(&needle).any(|(at, _)| {
+                    !code[..at]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                })
+            };
+
+            let declared: [(&str, bool); 9] = [
+                ("opener", granted(|p| p.opener.is_some())),
+                ("http", granted(|p| p.http.is_some())),
+                ("filesystem", granted(|p| p.filesystem.is_some())),
+                ("command", granted(|p| !p.command.is_empty())),
+                ("clipboard", granted(|p| p.clipboard)),
+                ("frecency", granted(|p| p.frecency)),
+                ("settings", granted(|p| p.settings)),
+                ("sql_storage", granted(|p| p.sql_storage)),
+                ("path_resolver", granted(|p| p.path_resolver)),
+            ];
+            for (module, has_permission) in declared {
+                assert!(
+                    has_permission || !uses(module),
+                    "gadget `{id}` calls `{module}::` but its manifest does not declare the permission",
+                );
+            }
+            checked += 1;
+        }
+        assert!(checked >= 8, "found only {checked} gadget manifests");
+    }
 }

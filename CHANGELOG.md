@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `template` gadget declares the `opener` permission its code needs.
+  Before, the host refused to enable it with "imports interfaces without
+  matching permissions: [opener]", and so refused every gadget copied
+  from it.
 - Switching between `just build` and plain `cargo` or `just start` no
   longer recompiles the 64 crates that build C code. `.cargo/config.toml`
   now gives cargo the same `MACOSX_DEPLOYMENT_TARGET` as `tauri build`.

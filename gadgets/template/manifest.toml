@@ -11,6 +11,10 @@ prefixes = ["tpl:"]
 settings = true
 sql-storage = true
 
+# `Command::OpenUrl` calls `opener::open_url` with an https URL.
+[permissions.opener]
+schemes = ["https"]
+
 [settings]
 greeting = "Hello from Template!"
 verbose = false
