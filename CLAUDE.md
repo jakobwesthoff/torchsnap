@@ -163,9 +163,12 @@ Record decisions in `docs/adr/`:
   feed written by `tools/release-feed`. torchsnap.app serves the latest
   `release.json` as `/updates/latest.json` (ADR 0053).
 - Release order (README "Making a release"): version bump and CHANGELOG
-  section committed and pushed, torchsnap-docs pushed with it,
-  `release-build`, the maintainer tries the DMG, `release-publish`, then
-  check `https://torchsnap.app/updates/latest.json`.
+  section committed and pushed, `release-build`, the maintainer tries
+  the DMG, `release-publish`, torchsnap-docs `main` fast-forwarded to
+  `next` and pushed (not for a pre-release), then check
+  `https://torchsnap.app/updates/latest.json`.
+- Docs changes for unreleased work go to torchsnap-docs' `next` branch,
+  never its `main` (torchsnap-docs ADR 0003).
 - From `release-build` until `release-publish` has finished, change
   nothing in the main checkout: `release-build` refuses a build that
   changed tracked files, and `release-publish` refuses when `HEAD`

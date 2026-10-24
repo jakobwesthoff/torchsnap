@@ -246,8 +246,8 @@ The steps run in this order; each one checks what the earlier ones left.
    `[<version>]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v<version>`
    at the end of the file. The section becomes the release notes on
    GitHub and in the app's update window.
-3. Commit and push to `main`. Push the torchsnap-docs changes for the
-   release at the same time, so the documentation describes what ships.
+3. Commit and push to `main`. The torchsnap-docs changes for the
+   release are on its `next` branch and stay unpublished until step 7.
 4. `just release-build <version>` checks all of the above, runs
    `just install` and `just fullcycle`, builds, signs and notarizes the
    app and the DMG, verifies them and the app inside the update archive,
@@ -267,12 +267,15 @@ The steps run in this order; each one checks what the earlier ones left.
    torchsnap-web deploy (`gh workflow run deploy.yml -R
    jakobwesthoff/torchsnap-web`). If starting it fails, the release is
    published anyway; run that command by hand.
-7. Once the deploy has finished, check that
+7. Publish the documentation for the release: in torchsnap-docs,
+   fast-forward `main` to `next` and push `main`, which deploys
+   docs.torchsnap.app (torchsnap-docs README "Releasing", its ADR 0003).
+8. Once the deploy has finished, check that
    `https://torchsnap.app/updates/latest.json` names the new version.
    GitHub Pages sends it with `cache-control: max-age=600`, so installed
    apps and the check may see the previous file for up to ten minutes.
    Installed apps offer the update from then on.
-8. Merge the cask bump in `jakobwesthoff/homebrew-tap`. The tap's daily
+9. Merge the cask bump in `jakobwesthoff/homebrew-tap`. The tap's daily
    bump opens a pull request that sets the Torchsnap cask to the new
    version; `gh workflow run autobump.yml -R jakobwesthoff/homebrew-tap`
    opens it right away. Merge it on GitHub once its tests pass.
@@ -282,7 +285,9 @@ GitHub prerelease and is not marked latest, so the download link on
 torchsnap.app keeps serving the last stable release. `release-publish`
 starts no website deploy for it, so the update feed keeps naming the
 last stable release and installed apps are never offered a prerelease.
-The cask bump in the Homebrew tap skips it as well. Its CHANGELOG section is left out of the `releases` notes of later
+The cask bump in the Homebrew tap skips it as well, and step 7 is left
+out, so docs.torchsnap.app keeps describing the last stable release.
+Its CHANGELOG section is left out of the `releases` notes of later
 feeds.
 
 If the build must change, fix it on `main` and run `release-build` again.
