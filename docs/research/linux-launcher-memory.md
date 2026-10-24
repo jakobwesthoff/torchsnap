@@ -2,10 +2,11 @@
 
 > **Status as of 2026-10-24**
 >
-> Results of three memory investigations on the Linux testbed
+> Results of the memory investigations on the Linux testbed
 > (2026-10-23 and 2026-10-24): the benchmark on Linux and the cost of
-> a maximized launcher, the growth over show/hide cycles, and where
-> the memory goes and which reductions work.
+> a maximized launcher, the growth over show/hide cycles, where the
+> memory goes and which reductions work, and the cache model measured
+> against a control build.
 >
 > What works:
 > - WebKitGTK's `DocumentViewer` cache model on the launcher's web
@@ -247,7 +248,7 @@ comparison: web anon +33.9 (+38.0 at 500), web GPU +30.4, show 72 / 79
 
 | Lever | Effect | Cost | Verdict |
 |---|---|---|---|
-| `DocumentViewer` cache model on the launcher's web context (X1) | web anon +2.5, web GPU +2.7 at 500 cycles; one other run kept +23.9 anon at 200 (see open questions) | One call through `with_webview` after the window is built, `webkit2gtk = "=2.0.2"` (wry's pin) as a Linux dependency. WebKitGTK holds the cache model for the whole process, so the settings, welcome and update windows lose their memory cache too. Show 72 to 75 ms median, one 545 ms first show. | Bounds the cache on Linux; paints correctly on three shows with three mascots. WebKitGTK only. In use since ADR 0073, which has a later measurement against a control build and the settings and welcome windows checked on screen with it. |
+| `DocumentViewer` cache model on the launcher's web context (X1) | Against a control build, three alternating runs each, 200 cycles: web anon +20.6, +1.1, +0.0 (mean 7.2) against +53.8, +34.5, +33.2 (mean 40.5); web private GPU +2.7, +2.8, +2.4 (mean 2.6) against +31.0, +29.5, +30.4 (mean 30.3); decoded images kept 0, 0, 1 against 14 and 17. One earlier run: +2.5 anon, +2.7 GPU at 500 cycles. The spread is the anon of the open questions. | One call through `with_webview` after the window is built, `webkit2gtk = "=2.0.2"` (wry's pin) as a Linux dependency. WebKitGTK holds the cache model for the whole process, so the settings, welcome and update windows lose their memory cache too. Show-to-content median 74 ms against 70 (90th percentile 105 against 108, maximum 204 against 162); query to results 157, 132, 117 ms against 142, 137, 126 for `:fire`, a bang and a domain. | In use since ADR 0073. With and without it the same images were on screen: a new mascot on each of three shows, the `:fire` emoji grid, the open-url and bangs favicons, the clipboard history's image preview, the settings emblem and the welcome window's mascot. WebKitGTK only. |
 | Shrink to 1x1 while mapped, wait 150 ms, then hide (C5) | −40 at start, −35 after the first dismiss, −17 after 20 cycles; shown phases unchanged. Frees the window's buffers shared between the UI process, the web process and GNOME Shell (UI shared GPU 40.9 to 8.8, web shared 21.4 to 0); the web process's own 93 MiB of GPU memory stays. | Show-to-content 75 against 61 ms median. The 150 ms wait was fixed and off the main thread. | Paints correctly over five cycles with a new mascot each. Measured with today's 808x860 window only. |
 | Canvas renderer: one reused `<canvas>`, `fetch`, `createImageBitmap`, `drawImage`, `ImageBitmap.close()` (X4) | web anon +5.1, web GPU +2.8 at 500 cycles; 3 decoded images kept | A canvas renderer in `Mascot`. Show 77 / 102 / 229 ms in one run, up to 429 ms in the other. | A frontend change; not measured on macOS. Sharp at scale 2, placed as the `<img>`, `aria-hidden` to match today's `alt=""`. The new mascot is drawn 13 to 30 ms after the dismiss, so a show within about 30 ms shows the previous one. |
 
