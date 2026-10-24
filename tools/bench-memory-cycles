@@ -8,7 +8,7 @@
 #
 # Usage:
 #   bench-memory-cycles SOCKET N [--hold SEC] [--timing]
-#                       [--visible-timeout SEC] [-o FILE]
+#                       [--visible-timeout SEC] [--first-cycle K] [-o FILE]
 #
 # bench-memory runs it after its scenario, in one of two modes:
 #
@@ -27,7 +27,8 @@
 #
 # Times are seconds since the epoch, so they line up with the sampler's
 # and the snapshots' times. Lines go to standard output or to -o FILE
-# (appended).
+# (appended). The cycles are numbered from --first-cycle (default 1), so
+# runs in chunks, as bench-memory's macOS cycles are, number on.
 #
 # Each request uses its own connection and reads one response line: the
 # control socket keeps a connection open for further requests, so
@@ -105,12 +106,13 @@ def main():
     parser.add_argument("--hold", type=float, default=0.5)
     parser.add_argument("--timing", action="store_true")
     parser.add_argument("--visible-timeout", type=float, default=5.0)
+    parser.add_argument("--first-cycle", type=int, default=1)
     parser.add_argument("-o", "--output")
     args = parser.parse_args()
 
     output = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
     with output:
-        for cycle in range(1, args.count + 1):
+        for cycle in range(args.first_cycle, args.first_cycle + args.count):
             if args.timing:
                 line = timing_cycle(args.socket, args.hold, args.visible_timeout)
             else:

@@ -150,11 +150,18 @@ SOCAT_STUB = textwrap.dedent(
 # LABEL` appends a minimal line, `sample -o FILE` writes a samples file
 # when it gets SIGTERM or after `-d` seconds, `pids` prints
 # $STUB_MEMSNAP_PIDS.
+#
+# With $STUB_MEMSNAP_SAMPLE_AFTER_LABEL set, `sample` instead ends 0.5 s
+# after a snapshot with that label was logged and then logs
+# `["memsnap-sample-end", time]`, so a test can tell whether the bench
+# waited for the sampler before its next step: a step that does not wait
+# starts within those 0.5 s.
 MEMSNAP_STUB = textwrap.dedent(
     """\
     #!/usr/bin/env python3
     import json, os, signal, sys, time
-    with open(os.environ["STUB_LOG"], "a") as log:
+    log_path = os.environ["STUB_LOG"]
+    with open(log_path, "a") as log:
         log.write(json.dumps(["memsnap"] + sys.argv[1:]) + "\\n")
     command, args = sys.argv[1], sys.argv[2:]
     def option(*names):
@@ -162,6 +169,10 @@ MEMSNAP_STUB = textwrap.dedent(
             if a in names:
                 return args[i + 1]
         return None
+    def snapshot_logged(label):
+        with open(log_path) as log:
+            calls = [json.loads(line) for line in log if line.strip()]
+        return any(c[:2] == ["memsnap", "snapshot"] and label in c for c in calls)
     process = {"name": "torchsnap", "pid": 1, "auxiliary": {"phys_footprint": 1048576}, "pss": 1048576}
     if command == "snapshot":
         with open(option("-o"), "a") as f:
@@ -172,11 +183,21 @@ MEMSNAP_STUB = textwrap.dedent(
         stop = []
         signal.signal(signal.SIGTERM, lambda *_: stop.append(True))
         duration = min(float(option("-d") or 0), 0.2)
+        after_label = os.environ.get("STUB_MEMSNAP_SAMPLE_AFTER_LABEL")
         start = time.monotonic()
-        while not stop and not (duration and time.monotonic() - start >= duration):
+        while not stop:
+            if after_label:
+                if snapshot_logged(after_label):
+                    time.sleep(0.5)
+                    break
+            elif duration and time.monotonic() - start >= duration:
+                break
             time.sleep(0.05)
         with open(option("-o"), "w") as f:
             json.dump({"metric": "pss", "samples": [{"processes": [process]}]}, f)
+        if after_label:
+            with open(log_path, "a") as log:
+                log.write(json.dumps(["memsnap-sample-end", time.time()]) + "\\n")
     elif command == "pids":
         print(os.environ.get("STUB_MEMSNAP_PIDS", ""))
     """

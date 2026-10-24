@@ -29,15 +29,21 @@
 # its layout (`status.ready`), since Linux builds the launcher
 # visible and a dismiss before then is refused. It writes an
 # events file with every control request and its time and the
-# app's WEBKIT_* and GDK_* variables (--env-prefix adds more), and can
-# add show/dismiss cycles after the scenario (--cycles, measured)
-# and a timing pass (--timing-cycles, time from show to visible
-# content, not measured).
+# app's WEBKIT_* and GDK_* variables (--env-prefix adds more).
+#
+# On both platforms the bench can add show/dismiss cycles after the
+# scenario (--cycles, measured) and then a timing pass
+# (--timing-cycles, time from show to visible content, not measured),
+# both through bench-memory-cycles. On Linux the sampler runs on
+# through the cycles. On macOS it stops after the scenario, so the
+# cycles run in chunks of 10 with a snapshot after each chunk
+# ("after 10 cycles", "after 20 cycles", ...), and their lines go to
+# the events file, which on macOS holds nothing else.
 #
 # Prerequisites:
 #   - socat (brew install socat)
 #   - jq (brew install jq)
-#   - Linux: python3
+#   - python3: on Linux, and on macOS for --cycles and --timing-cycles
 # =========================================================
 
 set -euo pipefail
@@ -61,6 +67,9 @@ LOG_FILE="$PROJECT_DIR/memory-benchmark.log"
 # after the stop.
 READY_TIMEOUT="${BENCH_MEMORY_READY_TIMEOUT:-60}"
 STOP_TIMEOUT="${BENCH_MEMORY_STOP_TIMEOUT:-10}"
+
+# On macOS, the cycles between two snapshots (the tests shorten it).
+CYCLE_SNAPSHOT_EVERY="${BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY:-10}"
 
 # ---------------------------------------------------------
 # CLI
@@ -89,13 +98,14 @@ Options:
   --skip-build               Skip the release build step (macOS)
   --output-dir <DIR>         Write the data files to DIR [default: current directory]
   --log <FILE>               Append the report to FILE [default: memory-benchmark.log in the project]
+  --cycles <N>               After the scenario, N measured show/dismiss cycles [default: 0];
+                             on macOS with a snapshot after every 10
+  --timing-cycles <N>        Then N unmeasured cycles timing show → visible content [default: 0]
   -h, --help                 Show this help
 
 Linux only:
   --app <PATH>               The Torchsnap binary to run (required on Linux)
   --compositor-pid <PID>     Also record this process (the compositor), apart from Torchsnap's
-  --cycles <N>               After the scenario, N measured show/dismiss cycles [default: 0]
-  --timing-cycles <N>        Then N unmeasured cycles timing show → visible content [default: 0]
   --env-prefix <PREFIX>      Also record the app's variables starting with PREFIX in the
                              events file, besides WEBKIT_ and GDK_ (repeatable)
 EOF
@@ -128,13 +138,19 @@ while [[ $# -gt 0 ]]; do
         LOG_FILE="$2"
         shift 2
         ;;
-    --app | --compositor-pid | --cycles | --timing-cycles | --env-prefix)
+    --cycles)
+        CYCLES="$2"
+        shift 2
+        ;;
+    --timing-cycles)
+        TIMING_CYCLES="$2"
+        shift 2
+        ;;
+    --app | --compositor-pid | --env-prefix)
         linux_only "$1"
         case "$1" in
         --app) APP="$2" ;;
         --compositor-pid) COMPOSITOR_PID="$2" ;;
-        --cycles) CYCLES="$2" ;;
-        --timing-cycles) TIMING_CYCLES="$2" ;;
         --env-prefix) ENV_PREFIXES+=("$2") ;;
         esac
         shift 2
@@ -159,6 +175,14 @@ fi
 
 if [[ "$PLATFORM" == Linux ]] && [[ -z "$APP" ]]; then
     echo "Error: --app is required on Linux." >&2
+    exit 1
+fi
+
+# The knob is checked before the build, so a bad value does not end the
+# run halfway through the cycles: bash arithmetic reads a leading zero as
+# octal and stops at `08`, and 0 would never finish a chunk.
+if [[ "$PLATFORM" != Linux ]] && [[ "$CYCLES" -gt 0 ]] && ! [[ "$CYCLE_SNAPSHOT_EVERY" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY must be a whole number from 1, not '$CYCLE_SNAPSHOT_EVERY'." >&2
     exit 1
 fi
 
@@ -617,8 +641,8 @@ send "dismiss"
 sleep 5
 snap "final idle"
 
-# --- Linux: measured show/dismiss cycles ---
-if [[ "$CYCLES" -gt 0 ]]; then
+# --- Linux: measured show/dismiss cycles, while the sampler runs ---
+if [[ "$PLATFORM" == Linux ]] && [[ "$CYCLES" -gt 0 ]]; then
     echo "Running $CYCLES show/dismiss cycles..."
     python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$CYCLES" >>"$EVENTS_FILE"
     sleep 2
@@ -638,7 +662,31 @@ fi
 wait "$MEMSNAP_PID" 2>/dev/null || true
 MEMSNAP_PID=""
 
-# --- Linux: timing pass, with the sampler stopped ---
+# --- macOS: measured show/dismiss cycles, after the sampler ---
+#
+# The macOS sampler (`footprint --sample`) runs for the scenario's length
+# and ends on its own; stopped early it leaves a cut-off file. Waiting for
+# it keeps its file the scenario's alone, as in a run without --cycles.
+# The cycles are measured by a snapshot after every CYCLE_SNAPSHOT_EVERY
+# cycles instead, taken 2 s after the chunk's last dismiss, as Linux's
+# "after N cycles". Their lines go to the events file, numbered on
+# across the chunks.
+if [[ "$PLATFORM" != Linux ]] && [[ "$CYCLES" -gt 0 ]]; then
+    echo "Running $CYCLES show/dismiss cycles, a snapshot after every $CYCLE_SNAPSHOT_EVERY..."
+    cycles_done=0
+    while [[ "$cycles_done" -lt "$CYCLES" ]]; do
+        chunk=$((CYCLES - cycles_done))
+        if [[ "$chunk" -gt "$CYCLE_SNAPSHOT_EVERY" ]]; then
+            chunk="$CYCLE_SNAPSHOT_EVERY"
+        fi
+        python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$chunk" --first-cycle "$((cycles_done + 1))" >>"$EVENTS_FILE"
+        cycles_done=$((cycles_done + chunk))
+        sleep 2
+        snap "after $cycles_done cycles"
+    done
+fi
+
+# --- Timing pass, with the sampler stopped ---
 if [[ "$TIMING_CYCLES" -gt 0 ]]; then
     echo "Running $TIMING_CYCLES timing cycles..."
     python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$TIMING_CYCLES" --timing -o "$TIMING_FILE"
@@ -679,7 +727,9 @@ echo
 echo "Report appended to: $LOG_FILE"
 echo "Continuous data: $SAMPLES_FILE"
 echo "Snapshot data: $SNAPSHOTS_FILE"
-if [[ "$PLATFORM" == Linux ]]; then
+# On Linux every request goes into the events file; on macOS only the
+# cycles do, so it exists there only with --cycles.
+if [[ -f "$EVENTS_FILE" ]]; then
     echo "Events data: $EVENTS_FILE"
 fi
 if [[ "$TIMING_CYCLES" -gt 0 ]]; then

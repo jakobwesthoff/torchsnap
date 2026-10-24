@@ -48,6 +48,10 @@ LABELS = [
     "final idle",
 ]
 
+# Control socket answers for timing cycles: the content is visible at the
+# first `snapshot`, the launcher hidden at the first `status`.
+TIMING_ANSWERS = {"snapshot": [{"result": {"contentVisible": True}}], "status": [{"result": {"visible": False}}]}
+
 
 def alive(pid):
     try:
@@ -331,6 +335,24 @@ class BenchMemoryLinux(BenchCase):
         cycles = [json.loads(line) for line in events.read_text().splitlines() if '"cycle"' in line]
         self.assertEqual([c["cycle"] for c in cycles], [1, 2])
 
+    # Pinning test: Linux runs all cycles in one go while its sampler
+    # runs; the snapshot knob of the macOS cycles does not apply.
+    def test_linux_cycles_ignore_the_snapshot_knob(self):
+        server = MethodControlSocket(self.tree.linux_socket_path())
+        try:
+            result = self.bench(
+                "-d", "x", "--app", self.tree.app, "--output-dir", self.tree.out, "--cycles", "2",
+                BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY="1",
+            )
+        finally:
+            server.close()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(server.methods(), ["show", "dismiss"] * 2)
+        self.assertEqual(self.labels(), LABELS + ["after 2 cycles"])
+        events = self.printed_path(result.stdout, "Events data: ")
+        cycles = [json.loads(line) for line in events.read_text().splitlines() if '"cycle"' in line]
+        self.assertEqual([c["cycle"] for c in cycles], [1, 2])
+
     def test_timing_cycles_after_the_last_snapshot(self):
         server = MethodControlSocket(
             self.tree.linux_socket_path(),
@@ -364,17 +386,31 @@ class BenchMemoryLinux(BenchCase):
 class BenchMemoryMacOS(BenchCase):
     platform = "Darwin"
 
-    def macos_run(self, *args):
+    def macos_run(self, *args, answers=None, interpreter="bash", **env):
+        """Runs the bench against a stand-in app and a control socket at
+        the macOS path; returns the app, the result and the methods the
+        socket received (only bench-memory-cycles talks to it, the
+        scenario's requests go through the socat stub)."""
         app = self.spawn("sleep", "60")
-        server = MethodControlSocket(self.tree.macos_socket_path())
+        server = MethodControlSocket(self.tree.macos_socket_path(), answers)
         try:
-            return app, self.bench(*args, STUB_PGREP_EXIT="0", STUB_PGREP_STDOUT=f"{app.pid}\n")
+            result = self.bench(
+                *args, interpreter=interpreter, STUB_PGREP_EXIT="0", STUB_PGREP_STDOUT=f"{app.pid}\n", **env
+            )
         finally:
             server.close()
+        self.server = server
+        return app, result
+
+    def cycle_numbers(self, result):
+        events = self.printed_path(result.stdout, "Events data: ")
+        self.assertEqual(events.parent, self.tree.out)
+        return [json.loads(line)["cycle"] for line in events.read_text().splitlines()]
 
     # Pinning test: the macOS run builds, opens the bundle, takes the
     # same snapshots and writes the log into the project, as before the
-    # Linux path existed.
+    # Linux path existed. Without --cycles and --timing-cycles it writes
+    # no events or timing file and sends no cycle.
     def test_pinned_macos_run(self):
         app, result = self.macos_run("-d", "mac run")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -387,6 +423,10 @@ class BenchMemoryMacOS(BenchCase):
         settings = self.tree.home / "Library" / "Application Support" / "app.torchsnap" / "settings.json"
         self.assertEqual(json.loads(settings.read_text()), {"controlChannel.enabled": True})
         self.assertIn("Phase snapshots: 15", (self.tree.root / "memory-benchmark.log").read_text())
+        self.assertNotIn("Events data: ", result.stdout)
+        self.assertNotIn("Timing data: ", result.stdout)
+        self.assertEqual(list(self.tree.root.glob("bench-memory-*.events.jsonl")), [])
+        self.assertEqual(self.server.methods(), [])
         # The bench killed "the app"; it is the test's child, so the test
         # reaps it.
         self.assertEqual(app.wait(timeout=5), -15)
@@ -402,11 +442,74 @@ class BenchMemoryMacOS(BenchCase):
             self.assertTrue(path.exists(), path)
 
     def test_linux_options_are_refused(self):
-        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--cycles", "2"), ("--timing-cycles", "2"), ("--env-prefix", "EXPERIMENT_")):
+        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--env-prefix", "EXPERIMENT_")):
             result = self.bench("-d", "x", option, value)
             self.assertEqual(result.returncode, 1, option)
             self.assertIn(f"{option} is Linux only", result.stderr)
         self.assertEqual(self.stubs.calls("bun"), [])
+
+    # The 55 s sampler covers the scenario only, so the cycles start
+    # once it has ended, and a snapshot after every chunk of cycles
+    # measures them.
+    def test_cycles_take_a_snapshot_after_each_chunk(self):
+        _, result = self.macos_run(
+            "-d", "x", "--output-dir", self.tree.out, "--cycles", "3",
+            BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY="2", STUB_MEMSNAP_SAMPLE_AFTER_LABEL="final idle",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.labels(), LABELS + ["after 2 cycles", "after 3 cycles"])
+        self.assertEqual(self.server.methods(), ["show", "dismiss"] * 3)
+        self.assertEqual(self.cycle_numbers(result), [1, 2, 3])
+        sample_end = self.stubs.calls("memsnap-sample-end")[0][1]
+        first_show = next(t for t, request in self.server.requests if request["method"] == "show")
+        self.assertLess(sample_end, first_show, "the cycles started before the sampler ended")
+        self.assertNotIn("Timing data: ", result.stdout)
+
+    def test_cycles_default_to_a_snapshot_every_ten(self):
+        _, result = self.macos_run("-d", "x", "--output-dir", self.tree.out, "--cycles", "2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.labels(), LABELS + ["after 2 cycles"])
+        self.assertEqual(self.cycle_numbers(result), [1, 2])
+
+    def test_timing_cycles_on_macos(self):
+        _, result = self.macos_run(
+            "-d", "x", "--output-dir", self.tree.out, "--timing-cycles", "2", answers=TIMING_ANSWERS,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        timing = self.printed_path(result.stdout, "Timing data: ")
+        self.assertEqual(timing.parent, self.tree.out)
+        lines = [json.loads(line) for line in timing.read_text().splitlines()]
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(all(isinstance(line["show_ms"], (int, float)) for line in lines))
+        self.assertEqual(self.labels(), LABELS)
+        self.assertNotIn("Events data: ", result.stdout)
+
+    def test_stock_macos_bash_runs_the_cycles(self):
+        if not os.path.exists("/bin/bash"):
+            self.skipTest("no /bin/bash")
+        _, result = self.macos_run(
+            "-d", "x", "--output-dir", self.tree.out, "--cycles", "2", "--timing-cycles", "1",
+            answers=TIMING_ANSWERS, interpreter="/bin/bash", BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY="1",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.labels(), LABELS + ["after 1 cycles", "after 2 cycles"])
+        self.assertEqual(self.cycle_numbers(result), [1, 2])
+        self.assertTrue(self.printed_path(result.stdout, "Timing data: ").exists())
+
+    # 0 would never finish the cycles, and bash arithmetic reads a
+    # leading zero as octal, so `08` would stop the run halfway.
+    def test_snapshot_every_must_be_a_positive_number(self):
+        for value in ("0", "08", "x"):
+            result = self.bench("-d", "x", "--cycles", "2", BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY=value)
+            self.assertEqual(result.returncode, 1, value)
+            self.assertIn("BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY must be a whole number from 1", result.stderr)
+        self.assertEqual(self.stubs.calls("bun"), [])
+
+    # Pinning test: only the macOS cycles use the knob.
+    def test_a_bad_knob_without_cycles_runs_as_today(self):
+        _, result = self.macos_run("-d", "x", BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.labels(), LABELS)
 
 
 # =========================================================
@@ -468,6 +571,14 @@ class BenchMemoryCycles(unittest.TestCase):
         self.assertEqual(methods, ["show", "dismiss"] * 3)
         self.assertEqual([line["cycle"] for line in lines], [1, 2, 3])
         self.assertTrue(all(line["ok"] for line in lines))
+
+    # bench-memory runs the macOS cycles in chunks; each chunk goes on
+    # numbering where the last one stopped.
+    def test_first_cycle_sets_the_first_number(self):
+        result, methods, lines = self.cycles({}, "2", "--hold", "0", "--first-cycle", "4")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([line["cycle"] for line in lines], [4, 5])
+        self.assertEqual(methods, ["show", "dismiss"] * 2)
 
 
 if __name__ == "__main__":

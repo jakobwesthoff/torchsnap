@@ -53,10 +53,10 @@
   exists), waits until the launcher reports `status.ready`, runs the
   macOS scenario of 15 phases and writes an events file with every
   control request and the app's `WEBKIT_*` and `GDK_*` variables.
-  Linux options: `--app`, `--compositor-pid`, `--cycles N` (measured
-  show/dismiss cycles after the scenario), `--timing-cycles N`
-  (unmeasured cycles timing show to visible content) and
-  `--env-prefix PREFIX` (more variables in the events file).
+  Linux options: `--app`, `--compositor-pid` and `--env-prefix PREFIX`
+  (more variables in the events file). On both platforms `--cycles N`
+  adds measured show/dismiss cycles after the scenario and
+  `--timing-cycles N` unmeasured cycles timing show to visible content.
 - `just testbed-bench-memory DESCRIPTION` runs the benchmark on the
   testbed against its current build and passes `--cycles`,
   `--timing-cycles`, `--env-prefix` and `--headless`. Its data files
