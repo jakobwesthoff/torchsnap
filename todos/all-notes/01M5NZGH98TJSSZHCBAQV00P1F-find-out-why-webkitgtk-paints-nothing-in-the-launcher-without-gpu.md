@@ -20,7 +20,23 @@ WebKit's GPU buffers are the largest part of Torchsnap's memory on the Linux tes
 
 With the opaque window, against an opaque GPU baseline: 118 to 151 MiB less in every phase, show to visible content 136 against 53 ms median, web-process CPU while shown 27 against 6 % of a core, GNOME Shell 13 against 9 %. Idle CPU while hidden was the same.
 
+## Cause (found in the WebKit 2.54.0 source, not yet reproduced on the Pi)
+
+Without GPU rendering WebKit uses its non-composited frame renderer. Each frame it clears the whole render target to transparent when the page background is not opaque (`NonCompositedFrameRenderer.cpp:211`, `AcceleratedSurface.cpp:1106-1124`) and redraws only the damaged rectangles (`:241-249`). wry sets a (0,0,0,0) webview background for a transparent window, so only the changed patches survive each frame. An opaque background skips the clear. The code is unchanged on WebKit `main`. Other WebKitGTK 2.54 apps report the same and switched to an opaque window (https://github.com/aula-id/koma/issues/242, https://github.com/axpdev-lab/aeroftp/pull/1240, https://github.com/NC1107/sink/pull/79, https://github.com/SimoHypers/limusic/issues/523); none cites a WebKit bug.
+
+`hardware-acceleration-policy` is fixed when the page is created: the renderer is chosen at drawing-area creation (`DrawingAreaCoordinatedGraphicsGLib.cpp:151-157`) and the surface keeps its GPU flag from construction (`AcceleratedSurface.cpp:122`). Setting the policy after load leaves a GPU renderer under CPU preferences. wry and Tauri do not expose settings at creation, and setting it at creation would still end in the non-composited renderer.
+
+`WEBKIT_DISABLE_COMPOSITING_MODE=1`, measured as worse for memory in the same review, takes the same renderer and was not checked on screen.
+
+## Open experiments
+
+- Separate the two causes: an opaque GTK window with the webview background left at (0,0,0,0) and `GDK_GL=disable`. Fragments mean the web-process clear is the cause.
+- A page-side workaround: while shown, a viewport-sized element that changes every frame, so every frame's damage is the whole view. If the picture is complete, measure the web process's CPU and the time to visible content.
+- The policy set at creation through a temporary wry patch: expect the same picture as `GDK_GL=disable`.
+- `about:gpu` in a throwaway view under each switch, to see which renderer each one really takes.
+
+Details and sources: the WebKitGTK rendering research of 2026-10-24.
+
 ## Not tried
 
-- Setting the policy before the page loads, on the `WebKitSettings` the webview is created with, which wry does not expose.
-- Other compositors (labwc, KDE, X11) and other GPUs.
+Other compositors and GPUs do not change the cause according to the source (no display-server branch), so they are low value. Fixing `NonCompositedFrameRenderer::updateRendering` upstream (clear only the damage region) would help only once distributions ship it.
