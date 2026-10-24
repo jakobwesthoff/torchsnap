@@ -122,6 +122,15 @@ to WebKit's source and was not checked on screen either. A memory
 figure counts only for a launcher seen painted on screen, in
 screenshots or a recording of the same build and switch.
 
+A later observation does not fit this picture. In a release build of
+the same app code, the bench's screen check at the end of a run, on
+the eleventh show of the process (after the whole scenario), found the
+launcher fully painted, card, search field and mascot, both with
+`GDK_GL=disable` and with `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Which
+shows paint fully and which paint fragments under these switches is
+open, so their figures stay invalid until a recording of a whole run
+settles it.
+
 ### Other conditions
 
 - The Pi does not swap on its own. After a reboot, 10.8 minutes idle
@@ -285,8 +294,8 @@ comparison: web anon +33.9 (+38.0 at 500), web GPU +30.4, show 72 / 79
 |---|---|
 | WebKit's `hardware-acceleration-policy` `NEVER` on the launcher's webview through `with_webview` (C11) | Nothing; with an opaque window a black box on every show, also 6 s after the show. No WebKit error in the app log. |
 | The same policy with the mapped shrink (K) | Not checked on screen; its figures count as invalid with C11's. |
-| `GDK_GL=disable` with today's transparent window (C4) | Fragments only: patches of the emoji grid where something changed, no card, no mascot. Settings and welcome windows render. |
-| `WEBKIT_DISABLE_DMABUF_RENDERER=1` (C8b) | Not checked on screen; it uses the same CPU path as C4, so its figures count as invalid. |
+| `GDK_GL=disable` with today's transparent window (C4) | Fragments only: patches of the emoji grid where something changed, no card, no mascot. Settings and welcome windows render. A later bench run found the launcher fully painted on the eleventh show (see "Only a painted launcher counts"). |
+| `WEBKIT_DISABLE_DMABUF_RENDERER=1` (C8b) | Not checked on screen during C8b; it uses the same CPU path as C4, so its figures count as invalid. A later bench run found the launcher fully painted on the eleventh show (see "Only a painted launcher counts"). |
 | `WEBKIT_DISABLE_COMPOSITING_MODE=1` (C2) | Not checked on screen. It measured worse (+25 shown, +30 at final idle and after 20 cycles), but it takes the same non-composited renderer with GL still on (next section), and a downstream report sees fragments with it on 2.54 in a transparent window. Its figures carry the same caveat as C4's and C11's; this is an inference from the source and one report, not a measurement. |
 
 The idle CPU while hidden of C4, C11 and K equals the baseline's.
