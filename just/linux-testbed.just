@@ -33,12 +33,14 @@ testbed-exec COMMAND:
 # The build runs `just linux-build` in the Mac's Linux container and
 # copies the debug app to the testbed. `--on-machine` builds there
 # instead: `just install`, then `just build` with `bundle.active` off.
-# `testbed-app-start` runs whichever of the two finished last.
+# `--release` builds a release app on either path.
+# `testbed-app-start` runs whichever build finished last.
 
-# Sync, build a debug app in the Mac's Linux container and copy it to the Linux testbed (--on-machine: build there)
+# Sync, build a debug app in the Mac's Linux container and copy it to the Linux testbed (--on-machine: build there; --release: a release app)
 [arg('where', long='on-machine', value='on-machine')]
-testbed-build where="container":
-    tools/linux-testbed/testbed build {{ if where == "on-machine" { "--on-machine" } else { "" } }}
+[arg('profile', long='release', value='release')]
+testbed-build where="container" profile="debug":
+    tools/linux-testbed/testbed build{{ if where == "on-machine" { " --on-machine" } else { "" } }}{{ if profile == "release" { " --release" } else { "" } }}
 
 # Start the debug app in the Linux testbed's desktop session (control socket on)
 testbed-app-start:

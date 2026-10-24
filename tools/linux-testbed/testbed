@@ -14,11 +14,12 @@
 #   testbed provision [ARGS]  sync, then run the provision script there
 #   testbed reboot            reboot the machine, wait until its session is ready
 #   testbed exec COMMAND      run one shell command line on the machine
-#   testbed build [--on-machine]
+#   testbed build [--on-machine] [--release]
 #                             sync, build a debug app in the Mac's Linux
 #                             container and copy it there (--on-machine:
-#                             build gadgets and a debug app there)
-#   testbed app-start         start the debug app in the machine's desktop session
+#                             build gadgets and a debug app there;
+#                             --release: a release app instead)
+#   testbed app-start         start the current build in the machine's desktop session
 #   testbed app-stop          stop it
 #   testbed app-log [LINES]   print the end of its output
 #   testbed control METHOD [JSON]  one request to the app's control socket
@@ -212,8 +213,9 @@ run_pi() {
 
 # The container build's output on the Mac (tools/linux-build) and where
 # it goes in the machine's tree: next to the synced sources, under the
-# gitignored `target/`, which a sync leaves alone.
-readonly deploy_path="target/linux-build/debug"
+# gitignored `target/`, which a sync leaves alone; one directory per
+# profile.
+readonly deploy_parent="target/linux-build"
 
 # find_zstd_rsync: prints the first rsync on PATH whose `--version` lists
 # zstd among its compressions. macOS's own /usr/bin/rsync is openrsync,
@@ -239,8 +241,14 @@ find_zstd_rsync() {
 # (`CARGO_MANIFEST_DIR/../gadgets`). The machine clears its record of the
 # current build before anything changes and writes it once the copy is
 # complete, so `app-start` never runs a build that failed or is half
-# copied.
+# copied. A release build runs at the same path, so the container's work
+# volume keeps one path for both profiles.
 cmd_build_in_container() {
+    local profile="$1" build_args=() finish_args=()
+    if [ "$profile" = release ]; then
+        build_args=(--release)
+        finish_args=(--release)
+    fi
     if ! rsync_command="$(find_zstd_rsync)"; then
         echo "testbed: no rsync with zstd compression on PATH (macOS's /usr/bin/rsync is openrsync, which has none);" \
             "install rsync 3, for example with Homebrew, or build on the machine with just testbed-build --on-machine" >&2
@@ -260,24 +268,43 @@ cmd_build_in_container() {
             ;;
     esac
 
-    TORCHSNAP_LINUX_BUILD_WORKDIR="$tree" "$repo_root/tools/linux-build/linux-build" build
+    TORCHSNAP_LINUX_BUILD_WORKDIR="$tree" "$repo_root/tools/linux-build/linux-build" build \
+        ${build_args[@]+"${build_args[@]}"}
 
-    local start=$SECONDS
+    local start=$SECONDS deploy_path="$deploy_parent/$profile"
     "$rsync_command" -a --delete --compress --compress-choice=zstd \
         "$repo_root/$deploy_path/" "$TORCHSNAP_LINUX_HOST:$remote_tree/$deploy_path/"
     echo "testbed: copied $deploy_path to the machine in $((SECONDS - start)) s"
-    run_pi deploy-finish
+    run_pi deploy-finish ${finish_args[@]+"${finish_args[@]}"}
 }
 
+# `--on-machine` and `--release`, each at most once, in any order.
 cmd_build() {
-    case "$*" in
-        "") cmd_build_in_container ;;
-        --on-machine)
-            cmd_sync
-            run_pi build
-            ;;
-        *) usage ;;
-    esac
+    local where=container profile=debug
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --on-machine)
+                [ "$where" = container ] || usage
+                where=machine
+                ;;
+            --release)
+                [ "$profile" = debug ] || usage
+                profile=release
+                ;;
+            *) usage ;;
+        esac
+        shift
+    done
+    if [ "$where" = container ]; then
+        cmd_build_in_container "$profile"
+        return
+    fi
+    cmd_sync
+    if [ "$profile" = release ]; then
+        run_pi build --release
+    else
+        run_pi build
+    fi
 }
 
 # =========================================================

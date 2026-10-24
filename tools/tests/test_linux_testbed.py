@@ -187,7 +187,7 @@ class TestbedHostCheck(unittest.TestCase):
         self.assert_host_refused(run(["provision"], self.stubs, unset=["TORCHSNAP_LINUX_HOST"]))
 
     def test_build_refuses_without_host_before_building(self):
-        for args in (["build"], ["build", "--on-machine"]):
+        for args in (["build"], ["build", "--on-machine"], ["build", "--release"]):
             with self.subTest(args=args):
                 self.assert_host_refused(run(args, self.stubs, unset=["TORCHSNAP_LINUX_HOST"]))
                 self.assert_host_refused(run(args, self.stubs, env={"TORCHSNAP_LINUX_HOST": ""}))
@@ -279,6 +279,17 @@ class TestbedRecipes(unittest.TestCase):
         result = self.dry_run("testbed-build", "--on-machine")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr.strip(), "tools/linux-testbed/testbed build --on-machine")
+
+    def test_testbed_build_release_passes_the_flag(self):
+        for args, line in (
+            (["--release"], "tools/linux-testbed/testbed build --release"),
+            (["--on-machine", "--release"], "tools/linux-testbed/testbed build --on-machine --release"),
+            (["--release", "--on-machine"], "tools/linux-testbed/testbed build --on-machine --release"),
+        ):
+            with self.subTest(args=args):
+                result = self.dry_run("testbed-build", *args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr.strip(), line)
 
     def test_testbed_control_passes_json_as_one_argument(self):
         result = self.dry_run("testbed-control", "query", '{"text": "a b"}')
@@ -1646,15 +1657,16 @@ OPENRSYNC_STUB = textwrap.dedent(
 )
 
 # The container build: logs its argv and the work path it was given,
-# leaves a binary in the checkout's output and exits with
-# FAKE_BUILD_EXIT.
+# leaves a binary in the checkout's output for the profile it was asked
+# for and exits with FAKE_BUILD_EXIT.
 FAKE_LINUX_BUILD = textwrap.dedent(
     """\
     #!/usr/bin/env python3
     import json, os, pathlib, sys
     with open(os.environ["STUB_LOG"], "a") as log:
         log.write(json.dumps(sys.argv + ["WORKDIR=" + os.environ.get("TORCHSNAP_LINUX_BUILD_WORKDIR", "")]) + "\\n")
-    out = pathlib.Path(sys.argv[0]).resolve().parents[2] / "target" / "linux-build" / "debug" / "bin"
+    profile = "release" if "--release" in sys.argv else "debug"
+    out = pathlib.Path(sys.argv[0]).resolve().parents[2] / "target" / "linux-build" / profile / "bin"
     out.mkdir(parents=True, exist_ok=True)
     (out / "torchsnap").write_text("ELF")
     sys.exit(int(os.environ.get("FAKE_BUILD_EXIT", "0")))
@@ -1811,10 +1823,36 @@ class TestbedContainerBuild(unittest.TestCase):
         self.assertEqual(self.pi_calls(), [["build"]])
 
     def test_an_unknown_option_prints_usage_and_runs_nothing(self):
-        result = self.build("--bogus")
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("usage:", result.stderr.lower())
-        self.assertEqual(self.stubs.calls(), [])
+        for args in (["--bogus"], ["--release", "--bogus"], ["--release", "--release"], ["--on-machine", "--on-machine"]):
+            with self.subTest(args=args):
+                result = self.build(*args)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("usage:", result.stderr.lower())
+                self.assertEqual(self.stubs.calls(), [])
+
+    def test_release_builds_the_release_profile_and_deploys_it_as_such(self):
+        result = self.build("--release")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # steps() names an ssh call by its last word, here `--release`;
+        # pi_calls() below has the subcommand.
+        self.assertEqual(self.steps(), [
+            "rsync --version", "rsync", "ssh deploy-start", "linux-build", "rsync", "ssh --release",
+        ])
+        calls = self.stubs.calls()
+        self.assertEqual(calls[3][1:], ["build", "--release", f"WORKDIR={self.remote_home}/torchsnap"])
+        self.assertEqual(calls[4][-2:], [
+            f"{self.repo}/target/linux-build/release/", "user@pi.local:torchsnap/target/linux-build/release/",
+        ])
+        self.assertEqual(self.pi_calls(), [["deploy-start"], ["deploy-finish", "--release"]])
+
+    def test_release_on_the_machine_builds_a_release_there_in_either_order(self):
+        for args in (["--on-machine", "--release"], ["--release", "--on-machine"]):
+            with self.subTest(args=args):
+                (self.remote_home / "pi-calls.jsonl").unlink(missing_ok=True)
+                result = self.build(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("linux-build", self.steps())
+                self.assertEqual(self.pi_calls(), [["build", "--release"]])
 
 
 class ControlRequests(unittest.TestCase):
@@ -2025,6 +2063,25 @@ class TestbedPiBuilds(unittest.TestCase):
         self.call_pi(["app-start"])
         self.assertEqual(self.started_binary(), str(self.machine_binary))
 
+    def test_app_start_runs_the_binary_of_each_kind_of_build(self):
+        binaries = {
+            "container": self.container_binary,
+            "container-release": self.tree / "target" / "linux-build" / "release" / "bin" / "torchsnap",
+            "machine": self.machine_binary,
+            "machine-release": self.tree / "src-tauri" / "target" / "release" / "torchsnap",
+        }
+        for binary in binaries.values():
+            self.make_binary(binary)
+        for kind, binary in binaries.items():
+            with self.subTest(kind=kind):
+                self.stubs.log.unlink(missing_ok=True)
+                self.write_record(kind)
+                self.call_pi(["app-start"])
+                self.assertEqual(self.started_binary(), str(binary))
+                log = (self.home / ".cache" / "torchsnap-testbed" / "app.log").read_text().splitlines()
+                self.assertTrue(log[-1].startswith("=== app-start "), log[-1])
+                self.assertTrue(log[-1].endswith(f" {kind} {binary}"), log[-1])
+
     def test_app_start_refuses_when_the_current_build_is_missing(self):
         self.make_binary(self.machine_binary)
         self.write_record("container")
@@ -2060,6 +2117,25 @@ class TestbedPiBuilds(unittest.TestCase):
             ["build", "--config", '{"bundle":{"active":false}}', "record=no"],
         ])
         self.assertEqual(self.record.read_text().strip(), "machine")
+
+    def test_a_release_build_on_the_machine_records_itself_as_such(self):
+        self.write_record("container")
+        result = self.call_pi(["build", "--release"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c[1:] for c in self.stubs.calls("just")], [
+            ["install", "record=no"],
+            ["build", "--release", "--config", '{"bundle":{"active":false}}', "record=no"],
+        ])
+        self.assertEqual(self.record.read_text().strip(), "machine-release")
+
+    def test_build_and_deploy_finish_take_only_release(self):
+        for args in (["build", "--debug"], ["build", "--release", "x"], ["deploy-finish", "--bogus"]):
+            with self.subTest(args=args):
+                self.write_record("container")
+                result = self.call_pi(args)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(self.stubs.calls("just"), [])
+                self.assertTrue(self.record.exists())
 
     def test_a_failed_build_on_the_machine_leaves_no_current_build(self):
         self.write_record("container")
@@ -2104,6 +2180,22 @@ class TestbedPiBuilds(unittest.TestCase):
         self.assertEqual((gadgets / "hello-world.torchsnap").stat().st_mtime, 1_600_000_000)
         self.assertTrue((gadgets / "calculator").is_dir())
         self.assertEqual(self.record.read_text().strip(), "container")
+
+    def test_deploy_finish_of_a_release_records_it_and_leaves_the_trees_archives(self):
+        self.make_binary(self.tree / "target" / "linux-build" / "release" / "bin" / "torchsnap")
+        self.tree_archives("hello-world")
+        result = self.call_pi(["deploy-finish", "--release"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.record.read_text().strip(), "container-release")
+        self.assertEqual((self.tree / "gadgets" / "hello-world.torchsnap").read_text(), "old")
+
+    def test_deploy_finish_of_a_release_refuses_without_its_binary(self):
+        self.make_binary(self.container_binary)
+        result = self.call_pi(["deploy-finish", "--release"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("incomplete deploy in", result.stderr)
+        self.assertIn("target/linux-build/release", result.stderr)
+        self.assertFalse(self.record.exists())
 
     def test_deploy_finish_refuses_an_incomplete_deploy(self):
         for missing in ("binary", "dev-gadgets"):
@@ -2918,13 +3010,18 @@ FAKE_SELFTEST_TESTBED = textwrap.dedent(
     #!/usr/bin/env python3
     import json, os, pathlib, sys, time
     here = pathlib.Path(sys.argv[0]).resolve().parent
-    out = here.parents[1] / "target" / "linux-build" / "debug"
+    profile_file = pathlib.Path(os.environ["STUB_LOG"]).with_name("profile")
+    profile = profile_file.read_text() if profile_file.exists() else "debug"
+    out = here.parents[1] / "target" / "linux-build" / profile
     state = pathlib.Path(os.environ["STUB_LOG"]).with_name("last-query")
-    deployed = "/home/someone/torchsnap/target/linux-build/debug/bin/torchsnap"
+    deployed = "/home/someone/torchsnap/target/linux-build/%s/bin/torchsnap" % profile
     with open(os.environ["STUB_LOG"], "a") as log:
         log.write(json.dumps(["testbed", *sys.argv[1:]]) + "\\n")
     command, args = sys.argv[1], sys.argv[2:]
     if command == "build":
+        profile = "release" if "--release" in args else "debug"
+        profile_file.write_text(profile)
+        out = here.parents[1] / "target" / "linux-build" / profile
         if not os.environ.get("FAKE_STALE"):
             os.utime(out / "bin" / "torchsnap")
         sys.exit(int(os.environ.get("FAKE_BUILD_EXIT", "0")))
@@ -2933,11 +3030,11 @@ FAKE_SELFTEST_TESTBED = textwrap.dedent(
         if "is-active" in line:
             sys.exit(3)
         if "current-build" in line:
-            print(os.environ.get("FAKE_RECORD", "container"))
+            print(os.environ.get("FAKE_RECORD", "container" if profile == "debug" else "container-release"))
         elif "/proc/" in line:
             print(os.environ.get("FAKE_RUNNING_BINARY", deployed))
             print(deployed)
-        elif "bin/torchsnap" in line:
+        elif "linux-build/%s/bin/torchsnap" % profile in line:
             st = (out / "bin" / "torchsnap").stat()
             print(os.environ.get("FAKE_MACHINE_STAT", "%d %d" % (st.st_size, int(st.st_mtime))))
         elif "gadgets" in line:
@@ -3030,6 +3127,48 @@ class SelftestBuildItem(unittest.TestCase):
         for gadget in ("calculator", "hello-world"):
             with self.subTest(gadget=gadget):
                 self.assert_fails(self.item_2(FAKE_NO_VIEW=gadget), gadget)
+
+
+class SelftestReleaseBuildItem(unittest.TestCase):
+    """Self-test item 2R against the fake testbed of item 2: a release
+    build reaches the machine as `container-release`, the app runs it and
+    opens the calculator; a release build has no development gadgets."""
+
+    setUp = SelftestBuildItem.setUp
+    tearDown = SelftestBuildItem.tearDown
+
+    def item_2r(self, **env):
+        out = self.tmp / "target" / "linux-build" / "release"
+        (out / "bin").mkdir(parents=True, exist_ok=True)
+        (out / "bin" / "torchsnap").write_text("ELF")
+        os.utime(out / "bin" / "torchsnap", (1_600_000_000, 1_600_000_000))
+        environment = {"TORCHSNAP_LINUX_HOST": "user@pi.local", "TORCHSNAP_SELFTEST_VIEW_TIMEOUT": "1"}
+        environment.update(env)
+        return run(["2R"], self.stubs, env=environment, script=self.tmp / "tools" / "linux-testbed" / "selftest")
+
+    def assert_fails(self, result, text):
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL item 2R", result.stdout)
+        self.assertIn(text, result.stdout)
+
+    def test_passes_when_the_machine_runs_the_fresh_release_build(self):
+        result = self.item_2r()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS item 2R", result.stdout)
+        calls = [c[1:] for c in self.stubs.calls("testbed")][1:]
+        self.assertEqual(calls[0], ["build", "--release"])
+        queries = [c[2] for c in calls if c[:2] == ["control", "query"]]
+        self.assertEqual(queries, ['{"text": "=2+3"}', '{"text": ""}'])
+        self.assertFalse(any("gadgets" in c[1] for c in calls if c[0] == "exec"))
+
+    def test_a_debug_record_fails(self):
+        self.assert_fails(self.item_2r(FAKE_RECORD="container"), "current build is 'container', not container-release")
+
+    def test_an_app_running_another_binary_fails(self):
+        self.assert_fails(self.item_2r(FAKE_RUNNING_BINARY="/elsewhere/torchsnap"), "/elsewhere/torchsnap")
+
+    def test_the_calculator_not_opening_fails(self):
+        self.assert_fails(self.item_2r(FAKE_NO_VIEW="calculator"), "calculator")
 
 
 # The Mac-side testbed for self-test item W: the app runs, the launcher
@@ -3398,6 +3537,18 @@ class TestbedPiBenchMemory(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("no GNOME Shell process", result.stderr)
         self.assertIsNone(call)
+
+    def test_runs_a_release_build_the_record_names(self):
+        binary = self.tree / "target" / "linux-build" / "release" / "bin" / "torchsnap"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+        record = self.home / ".cache" / "torchsnap-testbed" / "current-build"
+        record.parent.mkdir(parents=True)
+        record.write_text("container-release\n")
+        result, call = self.call("bench-memory", "-d", "x", TORCHSNAP_TESTBED_APP_BINARY="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(call["argv"][call["argv"].index("--app") + 1], str(binary))
 
     def test_refuses_without_a_current_build(self):
         result, call = self.call("bench-memory", "-d", "x", TORCHSNAP_TESTBED_APP_BINARY="")

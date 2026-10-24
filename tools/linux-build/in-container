@@ -72,6 +72,28 @@ cmd_lint() {
     just lint-crates
 }
 
+# The volume is mounted wherever the caller builds (`/work`, or the path
+# of a tree on the target machine), and a profile's target dir keeps
+# build-script output with the absolute path it was built at: tauri's
+# build script reads its plugin permissions back from there, and cargo
+# does not run it again when only the path changed. So each profile
+# records the path it was last built at, inside the gitignored target
+# dir the sync leaves alone, and a build at another path empties the
+# profile's target dir first.
+forget_other_work_path() {
+    local profile="$1" record last
+    record="$work/src-tauri/target/.linux-build-workdir-$profile"
+    if [ -f "$record" ]; then
+        last="$(cat "$record")"
+        if [ "$last" != "$work" ]; then
+            echo "linux-build: $profile was last built at $last, not $work; building it from scratch" >&2
+            rm -rf "$work/src-tauri/target/$profile"
+        fi
+    fi
+    mkdir -p "$(dirname "$record")"
+    echo "$work" >"$record"
+}
+
 cmd_build() {
     local profile="$1" release=()
     case "$profile" in
@@ -85,6 +107,7 @@ cmd_build() {
     mark_used
     phase sync sync_tree
     cd "$work"
+    forget_other_work_path "$profile"
     phase install just install
     phase build just build "${release[@]+"${release[@]}"}" --config '{"bundle":{"active":false}}'
     phase assemble cmd_assemble "$profile" "$out"

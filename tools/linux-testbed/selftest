@@ -17,6 +17,9 @@
 #   2   a build in the Mac's container reaches the machine as the current
 #       build, and the app started from it opens a bundled and a
 #       development gadget (only when named)
+#   2R  item 2 for a release build (`--release`): the machine records
+#       it as container-release, and the app runs it and opens the
+#       calculator (only when named)
 #   S   a build from a second checkout of a file changed before the last
 #       build carries the change, and a build back in this checkout
 #       drops it (only when named; three container builds)
@@ -479,8 +482,8 @@ item_E() {
 # afterwards that runs that binary and opens a bundled gadget
 # (calculator, from the build's lib/) and a development one
 # (hello-world, from the tree's gadgets/). Both answer a prefix with a
-# gadget view: `=` the calculator's, `!` hello-world's.
-readonly mac_build="$repo_root/target/linux-build/debug"
+# gadget view: `=` the calculator's, `!` hello-world's. A release build
+# (item 2R) has no development gadgets, so only the calculator counts.
 readonly view_timeout="${TORCHSNAP_SELFTEST_VIEW_TIMEOUT:-15}"
 
 # gadget_view_is TEXT GADGET: the launcher's snapshot shows GADGET's
@@ -496,44 +499,56 @@ sys.exit(0 if not s["searching"] and s["query"] == sys.argv[2] and view.get("gad
 ' "$snapshot" "$1" "$2"
 }
 
-item_2() {
+# build_item ITEM PROFILE: items 2 (debug) and 2R (release).
+build_item() {
+    local item="$1" profile="$2"
     local started mac_stat machine_stat record mac_archives machine_archives was_running pid exes text gadget problem=""
+    local mac_build="$repo_root/target/linux-build/$profile" build_args=() want_record=container
+    local deployed="\$HOME/torchsnap/target/linux-build/$profile/bin/torchsnap"
+    local queries=("=2+3 calculator" "!b2 hello-world")
+    if [ "$profile" = release ]; then
+        build_args=(--release)
+        want_record=container-release
+        queries=("=2+3 calculator")
+    fi
     started="$(date +%s)"
-    if ! "$testbed" build; then
-        fail 2 "the build failed (see above)"
+    if ! "$testbed" build ${build_args[@]+"${build_args[@]}"}; then
+        fail "$item" "the build failed (see above)"
         return
     fi
     mac_stat="$(python3 -c 'import os, sys; s = os.stat(sys.argv[1]); print("%d %d" % (s.st_size, int(s.st_mtime)))' "$mac_build/bin/torchsnap")" \
-        || { fail 2 "no binary in target/linux-build/debug after the build"; return; }
+        || { fail "$item" "no binary in target/linux-build/$profile after the build"; return; }
     [ "${mac_stat#* }" -ge "$started" ] \
-        || { fail 2 "the Mac's binary is older than the build's start (${mac_stat#* } < $started)"; return; }
+        || { fail "$item" "the Mac's binary is older than the build's start (${mac_stat#* } < $started)"; return; }
 
     record="$(on_machine 'cat ~/.cache/torchsnap-testbed/current-build')"
-    [ "$record" = container ] || { fail 2 "the machine's current build is '$record', not container"; return; }
-    machine_stat="$(on_machine 'stat -c "%s %Y" "$HOME/torchsnap/target/linux-build/debug/bin/torchsnap"')"
+    [ "$record" = "$want_record" ] || { fail "$item" "the machine's current build is '$record', not $want_record"; return; }
+    machine_stat="$(on_machine "stat -c \"%s %Y\" \"$deployed\"")"
     [ "$machine_stat" = "$mac_stat" ] \
-        || { fail 2 "the machine's binary ($machine_stat) differs from the Mac's ($mac_stat)"; return; }
-    mac_archives="$(python3 -c '
+        || { fail "$item" "the machine's binary ($machine_stat) differs from the Mac's ($mac_stat)"; return; }
+    if [ "$profile" = debug ]; then
+        mac_archives="$(python3 -c '
 import pathlib, sys
 for p in sorted(pathlib.Path(sys.argv[1]).glob("*.torchsnap")):
     print("%s %d" % (p.name, p.stat().st_size))
 ' "$mac_build/dev-gadgets")"
-    machine_archives="$(on_machine 'cd "$HOME/torchsnap/gadgets" && for f in *.torchsnap; do [ -f "$f" ] && stat -c "%n %s" "$f"; done | LC_ALL=C sort')"
-    [ "$machine_archives" = "$mac_archives" ] \
-        || { fail 2 "the machine's gadget archives ($(tr '\n' ' ' <<<"$machine_archives")) differ from the Mac's ($(tr '\n' ' ' <<<"$mac_archives"))"; return; }
+        machine_archives="$(on_machine 'cd "$HOME/torchsnap/gadgets" && for f in *.torchsnap; do [ -f "$f" ] && stat -c "%n %s" "$f"; done | LC_ALL=C sort')"
+        [ "$machine_archives" = "$mac_archives" ] \
+            || { fail "$item" "the machine's gadget archives ($(tr '\n' ' ' <<<"$machine_archives")) differ from the Mac's ($(tr '\n' ' ' <<<"$mac_archives"))"; return; }
+    fi
 
     # The app runs the new build only after a restart.
     was_running=no
     on_machine 'systemctl --user is-active --quiet torchsnap-testbed-app' && was_running=yes
     "$testbed" app-stop >/dev/null
-    "$testbed" app-start >/dev/null || { fail 2 "app-start failed"; return; }
+    "$testbed" app-start >/dev/null || { fail "$item" "app-start failed"; return; }
     pid="$("$testbed" control info | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["pid"])')"
-    exes="$(on_machine "readlink /proc/$pid/exe; readlink -f \"\$HOME/torchsnap/target/linux-build/debug/bin/torchsnap\"")"
+    exes="$(on_machine "readlink /proc/$pid/exe; readlink -f \"$deployed\"")"
     if [ "$(sed -n 1p <<<"$exes")" != "$(sed -n 2p <<<"$exes")" ]; then
         problem="the app runs $(sed -n 1p <<<"$exes"), not $(sed -n 2p <<<"$exes")"
     else
         "$testbed" control show >/dev/null
-        for text in "=2+3 calculator" "!b2 hello-world"; do
+        for text in "${queries[@]}"; do
             gadget="${text#* }"
             text="${text%% *}"
             "$testbed" control query "{\"text\": \"$text\"}" >/dev/null
@@ -546,8 +561,16 @@ for p in sorted(pathlib.Path(sys.argv[1]).glob("*.torchsnap")):
         "$testbed" control dismiss >/dev/null
     fi
     [ "$was_running" = yes ] || "$testbed" app-stop >/dev/null
-    [ -z "$problem" ] || { fail 2 "$problem"; return; }
-    pass 2
+    [ -z "$problem" ] || { fail "$item" "$problem"; return; }
+    pass "$item"
+}
+
+item_2() {
+    build_item 2 debug
+}
+
+item_2R() {
+    build_item 2R release
 }
 
 # Every checkout builds in the container's one work volume, and cargo

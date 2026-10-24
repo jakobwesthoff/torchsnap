@@ -52,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with automatic login and RDP access there, `just testbed-reboot` and
   `just testbed-exec` reboot it and run commands on it,
   `just testbed-build` builds a debug app in the Mac's Linux container
-  and copies it there (`--on-machine`: builds it there),
+  and copies it there (`--on-machine`: builds it there; `--release`: a
+  release app, which the app and benchmark recipes then run),
   `just testbed-app-start`, `testbed-app-stop` and `testbed-app-log` run
   it in the GNOME session, `just testbed-control` drives it through its
   control socket, `just testbed-screenshot`, `testbed-launcher-state`,

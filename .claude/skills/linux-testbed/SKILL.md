@@ -50,7 +50,8 @@ is the full guide.
   change; needs Docker and an rsync with zstd, such as Homebrew's, on
   the Mac). `just testbed-build --on-machine`: sync, then
   `just install` and a debug build on the machine (about 2 minutes,
-  even for a one-line change).
+  even for a one-line change). `--release` builds a release app on
+  either path; app-start and bench-memory then run it.
 - `just testbed-app-start` / `just testbed-app-stop`: run or stop the
   build that the last successful `testbed-build` finished; start
   refuses after a failed build. A running app keeps its old binary, so
@@ -102,13 +103,14 @@ is the full guide.
 - `just testbed-bench-memory 'DESCRIPTION' [--cycles N] [--timing-cycles N] [--env-prefix PREFIX] [--headless]`:
   `tools/bench-memory` on the machine against the current build (PSS
   from `/proc`, GPU memory, GNOME Shell apart); stop the testbed's app
-  first. Data files land in `target/linux-testbed/`.
+  first. Data files land in `target/linux-testbed/`. Measure a release
+  build (`just testbed-build --release`) for figures of what users run.
 - `just testbed-stop-all`: stop the app, a benchmark's app, recordings and headless
   sessions. Run it when a test is done.
 - `just testbed-selftest [--repeat N] [ITEM…]`: the testbed's own checks against the
   machine. Run it after changing the testbed tooling; every item must
   print `PASS`. The items that start the app need a current build
-  (`just testbed-build`). Items 2 (build), S (builds from a second
+  (`just testbed-build`). Items 2 (build), 2R (release build), S (builds from a second
   checkout, three builds), R (reboot), U (undo provision steps)
   and P (reinstall tools, about 10 minutes) run only when named. A
   download step can fail on a DNS hiccup of the machine's Wi-Fi; rerun

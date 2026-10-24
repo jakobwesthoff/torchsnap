@@ -202,6 +202,7 @@ runs one shell command line on the Pi.
 ```sh
 just testbed-build                # build in the Mac's Linux container, copy to the Pi
 just testbed-build --on-machine   # build on the Pi
+just testbed-build --release      # a release app, on either path
 ```
 
 `just testbed-build` syncs the working tree, builds a debug app with
@@ -214,7 +215,9 @@ recipe sets), and the archives of the gadgets that
 where the debug app looks for development gadgets; the listed gadgets
 come from the build's `lib/Torchsnap/gadgets/`. Alternating
 `just testbed-build` with `just linux-build`, which builds at `/work`,
-compiles from scratch whenever the path changes. The first build at the
+compiles from scratch whenever the path changes: the container build
+empties a profile's target directory when that profile was last built
+at another path. The first build at the
 Pi's path took 107 s in the container and 13 s to copy.
 
 `just testbed-build --on-machine` syncs the working tree, then runs
@@ -240,13 +243,22 @@ on 2026-10-23 with an Apple M4 Pro and a Raspberry Pi 5 on Wi-Fi:
 Of a container run, the container's `just build` took 39 to 42 s and
 the copy 2 to 5 s.
 
+`--release` builds a release app instead of a debug app, in the
+container (at the same path of the Pi's tree, copied to
+`~/torchsnap/target/linux-build/release/`) or, with `--on-machine`, on
+the Pi (`src-tauri/target/release/torchsnap`). A release binary loads
+no development gadgets, so a release build leaves
+`~/torchsnap/gadgets/` as it is.
+
 `testbed-app-start` runs the build that the last successful
 `testbed-build` finished, which the Pi records in
-`~/.cache/torchsnap-testbed/current-build`. Each build clears the
-record before it changes anything and writes it once it has succeeded,
-so after a failed build, or before the first one, `testbed-app-start`
-refuses instead of running an older build. An app that runs while a
-build finishes keeps running its old binary until it is restarted.
+`~/.cache/torchsnap-testbed/current-build` as `container`,
+`container-release`, `machine` or `machine-release`. Each build clears
+the record before it changes anything and writes it once it has
+succeeded, so after a failed build, or before the first one,
+`testbed-app-start` refuses instead of running an older build. Its line
+in the app's log names the kind and the binary. An app that runs while
+a build finishes keeps running its old binary until it is restarted.
 
 ```sh
 just testbed-app-start
@@ -462,6 +474,7 @@ need a current build on the Pi; run `just testbed-build` first.
 | 6 | Sets the clipboard through `just testbed-clipboard-set` to text with a space, `$HOME` and a backtick, reads it back, and expects the same text. |
 | 11 | Runs `testbed-stop-all` and checks that no testbed unit runs and that the tray state and the monitor layout are the ones recorded before the first item. |
 | 2 | Only when named. Builds in the Mac's container and checks that the Mac's binary was written by this build, that the Pi got the same binary (size and modification time) and the same development gadget archives and records the build as current, that the app started afterwards runs that binary, and that it opens the calculator, a bundled gadget, for `=2+3` and hello-world, from `~/torchsnap/gadgets/`, for `!b2`. |
+| 2R | Only when named. Item 2 for `just testbed-build --release`: the Pi records the build as `container-release`, and the app runs that binary and opens the calculator for `=2+3`; a release build has no development gadgets to check. |
 | S | Only when named; three container builds. Builds in the container, then copies the working tree to a second checkout under `target/linux-testbed/selftest-checkout/` (modification times kept), changes `src-tauri/src/main.rs` there with a marker string and a modification time older than any build output, and builds from that checkout: the binary on the Pi must contain the marker. A build back in this checkout must drop it again. The second checkout is removed afterwards; when the item stops between the two builds, it builds from this checkout again, so the Pi never keeps the second checkout's build. |
 | R | Only when named. Reboots the Pi, then checks that it is back in GNOME with ydotool's daemon running, `/dev/uinput` usable by the `input` group, RDP listening, the `testbed` keyring unlocking without a prompt, no unsafe-mode notification in GNOME Shell's message tray, and provisioning reporting `0 changed`. |
 | P | Only when named; downloads and builds for about 10 minutes. Removes what one installing step installed (the `scdoc` package, `rustup`, `~/.bun`, `just`, `wasm-tools`) and checks that provisioning installs it again and reports `changed` for exactly that step. GNOME's packages cannot be removed without removing GNOME Shell and gdm, so their install runs on the installed system and must leave the installed packages and the display manager choice unchanged. |
@@ -494,8 +507,9 @@ The report goes to `~/.cache/torchsnap-testbed/bench-memory/memory-benchmark.log
 on the Pi and to the terminal; the data files next to it (samples,
 snapshots, the events file with each control request's time, the
 timing file) are copied to `target/linux-testbed/`, where
-`tools/memsnap-report` turns them into the report again. The current
-build is a debug build.
+`tools/memsnap-report` turns them into the report again. The bench runs
+the build the Pi records as current, debug or release; for figures of
+what users run, build with `just testbed-build --release` first.
 
 ## A visible terminal on the Pi
 

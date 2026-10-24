@@ -60,7 +60,10 @@ path where the same tree sits on the target machine and copy
 `dev-gadgets/` into that tree's `gadgets/`, and the debug binary finds
 the gadgets `gadgets/bundled.toml` does not list there as well; the
 listed ones come from `lib/Torchsnap/gadgets/`, which it reads first.
-Changing the path makes the next build compile from scratch.
+Each profile records the path it was last built at: a build at
+another path empties that profile's target directory in the work volume
+and compiles it from scratch, since the build output of tauri's build
+script holds the old absolute path and cargo would reuse it.
 `just testbed-build` does both for the Linux testbed: it builds at the
 path of the testbed's tree, copies the output into that tree's
 `target/linux-build/debug/` and the archives of `dev-gadgets/` into its

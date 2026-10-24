@@ -1182,12 +1182,51 @@ class InContainerTwoCheckouts(TreeCase):
         return path
 
     def build_from(self, checkout):
-        result = self.tree.run("in-container", "build", "debug", bash="bash", env={
+        self.result = self.tree.run("in-container", "build", "debug", bash="bash", env={
             "LINUX_BUILD_SRC": str(checkout), "LINUX_BUILD_WORK": str(self.work),
             "LINUX_BUILD_OUT": str(self.out), "FAKE_BUILD_MTIME": str(self.now - 100),
         })
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.result.returncode, 0, self.result.stderr)
         return (self.out / "bin" / "torchsnap").read_text()
+
+    # A profile's target dir holds build-script output with the absolute
+    # work path it was built at; built at another path, tauri's build
+    # script reads files that are not there. So a changed path empties
+    # the profile's target dir, and the path is recorded per profile.
+    def record(self, profile="debug"):
+        return self.work / "src-tauri" / "target" / f".linux-build-workdir-{profile}"
+
+    def test_the_first_build_records_its_work_path(self):
+        self.write(self.a, "src-tauri/src/main.rs", "a", age=1000)
+        self.build_from(self.a)
+        self.assertEqual(self.record().read_text().strip(), str(self.work))
+        self.assertFalse(self.record("release").exists())
+
+    def test_a_build_at_the_recorded_path_keeps_the_target(self):
+        self.write(self.a, "src-tauri/src/main.rs", "a", age=1000)
+        self.build_from(self.a)
+        stale = self.work / "src-tauri" / "target" / "debug" / "incremental-state"
+        stale.write_text("x")
+        self.build_from(self.a)
+        self.assertTrue(stale.exists())
+        self.assertNotIn("from scratch", self.result.stderr)
+
+    def test_a_build_at_another_path_builds_the_profile_from_scratch(self):
+        self.write(self.a, "src-tauri/src/main.rs", "a", age=1000)
+        self.build_from(self.a)
+        stale = self.work / "src-tauri" / "target" / "debug" / "incremental-state"
+        stale.write_text("x")
+        other_profile = self.work / "src-tauri" / "target" / "release" / "kept"
+        other_profile.parent.mkdir(parents=True)
+        other_profile.write_text("x")
+        # The last debug build ran at another path.
+        self.record().write_text("/work\n")
+        self.assertEqual(self.build_from(self.a), "a")
+        self.assertFalse(stale.exists())
+        self.assertTrue(other_profile.exists())
+        self.assertIn(f"linux-build: debug was last built at /work, not {self.work}; building it from scratch",
+                      self.result.stderr)
+        self.assertEqual(self.record().read_text().strip(), str(self.work))
 
     def test_a_change_older_than_the_last_build_from_another_checkout_is_built(self):
         self.write(self.a, "src-tauri/src/main.rs", "a", age=1000)

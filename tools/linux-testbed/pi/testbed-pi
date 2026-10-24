@@ -11,11 +11,13 @@
 # Usage:
 #   testbed-pi env                    print the session variables the testbed uses
 #   testbed-pi session-ready          exit 0 once the desktop session takes input
-#   testbed-pi build                  install dependencies, build gadgets and a debug app,
-#                                     record it as the current build
+#   testbed-pi build [--release]      install dependencies, build gadgets and a debug
+#                                     (or release) app, record it as the current build
 #   testbed-pi deploy-start           forget the current build before the Mac copies
 #                                     its build here; print the tree's path
-#   testbed-pi deploy-finish          take the copied build's gadgets, record it as current
+#   testbed-pi deploy-finish [--release]
+#                                     take the copied build (and a debug build's
+#                                     gadgets), record it as current
 #   testbed-pi app-start              start the current build in the desktop session
 #   testbed-pi app-stop               stop it
 #   testbed-pi app-log [LINES]        print the end of its output (default 100 lines)
@@ -140,15 +142,34 @@ wait_for() {
 # removes the record before it changes anything and writes it once it
 # has succeeded, so after a failed or interrupted build there is no
 # current build and `app-start` refuses instead of running an older one.
+# Either can be a debug or a release build; the record names one of
+# `container`, `container-release`, `machine` and `machine-release`.
 readonly current_build_record="$state_dir/current-build"
-readonly deploy_dir="$tree_dir/target/linux-build/debug"
+
+# deploy_dir PROFILE: where the Mac's container build of PROFILE lands.
+deploy_dir() {
+    echo "$tree_dir/target/linux-build/$1"
+}
 
 # build_binary KIND: the binary of the build the record names.
 build_binary() {
     case "$1" in
-        container) echo "$deploy_dir/bin/torchsnap" ;;
+        container) echo "$(deploy_dir debug)/bin/torchsnap" ;;
+        container-release) echo "$(deploy_dir release)/bin/torchsnap" ;;
         machine) echo "$tree_dir/src-tauri/target/debug/torchsnap" ;;
+        machine-release) echo "$tree_dir/src-tauri/target/release/torchsnap" ;;
         *) return 1 ;;
+    esac
+}
+
+# parse_profile ARGS...: nothing for a debug build, `--release` for a
+# release build; anything else is a usage error.
+profile=debug
+parse_profile() {
+    case "$*" in
+        "") ;;
+        --release) profile=release ;;
+        *) usage ;;
     esac
 }
 
@@ -160,18 +181,24 @@ record_build() {
 # `just install` runs every time: after a lockfile change the build
 # needs the new packages.
 cmd_build() {
+    parse_profile "$@"
     rm -f "$current_build_record"
     cd "$tree_dir"
     just install
-    just build --config '{"bundle":{"active":false}}'
-    record_build machine
+    if [ "$profile" = release ]; then
+        just build --release --config '{"bundle":{"active":false}}'
+        record_build machine-release
+    else
+        just build --config '{"bundle":{"active":false}}'
+        record_build machine
+    fi
 }
 
 # The Mac builds at the path this prints and then copies its output to
-# `deploy_dir`.
+# the profile's `deploy_dir`.
 cmd_deploy_start() {
     rm -f "$current_build_record"
-    mkdir -p "$(dirname "$deploy_dir")"
+    mkdir -p "$tree_dir/target/linux-build"
     echo "$tree_dir"
 }
 
@@ -179,16 +206,29 @@ cmd_deploy_start() {
 # the archives a build leaves there. The copied build brings those of
 # the gadgets `gadgets/bundled.toml` does not list; the listed ones are
 # in its `lib/`, which the app reads first. Archives from an earlier
-# build go, so the tree holds exactly the copied build's.
+# build go, so the tree holds exactly the copied build's. A release
+# binary reads no development gadgets (ADR 0035), so a release build
+# brings none and leaves the tree's archives alone.
 cmd_deploy_finish() {
-    if [ ! -x "$deploy_dir/bin/torchsnap" ] || [ ! -d "$deploy_dir/dev-gadgets" ]; then
-        echo "testbed-pi: incomplete deploy in $deploy_dir (needs bin/torchsnap and dev-gadgets/); run just testbed-build" >&2
+    parse_profile "$@"
+    local dir
+    dir="$(deploy_dir "$profile")"
+    if [ "$profile" = release ]; then
+        if [ ! -x "$dir/bin/torchsnap" ]; then
+            echo "testbed-pi: incomplete deploy in $dir (needs bin/torchsnap); run just testbed-build --release" >&2
+            return 1
+        fi
+        record_build container-release
+        return
+    fi
+    if [ ! -x "$dir/bin/torchsnap" ] || [ ! -d "$dir/dev-gadgets" ]; then
+        echo "testbed-pi: incomplete deploy in $dir (needs bin/torchsnap and dev-gadgets/); run just testbed-build" >&2
         return 1
     fi
     mkdir -p "$tree_dir/gadgets"
     rm -f "$tree_dir"/gadgets/*.torchsnap
     local archive
-    for archive in "$deploy_dir"/dev-gadgets/*.torchsnap; do
+    for archive in "$dir"/dev-gadgets/*.torchsnap; do
         [ -f "$archive" ] || continue
         cp -p "$archive" "$tree_dir/gadgets/"
     done
@@ -223,6 +263,16 @@ current_app_binary() {
         return 1
     fi
     echo "$binary"
+}
+
+# The kind of build app-start runs, for its log: the record's, or
+# `explicit` for TORCHSNAP_TESTBED_APP_BINARY.
+current_build_kind() {
+    if [ -n "${TORCHSNAP_TESTBED_APP_BINARY:-}" ]; then
+        echo explicit
+    else
+        cat "$current_build_record"
+    fi
 }
 
 # The app in the desktop session, or in the headless session (--headless;
@@ -274,10 +324,10 @@ cmd_app_start() {
     fi
     local app_binary
     app_binary="$(current_app_binary)" || return 1
-    [ -x "$app_binary" ] || { echo "testbed-pi: no debug build at $app_binary; run just testbed-build" >&2; return 1; }
+    [ -x "$app_binary" ] || { echo "testbed-pi: no build at $app_binary; run just testbed-build" >&2; return 1; }
     cmd_merge_app_settings
     mkdir -p "$state_dir"
-    echo "=== app-start $(date '+%F %T')" >>"$app_log"
+    echo "=== app-start $(date '+%F %T') $(current_build_kind) $app_binary" >>"$app_log"
     local session=()
     if [ -n "$headless" ]; then
         # The user manager's environment points at the desktop session;
@@ -978,9 +1028,9 @@ case "$subcommand" in
         load_desktop
         desk_session_ready
         ;;
-    build) cmd_build ;;
+    build) cmd_build "$@" ;;
     deploy-start) cmd_deploy_start ;;
-    deploy-finish) cmd_deploy_finish ;;
+    deploy-finish) cmd_deploy_finish "$@" ;;
     app-start) cmd_app_start ;;
     app-stop) cmd_app_stop ;;
     app-log) cmd_app_log "$@" ;;
