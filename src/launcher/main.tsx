@@ -13,7 +13,7 @@ import { preloadLauncherComponents } from "../lib/gadgetComponent";
 import { initGadgetSdk } from "../lib/sdk";
 import { registerAllWasmGadgets } from "../gadgets/wasmPluginLoader";
 import { Launcher } from "./Launcher";
-import { SHADOW_PADDING, MASCOT_HEADROOM, CARD_TOP_OFFSET } from "./layout";
+import { launcherWindowLayout } from "./layout";
 import { setupLauncherVisibilityChoreography } from "./visibility";
 import "../index.css";
 
@@ -61,11 +61,7 @@ async function main() {
               <Launcher
                 measureDummy
                 onMeasure={async (cardWidth, cardHeight) => {
-                  await command("launcher_set_layout", {
-                    windowWidth: cardWidth + 2 * SHADOW_PADDING,
-                    windowHeight: SHADOW_PADDING + MASCOT_HEADROOM + cardHeight + SHADOW_PADDING,
-                    cardTopOffset: CARD_TOP_OFFSET,
-                  });
+                  await command("launcher_set_layout", launcherWindowLayout(cardWidth, cardHeight));
                   resolve();
                 }}
               />

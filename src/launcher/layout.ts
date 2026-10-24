@@ -6,12 +6,16 @@
  * Launcher window layout constants.
  *
  * Only values that cannot be derived from DOM measurement live here:
- * box-shadow bleed (invisible to `getBoundingClientRect`) and the
- * absolutely-positioned mascot headroom. Everything else — card
- * width, search bar height, footer height, content area max height —
- * is measured from the real rendered DOM via the `measureDummy` /
- * `onMeasure` mechanism in `Launcher.tsx`. See ADR 0020.
+ * the card's box-shadow and the clearance it needs (a shadow is
+ * invisible to `getBoundingClientRect`), and the headroom for the
+ * absolutely-positioned mascot. The card's width, search bar, footer
+ * and content height are measured from the real rendered DOM via the
+ * `measureDummy` / `onMeasure` mechanism in `Launcher.tsx`, and
+ * {@link launcherWindowLayout} turns that measurement into the window
+ * size. See ADR 0020.
  */
+
+import type { CommandMap } from "../lib/command";
 
 /**
  * Clearance around the card for CSS box-shadow bleed (px).
@@ -21,6 +25,14 @@
  * 64px on the bottom edge. We use 64px uniformly on all sides.
  */
 export const SHADOW_PADDING = 64;
+
+/** The card's box-shadow layers, joined with ", " into its `boxShadow`. */
+export const CARD_SHADOW: readonly string[] = [
+  "0 0 0 1px var(--color-border)",
+  "inset 0 1px 0 0 rgba(255,255,255,0.06)",
+  "0 4px 16px rgba(0,0,0,0.12)",
+  "0 16px 48px rgba(0,0,0,0.16)",
+];
 
 /** Width of the launcher card (px); `w-[680px]` in `Launcher.tsx`. */
 export const CARD_WIDTH = 680;
@@ -63,3 +75,23 @@ export const MASCOT_HEADROOM = MASCOT_SIZE.center - CENTER_FEET_Y;
 
 /** Offset from window top edge to card top edge. */
 export const CARD_TOP_OFFSET = SHADOW_PADDING + MASCOT_HEADROOM;
+
+// =========================================================
+// Window Size
+// =========================================================
+
+/**
+ * The launcher window's size and the card's offset in it, for a card
+ * measured at its largest. This is what `launcher_set_layout` sends to
+ * the backend, which places and sizes the window from it on every show.
+ */
+export function launcherWindowLayout(
+  cardWidth: number,
+  cardHeight: number,
+): CommandMap["launcher_set_layout"]["params"] {
+  return {
+    windowWidth: cardWidth + 2 * SHADOW_PADDING,
+    windowHeight: CARD_TOP_OFFSET + cardHeight + SHADOW_PADDING,
+    cardTopOffset: CARD_TOP_OFFSET,
+  };
+}

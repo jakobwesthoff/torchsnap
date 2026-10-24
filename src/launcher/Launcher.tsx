@@ -32,7 +32,7 @@ import { LauncherMascot } from "./LauncherMascot";
 import { ResultList } from "./ResultList";
 import { LauncherFooter } from "./LauncherFooter";
 import { openGadgetSettings } from "./openGadgetSettings";
-import { CARD_TOP_OFFSET } from "./layout";
+import { CARD_SHADOW, CARD_TOP_OFFSET } from "./layout";
 import { buildLauncherSnapshot } from "./snapshot";
 import { isContentVisible } from "./visibility";
 import { actionsToFooterState, hasSlot } from "./actionSlots";
@@ -904,14 +904,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
         <div
           ref={cardRef}
           className="w-[680px] rounded-2xl bg-surface overflow-hidden"
-          style={{
-            boxShadow: [
-              "0 0 0 1px var(--color-border)",
-              "inset 0 1px 0 0 rgba(255,255,255,0.06)",
-              "0 4px 16px rgba(0,0,0,0.12)",
-              "0 16px 48px rgba(0,0,0,0.16)",
-            ].join(", "),
-          }}
+          style={{ boxShadow: CARD_SHADOW.join(", ") }}
         >
           <MascotInfoOverlay
             variant={mascotVariant}

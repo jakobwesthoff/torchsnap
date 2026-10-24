@@ -22,6 +22,7 @@ import type { GadgetViewProps } from "../gadgets/types";
 import type { GadgetViewRef, LauncherSnapshot, SourcedEntry } from "../types";
 import type { useSearch } from "./hooks/useSearch";
 import { Launcher } from "./Launcher";
+import { CARD_SHADOW, CARD_TOP_OFFSET } from "./layout";
 
 type UseSearchResult = ReturnType<typeof useSearch>;
 
@@ -475,5 +476,36 @@ describe("Launcher query across a prefix change", () => {
     rerenderLauncher(rerender);
     expect(viewQuery()).toBe("x");
     expect(input()).toHaveValue("x");
+  });
+});
+
+// =========================================================
+// The card's place and shadow in the window
+//
+// The window size the backend gets is computed from the constants in
+// layout.ts, so the page must place the card and draw its shadow from
+// the same constants.
+// =========================================================
+
+describe("Launcher card layout", () => {
+  afterEach(async () => {
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("puts the card's top the card offset below the window's top", () => {
+    mockCommands({});
+    const { container } = renderLauncher();
+
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.style.paddingTop).toBe(`${CARD_TOP_OFFSET}px`);
+  });
+
+  it("draws the card's shadow from its layers", () => {
+    mockCommands({});
+    renderLauncher();
+
+    const card = input().closest<HTMLElement>('[class~="w-[680px]"]');
+    expect(card?.style.boxShadow).toBe(CARD_SHADOW.join(", "));
   });
 });
