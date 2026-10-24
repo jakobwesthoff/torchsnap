@@ -443,8 +443,36 @@ in the web process.
   3 of 20 after the page blanked, 16 of 20 when the shrink comes
   together with the blank.
 
-Hidden memory over 60 s and the next show's timing follow in a second
-block.
+Over 60 s after one dismiss (same build, 3 runs per arm and 6 of
+today's hide, in 3 rounds; today's hide measured first and last in each
+round, not separable):
+
+| Before the hide | 2 s | 12 s | 60 s | Against today at 60 s | Dismiss to hidden |
+|---|---|---|---|---|---|
+| nothing (today) | 639.7 | 617.4 | 617.3 | | 600 ms |
+| shrink, 0 ms | 634.7 | 627.4 | 615.5 | not separable | |
+| shrink, 16 ms | 644.0 | 597.7 | 597.5 | −19.7 | 638 ms |
+| shrink, 50 ms | 615.3 | 568.8 | 568.7 | −48.6 | 677 ms |
+| shrink, 150 ms | 619.8 | 590.1 | 587.4 | −29.8 | 774 ms |
+| shrink, 500 ms | 614.1 | 590.3 | 582.1 | −35.2 | 1118 ms |
+| shrink, second draw | 628.1 | 588.1 | 588.5 | −28.8 | 652 ms |
+| shrink, frame timings (timeout) | 613.7 | 575.4 | 574.8 | −42.5 | 919 ms |
+
+Decision figure in MiB, means; dismiss to hidden as medians.
+
+- Without the shrink, the web process's GPU memory falls from 108.8 to
+  96.7 MiB between 5 and 12 s, which matches the 10 s timer that frees
+  spare render targets. With any shrink that passes, it is 88 MiB at 2 s
+  and 66 MiB from 12 s on.
+- Hidden 16 ms after the shrink, the UI keeps its buffers (UI GPU
+  59.4 MiB at 60 s), but the web process still drops to 66 MiB. Hidden
+  right after the shrink, nothing is freed beyond today's hide.
+- From 50 ms on, and with the second draw, no arm is separable from the
+  500 ms wait, except that 50 ms ends below its range. The UI's GPU
+  memory differs between these arms (32.9 to 49.4 MiB at 60 s, ranges
+  overlapping); why is not known.
+- The next show reaches content in a median 57 ms after today's hide and
+  in 65 to 74 ms after a shrink.
 
 ## Open questions
 
