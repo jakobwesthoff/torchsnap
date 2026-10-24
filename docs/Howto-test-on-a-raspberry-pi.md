@@ -534,7 +534,28 @@ The report goes to `~/.cache/torchsnap-testbed/bench-memory/memory-benchmark.log
 on the Pi and to the terminal; the data files next to it (samples,
 snapshots, the events file with each control request's time, the
 timing file) are copied to `target/linux-testbed/`, where
-`tools/memsnap-report` turns them into the report again. The bench runs
+`tools/memsnap-report` turns them into the report again.
+
+The time to visible content and the control `snapshot` report what the
+launcher's page believes, not what reaches the screen. So every run
+ends with a screen check, after the last measurement: the bench shows
+the launcher, waits until the page reports its content visible, and
+`testbed-pi screen-check shown` takes a screenshot of the launcher
+window's area; after the dismiss, `testbed-pi screen-check hidden` takes
+the same area until it differs from the first picture in more than 100
+pixels (ImageMagick's absolute error count), for up to 5 seconds
+(`TORCHSNAP_TESTBED_SCREEN_CHECK_TIMEOUT`). The report ends with
+`Screen check: launcher painted`, or with `Screen check: FAILED` and the
+reason, and then the bench exits 1 after writing all its files. A
+failed check means that the launcher painted nothing on the screen, or
+that the check could not take its pictures; the run's figures then do
+not describe a working launcher. The pictures stay in
+`~/.cache/torchsnap-testbed/screen-check/` on the Pi
+(`headless/screen-check/` there for a headless run). Another window that
+changes inside the launcher's area between the pictures, such as a
+terminal printing, makes the check report a launcher as painted.
+
+The bench runs
 the build the Pi records as current, debug or release; for figures of
 what users run, build with `just testbed-build --release` first.
 

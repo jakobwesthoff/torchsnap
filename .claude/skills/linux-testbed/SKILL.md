@@ -103,7 +103,10 @@ is the full guide.
 - `just testbed-bench-memory 'DESCRIPTION' [--cycles N] [--timing-cycles N] [--env-prefix PREFIX] [--headless]`:
   `tools/bench-memory` on the machine against the current build (PSS
   from `/proc`, GPU memory, GNOME Shell apart); stop the testbed's app
-  first. Data files land in `target/linux-testbed/`. Measure a release
+  first. Data files land in `target/linux-testbed/`. Each run ends with
+  a screen check (launcher area shown against hidden); `Screen check:
+  FAILED` in the report and exit 1 mean the figures do not describe a
+  launcher that painted. Measure a release
   build (`just testbed-build --release`) for figures of what users run.
 - `just testbed-stop-all`: stop the app, a benchmark's app, recordings and headless
   sessions. Run it when a test is done.

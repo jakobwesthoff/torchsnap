@@ -85,7 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writes an events file with each control request's time, the app's
   `info` and its `WEBKIT_*` and `GDK_*` variables; `--env-prefix PREFIX`
   (repeatable) records the variables with that prefix as well.
-  `--compositor-pid` records the compositor apart. `just testbed-stop-all`
+  `--compositor-pid` records the compositor apart, and
+  `--screen-check PROGRAM` checks one show on the screen at the end and
+  fails the run when the launcher painted nothing. `just testbed-stop-all`
   also stops an app a benchmark left running.
 - `tools/bench-memory --cycles N` adds N measured show/dismiss cycles
   after the scenario, `--timing-cycles N` then N unmeasured ones that
@@ -96,8 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   events file. `--output-dir` and `--log` work on both platforms.
 - `just testbed-bench-memory DESCRIPTION [--cycles N] [--timing-cycles N] [--env-prefix PREFIX] [--headless]`
   runs `tools/bench-memory` on the Linux testbed against its current
-  build, with GNOME Shell recorded apart, and copies the data files to
-  `target/linux-testbed/`.
+  build, with GNOME Shell recorded apart and a screen check that
+  compares the launcher's area shown and hidden, and copies the data
+  files to `target/linux-testbed/`.
 
 ### Changed
 

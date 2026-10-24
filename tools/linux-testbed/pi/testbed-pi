@@ -40,9 +40,14 @@
 #   testbed-pi pointer-target X Y     the app window that gets the pointer at X,Y,
 #                                     {"title", "wm_class"} or null
 #
+#   testbed-pi screen-check shown|hidden
+#                                     the bench's check of one show on the screen:
+#                                     picture the shown launcher's area, then
+#                                     compare it hidden (exit 0: it painted)
+#
 #   app-start, app-stop, app-log, control, eval, windows, launcher-state,
-#   screenshot and bench-memory take --headless to work in the headless
-#   session. In the desktop session, session-ready, eval, windows,
+#   screenshot, bench-memory and screen-check take --headless to work in
+#   the headless session. In the desktop session, session-ready, eval, windows,
 #   launcher-state, screenshot, type, key, pointer, click, pointer-target,
 #   the tray subcommands, record-start and bench-memory first lift GNOME's
 #   screen shield with a pointer move, or stop when it stays up.
@@ -815,6 +820,9 @@ use_headless_session() {
     export XDG_CACHE_HOME="$headless_dir/app/cache"
     app_unit="$headless_app_unit"
     app_log="$state_dir/app-headless.log"
+    # A bench run here calls the screen check as a child; the wrapper
+    # passes --headless on by this variable.
+    export TORCHSNAP_TESTBED_HEADLESS=1
 }
 
 # Monitor specs are WIDTHxHEIGHT@SCALE, one per virtual monitor, placed
@@ -989,7 +997,79 @@ cmd_bench_memory() {
     mkdir -p "$bench_dir"
     exec "$tree_dir/tools/bench-memory" "$@" --app "$app_binary" \
         --output-dir "$bench_dir" --log "$bench_dir/memory-benchmark.log" \
-        --compositor-pid "$compositor"
+        --compositor-pid "$compositor" --screen-check "$pi_dir/screen-check"
+}
+
+# The bench's screen check (tools/bench-memory --screen-check, through
+# the `screen-check` wrapper next to this script). `shown` takes the
+# launcher's area while the launcher is shown; `hidden`, after the
+# dismiss, takes the same area until it differs from the shown picture
+# by more than 100 pixels (ImageMagick's absolute error count): then the
+# launcher painted something. The picture may still show the launcher
+# right after the dismiss, so `hidden` retakes it for a while before it
+# decides that nothing was painted. Only `shown` lifts a screen shield:
+# a pointer move between the two pictures could change what they show.
+readonly screen_check_timeout="${TORCHSNAP_TESTBED_SCREEN_CHECK_TIMEOUT:-5}"
+
+screen_check_dir() {
+    if [ -n "$headless" ]; then
+        echo "$headless_dir/screen-check"
+    else
+        echo "$state_dir/screen-check"
+    fi
+}
+
+# area_difference A B: how many pixels differ between two pictures.
+area_difference() {
+    local count
+    count="$(magick compare -metric AE "$1" "$2" null: 2>&1 | awk '{print $1}')"
+    echo "${count%.*}"
+}
+
+cmd_screen_check() {
+    [ $# -eq 1 ] || usage
+    local dir rect count
+    dir="$(screen_check_dir)"
+    case "$1" in
+        shown)
+            wake_screen
+            rect="$(desk_app_windows | python3 -c '
+import json, sys
+launcher = next((w for w in json.load(sys.stdin) or [] if w["title"] == ""), None)
+if launcher is None:
+    sys.exit("testbed-pi: no launcher window to check on the screen")
+r = launcher["rect"]
+print(r["x"], r["y"], r["width"], r["height"])
+')" || return 1
+            mkdir -p "$dir"
+            echo "$rect" >"$dir/rect"
+            # shellcheck disable=SC2086 # "X Y WIDTH HEIGHT"
+            desk_screenshot "$dir/shown.png" $rect
+            ;;
+        hidden)
+            if [ ! -s "$dir/rect" ] || [ ! -f "$dir/shown.png" ]; then
+                echo "testbed-pi: no picture of the shown launcher; run screen-check shown first" >&2
+                return 1
+            fi
+            rect="$(cat "$dir/rect")"
+            local deadline=$((SECONDS + screen_check_timeout))
+            while true; do
+                # shellcheck disable=SC2086 # "X Y WIDTH HEIGHT"
+                desk_screenshot "$dir/hidden.png" $rect || return 1
+                count="$(area_difference "$dir/shown.png" "$dir/hidden.png")"
+                if [ "${count:-0}" -gt 100 ] 2>/dev/null; then
+                    echo "painted ($count pixels differ between the launcher shown and hidden)"
+                    return 0
+                fi
+                if [ "$SECONDS" -ge "$deadline" ]; then
+                    echo "not painted (${count:-?} pixels differ between the launcher shown and hidden)"
+                    return 1
+                fi
+                sleep "$poll_interval"
+            done
+            ;;
+        *) usage ;;
+    esac
 }
 
 # =========================================================
@@ -1036,7 +1116,7 @@ session_env
 # `--headless`, anywhere among the arguments of the subcommands that can
 # work in the headless session, switches them to it.
 case "$subcommand" in
-    app-start | app-stop | app-log | control | eval | windows | launcher-state | screenshot | merge-app-settings | bench-memory)
+    app-start | app-stop | app-log | control | eval | windows | launcher-state | screenshot | merge-app-settings | bench-memory | screen-check)
         arguments=()
         for argument in "$@"; do
             if [ "$argument" = "--headless" ]; then
@@ -1123,6 +1203,10 @@ case "$subcommand" in
     pointer-target)
         load_desktop
         cmd_pointer_target "$@"
+        ;;
+    screen-check)
+        load_desktop
+        cmd_screen_check "$@"
         ;;
     tray)
         load_desktop

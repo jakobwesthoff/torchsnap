@@ -370,6 +370,104 @@ class BenchMemoryLinux(BenchCase):
         self.assertTrue(all(isinstance(line["show_ms"], (int, float)) for line in lines))
         self.assertEqual(server.methods().count("show"), 2)
 
+    # --screen-check: a program the bench calls `shown` while the launcher
+    # is shown and `hidden` after it is dismissed; `hidden`'s exit status
+    # says whether the launcher painted anything. This one logs each call
+    # with the methods the socket had seen by then, prints
+    # FAKE_CHECK_<STAGE>_OUTPUT and exits with FAKE_CHECK_<STAGE>_EXIT.
+    SCREEN_CHECK = (
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "stage = sys.argv[1]\n"
+        "with open(os.environ['FAKE_CHECK_LOG'], 'a') as f:\n"
+        "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "print(os.environ.get('FAKE_CHECK_' + stage.upper() + '_OUTPUT', stage + ' ok'))\n"
+        "sys.exit(int(os.environ.get('FAKE_CHECK_' + stage.upper() + '_EXIT', '0')))\n"
+    )
+
+    def screen_check_run(self, snapshot=True, **env):
+        program = self.tree.root / "screen-check"
+        program.write_text(self.SCREEN_CHECK)
+        program.chmod(0o755)
+        self.check_log = self.tree.root / "check.log"
+        server = MethodControlSocket(
+            self.tree.linux_socket_path(),
+            {"snapshot": [{"result": {"contentVisible": snapshot}}], "status": [{"result": {"visible": False}}]},
+        )
+        try:
+            result = self.bench(
+                "-d", "x", "--app", self.tree.app, "--output-dir", self.tree.out, "--log", self.tree.out / "bench.log",
+                "--timing-cycles", "1", "--screen-check", program,
+                FAKE_CHECK_LOG=str(self.check_log), BENCH_MEMORY_SCREEN_CHECK_TIMEOUT="1", **env,
+            )
+        finally:
+            server.close()
+        self.server = server
+        return result
+
+    def check_calls(self):
+        return [json.loads(line) for line in self.check_log.read_text().splitlines()] if self.check_log.exists() else []
+
+    def screen_check_event(self, result):
+        events = self.printed_path(result.stdout, "Events data: ")
+        records = [json.loads(line) for line in events.read_text().splitlines()]
+        return next(r for r in records if r.get("event") == "screen-check")
+
+    def test_the_screen_check_shows_the_launcher_after_the_timing_pass(self):
+        result = self.screen_check_run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.check_calls(), [["shown"], ["hidden"]])
+        methods = self.server.methods()
+        # The timing cycle comes first; the check's own show, wait for
+        # visible content, dismiss and wait for the hide come after it.
+        timing_end = methods.index("status")
+        self.assertEqual(methods[timing_end + 1:], ["show", "snapshot", "dismiss", "status"])
+        event = self.screen_check_event(result)
+        self.assertIs(event["painted"], True)
+        self.assertEqual(event["reason"], "hidden ok")
+        self.assertIn("Screen check: launcher painted", (self.tree.out / "bench.log").read_text())
+        self.assertIn("Screen check: launcher painted", result.stdout)
+        self.assertTrue(wait_gone(self.tree.app_pid()))
+
+    def test_a_launcher_that_painted_nothing_fails_the_bench_after_its_report(self):
+        result = self.screen_check_run(FAKE_CHECK_HIDDEN_EXIT="1",
+                                       FAKE_CHECK_HIDDEN_OUTPUT="not painted (12 pixels differ)")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        event = self.screen_check_event(result)
+        self.assertIs(event["painted"], False)
+        log = (self.tree.out / "bench.log").read_text()
+        self.assertIn("Phase snapshots: 15", log)
+        self.assertIn("Screen check: FAILED, not painted (12 pixels differ)", log)
+        self.assertTrue(wait_gone(self.tree.app_pid()))
+
+    def test_a_failing_shown_shot_fails_the_check_without_a_verdict(self):
+        result = self.screen_check_run(FAKE_CHECK_SHOWN_EXIT="1", FAKE_CHECK_SHOWN_OUTPUT="no launcher window")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.check_calls(), [["shown"]])
+        event = self.screen_check_event(result)
+        self.assertIsNone(event["painted"])
+        self.assertIn("no launcher window", event["reason"])
+        self.assertIn("Screen check: FAILED, ", (self.tree.out / "bench.log").read_text())
+        self.assertIn("dismiss", self.server.methods()[-2:])
+
+    def test_content_that_never_shows_fails_the_check_before_any_shot(self):
+        result = self.screen_check_run(snapshot=False)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.check_calls(), [])
+        event = self.screen_check_event(result)
+        self.assertIsNone(event["painted"])
+        self.assertIn("did not report its content visible within 1", event["reason"])
+
+    def test_without_a_screen_check_there_is_no_check(self):
+        server = MethodControlSocket(self.tree.linux_socket_path())
+        try:
+            result = self.bench("-d", "x", "--app", self.tree.app, "--output-dir", self.tree.out)
+        finally:
+            server.close()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("Screen check", result.stdout)
+        self.assertNotIn("show", server.methods())
+
     def test_stock_macos_bash_runs_the_linux_path(self):
         if not os.path.exists("/bin/bash"):
             self.skipTest("no /bin/bash")
@@ -442,7 +540,8 @@ class BenchMemoryMacOS(BenchCase):
             self.assertTrue(path.exists(), path)
 
     def test_linux_options_are_refused(self):
-        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--env-prefix", "EXPERIMENT_")):
+        for option, value in (("--app", "/x"), ("--compositor-pid", "1"), ("--env-prefix", "EXPERIMENT_"),
+                              ("--screen-check", "/x")):
             result = self.bench("-d", "x", option, value)
             self.assertEqual(result.returncode, 1, option)
             self.assertIn(f"{option} is Linux only", result.stderr)

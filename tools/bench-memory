@@ -40,6 +40,12 @@
 # ("after 10 cycles", "after 20 cycles", ...), and their lines go to
 # the events file, which on macOS holds nothing else.
 #
+# The time to visible content and the control `snapshot` say what the
+# page believes, not what reaches the screen. On Linux, --screen-check
+# PROGRAM checks one show on the screen at the end, with nothing
+# measured, and fails the run when the launcher painted nothing
+# (bench-memory-cycles describes the program's two calls).
+#
 # Prerequisites:
 #   - socat (brew install socat)
 #   - jq (brew install jq)
@@ -63,10 +69,11 @@ LOG_FILE="$PROJECT_DIR/memory-benchmark.log"
 
 # Waits on Linux, in seconds (the tests shorten them): until the
 # launcher is ready after the start (a debug build on a Raspberry Pi
-# takes tens of seconds), and until every measured process has exited
-# after the stop.
+# takes tens of seconds), until every measured process has exited
+# after the stop, and for the screen check's visible content and hide.
 READY_TIMEOUT="${BENCH_MEMORY_READY_TIMEOUT:-60}"
 STOP_TIMEOUT="${BENCH_MEMORY_STOP_TIMEOUT:-10}"
+SCREEN_CHECK_TIMEOUT="${BENCH_MEMORY_SCREEN_CHECK_TIMEOUT:-5}"
 
 # On macOS, the cycles between two snapshots (the tests shorten it).
 CYCLE_SNAPSHOT_EVERY="${BENCH_MEMORY_CYCLE_SNAPSHOT_EVERY:-10}"
@@ -82,6 +89,7 @@ COMPOSITOR_PID=""
 OUTPUT_DIR=""
 CYCLES=0
 TIMING_CYCLES=0
+SCREEN_CHECK=""
 # Prefixes of the environment variables the events file records:
 # WebKitGTK's and GDK's switches, plus whatever --env-prefix adds (an
 # experiment's own switches, for example).
@@ -108,6 +116,9 @@ Linux only:
   --compositor-pid <PID>     Also record this process (the compositor), apart from Torchsnap's
   --env-prefix <PREFIX>      Also record the app's variables starting with PREFIX in the
                              events file, besides WEBKIT_ and GDK_ (repeatable)
+  --screen-check <PROGRAM>   At the end, check one show on the screen with PROGRAM
+                             (called `shown`, then `hidden`); fail when the launcher
+                             painted nothing
 EOF
 }
 
@@ -146,12 +157,13 @@ while [[ $# -gt 0 ]]; do
         TIMING_CYCLES="$2"
         shift 2
         ;;
-    --app | --compositor-pid | --env-prefix)
+    --app | --compositor-pid | --env-prefix | --screen-check)
         linux_only "$1"
         case "$1" in
         --app) APP="$2" ;;
         --compositor-pid) COMPOSITOR_PID="$2" ;;
         --env-prefix) ENV_PREFIXES+=("$2") ;;
+        --screen-check) SCREEN_CHECK="$2" ;;
         esac
         shift 2
         ;;
@@ -692,6 +704,22 @@ if [[ "$TIMING_CYCLES" -gt 0 ]]; then
     python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" "$TIMING_CYCLES" --timing -o "$TIMING_FILE"
 fi
 
+# --- Linux: the screen check, with the sampler stopped ---
+# The run's verdict is kept until the report is written, so a run whose
+# launcher painted nothing still leaves its data, flagged.
+SCREEN_CHECK_RESULT=""
+if [[ -n "$SCREEN_CHECK" ]]; then
+    echo "Checking one show on the screen..."
+    SCREEN_CHECK_LINE="$(python3 "$SCRIPT_DIR/bench-memory-cycles" "$SOCK" 1 --screen-check "$SCREEN_CHECK" \
+        --visible-timeout "$SCREEN_CHECK_TIMEOUT")" || true
+    echo "$SCREEN_CHECK_LINE" >>"$EVENTS_FILE"
+    if [[ "$(jq -r '.painted' <<<"$SCREEN_CHECK_LINE")" == true ]]; then
+        SCREEN_CHECK_RESULT="Screen check: launcher painted"
+    else
+        SCREEN_CHECK_RESULT="Screen check: FAILED, $(jq -r '.reason' <<<"$SCREEN_CHECK_LINE")"
+    fi
+fi
+
 # =========================================================
 # Step 9: Stop the app
 # =========================================================
@@ -720,6 +748,10 @@ if [[ -f "$SNAPSHOTS_FILE" ]]; then
 fi
 
 REPORT=$("$SCRIPT_DIR/memsnap-report" "${REPORT_ARGS[@]}")
+if [[ -n "$SCREEN_CHECK_RESULT" ]]; then
+    REPORT="$REPORT
+$SCREEN_CHECK_RESULT"
+fi
 echo "$REPORT"
 echo "$REPORT" >>"$LOG_FILE"
 
@@ -734,4 +766,7 @@ if [[ -f "$EVENTS_FILE" ]]; then
 fi
 if [[ "$TIMING_CYCLES" -gt 0 ]]; then
     echo "Timing data: $TIMING_FILE"
+fi
+if [[ "$SCREEN_CHECK_RESULT" == "Screen check: FAILED"* ]]; then
+    exit 1
 fi

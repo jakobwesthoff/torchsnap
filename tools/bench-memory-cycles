@@ -9,8 +9,10 @@
 # Usage:
 #   bench-memory-cycles SOCKET N [--hold SEC] [--timing]
 #                       [--visible-timeout SEC] [--first-cycle K] [-o FILE]
+#   bench-memory-cycles SOCKET 1 --screen-check PROGRAM
+#                       [--visible-timeout SEC] [-o FILE]
 #
-# bench-memory runs it after its scenario, in one of two modes:
+# bench-memory runs it after its scenario, in one of three modes:
 #
 # - Memory cycles (default): `show`, wait --hold seconds, `dismiss`,
 #   wait. Nothing else is asked, so the shown intervals that the memory
@@ -25,6 +27,17 @@
 #   with the memory sampler stopped. One line per cycle:
 #   {"cycle", "t_show", "show_ms", "t_visible", "t_hidden", "timeout"}.
 #
+# - The screen check (--screen-check PROGRAM): one show, checked on the
+#   screen rather than through the page. `show`, wait until the page
+#   reports its content visible, run `PROGRAM shown` (it takes a picture
+#   of the launcher's area), `dismiss`, wait until the launcher is
+#   hidden, run `PROGRAM hidden` (it takes the same area again and exits
+#   0 when the two differ, so the launcher painted something). Nothing is
+#   measured while it runs. One line:
+#   {"event": "screen-check", "t_show", "painted", "reason"}, with
+#   `painted` null when the check could not decide; the exit status is
+#   0 only when the launcher painted.
+#
 # Times are seconds since the epoch, so they line up with the sampler's
 # and the snapshots' times. Lines go to standard output or to -o FILE
 # (appended). The cycles are numbered from --first-cycle (default 1), so
@@ -38,6 +51,7 @@
 import argparse
 import json
 import socket
+import subprocess
 import sys
 import time
 
@@ -99,18 +113,54 @@ def timing_cycle(path, hold, visible_timeout):
     }
 
 
+def run_stage(program, stage):
+    """Runs PROGRAM STAGE; returns (exit status, its last output line)."""
+    finished = subprocess.run([program, stage], capture_output=True, text=True)
+    lines = (finished.stdout + finished.stderr).strip().splitlines()
+    return finished.returncode, lines[-1] if lines else ""
+
+
+def screen_check(path, program, visible_timeout):
+    t_show = time.time()
+    painted, reason, shot_taken = None, "", False
+    _, show_error = request(path, "show")
+    if show_error is not None:
+        reason = "show failed: %s" % show_error.get("message")
+    elif wait_until(path, "snapshot", lambda r: r.get("contentVisible") is True, visible_timeout) is None:
+        reason = "the launcher did not report its content visible within %g s" % visible_timeout
+    else:
+        status, output = run_stage(program, "shown")
+        shot_taken = status == 0
+        if not shot_taken:
+            reason = "%s shown failed: %s" % (program, output)
+    request(path, "dismiss")
+    if shot_taken:
+        if wait_until(path, "status", lambda r: r.get("visible") is False, visible_timeout) is None:
+            reason = "the launcher did not hide within %g s" % visible_timeout
+        else:
+            status, reason = run_stage(program, "hidden")
+            painted = status == 0
+    return {"event": "screen-check", "t_show": t_show, "painted": painted, "reason": reason}
+
+
 def main():
     parser = argparse.ArgumentParser(prog="bench-memory-cycles")
     parser.add_argument("socket")
     parser.add_argument("count", type=int)
     parser.add_argument("--hold", type=float, default=0.5)
     parser.add_argument("--timing", action="store_true")
+    parser.add_argument("--screen-check", metavar="PROGRAM")
     parser.add_argument("--visible-timeout", type=float, default=5.0)
     parser.add_argument("--first-cycle", type=int, default=1)
     parser.add_argument("-o", "--output")
     args = parser.parse_args()
 
     output = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
+    if args.screen_check:
+        with output:
+            line = screen_check(args.socket, args.screen_check, args.visible_timeout)
+            output.write(json.dumps(line) + "\n")
+        return 0 if line["painted"] else 1
     with output:
         for cycle in range(args.first_cycle, args.first_cycle + args.count):
             if args.timing:

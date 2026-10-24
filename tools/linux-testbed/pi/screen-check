@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# The program `testbed-pi bench-memory` hands to tools/bench-memory as
+# --screen-check: testbed-pi's screen-check, in the session the bench
+# runs in. testbed-pi exports TORCHSNAP_TESTBED_HEADLESS for a bench in
+# the headless session, whose Shell the check has to ask.
+
+set -euo pipefail
+
+pi_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${TORCHSNAP_TESTBED_HEADLESS:-}" ]; then
+    exec "$pi_dir/testbed-pi" screen-check "$@" --headless
+fi
+exec "$pi_dir/testbed-pi" screen-check "$@"

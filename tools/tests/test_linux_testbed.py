@@ -2760,6 +2760,155 @@ class ScreenShield(unittest.TestCase):
         self.assertIn("org.gnome.ScreenSaver.GetActive", calls[0])
 
 
+# ImageMagick's `magick compare -metric AE A B null:` for the screen
+# check: prints the next of STUB_MAGICK_COUNTS (`;`-separated, the last
+# repeating) to stderr, as magick prints its metric, and logs its argv.
+MAGICK = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, pathlib, sys
+    log = pathlib.Path(os.environ["STUB_LOG"])
+    with log.open("a") as f:
+        f.write(json.dumps(sys.argv) + "\\n")
+    counter = log.with_name("magick.count")
+    n = int(counter.read_text()) if counter.exists() else 0
+    counter.write_text(str(n + 1))
+    counts = os.environ.get("STUB_MAGICK_COUNTS", "0").split(";")
+    sys.stderr.write(counts[min(n, len(counts) - 1)] + "\\n")
+    sys.exit(1)
+    """
+)
+
+
+class ScreenCheck(unittest.TestCase):
+    """`testbed-pi screen-check shown|hidden`, the program the memory
+    benchmark calls to check one show on the screen."""
+
+    setUp_input = Input.setUp
+    tearDown = Input.tearDown
+    call_pi = Input.call_pi
+    ydotool_calls = Input.ydotool_calls
+
+    def setUp(self):
+        self.setUp_input()
+        self.stubs.add("magick", MAGICK)
+        self.check_dir = self.home / ".cache" / "torchsnap-testbed" / "screen-check"
+
+    def rules(self, windows=WINDOWS):
+        return json.dumps([['get_wm_class() === "torchsnap"', [windows]]])
+
+    def screenshot_areas(self):
+        return [c[-6:-2] for c in self.stubs.calls("gdbus") if "org.gnome.Shell.Screenshot.ScreenshotArea" in c]
+
+    def asked_shield(self):
+        return any("org.gnome.ScreenSaver.GetActive" in c for c in self.stubs.calls("gdbus"))
+
+    def test_shown_stores_the_launchers_rect_and_shoots_it(self):
+        result = self.call_pi(["screen-check", "shown"], self.rules())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.check_dir / "rect").read_text().split(), ["140", "677", "808", "860"])
+        self.assertEqual(self.screenshot_areas(), [["140", "677", "808", "860"]])
+        self.assertTrue(self.stubs.calls("gdbus")[-1][-1].endswith("screen-check/shown.png"))
+
+    def test_shown_without_a_launcher_window_fails(self):
+        result = self.call_pi(["screen-check", "shown"], self.rules(WINDOWS[1:]))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no launcher window", result.stderr)
+        self.assertEqual(self.screenshot_areas(), [])
+
+    def shown(self):
+        self.check_dir.mkdir(parents=True)
+        (self.check_dir / "rect").write_text("140 677 808 860\n")
+        (self.check_dir / "shown.png").write_text("png")
+
+    def test_hidden_reports_painted_once_the_area_differs_from_the_shown_shot(self):
+        self.shown()
+        result = self.call_pi(["screen-check", "hidden"], self.rules(), env={"STUB_MAGICK_COUNTS": "3;40;5000"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("painted (5000 pixels differ", result.stdout)
+        self.assertEqual(len(self.screenshot_areas()), 3)
+        compare = self.stubs.calls("magick")[0][1:]
+        self.assertEqual(compare[:3], ["compare", "-metric", "AE"])
+        self.assertTrue(compare[3].endswith("screen-check/shown.png"))
+        self.assertTrue(compare[4].endswith("screen-check/hidden.png"))
+
+    def test_hidden_reports_not_painted_when_the_area_never_differs(self):
+        self.shown()
+        result = self.call_pi(["screen-check", "hidden"], self.rules(),
+                              env={"STUB_MAGICK_COUNTS": "12", "TORCHSNAP_TESTBED_SCREEN_CHECK_TIMEOUT": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("not painted (12 pixels differ", result.stdout)
+
+    def test_hidden_without_a_shown_shot_fails(self):
+        result = self.call_pi(["screen-check", "hidden"], self.rules())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("run screen-check shown first", result.stderr)
+
+    def test_only_shown_lifts_a_screen_shield(self):
+        result = self.call_pi(["screen-check", "shown"], self.rules(),
+                              env={"STUB_SCREENSAVER_ANSWERS": '["(true,)", "(false,)"]'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.ydotool_calls()), 2)
+        # GNOME Shell writes the picture; the stubbed call does not.
+        (self.check_dir / "shown.png").write_text("png")
+        self.stubs.log.unlink()
+        result = self.call_pi(["screen-check", "hidden"], self.rules(),
+                              env={"STUB_SCREENSAVER_ANSWERS": '["(true,)"]', "STUB_MAGICK_COUNTS": "5000"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.asked_shield())
+        self.assertEqual(self.ydotool_calls(), [])
+
+    def test_a_stage_is_required(self):
+        for args in ([], ["both"], ["shown", "x"]):
+            with self.subTest(args=args):
+                result = self.call_pi(["screen-check", *args], self.rules())
+                self.assertEqual(result.returncode, 2)
+
+    def test_headless_checks_the_headless_session(self):
+        headless = self.home / ".cache" / "torchsnap-testbed" / "headless"
+        headless.mkdir(parents=True)
+        (headless / "bus").write_text("unix:path=/tmp/headless-bus\n")
+        result = self.call_pi(["screen-check", "shown", "--headless"], self.rules(),
+                              env={"STUB_SCREENSAVER_ANSWERS": '["(true,)"]'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.asked_shield())
+        self.assertTrue((headless / "screen-check" / "rect").exists())
+
+
+class ScreenCheckWrapper(unittest.TestCase):
+    """tools/linux-testbed/pi/screen-check runs testbed-pi's screen-check
+    in the session the benchmark runs in."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="tb-wrap-"))
+        shutil.copy(TESTBED_PI.parent / "screen-check", self.tmp / "screen-check")
+        fake = self.tmp / "testbed-pi"
+        fake.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n")
+        fake.chmod(0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def call(self, *args, **env):
+        environment = dict(os.environ)
+        environment.pop("TORCHSNAP_TESTBED_HEADLESS", None)
+        environment.update(env)
+        return subprocess.run(["bash", str(self.tmp / "screen-check"), *args],
+                              capture_output=True, text=True, env=environment, timeout=30)
+
+    def test_the_desktop_session(self):
+        result = self.call("shown")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split(), ["screen-check", "shown"])
+
+    def test_the_headless_session(self):
+        result = self.call("hidden", TORCHSNAP_TESTBED_HEADLESS="1")
+        self.assertEqual(result.stdout.split(), ["screen-check", "hidden", "--headless"])
+
+    def test_it_is_executable(self):
+        self.assertTrue(os.access(TESTBED_PI.parent / "screen-check", os.X_OK))
+
+
 TRAY_ITEMS = [
     {"key": "appindicator-:1.9@/org/ayatana/NotificationItem/other", "title": "nm-applet", "x": 700, "y": 0, "width": 48, "height": 35, "menuOpen": False},
     {"key": "appindicator-:1.113@/org/ayatana/NotificationItem/tray_icon_tray_app_4892_1", "title": "torchsnap", "x": 785, "y": 0, "width": 48, "height": 35, "menuOpen": False},
@@ -3598,7 +3747,8 @@ FAKE_BENCH = textwrap.dedent(
     #!/usr/bin/env python3
     import json, os, sys
     names = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GDK_BACKEND", "DBUS_SESSION_BUS_ADDRESS",
-             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "EXPERIMENT_MAXIMIZE")
+             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "EXPERIMENT_MAXIMIZE",
+             "TORCHSNAP_TESTBED_HEADLESS")
     with open(os.path.join(os.environ["HOME"], "bench-call.json"), "w") as f:
         json.dump({"argv": sys.argv[1:], "env": {n: os.environ.get(n) for n in names}}, f)
     """
@@ -3648,8 +3798,10 @@ class TestbedPiBenchMemory(unittest.TestCase):
             call["argv"],
             ["-d", "M1 desktop A run1", "--cycles", "50", "--env-prefix", "EXPERIMENT_", "--app", "/opt/build/torchsnap",
              "--output-dir", str(state), "--log", str(state / "memory-benchmark.log"),
-             "--compositor-pid", "1666"],
+             "--compositor-pid", "1666",
+             "--screen-check", str(self.tree / "tools" / "linux-testbed" / "pi" / "screen-check")],
         )
+        self.assertIsNone(call["env"]["TORCHSNAP_TESTBED_HEADLESS"])
         self.assertEqual(call["env"]["WAYLAND_DISPLAY"], "wayland-0")
         self.assertEqual(call["env"]["EXPERIMENT_MAXIMIZE"], "1")
         settings = json.loads((self.home / ".local" / "share" / "app.torchsnap" / "settings.json").read_text())
@@ -3674,6 +3826,8 @@ class TestbedPiBenchMemory(unittest.TestCase):
         self.assertIsNone(call["env"]["XAUTHORITY"])
         self.assertEqual(call["env"]["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/tmp/headless-bus")
         self.assertEqual(call["env"]["XDG_DATA_HOME"], str(headless / "app" / "data"))
+        # The screen check the bench calls finds the headless session by it.
+        self.assertEqual(call["env"]["TORCHSNAP_TESTBED_HEADLESS"], "1")
         self.assertTrue((headless / "app" / "data" / "app.torchsnap" / "settings.json").exists())
 
     def test_refuses_without_a_compositor_process(self):
