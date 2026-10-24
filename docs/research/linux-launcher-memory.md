@@ -247,7 +247,7 @@ comparison: web anon +33.9 (+38.0 at 500), web GPU +30.4, show 72 / 79
 
 | Lever | Effect | Cost | Verdict |
 |---|---|---|---|
-| `DocumentViewer` cache model on the launcher's web context (X1) | web anon +2.5, web GPU +2.7 at 500 cycles; one other run kept +23.9 anon at 200 (see open questions) | One call through `with_webview` after the window is built, `webkit2gtk = "=2.0.2"` (wry's pin) as a Linux dependency. tauri-runtime-wry shares the context among all webviews without a data directory, so the settings and welcome windows lose their memory cache too. Show 72 to 75 ms median, one 545 ms first show. | Bounds the cache on Linux; paints correctly on three shows with three mascots. WebKitGTK only. |
+| `DocumentViewer` cache model on the launcher's web context (X1) | web anon +2.5, web GPU +2.7 at 500 cycles; one other run kept +23.9 anon at 200 (see open questions) | One call through `with_webview` after the window is built, `webkit2gtk = "=2.0.2"` (wry's pin) as a Linux dependency. WebKitGTK holds the cache model for the whole process, so the settings, welcome and update windows lose their memory cache too. Show 72 to 75 ms median, one 545 ms first show. | Bounds the cache on Linux; paints correctly on three shows with three mascots. WebKitGTK only. In use since ADR 0073, which has a later measurement against a control build and the settings and welcome windows checked on screen with it. |
 | Shrink to 1x1 while mapped, wait 150 ms, then hide (C5) | −40 at start, −35 after the first dismiss, −17 after 20 cycles; shown phases unchanged. Frees the window's buffers shared between the UI process, the web process and GNOME Shell (UI shared GPU 40.9 to 8.8, web shared 21.4 to 0); the web process's own 93 MiB of GPU memory stays. | Show-to-content 75 against 61 ms median. The 150 ms wait was fixed and off the main thread. | Paints correctly over five cycles with a new mascot each. Measured with today's 808x860 window only. |
 | Canvas renderer: one reused `<canvas>`, `fetch`, `createImageBitmap`, `drawImage`, `ImageBitmap.close()` (X4) | web anon +5.1, web GPU +2.8 at 500 cycles; 3 decoded images kept | A canvas renderer in `Mascot`. Show 77 / 102 / 229 ms in one run, up to 429 ms in the other. | A frontend change; not measured on macOS. Sharp at scale 2, placed as the `<img>`, `aria-hidden` to match today's `alt=""`. The new mascot is drawn 13 to 30 ms after the dismiss, so a show within about 30 ms shows the previous one. |
 
@@ -458,9 +458,6 @@ not ruled out.
   after the page had blanked and waited a fixed 150 ms before hiding.
 - **The mapped shrink under a maximized window.** Not measured; the
   shrink after the hide is a no-op there as well.
-- **The cache model's shared context.** The settings and welcome
-  windows lose their memory cache too; whether they still behave as
-  before is not checked.
 - **macOS.** What WKWebView keeps per new image, whether the binary's
   embedded mascot assets show up in the app's footprint, and the canvas
   renderer's effect there were not measured. The only macOS data is

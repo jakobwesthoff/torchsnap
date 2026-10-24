@@ -32,7 +32,7 @@ impl LauncherPanel for FallbackLauncherPanel {
         // texture, up to limits of its own. The document viewer cache
         // model turns that cache off. WebKitGTK holds the cache model
         // for the whole process, so the settings, welcome and update
-        // windows run without the cache too (ADR 0071).
+        // windows run without the cache too (ADR 0073).
         #[cfg(target_os = "linux")]
         window
             .with_webview(|webview| {

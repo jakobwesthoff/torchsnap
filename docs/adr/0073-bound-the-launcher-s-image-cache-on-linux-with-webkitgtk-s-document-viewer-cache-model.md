@@ -1,4 +1,4 @@
-# 71. Bound the launcher's image cache on Linux with WebKitGTK's document viewer cache model
+# 73. Bound the launcher's image cache on Linux with WebKitGTK's document viewer cache model
 
 Date: 2026-10-24
 
@@ -69,15 +69,39 @@ model as well.
 
 ## Consequences
 
-On the Raspberry Pi 5, 500 show/hide cycles with the document viewer
-cache model left the web process 2.5 MiB anon and 2.7 MiB GPU memory
-above its level before the cycles. The median time from show to visible
-content was 75 ms, against 72 ms without it; one first show took
-545 ms. Over 200 cycles, two runs with it ended at +23.9 and +1.5 MiB
-anon and +2.4 and +2.6 MiB GPU. About 25 MiB of the web process's anon
-comes and goes between runs, also in runs that draw no new mascots;
-which allocation holds it is not established.
+On the Raspberry Pi 5, a debug build ran 200 show/hide cycles three
+times with the document viewer cache model and three times without it,
+in alternating order. Levels of the web process after cycle 200, above
+its level before the cycles:
+
+| | anon (MiB) | GPU memory (MiB) | decoded 384x384 images kept |
+|---|---|---|---|
+| without | +53.8, +34.5, +33.2 | +31.0, +29.5, +30.4 | 14, 17 (one run not counted) |
+| with | +20.6, +1.1, +0.0 | +2.7, +2.8, +2.4 | 0, 0, 1 |
+
+About 25 MiB of the web process's anon comes and goes between runs,
+also in runs that draw no new mascots; which allocation holds it is not
+established. It shows in the spread of both rows. Over 500 cycles, one
+run with the document viewer cache model ended at +2.5 MiB anon and
++2.7 MiB GPU.
+
+The time from show to visible content, over the ten timing cycles after
+each of the six runs, had a median of 74 ms with the document viewer
+cache model and 70 ms without it, a 90th percentile of 105 and 108 ms
+and a maximum of 204 and 162 ms.
+
+With and without the document viewer cache model, the same images were
+on screen: a different mascot on each of three shows, the emoji grid of
+`:fire` (emoji are text, not images), the favicons of the open-url and
+bangs gadgets on a second query with the favicon store filled, the
+preview of an image in the clipboard history, the emblem in the
+settings window and the mascot in the welcome window. From a query to
+the launcher reporting its results took 157, 132 and 117 ms (median of
+ten) for `:fire`, a bang and a domain with the document viewer cache
+model, against 142, 137 and 126 ms without it. Linux has no application icons yet, since
+app discovery finds no applications there.
 
 The UI process's file pages of the frontend assets embedded in the
-binary, which grew by 21.4 MiB over 500 cycles with the document viewer
-cache model, are not affected by it.
+binary are not affected: after 200 cycles they were 12.2 to 12.7 MiB
+above their level before the cycles with the document viewer cache
+model and 12.5 to 12.9 MiB without it.

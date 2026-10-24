@@ -124,9 +124,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On Linux, Torchsnap's windows no longer keep the images they have
   shown in WebKitGTK's memory cache. The launcher draws a new mascot
   for every show, and WebKitGTK kept each one, decoded and as a GPU
-  texture. Over 500 show/hide cycles on a Raspberry Pi 5, the web
-  process's growth went from about 38 to 2.5 MiB anon and from about
-  30 to 2.7 MiB GPU memory. See ADR 0071.
+  texture. Over 200 show/hide cycles on a Raspberry Pi 5 (mean of three
+  runs each), the web process's growth went from about 40 to 7 MiB anon
+  and from about 30 to 2.6 MiB GPU memory. See ADR 0073.
 
 ### Removed
 
