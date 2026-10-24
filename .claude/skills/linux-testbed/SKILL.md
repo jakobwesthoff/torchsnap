@@ -76,7 +76,10 @@ is the full guide.
   window's title or WM class, or `--shell-modal` for a GNOME Shell
   dialog or menu); exit 4 means the target does not have the keyboard,
   so nothing was typed. In the launcher the first Escape clears the
-  query, the second hides it.
+  query, the second hides it. Typing parks the pointer in the bottom
+  left corner and refuses (exit 1) when an app window gets the pointer
+  there by GNOME Shell's pick; a window that only covers the corner
+  without taking input there does not count.
 - `just testbed-pointer X Y`, `just testbed-click X Y [left|right|middle]`:
   logical pixels.
 - `just testbed-tray on|off|status`: GNOME's AppIndicator extension,

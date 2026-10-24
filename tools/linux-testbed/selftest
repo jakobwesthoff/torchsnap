@@ -21,7 +21,9 @@
 #       build carries the change, and a build back in this checkout
 #       drops it (only when named; three container builds)
 #   W   the launcher, shown through the control socket, is among the
-#       app's windows, with a size and keyboard focus
+#       app's windows, with a size and keyboard focus, and GNOME Shell's
+#       pick finds it at its centre and no app window in the bottom left
+#       corner
 #   4   the launcher opens through the control socket with focus, shows
 #       a typed query, and closes with Escape
 #   L   typing produces exactly the characters asked for (`us` layout),
@@ -109,10 +111,17 @@ app_up() {
     "$testbed" app-start >/dev/null || { fail "$1" "SETUP: app-start failed"; return 1; }
 }
 
+pointer_target() {
+    on_machine "\"\$HOME/torchsnap/tools/linux-testbed/pi/testbed-pi\" pointer-target $1 $2" | tail -n 1
+}
+
 # The launcher, shown through the control socket, is among the app's
-# windows with its WM class, a size and keyboard focus.
+# windows with its WM class, a size and keyboard focus. Typing parks the
+# pointer by GNOME Shell's pick (`pointer-target`), so the pick has to
+# find the launcher at its centre and no app window in the bottom left
+# corner of the launcher's monitor, where the pointer waits.
 item_W() {
-    local windows problem
+    local windows problem centre corner at_centre at_corner
     app_up W || return
     "$testbed" control show >/dev/null || { fail W "SETUP: control show failed"; return; }
     windows="$("$testbed" windows)" || { fail W "windows failed"; return; }
@@ -126,6 +135,23 @@ elif launcher["wm_class"] != "torchsnap" or launcher["rect"]["width"] <= 0 or la
 elif not launcher["focused"]:
     print("the launcher does not have keyboard focus")
 ' "$windows")"
+    if [ -z "$problem" ]; then
+        centre="$(python3 -c '
+import json, sys
+r = next(w for w in json.loads(sys.argv[1]) if w["title"] == "")["rect"]
+print(r["x"] + r["width"] // 2, r["y"] + r["height"] // 2)
+' "$windows")"
+        corner="$("$testbed" eval '(m => [m.x, m.y + m.height - 1].join(" "))(Main.layoutManager.monitors[global.display.focus_window.get_monitor()])' | tr -d '"')"
+        # shellcheck disable=SC2086 # "X Y"
+        at_centre="$(pointer_target $centre)"
+        # shellcheck disable=SC2086 # "X Y"
+        at_corner="$(pointer_target $corner)"
+        if ! python3 -c 'import json, sys; sys.exit(0 if json.loads(sys.argv[1]) == {"title": "", "wm_class": "torchsnap"} else 1)' "$at_centre" 2>/dev/null; then
+            problem="the pick at the launcher's centre ($centre) finds $at_centre, not the launcher"
+        elif [ "$at_corner" != null ]; then
+            problem="the pick at the bottom left corner ($corner) finds $at_corner, not null"
+        fi
+    fi
     "$testbed" control dismiss >/dev/null
     if [ -n "$problem" ]; then
         fail W "$problem"

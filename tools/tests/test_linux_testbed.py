@@ -2330,9 +2330,10 @@ LAYOUTS = {"current": 0, "us": 1}
 PARKED = ([0, 1919], [0, 1919], [1, 1919], [0, 1919])
 
 
-def input_rules(focus=FOCUS_LAUNCHER, modal=False, current=(1, 0), pointer=PARKED, windows=()):
+def input_rules(focus=FOCUS_LAUNCHER, modal=False, current=(1, 0), pointer=PARKED, windows=(), target=None):
     return json.dumps(
         [
+            ["/*pick*/", [target]],
             ["/*modal*/", [modal]],
             ["/*focus*/", [focus]],
             ["/*pointer*/", list(pointer)],
@@ -2425,12 +2426,49 @@ class Input(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("did not arrive", result.stderr)
 
-    def test_typing_refuses_while_an_app_window_covers_the_parking_corner(self):
-        covering = {"title": "Torchsnap Settings", "wm_class": "torchsnap", "rect": {"x": 0, "y": 1000, "width": 900, "height": 920}, "monitor": 0, "focused": False}
-        result = self.call_pi(["type", "--window", "torchsnap", "abc"], input_rules(windows=[covering]))
+    def test_typing_works_under_a_window_that_covers_the_corner_without_taking_the_pointer(self):
+        # A maximized launcher covers the whole work area, but its input
+        # region leaves the corner out: GNOME Shell's pick finds no app
+        # window there.
+        maximized = {"title": "", "wm_class": "torchsnap", "rect": {"x": 0, "y": 35, "width": 1080, "height": 1885}, "monitor": 0, "focused": True}
+        result = self.call_pi(["type", "--window", "torchsnap", "abc"], input_rules(windows=[maximized], target=None))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(c[0] == "type" for c in self.ydotool_calls()))
+
+    def test_typing_refuses_while_an_app_window_takes_the_pointer_at_the_corner(self):
+        settings = {"title": "Torchsnap Settings", "wm_class": "torchsnap"}
+        result = self.call_pi(["type", "--window", "torchsnap", "abc"], input_rules(target=settings))
         self.assertEqual(result.returncode, 1)
-        self.assertIn("covers the bottom left corner", result.stderr)
+        self.assertIn("takes the pointer at the bottom left corner", result.stderr)
+        self.assertIn("Torchsnap Settings", result.stderr)
         self.assertFalse(any(c[0] == "type" for c in self.ydotool_calls()))
+
+    def test_the_pick_asks_for_both_barrier_positions_and_only_for_the_apps_windows(self):
+        result = self.call_pi(["key", "--window", "torchsnap", "Escape"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        picks = [s for s in self.eval_scripts() if "/*pick*/" in s]
+        self.assertEqual([s[s.rindex("("):] for s in picks], ["(0, 1919)", "(1, 1919)"])
+        self.assertIn("get_actor_at_pos(1, x, y)", picks[0])
+        self.assertIn('get_wm_class() === "torchsnap"', picks[0])
+
+    def test_pointer_target_prints_the_app_window_at_a_point(self):
+        launcher = {"title": "", "wm_class": "torchsnap"}
+        result = self.call_pi(["pointer-target", "540", "960"], input_rules(target=launcher))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), launcher)
+        self.assertTrue(self.eval_scripts()[-1].endswith("(540, 960)"))
+
+    def test_pointer_target_prints_null_where_no_app_window_takes_the_pointer(self):
+        result = self.call_pi(["pointer-target", "0", "1919"], input_rules(target=None))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(json.loads(result.stdout))
+
+    def test_pointer_target_takes_two_whole_numbers(self):
+        for args in ([], ["1"], ["1", "2", "3"], ["1", "x"], ["1); boom(", "2"]):
+            with self.subTest(args=args):
+                result = self.call_pi(["pointer-target", *args])
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(self.eval_scripts(), [])
 
     def test_key_combinations_become_key_codes(self):
         result = self.call_pi(["key", "--window", "torchsnap", "ctrl+u", "Escape"])
@@ -2992,6 +3030,71 @@ class SelftestBuildItem(unittest.TestCase):
         for gadget in ("calculator", "hello-world"):
             with self.subTest(gadget=gadget):
                 self.assert_fails(self.item_2(FAKE_NO_VIEW=gadget), gadget)
+
+
+# The Mac-side testbed for self-test item W: the app runs, the launcher
+# is the first of WINDOWS, its monitor's bottom left corner is (0, 1919),
+# and `pointer-target` answers FAKE_AT_CENTRE for the launcher's centre
+# and FAKE_AT_CORNER for that corner (as GNOME Shell's JSON, unspaced).
+FAKE_POINTER_TESTBED = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json, os, sys
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(["testbed", *sys.argv[1:]]) + "\\n")
+    command, args = sys.argv[1], sys.argv[2:]
+    windows = json.loads(os.environ["FAKE_WINDOWS"])
+    if command == "windows":
+        print(json.dumps(windows))
+    elif command == "eval":
+        print('"0 1919"')
+    elif command == "exec" and "pointer-target" in args[0]:
+        point = args[0].split("pointer-target ", 1)[1]
+        print(os.environ["FAKE_AT_CENTRE" if point == "544 1107" else "FAKE_AT_CORNER"])
+    elif command == "control":
+        print(json.dumps({"result": {"ok": True}}))
+    """
+)
+
+
+class SelftestPointerItem(unittest.TestCase):
+    """Self-test item W's pick checks against a fake testbed."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="testbed-itemW-"))
+        scripts = self.tmp / "tools" / "linux-testbed"
+        scripts.mkdir(parents=True)
+        shutil.copy(SELFTEST, scripts / "selftest")
+        (scripts / "testbed").write_text(FAKE_POINTER_TESTBED)
+        (scripts / "testbed").chmod(0o755)
+        self.stubs = Stubs([])
+
+    def tearDown(self):
+        self.stubs.cleanup()
+        shutil.rmtree(self.tmp)
+
+    def item_w(self, at_centre='{"title":"","wm_class":"torchsnap"}', at_corner="null"):
+        return run(["W"], self.stubs, script=self.tmp / "tools" / "linux-testbed" / "selftest", env={
+            "TORCHSNAP_LINUX_HOST": "user@pi.local", "FAKE_WINDOWS": json.dumps(WINDOWS),
+            "FAKE_AT_CENTRE": at_centre, "FAKE_AT_CORNER": at_corner,
+        })
+
+    def test_passes_when_the_pick_finds_the_launcher_and_a_free_corner(self):
+        result = self.item_w()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS item W", result.stdout)
+        targets = [c[2] for c in self.stubs.calls("testbed") if c[1] == "exec" and "pointer-target" in c[2]]
+        self.assertEqual([t.rsplit("pointer-target ", 1)[1] for t in targets], ["544 1107", "0 1919"])
+
+    def test_a_blind_pick_at_the_launchers_centre_fails(self):
+        result = self.item_w(at_centre="null")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL item W: the pick at the launcher's centre (544 1107) finds null", result.stdout)
+
+    def test_an_app_window_at_the_corner_fails(self):
+        result = self.item_w(at_corner='{"title":"Torchsnap Settings","wm_class":"torchsnap"}')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL item W: the pick at the bottom left corner (0 1919) finds", result.stdout)
 
 
 # The Mac-side testbed for self-test item S, in this checkout (A) and in

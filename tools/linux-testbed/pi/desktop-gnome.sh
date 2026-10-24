@@ -127,6 +127,18 @@ desk_pointer() {
     desk_eval '/*pointer*/ global.get_pointer().slice(0, 2)'
 }
 
+# desk_pointer_target X Y: the app window that would get the pointer at
+# X,Y (logical pixels) as {"title", "wm_class"}, or null for another
+# window, Shell's own actors or nothing. Mutter finds the pointer's
+# target by picking the reactive actor at the pointer, and picks a
+# Wayland surface only inside its input region, so this asks the same
+# pick: a window that lets the pointer through at X,Y does not count.
+# The pick mode is written as its value (1, Clutter.PickMode.REACTIVE),
+# since the module Eval runs in imports Meta but not Clutter.
+desk_pointer_target() {
+    desk_eval "/*pick*/ ((x, y) => { let a = global.stage.get_actor_at_pos(1, x, y); while (a && !(a instanceof Meta.WindowActor)) a = a.get_parent(); const w = a ? a.get_meta_window() : null; return w && w.get_wm_class() === \"torchsnap\" ? {title: w.get_title(), wm_class: w.get_wm_class()} : null; })($1, $2)"
+}
+
 # =========================================================
 # Headless sessions
 # =========================================================

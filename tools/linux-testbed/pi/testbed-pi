@@ -35,6 +35,8 @@
 #   testbed-pi pointer X Y            move the pointer to X,Y (logical pixels)
 #   testbed-pi click X Y [left|right|middle]
 #                                     move there and click
+#   testbed-pi pointer-target X Y     the app window that gets the pointer at X,Y,
+#                                     {"title", "wm_class"} or null
 #
 #   app-start, app-stop, app-log, control, eval, windows, launcher-state,
 #   screenshot and bench-memory take --headless to work in the headless
@@ -529,18 +531,25 @@ begin_keys() {
 
 # The barrier in end_keys moves the pointer. Over the launcher, a moving
 # pointer can change the hovered or selected result, so the pointer waits
-# in the bottom left corner, outside every window of the app.
+# in the bottom left corner, where no window of the app may get it, at
+# either x the barrier moves it to. Which window gets the pointer there
+# is the desktop's pick, not a window's rectangle: a window can cover the
+# corner and still let the pointer through to what lies below.
 park_pointer() {
-    local y
+    local y x target
     y="$(home_pointer)" || exit 1
-    python3 -c '
-import json, sys
-x, y = 0, int(sys.argv[2])
-for w in json.loads(sys.argv[1]) or []:
-    r = w["rect"]
-    if r["x"] <= x < r["x"] + r["width"] and r["y"] <= y < r["y"] + r["height"]:
-        sys.exit("testbed-pi: an app window covers the bottom left corner, where the pointer waits while typing: " + json.dumps(w))
-' "$(desk_app_windows)" "$y" || exit 1
+    for x in 0 1; do
+        target="$(desk_pointer_target "$x" "$y")" || exit 1
+        if [ "$target" != null ]; then
+            echo "testbed-pi: an app window takes the pointer at the bottom left corner, where the pointer waits while typing: $target" >&2
+            exit 1
+        fi
+    done
+}
+
+cmd_pointer_target() {
+    [ $# -eq 2 ] && [[ "$1" =~ ^[0-9]+$ ]] && [[ "$2" =~ ^[0-9]+$ ]] || usage
+    desk_pointer_target "$1" "$2"
 }
 
 # ydotool returns once its events are written to the uinput device; the
@@ -1009,6 +1018,10 @@ case "$subcommand" in
     click)
         load_desktop
         cmd_click "$@"
+        ;;
+    pointer-target)
+        load_desktop
+        cmd_pointer_target "$@"
         ;;
     tray)
         load_desktop

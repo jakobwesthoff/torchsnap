@@ -326,7 +326,11 @@ GNOME has handled every key: after the keys the pointer moves by one
 pixel and back, and GNOME reports that move only after the keys before
 it. While typing, the pointer waits in the bottom left corner, so that
 move does not change what the pointer hovers in the app; typing refuses
-when an app window covers that corner. Key names for `testbed-key`: `Escape`, `Return`, `Tab`,
+when an app window gets the pointer there. Which window gets it is
+GNOME Shell's pick at that point, the same one that decides where
+pointer events go: a window whose input region leaves the corner out
+lets the pointer through and does not count, even if its rectangle
+covers the corner. Key names for `testbed-key`: `Escape`, `Return`, `Tab`,
 `BackSpace`, `space`, `Delete`, `Home`, `End`, `Up`, `Down`, `Left`,
 `Right`, `PageUp`, `PageDown`, letters and digits, combined with `ctrl+`,
 `shift+`, `alt+`, `super+`.
@@ -447,7 +451,7 @@ need a current build on the Pi; run `just testbed-build` first.
 | Item | Checks |
 |---|---|
 | 1 | Provisioning twice: the second run exits 0 and reports `0 changed`. |
-| W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus. |
+| W | Starts the app if needed and shows the launcher through the control socket: the launcher is among the app's windows with WM class `torchsnap`, a size and keyboard focus, and GNOME Shell's pick (`testbed-pi pointer-target X Y`, which typing uses to park the pointer) finds the launcher at its centre and no app window in the bottom left corner of its monitor. |
 | 4 | Opens the launcher through the control socket and checks that it has focus and changes the screen, types a query and checks that the launcher shows it, then presses Escape twice: the first clears the query, the second hides the launcher. |
 | L | Opens GNOME Shell's run dialog, types `yz-@[]` and reads the text back from the dialog; it must be exactly that, and the keyboard layout must be the one from before. |
 | E | Asks for the launcher state, the app's windows and the clipboard once over plain SSH and once with a runner that clears the whole environment; the answers must be the same. |
