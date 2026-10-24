@@ -415,6 +415,37 @@ not ruled out.
   GPU memory. It was measured with today's small window only, not under
   a maximized one.
 
+### When the mapped shrink has taken effect
+
+Release build with the cache model, small window, 20 dismisses per arm,
+every run seen painted on screen at its start and end. A 5 ms sampler
+of the processes' GPU memory dates each release. A dismiss passes when,
+1.5 s after the hide, the UI's shared GPU memory is down to 8.8 MiB,
+the web process's shared memory to 0 and its total to at most 88.7 MiB;
+a failed one keeps 28.7 or 38.5 MiB shared in the UI and 97 to 109 MiB
+in the web process.
+
+- The web process releases its buffers a median 12.7 ms after the
+  shrink, the UI process about 28 ms after it. One release came only
+  after 95 ms.
+- Fixed waits before the hide: 0 ms and 16 ms pass 0 of 20 (at 16 ms
+  the web release has happened, the UI's not yet), 50 ms 19, 150 ms and
+  500 ms 20.
+- GTK's `configure-event`, the webview's `size-allocate` and its first
+  draw at the small size come 2 to 8 ms before the web release and pass
+  0 of 20. The webview's second draw at the small size comes 14.0 ms
+  after it (10.7 to 16.9) and passes 19; its failure is the 95 ms
+  release, which it preceded by 2.6 ms. The frame clock's timings for
+  that frame never complete. A Wayland frame callback requested when
+  the small size is first allocated passes 0: it comes before the
+  buffer swaps, and the hide stops them.
+- Driven from the page (shrink, then two animation frames, then hide):
+  3 of 20 after the page blanked, 16 of 20 when the shrink comes
+  together with the blank.
+
+Hidden memory over 60 s and the next show's timing follow in a second
+block.
+
 ## Open questions
 
 - **About 25 MiB of web-process anon that comes and goes between
@@ -464,8 +495,9 @@ not ruled out.
   Skia's GPU resource cache limit depends on installed RAM and is
   WebKit's default above 4 GB; it is a ceiling, not the usage, and the
   app cannot set it.
-- **What the mapped shrink should wait for.** The experiment shrank
-  after the page had blanked and waited a fixed 150 ms before hiding.
+- **What the mapped shrink should wait for.** No signal tested so far
+  covers every release (see "When the mapped shrink has taken effect");
+  the webview's second draw at the small size comes closest.
 - **The mapped shrink under a maximized window.** Not measured; the
   shrink after the hide is a no-op there as well.
 - **macOS.** What WKWebView keeps per new image, whether the binary's
