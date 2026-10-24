@@ -6053,6 +6053,7 @@ dependencies = [
  "urlencoding",
  "wasmtime",
  "wasmtime-wasi",
+ "webkit2gtk",
  "zip 8.6.0",
 ]
 

@@ -129,6 +129,8 @@ libc = "0.2.186"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gdk = "0.18"
+# The version and feature wry uses, so both share one build.
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
 
 [profile.release]
 strip = true
