@@ -151,6 +151,9 @@ EOF
     echo >&2
     echo "Sampling... (Ctrl-C to stop)" >&2
 
+    # The array stays empty for an unlimited run. The `+` expansion
+    # below keeps that legal under `set -u` in bash 3.2, the
+    # `/bin/bash` of macOS, which treats an empty array as unset.
     local duration_args=()
     if [[ "$duration" != "0" ]]; then
         duration_args=(--sample-duration "$duration")
@@ -160,7 +163,7 @@ EOF
         "${FP_ARGS[@]}" \
         --noCategories \
         --sample "$interval" \
-        "${duration_args[@]}" \
+        ${duration_args[@]+"${duration_args[@]}"} \
         -j "$output" \
         > /dev/null
 }
