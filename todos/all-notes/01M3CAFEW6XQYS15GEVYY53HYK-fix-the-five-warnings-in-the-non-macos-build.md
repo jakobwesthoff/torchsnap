@@ -46,3 +46,7 @@ docker run --rm -v "$PWD":/src rust:bookworm bash -c '
 ```
 
 No CI job or `just` recipe runs this yet.
+
+## Seen again on 2026-10-24
+
+The Linux debug build of the Linux testbed's container path (branch `linux-testbed`, `just testbed-build`) printed six warnings in torchsnap's lib: unused imports, an unreachable expression and functions never used. They were not matched against the list above. That container build is a ready way to see them on a Mac once the branch lands.
