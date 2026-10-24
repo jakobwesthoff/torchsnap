@@ -428,6 +428,16 @@ in the web process.
 - The web process releases its buffers a median 12.7 ms after the
   shrink, the UI process about 28 ms after it. One release came only
   after 95 ms.
+- In one run of 200 dismisses with a 500 ms wait, the web release came
+  a median 12.2 ms after the shrink (p95 21.9, p99 42.5, max 96.4 ms),
+  the UI's 29.2 ms (p95 40.9, p99 57.7, max 121.7 ms). No release of
+  either process was measured later than 29.8 ms after the webview's
+  second draw at the small size. All 200 dismisses were released 1.5 s
+  after the hide. The sampler stamps a row before its slow reads, and
+  155 of its intervals exceed 50 ms, so a release can be dated too
+  early by up to such an interval but never too late: the figures are
+  lower bounds. In 4 dismisses such an interval hid the release step
+  entirely.
 - Fixed waits before the hide: 0 ms and 16 ms pass 0 of 20 (at 16 ms
   the web release has happened, the UI's not yet), 50 ms 19, 150 ms and
   500 ms 20.
