@@ -61,8 +61,15 @@ render via the `prevQuery` derived-state pattern, so gadget
 components unmount on the same render and their effects cannot
 re-inject stale display-query state.
 
+`resultsQuery` is the query whose search set the current entries,
+view refs and `matchedPrefix`. The first message of a generation sets
+it together with the view refs, and the empty-query reset sets it to
+the empty string. Until the search for a new query answers, it is
+still the previous query, and a non-null `matchedPrefix` is always a
+prefix of it.
+
 The hook returns `{ results, customGadgetView, inlineGadgetView,
-matchedPrefix, loading }`.
+matchedPrefix, resultsQuery, loading }`.
 
 ## `Launcher` component
 
@@ -82,6 +89,18 @@ adjust the visible text without retriggering search. The next user
 keystroke resyncs both. `handleGoBack` currently clears both to the
 empty string. There is a TODO to snapshot/restore the pre-gadget
 query.
+
+A gadget view gets its `query` with `matchedPrefix` stripped. While
+`searchQuery` starts with `matchedPrefix`, that is `searchQuery`
+without the prefix, so a view follows the input before its search
+answers. When `searchQuery` no longer starts with it, the view on
+screen still belongs to the previous search, and it gets
+`resultsQuery` without the prefix. A view that writes
+`matchedPrefix + query` back with `setDisplayQuery()`, as the
+calculator's history view does, then writes nothing new, and the
+input keeps the text that was typed or set through the control API.
+This holds for a view opened by execute too: it stays after the new
+search answers and then gets the new search's query.
 
 ### Two custom-view sources
 

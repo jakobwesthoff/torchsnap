@@ -21,7 +21,9 @@ the Rust `cmp_sort_key`). On `done` it flips loading off.
 `customGadgetView`, `inlineGadgetView`, and `matchedPrefix` use a
 "first non-null wins per generation" capture so the catalog batch
 (which carries `null` for all three) cannot clobber a later
-inline/custom view ref.
+inline/custom view ref. The first message of a generation also sets
+`resultsQuery` to that generation's query, so the launcher knows which
+query the view refs belong to.
 
 ## Tauri command: `search`
 

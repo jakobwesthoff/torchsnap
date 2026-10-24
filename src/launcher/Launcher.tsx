@@ -274,6 +274,7 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
     customGadgetView: searchGadgetView,
     inlineGadgetView,
     matchedPrefix,
+    resultsQuery,
     loading: searching,
   } = useSearch(searchQuery);
 
@@ -771,8 +772,18 @@ export function Launcher({ measureDummy, onMeasure }: LauncherProps = {}) {
 
   // The prefix and stripped query for the gadget component. The
   // backend sends the matched prefix so we don't have to guess.
+  //
+  // The view and its prefix belong to the search of `resultsQuery`,
+  // and they stay on screen until the search for newer text answers.
+  // While the input still starts with the prefix, the view follows
+  // the input. Once it does not, the view keeps the query of its own
+  // search: a view may write `matchedPrefix + query` back into the
+  // input (the calculator's history view does), and the prefix in
+  // front of a slice of unrelated text would replace what was typed
+  // or set through the control API.
   const gadgetPrefix = matchedPrefix ?? "";
-  const strippedQuery = gadgetPrefix ? searchQuery.slice(gadgetPrefix.length) : searchQuery;
+  const viewText = searchQuery.startsWith(gadgetPrefix) ? searchQuery : resultsQuery;
+  const strippedQuery = viewText.slice(gadgetPrefix.length);
 
   // =========================================================
   // Content area

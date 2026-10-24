@@ -17,7 +17,8 @@ import { useEffect } from "react";
 import { KeyBindingProvider } from "../keybindings/KeyBindingProvider";
 import { registerGadget, unregisterGadget } from "../gadgets/registry";
 import { useLauncher } from "../contexts/useLauncher";
-import { mockCommands } from "../test/tauri";
+import { emitTauriEvent, mockCommands } from "../test/tauri";
+import type { GadgetViewProps } from "../gadgets/types";
 import type { GadgetViewRef, LauncherSnapshot, SourcedEntry } from "../types";
 import type { useSearch } from "./hooks/useSearch";
 import { Launcher } from "./Launcher";
@@ -30,11 +31,13 @@ const state = vi.hoisted(() => ({
     customGadgetView: null,
     inlineGadgetView: null,
     matchedPrefix: null,
+    resultsQuery: "",
     loading: false,
   } as UseSearchResult,
   dismiss: vi.fn(),
   resetState: (() => {}) as () => void,
   getSnapshot: null as (() => LauncherSnapshot) | null,
+  setQuery: null as ((text: string) => void) | null,
 }));
 
 vi.mock("./hooks/useSearch", () => ({ useSearch: () => state.search }));
@@ -45,8 +48,15 @@ vi.mock("./hooks/useWindowLifecycle", () => ({
   },
 }));
 vi.mock("./hooks/useControlChannel", () => ({
-  useControlChannel: ({ getSnapshot }: { getSnapshot: () => LauncherSnapshot }) => {
+  useControlChannel: ({
+    getSnapshot,
+    setQuery,
+  }: {
+    getSnapshot: () => LauncherSnapshot;
+    setQuery: (text: string) => void;
+  }) => {
     state.getSnapshot = getSnapshot;
+    state.setQuery = setQuery;
   },
 }));
 vi.mock("./visibility", () => ({ isContentVisible: () => true }));
@@ -92,6 +102,7 @@ function showView(view: GadgetViewRef, as: "custom" | "inline") {
     customGadgetView: as === "custom" ? view : null,
     inlineGadgetView: as === "inline" ? view : null,
     matchedPrefix: null,
+    resultsQuery: "",
     loading: false,
   };
 }
@@ -146,6 +157,7 @@ describe("Launcher action errors", () => {
       customGadgetView: null,
       inlineGadgetView: null,
       matchedPrefix: null,
+      resultsQuery: "",
       loading: false,
     };
   });
@@ -263,6 +275,7 @@ describe("Launcher snapshot", () => {
       customGadgetView: null,
       inlineGadgetView: null,
       matchedPrefix: null,
+      resultsQuery: "",
       loading: false,
     };
   });
@@ -296,5 +309,171 @@ describe("Launcher snapshot", () => {
     input().focus();
 
     expect(state.getSnapshot?.().inputFocused).toBe(true);
+  });
+});
+
+// =========================================================
+// A view's query while the search for new text runs
+//
+// The view on screen and its matched prefix belong to the last search
+// that answered. New text that no longer starts with that prefix must
+// reach the input as it was set, also when the view writes its
+// `matchedPrefix + query` back into the input, as the calculator's
+// history view does.
+// =========================================================
+
+describe("Launcher query across a prefix change", () => {
+  // Writes `matchedPrefix + query` into the input whenever either
+  // changes, and shows the query it got.
+  function EchoView({ query, matchedPrefix }: GadgetViewProps) {
+    const { setDisplayQuery } = useLauncher();
+    useEffect(() => {
+      setDisplayQuery(`${matchedPrefix}${query}`);
+    }, [matchedPrefix, query, setDisplayQuery]);
+    return <div data-testid="echo-query">{query}</div>;
+  }
+
+  const ECHO_VIEW: GadgetViewRef = { gadgetId: "test-gadget", view: "echo" };
+
+  const HELLO: SourcedEntry = { ...EJECT, id: "hello", title: "Hello b2", source: "hello-world" };
+
+  /** What useSearch returns once the search for `=2+3` answered. */
+  const CALCULATOR_ANSWERED: UseSearchResult = {
+    results: [],
+    customGadgetView: ECHO_VIEW,
+    inlineGadgetView: null,
+    matchedPrefix: "=",
+    resultsQuery: "=2+3",
+    loading: false,
+  };
+
+  beforeEach(() => {
+    mockCommands({});
+    registerGadget("test-gadget", { label: "Test Gadget", views: { echo: EchoView } });
+  });
+
+  afterEach(async () => {
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    unregisterGadget("test-gadget");
+    state.setQuery = null;
+    state.search = {
+      results: [],
+      customGadgetView: null,
+      inlineGadgetView: null,
+      matchedPrefix: null,
+      resultsQuery: "",
+      loading: false,
+    };
+  });
+
+  function rerenderLauncher(rerender: (ui: React.ReactElement) => void) {
+    rerender(
+      <KeyBindingProvider>
+        <Launcher />
+      </KeyBindingProvider>,
+    );
+  }
+
+  /** The launcher showing the view for `=2+3`. `state.search` stays at
+   *  that answer until a test replaces it, which stands for the time
+   *  before the search for any later text answers. */
+  function renderCalculatorQuery() {
+    state.search = CALCULATOR_ANSWERED;
+    const launcher = renderLauncher();
+    fireEvent.change(input(), { target: { value: "=2+3" } });
+    expect(input()).toHaveValue("=2+3");
+    return launcher;
+  }
+
+  function viewQuery(): string | null {
+    return screen.getByTestId("echo-query").textContent;
+  }
+
+  it("shows a control query with another prefix as it was set", () => {
+    renderCalculatorQuery();
+
+    act(() => state.setQuery!("!b2"));
+
+    expect(input()).toHaveValue("!b2");
+  });
+
+  it("shows text typed over the whole input as typed", () => {
+    renderCalculatorQuery();
+
+    fireEvent.change(input(), { target: { value: "a" } });
+
+    expect(input()).toHaveValue("a");
+  });
+
+  it("shows the text left after deleting the prefix", () => {
+    renderCalculatorQuery();
+
+    fireEvent.change(input(), { target: { value: "2+3" } });
+
+    expect(input()).toHaveValue("2+3");
+  });
+
+  it("hands the view the query of its own search until the new search answers", () => {
+    renderCalculatorQuery();
+
+    act(() => state.setQuery!("!b2"));
+
+    expect(viewQuery()).toBe("2+3");
+  });
+
+  it("hands the view text typed after its prefix before the search answers", () => {
+    renderCalculatorQuery();
+
+    fireEvent.change(input(), { target: { value: "=2+34" } });
+
+    expect(viewQuery()).toBe("2+34");
+    expect(input()).toHaveValue("=2+34");
+  });
+
+  it("keeps the new text in the input once the new search answers", () => {
+    const { rerender } = renderCalculatorQuery();
+    act(() => state.setQuery!("!b2"));
+
+    state.search = {
+      results: [HELLO],
+      customGadgetView: null,
+      inlineGadgetView: null,
+      matchedPrefix: "!",
+      resultsQuery: "!b2",
+      loading: false,
+    };
+    rerenderLauncher(rerender);
+
+    expect(screen.queryByTestId("echo-query")).toBeNull();
+    expect(input()).toHaveValue("!b2");
+  });
+
+  it("hands an execute-triggered view the query of its own search, then the new one", async () => {
+    const { rerender } = renderLauncher();
+    await act(() => emitTauriEvent("activate-gadget-custom-ui", ECHO_VIEW));
+    await waitFor(() => expect(viewQuery()).toBe(""));
+
+    // The view opened by execute stays while the search for `=2`
+    // routes to a prefix gadget.
+    state.search = {
+      results: [],
+      customGadgetView: null,
+      inlineGadgetView: null,
+      matchedPrefix: "=",
+      resultsQuery: "=2",
+      loading: false,
+    };
+    fireEvent.change(input(), { target: { value: "=2" } });
+    expect(viewQuery()).toBe("2");
+
+    fireEvent.change(input(), { target: { value: "x" } });
+    expect(input()).toHaveValue("x");
+    expect(viewQuery()).toBe("2");
+
+    state.search = { ...state.search, matchedPrefix: null, resultsQuery: "x" };
+    rerenderLauncher(rerender);
+    expect(viewQuery()).toBe("x");
+    expect(input()).toHaveValue("x");
   });
 });

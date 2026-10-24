@@ -24,7 +24,9 @@ export interface GadgetViewProps {
    *  Only present when the gadget returned CustomUI or InlineUI
    *  with a data payload. */
   data?: unknown;
-  /** Current query, stripped of the matched prefix. */
+  /** The search query with `matchedPrefix` stripped. While the
+   *  search for text that no longer starts with `matchedPrefix`
+   *  runs, it is still the query of this view's own search. */
   query: string;
   /** Which prefix activated the gadget. */
   matchedPrefix: string;
@@ -58,7 +60,9 @@ export interface GadgetViewRef {
 export interface InlineViewProps {
   /** Opaque data from the backend's `GadgetViewRef.data`. */
   data: unknown;
-  /** Current search query (stripped of prefix). */
+  /** The search query with `matchedPrefix` stripped. While the
+   *  search for text that no longer starts with `matchedPrefix`
+   *  runs, it is still the query of this view's own search. */
   query: string;
   /** Prefix that activated the gadget (empty in heuristic mode). */
   matchedPrefix: string;

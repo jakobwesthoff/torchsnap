@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appears. Its mode came from the umask, so on a Linux system with a
   permissive umask and a home folder other users can enter, they could
   connect to it.
+- Replacing a query that has a gadget prefix with text that does not
+  start with that prefix, by typing over the input or with the control
+  API's `query`, no longer puts the old prefix back in the input. After
+  `=2+3`, a `query` with `!b2` showed `=b2`, typing `a` over the input
+  showed `=`, and deleting the leading `=` showed `=+3`.
 
 ## [0.15.0] - 2026-10-21
 

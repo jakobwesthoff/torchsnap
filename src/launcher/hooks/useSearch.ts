@@ -37,6 +37,11 @@ interface UseSearchResult {
   inlineGadgetView: GadgetViewRef | null;
   /** The prefix that triggered exclusive routing (e.g., ":"). */
   matchedPrefix: string | null;
+  /** The query whose search set `results`, the view refs and
+   *  `matchedPrefix`. Until the search for a new query answers, it
+   *  is still the previous query. A non-null `matchedPrefix` is
+   *  always a prefix of it. */
+  resultsQuery: string;
   loading: boolean;
 }
 
@@ -45,6 +50,7 @@ export function useSearch(query: string): UseSearchResult {
   const [customGadgetView, setCustomGadgetView] = useState<GadgetViewRef | null>(null);
   const [inlineGadgetView, setInlineGadgetView] = useState<GadgetViewRef | null>(null);
   const [matchedPrefix, setMatchedPrefix] = useState<string | null>(null);
+  const [resultsQuery, setResultsQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const generationRef = useRef(0);
 
@@ -88,6 +94,7 @@ export function useSearch(query: string): UseSearchResult {
       setCustomGadgetView(null);
       setInlineGadgetView(null);
       setMatchedPrefix(null);
+      setResultsQuery("");
     }
   }
 
@@ -130,6 +137,7 @@ export function useSearch(query: string): UseSearchResult {
             setCustomGadgetView(message.customGadgetView);
             setInlineGadgetView(message.inlineGadgetView);
             setMatchedPrefix(message.matchedPrefix);
+            setResultsQuery(query);
             isFirstMessageOfGeneration = false;
           } else {
             if (message.customGadgetView != null) {
@@ -157,5 +165,5 @@ export function useSearch(query: string): UseSearchResult {
     };
   }, [query]);
 
-  return { results, customGadgetView, inlineGadgetView, matchedPrefix, loading };
+  return { results, customGadgetView, inlineGadgetView, matchedPrefix, resultsQuery, loading };
 }
