@@ -100,8 +100,8 @@ On any non-GNOME desktop you can skip this section entirely.
 
 The `just assets` recipe regenerates icons and tray bitmaps;
 the WASM gadget pipeline uses `zip` to pack `.torchsnap` archives; and
-`shellcheck` lints the shell scripts (`just doctor` checks that it is
-installed; no recipe runs it yet). On a
+`just lint`, part of `just fullcycle`, runs `shellcheck` on every shell
+script in the repository. On a
 default Fedora 43 Workstation install, `zip`, `ImageMagick`, and `jq`
 are usually already present — install anything missing.
 
@@ -109,11 +109,17 @@ are usually already present — install anything missing.
 sudo dnf install zip ImageMagick jq shellcheck
 ```
 
-`just doctor` treats `cargo`, `bun`, `zip`, `wasm-tools`, the
-`wasm32-wasip2` Rust target, `magick` and `oxipng` as
-required and exits non-zero if any are absent. `shellcheck` is listed
-as optional — it is only invoked by the quality recipes — but install
-it anyway if you intend to run the linters.
+`just doctor` checks the tools in four groups: required (`rustup`,
+`cargo`, `bun`, `jq`, `shellcheck`), the WASM gadget toolchain (`zip`,
+`wasm-tools`, the `wasm32-wasip2` Rust target), the asset pipeline
+(`magick`, `curl`), and optional tools for `just audit` and
+`just coverage-crates` (`cargo-audit`, `cargo-llvm-cov`, rustup's
+`llvm-tools`). It exits non-zero if any of them is missing, the
+optional ones included.
+
+`just lint` finds the shell scripts by file extension and shebang.
+Shell recipes inside `Justfile` and `just/*.just` are not files of
+their own, and it does not check them.
 
 ## 2. Rust toolchain
 

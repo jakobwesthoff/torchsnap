@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#
+# Run shellcheck on every shell script of the git work tree this is
+# started in. `just lint` runs it through `just lint-shell`.
+#
+# The scripts are found, not listed: every file git tracks or would
+# track (untracked but not ignored) whose name ends in `.sh`, `.bash`,
+# `.dash` or `.ksh`, or whose first line is a shebang for sh, bash, dash
+# or ksh, the dialects shellcheck supports. zsh scripts are not checked.
+# Symlinks are skipped; a target inside the repository is checked under
+# its own path. Nested repositories and worktrees inside the checkout
+# are left to their own gate: git lists each as a single directory.
+#
+# Shell recipes in `Justfile` and `just/*.just` are not files and are
+# not checked.
+#
+# The script sticks to bash 3.2, the `/bin/bash` of macOS: no
+# `mapfile`, and no expansion of an empty array under `set -u`.
+#
+# Usage:
+#   tools/lint-shell
+
+set -euo pipefail
+
+if ! command -v shellcheck >/dev/null; then
+    echo "lint-shell: shellcheck not found; \`just doctor\` lists how to install it" >&2
+    exit 1
+fi
+
+# The assignment on its own line lets `set -e` stop the script outside a
+# git work tree, with git's own message.
+top=$(git rev-parse --show-toplevel)
+cd "$top"
+
+# The NUL-separated list goes through a file: a process substitution
+# would hide a failing git, a command substitution drops the NULs.
+listing=$(mktemp)
+trap 'rm -f "$listing"' EXIT
+git ls-files -z --cached --others --exclude-standard > "$listing"
+
+shebang='^#![[:space:]]*([^[:space:]]*/)?(env[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?([^[:space:]]*/)?(sh|bash|dash|ksh)([[:space:]]|$)'
+
+scripts=()
+while IFS= read -r -d '' path; do
+    # Tracked files deleted from disk and the directory entries of
+    # nested repositories are not regular files.
+    if [ ! -f "$path" ] || [ -L "$path" ]; then
+        continue
+    fi
+    case "$path" in
+        *.sh | *.bash | *.dash | *.ksh)
+            scripts+=("$path")
+            continue
+            ;;
+    esac
+    # At most 200 characters, so a large binary without a newline is
+    # not read whole. `read` returns 1 for an empty file or a last line
+    # without newline, and still fills `first_line` in the second case.
+    first_line=''
+    IFS= read -r -n 200 first_line < "$path" || true
+    if [[ $first_line =~ $shebang ]]; then
+        scripts+=("$path")
+    fi
+done < "$listing"
+
+if [ "${#scripts[@]}" -eq 0 ]; then
+    # Without file arguments, shellcheck prints its usage and fails.
+    echo "lint-shell: no shell scripts found"
+    exit 0
+fi
+
+echo "lint-shell: checking ${#scripts[@]} files"
+# Not `exec`: the EXIT trap has to run to remove the listing.
+shellcheck -x -- "${scripts[@]}"

@@ -3,8 +3,9 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # This file contains all code quality gates: type checking, clippy
-# linting, eslint, formatting, and build verification. The `fullcycle`
-# recipe runs them all in sequence as a pre-push validation step.
+# linting, eslint, shellcheck, formatting, and build verification. The
+# `fullcycle` recipe runs them all in sequence as a pre-push validation
+# step.
 
 # Run all tests (src-tauri Rust suite + gadget workspace + frontend + tools)
 test: test-crates test-gadgets test-frontend test-tools
@@ -81,8 +82,8 @@ check-crates:
 check-types:
     bun run tsc --noEmit
 
-# Lint everything (Rust + WASM gadgets + frontend)
-lint: lint-crates lint-gadgets lint-frontend
+# Lint everything (Rust + WASM gadgets + frontend + shell scripts)
+lint: lint-crates lint-gadgets lint-frontend lint-shell
 
 # Both clippy recipes deny warnings. Every crate in the repo lints
 # clean, so anything new is a regression rather than noise added to a
@@ -106,6 +107,15 @@ lint-gadgets:
 # Lint frontend (eslint)
 lint-frontend:
     bun run lint
+
+# `tools/lint-shell` finds the shell scripts by extension and shebang
+# among the files git tracks or would track, so a new script needs no
+# entry anywhere. Shell recipes in `Justfile` and `just/*.just` are not
+# files of their own, and shellcheck does not see them.
+
+# Lint shell scripts (shellcheck)
+lint-shell:
+    tools/lint-shell
 
 # Format everything (Rust + WASM gadgets + WIT + frontend)
 fmt: fmt-crates fmt-gadgets fmt-wit fmt-frontend

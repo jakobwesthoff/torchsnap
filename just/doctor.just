@@ -45,6 +45,7 @@ doctor:
     check cargo       "Rust toolchain"              "https://rustup.rs"
     check bun         "JS/TS runtime & bundler"     "https://bun.sh"
     check jq          "read the app name and version in the build and release recipes" "brew install jq"
+    check shellcheck  "lint shell scripts in \`just lint\`" "brew install shellcheck"
 
     # The lockfiles are maintained with Bun 1.4, whose `bun update`
     # also refreshes transitive packages. Bun has no per-project
@@ -82,7 +83,6 @@ doctor:
 
     echo ""
     echo "Optional:"
-    check shellcheck  "shell script linting"        "brew install shellcheck"
     check cargo-audit "check Cargo lockfiles in \`just audit\`" "cargo install cargo-audit --locked"
     check cargo-llvm-cov "Rust coverage reports in \`just coverage-crates\`" "cargo install cargo-llvm-cov --locked"
 

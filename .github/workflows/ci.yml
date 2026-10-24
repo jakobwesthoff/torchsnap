@@ -37,8 +37,9 @@ jobs:
           tool: just,wasm-tools
 
       # `just install` generates the icon, mascot and tray assets with
-      # ImageMagick and cwebp, and merges mascot data with jq.
-      - run: brew install imagemagick webp jq
+      # ImageMagick and cwebp, and merges mascot data with jq. `just lint`
+      # runs shellcheck.
+      - run: brew install imagemagick webp jq shellcheck
 
       # rustup reads `rust-toolchain.toml` and installs the pinned
       # release, the wasm32-wasip2 target, clippy and rustfmt on first

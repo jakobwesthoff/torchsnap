@@ -28,9 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether the search input is the active element. It answers with error
   `-4` when the launcher does not reply within two seconds or reloads
   before replying.
+- `just lint-shell` runs shellcheck on every shell script in the
+  repository, found by file extension and shebang. `just lint`, and so
+  `just fullcycle`, runs it. Shell recipes inside the justfiles are not
+  checked.
 
 ### Changed
 
+- `just doctor` lists shellcheck as a required tool.
 - Control API: `query` and `dismiss` answer with error `-1` when the
   launcher's frontend is not connected, instead of reporting success
   for a command it never received. `dismiss` then leaves the launcher

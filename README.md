@@ -56,9 +56,9 @@ Design rationale for individual subsystems lives in
 ## Setting up a fresh checkout
 
 1. Install [`just`](https://github.com/casey/just), then run
-   `just doctor`. It lists every external tool the recipes need
-   (rustup, bun, jq, zip, wasm-tools, ImageMagick, curl) and
-   how to install the missing ones.
+   `just doctor`. It checks the external tools the recipes need,
+   among them rustup, bun, jq, shellcheck, zip, wasm-tools,
+   ImageMagick and curl, and lists how to install the missing ones.
 2. Run `just install`. It generates the gitignored assets the build
    reads (app and tray icons, timezone data, and the
    DuckDuckGo bang database, which it downloads), runs `bun install`
