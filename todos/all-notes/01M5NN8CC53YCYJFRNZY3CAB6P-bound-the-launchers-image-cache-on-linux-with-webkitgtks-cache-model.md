@@ -24,6 +24,7 @@ After the launcher window is built, set the cache model through `with_webview`: 
 
 ## Before it lands
 
+- The measurement never looked at the screen. In the follow-up memory review, two other WebKit switches (hardware acceleration off) saved a lot of memory only because the launcher no longer painted at all, while the control API and the page's content-visible state reported a normal show. Confirm with screenshots that the card and a new mascot render on consecutive shows with the cache model set, before trusting the figures above.
 - tauri-runtime-wry shares one web context among all webviews without a data directory, so the settings and welcome windows lose their memory cache too. Check that they still load and behave as before.
 - A test that the launcher's context gets the cache model.
 - A measurement on the Linux testbed after the change (`just testbed-bench-memory --cycles`).
