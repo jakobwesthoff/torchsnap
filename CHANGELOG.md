@@ -104,6 +104,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Linux: the launcher shrinks to 1x1 while it is still mapped and hides
+  150 ms later, so the hidden launcher frees its window buffers (about
+  30 MiB less while hidden on a Raspberry Pi 5). A dismiss
+  reaches the hidden state 150 ms later. A show inside that time
+  cancels the hide and draws a new mascot.
 - `just doctor` lists shellcheck as a required tool.
 - Control API: `query` and `dismiss` answer with error `-1` when the
   launcher's frontend is not connected, instead of reporting success

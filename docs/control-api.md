@@ -101,7 +101,9 @@ echo '{"jsonrpc":"2.0","id":1,"method":"show"}' | socat - UNIX-CONNECT:"$SOCK"
 ### `hide`
 
 Hide the launcher window. The search query, selection, and any active
-gadget view are cleared when the window loses focus.
+gadget view are cleared when the window loses focus. On Linux the window
+is hidden 150 ms after the reply, and `status` reports it as visible
+until then.
 
 **Parameters:** none
 

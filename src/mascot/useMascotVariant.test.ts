@@ -14,6 +14,7 @@ import type { DrawInput } from "./selection";
 const state = vi.hoisted(() => ({
   settings: new Map<string, unknown>(),
   blurListeners: [] as (() => void)[],
+  hideCancelledListeners: [] as (() => void)[],
   unlistened: 0,
   draws: [] as DrawInput[],
 }));
@@ -30,6 +31,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({
     listen: (event: string, handler: () => void) => {
       if (event === "tauri://blur") state.blurListeners.push(handler);
+      if (event === "launcher-hide-cancelled") state.hideCancelledListeners.push(handler);
       return Promise.resolve(() => {
         state.unlistened++;
       });
@@ -83,6 +85,11 @@ function blur() {
   act(() => state.blurListeners.forEach((listener) => listener()));
 }
 
+/** A show that cancelled the pending hide of a dismiss. */
+function hideCancelled() {
+  act(() => state.hideCancelledListeners.forEach((listener) => listener()));
+}
+
 function strict({ children }: { children: ReactNode }) {
   return createElement(StrictMode, null, children);
 }
@@ -93,6 +100,7 @@ beforeEach(() => {
   state.settings.set("showNsfwMascots", true);
   state.settings.set("mascotMode", "center");
   state.blurListeners.length = 0;
+  state.hideCancelledListeners.length = 0;
   state.unlistened = 0;
   state.draws.length = 0;
 });
@@ -140,6 +148,29 @@ describe("useMascotVariant: settings", () => {
 });
 
 // =========================================================
+// A show that cancels a pending hide
+// =========================================================
+
+describe("useMascotVariant: a show that cancels a pending hide", () => {
+  it("draws the next mascot like a blur, remembering the one shown", () => {
+    randomAlways(0.5);
+    const { result } = renderHook(() => useMascotVariant());
+    const shown = result.current.draw!.character;
+    hideCancelled();
+    expect(lastDraw().recent).toEqual([shown]);
+    expect(result.current.draw!.remembered).toBe(1);
+  });
+
+  it("draws nothing while random mascots are off", () => {
+    state.settings.set("randomMascots", false);
+    renderHook(() => useMascotVariant());
+    const drawsAtMount = state.draws.length;
+    hideCancelled();
+    expect(state.draws).toHaveLength(drawsAtMount);
+  });
+});
+
+// =========================================================
 // The recent list
 // =========================================================
 
@@ -176,7 +207,8 @@ describe("useMascotVariant: recently shown", () => {
     const { unmount } = renderHook(() => useMascotVariant());
     unmount();
     await Promise.resolve();
-    expect(state.unlistened).toBe(1);
+    // The blur listener and the hide-cancelled listener.
+    expect(state.unlistened).toBe(2);
   });
 });
 

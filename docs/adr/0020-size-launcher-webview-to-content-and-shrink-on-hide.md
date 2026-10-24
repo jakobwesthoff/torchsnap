@@ -6,6 +6,8 @@ Date: 2026-03-28
 
 Accepted
 
+Amended by [74. Shrink the Linux launcher while it is mapped before hiding it](0074-shrink-the-linux-launcher-while-it-is-mapped-before-hiding-it.md)
+
 Amended by [71. Reserve no shadow pad above the launcher card](0071-reserve-no-shadow-pad-above-the-launcher-card.md)
 
 Amended by [72. Place the launcher card in the monitor's work area](0072-place-the-launcher-card-in-the-monitor-s-work-area.md)

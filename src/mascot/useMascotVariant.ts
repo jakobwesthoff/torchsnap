@@ -74,7 +74,7 @@ export function useMascotVariant(): { variant: string; draw: MascotDraw | null }
   // import the mascot package without rendering the launcher (the welcome
   // window, tests) never touch the Tauri window API.
   useEffect(() => {
-    const unlisten = getCurrentWebviewWindow().listen("tauri://blur", () => {
+    const drawNext = () => {
       if (!getSettingSync<boolean>("randomMascots")) return;
       setState((previous) => {
         // A blur without a dismiss (the launcher was never shown in
@@ -86,9 +86,16 @@ export function useMascotVariant(): { variant: string; draw: MascotDraw | null }
           : previous.recent;
         return { draw: draw(recent), recent };
       });
-    });
+    };
+    const win = getCurrentWebviewWindow();
+    const unlisten = win.listen("tauri://blur", drawNext);
+    // On Linux the window blurs when the hide happens, a moment after
+    // the dismiss. A show inside that moment cancels the hide, so no
+    // blur comes, yet the dismiss counted and the show gets a new draw.
+    const unlistenCancelled = win.listen("launcher-hide-cancelled", drawNext);
     return () => {
       unlisten.then((f) => f());
+      unlistenCancelled.then((f) => f());
     };
   }, []);
 

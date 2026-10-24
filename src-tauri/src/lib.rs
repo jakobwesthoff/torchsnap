@@ -12,6 +12,8 @@ mod gadget_install;
 mod gadget_status;
 mod gadgets;
 mod icons;
+#[cfg(any(target_os = "linux", test))]
+mod launcher_hide;
 mod monitor_placement;
 mod navigation_guard;
 mod network;
@@ -473,11 +475,85 @@ fn shrink_launcher_window(app: &tauri::AppHandle) {
 
 /// Hide the launcher panel and shrink the window to reclaim
 /// WebKit backing-store memory.
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn hide_launcher(app: &tauri::AppHandle) {
     if let Err(e) = PlatformLauncherPanel::hide(app) {
         eprintln!("failed to hide launcher: {e:#}");
     }
     shrink_launcher_window(app);
+}
+
+/// Shrink the launcher window while it is still mapped and hide it
+/// `MAPPED_SHRINK_WAIT` later, on the main thread. WebKitGTK frees
+/// the window's buffers only for a mapped shrink; after the hide the
+/// shrink frees nothing. Returns at once; a show or toggle inside the
+/// wait cancels the hide (see `cancel_pending_hide`).
+#[cfg(target_os = "linux")]
+pub(crate) fn hide_launcher(app: &tauri::AppHandle) {
+    let gate = Arc::clone(&*app.state::<Arc<launcher_hide::HideGate>>());
+    let shrink_app = app.clone();
+    let hide_app = app.clone();
+    launcher_hide::hide_after_mapped_shrink(
+        &gate,
+        &MainThreadTimer { app: app.clone() },
+        move || shrink_launcher_window(&shrink_app),
+        move || {
+            if let Err(e) = PlatformLauncherPanel::hide(&hide_app) {
+                eprintln!("failed to hide launcher: {e:#}");
+            }
+        },
+    );
+}
+
+/// Runs the delayed hide on the main thread after the wait, where the
+/// GTK window may be touched. The wait itself sleeps on a short-lived
+/// thread, so the caller never blocks.
+#[cfg(target_os = "linux")]
+struct MainThreadTimer {
+    app: tauri::AppHandle,
+}
+
+#[cfg(target_os = "linux")]
+impl launcher_hide::HideTimer for MainThreadTimer {
+    fn after(&self, delay: std::time::Duration, job: launcher_hide::HideJob) {
+        let app = self.app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(delay);
+            if let Err(e) = app.run_on_main_thread(job) {
+                eprintln!("failed to hand the delayed launcher hide to the main thread: {e:#}");
+            }
+        });
+    }
+}
+
+/// Drop a hide that is waiting for its timer, because the launcher is
+/// being shown again. Tells the page, so a show that follows a
+/// dismiss the user saw still gets a new mascot even though no blur
+/// comes.
+#[cfg(target_os = "linux")]
+fn cancel_pending_hide(app: &tauri::AppHandle) {
+    if app.state::<Arc<launcher_hide::HideGate>>().cancel()
+        && let Err(e) = app.emit("launcher-hide-cancelled", ())
+    {
+        eprintln!("failed to emit launcher-hide-cancelled: {e:#}");
+    }
+}
+
+/// Whether the launcher counts as open for a show or toggle. On Linux
+/// a window waiting for its delayed hide does not.
+fn launcher_is_open(app: &tauri::AppHandle) -> bool {
+    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
+    #[cfg(target_os = "linux")]
+    {
+        launcher_hide::counts_as_visible(
+            is_visible,
+            app.state::<Arc<launcher_hide::HideGate>>().is_pending(),
+        )
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        is_visible
+    }
 }
 
 /// Initiate a launcher dismiss.
@@ -547,6 +623,8 @@ fn gadget_open_settings(app: tauri::AppHandle, gadget_id: String) {
 /// shows up but the focus event never fires, leaving the launcher
 /// stuck with `visibility: hidden`.
 pub(crate) fn show_launcher(app: &tauri::AppHandle) -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    cancel_pending_hide(app);
     PlatformLauncherPanel::show(app)?;
     #[cfg(target_os = "linux")]
     {
@@ -642,7 +720,7 @@ fn launcher_show_step(is_visible: bool, layout_ready: bool) -> LauncherShowStep 
 }
 
 pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
-    if PlatformLauncherPanel::is_visible(app).unwrap_or(false) {
+    if launcher_is_open(app) {
         request_launcher_dismiss(app);
     } else {
         show_launcher_window(app);
@@ -652,7 +730,7 @@ pub(crate) fn toggle_launcher_window(app: &tauri::AppHandle) {
 /// Bring up the launcher without hiding it when it is already open,
 /// for callers that mean "show", like launching Torchsnap again.
 pub(crate) fn show_launcher_window(app: &tauri::AppHandle) {
-    let is_visible = PlatformLauncherPanel::is_visible(app).unwrap_or(false);
+    let is_visible = launcher_is_open(app);
     let layout_state = app.state::<LauncherLayoutState>();
     let layout = layout_state.get().copied();
 
@@ -1288,6 +1366,8 @@ pub fn run() {
             }
             gadget_install::process_in_background(&install_queue, to_process);
 
+            #[cfg(target_os = "linux")]
+            app.manage(Arc::new(launcher_hide::HideGate::new()));
             app.manage(install_paths);
             app.manage(install_staging);
             app.manage(registered_gadgets);
