@@ -459,16 +459,18 @@ round, not separable):
 
 | Before the hide | 2 s | 12 s | 60 s | Against today at 60 s | Dismiss to hidden |
 |---|---|---|---|---|---|
-| nothing (today) | 639.7 | 617.4 | 617.3 | | 600 ms |
-| shrink, 0 ms | 634.7 | 627.4 | 615.5 | not separable | |
-| shrink, 16 ms | 644.0 | 597.7 | 597.5 | −19.7 | 638 ms |
-| shrink, 50 ms | 615.3 | 568.8 | 568.7 | −48.6 | 677 ms |
-| shrink, 150 ms | 619.8 | 590.1 | 587.4 | −29.8 | 774 ms |
-| shrink, 500 ms | 614.1 | 590.3 | 582.1 | −35.2 | 1118 ms |
-| shrink, second draw | 628.1 | 588.1 | 588.5 | −28.8 | 652 ms |
-| shrink, frame timings (timeout) | 613.7 | 575.4 | 574.8 | −42.5 | 919 ms |
+| nothing (today) | 639.7 | 617.4 | 617.3 | | 42 ms |
+| shrink, 0 ms | 634.7 | 627.4 | 615.5 | not separable | 42 ms |
+| shrink, 16 ms | 644.0 | 597.7 | 597.5 | −19.7 | 65 ms |
+| shrink, 50 ms | 615.3 | 568.8 | 568.7 | −48.6 | 103 ms |
+| shrink, 150 ms | 619.8 | 590.1 | 587.4 | −29.8 | 204 ms |
+| shrink, 500 ms | 614.1 | 590.3 | 582.1 | −35.2 | 549 ms |
+| shrink, second draw | 628.1 | 588.1 | 588.5 | −28.8 | 83 ms |
+| shrink, frame timings (timeout) | 613.7 | 575.4 | 574.8 | −42.5 | 347 ms |
 
-Decision figure in MiB, means; dismiss to hidden as medians.
+Decision figure in MiB, means. Dismiss to hidden: medians over 20
+timing cycles per run, from the content being visible to the control
+API reporting the launcher hidden, minus the 0.5 s hold between them.
 
 - Without the shrink, the web process's GPU memory falls from 108.8 to
   96.7 MiB between 5 and 12 s, which matches the 10 s timer that frees
