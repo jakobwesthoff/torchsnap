@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 # shellcheck shell=bash
+# shellcheck disable=SC2154 # the headless_* variables are set by testbed-pi, which sources this file.
 
 # GNOME side of testbed-pi. GNOME Shell answers its Eval method only in
 # unsafe mode, which the testbed's Shell extension switches on

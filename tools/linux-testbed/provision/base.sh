@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 # shellcheck shell=bash
+# shellcheck disable=SC2154 # tree_dir and provision_dir are set by provision, which sources this file.
 
 # Desktop-independent provision steps: build tools, the Rust, JS and WASM
 # toolchains, ydotool for input, and no suspend. Sourced by `provision`,

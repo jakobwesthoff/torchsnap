@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 # shellcheck shell=bash
+# shellcheck disable=SC2154 # provision_dir is set by provision, which sources this file.
 
 # GNOME provision steps: Debian's GNOME next to the existing desktops, gdm
 # with autologin, an unattended session (no lock, blanking or welcome
