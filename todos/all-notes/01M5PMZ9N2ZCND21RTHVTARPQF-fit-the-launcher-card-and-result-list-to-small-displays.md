@@ -15,7 +15,7 @@ On displays less than about 900 logical pixels high the launcher's result list i
 - 2026-10-24: keep the fixed-size window on Linux (no maximized window) and adapt the page instead.
 - 2026-10-24: when not all rows fit, cap the list to the room there is and let the rest scroll, on all platforms. This holds for gadget views as well, such as the emoji grid. Rejected: showing fewer results with no way to reach the others.
 - 2026-10-24: not now. The maintainer: it "hört sich nämlich gar nicht so unkompliziert an, weil es auch Gadgets und die Art, wie die Rendern und so weiter betrifft, da müssen wir uns definitiv über die API Gedanken machen und wie wir diese Informationen, die da zur Verfügung steht, überhaupt in die UI transportieren und dann auch zu den Gadget-Renderern wie Emoji und so weiter."
-- Related work decided the same day, separate from this todo: the 64 px shadow pad above the card is dropped on every platform (the card's upward shadow fits inside the mascot headroom), and whether the card is placed at 25 % of the usable screen area instead of the full monitor is being researched (adopted only if getting the work area is simple). Both change the numbers below; recompute them before building this.
+- Related work, separate from this todo: the 64 px shadow pad above the card is gone on every platform (ADR 0071, main 3cbc82e3), and placing the card at 25 % of the monitor's work area instead of the full monitor was decided on 2026-10-24 (on Wayland the compositor places the window, so nothing changes there). The measurements below were taken before both; recompute the cut-off figures before building this.
 
 ## Open questions
 
@@ -26,8 +26,8 @@ On displays less than about 900 logical pixels high the launcher's result list i
 
 ## How the launcher is laid out (main, 2026-10-24)
 
-- The window is `SHADOW_PADDING + MASCOT_HEADROOM + card + SHADOW_PADDING` high (`src/launcher/main.tsx`, around line 66; constants in `src/launcher/layout.ts`), measured once for the largest card: 64 + 181.9 + about 550 + 64, so 860 logical pixels, and 680 + 2 x 64 = 808 wide. It is the same empty and with results (ADR 0020).
-- The card's top sits `CARD_TOP_OFFSET` = 245.9 px below the window top. The card is 61 px high empty, 449 px with the emoji grid (`:fire`), about 550 px with a full list.
+- The window is `MASCOT_HEADROOM + card + SHADOW_PADDING` high (`launcherWindowLayout` in `src/launcher/layout.ts`, sent from `src/launcher/main.tsx`), measured once for the largest card: 181.9 + about 550 + 64, so 796 logical pixels, and 680 + 2 x 64 = 808 wide. It is the same empty and with results (ADR 0020, 0071). Until 3cbc82e3 a 64 px pad sat above the headroom: 860 px high, card 245.9 px below the window top, which is what the measurements below saw.
+- The card's top sits `CARD_TOP_OFFSET` = `MASCOT_HEADROOM` = 181.9 px below the window top. The card is 61 px high empty, 449 px with the emoji grid (`:fire`), about 550 px with a full list.
 - The content area is at most 448 px high (`max-h-[448px]` on the content wrapper in `src/launcher/Launcher.tsx`, around line 875; the comment above the content states says all views must fit within it). It holds the result list, inline gadget views above the list, and full gadget views (`PluginViewContainer`). A result row is 56 px (`py-2.5` around a 20 px title line and a 16 px subtitle line, `src/launcher/ResultRow.tsx`), so 448 px hold 8 rows; screenshots confirm 56 px row spacing.
 - The Rust side places the card top at 25 % of the full monitor height on every platform (`src-tauri/src/monitor_placement.rs`, around lines 157-166); no code subtracts a menu bar, dock, top bar or task bar.
 
@@ -55,7 +55,7 @@ The search field and the empty launcher are fully visible everywhere; the window
 
 ## Rows that fit (computed, not measured)
 
-From a layout model checked against the GNOME measurements above (analysis of 2026-10-24): full rows of 8 that fit today on GNOME are 6 at 1024 x 768, 6 at 1280 x 720, 7 at 1280 x 800 and 6 at 1366 x 768; without the top shadow pad 8, 7, 8 and 8 (at 1366 x 768 the card then ends 1 px above the screen edge, part of its bottom shadow outside). On macOS, with the card at 25 % of the full monitor, 8 rows fit at every common size except 7 at 1280 x 720. So after the top pad goes, capping and scrolling matters mainly below about 800 logical pixels, for scaled 4K setups such as 1920 x 1080 at scale 2, and for gadget views taller than the list.
+From a layout model checked against the GNOME measurements above (analysis of 2026-10-24): full rows of 8 that fit on GNOME with the old 245.9 px offset were 6 at 1024 x 768, 6 at 1280 x 720, 7 at 1280 x 800 and 6 at 1366 x 768; with the 181.9 px offset of 3cbc82e3 8, 7, 8 and 8 (at 1366 x 768 the card ends 1 px above the screen edge, part of its bottom shadow outside; not yet checked on screen). On macOS, with the card at 25 % of the full monitor, 8 rows fit at every common size except 7 at 1280 x 720. So capping and scrolling matters mainly below about 800 logical pixels, for scaled 4K setups such as 1920 x 1080 at scale 2, and for gadget views taller than the list.
 
 ## Tests to plan
 
