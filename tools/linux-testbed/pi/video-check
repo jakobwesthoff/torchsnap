@@ -3,15 +3,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# Prints {"duration": SECONDS, "white_first": SHARE, "white_middle": SHARE}
-# for a recording: its length, and the share of near-white pixels in its
-# first frame and in the frame in its middle, within the area CROP
-# (X,Y,WIDTH,HEIGHT in the video's pixels) when given. The launcher's
-# light search field over the dark terminal raises that share, while text
-# scrolling in the terminal barely moves it; a plain pixel difference
-# counts the scrolling text as well.
+# Prints {"duration", "shown_share", "control_share", "shown_in_middle"}
+# for a recording of the launcher opening and closing, within CROP
+# (X,Y,WIDTH,HEIGHT in the video's pixels), the launcher's area: the
+# share of pixels whose grey value changed by more than 10 % between the
+# first frame (launcher hidden) and the middle one (shown), and the same
+# share between the first frame and the last one (hidden again), the
+# control. Any colour counts, so a dark and a light launcher alike
+# change their area, and one that paints nothing changes nothing. The
+# launcher shows in the middle when its share is at least
+# MIN_SHOWN_SHARE and at least CONTROL_FACTOR times the control's: a
+# launcher that never hides changes the last frame as much as the
+# middle one.
 #
-# Usage: video-check FILE [CROP]
+# Usage: video-check FILE X,Y,WIDTH,HEIGHT
 
 import json
 import pathlib
@@ -19,45 +24,54 @@ import subprocess
 import sys
 import tempfile
 
+THRESHOLD = "10%"
+MIN_SHOWN_SHARE = 0.005
+CONTROL_FACTOR = 4
 
-def white_share(picture):
-    """The share of pixels within 15% of white."""
-    return float(
-        subprocess.run(
-            ["magick", str(picture), "-fuzz", "15%", "-fill", "black", "+opaque", "white",
-             "-colorspace", "gray", "-format", "%[fx:mean]", "info:"],
-            check=True, capture_output=True, text=True,
-        ).stdout
-    )
+
+def magick(*args):
+    return subprocess.run(["magick", *map(str, args)], check=True, capture_output=True, text=True).stdout
 
 
 def main():
-    if len(sys.argv) not in (2, 3):
-        print("usage: video-check FILE [X,Y,WIDTH,HEIGHT]", file=sys.stderr)
+    if len(sys.argv) != 3:
+        print("usage: video-check FILE X,Y,WIDTH,HEIGHT", file=sys.stderr)
         return 2
-    video = sys.argv[1]
-    crop = []
-    if len(sys.argv) == 3:
-        x, y, width, height = sys.argv[2].split(",")
-        crop = ["-vf", f"crop={width}:{height}:{x}:{y}"]
+    video, area = sys.argv[1:]
+    x, y, width, height = area.split(",")
+    crop = ["-vf", f"crop={width}:{height}:{x}:{y}"]
     duration = float(
         subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
             check=True, capture_output=True, text=True,
         ).stdout
     )
-    with tempfile.TemporaryDirectory() as work:
-        first = pathlib.Path(work) / "first.png"
-        middle = pathlib.Path(work) / "middle.png"
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-i", video, *crop, "-frames:v", "1", str(first)], check=True
-        )
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-ss", str(duration / 2), "-i", video, *crop, "-frames:v", "1", str(middle)],
-            check=True,
-        )
-        white = [white_share(frame) for frame in (first, middle)]
-    print(json.dumps({"duration": duration, "white_first": white[0], "white_middle": white[1]}))
+    with tempfile.TemporaryDirectory() as directory:
+        work = pathlib.Path(directory)
+        frames = {name: work / f"{name}.png" for name in ("first", "middle", "last")}
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, *crop, "-frames:v", "1", str(frames["first"])],
+                       check=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(duration / 2), "-i", video, *crop,
+                        "-frames:v", "1", str(frames["middle"])], check=True)
+        # The recording gets a frame only when the screen changes, so the
+        # last frame can lie seconds before the end: every frame of the
+        # second half is written over the same file, the last one stays.
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(duration / 2), "-i", video, *crop,
+                        "-update", "1", str(frames["last"])], check=True)
+
+        def changed_share(frame):
+            return float(magick(
+                frames["first"], frame, "-colorspace", "gray", "-compose", "difference", "-composite",
+                "-threshold", THRESHOLD, "-format", "%[fx:mean]", "info:",
+            ))
+
+        shown, control = changed_share(frames["middle"]), changed_share(frames["last"])
+    print(json.dumps({
+        "duration": duration,
+        "shown_share": shown,
+        "control_share": control,
+        "shown_in_middle": shown >= MIN_SHOWN_SHARE and shown >= CONTROL_FACTOR * control,
+    }))
     return 0
 
 

@@ -17,6 +17,7 @@ import shutil
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -2758,6 +2759,71 @@ class ScreenShield(unittest.TestCase):
         self.assertEqual(self.ydotool_calls()[:2], [["mousemove", "-x", "1", "-y", "0"], ["mousemove", "-x", "-1", "-y", "0"]])
         calls = self.gdbus_calls()
         self.assertIn("org.gnome.ScreenSaver.GetActive", calls[0])
+
+
+VIDEO_CHECK = TESTBED_PI.parent / "video-check"
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("magick"), "ffmpeg or ImageMagick is missing")
+class VideoCheck(unittest.TestCase):
+    """video-check measures how much of the launcher's area changes from
+    the recording's first frame (hidden) to its middle (shown) and, as a
+    control, to its last frame (hidden again), whatever colours the
+    launcher has. The pictures are 64x64: a dark desktop and, when the
+    launcher is shown, its card."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="tb-video-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def picture(self, card=None):
+        path = self.tmp / f"{card or 'desktop'}.png".replace("#", "")
+        draw = ["-fill", card, "-draw", "rectangle 16,8 47,40"] if card else []
+        subprocess.run(["magick", "-size", "64x64", "xc:#101010", *draw, str(path)], check=True)
+        return path
+
+    def check(self, *pictures):
+        """A recording of two seconds per picture, H.264 as GNOME Shell
+        records, checked over the whole picture."""
+        video = self.tmp / "recording.mp4"
+        inputs = []
+        for picture in pictures:
+            inputs += ["-loop", "1", "-t", "2", "-r", "10", "-i", str(picture)]
+        concat = "".join(f"[{i}:v]" for i in range(len(pictures))) + f"concat=n={len(pictures)}:v=1[v]"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", concat, "-map", "[v]",
+                        "-pix_fmt", "yuv420p", "-c:v", "libx264", str(video)], check=True)
+        result = subprocess.run([sys.executable, str(VIDEO_CHECK), str(video), "0,0,64,64"],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_a_dark_launcher_over_a_dark_screen_shows_in_the_middle(self):
+        desktop = self.picture()
+        check = self.check(desktop, self.picture("#3a3a48"), desktop)
+        self.assertTrue(check["shown_in_middle"], check)
+        self.assertGreater(check["duration"], 5)
+
+    def test_a_light_launcher_shows_in_the_middle(self):
+        desktop = self.picture()
+        self.assertTrue(self.check(desktop, self.picture("#f0f0f0"), desktop)["shown_in_middle"])
+
+    def test_a_launcher_that_never_shows_does_not(self):
+        desktop = self.picture()
+        check = self.check(desktop, desktop, desktop)
+        self.assertFalse(check["shown_in_middle"], check)
+
+    def test_a_launcher_that_never_hides_does_not_count(self):
+        desktop, launcher = self.picture(), self.picture("#3a3a48")
+        check = self.check(desktop, launcher, launcher)
+        self.assertGreater(check["control_share"], 0.1, check)
+        self.assertFalse(check["shown_in_middle"], check)
+
+    def test_the_area_is_required(self):
+        result = subprocess.run([sys.executable, str(VIDEO_CHECK), "x.mp4"],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 2)
 
 
 # ImageMagick's `magick compare -metric AE A B null:` for the screen

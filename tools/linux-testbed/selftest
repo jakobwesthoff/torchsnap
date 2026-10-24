@@ -38,7 +38,8 @@
 #       only with GNOME's AppIndicator extension
 #   5   needs the tray on: clicking the tray icon opens its menu, Escape
 #       closes it
-#   9   a screen recording shows the launcher opening
+#   9   a screen recording shows the launcher opening and closing, in
+#       either theme
 #   8   a headless session with monitors at scale 1 and 2 runs the app
 #   11  stop-all leaves nothing of the testbed running and the desktop
 #       as the self-test found it
@@ -330,13 +331,15 @@ item_5() {
 }
 
 # A recording of the launcher opening and closing is a video of at least
-# a second in which the launcher's area gets lighter: the launcher's
-# light search field over the dark screen. A dark launcher theme would
-# break this check; it would then need a measure that ignores colour.
-# The frames are measured on the machine, which has ffmpeg and
-# ImageMagick from provisioning.
+# a second in which the launcher's area changes from the first frame to
+# the middle one and changes back by the last (video-check): any colour
+# counts, so a dark and a light launcher alike pass. A runner's terminal
+# on the screen would print every call below into that area, so the
+# item runs its calls over plain SSH. The frames are measured on the
+# machine, which has ffmpeg and ImageMagick from provisioning.
 item_9() {
     local local_file remote_file check crop
+    local -x TORCHSNAP_LINUX_RUNNER=''
     app_up 9 || return
     # The launcher's area in the video's pixels: its logical rectangle
     # times the monitor's scale. Only that area is compared, since other
@@ -373,11 +376,12 @@ except ValueError:
     sys.exit()
 if check["duration"] < 1:
     print("recording shorter than a second: %s s" % check["duration"])
-elif check["white_middle"] - check["white_first"] < 0.03:
-    print("the launcher does not show in the recording (light share %.3f at the start, %.3f in the middle)"
-          % (check["white_first"], check["white_middle"]))
+elif not check["shown_in_middle"]:
+    print("the launcher does not show in the recording (%.4f of its area changed when shown, %.4f after the hide)"
+          % (check["shown_share"], check["control_share"]))
 ' "$check")"
     [ -z "$problem" ] || { fail 9 "$problem"; return; }
+    echo "  recording: $check"
     pass 9
 }
 
