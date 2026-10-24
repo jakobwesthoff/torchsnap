@@ -8,6 +8,8 @@ Accepted
 
 Amended by [71. Reserve no shadow pad above the launcher card](0071-reserve-no-shadow-pad-above-the-launcher-card.md)
 
+Amended by [72. Place the launcher card in the monitor's work area](0072-place-the-launcher-card-in-the-monitor-s-work-area.md)
+
 ## Context
 
 Torchsnap's launcher window is a Tauri webview backed by macOS WebKit

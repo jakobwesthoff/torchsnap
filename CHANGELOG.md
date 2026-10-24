@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   above the card fits in the space kept for the mascot, so no separate
   pad sits above it. Where the window manager places the window
   itself, as GNOME does, the card sits up to 64 px higher.
+- The launcher window is placed in the monitor's work area, the part
+  that the menu bar, Dock, task bar and panels leave free. The card
+  sits a quarter of the way down that area, and the window's top stays
+  inside it. Wayland desktops place the window themselves and are not
+  affected.
 
 ### Removed
 

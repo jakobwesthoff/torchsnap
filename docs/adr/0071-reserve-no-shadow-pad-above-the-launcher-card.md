@@ -8,6 +8,8 @@ Accepted
 
 Amends [20. Size launcher webview to content and shrink on hide](0020-size-launcher-webview-to-content-and-shrink-on-hide.md)
 
+Amended by [72. Place the launcher card in the monitor's work area](0072-place-the-launcher-card-in-the-monitor-s-work-area.md)
+
 ## Context
 
 ADR 20 sizes the launcher window to its largest card plus a pad for the

@@ -440,12 +440,10 @@ fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
 
 pub(crate) fn position_launcher_on_cursor_monitor(app: &tauri::AppHandle, layout: &LauncherLayout) {
     if let Some(monitor) = monitor_under_cursor(app) {
-        let target = TargetMonitor::of(
-            monitor.name().map(String::as_str),
-            &ReportedMonitor::of(&monitor),
-        );
+        let reported = ReportedMonitor::of(&monitor);
+        let target = TargetMonitor::of(monitor.name().map(String::as_str), &reported);
         let (win_x, win_y) =
-            launcher_window_origin(&target, layout.window_width, layout.card_top_offset);
+            launcher_window_origin(&reported, layout.window_width, layout.card_top_offset);
 
         match PlatformLauncherPanel::set_frame(
             app,

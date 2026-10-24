@@ -24,17 +24,49 @@ use tauri::{LogicalPosition, PhysicalPosition, PhysicalSize};
 pub(crate) struct ReportedMonitor {
     pub(crate) position: PhysicalPosition<i32>,
     pub(crate) size: PhysicalSize<u32>,
+    /// The part of the monitor that the menu bar, Dock, task bar and
+    /// panels leave free, reported in the same space as `position` and
+    /// `size`. Tauri reports the whole monitor where the platform has no
+    /// work area, as on Wayland.
+    pub(crate) work_position: PhysicalPosition<i32>,
+    pub(crate) work_size: PhysicalSize<u32>,
     pub(crate) scale_factor: f64,
 }
 
 impl ReportedMonitor {
     pub(crate) fn of(monitor: &tauri::Monitor) -> Self {
+        let work_area = monitor.work_area();
         Self {
             position: *monitor.position(),
             size: *monitor.size(),
+            work_position: work_area.position,
+            work_size: work_area.size,
             scale_factor: monitor.scale_factor(),
         }
     }
+
+    /// The work area in the units placement computes with: points on
+    /// macOS, logical pixels elsewhere. Tauri scales the work area with
+    /// the monitor's own scale factor, like `position` and `size`, so
+    /// the division is the one `TargetMonitor::of` applies to the rect.
+    fn work_area(&self) -> LogicalRect {
+        let scale = self.scale_factor;
+        LogicalRect {
+            x: self.work_position.x as f64 / scale,
+            y: self.work_position.y as f64 / scale,
+            width: self.work_size.width as f64 / scale,
+            height: self.work_size.height as f64 / scale,
+        }
+    }
+}
+
+/// A rectangle in logical units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LogicalRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 }
 
 /// How the reported cursor position and window sizes relate to the
@@ -150,18 +182,24 @@ impl TargetMonitor {
     }
 }
 
-/// Top-left origin of the launcher window on `target`: centred
+/// Top-left origin of the launcher window on `monitor`: centred
 /// horizontally, and placed so that the card, which sits
 /// `card_top_offset` below the window's top, starts at a quarter of the
-/// monitor's height.
+/// work area's height.
+///
+/// The window's top never lies above the work area's top: on a work
+/// area shorter than four card offsets the card would otherwise push
+/// the window under the menu bar or panel. The window may extend below
+/// the work area, which is not clamped.
 pub(crate) fn launcher_window_origin(
-    target: &TargetMonitor,
+    monitor: &ReportedMonitor,
     window_width: f64,
     card_top_offset: f64,
 ) -> (f64, f64) {
+    let work = monitor.work_area();
     (
-        target.x + (target.width - window_width) / 2.0,
-        target.y + (0.25 * target.height) - card_top_offset,
+        work.x + (work.width - window_width) / 2.0,
+        (work.y + (0.25 * work.height) - card_top_offset).max(work.y),
     )
 }
 
@@ -173,7 +211,25 @@ mod tests {
         ReportedMonitor {
             position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
+            work_position: PhysicalPosition::new(x, y),
+            work_size: PhysicalSize::new(width, height),
             scale_factor,
+        }
+    }
+
+    /// `monitor` with its work area set to the given rectangle, in the
+    /// same reported units as the monitor's own position and size.
+    fn with_work_area(
+        monitor: ReportedMonitor,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> ReportedMonitor {
+        ReportedMonitor {
+            work_position: PhysicalPosition::new(x, y),
+            work_size: PhysicalSize::new(width, height),
+            ..monitor
         }
     }
 
@@ -395,16 +451,44 @@ mod tests {
         height: u32,
         scale_factor: f64,
     ) -> ReportedMonitor {
+        let position = PhysicalPosition::new(
+            (x as f64 * scale_factor).round() as i32,
+            (y as f64 * scale_factor).round() as i32,
+        );
+        let size = PhysicalSize::new(
+            (width as f64 * scale_factor).round() as u32,
+            (height as f64 * scale_factor).round() as u32,
+        );
         ReportedMonitor {
-            position: PhysicalPosition::new(
-                (x as f64 * scale_factor).round() as i32,
-                (y as f64 * scale_factor).round() as i32,
-            ),
-            size: PhysicalSize::new(
-                (width as f64 * scale_factor).round() as u32,
-                (height as f64 * scale_factor).round() as u32,
-            ),
+            position,
+            size,
+            work_position: position,
+            work_size: size,
             scale_factor,
+        }
+    }
+
+    /// `monitor` with its work area at (`x`, `y`) points, `width` by
+    /// `height` points, scaled by the monitor's own factor as tao and
+    /// Tauri report it.
+    fn with_macos_work_area(
+        monitor: ReportedMonitor,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> ReportedMonitor {
+        let scale = monitor.scale_factor;
+        ReportedMonitor {
+            work_position: PhysicalPosition::new(
+                (x as f64 * scale).round() as i32,
+                (y as f64 * scale).round() as i32,
+            ),
+            work_size: PhysicalSize::new(
+                (width as f64 * scale).round() as u32,
+                (height as f64 * scale).round() as u32,
+            ),
+            ..monitor
         }
     }
 
@@ -741,19 +825,126 @@ mod tests {
         );
     }
 
+    // =========================================================
+    // Launcher origin in the work area
+    // =========================================================
+
     #[test]
-    fn launcher_window_origin_centres_and_sits_at_a_quarter() {
-        let target = TargetMonitor {
-            name: None,
-            x: 1280.0,
-            y: 0.0,
-            width: 2560.0,
-            height: 1440.0,
-            scale_factor: 2.0,
-        };
+    fn launcher_origin_on_a_full_work_area_is_a_quarter_of_the_monitor() {
+        let monitor = monitor(2560, 0, 2560, 1440, 1.0);
         assert_eq!(
-            launcher_window_origin(&target, 760.0, 120.0),
-            (2180.0, 240.0)
+            launcher_window_origin(&monitor, 760.0, 120.0),
+            (3460.0, 240.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_follows_a_work_area_cut_at_the_top() {
+        // A 24 point menu bar on a 1440 point high monitor.
+        let monitor = with_work_area(monitor(0, 0, 2560, 1440, 1.0), 0, 24, 2560, 1416);
+        assert_eq!(
+            launcher_window_origin(&monitor, 760.0, 120.0),
+            (900.0, 24.0 + 354.0 - 120.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_follows_a_work_area_cut_at_the_bottom() {
+        // A 96 point Dock: the top stays, the height shrinks.
+        let monitor = with_work_area(monitor(0, 0, 2560, 1440, 1.0), 0, 0, 2560, 1344);
+        assert_eq!(
+            launcher_window_origin(&monitor, 760.0, 120.0),
+            (900.0, 336.0 - 120.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_centres_on_a_work_area_cut_at_the_left() {
+        let monitor = with_work_area(monitor(0, 0, 2560, 1440, 1.0), 70, 0, 2490, 1440);
+        assert_eq!(
+            launcher_window_origin(&monitor, 760.0, 120.0),
+            (935.0, 240.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_centres_on_a_work_area_cut_at_the_right() {
+        let monitor = with_work_area(monitor(0, 0, 2560, 1440, 1.0), 0, 0, 2490, 1440);
+        assert_eq!(
+            launcher_window_origin(&monitor, 760.0, 120.0),
+            (865.0, 240.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_keeps_the_window_top_inside_the_work_area() {
+        // A quarter of the 480 high work area lies 120 below its top,
+        // less than the 181.9 the card sits below the window's top.
+        let monitor = with_work_area(monitor(0, 0, 1024, 600, 1.0), 0, 35, 1024, 480);
+        assert_eq!(
+            launcher_window_origin(&monitor, 760.0, 181.9),
+            (132.0, 35.0)
+        );
+    }
+
+    #[test]
+    fn launcher_origin_does_not_clamp_a_window_that_fits() {
+        let monitor = with_work_area(monitor(0, 0, 1366, 768, 1.0), 0, 35, 1366, 733);
+        let (_, y) = launcher_window_origin(&monitor, 760.0, 181.9);
+        assert!((y - (35.0 + 183.25 - 181.9)).abs() < 1e-9, "y = {y}");
+    }
+
+    #[test]
+    fn launcher_origin_divides_the_work_area_by_the_scale_factor() {
+        for scale in [1.0, 1.5, 2.0] {
+            // A 1280 by 800 logical monitor with a 40 high bar on top,
+            // reported in physical pixels.
+            let physical = |logical: f64| (logical * scale).round();
+            let monitor = with_work_area(
+                monitor(0, 0, physical(1280.0) as u32, physical(800.0) as u32, scale),
+                0,
+                physical(40.0) as i32,
+                physical(1280.0) as u32,
+                physical(760.0) as u32,
+            );
+            assert_eq!(
+                launcher_window_origin(&monitor, 680.0, 100.0),
+                (300.0, 40.0 + 190.0 - 100.0),
+                "scale {scale}"
+            );
+        }
+    }
+
+    #[test]
+    fn macos_launcher_origin_is_in_points_on_retina_and_non_retina_monitors() {
+        let [retina, external] = retina_primary_with_external_on_the_right();
+        // A 38 point menu bar on the Retina display. On the external
+        // display a 24 point menu bar and a 70 point Dock at the left.
+        let retina = with_macos_work_area(retina, 0, 38, 1512, 944);
+        let external = with_macos_work_area(external, 1512 + 70, 24, 2490, 1416);
+        assert_eq!(
+            launcher_window_origin(&retina, 680.0, 100.0),
+            (416.0, 38.0 + 236.0 - 100.0)
+        );
+        assert_eq!(
+            launcher_window_origin(&external, 680.0, 100.0),
+            (1582.0 + 905.0, 24.0 + 354.0 - 100.0)
+        );
+    }
+
+    #[test]
+    fn target_monitor_keeps_the_full_rect_when_the_work_area_is_smaller() {
+        let monitor = with_work_area(monitor(0, 0, 1920, 1080, 1.0), 0, 35, 1920, 1045);
+        assert_eq!(
+            TargetMonitor::of(None, &monitor),
+            TargetMonitor {
+                name: None,
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+                scale_factor: 1.0,
+            }
         );
     }
 }
