@@ -17,16 +17,16 @@ describe("launcherWindowLayout", () => {
   it("sizes the window for the largest card", () => {
     expect(launcherWindowLayout(680, 550)).toEqual({
       windowWidth: 808,
-      windowHeight: expect.closeTo(859.9, 10),
-      cardTopOffset: expect.closeTo(245.9, 10),
+      windowHeight: expect.closeTo(795.9, 10),
+      cardTopOffset: expect.closeTo(181.9, 10),
     });
   });
 
   it("follows the card's height", () => {
     expect(launcherWindowLayout(680, 61)).toEqual({
       windowWidth: 808,
-      windowHeight: expect.closeTo(370.9, 10),
-      cardTopOffset: expect.closeTo(245.9, 10),
+      windowHeight: expect.closeTo(306.9, 10),
+      cardTopOffset: expect.closeTo(181.9, 10),
     });
   });
 });

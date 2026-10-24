@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   static and a dynamic library. On an Apple silicon Mac, `cargo build`
   after a one-line change went from about 2.95 s to 2.31 s and
   `cargo test --no-run` from about 3.04 s to 2.54 s.
+- The launcher window is 64 logical pixels shorter. The card's shadow
+  above the card fits in the space kept for the mascot, so no separate
+  pad sits above it. Where the window manager places the window
+  itself, as GNOME does, the card sits up to 64 px higher.
 
 ### Removed
 

@@ -18,11 +18,15 @@
 import type { CommandMap } from "../lib/command";
 
 /**
- * Clearance around the card for CSS box-shadow bleed (px).
+ * Clearance beside and below the card for CSS box-shadow bleed (px).
  *
- * The card's largest shadow is `0 16px 48px`. The blur radius (48px)
- * sets how far the shadow extends; adding the y-offset (16px) gives
- * 64px on the bottom edge. We use 64px uniformly on all sides.
+ * The card's largest shadow is `0 16px 48px`. Its alpha drops below
+ * one 8-bit step about two standard deviations (48px) past its edge,
+ * which the y-offset (16px) moves down: about 47px beside the card
+ * and 63px below it. The pad also holds the mirrored sidekick, which
+ * overhangs the card's right edge by up to about 20px. Above the card
+ * the mascot headroom holds the shadow (see {@link CARD_TOP_OFFSET}).
+ * See ADR 0071.
  */
 export const SHADOW_PADDING = 64;
 
@@ -73,8 +77,14 @@ export const SIDEKICK_ANCHOR_INSET = 48;
  */
 export const MASCOT_HEADROOM = MASCOT_SIZE.center - CENTER_FEET_Y;
 
-/** Offset from window top edge to card top edge. */
-export const CARD_TOP_OFFSET = SHADOW_PADDING + MASCOT_HEADROOM;
+/**
+ * Offset from window top edge to card top edge.
+ *
+ * The headroom alone: every shadow layer ends within 56px above the
+ * card (three standard deviations of `0 16px 48px`, less its 16px
+ * y-offset), inside the headroom, so no shadow pad goes on top.
+ */
+export const CARD_TOP_OFFSET = MASCOT_HEADROOM;
 
 // =========================================================
 // Window Size
@@ -82,8 +92,10 @@ export const CARD_TOP_OFFSET = SHADOW_PADDING + MASCOT_HEADROOM;
 
 /**
  * The launcher window's size and the card's offset in it, for a card
- * measured at its largest. This is what `launcher_set_layout` sends to
- * the backend, which places and sizes the window from it on every show.
+ * measured at its largest: the mascot headroom above the card, the
+ * shadow pad beside and below it. This is what `launcher_set_layout`
+ * sends to the backend, which places and sizes the window from it on
+ * every show.
  */
 export function launcherWindowLayout(
   cardWidth: number,

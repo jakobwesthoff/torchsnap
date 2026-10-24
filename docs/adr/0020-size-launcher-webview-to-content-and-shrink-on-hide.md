@@ -6,6 +6,8 @@ Date: 2026-03-28
 
 Accepted
 
+Amended by [71. Reserve no shadow pad above the launcher card](0071-reserve-no-shadow-pad-above-the-launcher-card.md)
+
 ## Context
 
 Torchsnap's launcher window is a Tauri webview backed by macOS WebKit
