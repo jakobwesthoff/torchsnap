@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-06
+
 ### Added
 
 - `just coverage`, `just coverage-crates` and `just coverage-frontend`
@@ -111,6 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is stopped with SIGKILL and counts as a failed discovery, so the app list
   stays and the refresh is tried again. Before, a hung `mdfind` stopped all
   app refreshes until Torchsnap restarted.
+- macOS 27: a left-click on the menu bar icon toggles the launcher again,
+  and a right-click opens the menu. Before, every click opened the menu.
 
 ## [0.15.0] - 2026-10-21
 
@@ -858,6 +862,7 @@ self-updating. See [Known limitations](#known-limitations).
 - Settings, history, and gadgets cannot be exported or transferred between
   machines, and results cannot be pinned or favorited.
 
+[0.16.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.16.0
 [0.15.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.15.0
 [0.14.1]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.1
 [0.14.0]: https://github.com/jakobwesthoff/torchsnap/releases/tag/v0.14.0
