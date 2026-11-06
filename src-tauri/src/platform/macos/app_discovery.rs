@@ -28,8 +28,9 @@
 // the child is killed: a hung run would otherwise keep the app
 // launcher from refreshing for good.
 //
-// The Mdfind struct encapsulates the raw subprocess call so
-// the discovery logic stays focused on metadata extraction.
+// `output_within` and `query_command` hold the raw subprocess
+// handling and `Mdfind` names the command, so the discovery logic
+// stays focused on metadata extraction.
 // =========================================================
 
 use std::ffi::OsStr;
@@ -709,7 +710,9 @@ mod tests {
     //
     // These tests run real short-lived processes. Where a test
     // depends on wall time, the limit and the process length differ
-    // by a factor of at least 25.
+    // by a factor of at least 25, except in the kill test, whose 2 s
+    // limit leaves the child time to write its pid and whose
+    // `sleep 5` must outlast limit plus reap grace.
     // =========================================================
 
     fn sh(script: &str) -> Command {
@@ -810,13 +813,75 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_pipe_held_open_after_exit_is_an_error() {
+    /// `script` leaves a background `sleep` that holds one pipe open
+    /// after the shell has exited.
+    fn assert_a_held_pipe_is_an_error(script: &str) {
         let started = Instant::now();
-        let result = output_within(&mut sh("sleep 5 & exit 0"), Duration::from_millis(200));
+        let result = output_within(&mut sh(script), Duration::from_millis(200));
 
-        assert!(result.is_err(), "output came back with a pipe still open");
+        let error = result.expect_err("output came back with a pipe still open");
+        assert!(
+            format!("{error:#}").contains("did not finish within"),
+            "message: {error:#}"
+        );
         assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[test]
+    fn a_stdout_pipe_held_open_after_exit_is_an_error() {
+        assert_a_held_pipe_is_an_error("sleep 5 2>/dev/null & exit 0");
+    }
+
+    #[test]
+    fn a_stderr_pipe_held_open_after_exit_is_an_error() {
+        assert_a_held_pipe_is_an_error("sleep 5 >/dev/null & exit 0");
+    }
+
+    /// A reader whose `read` fails.
+    struct FailingReader;
+
+    impl Read for FailingReader {
+        fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::other("pipe broke"))
+        }
+    }
+
+    /// A reader whose `read` panics.
+    struct PanickingReader;
+
+    impl Read for PanickingReader {
+        fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+            panic!("reader panics on purpose");
+        }
+    }
+
+    #[test]
+    fn a_failing_reader_is_an_error_naming_the_program() {
+        let reader = drain(FailingReader);
+        while !reader.is_finished() {
+            thread::yield_now();
+        }
+
+        let error = finished_bytes(reader, "x").expect_err("the read failed");
+
+        let chain = format!("{error:#}");
+        assert!(chain.contains("read x output"), "message: {chain}");
+        assert!(chain.contains("pipe broke"), "message: {chain}");
+    }
+
+    #[test]
+    fn a_panicking_reader_is_an_error_naming_the_program() {
+        let reader = drain(PanickingReader);
+        while !reader.is_finished() {
+            thread::yield_now();
+        }
+
+        let error = finished_bytes(reader, "x").expect_err("the reader panicked");
+
+        assert!(
+            format!("{error:#}").contains("reader thread of x panicked"),
+            "message: {error:#}"
+        );
     }
 
     #[test]
