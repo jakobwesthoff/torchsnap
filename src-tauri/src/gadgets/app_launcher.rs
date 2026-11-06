@@ -158,7 +158,7 @@ impl AppLauncherGadget {
 struct RefreshEnd {
     retry_not_before: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
-    /// Cleared by the thread once discovery has succeeded.
+    /// Cleared by the thread once the new list is published.
     failed: bool,
 }
 
@@ -631,6 +631,11 @@ mod tests {
         started
             .recv_timeout(WAIT)
             .expect("the refresh reached discover");
+        assert!(
+            gadget.refreshing.load(Ordering::SeqCst),
+            "the flag is held while the refresh runs"
+        );
+        assert_eq!(gadget.retry_not_before.load(Ordering::SeqCst), 0);
         let second = gadget.maybe_trigger_background_refresh();
         release.send(()).expect("the refresh is waiting");
         running.join().expect("refresh thread does not panic");
@@ -808,6 +813,7 @@ mod tests {
             (before..=after).contains(&last),
             "last_refresh {last} outside [{before}, {after}]"
         );
+        assert_eq!(gadget.retry_not_before.load(Ordering::SeqCst), 0);
         assert!(gadget.maybe_trigger_background_refresh().is_none());
     }
 
