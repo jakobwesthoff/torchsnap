@@ -117,12 +117,19 @@ impl AppLauncherGadget {
 
         let cache = Arc::clone(&self.cache);
         let timestamp = Arc::clone(&self.last_refresh);
-        let retry_not_before = Arc::clone(&self.retry_not_before);
-        let refreshing = Arc::clone(&self.refreshing);
+        let end = RefreshEnd {
+            retry_not_before: Arc::clone(&self.retry_not_before),
+            refreshing: Arc::clone(&self.refreshing),
+            failed: true,
+        };
         let discovery = Arc::clone(&self.discovery);
         let icon_cache = Arc::clone(self.caps.icon_cache());
 
         Some(thread::spawn(move || {
+            // Naming the whole guard moves it into the thread; a
+            // closure that only touched `end.failed` would capture
+            // that field alone and drop the guard here, at once.
+            let mut end = end;
             match discovery.discover() {
                 Ok(mut apps) => {
                     let valid_keys = extract_icons(&icon_cache, &*discovery, &mut apps);
@@ -131,15 +138,37 @@ impl AppLauncherGadget {
                     let mut guard = cache.write().expect("app cache not poisoned");
                     *guard = apps;
                     timestamp.store(unix_now(), Ordering::Relaxed);
+                    end.failed = false;
                 }
                 Err(e) => {
                     // Keep serving the old cache rather than clearing it.
                     eprintln!("background app discovery failed: {e:#}");
-                    retry_not_before.store(unix_now() + RETRY_INTERVAL_SECS, Ordering::SeqCst);
                 }
             }
-            refreshing.store(false, Ordering::SeqCst);
         }))
+    }
+}
+
+/// What ends a refresh thread, on every way out of it including a
+/// panic. A refresh that did not succeed holds off the next one for
+/// `RETRY_INTERVAL_SECS`, and the refresh flag is cleared after the
+/// stamp so a search that takes the flag sees the stamp. Without
+/// this, a panic would leave the flag set and stop all refreshes
+/// until the app restarts.
+struct RefreshEnd {
+    retry_not_before: Arc<AtomicI64>,
+    refreshing: Arc<AtomicBool>,
+    /// Cleared by the thread once discovery has succeeded.
+    failed: bool,
+}
+
+impl Drop for RefreshEnd {
+    fn drop(&mut self) {
+        if self.failed {
+            self.retry_not_before
+                .store(unix_now() + RETRY_INTERVAL_SECS, Ordering::SeqCst);
+        }
+        self.refreshing.store(false, Ordering::SeqCst);
     }
 }
 
@@ -611,6 +640,58 @@ mod tests {
             "a search during a refresh spawned another"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// A discovery that panics, as a bug in a platform backend would.
+    struct PanickingDiscovery;
+
+    impl AppDiscovery for PanickingDiscovery {
+        fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>> {
+            panic!("discovery panics on purpose");
+        }
+
+        fn icon(&self, _app: &DiscoveredApp) -> anyhow::Result<Option<image::DynamicImage>> {
+            Ok(None)
+        }
+    }
+
+    /// Start a refresh that panics and wait for its thread to end.
+    fn panicking_refresh() -> (AppLauncherGadget, i64, i64) {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let gadget = AppLauncherGadget::new(caps_with_icons_in(dir.path()), PanickingDiscovery);
+
+        let before = unix_now();
+        let handle = gadget
+            .maybe_trigger_background_refresh()
+            .expect("the first search starts a refresh");
+        assert!(handle.join().is_err(), "the refresh thread did not panic");
+
+        (gadget, before, unix_now())
+    }
+
+    #[test]
+    fn a_panicking_refresh_releases_the_refresh_flag() {
+        let (gadget, _, _) = panicking_refresh();
+
+        assert!(
+            !gadget.refreshing.load(Ordering::SeqCst),
+            "the refresh flag stays set after a panic"
+        );
+    }
+
+    #[test]
+    fn a_panicking_refresh_sets_the_retry_stamp() {
+        let (gadget, before, after) = panicking_refresh();
+
+        let stamp = gadget.retry_not_before.load(Ordering::SeqCst);
+        assert!(
+            (before + RETRY_INTERVAL_SECS..=after + RETRY_INTERVAL_SECS).contains(&stamp),
+            "stamp {stamp} outside [{before}+30, {after}+30]"
+        );
+        assert!(
+            gadget.maybe_trigger_background_refresh().is_none(),
+            "a search right after a panic spawned a refresh"
+        );
     }
 
     #[test]
