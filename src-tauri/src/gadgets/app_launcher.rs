@@ -341,6 +341,11 @@ mod tests {
     // and join the handle it returns, so nothing waits on a timer.
     // =========================================================
 
+    /// How long a test waits for the refresh thread to announce a
+    /// call before it fails, so a refresh that never starts fails the
+    /// test and does not hang the suite.
+    const WAIT: Duration = Duration::from_secs(10);
+
     /// Answers `discover` from a script, one entry per call. Once
     /// the script is empty every call fails, so a refresh the test
     /// did not expect shows up in the call count and not as a panic
@@ -571,12 +576,14 @@ mod tests {
         gadget
             .enable()
             .expect("a failed discovery is logged, not raised");
-        started.recv().expect("enable() called discover");
+        started
+            .recv_timeout(WAIT)
+            .expect("enable() called discover");
 
         gadget.entries();
 
         started
-            .recv()
+            .recv_timeout(WAIT)
             .expect("the search started a second discovery");
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
@@ -592,7 +599,9 @@ mod tests {
         let running = gadget
             .maybe_trigger_background_refresh()
             .expect("the first search starts a refresh");
-        started.recv().expect("the refresh reached discover");
+        started
+            .recv_timeout(WAIT)
+            .expect("the refresh reached discover");
         let second = gadget.maybe_trigger_background_refresh();
         release.send(()).expect("the refresh is waiting");
         running.join().expect("refresh thread does not panic");
