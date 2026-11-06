@@ -8,7 +8,7 @@ tags: [dependencies, migration]
 ---
 # Migrate Torchsnap from Tauri 2 to Tauri 3
 
-Torchsnap is on Tauri 2.11.6, and Tauri 3 is still in alpha. This todo tracks the whole move from Tauri 2 to Tauri 3, from the first alpha until the migration makes sense. It is the single place for new findings such as new pre-releases, changed blockers and trial results; add them here instead of opening separate todos. Delete it once the migration has landed.
+Torchsnap is on Tauri 2.12.5, and Tauri 3 is still in alpha. This todo tracks the whole move from Tauri 2 to Tauri 3, from the first alpha until the migration makes sense. It is the single place for new findings such as new pre-releases, changed blockers and trial results; add them here instead of opening separate todos. Delete it once the migration has landed.
 
 The todo comes from the dependency update work of 2026-09-21 (branch `update-dependencies`), which left every direct dependency on its newest stable release. Tauri 3 was the largest item outside the declared ranges.
 
@@ -31,7 +31,8 @@ The eight plugins: autostart, clipboard-manager, dialog, global-shortcut, opener
 
 `tauri` 3.0.0-alpha.6 and `@tauri-apps/cli` 3.0.0-alpha.6 are out, the
 newest pre-releases. No beta or release candidate exists yet. The stable
-line is `tauri` 2.12.5. `tauri-nspanel` is at 2.1.1, and its repository
+line is `tauri` 2.12.5, which Torchsnap uses. It brings `tray-icon` 0.25.1
+and `muda` 0.20, so the macOS 27 tray fix no longer needs Tauri 3. `tauri-nspanel` is at 2.1.1, and its repository
 has branches `v1`, `v2` and `v2.1`, so still no v3 branch.
 
 `gdk` stays on 0.18 on Linux until this move or a matching 2.x release:

@@ -13,6 +13,13 @@ not fixed. The approach is still open; a recommendation is below. The
 launcher stays reachable through the global hotkey and the "Open
 Launcher" menu entry (`eb671cc`).
 
+## Update (2026-11-06)
+
+`tauri` 2.12.5 pulls `tray-icon` 0.25.1 and `muda` 0.20, in
+`src-tauri/Cargo.lock` since the dependency round of 2026-11-06. That is
+the upstream fix, so neither option below should be needed. It has not
+been tried on macOS 27 yet; the checks under "When done" decide.
+
 ## Symptom
 
 Every click on the menu bar icon opens the context menu. Left-click no
