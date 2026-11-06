@@ -47,4 +47,4 @@ the SettingsWatch::get todo, apply the same policy here.
 
 ## Relations
 
-- Relates to: [SettingsWatch::get panics on type-mismatched or deleted setting values](01KWG107DYJS3Y4D92NT1YQKQV-settingswatchget-panics-on-type-mismatched-or-deleted-setting-values.md), the opposite failure policy on the same condition.
+- Relates to: [SettingsWatch::get panics on type-mismatched or deleted setting values](01KWG107DYJS3Y4D92NT1YQKQV-settingswatch-get-panics-on-type-mismatched-or-deleted-setting-values.md), the opposite failure policy on the same condition.

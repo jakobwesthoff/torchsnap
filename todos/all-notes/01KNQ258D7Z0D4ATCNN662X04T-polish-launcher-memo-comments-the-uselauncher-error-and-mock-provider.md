@@ -48,5 +48,5 @@ These came up in the same review but already have dedicated todos or were explic
 
 ## Relations
 
-- Relates to: [Use spawn_blocking instead of std::thread::spawn for Tokio-dependent threads](01KN89G33581ZA71V2JBBHX4AH-use-spawnblocking-instead-of-stdthreadspawn-for-tokio-dependent-threads.md), which covers the scheduler's `run_task` call.
+- Relates to: [Use spawn_blocking instead of std::thread::spawn for Tokio-dependent threads](01KN89G33581ZA71V2JBBHX4AH-use-spawn-blocking-instead-of-std-thread-spawn-for-tokio-dependent.md), which covers the scheduler's `run_task` call.
 - Relates to: [Add explicit close signaling for gadget channels](01KN30TH27X0ARV9A5CEKKWGPW-add-explicit-close-signaling-for-gadget-channels.md), which the messaging-stream item needs first.

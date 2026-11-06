@@ -188,4 +188,4 @@ on `wasm32-wasip2`.
 - Relates to: [Tune the gadget Cargo release profile for size](01KQZJDCAK7WZ8CPZSDSZN6C64-tune-the-gadget-cargo-release-profile-for-size.md), a binary-size todo to do first.
 - Relates to: [Audit and slim heavy gadget dependencies](01KQZJDCAK7WZ8CPZSDSZN6C65-audit-and-slim-heavy-gadget-dependencies.md), a binary-size todo to do first.
 - Relates to: [Replace `dlmalloc` with a smaller wasm allocator](01KQZJDCAK7WZ8CPZSDSZN6C66-replace-dlmalloc-with-a-smaller-wasm-allocator.md), a binary-size todo to do first.
-- Relates to: [Nightly `build-std` + `panic_immediate_abort` for gadget builds](01KQZJDCAK7WZ8CPZSDSZN6C67-nightly-build-std-panicimmediateabort-for-gadget-builds.md), a binary-size todo to do first.
+- Relates to: [Nightly `build-std` + `panic_immediate_abort` for gadget builds](01KQZJDCAK7WZ8CPZSDSZN6C67-nightly-build-std-panic-immediate-abort-for-gadget-builds.md), a binary-size todo to do first.

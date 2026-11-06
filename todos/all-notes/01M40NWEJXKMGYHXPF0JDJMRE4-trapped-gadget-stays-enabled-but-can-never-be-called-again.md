@@ -92,4 +92,4 @@ and re-enabling gives a working instance.
 ## Relations
 
 - Relates to: [Keep a panicking gadget from aborting the whole search and execute pipeline](01KWG1PH0QCDQTARA5JCW7ABYK-keep-a-panicking-gadget-from-aborting-the-whole-search-and-execute.md), host-side panics while running gadget code. This todo covers failures inside the component.
-- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expects-turn-one-panic-into-a-permanent-cascade.md), host panics that poison the store mutex
+- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expect-s-turn-one-panic-into-a-permanent-cascade.md), host panics that poison the store mutex

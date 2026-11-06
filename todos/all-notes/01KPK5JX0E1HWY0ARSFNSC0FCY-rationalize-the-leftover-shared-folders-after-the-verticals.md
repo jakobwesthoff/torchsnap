@@ -48,5 +48,5 @@ Recommendation: decide between A and C at implementation time, based on how much
 
 ## Relations
 
-- Depends on: [Move the logger code into a src/logger vertical](01KPK5JX0E1HWY0ARSFNSC0FCV-move-the-logger-code-into-a-srclogger-vertical.md)
-- Depends on: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-srcgadget-runtime-vertical.md)
+- Depends on: [Move the logger code into a src/logger vertical](01KPK5JX0E1HWY0ARSFNSC0FCV-move-the-logger-code-into-a-src-logger-vertical.md)
+- Depends on: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-src-gadget-runtime-vertical.md)

@@ -30,4 +30,4 @@ Route the blocking work through a bounded pool: `tauri::async_runtime::spawn_blo
 
 ## Relations
 
-- Relates to: [Use spawn_blocking instead of std::thread::spawn for Tokio-dependent threads](01KN89G33581ZA71V2JBBHX4AH-use-spawnblocking-instead-of-stdthreadspawn-for-tokio-dependent-threads.md), the same pattern at another call site.
+- Relates to: [Use spawn_blocking instead of std::thread::spawn for Tokio-dependent threads](01KN89G33581ZA71V2JBBHX4AH-use-spawn-blocking-instead-of-std-thread-spawn-for-tokio-dependent.md), the same pattern at another call site.

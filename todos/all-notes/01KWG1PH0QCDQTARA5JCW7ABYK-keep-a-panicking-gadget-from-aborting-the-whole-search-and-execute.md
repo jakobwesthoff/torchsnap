@@ -74,4 +74,4 @@ search and execute pipeline.
 
 ## Relations
 
-- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expects-turn-one-panic-into-a-permanent-cascade.md), one of the WASM-bridge panic paths that reach this pipeline.
+- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expect-s-turn-one-panic-into-a-permanent-cascade.md), one of the WASM-bridge panic paths that reach this pipeline.

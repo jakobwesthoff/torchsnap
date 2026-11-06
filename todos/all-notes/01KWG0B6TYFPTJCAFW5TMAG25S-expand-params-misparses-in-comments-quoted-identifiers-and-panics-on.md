@@ -50,4 +50,4 @@ way.
 
 ## Relations
 
-- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expects-turn-one-panic-into-a-permanent-cascade.md), the same connection mutex that this panic poisons.
+- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expect-s-turn-one-panic-into-a-permanent-cascade.md), the same connection mutex that this panic poisons.

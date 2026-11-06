@@ -219,4 +219,4 @@ gadget-chosen paths must be reviewed against this.
 
 ## Relations
 
-- Relates to: [open_path and reveal_path lack a root constraint, and the open_url wildcard skips URL parsing](01KWH4J9BPTRAYF451YZD2145N-openpath-and-revealpath-lack-a-root-constraint-and-the-openurl-wildcard.md), the app-launcher proxy reaches `open_path` without an opener grant, gated only by the entry store
+- Relates to: [open_path and reveal_path lack a root constraint, and the open_url wildcard skips URL parsing](01KWH4J9BPTRAYF451YZD2145N-open-path-and-reveal-path-lack-a-root-constraint-and-the-open-url.md), the app-launcher proxy reaches `open_path` without an opener grant, gated only by the entry store

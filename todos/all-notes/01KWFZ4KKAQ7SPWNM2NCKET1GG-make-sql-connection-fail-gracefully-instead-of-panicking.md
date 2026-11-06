@@ -58,5 +58,5 @@ is reportable to the guest.
 
 ## Relations
 
-- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expects-turn-one-panic-into-a-permanent-cascade.md), a panic inside a host import poisons the store mutex
-- Relates to: [Replace `thread_local!` gadget state with WIT resource exports](01KR22RJKE30JCAHQYJ20Y7DQJ-replace-threadlocal-gadget-state-with-wit-resource-exports.md), the WIT resource lifecycle of the same handles
+- Relates to: [Mutex-poisoning `expect`s turn one panic into a permanent cascade](01KWFZ4KKAQ7SPWNM2NCKET1GE-mutex-poisoning-expect-s-turn-one-panic-into-a-permanent-cascade.md), a panic inside a host import poisons the store mutex
+- Relates to: [Replace `thread_local!` gadget state with WIT resource exports](01KR22RJKE30JCAHQYJ20Y7DQJ-replace-thread-local-gadget-state-with-wit-resource-exports.md), the WIT resource lifecycle of the same handles

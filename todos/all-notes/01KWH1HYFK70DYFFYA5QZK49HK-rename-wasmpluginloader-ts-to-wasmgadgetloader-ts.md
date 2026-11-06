@@ -19,4 +19,4 @@ Move the file to `src/gadgets/wasmGadgetLoader.ts` with `git mv`, and update the
 
 ## Relations
 
-- Relates to: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-srcgadget-runtime-vertical.md), which moves the renamed loader.
+- Relates to: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-src-gadget-runtime-vertical.md), which moves the renamed loader.

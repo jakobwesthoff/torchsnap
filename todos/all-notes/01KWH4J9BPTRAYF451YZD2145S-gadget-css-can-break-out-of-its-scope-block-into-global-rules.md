@@ -56,4 +56,4 @@ The gadget frontend JS is same-origin host-realm code with full DOM, `fetch` and
 ## Relations
 
 - Relates to: [Replace Origin reflection on the gadget asset protocol with an allowlist](01KWH4J9BPTRAYF451YZD2145B-replace-origin-reflection-on-the-gadget-asset-protocol-with-an-allowlist.md), both rest on the fact that gadget frontend is trusted host-origin code.
-- Relates to: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-srcgadget-runtime-vertical.md), which moves `src/lib/gadgetCss.ts`.
+- Relates to: [Move the gadget runtime code into a src/gadget-runtime vertical](01KPK5JX0E1HWY0ARSFNSC0FCW-move-the-gadget-runtime-code-into-a-src-gadget-runtime-vertical.md), which moves `src/lib/gadgetCss.ts`.
