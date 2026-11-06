@@ -102,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Before, it replaced the list with an empty one and deleted every cached
   icon, so no application could be launched until a later refresh found
   applications again.
+- App launcher on macOS: an `mdfind` run that takes longer than 30 seconds
+  is stopped with SIGKILL and counts as a failed discovery, so the app list
+  stays and the refresh is tried again. Before, a hung `mdfind` stopped all
+  app refreshes until Torchsnap restarted.
 
 ## [0.15.0] - 2026-10-21
 

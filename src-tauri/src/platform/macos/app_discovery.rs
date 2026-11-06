@@ -24,13 +24,21 @@
 // empty list: the app launcher replaces its list and deletes its
 // cached icons when discovery succeeds.
 //
+// An `mdfind` run that takes longer than 30 seconds fails, and
+// the child is killed: a hung run would otherwise keep the app
+// launcher from refreshing for good.
+//
 // The Mdfind struct encapsulates the raw subprocess call so
 // the discovery logic stays focused on metadata extraction.
 // =========================================================
 
 use std::ffi::OsStr;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use image::DynamicImage;
@@ -38,29 +46,118 @@ use image::DynamicImage;
 use super::cgimage_conversion::nsworkspace_icon_for_file;
 use crate::platform::app_discovery::{AppDiscovery, DiscoveredApp};
 
+/// How long an `mdfind` run may take before it counts as failed.
+const MDFIND_TIME_LIMIT: Duration = Duration::from_secs(30);
+
+/// How often `output_within` looks at the child.
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// How long `output_within` waits for a killed child to be reaped.
+const REAP_GRACE: Duration = Duration::from_secs(1);
+
+/// Read a child's pipe to its end on a thread of its own. A pipe
+/// nobody reads fills up and blocks the child, which would look like
+/// a hang.
+fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<io::Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        pipe.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    })
+}
+
+/// Run `command` to completion and return its output, or fail when
+/// it is not done within `limit`.
+///
+/// The run is done when the child has exited and both of its pipes
+/// have reached their end. A descendant that outlives the child and
+/// keeps a pipe open therefore counts against the limit too, and the
+/// call never returns partial output. On expiry the child gets
+/// SIGKILL and `REAP_GRACE` to be reaped, so a child that ignores the
+/// signal cannot hold the caller up past that.
+fn output_within(command: &mut Command, limit: Duration) -> anyhow::Result<Output> {
+    let program = command.get_program().to_string_lossy().into_owned();
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawn {program} process"))?;
+    let stdout = drain(child.stdout.take().expect("stdout is piped"));
+    let stderr = drain(child.stderr.take().expect("stderr is piped"));
+    let deadline = Instant::now() + limit;
+
+    let mut exit_status = None;
+    loop {
+        // A failing `try_wait` counts as a child still running: the
+        // deadline then ends in the kill path, which reaps it.
+        exit_status = exit_status.or(child.try_wait().ok().flatten());
+        if let Some(status) = exit_status
+            && stdout.is_finished()
+            && stderr.is_finished()
+        {
+            // Both readers are finished, so joining cannot block.
+            return Ok(Output {
+                status,
+                stdout: finished_bytes(stdout, &program)?,
+                stderr: finished_bytes(stderr, &program)?,
+            });
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(POLL_INTERVAL);
+    }
+
+    let _ = child.kill();
+    let (reaped_tx, reaped_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = child.wait();
+        let _ = reaped_tx.send(());
+    });
+    let _ = reaped_rx.recv_timeout(REAP_GRACE);
+
+    anyhow::bail!("{program} did not finish within {limit:?}")
+}
+
+/// The bytes of a reader that has finished.
+fn finished_bytes(
+    reader: thread::JoinHandle<io::Result<Vec<u8>>>,
+    program: &str,
+) -> anyhow::Result<Vec<u8>> {
+    reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("reader thread of {program} panicked"))?
+        .with_context(|| format!("read {program} output"))
+}
+
+/// Run a query command and return one path per output line.
+fn query_command(command: &mut Command, limit: Duration) -> anyhow::Result<Vec<PathBuf>> {
+    let program = command.get_program().to_string_lossy().into_owned();
+    let output = output_within(command, limit).context("run the query")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("{program} exited with {}: {stderr}", output.status);
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .with_context(|| format!("decode {program} output as UTF-8"))?;
+
+    Ok(stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect())
+}
+
 /// Thin wrapper around the macOS `mdfind` Spotlight CLI.
 struct Mdfind;
 
 impl Mdfind {
     /// Run a Spotlight query and return one path per result line.
     fn query(predicate: &str) -> anyhow::Result<Vec<PathBuf>> {
-        let output = Command::new("mdfind")
-            .arg(predicate)
-            .output()
-            .context("spawn mdfind process")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("mdfind exited with {}: {stderr}", output.status);
-        }
-
-        let stdout = String::from_utf8(output.stdout).context("decode mdfind output as UTF-8")?;
-
-        Ok(stdout
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(PathBuf::from)
-            .collect())
+        query_command(Command::new("mdfind").arg(predicate), MDFIND_TIME_LIMIT)
     }
 }
 
@@ -605,5 +702,172 @@ mod tests {
         let apps = discover_from(|| Ok(vec![stray, valid])).expect("one app is left");
 
         assert_eq!(names(&apps), ["Valid"]);
+    }
+
+    // =========================================================
+    // Time-limited commands
+    //
+    // These tests run real short-lived processes. Where a test
+    // depends on wall time, the limit and the process length differ
+    // by a factor of at least 25.
+    // =========================================================
+
+    fn sh(script: &str) -> Command {
+        let mut command = Command::new("sh");
+        command.args(["-c", script]);
+        command
+    }
+
+    #[test]
+    fn a_run_inside_the_limit_returns_its_output() {
+        let output = output_within(&mut sh("sleep 0.2; printf ok"), Duration::from_secs(10))
+            .expect("the run ends inside the limit");
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"ok");
+    }
+
+    #[test]
+    fn a_failing_status_and_stderr_are_returned() {
+        let output = output_within(&mut sh("echo oops >&2; exit 3"), Duration::from_secs(10))
+            .expect("a failing exit is not an error here");
+
+        assert_eq!(output.status.code(), Some(3));
+        assert_eq!(output.stderr, b"oops\n");
+    }
+
+    #[test]
+    fn a_missing_program_is_an_error_with_context() {
+        let result = output_within(
+            &mut Command::new("torchsnap-test-no-such-tool"),
+            Duration::from_secs(10),
+        );
+
+        let error = result.expect_err("the program does not exist");
+        assert!(
+            format!("{error:#}").contains("spawn torchsnap-test-no-such-tool process"),
+            "message: {error:#}"
+        );
+    }
+
+    #[test]
+    fn output_larger_than_the_pipe_buffer_arrives_whole() {
+        let output = output_within(
+            Command::new("head").args(["-c", "1048576", "/dev/zero"]),
+            Duration::from_secs(10),
+        )
+        .expect("the run ends inside the limit");
+
+        assert_eq!(output.stdout.len(), 1_048_576);
+    }
+
+    #[test]
+    fn stderr_larger_than_the_pipe_buffer_does_not_block_the_run() {
+        let output = output_within(
+            &mut sh("head -c 1048576 /dev/zero >&2; head -c 1048576 /dev/zero"),
+            Duration::from_secs(10),
+        )
+        .expect("the run ends inside the limit");
+
+        assert_eq!(output.stderr.len(), 1_048_576);
+        assert_eq!(output.stdout.len(), 1_048_576);
+    }
+
+    #[test]
+    fn a_run_past_the_limit_is_an_error() {
+        let result = output_within(&mut sh("sleep 5"), Duration::from_millis(100));
+
+        let error = result.expect_err("the run outlasts the limit");
+        assert!(
+            format!("{error:#}").contains("did not finish within"),
+            "message: {error:#}"
+        );
+    }
+
+    #[test]
+    fn a_run_past_the_limit_is_killed_and_reaped() {
+        let root = tempfile::tempdir().expect("temporary directory can be created");
+        let pid_file = root.path().join("pid");
+        let mut command = sh(r#"echo $$ > "$1"; exec sleep 5"#);
+        command.arg("sh").arg(&pid_file);
+
+        let started = Instant::now();
+        let result = output_within(&mut command, Duration::from_secs(2));
+        let elapsed = started.elapsed();
+
+        assert!(result.is_err(), "the run outlasts the limit");
+        let pid: i32 = std::fs::read_to_string(&pid_file)
+            .ok()
+            .and_then(|text| text.trim().parse().ok())
+            .expect("child never wrote its pid");
+        // A zombie still answers signal 0, so ESRCH proves the reap.
+        // SAFETY: signal 0 only checks that the process exists.
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        assert!(!alive, "child {pid} is still there");
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "returned after {elapsed:?}, so the child was waited for, not killed"
+        );
+    }
+
+    #[test]
+    fn a_pipe_held_open_after_exit_is_an_error() {
+        let started = Instant::now();
+        let result = output_within(&mut sh("sleep 5 & exit 0"), Duration::from_millis(200));
+
+        assert!(result.is_err(), "output came back with a pipe still open");
+        assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[test]
+    fn query_lines_become_paths_and_empty_lines_are_dropped() {
+        let paths = query_command(
+            &mut sh(r"printf '/Applications/A.app\n\n/Applications/B.app\n'"),
+            Duration::from_secs(10),
+        )
+        .expect("the command succeeds");
+
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("/Applications/A.app"),
+                PathBuf::from("/Applications/B.app")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failing_query_carries_its_stderr() {
+        let error = query_command(
+            &mut sh("echo no index >&2; exit 1"),
+            Duration::from_secs(10),
+        )
+        .expect_err("the command fails");
+
+        let chain = format!("{error:#}");
+        assert!(chain.contains("sh exited with"), "message: {chain}");
+        assert!(chain.contains("no index"), "message: {chain}");
+    }
+
+    #[test]
+    fn query_output_that_is_not_utf8_is_an_error() {
+        let error = query_command(&mut sh(r"printf '\377'"), Duration::from_secs(10))
+            .expect_err("0xff is not UTF-8");
+
+        assert!(
+            format!("{error:#}").contains("decode sh output as UTF-8"),
+            "message: {error:#}"
+        );
+    }
+
+    #[test]
+    fn a_query_past_the_limit_is_an_error() {
+        let error = query_command(&mut sh("sleep 5"), Duration::from_millis(100))
+            .expect_err("the run outlasts the limit");
+
+        assert!(
+            format!("{error:#}").contains("did not finish within"),
+            "message: {error:#}"
+        );
     }
 }
