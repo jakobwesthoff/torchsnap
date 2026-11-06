@@ -32,16 +32,12 @@ The eight plugins: autostart, clipboard-manager, dialog, global-shortcut, opener
 `tauri` 3.0.0-alpha.6 and `@tauri-apps/cli` 3.0.0-alpha.6 are out, the
 newest pre-releases. No beta or release candidate exists yet. The stable
 line is `tauri` 2.12.5, which Torchsnap uses. It brings `tray-icon` 0.25.1
-and `muda` 0.20, so the macOS 27 tray fix no longer needs Tauri 3. `tauri-nspanel` is at 2.1.1, and its repository
+and `muda` 0.20, which fixed the macOS 27 tray left-click without Tauri 3. `tauri-nspanel` is at 2.1.1, and its repository
 has branches `v1`, `v2` and `v2.1`, so still no v3 branch.
 
 `gdk` stays on 0.18 on Linux until this move or a matching 2.x release:
 0.19 conflicts with the `gtk` 0.18 that `tao`, `muda`, `tauri` and
 `tauri-runtime-wry` require, since `gdk-sys` links a native library.
-
-## Why it matters
-
-- **macOS 27 tray fix.** `tauri` 3.0.0-alpha.2 requires `tray-icon ^0.25` and `muda ^0.20`. Tauri 2.11.6 requires `tray-icon ^0.24`. tray-icon 0.25.1 fixes the left-click regression described in the tray todo under Relations. Until Tauri 3 is usable, that todo's `[patch.crates-io]` workaround is the way to get the fix on Tauri 2.
 
 ## Blockers
 
@@ -77,4 +73,3 @@ Re-check at each new Tauri 3 pre-release, and start a trial branch once there is
 
 - Blocked by: a Tauri 3 beta or release candidate, since alpha releases still break APIs
 - Blocked by: a Tauri 3 compatible release of tauri-nspanel (latest 2.1.0 requires tauri ^2.8.5)
-- Relates to: [macOS 27 tray left-click opens the menu instead of the launcher](01M32G17GMGEEJ8Y2Q87T3Q3PD-macos-27-tray-left-click-opens-the-menu-instead-of-the-launcher.md), the tray-icon 0.25.1 fix that Tauri 3 pulls in and that Tauri 2 can reach through the workaround there
