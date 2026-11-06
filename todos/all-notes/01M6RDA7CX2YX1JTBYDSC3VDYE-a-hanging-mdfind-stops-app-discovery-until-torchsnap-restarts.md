@@ -40,7 +40,3 @@ would otherwise block the child and look like a hang.
 - A run past the limit ends with `Err`, leaving no child process behind.
 - Output larger than the pipe buffer still arrives whole.
 - `CHANGELOG.md` has an entry under `[Unreleased]`.
-
-## Relations
-
-- Relates to: [App launcher replaces its whole app list when Spotlight returns nothing](01M6RCCXE19QR476ZZ5QY41ZET-app-launcher-replaces-its-whole-app-list-when-spotlight-returns-nothing.md), same discovery failure path.

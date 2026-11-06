@@ -20,6 +20,10 @@
 // login item or helper, is a part of its host app and is left
 // out.
 //
+// Discovery that ends with no application is an error, never an
+// empty list: the app launcher replaces its list and deletes its
+// cached icons when discovery succeeds.
+//
 // The Mdfind struct encapsulates the raw subprocess call so
 // the discovery logic stays focused on metadata extraction.
 // =========================================================
@@ -172,12 +176,37 @@ fn apps_from_bundle_paths(paths: &[PathBuf]) -> Vec<DiscoveredApp> {
 /// `Info.plist` metadata parsing.
 pub struct MdfindDiscovery;
 
+/// Spotlight query matching every application bundle.
+const APP_BUNDLE_QUERY: &str = "kMDItemContentType == 'com.apple.application-bundle'";
+
+/// Run `query` for the application bundle paths and build the app
+/// list from them.
+///
+/// A list without a single app is an error. The caller replaces its
+/// app list and deletes its cached icons on `Ok`, so an empty `Ok`
+/// would wipe both.
+///
+/// Taking the query as a parameter lets tests answer it without
+/// running `mdfind`.
+fn discover_from(
+    query: impl FnOnce() -> anyhow::Result<Vec<PathBuf>>,
+) -> anyhow::Result<Vec<DiscoveredApp>> {
+    let paths = query().context("query Spotlight for application bundles")?;
+    let apps = apps_from_bundle_paths(&paths);
+
+    if apps.is_empty() {
+        anyhow::bail!(
+            "no application bundle left of {} Spotlight results",
+            paths.len()
+        );
+    }
+
+    Ok(apps)
+}
+
 impl AppDiscovery for MdfindDiscovery {
     fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>> {
-        let paths = Mdfind::query("kMDItemContentType == 'com.apple.application-bundle'")
-            .context("query Spotlight for application bundles")?;
-
-        Ok(apps_from_bundle_paths(&paths))
+        discover_from(|| Mdfind::query(APP_BUNDLE_QUERY))
     }
 
     fn icon(&self, app: &DiscoveredApp) -> anyhow::Result<Option<DynamicImage>> {
@@ -478,5 +507,103 @@ mod tests {
             .join(OsStr::from_bytes(b"\xff.app"));
 
         assert!(is_embedded_helper(&path));
+    }
+
+    // =========================================================
+    // Discovery that ends with no application
+    // =========================================================
+
+    /// The error of a discovery that must have failed.
+    fn error_of(result: anyhow::Result<Vec<DiscoveredApp>>) -> anyhow::Error {
+        match result {
+            Ok(apps) => panic!("discovery succeeded with {:?}", names(&apps)),
+            Err(error) => error,
+        }
+    }
+
+    #[test]
+    fn no_spotlight_output_is_an_error() {
+        let result = discover_from(|| Ok(Vec::new()));
+
+        let error = error_of(result);
+        assert!(
+            format!("{error:#}").contains("of 0 Spotlight results"),
+            "message: {error:#}"
+        );
+    }
+
+    #[test]
+    fn only_paths_outside_applications_folders_is_an_error() {
+        let root = tempfile::tempdir().expect("temporary directory can be created");
+        let stray = write_bundle(root.path(), "Downloads/Stray.app", plist_with_name("Stray"));
+
+        let result = discover_from(|| Ok(vec![stray]));
+
+        error_of(result);
+    }
+
+    #[test]
+    fn only_embedded_helpers_is_an_error() {
+        let helper =
+            PathBuf::from("/Applications/Foo.app/Contents/Library/LoginItems/Foo Login.app");
+
+        let result = discover_from(|| Ok(vec![helper]));
+
+        error_of(result);
+    }
+
+    #[test]
+    fn only_unreadable_bundles_is_an_error() {
+        let root = tempfile::tempdir().expect("temporary directory can be created");
+        let broken = root.path().join("Applications/Broken.app");
+        std::fs::create_dir_all(&broken).expect("temporary directory is writable");
+
+        let result = discover_from(|| Ok(vec![broken]));
+
+        error_of(result);
+    }
+
+    #[test]
+    fn the_error_counts_the_dropped_results() {
+        let paths = vec![
+            PathBuf::from("/Users/someone/Downloads/Stray.app"),
+            PathBuf::from("/Applications/Foo.app/Contents/Library/LoginItems/Foo Login.app"),
+        ];
+
+        let result = discover_from(|| Ok(paths));
+
+        let error = error_of(result);
+        assert!(
+            format!("{error:#}").contains("no application bundle left of 2 Spotlight results"),
+            "message: {error:#}"
+        );
+    }
+
+    #[test]
+    fn a_failing_query_keeps_its_context() {
+        let result = discover_from(|| Err(anyhow::anyhow!("mdfind exited with 1")));
+
+        let error = error_of(result);
+        let chain = format!("{error:#}");
+        assert!(
+            chain.contains("query Spotlight for application bundles"),
+            "message: {chain}"
+        );
+        assert!(chain.contains("mdfind exited with 1"), "message: {chain}");
+    }
+
+    #[test]
+    fn one_valid_app_among_dropped_paths_is_a_success() {
+        let root = tempfile::tempdir().expect("temporary directory can be created");
+        let valid = write_bundle(
+            root.path(),
+            "Applications/Valid.app",
+            plist_with_name("Valid"),
+        );
+        let stray = PathBuf::from("/Users/someone/Downloads/Stray.app");
+
+        let apps = discover_from(|| Ok(vec![stray, valid])).expect("one app is left");
+
+        assert_eq!(names(&apps), ["Valid"]);
     }
 }

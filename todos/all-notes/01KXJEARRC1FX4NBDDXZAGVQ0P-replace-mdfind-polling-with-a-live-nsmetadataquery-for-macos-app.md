@@ -192,7 +192,8 @@ New file replacing the mdfind backend in
 
 ### 3. Gadget integration (`src-tauri/src/gadgets/app_launcher.rs`)
 
-- Delete `REFRESH_INTERVAL_SECS`, `last_refresh`, `refreshing` and
+- Delete `REFRESH_INTERVAL_SECS`, `RETRY_INTERVAL_SECS`, `last_refresh`,
+  `retry_not_before`, `refreshing` and
   `maybe_trigger_background_refresh`. Polling is gone.
 - `enable()` calls `discovery.start(listener)`. The listener updates
   `cache: Arc<RwLock<Vec<DiscoveredApp>>>`:

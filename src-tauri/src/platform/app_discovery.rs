@@ -67,6 +67,12 @@ pub trait AppDiscovery: Send + Sync {
     /// processes. An application shipped inside another one for users
     /// to open, which macOS keeps in a folder named `Applications`
     /// within it, is included.
+    ///
+    /// The caller replaces its app list and deletes the icons of apps
+    /// no longer listed when this returns `Ok`, and keeps both on
+    /// `Err`. An implementation whose backend can answer with nothing
+    /// when it fails, such as Spotlight on macOS, returns `Err` for a
+    /// list without any app.
     fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>>;
 
     /// Extract the icon for an application as a decoded image.

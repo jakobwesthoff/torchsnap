@@ -97,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App launcher: after a failed refresh, a search within 30 seconds starts
   no new one. Before, a failing Spotlight cost an `mdfind` run on every
   keystroke.
+- App launcher on macOS: when Spotlight returns no application, or none
+  the launcher lists, the launcher keeps its app list and its icon cache.
+  Before, it replaced the list with an empty one and deleted every cached
+  icon, so no application could be launched until a later refresh found
+  applications again.
 
 ## [0.15.0] - 2026-10-21
 
