@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `just doctor` lists shellcheck as a required tool.
+- The emoji picker uses `emojibase-data` 18 (Emoji 18). It lists nine more
+  emoji: 🫫 🫹 🫺 🫌 🫝 🛙 🪋 🪌 🪍.
+- Tauri is updated to 2.12.5, scraper to 0.29, zip to 9 and wit-bindgen
+  to 0.63; the Tauri plugins and the `@tauri-apps` packages move to their
+  matching 2.x releases.
 - Control API: `query` and `dismiss` answer with error `-1` when the
   launcher's frontend is not connected, instead of reporting success
   for a command it never received. `dismiss` then leaves the launcher
