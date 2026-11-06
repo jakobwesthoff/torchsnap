@@ -85,6 +85,10 @@ corrupt (bad-checksum reads, zero query results). No unclean shutdown or
 kernel panic was involved. Useful context for the help text: an OS update
 alone can silently break the index that app discovery depends on.
 
+## Update (2026-11-06)
+
+A force-refresh must also clear `retry_not_before`, the 30 s hold after a failed refresh in `maybe_trigger_background_refresh`, or the button does nothing in that window.
+
 ## Relations
 
 - Relates to: [Add a directory-scan fallback when Spotlight results are implausible](01KXK8KXSAED0AH2Q0Z6EAMHG2-add-a-directory-scan-fallback-when-spotlight-results-are-implausible.md), the incident that motivates the index statistics and the repair help.

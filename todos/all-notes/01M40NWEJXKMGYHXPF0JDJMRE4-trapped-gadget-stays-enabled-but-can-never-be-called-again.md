@@ -89,6 +89,10 @@ demand in `search`, `execute`, `handle-message`, `run-task` and
 instance is gone, no further calls reach it, its resources are released,
 and re-enabling gives a working instance.
 
+## Update (2026-11-06)
+
+Torchsnap is on wasmtime 49.0.5. The behaviour still holds there, but the line numbers above have moved: `set_trapped` and the `may_enter` check in `component/func.rs`, `may_enter` in `component/store.rs`.
+
 ## Relations
 
 - Relates to: [Keep a panicking gadget from aborting the whole search and execute pipeline](01KWG1PH0QCDQTARA5JCW7ABYK-keep-a-panicking-gadget-from-aborting-the-whole-search-and-execute.md), host-side panics while running gadget code. This todo covers failures inside the component.

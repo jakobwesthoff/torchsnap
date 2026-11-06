@@ -16,3 +16,7 @@ Rare: a setting change or switch applies late, only once something else changes.
 ## Suggested fix
 
 Send settings changes from the frontend to Rust through a command instead of an event, so delivery does not depend on Tauri's emit queue and a handler panic stays local to its call. Check the current tauri version first; the upstream behaviour may have changed.
+
+## Update (2026-11-06)
+
+Written against `tauri` 2.11.6. Torchsnap is on 2.12.5, whose `src/event/listener.rs` differs (`try_lock`, a replay guard). Whether this is still true has not been checked; re-read 2.12.5 first.

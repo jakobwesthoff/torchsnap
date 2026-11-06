@@ -207,3 +207,7 @@ reads, because the decoder stops naturally well before `CAP+1`.
 load), `lib.rs:1139-1147,1188` (startup load path),
 `gadget_install/staging.rs:64-74` (install path), `protocol.rs:147` (asset
 serving).
+
+## Update (2026-11-06)
+
+Torchsnap is on `zip` 9.4.1. `read_file` in `src-tauri/src/wasm/source.rs` is still uncapped. No decompression limit option was found in `zip-9.4.1/src/read/config.rs`; check that again when working on this.

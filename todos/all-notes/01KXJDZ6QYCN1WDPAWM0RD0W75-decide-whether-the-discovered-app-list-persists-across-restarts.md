@@ -93,3 +93,7 @@ These are alternatives or complements to persistence. With a persisted
 last-known-good list, startup readiness mostly stops being user-visible.
 Without one, a readiness gate is needed to avoid publishing partial
 results.
+
+## Update (2026-11-06)
+
+An empty Spotlight result no longer wipes the list: `discover_from` returns `Err`, which keeps the cache (0.16.0). Partial results still do, so the question stands.

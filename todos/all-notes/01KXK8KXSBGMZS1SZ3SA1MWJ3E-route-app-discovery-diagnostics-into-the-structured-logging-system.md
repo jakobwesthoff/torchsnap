@@ -19,6 +19,10 @@ App discovery reports its diagnostics with bare `eprintln!` to stderr. A release
 
 Emit discovery lifecycle events and failures as `LogItem`s through the existing `log_sender` channel, instead of or in addition to stderr: scan started, scan finished with result count, per-bundle skips, and scan failures. That makes discovery behavior observable in the DevTools console of a production build.
 
+## Update (2026-11-06)
+
+Two more failures surface only through these `eprintln!` calls: the 30 s `mdfind` limit in `output_within`, and a panic in the refresh thread, which `RefreshEnd` handles without any message. Line hints above have drifted; find the call sites by their message.
+
 ## Relations
 
 - Relates to: [Add a directory-scan fallback when Spotlight results are implausible](01KXK8KXSAED0AH2Q0Z6EAMHG2-add-a-directory-scan-fallback-when-spotlight-results-are-implausible.md), the discovery work behind the 2026-07-15 missing-apps investigation

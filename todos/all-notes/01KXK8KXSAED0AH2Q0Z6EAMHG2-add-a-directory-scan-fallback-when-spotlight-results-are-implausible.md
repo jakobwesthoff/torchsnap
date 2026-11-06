@@ -45,6 +45,10 @@ The evaluation of replacing `mdfind` with a direct API already lists
 directory scanning as one option. This incident is a correctness argument
 for that switch, not just a performance one.
 
+## Update (2026-11-06)
+
+A wholly empty result no longer does harm: `discover_from` returns `Err` and the launcher keeps its list and icons (0.16.0). Partial results that are not empty still replace the list, as in the incident above, so the fallback is still needed.
+
 ## Relations
 
 - Relates to: [Decide whether macOS app discovery should use a direct API instead of mdfind](01KMJPBR2SAEHJHHGKH3JDSGNA-decide-whether-macos-app-discovery-should-use-a-direct-api-instead-of.md), option 4 there is directory scanning, and this incident adds a correctness argument for it.

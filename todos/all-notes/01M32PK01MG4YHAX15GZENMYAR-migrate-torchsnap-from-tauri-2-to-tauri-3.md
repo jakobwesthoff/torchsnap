@@ -42,7 +42,7 @@ has branches `v1`, `v2` and `v2.1`, so still no v3 branch.
 ## Blockers
 
 1. **Alpha status.** Breaking changes continue between alphas (alpha.2 renamed plugin APIs). Wait for a beta or release candidate.
-2. **tauri-nspanel.** The launcher panel depends on it. Its latest release, 2.1.0, requires `tauri ^2.8.5`, and its repository (github.com/ahkohd/tauri-nspanel) had no v3 branch on 2026-09-21. The migration needs a Tauri 3 compatible release of it.
+2. **tauri-nspanel.** The launcher panel depends on it. Its latest release, 2.1.1, targets Tauri 2 (2.1.0 required `tauri ^2.8.5`), and its repository (github.com/ahkohd/tauri-nspanel) had no v3 branch on 2026-09-21. The migration needs a Tauri 3 compatible release of it.
 
 ## Changes that affect torchsnap
 
