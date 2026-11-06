@@ -34,6 +34,10 @@ newest pre-releases. No beta or release candidate exists yet. The stable
 line is `tauri` 2.12.5. `tauri-nspanel` is at 2.1.1, and its repository
 has branches `v1`, `v2` and `v2.1`, so still no v3 branch.
 
+`gdk` stays on 0.18 on Linux until this move or a matching 2.x release:
+0.19 conflicts with the `gtk` 0.18 that `tao`, `muda`, `tauri` and
+`tauri-runtime-wry` require, since `gdk-sys` links a native library.
+
 ## Why it matters
 
 - **macOS 27 tray fix.** `tauri` 3.0.0-alpha.2 requires `tray-icon ^0.25` and `muda ^0.20`. Tauri 2.11.6 requires `tray-icon ^0.24`. tray-icon 0.25.1 fixes the left-click regression described in the tray todo under Relations. Until Tauri 3 is usable, that todo's `[patch.crates-io]` workaround is the way to get the fix on Tauri 2.
