@@ -131,9 +131,9 @@ uninstall bursts settle within one or two fast polls.
 
 ### 3. Interval selection
 
-`maybe_trigger_background_refresh` currently
-compares against the fixed `REFRESH_INTERVAL_SECS`. Change the comparison
-to pick the interval from the stability state. Extract the decision into a
+The pure function `refresh_is_due` compares against the fixed
+`REFRESH_INTERVAL_SECS`, next to the retry window. Change the comparison
+to pick the interval from the stability state, with the decision in a
 pure function for testability:
 
 ```rust
@@ -200,8 +200,7 @@ Pure-logic units (no discovery backend, no filesystem):
   rather than overflowing on long identical runs.
 - Fingerprint: order-independent (the same set in a different order gives
   the same hash); differs on an added or removed id; an empty set has a
-  fingerprint (empty is not absent. Two consecutive empty results are
-  "stable empty", see the open question).
+  fingerprint (empty is not absent).
 - `merge_additive`: adds new ids; replaces an existing id with the new
   entry (returned as changed); never removes; returns exactly the added
   or replaced ids; merging an identical list returns empty; merging into
@@ -233,13 +232,12 @@ object-safe and injected via `AppLauncherGadget::new`
 
 ## Open questions
 
+macOS discovery returns `Err` on an empty result, so no empty set reaches
+the stability check; the fallback's empty `Ok` is the only empty case.
+
 - `REFRESH_INTERVAL_WARMUP_SECS` value (15 s proposed; anything in the
   5-30 s range is defensible given the 0.6 s pipeline cost).
 - Include `name` and `bundle_id` in the fingerprint, or ids only?
-- Empty result handling: two consecutive empty results would be "stable
-  empty" and would wholesale-replace the cache with nothing, deleting all
-  icons. Should an empty result never count as stable, so that a
-  non-empty cache is never replaced by an empty stable set?
 - Add a dedicated timer thread during warm-up so convergence does not
   depend on the user searching? The trade-off: it fixes the "search once,
   close the launcher, come back later" case, but adds thread-lifecycle
