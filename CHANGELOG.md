@@ -94,6 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API's `query`, no longer puts the old prefix back in the input. After
   `=2+3`, a `query` with `!b2` showed `=b2`, typing `a` over the input
   showed `=`, and deleting the leading `=` showed `=+3`.
+- App launcher: after a failed refresh, a search within 30 seconds starts
+  no new one. Before, a failing Spotlight cost an `mdfind` run on every
+  keystroke.
 
 ## [0.15.0] - 2026-10-21
 

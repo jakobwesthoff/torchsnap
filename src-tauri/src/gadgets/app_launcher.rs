@@ -10,7 +10,10 @@
 // via the platform's `AppDiscovery` implementation and cached
 // in memory. A background refresh runs every 5 minutes to
 // pick up newly installed or removed applications without
-// blocking the search path.
+// blocking the search path. A refresh that fails keeps the cached
+// list and the icons. A search within 30 seconds of a failed
+// refresh starts no new one, so a failing discovery costs one
+// attempt per 30 seconds of searching, not one per keystroke.
 //
 // Icons are extracted via `AppDiscovery::icon` and
 // cached on disk as WebP. The `IconCache` handles mtime-based
@@ -43,10 +46,14 @@ use super::Gadget;
 /// a background refresh is triggered.
 const REFRESH_INTERVAL_SECS: i64 = 300; // 5 minutes
 
+/// How long after a failed refresh searches start no new one.
+const RETRY_INTERVAL_SECS: i64 = 30;
+
 pub struct AppLauncherGadget {
     caps: Arc<ProvisionedCaps>,
     cache: Arc<RwLock<Vec<DiscoveredApp>>>,
     last_refresh: Arc<AtomicI64>,
+    retry_not_before: Arc<AtomicI64>,
     refreshing: Arc<AtomicBool>,
     discovery: Arc<dyn AppDiscovery>,
 }
@@ -70,23 +77,21 @@ impl AppLauncherGadget {
             caps,
             cache: Arc::new(RwLock::new(Vec::new())),
             last_refresh: Arc::new(AtomicI64::new(0)),
+            retry_not_before: Arc::new(AtomicI64::new(0)),
             refreshing: Arc::new(AtomicBool::new(false)),
             discovery: Arc::new(discovery),
         }
     }
 
-    /// If the cache is older than `REFRESH_INTERVAL_SECS`, spawn a
-    /// background thread to re-discover applications. The current
-    /// `entries()` call returns the existing (stale) cache immediately
-    /// — the refresh result will be available on subsequent calls.
-    fn maybe_trigger_background_refresh(&self) {
-        let now = unix_now();
-        let last = self.last_refresh.load(Ordering::Relaxed);
-
-        if now - last < REFRESH_INTERVAL_SECS {
-            return;
-        }
-
+    /// If `refresh_is_due`, spawn a background thread to re-discover
+    /// applications. The current `entries()` call returns the existing
+    /// (stale) cache immediately; the refresh result is available on
+    /// subsequent calls. A failed refresh keeps the cache and sets the
+    /// stamp that holds off the next attempt for `RETRY_INTERVAL_SECS`.
+    ///
+    /// Returns the thread's handle when one was spawned. `entries()`
+    /// lets it go; tests join it.
+    fn maybe_trigger_background_refresh(&self) -> Option<thread::JoinHandle<()>> {
         // Atomic compare-and-swap prevents multiple concurrent
         // refresh threads if entries() is called rapidly.
         if self
@@ -94,16 +99,30 @@ impl AppLauncherGadget {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
             .is_err()
         {
-            return;
+            return None;
+        }
+
+        // The due check runs while this search holds the flag, so it
+        // sees the stamp a finishing refresh thread wrote before it
+        // cleared the flag.
+        let due = refresh_is_due(
+            unix_now(),
+            self.last_refresh.load(Ordering::SeqCst),
+            self.retry_not_before.load(Ordering::SeqCst),
+        );
+        if !due {
+            self.refreshing.store(false, Ordering::SeqCst);
+            return None;
         }
 
         let cache = Arc::clone(&self.cache);
         let timestamp = Arc::clone(&self.last_refresh);
+        let retry_not_before = Arc::clone(&self.retry_not_before);
         let refreshing = Arc::clone(&self.refreshing);
         let discovery = Arc::clone(&self.discovery);
         let icon_cache = Arc::clone(self.caps.icon_cache());
 
-        thread::spawn(move || {
+        Some(thread::spawn(move || {
             match discovery.discover() {
                 Ok(mut apps) => {
                     let valid_keys = extract_icons(&icon_cache, &*discovery, &mut apps);
@@ -116,11 +135,27 @@ impl AppLauncherGadget {
                 Err(e) => {
                     // Keep serving the old cache rather than clearing it.
                     eprintln!("background app discovery failed: {e:#}");
+                    retry_not_before.store(unix_now() + RETRY_INTERVAL_SECS, Ordering::SeqCst);
                 }
             }
             refreshing.store(false, Ordering::SeqCst);
-        });
+        }))
     }
+}
+
+/// Whether a search may start a background refresh now.
+///
+/// A refresh is due `REFRESH_INTERVAL_SECS` after the last success,
+/// unless a failed refresh set a retry stamp that still lies ahead.
+/// The stamp only counts when it lies at most `RETRY_INTERVAL_SECS`
+/// ahead: a stamp further out means the clock was set back since it
+/// was written, and it must not hold a retry for longer than a
+/// failure ever does.
+fn refresh_is_due(now: i64, last_refresh: i64, retry_not_before: i64) -> bool {
+    let retry_wait = retry_not_before - now;
+    let in_retry_window = (1..=RETRY_INTERVAL_SECS).contains(&retry_wait);
+
+    now - last_refresh >= REFRESH_INTERVAL_SECS && !in_retry_window
 }
 
 /// Run icon extraction for each discovered app, populating their
@@ -211,7 +246,7 @@ impl Search for AppLauncherGadget {
     type Command = Command;
 
     fn entries(&self) -> Vec<CatalogEntry<Command>> {
-        self.maybe_trigger_background_refresh();
+        let _ = self.maybe_trigger_background_refresh();
 
         let cache = self.cache.read().expect("app cache not poisoned");
 
@@ -271,6 +306,11 @@ fn unix_now() -> i64 {
 mod tests {
     use super::*;
     use crate::commands::types::Action;
+    use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::mpsc::{Receiver, Sender, channel};
 
     #[test]
     fn app_opens_on_enter_and_reveals_on_cmd_enter() {
@@ -290,5 +330,434 @@ mod tests {
             ))
         );
         assert_eq!(actions.iter().count(), 2);
+    }
+
+    // =========================================================
+    // Refresh scheduling
+    //
+    // The gadget runs against a scripted `AppDiscovery` and a real
+    // `IconCache` on a temporary directory. Tests that need the
+    // refresh thread's end call `maybe_trigger_background_refresh`
+    // and join the handle it returns, so nothing waits on a timer.
+    // =========================================================
+
+    /// Answers `discover` from a script, one entry per call. Once
+    /// the script is empty every call fails, so a refresh the test
+    /// did not expect shows up in the call count and not as a panic
+    /// in the refresh thread.
+    struct ScriptedDiscovery {
+        script: Mutex<VecDeque<anyhow::Result<Vec<DiscoveredApp>>>>,
+        calls: Arc<AtomicUsize>,
+        started: Option<Mutex<Sender<()>>>,
+        release: Option<Mutex<Receiver<()>>>,
+    }
+
+    impl ScriptedDiscovery {
+        fn new(script: Vec<anyhow::Result<Vec<DiscoveredApp>>>) -> (Self, Arc<AtomicUsize>) {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let discovery = Self {
+                script: Mutex::new(script.into()),
+                calls: Arc::clone(&calls),
+                started: None,
+                release: None,
+            };
+            (discovery, calls)
+        }
+
+        /// Send a message on every call, as soon as it begins.
+        fn announcing_calls(mut self) -> (Self, Receiver<()>) {
+            let (tx, rx) = channel();
+            self.started = Some(Mutex::new(tx));
+            (self, rx)
+        }
+
+        /// Hold every call until the returned sender sends.
+        fn held_until_released(mut self) -> (Self, Sender<()>) {
+            let (tx, rx) = channel();
+            self.release = Some(Mutex::new(rx));
+            (self, tx)
+        }
+    }
+
+    impl AppDiscovery for ScriptedDiscovery {
+        fn discover(&self) -> anyhow::Result<Vec<DiscoveredApp>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(started) = &self.started {
+                let _ = started.lock().expect("sender lock").send(());
+            }
+            if let Some(release) = &self.release {
+                release
+                    .lock()
+                    .expect("receiver lock")
+                    .recv()
+                    .expect("the test releases the call");
+            }
+            self.script
+                .lock()
+                .expect("script lock")
+                .pop_front()
+                .unwrap_or_else(|| Err(anyhow::anyhow!("script exhausted")))
+        }
+
+        fn icon(&self, _app: &DiscoveredApp) -> anyhow::Result<Option<image::DynamicImage>> {
+            Ok(Some(image::DynamicImage::new_rgba8(16, 16)))
+        }
+    }
+
+    fn app(name: &str) -> DiscoveredApp {
+        DiscoveredApp {
+            id: format!("/Applications/{name}.app"),
+            name: name.to_string(),
+            path: PathBuf::from(format!("/Applications/{name}.app")),
+            bundle_id: Some(format!("test.{name}")),
+            icon_path: None,
+        }
+    }
+
+    fn failure() -> anyhow::Result<Vec<DiscoveredApp>> {
+        Err(anyhow::anyhow!("discovery failed"))
+    }
+
+    fn caps_with_icons_in(icon_dir: &Path) -> Arc<ProvisionedCaps> {
+        Arc::new(ProvisionedCaps {
+            opener: None,
+            http: None,
+            filesystem: None,
+            command: None,
+            clipboard: None,
+            sql_storage: None,
+            website_metadata: None,
+            icon_cache: Some(Arc::new(IconCache::new(icon_dir.to_path_buf()))),
+            settings: None,
+            frecency: None,
+            path_resolver: None,
+        })
+    }
+
+    fn gadget_with(icon_dir: &Path, discovery: ScriptedDiscovery) -> AppLauncherGadget {
+        AppLauncherGadget::new(caps_with_icons_in(icon_dir), discovery)
+    }
+
+    /// The ids of the cached apps, read without triggering a refresh.
+    fn cached_ids(gadget: &AppLauncherGadget) -> Vec<String> {
+        let cache = gadget.cache.read().expect("app cache not poisoned");
+        cache.iter().map(|app| app.id.clone()).collect()
+    }
+
+    fn cached_icon_paths(gadget: &AppLauncherGadget) -> Vec<String> {
+        let cache = gadget.cache.read().expect("app cache not poisoned");
+        cache
+            .iter()
+            .filter_map(|app| app.icon_path.clone())
+            .collect()
+    }
+
+    /// Every file below `dir`, recursively.
+    fn files_below(dir: &Path) -> Vec<PathBuf> {
+        let mut found = Vec::new();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return found;
+        };
+        for entry in entries {
+            let path = entry.expect("directory entry is readable").path();
+            if path.is_dir() {
+                found.extend(files_below(&path));
+            } else {
+                found.push(path);
+            }
+        }
+        found
+    }
+
+    fn trigger_and_join(gadget: &AppLauncherGadget) {
+        gadget
+            .maybe_trigger_background_refresh()
+            .expect("a refresh was due and started")
+            .join()
+            .expect("refresh thread does not panic");
+    }
+
+    /// Clear both gates so the next trigger is due.
+    fn make_due(gadget: &AppLauncherGadget) {
+        gadget.last_refresh.store(0, Ordering::SeqCst);
+        gadget.retry_not_before.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn a_failed_refresh_is_not_retried_by_the_next_search() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) = ScriptedDiscovery::new(vec![failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+
+        trigger_and_join(&gadget);
+        let second = gadget.maybe_trigger_background_refresh();
+
+        assert!(
+            second.is_none(),
+            "a search right after a failure spawned a refresh"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_failed_refresh_sets_the_retry_stamp_thirty_seconds_ahead() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+
+        let before = unix_now();
+        trigger_and_join(&gadget);
+        let after = unix_now();
+
+        let stamp = gadget.retry_not_before.load(Ordering::SeqCst);
+        assert!(
+            (before + RETRY_INTERVAL_SECS..=after + RETRY_INTERVAL_SECS).contains(&stamp),
+            "stamp {stamp} outside [{before}+30, {after}+30]"
+        );
+    }
+
+    #[test]
+    fn a_failed_refresh_leaves_the_last_success_time_alone() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget.last_refresh.store(1, Ordering::SeqCst);
+
+        trigger_and_join(&gadget);
+
+        assert_eq!(gadget.last_refresh.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_failed_refresh_is_retried_once_the_stamp_has_passed() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) = ScriptedDiscovery::new(vec![failure(), failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        trigger_and_join(&gadget);
+        gadget
+            .retry_not_before
+            .store(unix_now() - 1, Ordering::SeqCst);
+
+        trigger_and_join(&gadget);
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_failed_retry_after_a_failed_startup_backs_off() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) = ScriptedDiscovery::new(vec![failure(), failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget
+            .enable()
+            .expect("a failed discovery is logged, not raised");
+
+        trigger_and_join(&gadget);
+        let third = gadget.maybe_trigger_background_refresh();
+
+        assert!(
+            third.is_none(),
+            "a search after the failed retry spawned a refresh"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn the_first_search_retries_a_failed_startup_discovery() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) = ScriptedDiscovery::new(vec![failure(), failure()]);
+        let (discovery, started) = discovery.announcing_calls();
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget
+            .enable()
+            .expect("a failed discovery is logged, not raised");
+        started.recv().expect("enable() called discover");
+
+        gadget.entries();
+
+        started
+            .recv()
+            .expect("the search started a second discovery");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_search_during_a_running_refresh_spawns_nothing() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) = ScriptedDiscovery::new(vec![failure()]);
+        let (discovery, started) = discovery.announcing_calls();
+        let (discovery, release) = discovery.held_until_released();
+        let gadget = gadget_with(dir.path(), discovery);
+
+        let running = gadget
+            .maybe_trigger_background_refresh()
+            .expect("the first search starts a refresh");
+        started.recv().expect("the refresh reached discover");
+        let second = gadget.maybe_trigger_background_refresh();
+        release.send(()).expect("the refresh is waiting");
+        running.join().expect("refresh thread does not panic");
+
+        assert!(
+            second.is_none(),
+            "a search during a refresh spawned another"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_search_inside_the_retry_window_releases_the_refresh_flag() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![failure(), failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        trigger_and_join(&gadget);
+
+        let blocked = gadget.maybe_trigger_background_refresh();
+        assert!(
+            blocked.is_none(),
+            "a search inside the window spawned a refresh"
+        );
+        gadget
+            .retry_not_before
+            .store(unix_now() - 1, Ordering::SeqCst);
+
+        trigger_and_join(&gadget);
+    }
+
+    #[test]
+    fn a_search_inside_the_success_interval_releases_the_refresh_flag() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![Ok(vec![app("One")]), failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget.enable().expect("discovery succeeds");
+
+        let blocked = gadget.maybe_trigger_background_refresh();
+        assert!(
+            blocked.is_none(),
+            "a search inside the interval spawned a refresh"
+        );
+        make_due(&gadget);
+
+        trigger_and_join(&gadget);
+    }
+
+    #[test]
+    fn a_failed_refresh_keeps_the_list_and_the_icon_files() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, calls) =
+            ScriptedDiscovery::new(vec![Ok(vec![app("One"), app("Two")]), failure()]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget.enable().expect("discovery succeeds");
+        let ids = cached_ids(&gadget);
+        let icons = cached_icon_paths(&gadget);
+        assert_eq!(ids.len(), 2);
+        assert_eq!(icons.len(), 2);
+        make_due(&gadget);
+
+        trigger_and_join(&gadget);
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(cached_ids(&gadget), ids);
+        assert_eq!(cached_icon_paths(&gadget), icons);
+        assert_eq!(files_below(dir.path()).len(), 2);
+        assert!(icons.iter().all(|path| Path::new(path).exists()));
+    }
+
+    #[test]
+    fn a_failed_startup_discovery_keeps_the_icons_of_an_earlier_run() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (earlier, _) = ScriptedDiscovery::new(vec![Ok(vec![app("One"), app("Two")])]);
+        gadget_with(dir.path(), earlier)
+            .enable()
+            .expect("discovery succeeds");
+        assert_eq!(files_below(dir.path()).len(), 2);
+
+        let (later, _) = ScriptedDiscovery::new(vec![failure()]);
+        let gadget = gadget_with(dir.path(), later);
+        gadget
+            .enable()
+            .expect("a failed discovery is logged, not raised");
+
+        assert!(cached_ids(&gadget).is_empty());
+        assert_eq!(files_below(dir.path()).len(), 2);
+    }
+
+    #[test]
+    fn the_next_successful_refresh_replaces_the_list_and_drops_old_icons() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![
+            Ok(vec![app("One"), app("Two")]),
+            failure(),
+            Ok(vec![app("Three")]),
+        ]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget.enable().expect("discovery succeeds");
+        make_due(&gadget);
+        trigger_and_join(&gadget);
+        make_due(&gadget);
+
+        trigger_and_join(&gadget);
+
+        assert_eq!(cached_ids(&gadget), ["/Applications/Three.app"]);
+        assert_eq!(files_below(dir.path()).len(), 1);
+    }
+
+    #[test]
+    fn a_successful_refresh_after_a_failure_waits_the_long_interval() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![failure(), Ok(vec![app("One")])]);
+        let gadget = gadget_with(dir.path(), discovery);
+        trigger_and_join(&gadget);
+        make_due(&gadget);
+
+        let before = unix_now();
+        trigger_and_join(&gadget);
+        let after = unix_now();
+
+        let last = gadget.last_refresh.load(Ordering::SeqCst);
+        assert!(
+            (before..=after).contains(&last),
+            "last_refresh {last} outside [{before}, {after}]"
+        );
+        assert!(gadget.maybe_trigger_background_refresh().is_none());
+    }
+
+    #[test]
+    fn entries_lists_the_cached_apps_and_leaves_the_refresh_flag_clear() {
+        let dir = tempfile::tempdir().expect("temporary directory can be created");
+        let (discovery, _) = ScriptedDiscovery::new(vec![Ok(vec![app("One")])]);
+        let gadget = gadget_with(dir.path(), discovery);
+        gadget.enable().expect("discovery succeeds");
+
+        let entries = gadget.entries();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "/Applications/One.app");
+        assert!(!gadget.refreshing.load(Ordering::SeqCst));
+    }
+
+    // =========================================================
+    // The due check
+    // =========================================================
+
+    #[test]
+    fn a_refresh_is_due_after_the_success_interval() {
+        assert!(!refresh_is_due(1299, 1000, 0));
+        assert!(refresh_is_due(1300, 1000, 0));
+    }
+
+    #[test]
+    fn a_refresh_waits_while_the_retry_stamp_lies_ahead() {
+        let now = 10_000;
+        assert!(refresh_is_due(now, 0, now - 1));
+        assert!(refresh_is_due(now, 0, now));
+        assert!(!refresh_is_due(now, 0, now + 1));
+        assert!(!refresh_is_due(now, 0, now + RETRY_INTERVAL_SECS));
+    }
+
+    #[test]
+    fn a_retry_stamp_further_ahead_than_the_retry_interval_is_ignored() {
+        let now = 10_000;
+        assert!(refresh_is_due(now, 0, now + RETRY_INTERVAL_SECS + 1));
+        assert!(refresh_is_due(now, 0, now + 10_000));
     }
 }
