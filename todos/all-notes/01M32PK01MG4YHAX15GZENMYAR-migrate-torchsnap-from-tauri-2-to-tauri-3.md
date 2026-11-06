@@ -27,6 +27,13 @@ Torchsnap is on Tauri 2.11.6 with matching 2.x plugins (JS and Rust). Tauri 3 pr
 
 The eight plugins: autostart, clipboard-manager, dialog, global-shortcut, opener, os, process, store. `tauri-plugin-fs` comes in transitively and was not checked for a 3.x pre-release.
 
+## State as of 2026-11-06
+
+`tauri` 3.0.0-alpha.6 and `@tauri-apps/cli` 3.0.0-alpha.6 are out, the
+newest pre-releases. No beta or release candidate exists yet. The stable
+line is `tauri` 2.12.5. `tauri-nspanel` is at 2.1.1, and its repository
+has branches `v1`, `v2` and `v2.1`, so still no v3 branch.
+
 ## Why it matters
 
 - **macOS 27 tray fix.** `tauri` 3.0.0-alpha.2 requires `tray-icon ^0.25` and `muda ^0.20`. Tauri 2.11.6 requires `tray-icon ^0.24`. tray-icon 0.25.1 fixes the left-click regression described in the tray todo under Relations. Until Tauri 3 is usable, that todo's `[patch.crates-io]` workaround is the way to get the fix on Tauri 2.
