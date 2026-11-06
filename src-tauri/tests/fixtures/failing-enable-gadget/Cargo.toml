@@ -10,7 +10,7 @@ publish = false
 # drop-instance-on-guest-enable-failure path.
 
 [dependencies]
-wit-bindgen = "0.62"
+wit-bindgen = "0.63"
 
 [lib]
 crate-type = ["cdylib"]
